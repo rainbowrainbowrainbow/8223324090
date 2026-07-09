@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.69 - Staff Schedule Controls QA
+
+### Release / Versioning / (09.07.2026) [codex]
+- **Cache/version hygiene закрито** - visible release marker, asset `?v=` tags, service-worker cache names і `/api/version` переведені на `v0.78.69`.
+- **Keyboard regression у меню `Дії` закрито** - `Escape` тепер закриває actions menu і не запускає чужий dirty-confirm для `Заповнити період`.
+- **Bulk fill coverage посилено без production writes** - browser smoke у mock server перевіряє, що `Заповнити період` відправляє payload тільки для вибраного staff, вибраного weekday і дат у межах `1-15`.
+- **Production records не змінювались** - live QA лишається read-only, bulk fill/copy/import не запускаються на production data.
+
+---
+
 ## v0.78.68 - Staff Schedule Mobile Polish
 
 ### HR / Графік / Mobile controls / QA polish / (Клешня, 09.07.2026) [codex]

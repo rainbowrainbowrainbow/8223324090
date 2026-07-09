@@ -296,6 +296,17 @@ function isWeekday(date, weekday) {
     return new Date(`${date}T00:00:00`).getDay() === weekday;
 }
 
+function rangeDates(from, to) {
+    const dates = [];
+    const current = new Date(`${from}T00:00:00`);
+    const end = new Date(`${to}T00:00:00`);
+    while (current <= end) {
+        dates.push(formatInputDate(current));
+        current.setDate(current.getDate() + 1);
+    }
+    return dates;
+}
+
 function waitForCondition(predicate, message, timeoutMs = 20000) {
     const started = Date.now();
     return new Promise((resolve, reject) => {
@@ -443,6 +454,30 @@ async function runDesktopFlow(browser, base) {
         assert.match(await page.locator('.confirm-overlay .confirm-message').innerText(), /Копія тижня|7-денний/, 'unavailable copy-week explains the weekly-only behavior');
         await page.locator('.confirm-overlay .confirm-ok').click();
         assert.equal(apiCalls.copyWeekBodies.length, 0, 'unavailable copy-week does not call backend copy route');
+        assert.equal(apiCalls.bulkBodies.length, 0, 'opening actions menu does not run bulk fill');
+
+        await page.locator('#scheduleActionsMenuBtn').click();
+        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
+        await page.locator('#fillWeekBtn').click();
+        await page.locator('#fillWeekOverlay.visible').waitFor({ state: 'visible' });
+        await page.locator('#fillStaffSelect').selectOption('101');
+        await page.locator('#fillDaysRow input[type=checkbox]').evaluateAll(inputs => {
+            inputs.forEach(input => { input.checked = false; });
+        });
+        await page.locator('#fillDaysRow input[value="1"]').check();
+        await page.locator('#fillSaveBtn').click();
+        await page.locator('.confirm-overlay .confirm-ok').waitFor({ state: 'visible' });
+        await page.locator('.confirm-overlay .confirm-ok').click();
+        await page.waitForFunction(() => !document.getElementById('fillWeekOverlay')?.classList.contains('visible'), null, { timeout: 20000 });
+        assert.equal(apiCalls.bulkBodies.length, 1, 'fill period posts one bulk payload in mock smoke');
+        const bulkEntries = apiCalls.bulkBodies[0].entries || [];
+        const expectedMondayDates = rangeDates(firstHalfFrom, firstHalfTo).filter(date => isWeekday(date, 1));
+        assert.equal(bulkEntries.length, expectedMondayDates.length, 'fill period creates one entry per selected weekday inside range');
+        assert.deepEqual(bulkEntries.map(entry => entry.date), expectedMondayDates, 'fill period payload dates stay inside selected range and weekday');
+        assert.ok(bulkEntries.every(entry => entry.staffId === 101), 'fill period payload targets only selected staff member');
+        assert.ok(bulkEntries.every(entry => entry.status === 'working'), 'fill period payload keeps selected status');
+        assert.ok(bulkEntries.every(entry => entry.professionKey === 'animator'), 'fill period payload keeps normalized profession');
+
         for (const removedId of ['bulkCreateBtn']) {
             assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
         }

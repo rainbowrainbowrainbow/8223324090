@@ -1609,6 +1609,7 @@ checkPage('staff.html', (doc, html) => {
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const staffCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
     const staffScheduleShellCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-schedule-shell.js'), 'utf8');
+    const staffScheduleLiveSmokeCode = fs.readFileSync(path.join(ROOT, 'scripts', 'live-staff-schedule-smoke.js'), 'utf8');
     const pulseSwitcherCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');
     const staffPulseRenderDom = new JSDOM('<div id="staffPulseNavItems"></div>', { runScripts: 'outside-only' });
     staffPulseRenderDom.window.eval(pulseSwitcherCode);
@@ -1670,11 +1671,11 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleCellActivationBlock = staffCode.slice(staffCode.indexOf('function scheduleCellFromEvent'), staffCode.indexOf('function renderSchedule()'));
     const staffScheduleHealthBadgeRenderBlock = staffCode.slice(staffCode.indexOf('function renderScheduleHealthBadges'), staffCode.indexOf('function renderScheduleHealthIssueList'));
     const staffSchedulePrimaryRenderBlock = staffCode.slice(staffCode.indexOf('function renderSchedule()'), staffCode.indexOf('// Group staff by department'));
-    const staffScheduleToggleHoursBlock = staffCode.slice(staffCode.indexOf('async function toggleHours()'), staffCode.indexOf('// LOAD VIEW'));
+    const staffScheduleViewModeBlock = staffCode.slice(staffCode.indexOf('async function setScheduleViewMode'), staffCode.indexOf('function bindScheduleViewSwitchControls'));
     const staffScheduleLoadViewBlock = staffCode.slice(staffCode.indexOf('function renderLoadView()'), staffCode.indexOf('// ACCOUNT LINKING'));
     const staffScheduleExportBlock = staffCode.slice(staffCode.indexOf('function handleExcelExport()'), staffCode.indexOf('// PRINT'));
     const staffScheduleSummaryBlock = staffCode.slice(staffCode.indexOf('function summarizeScheduleRange'), staffCode.indexOf('function renderEmpRow'));
-    const staffScheduleBulkActionsBlock = staffCode.slice(staffCode.indexOf('function openFillWeekModal()'), staffCode.indexOf('// HOURS TOGGLE'));
+    const staffScheduleBulkActionsBlock = staffCode.slice(staffCode.indexOf('function openFillWeekModal()'), staffCode.indexOf('// LOAD VIEW'));
     const staffScheduleWeekNavBlock = staffCode.slice(staffCode.indexOf('async function goToWeek'), staffCode.indexOf('function prevWeek'));
     const staffScheduleInitLoadBlock = staffCode.slice(staffCode.indexOf('async function initStaffSchedulePage'), staffCode.indexOf('// Event listeners'));
     const staffDeptFilterRenderBlock = staffCode.slice(staffCode.indexOf('function renderDeptFilter()'), staffCode.indexOf('function renderWeekLabel()'));
@@ -1701,6 +1702,15 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleHeaderActionsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions');
     const staffScheduleHeaderActionButtonRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar');
     const staffScheduleHeaderActionDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar');
+    const staffScheduleActionsDropdownRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-actions-dropdown');
+    const staffScheduleActionsMenuRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-actions-menu');
+    const staffScheduleMenuItemRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-menu-item');
+    const staffScheduleMenuItemDisabledRule = cssRuleIncludingSelectorText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-menu-item.is-disabled');
+    const staffScheduleActionsMenuDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-actions-menu');
+    const staffScheduleViewSwitchRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-view-switch');
+    const staffScheduleViewOptionRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-view-option');
+    const staffScheduleViewOptionActiveRule = cssRuleIncludingSelectorText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-view-option.active');
+    const staffScheduleViewSwitchDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-view-switch');
     const staffFillPeriodHintRule = cssRuleText(staffPagesCss, '#fillWeekOverlay .fill-period-hint');
     const staffScheduleCommandBarRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar');
     const staffScheduleCommandBarControlsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls');
@@ -1799,7 +1809,7 @@ checkPage('staff.html', (doc, html) => {
         && staffSchedulePrimaryRenderBlock.includes('const filtered = scheduleHealthFilteredStaff(baseFiltered, health)')
         && staffScheduleRenderBlock.includes("tbody.classList.toggle('show-hours', Boolean(StaffState.showHours))")
         && !staffScheduleRenderBlock.includes("tbody.classList.add('show-hours')")
-        && !staffScheduleToggleHoursBlock.includes("classList.add('show-hours')")
+        && !staffScheduleViewModeBlock.includes("classList.add('show-hours')")
         && !staffSchedulePrimaryRenderBlock.includes('renderScheduleHealthPanel(health)')
         && !staffSchedulePrimaryRenderBlock.includes('renderStaffingForecastPanel(forecast)')
         && !staffSchedulePrimaryRenderBlock.includes('renderManagerAccountabilityPanel(accountability)')
@@ -1896,8 +1906,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleSummaryBlock.includes('function summarizeScheduleRange')
         && staffScheduleSummaryBlock.includes('const ds = typeof d ===')
         && staffScheduleSummaryBlock.includes('updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered)')
-        && staffScheduleToggleHoursBlock.includes('const dates = getScheduleDates()')
-        && staffScheduleToggleHoursBlock.includes('fetchScheduleHours(from, to)')
+        && staffScheduleViewModeBlock.includes('const dates = getScheduleDates()')
+        && staffScheduleViewModeBlock.includes('fetchScheduleHours(from, to)')
         && staffScheduleLoadViewBlock.includes('const dates = getScheduleDates()')
         && staffScheduleExportBlock.includes('const dates = getScheduleDates()')
         && staffScheduleExportBlock.includes('const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;')
@@ -1914,7 +1924,8 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('function syncScheduleBulkActionLabels')
         && staffCode.includes('scheduleRangeDayCount(range.start, range.end) === STAFF_SCHEDULE_WINDOW_DAYS')
         && staffCode.includes("fillBtn.textContent = customRange ? 'Заповнити період' : 'Заповнити тиждень'")
-        && staffCode.includes("copyBtn.setAttribute('aria-disabled', allowed ? 'false' : 'true')")
+        && staffCode.includes("copyBtn.dataset.scheduleCopyUnavailable = allowed ? 'false' : 'true'")
+        && staffCode.includes("Натисніть, щоб побачити пояснення")
         && staffScheduleBulkActionsBlock.includes('updateFillWeekModalCopy()')
         && staffScheduleBulkActionsBlock.includes('const dates = getScheduleDates()')
         && staffScheduleBulkActionsBlock.includes('const currentRange = scheduleCurrentRange()')
@@ -1927,7 +1938,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleBulkActionsBlock.includes('Довільний visible range не копіюється цією дією.')
         && /font-size:\s*13px;/.test(staffFillPeriodHintRule));
     check('Staff schedule people search matches HR Today light dark and mobile control rhythm',
-        /"week actions"\s*"range range"\s*"search search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
+        /"week actions"\s*"range range"\s*"view view"\s*"search search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
         && /grid-area:\s*range;/.test(staffScheduleRangeRowRule)
         && /grid-template-columns:\s*repeat\(2,\s*168px\)\s*minmax\(124px,\s*max-content\)\s*minmax\(238px,\s*max-content\);/.test(staffScheduleRangeRowRule)
         && /padding:\s*8px 10px;/.test(staffScheduleRangeRowRule)
@@ -1951,10 +1962,11 @@ checkPage('staff.html', (doc, html) => {
         && /justify-content:\s*flex-end;/.test(staffScheduleHeaderActionsRule)
         && /min-width:\s*104px;/.test(staffScheduleHeaderActionButtonRule)
         && /background:\s*rgba\(15,23,42,0\.46\);/.test(staffScheduleHeaderActionDarkRule)
-        && /"week"\s*"range"\s*"actions"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
+        && /"week"\s*"range"\s*"actions"\s*"view"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-range-row[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-date-input[\s\S]*width:\s*100%;/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(96px,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-view-switch[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-search-row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*position:\s*absolute;[\s\S]*clip-path:\s*inset\(50%\);[\s\S]*white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock));
     check('Staff schedule mobile controls use compact rails and a stacked command grid',
@@ -1978,19 +1990,82 @@ checkPage('staff.html', (doc, html) => {
         staffScheduleShellCode.includes('class="staff-schedule-header-actions"')
         && staffScheduleShellCode.includes('id="exportExcelBtn"')
         && staffScheduleShellCode.includes('id="printBtn"')
+        && staffScheduleShellCode.includes('id="scheduleActionsDropdown"')
+        && staffScheduleShellCode.includes('id="scheduleActionsMenuBtn"')
+        && staffScheduleShellCode.includes('id="scheduleActionsMenu"')
+        && staffScheduleShellCode.includes('id="addStaffBtn"')
+        && staffScheduleShellCode.includes('id="copyWeekBtn"')
+        && staffScheduleShellCode.includes('id="fillWeekBtn"')
+        && staffScheduleShellCode.includes('id="importExcelBtn"')
+        && staffScheduleShellCode.includes('id="excelImportInput"')
         && !staffScheduleShellCode.includes('class="schedule-toolbar"')
-        && !staffScheduleShellCode.includes('id="addStaffBtn"')
-        && !staffScheduleShellCode.includes('id="copyWeekBtn"')
-        && !staffScheduleShellCode.includes('id="fillWeekBtn"')
-        && !staffScheduleShellCode.includes('id="toggleHoursBtn"')
-        && !staffScheduleShellCode.includes('id="toggleLoadViewBtn"')
-        && !staffScheduleShellCode.includes('id="toggleLinkViewBtn"')
-        && !staffScheduleShellCode.includes('id="importExcelBtn"')
-        && !staffScheduleShellCode.includes('id="excelImportInput"')
+        && staffScheduleShellCode.includes('id="scheduleViewSwitch"')
+        && staffScheduleShellCode.includes('id="scheduleViewMainBtn"')
+        && staffScheduleShellCode.includes('id="toggleHoursBtn"')
+        && staffScheduleShellCode.includes('id="toggleLoadViewBtn"')
+        && staffScheduleShellCode.includes('id="toggleLinkViewBtn"')
+        && staffScheduleShellCode.includes('data-schedule-view="hours"')
+        && staffScheduleShellCode.includes('data-schedule-view="load"')
+        && staffScheduleShellCode.includes('data-schedule-view="accounts"')
+        && !staffScheduleShellCode.includes('id="bulkCreateBtn"')
         && staffCode.includes("document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport)")
         && staffCode.includes("document.getElementById('printBtn')?.addEventListener('click', handlePrint)")
+        && staffCode.includes("const SCHEDULE_ACTION_MENU_ITEM_IDS = ['addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn']")
+        && staffCode.includes("const STAFF_SCHEDULE_VIEW_MODES = new Set(['schedule', 'hours', 'load', 'accounts'])")
+        && staffCode.includes('function setScheduleViewMode')
+        && staffCode.includes('function bindScheduleViewSwitchControls')
+        && !staffCode.includes('async function toggleHours()')
+        && !staffCode.includes('function toggleLoadView()')
+        && !staffCode.includes('async function toggleLinkView()')
+        && staffCode.includes('StaffState.showHours = nextMode ===')
+        && staffCode.includes('StaffState.showLoadView = nextMode ===')
+        && staffCode.includes('StaffState.showLinkView = nextMode ===')
+        && staffCode.includes('await fetchScheduleHours(from, to)')
+        && staffCode.includes('await fetchLinkStatus()')
+        && staffCode.includes('function bindScheduleActionsMenuControls')
+        && staffCode.includes('function syncScheduleActionsMenuVisibility')
+        && staffCode.includes("document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal)")
+        && staffCode.includes("document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek)")
+        && staffCode.includes("document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport)")
+        && staffCode.includes("document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal)")
+        && !staffCode.includes("document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours)")
+        && !staffCode.includes("document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView)")
+        && !staffCode.includes("document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView)")
         && /display:\s*flex;/.test(staffScheduleHeaderActionsRule)
-        && /min-height:\s*46px;/.test(staffScheduleHeaderActionButtonRule));
+        && /min-height:\s*46px;/.test(staffScheduleHeaderActionButtonRule)
+        && /position:\s*relative;/.test(staffScheduleActionsDropdownRule)
+        && /position:\s*absolute;/.test(staffScheduleActionsMenuRule)
+        && /z-index:\s*80;/.test(staffScheduleActionsMenuRule)
+        && /min-height:\s*38px;/.test(staffScheduleMenuItemRule)
+        && /cursor:\s*help;/.test(staffScheduleMenuItemDisabledRule)
+        && /background:\s*rgba\(15,23,42,0\.96\);/.test(staffScheduleActionsMenuDarkRule)
+        && /grid-area:\s*view;/.test(staffScheduleViewSwitchRule)
+        && /min-height:\s*34px;/.test(staffScheduleViewOptionRule)
+        && /background:\s*rgba\(240,253,250,0\.94\);/.test(staffScheduleViewOptionActiveRule)
+        && /background:\s*rgba\(15,23,42,0\.30\);/.test(staffScheduleViewSwitchDarkRule));
+    check('Staff schedule has repeatable read-only live smoke coverage',
+        pkg.scripts['smoke:staff-schedule'] === 'npx --yes --package playwright node scripts/live-staff-schedule-smoke.js'
+        && staffScheduleLiveSmokeCode.includes('Read-only guarantee')
+        && staffScheduleLiveSmokeCode.includes('LIVE_SMOKE_USER')
+        && staffScheduleLiveSmokeCode.includes('TEST_USER')
+        && staffScheduleLiveSmokeCode.includes("path.join(ROOT, 'output', 'playwright', 'live-staff-schedule-smoke'")
+        && staffScheduleLiveSmokeCode.includes('function assertNoForbiddenStaffWrites')
+        && staffScheduleLiveSmokeCode.includes("pathname === '/api/staff/schedule/bulk'")
+        && staffScheduleLiveSmokeCode.includes("pathname === '/api/staff/schedule/copy-week'")
+        && staffScheduleLiveSmokeCode.includes("pathname === '/api/staff/import-excel'")
+        && staffScheduleLiveSmokeCode.includes('function assertActionsMenuSurface')
+        && staffScheduleLiveSmokeCode.includes('function assertViewSwitchReadOnlyModes')
+        && staffScheduleLiveSmokeCode.includes('#scheduleActionsMenuBtn')
+        && staffScheduleLiveSmokeCode.includes('data-schedule-view="hours"')
+        && staffScheduleLiveSmokeCode.includes('data-schedule-view="load"')
+        && staffScheduleLiveSmokeCode.includes('data-schedule-view="accounts"')
+        && staffScheduleLiveSmokeCode.includes("applyPreset(page, 'first-half')")
+        && staffScheduleLiveSmokeCode.includes("await waitForDayColumns(page, 9)")
+        && staffScheduleLiveSmokeCode.includes("await waitForDayColumns(page, 15)")
+        && staffScheduleLiveSmokeCode.includes("download.suggestedFilename()")
+        && staffScheduleLiveSmokeCode.includes("window.print = () =>")
+        && staffScheduleLiveSmokeCode.includes("'.schedule-toolbar'")
+        && staffScheduleLiveSmokeCode.includes('mobile: Object.freeze({ width: 390, height: 844 })'));
     check('Staff HR Pulse command cards do not depend on legacy nav PNG layers',
         legacyStaffPulseNavTokens.every(token => !html.includes(token) && !staffPagesCss.includes(token)));
     check('HR Pulse light theme keeps switcher and schedule command surfaces light-only by default',

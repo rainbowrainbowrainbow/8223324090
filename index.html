@@ -1782,8 +1782,9 @@
                     <h4>v0.78.68 — Staff Schedule Mobile Polish</h4>
                     <ul>
                         <li><b>Mobile поля <code>Від/До</code> більше не накладаються</b> — date inputs на вузьких екранах стискаються в межах своїх колонок.</li>
+                        <li><b><code>Дії</code> і <code>Вид</code> замінили старий toolbar</b> — bulk/admin дії відкриваються з компактного меню, а <code>Години</code>, <code>Навантаження</code> та <code>Акаунти</code> перемикаються через segmented control.</li>
                         <li><b>Перевірено вузькі viewport</b> — графік проходить mobile QA для 390px і 360px без старого toolbar та без глобального horizontal overflow.</li>
-                        <li><b>Regression smoke посилено</b> — checks тепер ловлять overlap date inputs, export/print placement і mobile command bar width.</li>
+                        <li><b>Regression smoke посилено</b> — checks тепер ловлять overlap date inputs, export/print placement, mobile command bar width і read-only live сценарій без staff mutation requests.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">

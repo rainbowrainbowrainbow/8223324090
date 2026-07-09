@@ -102,9 +102,9 @@ describe('staff schedule safety guards', () => {
             staffPage.indexOf('function renderSchedule()'),
             staffPage.indexOf('// Group staff by department')
         );
-        const toggleHoursBlock = staffPage.slice(
-            staffPage.indexOf('async function toggleHours()'),
-            staffPage.indexOf('// LOAD VIEW')
+        const scheduleViewModeBlock = staffPage.slice(
+            staffPage.indexOf('async function setScheduleViewMode'),
+            staffPage.indexOf('function bindScheduleViewSwitchControls')
         );
         const healthBadgeBlock = staffPage.slice(
             staffPage.indexOf('function renderScheduleHealthBadges'),
@@ -154,7 +154,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /const health = buildScheduleHealth\(dates, baseFiltered\)/);
         assert.match(staffPage, /const filtered = scheduleHealthFilteredStaff\(baseFiltered, health\)/);
         assert.match(staffPage, /tbody\.classList\.toggle\('show-hours', Boolean\(StaffState\.showHours\)\)/);
-        assert.doesNotMatch(toggleHoursBlock, /classList\.add\('show-hours'\)/);
+        assert.doesNotMatch(scheduleViewModeBlock, /classList\.add\('show-hours'\)/);
         assert.match(staffPage, /function scheduleCellAriaLabel/);
         assert.match(staffPage, /role="button" tabindex="0" aria-label="\$\{escapeHtml\(cellAriaLabel\)\}"/);
         assert.match(staffPage, /function bindScheduleCellActivation/);

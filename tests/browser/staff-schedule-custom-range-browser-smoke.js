@@ -187,6 +187,24 @@ async function handleApi(req, res, url) {
         });
         return true;
     }
+    if (url.pathname === '/api/staff/link-status') {
+        sendJson(res, {
+            success: true,
+            data: STAFF_ROWS.map((staff, index) => ({
+                ...staff,
+                user_id: index === 1 ? null : 200 + staff.id,
+                username: index === 1 ? null : `staff.${staff.id}`,
+                user_role: staff.role_type
+            })),
+            stats: {
+                total: STAFF_ROWS.length,
+                linked: 2,
+                unlinked: 1,
+                freelance: 0
+            }
+        });
+        return true;
+    }
     if (url.pathname === '/api/staff/schedule/hours') {
         apiCalls.hoursRanges.push({
             from: url.searchParams.get('from'),
@@ -355,6 +373,8 @@ async function assertNoControlOverlap(page, label) {
         const dateTo = rect('#scheduleDateTo');
         const exportButton = rect('#exportExcelBtn');
         const printButton = rect('#printBtn');
+        const actionsButton = rect('#scheduleActionsMenuBtn');
+        const viewSwitch = rect('#scheduleViewSwitch');
         const wrapper = document.querySelector('#scheduleWrapper');
         return {
             command,
@@ -364,6 +384,8 @@ async function assertNoControlOverlap(page, label) {
             dateTo,
             exportButton,
             printButton,
+            actionsButton,
+            viewSwitch,
             viewportWidth: window.innerWidth,
             pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
             wrapperClientWidth: wrapper?.clientWidth || 0,
@@ -379,6 +401,8 @@ async function assertNoControlOverlap(page, label) {
     assert.ok(metrics.dateFrom?.right <= metrics.dateTo?.left + 1, `${label}: date inputs do not overlap`);
     assert.ok(metrics.exportButton?.right <= metrics.command.right + 2, `${label}: export stays inside command bar`);
     assert.ok(metrics.printButton?.right <= metrics.command.right + 2, `${label}: print stays inside command bar`);
+    if (metrics.actionsButton) assert.ok(metrics.actionsButton.right <= metrics.command.right + 2, `${label}: actions menu stays inside command bar`);
+    assert.ok(metrics.viewSwitch?.right <= metrics.command.right + 2, `${label}: view switch stays inside command bar`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
     assert.ok(metrics.wrapperScrollWidth >= metrics.wrapperClientWidth, `${label}: schedule wrapper owns horizontal width`);
 }
@@ -398,9 +422,48 @@ async function runDesktopFlow(browser, base) {
         assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
         await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
         await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
-        for (const removedId of ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'toggleHoursBtn', 'toggleLoadViewBtn', 'toggleLinkViewBtn', 'importExcelBtn', 'excelImportInput']) {
+        await page.locator('#scheduleViewSwitch').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#scheduleViewMainBtn').getAttribute('aria-pressed'), 'true', 'main schedule view starts active');
+        await page.locator('.staff-schedule-header-actions #scheduleActionsMenuBtn').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#scheduleActionsMenu').isHidden(), true, 'advanced actions menu starts closed');
+        await page.locator('#scheduleActionsMenuBtn').click();
+        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
+        for (const actionId of ['addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn']) {
+            await page.locator(`#scheduleActionsMenu #${actionId}`).waitFor({ state: 'visible' });
+        }
+        assert.equal(await page.locator('#copyWeekBtn').getAttribute('data-schedule-copy-unavailable'), 'true', 'copy-week is marked unavailable for custom range');
+        await page.locator('#copyWeekBtn').click();
+        await page.locator('.confirm-overlay .confirm-ok').waitFor({ state: 'visible' });
+        assert.match(await page.locator('.confirm-overlay .confirm-message').innerText(), /Копія тижня|7-денний/, 'unavailable copy-week explains the weekly-only behavior');
+        await page.locator('.confirm-overlay .confirm-ok').click();
+        assert.equal(apiCalls.copyWeekBodies.length, 0, 'unavailable copy-week does not call backend copy route');
+        for (const removedId of ['bulkCreateBtn']) {
             assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
         }
+
+        const hoursCallsBefore = apiCalls.hoursRanges.length;
+        await page.locator('[data-schedule-view="hours"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-schedule-view="hours"]')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
+        assert.equal(apiCalls.hoursRanges.length, hoursCallsBefore + 1, 'hours view fetches hours once');
+        assert.deepEqual(apiCalls.hoursRanges.at(-1), { from: firstHalfFrom, to: firstHalfTo }, 'hours view uses selected first-half range');
+        assert.equal(await page.locator('#scheduleBody').evaluate(el => el.classList.contains('show-hours')), true, 'hours view renders hour cells on schedule table');
+
+        await page.locator('[data-schedule-view="load"]').click();
+        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('[data-schedule-view="load"]').getAttribute('aria-pressed'), 'true', 'load view becomes active');
+        assert.equal(await page.locator('#scheduleWrapper').isHidden(), true, 'load view hides main schedule wrapper');
+        assert.equal(await page.locator('#loadViewHead th').count(), 17, 'load view header uses all selected range dates plus metric and total columns');
+
+        await page.locator('[data-schedule-view="accounts"]').click();
+        await page.locator('#scheduleWrapper').waitFor({ state: 'visible' });
+        await page.locator('#linkStatsBar').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('[data-schedule-view="accounts"]').getAttribute('aria-pressed'), 'true', 'accounts view becomes active');
+        assert.equal(await page.locator('#scheduleBody .link-badge').count(), STAFF_ROWS.length, 'accounts view renders account badges');
+
+        await page.locator('#scheduleViewMainBtn').click();
+        await page.waitForFunction(() => document.querySelector('#scheduleViewMainBtn')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
+        assert.equal(await page.locator('#linkStatsBar').count(), 0, 'main schedule view removes account stats');
+        assert.equal(await page.locator('#scheduleWrapper').isVisible(), true, 'main schedule view shows schedule wrapper again');
 
         const downloadPromise = page.waitForEvent('download');
         await page.locator('#exportExcelBtn').click();

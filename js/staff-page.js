@@ -86,6 +86,7 @@ const StaffState = {
     showHours: false,
     showLoadView: false,
     showLinkView: false,    // v39.1: account linking overlay
+    viewMode: 'schedule',
     canManage: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
@@ -2174,11 +2175,159 @@ function syncScheduleBulkActionLabels() {
         const allowed = canCopyWeekInCurrentRange();
         copyBtn.textContent = 'Копія тижня';
         copyBtn.classList.toggle('is-disabled', !allowed);
-        copyBtn.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+        copyBtn.dataset.scheduleCopyUnavailable = allowed ? 'false' : 'true';
+        copyBtn.setAttribute('aria-label', allowed ? 'Копія тижня' : `Копія тижня недоступна для періоду ${rangeLabel}. Натисніть, щоб побачити пояснення.`);
         copyBtn.title = allowed
             ? 'Копіює тільки канонічний 7-денний тиждень у наступний тиждень'
             : `Копія тижня вимкнена для довільного періоду ${rangeLabel}, щоб не копіювати 15-31 день випадково`;
     }
+    syncScheduleActionsMenuVisibility();
+}
+
+const SCHEDULE_ACTION_MENU_ITEM_IDS = ['addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn'];
+const STAFF_SCHEDULE_VIEW_MODES = new Set(['schedule', 'hours', 'load', 'accounts']);
+
+function scheduleActionsMenuElements() {
+    return {
+        root: document.getElementById('scheduleActionsDropdown'),
+        toggle: document.getElementById('scheduleActionsMenuBtn'),
+        menu: document.getElementById('scheduleActionsMenu')
+    };
+}
+
+function scheduleActionsMenuItems() {
+    return SCHEDULE_ACTION_MENU_ITEM_IDS
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+}
+
+function isScheduleActionsMenuItemVisible(item) {
+    return Boolean(item && !item.hidden && item.style.display !== 'none');
+}
+
+function closeScheduleActionsMenu() {
+    const { root, toggle, menu } = scheduleActionsMenuElements();
+    if (menu) menu.hidden = true;
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    if (root) root.classList.remove('is-open');
+}
+
+function openScheduleActionsMenu() {
+    const { root, toggle, menu } = scheduleActionsMenuElements();
+    if (!root || !toggle || !menu || root.hidden || toggle.disabled) return;
+    menu.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    root.classList.add('is-open');
+}
+
+function syncScheduleActionsMenuVisibility() {
+    const { root, toggle, menu } = scheduleActionsMenuElements();
+    if (!root || !toggle || !menu) return;
+    const hasVisibleActions = scheduleActionsMenuItems().some(isScheduleActionsMenuItemVisible);
+    root.hidden = !hasVisibleActions;
+    toggle.disabled = !hasVisibleActions;
+    toggle.setAttribute('aria-hidden', hasVisibleActions ? 'false' : 'true');
+    if (!hasVisibleActions) closeScheduleActionsMenu();
+}
+
+function bindScheduleActionsMenuControls() {
+    const { root, toggle, menu } = scheduleActionsMenuElements();
+    if (!root || !toggle || !menu || root.dataset.scheduleActionsBound === 'true') return;
+
+    toggle.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        syncScheduleActionsMenuVisibility();
+        if (toggle.getAttribute('aria-expanded') === 'true') {
+            closeScheduleActionsMenu();
+        } else {
+            openScheduleActionsMenu();
+        }
+    });
+
+    menu.addEventListener('click', event => {
+        if (event.target.closest('.staff-schedule-menu-item')) closeScheduleActionsMenu();
+    });
+
+    document.addEventListener('click', event => {
+        if (!root.contains(event.target)) closeScheduleActionsMenu();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeScheduleActionsMenu();
+    });
+
+    root.dataset.scheduleActionsBound = 'true';
+}
+
+function normalizeScheduleViewMode(mode) {
+    return STAFF_SCHEDULE_VIEW_MODES.has(mode) ? mode : 'schedule';
+}
+
+function scheduleCurrentViewMode() {
+    if (StaffState.showLoadView) return 'load';
+    if (StaffState.showLinkView) return 'accounts';
+    if (StaffState.showHours) return 'hours';
+    return normalizeScheduleViewMode(StaffState.viewMode);
+}
+
+function syncScheduleViewSwitch() {
+    const activeMode = scheduleCurrentViewMode();
+    document.querySelectorAll('[data-schedule-view]').forEach(button => {
+        const active = normalizeScheduleViewMode(button.dataset.scheduleView) === activeMode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function removeLinkStatsBar() {
+    document.getElementById('linkStatsBar')?.remove();
+}
+
+async function setScheduleViewMode(mode = 'schedule') {
+    const nextMode = normalizeScheduleViewMode(mode);
+    StaffState.viewMode = nextMode;
+    StaffState.showHours = nextMode === 'hours';
+    StaffState.showLoadView = nextMode === 'load';
+    StaffState.showLinkView = nextMode === 'accounts';
+
+    const loadWrapper = document.getElementById('loadViewWrapper');
+    const scheduleWrapper = document.getElementById('scheduleWrapper');
+    if (loadWrapper) loadWrapper.style.display = StaffState.showLoadView ? '' : 'none';
+    if (scheduleWrapper) scheduleWrapper.style.display = StaffState.showLoadView ? 'none' : '';
+
+    if (StaffState.showHours) {
+        const dates = getScheduleDates();
+        const from = formatDateStr(dates[0]);
+        const to = formatDateStr(getScheduleRangeEnd(dates));
+        const result = await fetchScheduleHours(from, to);
+        StaffState.hoursData = result.success ? result.data : null;
+    } else {
+        StaffState.hoursData = null;
+    }
+
+    if (StaffState.showLinkView) {
+        await fetchLinkStatus();
+        renderLinkStatsBar();
+    } else {
+        removeLinkStatsBar();
+    }
+
+    syncScheduleViewSwitch();
+    if (StaffState.showLoadView) {
+        renderLoadView();
+    } else {
+        renderSchedule();
+    }
+}
+
+function bindScheduleViewSwitchControls() {
+    document.querySelectorAll('[data-schedule-view]').forEach(button => {
+        if (button.dataset.scheduleViewBound === 'true') return;
+        button.addEventListener('click', () => setScheduleViewMode(button.dataset.scheduleView));
+        button.dataset.scheduleViewBound = 'true';
+    });
+    syncScheduleViewSwitch();
 }
 
 function todayStr() {
@@ -3772,6 +3921,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
     }
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
+    syncScheduleViewSwitch();
     return true;
 }
 
@@ -4006,60 +4156,8 @@ async function handleCopyWeek() {
 }
 
 // ==========================================
-// HOURS TOGGLE
-// ==========================================
-
-async function toggleHours() {
-    StaffState.showHours = !StaffState.showHours;
-    const tbody = document.getElementById('scheduleBody');
-    const btn = document.getElementById('toggleHoursBtn');
-
-    if (StaffState.showHours) {
-        // Fetch hours for the current visible period.
-        const dates = getScheduleDates();
-        const from = formatDateStr(dates[0]);
-        const to = formatDateStr(getScheduleRangeEnd(dates));
-        const result = await fetchScheduleHours(from, to);
-        if (result.success) {
-            StaffState.hoursData = result.data;
-        }
-        btn.style.background = 'var(--primary)';
-        btn.style.color = '#fff';
-        btn.style.borderColor = 'var(--primary)';
-    } else {
-        StaffState.hoursData = null;
-        btn.style.background = '';
-        btn.style.color = '';
-        btn.style.borderColor = '';
-    }
-    renderSchedule();
-}
-
-// ==========================================
 // LOAD VIEW (Excel-like daily workload)
 // ==========================================
-
-function toggleLoadView() {
-    StaffState.showLoadView = !StaffState.showLoadView;
-    const loadWrapper = document.getElementById('loadViewWrapper');
-    const schedWrapper = document.getElementById('scheduleWrapper');
-    const btn = document.getElementById('toggleLoadViewBtn');
-
-    if (StaffState.showLoadView) {
-        loadWrapper.style.display = '';
-        schedWrapper.style.display = 'none';
-        btn.style.background = 'var(--primary)';
-        btn.style.color = '#fff';
-        btn.style.borderColor = 'var(--primary)';
-        renderLoadView();
-    } else {
-        loadWrapper.style.display = 'none';
-        schedWrapper.style.display = '';
-        btn.style.background = '';
-        btn.style.color = '';
-        btn.style.borderColor = '';
-    }
-}
 
 function renderLoadView() {
     const dates = getScheduleDates();
@@ -4285,26 +4383,6 @@ function getStaffAccountRole(info = {}) {
 
 function getLinkInfo(staffId) {
     return StaffState.linkData.find(r => r.id === staffId);
-}
-
-async function toggleLinkView() {
-    StaffState.showLinkView = !StaffState.showLinkView;
-    const btn = document.getElementById('toggleLinkViewBtn');
-
-    if (StaffState.showLinkView) {
-        btn.style.background = 'var(--primary)';
-        btn.style.color = '#fff';
-        btn.style.borderColor = 'var(--primary)';
-        await fetchLinkStatus();
-        renderLinkStatsBar();
-    } else {
-        btn.style.background = '';
-        btn.style.color = '';
-        btn.style.borderColor = '';
-        const bar = document.getElementById('linkStatsBar');
-        if (bar) bar.remove();
-    }
-    renderSchedule();
 }
 
 function renderLinkStatsBar() {
@@ -4837,6 +4915,7 @@ async function initStaffSchedulePage(options = {}) {
         const importBtn = document.getElementById('importExcelBtn');
         if (bulkBtn) bulkBtn.style.display = isAdmin && mode !== 'hr' ? '' : 'none';
         if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
+        syncScheduleActionsMenuVisibility();
 
         // Load data
         await fetchHrProfessions();
@@ -4849,6 +4928,8 @@ async function initStaffSchedulePage(options = {}) {
 
         // Event listeners
         bindScheduleRangeControls();
+        bindScheduleActionsMenuControls();
+        bindScheduleViewSwitchControls();
         document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
         document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
         document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
@@ -4894,14 +4975,7 @@ async function initStaffSchedulePage(options = {}) {
         // Copy week
         document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek);
 
-        // Hours toggle
-        document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours);
-
-        // Load view toggle
-        document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView);
-
-        // v39.1: Account linking
-        document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView);
+        // View switch controls are bound by bindScheduleViewSwitchControls().
         document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
         document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
         document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);

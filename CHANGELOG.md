@@ -8,8 +8,10 @@
 
 ### HR / Графік / Mobile controls / QA polish / (Клешня, 09.07.2026) [codex]
 - **Mobile `Від/До` більше не накладаються** - на вузьких viewport date inputs тепер займають ширину своєї grid column замість desktop `168px`.
+- **Advanced actions повернулись без старого toolbar** - `Додати співробітника`, `Заповнити період`, `Копія тижня` і `Excel import` доступні через компактне меню `Дії`, а `Копія тижня` не запускається випадково в custom range.
+- **Read-only режими винесені в `Вид`** - `Графік`, `Години`, `Навантаження` і `Акаунти` працюють через один segmented control і використовують вибраний visible range.
 - **Mobile QA посилено** - browser smoke тепер перевіряє overlap date inputs, global horizontal overflow і розміщення `Експорт`/`Друк` у command bar.
-- **Live mobile сценарій перевірено read-only** - `1-15`, `16-кінець`, `Місяць`, search persistence, chips scroll, export і print перевіряються без production writes.
+- **Live staff schedule smoke винесено в npm script** - `smoke:staff-schedule` перевіряє `1-15`, invalid ranges, search persistence, export filename, print stub, no legacy toolbar, `Дії`, `Вид`, desktop/mobile і падає при staff mutation requests.
 - **DB schema, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений CSS polish, tests/smoke і version/cache refs.
 
 ---

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.78.71 - Staff Schedule Month Readability
+
+### Staff Schedule / UI / (09.07.2026) [codex]
+- **31-day/month графік став читабельним** - day columns у full-month режимі розширено, щоб shift blocks не стискали час і професію.
+- **Full-range клітинки ущільнено без втрати читабельності** - для часу, статусу, професії й нотаток додано стабільні padding, overflow та ellipsis.
+- **Regression smoke посилено** - browser/live checks більше не приймають занадто вузькі month columns як валідний layout.
+
+---
+
 ## v0.78.70 - Staff Schedule Compact Month Layout
 
 ### Staff Schedule / UI / (09.07.2026) [codex]

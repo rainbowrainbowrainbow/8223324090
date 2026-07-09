@@ -520,7 +520,7 @@ async function runDesktopFlow(browser, base, session) {
         const monthDays = dateRangeDays(monthRange.from, monthRange.to);
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForColumnsToMatchInputs(page);
-        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
+        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 136 });
         await page.locator('[data-schedule-view="load"]').click();
         await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#loadViewHead th').count(), monthDays + 2, 'live load view header uses all month dates plus metric and total columns');
@@ -570,7 +570,7 @@ async function runMobileFlow(browser, base, session) {
         await waitForColumnsToMatchInputs(page);
         const monthRange = await readRangeState(page);
         await assertMobileLayout(page);
-        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthRange.dayCount, minDayWidth: 98 });
+        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthRange.dayCount, minDayWidth: 120 });
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-month.png'), fullPage: true });
         assertNoForbiddenStaffWrites(forbidden, 'mobile');
 

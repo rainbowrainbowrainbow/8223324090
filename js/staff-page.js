@@ -1913,8 +1913,8 @@ const STAFF_SCHEDULE_LONG_RANGE_DAYS = 15;
 const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40;
 const STAFF_SCHEDULE_LAYOUT = {
     schedule: {
-        desktop: { minWidth: 900, stickyColumn: 220, dayColumn: 116 },
-        mobile: { minWidth: 900, stickyColumn: 168, dayColumn: 104 }
+        desktop: { minWidth: 900, stickyColumn: 240, dayColumn: 144 },
+        mobile: { minWidth: 900, stickyColumn: 176, dayColumn: 128 }
     },
     load: {
         desktop: { minWidth: 900, stickyColumn: 156, dayColumn: 82, trailingColumn: 92 },

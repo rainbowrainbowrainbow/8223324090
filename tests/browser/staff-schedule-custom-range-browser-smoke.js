@@ -582,7 +582,7 @@ async function runDesktopFlow(browser, base) {
         ];
         for (const [from, to, expectedDays] of manualLongRanges) {
             await applyManualRange(page, from, to);
-            await assertWideScheduleLayout(page, `desktop manual ${expectedDays}d`, { expectedDays, minDayWidth: 110 });
+            await assertWideScheduleLayout(page, `desktop manual ${expectedDays}d`, { expectedDays, minDayWidth: 136 });
         }
 
         // Hours toggle is no longer part of the visible command surface.
@@ -597,7 +597,7 @@ async function runDesktopFlow(browser, base) {
         await assertNoControlOverlap(page, 'desktop month');
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForDayColumns(page, monthDays);
-        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
+        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 136 });
 
         await page.locator('[data-schedule-view="load"]').click();
         await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
@@ -630,7 +630,7 @@ async function runMobileFlow(browser, base) {
         const monthDays = dateRangeDays(monthFrom, monthTo);
         await waitForDayColumns(page, monthDays);
         await assertNoControlOverlap(page, 'mobile month');
-        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 98 });
+        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 120 });
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-month.png'), fullPage: true });
     } finally {
         await context.close();

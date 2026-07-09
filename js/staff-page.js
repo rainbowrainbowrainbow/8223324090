@@ -79,6 +79,7 @@ const StaffState = {
     displayGroups: [],
     activeDept: 'all',
     searchQuery: '',
+    expandedScheduleGroups: new Set(),
     healthFilter: 'all',
     includeFreelance: false,
     editingCell: null,  // { staffId, date }
@@ -292,21 +293,19 @@ function departmentSubGroupDepartmentKeys(subGroup = {}) {
 
 function staffMatchesDepartmentSubGroup(staff = {}, subGroup = {}) {
     const departmentKeys = departmentSubGroupDepartmentKeys(subGroup);
-    if (departmentKeys.length) return departmentKeys.includes(String(staff.department || '').trim());
-    const roleKey = normalizeProfessionKey(staff.role_type);
-    return Boolean(roleKey && departmentSubGroupRoleKeys(subGroup).includes(roleKey));
+    if (departmentKeys.length) {
+        const rawDepartment = String(staff.department || '').trim();
+        return departmentKeys.some(key => {
+            const displayGroup = normalizeScheduleDisplayGroupKey(key);
+            return (displayGroup && staffMatchesScheduleDepartment(staff, displayGroup)) || rawDepartment === key;
+        });
+    }
+    const roleKeys = departmentSubGroupRoleKeys(subGroup);
+    return staffProfessionKeys(staff).some(roleKey => roleKeys.includes(roleKey));
 }
 
 function shouldRenderDepartmentSubGroups(deptStaff = [], subGroups = null) {
     return Array.isArray(subGroups) && subGroups.length > 0 && Array.isArray(deptStaff) && deptStaff.length > 0;
-}
-
-function departmentSubGroupRoleKeySet(subGroups = []) {
-    return new Set((subGroups || []).flatMap(departmentSubGroupRoleKeys));
-}
-
-function staffMatchesAnyDepartmentSubGroup(staff = {}, subGroups = []) {
-    return (subGroups || []).some(subGroup => staffMatchesDepartmentSubGroup(staff, subGroup));
 }
 
 function normalizeScheduleStatus(value) {
@@ -336,6 +335,13 @@ function staffSecondaryProfessions(staff = {}) {
     const primary = normalizeProfessionKey(staff.role_type);
     const seen = new Set([primary].filter(Boolean));
     return parseProfessionArray(staff.secondary_professions || staff.secondaryProfessions)
+        .map(normalizeProfessionKey)
+        .filter(key => key && !seen.has(key) && seen.add(key));
+}
+
+function staffProfessionKeys(staff = {}) {
+    const seen = new Set();
+    return [staff.role_type || staff.roleType, ...staffSecondaryProfessions(staff)]
         .map(normalizeProfessionKey)
         .filter(key => key && !seen.has(key) && seen.add(key));
 }
@@ -1682,6 +1688,32 @@ const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admi
 const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_manager']);
 const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
 const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set(['reception', 'tech', 'admin']);
+const SCHEDULE_PROFESSION_DISPLAY_GROUP_FALLBACK = Object.freeze({
+    animator: 'animators',
+    host: 'animators',
+    trampoline_instructor: 'trampoline',
+    senior_instructor: 'trampoline',
+    instructor: 'trampoline',
+    reception: 'reception',
+    manager: 'reception',
+    senior_manager: 'reception',
+    admin: 'admin',
+    vice_director: 'admin',
+    art_director: 'admin',
+    hr: 'admin',
+    accountant: 'admin',
+    barista: 'cafe',
+    cook: 'cafe',
+    pizzaiolo: 'cafe',
+    waiter: 'cafe',
+    maintenance: 'tech',
+    it_specialist: 'tech',
+    security: 'tech',
+    cleaner: 'cleaning',
+    cleaning: 'cleaning',
+    dishwasher: 'cleaning',
+    wardrobe: 'cleaning'
+});
 
 function normalizeScheduleDisplayGroupKey(value) {
     const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -1751,6 +1783,77 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
     return scheduleDepartmentLabels()[departmentKey] || departmentKey;
 }
 
+function scheduleProfessionDisplayGroupKey(professionKey) {
+    const key = normalizeProfessionKey(professionKey);
+    if (!key) return '';
+    if (SCHEDULE_RECEPTION_ROLE_KEYS.has(key)) return 'reception';
+    const profession = (StaffState.professions || []).find(item => normalizeProfessionKey(item.key) === key);
+    const catalogGroup = normalizeScheduleDisplayGroupKey(profession?.department);
+    if (catalogGroup) return catalogGroup;
+    return normalizeScheduleDisplayGroupKey(SCHEDULE_PROFESSION_DISPLAY_GROUP_FALLBACK[key]);
+}
+
+function staffScheduleDepartmentKeys(staff = {}) {
+    const keys = [];
+    const seen = new Set();
+    const add = (key) => {
+        const normalized = normalizeScheduleDisplayGroupKey(key);
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        keys.push(normalized);
+    };
+    for (const professionKey of staffProfessionKeys(staff)) {
+        add(scheduleProfessionDisplayGroupKey(professionKey));
+    }
+    add(scheduleDisplayDepartmentKey(staff));
+    return keys.length ? keys : ['admin'];
+}
+
+function staffMatchesScheduleDepartment(staff = {}, departmentKey = '') {
+    const normalized = normalizeScheduleDisplayGroupKey(departmentKey);
+    return Boolean(normalized && staffScheduleDepartmentKeys(staff).includes(normalized));
+}
+
+function scheduleDepartmentCountMap(staffList = StaffState.staff) {
+    const counts = new Map();
+    for (const staff of scheduleableStaffForUi(staffList || [])) {
+        for (const key of staffScheduleDepartmentKeys(staff)) {
+            counts.set(key, (counts.get(key) || 0) + 1);
+        }
+    }
+    return counts;
+}
+
+function scheduleSubGroupDisplayDepartmentKey(subGroup = {}) {
+    const departmentKeys = departmentSubGroupDepartmentKeys(subGroup)
+        .map(normalizeScheduleDisplayGroupKey)
+        .filter(Boolean);
+    if (departmentKeys.length === 1) return departmentKeys[0];
+
+    const roleGroups = new Set(
+        departmentSubGroupRoleKeys(subGroup)
+            .map(scheduleProfessionDisplayGroupKey)
+            .filter(Boolean)
+    );
+    return roleGroups.size === 1 ? Array.from(roleGroups)[0] : '';
+}
+
+function shouldSkipScheduleSubGroup(departmentKey = '', subGroup = {}) {
+    const parentKey = normalizeScheduleDisplayGroupKey(departmentKey);
+    const subGroupKey = scheduleSubGroupDisplayDepartmentKey(subGroup);
+    if (parentKey && subGroupKey && parentKey === subGroupKey) return true;
+    const parentLabel = normalizeScheduleSearchText(scheduleDisplayDepartmentLabel(parentKey));
+    const subGroupLabel = normalizeScheduleSearchText(subGroup.label);
+    return Boolean(parentLabel && subGroupLabel && parentLabel === subGroupLabel);
+}
+
+function scheduleRenderableSubGroups(departmentKey = '', deptStaff = [], subGroups = null) {
+    if (!shouldRenderDepartmentSubGroups(deptStaff, subGroups)) return [];
+    return (subGroups || [])
+        .filter(subGroup => !shouldSkipScheduleSubGroup(departmentKey, subGroup))
+        .filter(subGroup => deptStaff.some(staff => staffMatchesDepartmentSubGroup(staff, subGroup)));
+}
+
 function normalizeScheduleSearchText(value) {
     return String(value || '')
         .trim()
@@ -1818,7 +1921,7 @@ function scheduleStaffSearchHaystack(staff = {}) {
 function scheduleStaffVisibleWithoutSearch(staffList = StaffState.staff) {
     const scheduleable = scheduleableStaffForUi(staffList || []);
     if (StaffState.activeDept === 'all') return scheduleable;
-    return scheduleable.filter(staff => scheduleDisplayDepartmentKey(staff) === StaffState.activeDept);
+    return scheduleable.filter(staff => staffMatchesScheduleDepartment(staff, StaffState.activeDept));
 }
 
 function scheduleVisibleStaff(staffList = StaffState.staff) {
@@ -1830,11 +1933,7 @@ function scheduleVisibleStaff(staffList = StaffState.staff) {
 
 function scheduleDepartmentOptions() {
     const labels = scheduleDepartmentLabels();
-    const counts = new Map();
-    for (const staff of StaffState.staff) {
-        const key = scheduleDisplayDepartmentKey(staff);
-        counts.set(key, (counts.get(key) || 0) + 1);
-    }
+    const counts = scheduleDepartmentCountMap(StaffState.staff);
     const ordered = [];
     const seen = new Set();
     for (const key of scheduleDisplayGroupOrder()) {
@@ -1852,9 +1951,10 @@ function scheduleDepartmentOptions() {
 function groupStaffByScheduleDepartment(staffList = StaffState.staff) {
     const grouped = {};
     for (const staff of staffList) {
-        const key = scheduleDisplayDepartmentKey(staff);
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(staff);
+        for (const key of staffScheduleDepartmentKeys(staff)) {
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(staff);
+        }
     }
     return grouped;
 }
@@ -1866,6 +1966,42 @@ function scheduleDepartmentRenderOrder(grouped = {}) {
         if (!seen.has(key)) ordered.push(key);
     }
     return ordered;
+}
+
+function scheduleGroupStateKey(value = '') {
+    return normalizeScheduleDisplayGroupKey(value) || String(value || '').trim();
+}
+
+function scheduleSearchAutoExpandsGroups() {
+    return Boolean(normalizeScheduleSearchText(StaffState.searchQuery));
+}
+
+function isScheduleGroupExpanded(departmentKey = '') {
+    const key = scheduleGroupStateKey(departmentKey);
+    return Boolean(key && StaffState.expandedScheduleGroups instanceof Set && StaffState.expandedScheduleGroups.has(key));
+}
+
+function isScheduleGroupExpandedForRender(departmentKey = '') {
+    return scheduleSearchAutoExpandsGroups() || isScheduleGroupExpanded(departmentKey);
+}
+
+function setScheduleGroupExpanded(departmentKey = '', expanded = true) {
+    const key = scheduleGroupStateKey(departmentKey);
+    if (!key) return false;
+    if (!(StaffState.expandedScheduleGroups instanceof Set)) {
+        StaffState.expandedScheduleGroups = new Set();
+    }
+    if (expanded) StaffState.expandedScheduleGroups.add(key);
+    else StaffState.expandedScheduleGroups.delete(key);
+    return true;
+}
+
+function toggleScheduleGroup(departmentKey = '') {
+    const key = scheduleGroupStateKey(departmentKey);
+    if (!key) return false;
+    setScheduleGroupExpanded(key, !isScheduleGroupExpanded(key));
+    renderSchedule();
+    return true;
 }
 
 function scheduleCopyWeekModeForDepartment(department = StaffState.activeDept) {
@@ -2330,6 +2466,7 @@ function syncScheduleFocusDepartment(staffId) {
         StaffState.activeDept = department;
         renderDeptFilter();
     }
+    if (department) setScheduleGroupExpanded(department, true);
     return true;
 }
 
@@ -2835,7 +2972,7 @@ function renderDeptFilter() {
             <strong class="dept-chip-count">${Number(count || 0)}</strong>
         </button>`;
     };
-    const allCount = options.reduce((sum, option) => sum + Number(option.count || 0), 0);
+    const allCount = scheduleableStaffForUi(StaffState.staff).length;
     let html = renderChip({ value: 'all', label: 'Всі', count: allCount });
     for (const { value: key, label, count } of options) {
         html += renderChip({ value: key, label, count });
@@ -3038,7 +3175,7 @@ function renderSummary(staffList = null, dates = getScheduleDates()) {
     const container = document.getElementById('scheduleSummary');
     const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
     const summary = summarizeScheduleRange(filtered, dates);
-    const { days, working, dayoff, vacation, sick, remote, unset, replacements } = summary;
+    const { days, working, dayoff, vacation, sick, remote, replacements } = summary;
 
     container.innerHTML = `
         <div class="summary-chip"><span class="chip-dot" style="background:#14B8A6"></span> Період: <span class="chip-count">${days}</span></div>
@@ -3048,7 +3185,6 @@ function renderSummary(staffList = null, dates = getScheduleDates()) {
         <div class="summary-chip"><span class="chip-dot" style="background:#EF4444"></span> Лікарняний: <span class="chip-count">${sick}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#F59E0B"></span> Віддалено: <span class="chip-count">${remote}</span></div>
         ${replacements > 0 ? `<div class="summary-chip summary-chip-replacement"><span class="chip-dot" style="background:#F97316"></span> Заміни: <span class="chip-count">${replacements}</span></div>` : ''}
-        ${unset > 0 ? `<div class="summary-chip"><span class="chip-dot" style="background:#CBD5E1"></span> Не заповнено: <span class="chip-count">${unset}</span></div>` : ''}
     `;
     updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered);
 }
@@ -3176,6 +3312,18 @@ function bindScheduleCellActivation(tbody) {
     tbody.dataset.scheduleCellActivationBound = 'true';
 }
 
+function bindScheduleGroupToggles(tbody) {
+    if (!tbody || tbody.dataset.scheduleGroupToggleBound === 'true') return;
+    tbody.addEventListener('click', (event) => {
+        const button = event.target?.closest?.('[data-schedule-group-toggle]');
+        if (!button || !tbody.contains(button)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        toggleScheduleGroup(button.dataset.scheduleGroupToggle || '');
+    });
+    tbody.dataset.scheduleGroupToggleBound = 'true';
+}
+
 function renderSchedule() {
     const dates = getScheduleDates();
     const today = todayStr();
@@ -3221,30 +3369,41 @@ function renderSchedule() {
         const icon = DEPT_ICONS[dept] || '';
         const deptStaff = grouped[dept];
         const subGroups = DEPT_SUB_GROUPS[dept];
+        const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
+        const groupExpanded = isScheduleGroupExpandedForRender(dept);
+        const groupStateClass = groupExpanded ? 'is-expanded' : 'is-collapsed';
+        const groupToggleLabel = groupExpanded
+            ? `Згорнути групу ${deptLabel}`
+            : `Розгорнути групу ${deptLabel}`;
 
         // Department header
-        bodyHtml += `<tr class="dept-row" data-dept="${dept}"><td colspan="${dates.length + 1}"><span class="dept-icon">${icon}</span> ${deptLabel} <span class="dept-count">${deptStaff.length}</span></td></tr>`;
+        bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td colspan="${dates.length + 1}">
+            <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}">
+                <span class="schedule-group-caret" aria-hidden="true"></span>
+                <span class="dept-icon" aria-hidden="true">${icon}</span>
+                <span class="schedule-group-label">${escapeHtml(deptLabel)}</span>
+                <span class="dept-count">${deptStaff.length}</span>
+            </button>
+        </td></tr>`;
 
-        if (shouldRenderDepartmentSubGroups(deptStaff, subGroups)) {
+        if (!groupExpanded) continue;
+
+        if (renderableSubGroups.length) {
             // Render sub-groups within department
-            for (const sg of subGroups) {
-                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg));
+            const renderedStaffIds = new Set();
+            for (const sg of renderableSubGroups) {
+                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
                 if (sgStaff.length === 0) continue;
 
                 bodyHtml += `<tr class="sub-group-row"><td colspan="${dates.length + 1}"><span class="sub-group-icon">${sg.icon}</span> ${sg.label} <span class="sub-group-count">${sgStaff.length}</span></td></tr>`;
 
                 for (const emp of sgStaff) {
+                    renderedStaffIds.add(Number(emp.id));
                     bodyHtml += renderEmpRow(emp, dates, today, health);
                 }
             }
-            // Render staff that didn't match any sub-group (edge case)
-            const unmatchedByGroup = deptStaff.filter(s => !staffMatchesAnyDepartmentSubGroup(s, subGroups));
-            const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
-            const unmatched = unmatchedByGroup.filter(s => {
-                const roleKey = normalizeProfessionKey(s.role_type);
-                return !roleKey || !allRoleKeys.has(roleKey);
-            });
-            for (const emp of unmatched) {
+            // Render staff covered by skipped duplicate sub-groups or by no sub-group.
+            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) {
                 bodyHtml += renderEmpRow(emp, dates, today, health);
             }
         } else {
@@ -3265,6 +3424,7 @@ function renderSchedule() {
         if (!StaffState.canManage) cell.setAttribute('aria-readonly', 'true');
     });
     bindScheduleCellActivation(tbody);
+    bindScheduleGroupToggles(tbody);
 
     tbody.querySelectorAll('[data-attendance-action]').forEach(button => {
         button.addEventListener('click', (event) => {
@@ -4712,6 +4872,7 @@ function handleExcelExport() {
         if (deptStaff.length === 0) continue;
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const subGroups = DEPT_SUB_GROUPS[dept];
+        const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
 
         const renderStaffCsv = (emp, sgLabel) => {
             let row = `"${deptLabel}","${sgLabel}","${emp.name}","${emp.position}"`;
@@ -4728,18 +4889,16 @@ function handleExcelExport() {
             csv += row + '\n';
         };
 
-        if (shouldRenderDepartmentSubGroups(deptStaff, subGroups)) {
-            for (const sg of subGroups) {
-                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg));
-                for (const emp of sgStaff) renderStaffCsv(emp, sg.label);
+        if (renderableSubGroups.length) {
+            const renderedStaffIds = new Set();
+            for (const sg of renderableSubGroups) {
+                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
+                for (const emp of sgStaff) {
+                    renderedStaffIds.add(Number(emp.id));
+                    renderStaffCsv(emp, sg.label);
+                }
             }
-            const unmatchedByGroup = deptStaff.filter(s => !staffMatchesAnyDepartmentSubGroup(s, subGroups));
-            const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
-            const unmatched = unmatchedByGroup.filter(s => {
-                const roleKey = normalizeProfessionKey(s.role_type);
-                return !roleKey || !allRoleKeys.has(roleKey);
-            });
-            for (const emp of unmatched) renderStaffCsv(emp, '');
+            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) renderStaffCsv(emp, '');
         } else {
             for (const emp of deptStaff) renderStaffCsv(emp, '');
         }

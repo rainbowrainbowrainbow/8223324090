@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.72 - Staff Schedule Group Controls
+
+### Staff Schedule / UI contract / (09.07.2026) [codex]
+- **Period controls стали зрозумілішими** - quick presets перейменовано на `1 половина`, `2 половина`, `Весь місяць`, а summary більше не показує відволікаюче `Не заповнено`.
+- **Категорії графіка рахуються одним правилом** - chips і group headers використовують професії співробітника (`role_type` + `secondary_professions`), без дублювання `Аніматори` -> `Аніматори`.
+- **Групи згорнуті за замовчуванням** - group headers стали accessible buttons з `aria-expanded`, click/Enter/Space розкривають або згортають групу, а активний пошук автоматично показує matching rows.
+- **Regression/live smoke посилено** - checks перевіряють preset labels, відсутність `Не заповнено`, duplicate group/subgroup labels, collapsed-by-default contract, export/print і read-only guard.
+
+---
+
 ## v0.78.71 - Staff Schedule Month Readability
 
 ### Staff Schedule / UI / (09.07.2026) [codex]

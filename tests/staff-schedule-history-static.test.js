@@ -459,10 +459,12 @@ describe('staff schedule safety guards', () => {
     });
 
     it('uses schedule display groups in filters, fill-week, load view, export, and copy-week safety', () => {
-        assert.match(staffPage, /function scheduleStaffVisibleWithoutSearch\(staffList = StaffState\.staff\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\) === StaffState\.activeDept[\s\S]*\}/);
+        assert.match(staffPage, /function scheduleStaffVisibleWithoutSearch\(staffList = StaffState\.staff\) \{[\s\S]*staffMatchesScheduleDepartment\(staff, StaffState\.activeDept\)[\s\S]*\}/);
         assert.match(staffPage, /function scheduleVisibleStaff\(staffList = StaffState\.staff\) \{[\s\S]*const visible = scheduleStaffVisibleWithoutSearch\(staffList\);[\s\S]*const query = normalizeScheduleSearchText\(StaffState\.searchQuery\);[\s\S]*scheduleStaffSearchHaystack\(staff\)\.includes\(query\)[\s\S]*\}/);
         assert.match(staffPage, /function legacyScheduleDisplayDepartmentKey\(staff = \{\}\)/);
-        assert.match(staffPage, /function scheduleDepartmentOptions\(\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\)[\s\S]*scheduleDisplayGroupOrder\(\)/);
+        assert.match(staffPage, /function scheduleDepartmentOptions\(\) \{[\s\S]*const counts = scheduleDepartmentCountMap\(StaffState\.staff\)[\s\S]*scheduleDisplayGroupOrder\(\)/);
+        assert.match(staffPage, /function staffScheduleDepartmentKeys\(staff = \{\}\) \{[\s\S]*staffProfessionKeys\(staff\)[\s\S]*add\(scheduleDisplayDepartmentKey\(staff\)\)/);
+        assert.match(staffPage, /function staffMatchesScheduleDepartment\(staff = \{\}, departmentKey = ''\) \{[\s\S]*staffScheduleDepartmentKeys\(staff\)\.includes\(normalized\)/);
         assert.match(staffPage, /function scheduleDepartmentRenderOrder\(grouped = \{\}\) \{[\s\S]*scheduleDisplayGroupOrder\(\)\.filter\(key => grouped\[key\]\)/);
         assert.match(staffPage, /if \(StaffState\.activeDept !== 'all' && !options\.some\(option => option\.value === StaffState\.activeDept\)\) \{[\s\S]*StaffState\.activeDept = 'all'/);
         assert.match(staffPage, /function openFillWeekModal\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
@@ -514,8 +516,10 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /trampoline:\s*\[\s*\{\s*key:\s*'trampoline_instructor,senior_instructor,instructor'/);
         assert.match(staffPage, /function staffMatchesDepartmentSubGroup/);
         assert.match(staffPage, /function departmentSubGroupDepartmentKeys/);
-        assert.match(staffPage, /function staffMatchesAnyDepartmentSubGroup/);
-        assert.match(staffPage, /deptStaff\.filter\(s => !staffMatchesAnyDepartmentSubGroup\(s, subGroups\)\)/);
+        assert.match(staffPage, /function scheduleRenderableSubGroups/);
+        assert.match(staffPage, /function shouldSkipScheduleSubGroup/);
+        assert.match(staffPage, /const renderableSubGroups = scheduleRenderableSubGroups\(dept, deptStaff, subGroups\)/);
+        assert.match(staffPage, /deptStaff\.filter\(s => !renderedStaffIds\.has\(Number\(s\.id\)\)\)/);
         assert.match(staffPage, /placeholder:\s*'host, trampoline_instructor'/);
         assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
     });

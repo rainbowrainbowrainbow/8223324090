@@ -149,11 +149,13 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(uiHelper, /e\.target === overlay && closeOnBackdrop/);
     });
 
-    it('keeps staff and timeline grouping compatible with primary role semantics', () => {
+    it('keeps staff schedule grouping compatible with primary and secondary profession semantics', () => {
         assert.match(staffPage, /function staffMatchesDepartmentSubGroup\(staff = \{\}, subGroup = \{\}\)/);
-        assert.match(staffPage, /const roleKey = normalizeProfessionKey\(staff\.role_type\)/);
-        assert.match(staffPage, /departmentSubGroupRoleKeys\(subGroup\)\.includes\(roleKey\)/);
-        assert.match(staffPage, /const allRoleKeys = departmentSubGroupRoleKeySet\(subGroups\)/);
+        assert.match(staffPage, /function staffProfessionKeys\(staff = \{\}\)/);
+        assert.match(staffPage, /const roleKeys = departmentSubGroupRoleKeys\(subGroup\)/);
+        assert.match(staffPage, /return staffProfessionKeys\(staff\)\.some\(roleKey => roleKeys\.includes\(roleKey\)\)/);
+        assert.match(staffPage, /function staffScheduleDepartmentKeys\(staff = \{\}\)/);
+        assert.match(staffPage, /function scheduleDepartmentCountMap\(staffList = StaffState\.staff\)/);
         assert.match(staffPage, /secondary_professions: String\(result\.secondary_professions/);
         assert.match(bookingService, /s\.role_type = 'animator'/);
         assert.doesNotMatch(bookingService, /secondary_professions/);

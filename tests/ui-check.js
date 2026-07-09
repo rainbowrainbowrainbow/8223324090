@@ -1689,6 +1689,10 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleDeptChipCountRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip-count');
     const staffScheduleDeptChipDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .dept-chip');
     const staffScheduleSearchRowRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search-row');
+    const staffScheduleGroupToggleRule = cssRuleText(staffPagesCss, '.dept-row .schedule-group-toggle');
+    const staffScheduleGroupCaretRule = cssRuleText(staffPagesCss, '.schedule-group-caret');
+    const staffScheduleGroupCaretBeforeRule = cssRuleText(staffPagesCss, '.schedule-group-caret::before');
+    const staffScheduleGroupExpandedCaretRule = cssRuleText(staffPagesCss, '.dept-row.is-expanded .schedule-group-caret');
     const staffScheduleSearchInputRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search');
     const staffScheduleSearchFocusRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search:focus');
     const staffScheduleSearchInfoRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info');
@@ -1722,8 +1726,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.71')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.71')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.72')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.72')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -1852,6 +1856,9 @@ checkPage('staff.html', (doc, html) => {
         && staffDeptFilterRenderBlock.includes('aria-pressed="${active ?')
         && staffDeptFilterRenderBlock.includes("c.setAttribute('aria-pressed', 'false')")
         && staffDeptFilterRenderBlock.includes("chip.setAttribute('aria-pressed', 'true')")
+        && staffDeptFilterRenderBlock.includes('const allCount = scheduleableStaffForUi(StaffState.staff).length')
+        && staffCode.includes('function scheduleDepartmentCountMap(staffList = StaffState.staff)')
+        && staffCode.includes('const counts = scheduleDepartmentCountMap(StaffState.staff)')
         && !staffDeptFilterRenderBlock.includes('${label} (${count})')
         && /min-height:\s*32px;/.test(staffScheduleDeptChipRule)
         && /border-radius:\s*10px;/.test(staffScheduleDeptChipRule)
@@ -1869,12 +1876,42 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('function normalizeScheduleSearchText')
         && staffCode.includes('function scheduleStaffSearchHaystack')
         && staffCode.includes('function scheduleStaffVisibleWithoutSearch')
+        && staffCode.includes('function staffMatchesScheduleDepartment')
+        && staffCode.includes('return scheduleable.filter(staff => staffMatchesScheduleDepartment(staff, StaffState.activeDept));')
         && staffCode.includes('function bindScheduleStaffSearchControls')
         && staffCode.includes("document.getElementById('scheduleStaffSearch')")
         && staffCode.includes('return visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query));')
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
         && staffCode.includes('const grouped = groupStaffByScheduleDepartment(filtered)'));
+    check('Staff schedule category grouping counts primary and secondary professions without duplicate subgroup headers',
+        staffCode.includes('function staffProfessionKeys(staff = {})')
+        && staffCode.includes('function staffScheduleDepartmentKeys(staff = {})')
+        && staffCode.includes('function scheduleProfessionDisplayGroupKey(professionKey)')
+        && staffCode.includes('for (const professionKey of staffProfessionKeys(staff))')
+        && staffCode.includes('function scheduleRenderableSubGroups(departmentKey = \'\', deptStaff = [], subGroups = null)')
+        && staffCode.includes('function shouldSkipScheduleSubGroup(departmentKey = \'\', subGroup = {})')
+        && staffCode.includes('const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups)')
+        && staffCode.includes("if (parentKey && subGroupKey && parentKey === subGroupKey) return true")
+        && staffCode.includes('return staffProfessionKeys(staff).some(roleKey => roleKeys.includes(roleKey));')
+        && !staffCode.includes('const allRoleKeys = departmentSubGroupRoleKeySet(subGroups)')
+        && !staffCode.includes('staffMatchesAnyDepartmentSubGroup'));
+    check('Staff schedule groups collapse by default and expand through accessible headers',
+        staffCode.includes('expandedScheduleGroups: new Set()')
+        && staffCode.includes('function isScheduleGroupExpandedForRender')
+        && staffCode.includes('function scheduleSearchAutoExpandsGroups')
+        && staffCode.includes('function toggleScheduleGroup')
+        && staffCode.includes('function bindScheduleGroupToggles')
+        && staffScheduleRenderBlock.includes('const groupExpanded = isScheduleGroupExpandedForRender(dept)')
+        && staffScheduleRenderBlock.includes('data-schedule-group-toggle="${escapeHtml(dept)}"')
+        && staffScheduleRenderBlock.includes('aria-expanded="${groupExpanded ?')
+        && staffScheduleRenderBlock.includes('if (!groupExpanded) continue;')
+        && staffScheduleRenderBlock.includes('bindScheduleGroupToggles(tbody)')
+        && staffCode.includes('if (department) setScheduleGroupExpanded(department, true);')
+        && /display:\s*flex;/.test(staffScheduleGroupToggleRule)
+        && /cursor:\s*pointer;/.test(staffScheduleGroupToggleRule)
+        && /content:\s*'›';/.test(staffScheduleGroupCaretBeforeRule)
+        && /transform:\s*rotate\(90deg\);/.test(staffScheduleGroupExpandedCaretRule));
     check('Staff schedule exposes a validated custom period picker',
         staffScheduleShellCode.includes('id="scheduleDateFrom"')
         && staffScheduleShellCode.includes('id="scheduleDateTo"')
@@ -1882,6 +1919,11 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleShellCode.includes('data-schedule-range-preset="first-half"')
         && staffScheduleShellCode.includes('data-schedule-range-preset="second-half"')
         && staffScheduleShellCode.includes('data-schedule-range-preset="month"')
+        && staffScheduleShellCode.includes('>1 половина</button>')
+        && staffScheduleShellCode.includes('>2 половина</button>')
+        && staffScheduleShellCode.includes('>Весь місяць</button>')
+        && staffScheduleShellCode.includes('aria-label="Показати другу половину місяця"')
+        && !staffScheduleShellCode.includes('16-кінець')
         && staffCode.includes('rangeStart: null')
         && staffCode.includes('rangeEnd: null')
         && staffCode.includes("rangeMode: 'rolling'")
@@ -1910,6 +1952,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleSummaryBlock.includes('function summarizeScheduleRange')
         && staffScheduleSummaryBlock.includes('const ds = typeof d ===')
         && staffScheduleSummaryBlock.includes('updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered)')
+        && !staffScheduleSummaryBlock.includes('Не заповнено:')
         && staffScheduleViewModeBlock.includes('const dates = getScheduleDates()')
         && staffScheduleViewModeBlock.includes('fetchScheduleHours(from, to)')
         && staffScheduleLoadViewBlock.includes('const dates = getScheduleDates()')
@@ -5391,7 +5434,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.71')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.72')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -5400,8 +5443,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.71')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.71')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.72')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.72')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5840,7 +5883,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.71') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.71') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.72') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.72') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

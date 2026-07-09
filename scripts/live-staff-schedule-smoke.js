@@ -278,6 +278,89 @@ async function assertHeaderSurface(page) {
     await page.locator('#scheduleDateFrom').waitFor({ state: 'visible' });
     await page.locator('#scheduleDateTo').waitFor({ state: 'visible' });
     await page.locator('#applyScheduleRangeBtn').waitFor({ state: 'visible' });
+    const presetState = await page.locator('[data-schedule-range-preset]').evaluateAll(buttons => buttons.map(button => ({
+        preset: button.getAttribute('data-schedule-range-preset'),
+        label: button.textContent.trim(),
+        title: button.getAttribute('title') || '',
+        ariaLabel: button.getAttribute('aria-label') || ''
+    })));
+    assert.deepEqual(presetState.map(item => item.label), ['1 половина', '2 половина', 'Весь місяць'], 'period preset labels are human-readable');
+    assert.equal(presetState.some(item => item.label.includes('кінець')), false, 'period preset labels do not use "кінець"');
+    assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, 'Показати другу половину місяця', 'second-half preset keeps an accessible label');
+    assert.match(presetState.find(item => item.preset === 'second-half')?.title || '', /16/, 'second-half preset title explains the date range');
+    assert.equal((await page.locator('#scheduleSummary').innerText()).includes('Не заповнено'), false, 'schedule summary hides unset noise');
+}
+
+async function assertNoDuplicateDepartmentSubGroups(page) {
+    const duplicates = await page.locator('#scheduleBody').evaluate(tbody => {
+        const normalizeRowLabel = (row, iconSelector, countSelector) => {
+            const clone = row.cloneNode(true);
+            clone.querySelectorAll(`${iconSelector},${countSelector},.schedule-group-caret`).forEach(node => node.remove());
+            const explicitLabel = clone.querySelector('.schedule-group-label');
+            if (explicitLabel) return explicitLabel.textContent.trim().replace(/\s+/g, ' ').toLowerCase();
+            return clone.textContent.trim().replace(/\s+/g, ' ').toLowerCase();
+        };
+        const result = [];
+        let currentDepartment = '';
+        for (const row of Array.from(tbody.querySelectorAll('tr'))) {
+            if (row.classList.contains('dept-row')) {
+                currentDepartment = normalizeRowLabel(row, '.dept-icon', '.dept-count');
+            } else if (row.classList.contains('sub-group-row')) {
+                const subgroup = normalizeRowLabel(row, '.sub-group-icon', '.sub-group-count');
+                if (currentDepartment && subgroup && currentDepartment === subgroup) result.push(subgroup);
+            }
+        }
+        return result;
+    });
+    assert.deepEqual(duplicates, [], 'schedule table does not render duplicate department/subgroup labels');
+}
+
+async function scheduleEmployeeRowCount(page) {
+    return page.locator('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').count();
+}
+
+async function assertScheduleGroupsCollapsedByDefault(page) {
+    const toggles = page.locator('[data-schedule-group-toggle]');
+    const count = await toggles.count();
+    assert.ok(count > 0, 'schedule group toggles are rendered');
+    assert.deepEqual(await toggles.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-expanded'))), Array(count).fill('false'), 'schedule groups are collapsed by default');
+    assert.equal(await scheduleEmployeeRowCount(page), 0, 'collapsed schedule groups hide employee rows by default');
+
+    const firstToggle = toggles.first();
+    await firstToggle.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'true');
+    assert.ok(await scheduleEmployeeRowCount(page) > 0, 'Enter expands a schedule group');
+
+    await page.locator('[data-schedule-group-toggle]').first().press('Space');
+    await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'false');
+    assert.equal(await scheduleEmployeeRowCount(page), 0, 'Space collapses a schedule group');
+
+    await firstToggle.click();
+    await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'true');
+    assert.ok(await scheduleEmployeeRowCount(page) > 0, 'click expands a schedule group');
+    await firstToggle.click();
+    await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'false');
+    assert.equal(await scheduleEmployeeRowCount(page), 0, 'repeated click collapses a schedule group');
+}
+
+async function assertScheduleSearchAutoExpandsGroups(page) {
+    const searchTerm = await page.locator('[data-schedule-group-toggle]').first().getAttribute('data-schedule-group-toggle') || 'staff';
+    await page.locator('#scheduleStaffSearch').fill(searchTerm);
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
+    assert.ok(await scheduleEmployeeRowCount(page) > 0, 'active search reveals matching rows even when groups are collapsed');
+    assert.ok((await page.locator('[data-schedule-group-toggle][aria-expanded="true"]').count()) > 0, 'active search marks matching groups expanded for accessibility');
+    await page.locator('#scheduleStaffSearch').fill('');
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length === 0);
+}
+
+async function expandAllScheduleGroups(page) {
+    for (let i = 0; i < 30; i += 1) {
+        const collapsed = page.locator('[data-schedule-group-toggle][aria-expanded="false"]');
+        if (!(await collapsed.count())) break;
+        await collapsed.first().click();
+    }
+    await page.waitForFunction(() => document.querySelectorAll('[data-schedule-group-toggle][aria-expanded="false"]').length === 0);
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
 }
 
 async function assertCompactHeaderActions(page) {
@@ -502,6 +585,10 @@ async function runDesktopFlow(browser, base, session) {
         await waitForStaffSchedule(page, base);
         await assertHeaderSurface(page);
         await waitForDayColumns(page, 9);
+        await assertNoDuplicateDepartmentSubGroups(page);
+        await assertScheduleGroupsCollapsedByDefault(page);
+        await assertScheduleSearchAutoExpandsGroups(page);
+        await expandAllScheduleGroups(page);
         assert.equal(await dayColumnCount(page), 9, 'default schedule range is 9 days');
 
         await applyPreset(page, 'first-half');
@@ -559,6 +646,11 @@ async function runMobileFlow(browser, base, session) {
         forbidden = attachReadOnlyGuard(page, 'mobile');
         await waitForStaffSchedule(page, base);
         await assertHeaderSurface(page);
+        await waitForDayColumns(page, 9);
+        await assertNoDuplicateDepartmentSubGroups(page);
+        await assertScheduleGroupsCollapsedByDefault(page);
+        await assertScheduleSearchAutoExpandsGroups(page);
+        await expandAllScheduleGroups(page);
         await assertCompactHeaderActions(page);
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);

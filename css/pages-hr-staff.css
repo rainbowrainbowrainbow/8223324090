@@ -4842,6 +4842,73 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     white-space: normal;
     overflow-wrap: anywhere;
 }
+
+.dept-row .schedule-group-toggle {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dept-row .schedule-group-toggle:hover .schedule-group-label,
+.dept-row .schedule-group-toggle:focus-visible .schedule-group-label {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.dept-row .schedule-group-toggle:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.42);
+    outline-offset: 3px;
+    border-radius: 8px;
+}
+
+.schedule-group-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--gray-600);
+    transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.schedule-group-caret::before {
+    content: '›';
+    display: block;
+    font-size: 19px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.dept-row.is-expanded .schedule-group-caret {
+    transform: rotate(90deg);
+    background: rgba(20, 184, 166, 0.14);
+    color: #0F766E;
+}
+
+.dept-row.is-collapsed td {
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.schedule-group-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .dept-row[data-dept="animators"] td { border-left: 4px solid #059669; }
 .dept-row[data-dept="admin"] td { border-left: 4px solid #4F46E5; }
 .dept-row[data-dept="cafe"] td { border-left: 4px solid #D97706; }
@@ -5603,6 +5670,20 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 [data-theme="dark"] .dept-count { background: var(--gray-600); color: var(--gray-300); }
 [data-theme="dark"] .sub-group-count { background: var(--gray-700); color: var(--gray-500); }
 [data-theme="dark"] .dept-row[data-dept] td { background: var(--gray-700); }
+body.dark-mode .schedule-group-caret,
+[data-theme="dark"] .schedule-group-caret {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--gray-300);
+}
+body.dark-mode .dept-row.is-expanded .schedule-group-caret,
+[data-theme="dark"] .dept-row.is-expanded .schedule-group-caret {
+    background: rgba(20, 184, 166, 0.18);
+    color: #5EEAD4;
+}
+body.dark-mode .dept-row .schedule-group-toggle:focus-visible,
+[data-theme="dark"] .dept-row .schedule-group-toggle:focus-visible {
+    outline-color: rgba(94, 234, 212, 0.48);
+}
 [data-theme="dark"] .emp-freelance td:first-child { border-left-color: var(--gray-600); }
 [data-theme="dark"] .emp-freelance .emp-avatar { border-color: var(--gray-600); }
 

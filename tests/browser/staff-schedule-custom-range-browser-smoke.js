@@ -72,6 +72,27 @@ const PROFESSIONS = [
     { key: 'admin', title: 'Адміністратор', department: 'admin', is_active: true }
 ];
 
+const SCHEDULE_FIXTURE_ENTRIES = [
+    {
+        id: 9101,
+        staff_id: 101,
+        date: '2026-07-09',
+        shift_start: '12:00:00',
+        shift_end: '20:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9102,
+        staff_id: 101,
+        date: '2026-07-11',
+        shift_start: '10:00:00',
+        shift_end: '20:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    }
+];
+
 const apiCalls = {
     scheduleRanges: [],
     hoursRanges: [],
@@ -146,6 +167,11 @@ function collectJson(req) {
     });
 }
 
+function scheduleFixtureEntriesForRange(from, to) {
+    if (!from || !to) return [];
+    return SCHEDULE_FIXTURE_ENTRIES.filter(entry => entry.date >= from && entry.date <= to);
+}
+
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') {
         sendJson(res, { success: true, user: SMOKE_USER });
@@ -175,7 +201,7 @@ async function handleApi(req, res, url) {
         });
         sendJson(res, {
             success: true,
-            data: [],
+            data: scheduleFixtureEntriesForRange(url.searchParams.get('from'), url.searchParams.get('to')),
             displayGroups: DISPLAY_GROUPS
         });
         return true;
@@ -521,6 +547,36 @@ async function assertScheduleShiftPreferenceQuickLabels(page) {
     await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 }
 
+async function assertWeekendFullShiftLoadMarker(page) {
+    await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-09"]').waitFor({ state: 'visible' });
+    await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').waitFor({ state: 'visible' });
+    const metrics = await page.evaluate(() => {
+        const inspect = date => {
+            const cell = document.querySelector(`.sch-cell[data-staff="101"][data-date="${date}"]`);
+            if (!cell) return null;
+            const after = getComputedStyle(cell, '::after');
+            return {
+                className: cell.className,
+                shiftLoad: cell.getAttribute('data-shift-load'),
+                afterDisplay: after.display,
+                afterWidth: after.width,
+                afterHeight: after.height
+            };
+        };
+        return {
+            weekday: inspect('2026-07-09'),
+            weekend: inspect('2026-07-11')
+        };
+    });
+    assert.ok(metrics.weekday, 'weekday fixture cell is rendered');
+    assert.ok(metrics.weekend, 'weekend fixture cell is rendered');
+    assert.equal(metrics.weekday.shiftLoad, 'full', 'weekday 12:00-20:00 stays a full shift');
+    assert.equal(metrics.weekend.shiftLoad, 'full', 'weekend 10:00-20:00 is treated as a full shift');
+    assert.equal(metrics.weekend.className.includes('shift-load-long'), false, 'weekend 10:00-20:00 does not get the long-shift marker class');
+    assert.equal(metrics.weekend.className.includes('shift-load-full'), true, 'weekend 10:00-20:00 keeps the full-shift class');
+    assert.equal(metrics.weekend.afterDisplay, 'none', 'weekend full shift hides the load marker pseudo-element');
+}
+
 async function assertWideScheduleLayout(page, label, options = {}) {
     const wrapperSelector = options.wrapperSelector || '#scheduleWrapper';
     const expectedDays = options.expectedDays;
@@ -740,6 +796,7 @@ async function runDesktopFlow(browser, base) {
         for (const [from, to, expectedDays] of manualLongRanges) {
             await applyManualRange(page, from, to);
             await assertWideScheduleLayout(page, `desktop manual ${expectedDays}d`, { expectedDays, minDayWidth: 136 });
+            if (from === '2026-07-01') await assertWeekendFullShiftLoadMarker(page);
         }
 
         // Hours toggle is no longer part of the visible command surface.

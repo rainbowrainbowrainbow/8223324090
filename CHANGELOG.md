@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.79 - Staff Schedule Weekend Full Shift
+
+### Staff Schedule / Weekend shift markers / (09.07.2026) [codex]
+- **Вихідні зміни 10:00-20:00 більше не мають нижньої риски** - графік рахує СБ/НД як 10-годинний повний день, тому стандартна weekend-зміна не отримує `shift-load-long`.
+- **Буденні зміни не змінювали** - `12:00-20:00` лишається повною 8-годинною зміною, а справді короткі або довгі нестандартні зміни зберігають load-індикатори.
+- **Regression coverage додано** - static guard і Playwright smoke перевіряють weekday, Saturday, Sunday, dayoff cell, light/dark режим і HR schedule embedding.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule logic, tests і version/cache refs.
+
+---
+
 ## v0.78.78 - Booking Time Slot Selector
 
 ### Booking / Activity time selector / (09.07.2026) [codex]

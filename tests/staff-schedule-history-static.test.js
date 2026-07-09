@@ -645,13 +645,20 @@ describe('staff schedule safety guards', () => {
 
     it('marks partial shifts with durable load classes and theme-safe colors', () => {
         assert.match(staffPage, /const STAFF_FULL_SHIFT_MINUTES = 8 \* 60/);
+        assert.match(staffPage, /const STAFF_WEEKEND_FULL_SHIFT_MINUTES = 10 \* 60/);
+        assert.match(staffPage, /function scheduleShiftLoadFullShiftMinutes/);
+        assert.match(staffPage, /scheduleShiftLoadDate\(entry\.date \|\| entry\.shift_date \|\| entry\.schedule_date\)/);
         assert.match(staffPage, /function scheduleShiftLoadMeta/);
+        assert.match(staffPage, /scheduleShiftLoadFullShiftMinutes\(entry\)/);
         assert.match(staffPage, /bucket = 'half'/);
         assert.match(staffPage, /bucket = 'three-quarter'/);
         assert.match(staffPage, /bucket = 'long'/);
         assert.match(staffPage, /className: `shift-load-\$\{bucket\}`/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}/);
         assert.match(staffPage, /data-shift-load="\$\{loadMeta\.bucket \|\| ''\}"/);
+        assert.match(staffPage, /scheduleShiftLoadMeta\(\{ \.\.\.entry, date, shift_start: shiftStart, shift_end: shiftEnd \}\)/);
+        assert.match(staffPage, /scheduleShiftLoadMeta\(\{ \.\.\.entry, status, date \}\)/);
+        assert.match(staffPage, /scheduleShiftLoadMeta\(\{ \.\.\.entry, status, date: ds, shift_start: shiftStart, shift_end: shiftEnd \}\)/);
         assert.doesNotMatch(staffPage, /class="sch-load-badge"/);
         assert.match(staffCss, /\.sch-cell \.sch-load-badge/);
         assert.match(staffCss, /display: none !important/);

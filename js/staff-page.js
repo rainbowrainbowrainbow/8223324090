@@ -526,6 +526,7 @@ function scheduleEntryTime(entry = {}) {
 }
 
 const STAFF_FULL_SHIFT_MINUTES = 8 * 60;
+const STAFF_WEEKEND_FULL_SHIFT_MINUTES = 10 * 60;
 
 function scheduleTimeToMinutes(value) {
     const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
@@ -543,6 +544,20 @@ function formatShiftLoadRatio(value) {
     return String(Math.round(value * 100) / 100).replace(/\.0$/, '');
 }
 
+function scheduleShiftLoadDate(value) {
+    if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const date = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw);
+    return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function scheduleShiftLoadFullShiftMinutes(entry = {}) {
+    const date = scheduleShiftLoadDate(entry.date || entry.shift_date || entry.schedule_date);
+    if (date && [0, 6].includes(date.getDay())) return STAFF_WEEKEND_FULL_SHIFT_MINUTES;
+    return STAFF_FULL_SHIFT_MINUTES;
+}
+
 function scheduleShiftLoadMeta(entry = {}) {
     const status = normalizeScheduleStatus(entry.status);
     if (!['working', 'remote'].includes(status)) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
@@ -552,7 +567,7 @@ function scheduleShiftLoadMeta(entry = {}) {
     let minutes = end - start;
     if (minutes <= 0) minutes += 24 * 60;
     if (minutes <= 0) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
-    const exactRatio = minutes / STAFF_FULL_SHIFT_MINUTES;
+    const exactRatio = minutes / scheduleShiftLoadFullShiftMinutes(entry);
     const roundedRatio = Math.max(0.25, Math.round(exactRatio * 4) / 4);
     let bucket = 'full';
     if (roundedRatio <= 0.25) bucket = 'quarter';
@@ -596,7 +611,7 @@ function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
 function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     const parts = [`${emp.name} - ${date}`];
     if (shiftStart && shiftEnd) parts.push(`${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
-    const loadMeta = scheduleShiftLoadMeta({ ...entry, shift_start: shiftStart, shift_end: shiftEnd });
+    const loadMeta = scheduleShiftLoadMeta({ ...entry, date, shift_start: shiftStart, shift_end: shiftEnd });
     if (loadMeta.label && loadMeta.showBadge) parts.push(`load ${loadMeta.label}x`);
     if (isReplacementEntry(entry)) {
         parts.push(`Заміна за: ${entry.original_staff_name || 'працівника'}`);
@@ -799,7 +814,7 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
                 addIssue(scheduleHealthIssue({ code: 'profession_mismatch', severity: 'critical', scope: 'cell', title: 'Profession mismatch', detail: 'Професія зміни не відповідає професіям у HR-картці працівника.', staff, date, department }));
             }
 
-            const loadMeta = scheduleShiftLoadMeta({ ...entry, status });
+            const loadMeta = scheduleShiftLoadMeta({ ...entry, status, date });
             if (loadMeta.minutes > SCHEDULE_HEALTH_LONG_SHIFT_MINUTES) {
                 addIssue(scheduleHealthIssue({ code: 'long_shift', severity: 'warning', scope: 'cell', title: 'Long shift', detail: `Зміна триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department }));
             }
@@ -3279,7 +3294,7 @@ function renderEmpRow(emp, dates, today, health = null) {
         const shiftEnd = entry?.shift_end;
         const icon = STATUS_ICONS[status] || '';
         const isReplacement = isReplacementEntry(entry);
-        const loadMeta = scheduleShiftLoadMeta({ ...entry, status, shift_start: shiftStart, shift_end: shiftEnd });
+        const loadMeta = scheduleShiftLoadMeta({ ...entry, status, date: ds, shift_start: shiftStart, shift_end: shiftEnd });
         const loadClass = loadMeta.className || '';
         const cellHealthIssues = scheduleHealthCellIssues(health, emp.id, ds);
         const cellHealthSeverity = scheduleHealthSeverity(cellHealthIssues);

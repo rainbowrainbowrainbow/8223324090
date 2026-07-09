@@ -518,6 +518,8 @@ async function runDesktopFlow(browser, base, session) {
         await assertInvalidRangesStayPut(page, firstHalf.from, firstHalf.to);
         const monthRange = await assertSearchPersistence(page);
         const monthDays = dateRangeDays(monthRange.from, monthRange.to);
+        await page.locator('#scheduleStaffSearch').fill('');
+        await waitForColumnsToMatchInputs(page);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
         await page.locator('[data-schedule-view="load"]').click();
         await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });

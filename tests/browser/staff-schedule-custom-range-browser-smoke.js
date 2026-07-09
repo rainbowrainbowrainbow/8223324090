@@ -595,6 +595,8 @@ async function runDesktopFlow(browser, base) {
         await waitForDayColumns(page, monthDays);
         assert.ok(monthDays >= 28 && monthDays <= 31, 'month preset renders a real month length');
         await assertNoControlOverlap(page, 'desktop month');
+        await page.locator('#scheduleStaffSearch').fill('');
+        await waitForDayColumns(page, monthDays);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
 
         await page.locator('[data-schedule-view="load"]').click();

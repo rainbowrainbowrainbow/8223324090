@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.77 - Timeline Overrun Follow-up
+
+### Timeline / Overrun follow-up / (09.07.2026) [codex]
+- **Легенда таймлайну пояснює червоний стан** - в активних режимах додано marker `Вихід за зміну`, щоб оператори бачили, що червоний блок означає завершення після зміни або робочого дня.
+- **Fallback на кінець видимого таймлайну зафіксовано тестом** - якщо у лінії немає `shiftEnd`, overrun рахується проти кінця робочого таймлайну, щоб не ховати ризикові бронювання.
+- **Пріоритет червоного стану захищено guard-ами** - тести перевіряють, що overrun class лишається разом із категорією бронювання і має danger styling поверх звичайного кольору.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend legend/styles, tests і version/cache refs.
+
+---
+
 ## v0.78.76 - Timeline Overrun Warnings
 
 ### Timeline / Booking overrun warning / (09.07.2026) [codex]

@@ -122,6 +122,53 @@ test('server-hydrated timeline display settings override stale local storage', (
     assert.equal(events.at(-1).detail.source, 'server_business_profile');
 });
 
+test('active timeline display legends include the shift overrun marker', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail || null;
+            }
+        },
+        window: {
+            location: { pathname: '/', search: '', href: 'https://crm.test/' },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            readyState: 'loading',
+            body: {
+                classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+                dataset: {},
+                setAttribute() {}
+            },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: () => null,
+            setItem() {},
+            removeItem() {}
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    sandbox.window.CustomEvent = sandbox.CustomEvent;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    const modes = sandbox.window.TimelineBusinessContext.DISPLAY_MODES;
+    ['simple', 'specialist', 'park', 'education'].forEach(mode => {
+        assert.match(modes[mode].legendHtml, /legend-item--time-overrun/);
+        assert.match(modes[mode].legendHtml, /dot overrun/);
+    });
+    assert.doesNotMatch(modes.disabled.legendHtml, /legend-item--time-overrun/);
+});
+
 test('park timeline keeps add animator control when resource manager is disabled', () => {
     const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
     const makeElement = () => {

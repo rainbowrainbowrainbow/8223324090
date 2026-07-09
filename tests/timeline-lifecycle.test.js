@@ -328,6 +328,38 @@ test('timeline boundary status flags bookings ending after animator shift', () =
     assert.match(status.message, /\+16/);
 });
 
+test('timeline boundary status falls back to visible timeline end without shift end', () => {
+    const { api } = createHarness();
+
+    const status = api.timelineBookingBoundaryStatus(
+        { id: 'booking-1', date: '2026-05-26', time: '19:30', duration: 60 },
+        { id: 'line-1', name: 'Lead' },
+        '2026-05-26'
+    );
+
+    assert.equal(status.overrun, true);
+    assert.equal(status.type, 'end_overrun');
+    assert.equal(status.endLabel, '20:30');
+    assert.equal(status.boundary.source, 'timeline');
+    assert.equal(status.boundary.endLabel, '20:00');
+    assert.equal(status.overrunMin, 30);
+});
+
+test('timeline boundary status allows bookings that end exactly at shift end', () => {
+    const { api } = createHarness();
+
+    const status = api.timelineBookingBoundaryStatus(
+        { id: 'booking-1', date: '2026-05-26', time: '18:30', duration: 90 },
+        { id: 'line-1', name: 'Lead', shiftEnd: '20:00' },
+        '2026-05-26'
+    );
+
+    assert.equal(status.overrun, false);
+    assert.equal(status.endLabel, '20:00');
+    assert.equal(status.boundary.source, 'shift');
+    assert.equal(status.boundary.endLabel, '20:00');
+});
+
 test('createBookingBlock marks overrun booking with danger class and boundary metadata', () => {
     const { window, api } = createHarness();
     const grid = window.document.createElement('div');
@@ -352,6 +384,7 @@ test('createBookingBlock marks overrun booking with danger class and boundary me
     );
 
     assert.equal(block.classList.contains('booking-block--time-overrun'), true);
+    assert.equal(block.classList.contains('show'), true);
     assert.equal(block.dataset.timelineBoundary, 'end_overrun');
     assert.equal(block.dataset.timelineBoundaryEnd, '20:00');
     assert.equal(block.dataset.timelineBoundaryOverrunMin, '16');

@@ -59,6 +59,9 @@
     };
 
     const DISPLAY_STORAGE_NAME = 'timeline_display_settings';
+    const TIMELINE_OVERRUN_LEGEND_HTML = `
+                <span class="legend-item legend-item--time-overrun" title="Червоний блок: бронювання завершується після кінця зміни або робочого дня."><span class="dot overrun"></span>Вихід за зміну</span>
+            `.trim();
     const DISPLAY_MODES = {
         disabled: {
             key: 'disabled',
@@ -114,6 +117,7 @@
             legendHtml: `
                 <span class="legend-item"><span class="dot custom"></span>Записи</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
+                ${TIMELINE_OVERRUN_LEGEND_HTML}
             `,
             defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
         },
@@ -144,6 +148,7 @@
             legendHtml: `
                 <span class="legend-item"><span class="dot custom"></span>Послуги</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
+                ${TIMELINE_OVERRUN_LEGEND_HTML}
             `,
             defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
         },
@@ -180,6 +185,7 @@
                 <span class="legend-item"><span class="dot pinata"></span>Піньята</span>
                 <span class="legend-item"><span class="dot custom"></span>Інше</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
+                ${TIMELINE_OVERRUN_LEGEND_HTML}
             `,
             defaultHiddenElements: []
         },
@@ -211,6 +217,7 @@
                 <span class="legend-item"><span class="dot custom"></span>Заняття</span>
                 <span class="legend-item"><span class="dot masterclass"></span>Практика</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
+                ${TIMELINE_OVERRUN_LEGEND_HTML}
             `,
             defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
         }

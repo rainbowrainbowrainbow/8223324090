@@ -1727,8 +1727,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.76')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.76')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.77')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.77')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -2703,6 +2703,7 @@ const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
 const bookingMutationCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
+const timelineContextCode = fs.readFileSync(path.join(ROOT, 'js/timeline-context.js'), 'utf8');
 const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js/timeline-cache.js'), 'utf8');
 const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js/timeline-resource-identity.js'), 'utf8');
 const timelineBanquetInspectorHelpersCode = fs.readFileSync(path.join(ROOT, 'js/timeline-banquet-inspector-helpers.js'), 'utf8');
@@ -2828,6 +2829,17 @@ check('Timeline gear opens the standalone settings center instead of the overlay
     && !timelineVisibilityCode.includes('toggleConstructorMode(!state.constructorActive)'));
 check('Timeline visual settings center has operator documentation and safe-change guardrails', timelineVisualSettingsDoc.includes('timeline:event_genix') && timelineVisualSettingsDoc.includes('visible') && timelineVisualSettingsDoc.includes('order') && timelineVisualSettingsDoc.includes('density') && timelineVisualSettingsDoc.includes('emphasis') && timelineVisualSettingsDoc.includes('customLabel') && timelineVisualSettingsDoc.includes('adminNote') && timelineVisualSettingsDoc.includes('не змінює бізнес-логіку') && timelineVisualSettingsDoc.includes('UAT') && timelineVisualSettingsDoc.includes('codex/room-timeline-hardening'));
 check('Timeline display modes are real presentation settings', htmlContains('index.html', 'settingsTimelineDisplayMode') && htmlContains('index.html', 'settingsTimelineKitchenMode') && htmlContains('index.html', 'settingsTimelineRoomFirstEnabled') && htmlContains('index.html', 'settingsTimelineDefaultView') && htmlContains('js/timeline-context.js', 'const DISPLAY_MODES = {') && htmlContains('js/timeline-context.js', "education: {") && htmlContains('js/timeline-context.js', "parkKitchenEnabled") && htmlContains('js/timeline-context.js', "defaultTimelineView") && htmlContains('js/timeline-context.js', 'defaultTimelineViewForContext') && settingsCode.includes('/settings/timeline-display') && settingsCode.includes('roomTimelineEnabled') && settingsCode.includes('defaultTimelineView') && settingsCode.includes('defaultTimelineViewForControlSettings') && !settingsCode.includes("|| 'rooms'") && appCode.includes('saveTimelineDisplaySettingsFromSettings') && appCode.includes('settingsTimelineDefaultView') && timelineConfigCode.includes('TIMELINE_DISPLAY_MODE') && timelineConfigCode.includes('EDUCATION_TIMELINE_PROGRAMS') && timelineCode.includes("presentation?.mode === 'education'") && timelineCode.includes('resourceType: \'cabinet\'') && htmlContains('css/panel.css', 'body.timeline-mode-park.timeline-park-without-kitchen #banquetFields'));
+check('Timeline overrun warning has legend and priority danger styling',
+    timelineContextCode.includes('TIMELINE_OVERRUN_LEGEND_HTML')
+    && timelineContextCode.includes('legend-item--time-overrun')
+    && timelineContextCode.includes('dot overrun')
+    && timelineConstructorCss.includes('.legend-item:has(.dot.overrun)')
+    && timelineConstructorCss.includes('.dot.overrun { background: linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%); }')
+    && timelineConstructorCss.includes('.booking-block.booking-block--time-overrun')
+    && timelineConstructorCss.includes('background: linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%) !important')
+    && darkModeCss.includes('body.dark-mode .legend-item:has(.dot.overrun)')
+    && darkModeCss.includes('.timeline-dashboard-page .legend-item:has(.dot.overrun)')
+    && darkModeCss.includes('.timeline-dashboard-page .dot.overrun'));
 check('Deprecated room load visual settings are removed', !timelineVisibilityCode.includes('roomLoadPanel') && !timelineVisibilityCode.includes('roomLoadBtn') && !timelineSettingsPageCode.includes('roomLoadPanel') && !timelineSettingsPageCode.includes('roomLoadBtn') && !timelineVisibilityServiceCode.includes("visualBlock('roomLoad") && !timelineVisibilityServiceCode.includes("visualBlock('roomLoadPanel") && !featuresCss.includes('room-load-anchor') && !featuresCss.includes('room-load-close-label'));
 const timelineBanquetRoomCardBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetRoomCardSignals'),
@@ -5448,7 +5460,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.76')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.77')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -5457,8 +5469,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.76')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.76')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.77')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.77')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5897,7 +5909,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.76') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.76') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.77') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.77') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

@@ -2254,7 +2254,11 @@ function bindScheduleActionsMenuControls() {
     });
 
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closeScheduleActionsMenu();
+        if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true') return;
+        closeScheduleActionsMenu();
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
     });
 
     root.dataset.scheduleActionsBound = 'true';
@@ -3992,6 +3996,8 @@ function openFillWeekModal() {
 
 async function closeFillWeekModal(force = false) {
     const overlay = document.getElementById('fillWeekOverlay');
+    if (!overlay || !overlay.classList.contains('visible')) return true;
+
     const closeNow = () => {
         overlay?.classList.remove('visible');
         _staffFillInitialState = getStaffFillState();

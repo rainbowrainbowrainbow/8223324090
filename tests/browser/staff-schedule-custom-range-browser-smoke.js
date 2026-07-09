@@ -431,6 +431,12 @@ async function runDesktopFlow(browser, base) {
         for (const actionId of ['addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn']) {
             await page.locator(`#scheduleActionsMenu #${actionId}`).waitFor({ state: 'visible' });
         }
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.getElementById('scheduleActionsMenu')?.hidden === true);
+        assert.equal(await page.locator('.confirm-overlay').count(), 0, 'Escape closes actions menu without triggering fill modal dirty confirmation');
+
+        await page.locator('#scheduleActionsMenuBtn').click();
+        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#copyWeekBtn').getAttribute('data-schedule-copy-unavailable'), 'true', 'copy-week is marked unavailable for custom range');
         await page.locator('#copyWeekBtn').click();
         await page.locator('.confirm-overlay .confirm-ok').waitFor({ state: 'visible' });

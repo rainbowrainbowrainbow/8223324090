@@ -74,6 +74,33 @@ const PROFESSIONS = [
 
 const SCHEDULE_FIXTURE_ENTRIES = [
     {
+        id: 9104,
+        staff_id: 101,
+        date: '2026-07-06',
+        shift_start: '10:00:00',
+        shift_end: '12:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9105,
+        staff_id: 101,
+        date: '2026-07-07',
+        shift_start: '10:00:00',
+        shift_end: '14:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9106,
+        staff_id: 101,
+        date: '2026-07-08',
+        shift_start: '10:00:00',
+        shift_end: '16:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
         id: 9101,
         staff_id: 101,
         date: '2026-07-09',
@@ -86,6 +113,15 @@ const SCHEDULE_FIXTURE_ENTRIES = [
         id: 9102,
         staff_id: 101,
         date: '2026-07-11',
+        shift_start: '10:00:00',
+        shift_end: '20:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9103,
+        staff_id: 101,
+        date: '2026-07-13',
         shift_start: '10:00:00',
         shift_end: '20:00:00',
         status: 'working',
@@ -427,7 +463,14 @@ async function assertPeriodPresetLabelsAndSummary(page) {
     assert.equal(presetState.some(item => item.label.includes('кінець')), false, 'period preset labels do not use "кінець"');
     assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, 'Показати другу половину місяця', 'second-half preset keeps an accessible label');
     assert.match(presetState.find(item => item.preset === 'second-half')?.title || '', /16/, 'second-half preset title explains the date range');
-    assert.equal((await page.locator('#scheduleSummary').innerText()).includes('Не заповнено'), false, 'schedule summary hides unset noise');
+    const summaryState = await page.locator('#scheduleSummary').evaluate(summary => ({
+        hidden: summary.hidden,
+        text: summary.textContent.trim(),
+        chipCount: summary.querySelectorAll('.summary-chip').length
+    }));
+    assert.equal(summaryState.hidden, true, 'schedule summary is hidden in the schedule section');
+    assert.equal(summaryState.text, '', 'schedule summary does not render extra status text');
+    assert.equal(summaryState.chipCount, 0, 'schedule summary status chips are removed');
 }
 
 async function assertNoDuplicateDepartmentSubGroups(page) {
@@ -547,34 +590,69 @@ async function assertScheduleShiftPreferenceQuickLabels(page) {
     await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 }
 
-async function assertWeekendFullShiftLoadMarker(page) {
-    await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-09"]').waitFor({ state: 'visible' });
-    await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').waitFor({ state: 'visible' });
-    const metrics = await page.evaluate(() => {
+async function assertShiftLoadClassesDoNotPaintScheduleCells(page) {
+    const datesByBucket = {
+        quarter: '2026-07-06',
+        half: '2026-07-07',
+        threeQuarter: '2026-07-08',
+        weekdayFull: '2026-07-09',
+        weekendFull: '2026-07-11',
+        long: '2026-07-13'
+    };
+    for (const date of Object.values(datesByBucket)) {
+        await page.locator(`.sch-cell[data-staff="101"][data-date="${date}"]`).waitFor({ state: 'visible' });
+    }
+    const metrics = await page.evaluate(dates => {
         const inspect = date => {
             const cell = document.querySelector(`.sch-cell[data-staff="101"][data-date="${date}"]`);
             if (!cell) return null;
             const after = getComputedStyle(cell, '::after');
+            const cellStyle = getComputedStyle(cell);
+            const time = cell.querySelector('.sch-time');
             return {
                 className: cell.className,
                 shiftLoad: cell.getAttribute('data-shift-load'),
                 afterDisplay: after.display,
+                afterContent: after.content,
                 afterWidth: after.width,
-                afterHeight: after.height
+                afterHeight: after.height,
+                backgroundImage: cellStyle.backgroundImage,
+                boxShadow: cellStyle.boxShadow,
+                timeColor: time ? getComputedStyle(time).color : ''
             };
         };
         return {
-            weekday: inspect('2026-07-09'),
-            weekend: inspect('2026-07-11')
+            quarter: inspect(dates.quarter),
+            half: inspect(dates.half),
+            threeQuarter: inspect(dates.threeQuarter),
+            weekdayFull: inspect(dates.weekdayFull),
+            weekendFull: inspect(dates.weekendFull),
+            long: inspect(dates.long)
         };
-    });
-    assert.ok(metrics.weekday, 'weekday fixture cell is rendered');
-    assert.ok(metrics.weekend, 'weekend fixture cell is rendered');
-    assert.equal(metrics.weekday.shiftLoad, 'full', 'weekday 12:00-20:00 stays a full shift');
-    assert.equal(metrics.weekend.shiftLoad, 'full', 'weekend 10:00-20:00 is treated as a full shift');
-    assert.equal(metrics.weekend.className.includes('shift-load-long'), false, 'weekend 10:00-20:00 does not get the long-shift marker class');
-    assert.equal(metrics.weekend.className.includes('shift-load-full'), true, 'weekend 10:00-20:00 keeps the full-shift class');
-    assert.equal(metrics.weekend.afterDisplay, 'none', 'weekend full shift hides the load marker pseudo-element');
+    }, datesByBucket);
+
+    for (const [bucket, metric] of Object.entries(metrics)) {
+        assert.ok(metric, `${bucket} fixture cell is rendered`);
+    }
+
+    assert.equal(metrics.quarter.shiftLoad, 'quarter', 'weekday 10:00-12:00 keeps quarter load metadata');
+    assert.equal(metrics.half.shiftLoad, 'half', 'weekday 10:00-14:00 keeps half load metadata');
+    assert.equal(metrics.threeQuarter.shiftLoad, 'three-quarter', 'weekday 10:00-16:00 keeps three-quarter load metadata');
+    assert.equal(metrics.weekdayFull.shiftLoad, 'full', 'weekday 12:00-20:00 stays a full shift');
+    assert.equal(metrics.weekendFull.shiftLoad, 'full', 'weekend 10:00-20:00 is treated as a full shift');
+    assert.equal(metrics.weekendFull.className.includes('shift-load-long'), false, 'weekend 10:00-20:00 does not get the long-shift marker class');
+    assert.equal(metrics.weekendFull.className.includes('shift-load-full'), true, 'weekend 10:00-20:00 keeps the full-shift class');
+    assert.equal(metrics.long.shiftLoad, 'long', 'weekday 10:00-20:00 keeps long-shift load metadata');
+    assert.equal(metrics.long.className.includes('shift-load-long'), true, 'weekday long shift keeps durable load metadata');
+
+    const referenceTimeColor = metrics.weekdayFull.timeColor;
+    for (const [bucket, metric] of Object.entries(metrics)) {
+        assert.equal(metric.afterDisplay, 'none', `${bucket} load marker pseudo-element stays hidden`);
+        assert.equal(metric.afterContent === 'none' || metric.afterContent === 'normal', true, `${bucket} load marker pseudo-element has no generated content`);
+        assert.equal(metric.backgroundImage, 'none', `${bucket} cell has no shift-load gradient background`);
+        assert.equal(/0px -5px 0px/.test(metric.boxShadow), false, `${bucket} cell does not paint the bottom load stripe`);
+        assert.equal(metric.timeColor, referenceTimeColor, `${bucket} time text uses the normal schedule color`);
+    }
 }
 
 async function assertWideScheduleLayout(page, label, options = {}) {
@@ -659,7 +737,6 @@ async function assertNoControlOverlap(page, label) {
         const dateTo = rect('#scheduleDateTo');
         const exportButton = rect('#exportExcelBtn');
         const printButton = rect('#printBtn');
-        const viewSwitch = rect('#scheduleViewSwitch');
         const wrapper = document.querySelector('#scheduleWrapper');
         return {
             command,
@@ -669,7 +746,6 @@ async function assertNoControlOverlap(page, label) {
             dateTo,
             exportButton,
             printButton,
-            viewSwitch,
             viewportWidth: window.innerWidth,
             pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
             wrapperClientWidth: wrapper?.clientWidth || 0,
@@ -685,9 +761,40 @@ async function assertNoControlOverlap(page, label) {
     assert.ok(metrics.dateFrom?.right <= metrics.dateTo?.left + 1, `${label}: date inputs do not overlap`);
     assert.ok(metrics.exportButton?.right <= metrics.command.right + 2, `${label}: export stays inside command bar`);
     assert.ok(metrics.printButton?.right <= metrics.command.right + 2, `${label}: print stays inside command bar`);
-    assert.ok(metrics.viewSwitch?.right <= metrics.command.right + 2, `${label}: view switch stays inside command bar`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
     assert.ok(metrics.wrapperScrollWidth >= metrics.wrapperClientWidth, `${label}: schedule wrapper owns horizontal width`);
+}
+
+async function assertDepartmentChipsFit(page, label) {
+    const metrics = await page.evaluate(() => Array.from(document.querySelectorAll('#deptFilter .dept-chip')).map(chip => {
+        const label = chip.querySelector('.dept-chip-label');
+        const count = chip.querySelector('.dept-chip-count');
+        const chipBox = chip.getBoundingClientRect();
+        const labelBox = label?.getBoundingClientRect();
+        const countBox = count?.getBoundingClientRect();
+        const labelStyle = label ? getComputedStyle(label) : null;
+        return {
+            text: label?.textContent?.trim() || '',
+            chipWidth: chipBox.width,
+            labelWidth: labelBox?.width || 0,
+            labelRight: labelBox?.right || 0,
+            countLeft: countBox?.left || 0,
+            countRight: countBox?.right || 0,
+            chipRight: chipBox.right,
+            labelOverflow: labelStyle?.overflow || '',
+            labelTextOverflow: labelStyle?.textOverflow || '',
+            labelWhiteSpace: labelStyle?.whiteSpace || ''
+        };
+    }));
+    assert.ok(metrics.length > 0, `${label}: department chips are rendered`);
+    for (const chip of metrics) {
+        assert.ok(chip.chipWidth > 0, `${label}: ${chip.text} chip is measurable`);
+        assert.equal(chip.labelOverflow, 'hidden', `${label}: ${chip.text} label clips inside the chip`);
+        assert.equal(chip.labelTextOverflow, 'ellipsis', `${label}: ${chip.text} label uses ellipsis`);
+        assert.equal(chip.labelWhiteSpace, 'nowrap', `${label}: ${chip.text} label stays on one line`);
+        assert.ok(chip.labelRight <= chip.countLeft + 1, `${label}: ${chip.text} label does not overlap the count`);
+        assert.ok(chip.countRight <= chip.chipRight + 1, `${label}: ${chip.text} count stays inside the chip`);
+    }
 }
 
 async function runDesktopFlow(browser, base) {
@@ -712,8 +819,11 @@ async function runDesktopFlow(browser, base) {
         assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
         await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
         await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
-        await page.locator('#scheduleViewSwitch').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('#scheduleViewMainBtn').getAttribute('aria-pressed'), 'true', 'main schedule view starts active');
+        assert.equal(await page.locator('#scheduleViewSwitch').count(), 0, 'visible view switch is removed from schedule shell');
+        assert.equal(await page.locator('[data-schedule-view]').count(), 0, 'schedule diagnostic view buttons are removed from the visible shell');
+        assert.equal(await page.locator('.staff-schedule-command-metrics').count(), 0, 'schedule header metric chips are removed from the visible shell');
+        assert.equal(await page.locator('#scheduleSummary .summary-chip').count(), 0, 'schedule summary status chips are removed from the visible shell');
+        await assertDepartmentChipsFit(page, 'desktop first-half');
         const actionMetrics = await page.evaluate(() => {
             const header = document.querySelector('.staff-schedule-header-actions')?.getBoundingClientRect();
             const exportButton = document.getElementById('exportExcelBtn')?.getBoundingClientRect();
@@ -735,28 +845,10 @@ async function runDesktopFlow(browser, base) {
         assert.equal(apiCalls.bulkBodies.length, 0, 'hidden fill UI does not run bulk fill');
 
         const hoursCallsBefore = apiCalls.hoursRanges.length;
-        await page.locator('[data-schedule-view="hours"]').click();
-        await page.waitForFunction(() => document.querySelector('[data-schedule-view="hours"]')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
-        assert.equal(apiCalls.hoursRanges.length, hoursCallsBefore + 1, 'hours view fetches hours once');
-        assert.deepEqual(apiCalls.hoursRanges.at(-1), { from: firstHalfFrom, to: firstHalfTo }, 'hours view uses selected first-half range');
-        assert.equal(await page.locator('#scheduleBody').evaluate(el => el.classList.contains('show-hours')), true, 'hours view renders hour cells on schedule table');
-
-        await page.locator('[data-schedule-view="load"]').click();
-        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('[data-schedule-view="load"]').getAttribute('aria-pressed'), 'true', 'load view becomes active');
-        assert.equal(await page.locator('#scheduleWrapper').isHidden(), true, 'load view hides main schedule wrapper');
-        assert.equal(await page.locator('#loadViewHead th').count(), 17, 'load view header uses all selected range dates plus metric and total columns');
-
-        await page.locator('[data-schedule-view="accounts"]').click();
-        await page.locator('#scheduleWrapper').waitFor({ state: 'visible' });
-        await page.locator('#linkStatsBar').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('[data-schedule-view="accounts"]').getAttribute('aria-pressed'), 'true', 'accounts view becomes active');
-        assert.equal(await page.locator('#scheduleBody .link-badge').count(), STAFF_ROWS.length, 'accounts view renders account badges');
-
-        await page.locator('#scheduleViewMainBtn').click();
-        await page.waitForFunction(() => document.querySelector('#scheduleViewMainBtn')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
-        assert.equal(await page.locator('#linkStatsBar').count(), 0, 'main schedule view removes account stats');
-        assert.equal(await page.locator('#scheduleWrapper').isVisible(), true, 'main schedule view shows schedule wrapper again');
+        assert.equal(apiCalls.hoursRanges.length, hoursCallsBefore, 'removed hours view does not fetch hours');
+        assert.equal(await page.locator('#scheduleBody').evaluate(el => el.classList.contains('show-hours')), false, 'removed hours view cannot mark schedule rows');
+        assert.equal(await page.locator('#loadViewWrapper').isHidden(), true, 'removed load view keeps diagnostics hidden');
+        assert.equal(await page.locator('#linkStatsBar').count(), 0, 'removed accounts view keeps account stats hidden');
 
         const downloadPromise = page.waitForEvent('download');
         await page.locator('#exportExcelBtn').click();
@@ -796,7 +888,7 @@ async function runDesktopFlow(browser, base) {
         for (const [from, to, expectedDays] of manualLongRanges) {
             await applyManualRange(page, from, to);
             await assertWideScheduleLayout(page, `desktop manual ${expectedDays}d`, { expectedDays, minDayWidth: 136 });
-            if (from === '2026-07-01') await assertWeekendFullShiftLoadMarker(page);
+            if (from === '2026-07-01') await assertShiftLoadClassesDoNotPaintScheduleCells(page);
         }
 
         // Hours toggle is no longer part of the visible command surface.
@@ -812,17 +904,8 @@ async function runDesktopFlow(browser, base) {
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForDayColumns(page, monthDays);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 136 });
-
-        await page.locator('[data-schedule-view="load"]').click();
-        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('#loadViewHead th').count(), monthDays + 2, 'load view header uses all month dates plus metric and total columns');
-        await assertWideScheduleLayout(page, 'desktop month load view', {
-            wrapperSelector: '#loadViewWrapper',
-            expectedDays: monthDays,
-            minDayWidth: 78
-        });
-        await page.locator('#scheduleViewMainBtn').click();
-        await page.waitForFunction(() => document.querySelector('#scheduleViewMainBtn')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
+        await assertDepartmentChipsFit(page, 'desktop month');
+        assert.equal(await page.locator('#loadViewWrapper').isHidden(), true, 'month schedule keeps removed load view hidden');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month.png'), fullPage: true });
 
         await page.locator('#todayWeekBtn').click();
@@ -844,12 +927,14 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
         await assertNoControlOverlap(page, 'mobile first-half');
+        await assertDepartmentChipsFit(page, 'mobile first-half');
         await applyPreset(page, 'month');
         const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
         const monthTo = await page.locator('#scheduleDateTo').inputValue();
         const monthDays = dateRangeDays(monthFrom, monthTo);
         await waitForDayColumns(page, monthDays);
         await assertNoControlOverlap(page, 'mobile month');
+        await assertDepartmentChipsFit(page, 'mobile month');
         await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 120 });
         await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
     } finally {

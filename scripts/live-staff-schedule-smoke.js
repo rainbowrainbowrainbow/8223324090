@@ -280,7 +280,6 @@ async function assertHeaderSurface(page) {
     assert.equal(await page.locator('.schedule-toolbar').count(), 0, 'legacy .schedule-toolbar is absent');
     await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
     await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
-    await page.locator('#scheduleViewSwitch').waitFor({ state: 'visible' });
     await page.locator('#scheduleDateFrom').waitFor({ state: 'visible' });
     await page.locator('#scheduleDateTo').waitFor({ state: 'visible' });
     await page.locator('#applyScheduleRangeBtn').waitFor({ state: 'visible' });
@@ -294,7 +293,14 @@ async function assertHeaderSurface(page) {
     assert.equal(presetState.some(item => item.label.includes('кінець')), false, 'period preset labels do not use "кінець"');
     assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, 'Показати другу половину місяця', 'second-half preset keeps an accessible label');
     assert.match(presetState.find(item => item.preset === 'second-half')?.title || '', /16/, 'second-half preset title explains the date range');
-    assert.equal((await page.locator('#scheduleSummary').innerText()).includes('Не заповнено'), false, 'schedule summary hides unset noise');
+    const summaryState = await page.locator('#scheduleSummary').evaluate(summary => ({
+        hidden: summary.hidden,
+        text: summary.textContent.trim(),
+        chipCount: summary.querySelectorAll('.summary-chip').length
+    }));
+    assert.equal(summaryState.hidden, true, 'schedule summary is hidden in the schedule section');
+    assert.equal(summaryState.text, '', 'schedule summary does not render extra status text');
+    assert.equal(summaryState.chipCount, 0, 'schedule summary status chips are removed');
 }
 
 async function assertNoDuplicateDepartmentSubGroups(page) {
@@ -424,27 +430,15 @@ async function assertCompactHeaderActions(page) {
     assert.ok(metrics.header.width <= 240, 'export/print action group stays compact');
 }
 
-async function assertViewSwitchReadOnlyModes(page) {
-    assert.equal(await page.locator('[data-schedule-view="schedule"]').getAttribute('aria-pressed'), 'true', 'schedule view starts active');
-
-    await page.locator('[data-schedule-view="hours"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-schedule-view="hours"]')?.getAttribute('aria-pressed') === 'true');
-    assert.equal(await page.locator('#scheduleBody').evaluate(el => el.classList.contains('show-hours')), true, 'hours view marks schedule rows');
-
-    await page.locator('[data-schedule-view="load"]').click();
-    await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('[data-schedule-view="load"]').getAttribute('aria-pressed'), 'true', 'load view becomes active');
-    assert.equal(await page.locator('#scheduleWrapper').isHidden(), true, 'load view hides the main schedule wrapper');
-
-    await page.locator('[data-schedule-view="accounts"]').click();
-    await page.locator('#scheduleWrapper').waitFor({ state: 'visible' });
-    await page.locator('#linkStatsBar').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('[data-schedule-view="accounts"]').getAttribute('aria-pressed'), 'true', 'accounts view becomes active');
-
-    await page.locator('[data-schedule-view="schedule"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-schedule-view="schedule"]')?.getAttribute('aria-pressed') === 'true');
-    assert.equal(await page.locator('#linkStatsBar').count(), 0, 'schedule view removes account stats');
-    assert.equal(await page.locator('#scheduleWrapper').isVisible(), true, 'schedule view restores the main schedule wrapper');
+async function assertScheduleExtraViewsRemoved(page) {
+    assert.equal(await page.locator('#scheduleViewSwitch').count(), 0, 'visible schedule view switch is removed');
+    assert.equal(await page.locator('[data-schedule-view]').count(), 0, 'schedule diagnostic view buttons are removed');
+    assert.equal(await page.locator('.staff-schedule-command-metrics').count(), 0, 'schedule header metric chips are removed');
+    assert.equal(await page.locator('#scheduleSummary .summary-chip').count(), 0, 'schedule summary status chips are removed');
+    assert.equal(await page.locator('#scheduleBody').evaluate(el => el.classList.contains('show-hours')), false, 'removed hours view cannot mark schedule rows');
+    assert.equal(await page.locator('#loadViewWrapper').isHidden(), true, 'removed load view stays hidden');
+    assert.equal(await page.locator('#linkStatsBar').count(), 0, 'removed accounts view does not render account stats');
+    assert.equal(await page.locator('#scheduleWrapper').isVisible(), true, 'main schedule wrapper remains visible');
 }
 
 async function assertInvalidRangesStayPut(page, from, to) {
@@ -640,7 +634,7 @@ async function runDesktopFlow(browser, base, session) {
         assert.match(firstHalf.label, /1[\s\S]+15[\s\S]+20\d{2}/, 'period label reflects 1-15 range');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-first-half.png'), fullPage: true });
         await assertCompactHeaderActions(page);
-        await assertViewSwitchReadOnlyModes(page);
+        await assertScheduleExtraViewsRemoved(page);
 
         await assertInvalidRangesStayPut(page, firstHalf.from, firstHalf.to);
         const monthRange = await assertSearchPersistence(page);
@@ -648,16 +642,7 @@ async function runDesktopFlow(browser, base, session) {
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForColumnsToMatchInputs(page);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 136 });
-        await page.locator('[data-schedule-view="load"]').click();
-        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('#loadViewHead th').count(), monthDays + 2, 'live load view header uses all month dates plus metric and total columns');
-        await assertWideScheduleLayout(page, 'desktop month load view', {
-            wrapperSelector: '#loadViewWrapper',
-            expectedDays: monthDays,
-            minDayWidth: 78
-        });
-        await page.locator('[data-schedule-view="schedule"]').click();
-        await page.waitForFunction(() => document.querySelector('[data-schedule-view="schedule"]')?.getAttribute('aria-pressed') === 'true');
+        await assertScheduleExtraViewsRemoved(page);
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month-search.png'), fullPage: true });
 
         await assertExportFilename(page, monthRange);
@@ -738,7 +723,7 @@ async function run() {
 
         console.log(`Live staff schedule smoke OK: ${base}`);
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, month=${desktop.month}`);
-        console.log(`  OK controls: headerActions=${desktop.headerActions}, viewSwitch=hours/load/accounts/schedule`);
+        console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: stubbed window.print`);
         console.log(`  OK mobile: ${mobile.viewport} month=${mobile.month}, days=${mobile.dayCount}`);

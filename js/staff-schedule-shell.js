@@ -23,24 +23,6 @@
                         <h2>Графік роботи</h2>
                         <p>Період, фільтр і активні зміни команди.</p>
                     </div>
-                    <div class="staff-schedule-command-metrics" aria-label="Стан графіка" aria-live="polite">
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--period">
-                            <span>Період</span>
-                            <strong id="scheduleHeaderPeriod">-</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--dept">
-                            <span>Фільтр</span>
-                            <strong id="scheduleHeaderDepartment">Всі</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--staff">
-                            <span>Працівники</span>
-                            <strong id="scheduleHeaderStaffCount">0</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--status">
-                            <span>Сьогодні</span>
-                            <strong id="scheduleHeaderStatus">0 активні</strong>
-                        </div>
-                    </div>
                 </div>
             </section>
 
@@ -71,13 +53,6 @@
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
                         <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в CSV">Експорт</button>
                         <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк графіку">Друк</button>
-                    </div>
-                    <div id="scheduleViewSwitch" class="staff-schedule-view-switch" aria-label="Вид графіка">
-                        <span class="staff-schedule-view-label">Вид</span>
-                        <button type="button" id="scheduleViewMainBtn" class="staff-schedule-view-option active" data-schedule-view="schedule" aria-pressed="true">Графік</button>
-                        <button type="button" id="toggleHoursBtn" class="staff-schedule-view-option" data-schedule-view="hours" aria-pressed="false">Години</button>
-                        <button type="button" id="toggleLoadViewBtn" class="staff-schedule-view-option" data-schedule-view="load" aria-pressed="false">Навантаження</button>
-                        <button type="button" id="toggleLinkViewBtn" class="staff-schedule-view-option" data-schedule-view="accounts" aria-pressed="false">Акаунти</button>
                     </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">

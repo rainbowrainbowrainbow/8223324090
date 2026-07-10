@@ -2450,6 +2450,20 @@ function removeLinkStatsBar() {
     document.getElementById('linkStatsBar')?.remove();
 }
 
+function resetSchedulePrimaryViewMode() {
+    StaffState.viewMode = 'schedule';
+    StaffState.showHours = false;
+    StaffState.showLoadView = false;
+    StaffState.showLinkView = false;
+    StaffState.hoursData = null;
+    removeLinkStatsBar();
+    const loadWrapper = document.getElementById('loadViewWrapper');
+    const scheduleWrapper = document.getElementById('scheduleWrapper');
+    if (loadWrapper) loadWrapper.style.display = 'none';
+    if (scheduleWrapper) scheduleWrapper.style.display = '';
+    syncScheduleViewSwitch();
+}
+
 async function setScheduleViewMode(mode = 'schedule') {
     const nextMode = normalizeScheduleViewMode(mode);
     StaffState.viewMode = nextMode;
@@ -2488,7 +2502,12 @@ async function setScheduleViewMode(mode = 'schedule') {
 }
 
 function bindScheduleViewSwitchControls() {
-    document.querySelectorAll('[data-schedule-view]').forEach(button => {
+    const buttons = document.querySelectorAll('[data-schedule-view]');
+    if (!buttons.length) {
+        resetSchedulePrimaryViewMode();
+        return;
+    }
+    buttons.forEach(button => {
         if (button.dataset.scheduleViewBound === 'true') return;
         button.addEventListener('click', () => setScheduleViewMode(button.dataset.scheduleView));
         button.dataset.scheduleViewBound = 'true';
@@ -3239,18 +3258,10 @@ function summarizeScheduleRange(staffList = null, dates = getScheduleDates()) {
 function renderSummary(staffList = null, dates = getScheduleDates()) {
     const container = document.getElementById('scheduleSummary');
     const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
-    const summary = summarizeScheduleRange(filtered, dates);
-    const { days, working, dayoff, vacation, sick, remote, replacements } = summary;
-
-    container.innerHTML = `
-        <div class="summary-chip"><span class="chip-dot" style="background:#14B8A6"></span> Період: <span class="chip-count">${days}</span></div>
-        <div class="summary-chip"><span class="chip-dot" style="background:#10B981"></span> На роботі: <span class="chip-count">${working}</span></div>
-        <div class="summary-chip"><span class="chip-dot" style="background:#94A3B8"></span> Вихідні: <span class="chip-count">${dayoff}</span></div>
-        <div class="summary-chip"><span class="chip-dot" style="background:#3B82F6"></span> Відпустка: <span class="chip-count">${vacation}</span></div>
-        <div class="summary-chip"><span class="chip-dot" style="background:#EF4444"></span> Лікарняний: <span class="chip-count">${sick}</span></div>
-        <div class="summary-chip"><span class="chip-dot" style="background:#F59E0B"></span> Віддалено: <span class="chip-count">${remote}</span></div>
-        ${replacements > 0 ? `<div class="summary-chip summary-chip-replacement"><span class="chip-dot" style="background:#F97316"></span> Заміни: <span class="chip-count">${replacements}</span></div>` : ''}
-    `;
+    if (container) {
+        container.innerHTML = '';
+        container.hidden = true;
+    }
     updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered);
 }
 
@@ -3442,13 +3453,14 @@ function renderSchedule() {
             : `Розгорнути групу ${deptLabel}`;
 
         // Department header
-        bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td colspan="${dates.length + 1}">
+        bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td class="schedule-category-sticky-cell schedule-group-sticky-cell">
             <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}">
                 <span class="schedule-group-caret" aria-hidden="true"></span>
                 <span class="dept-icon" aria-hidden="true">${icon}</span>
                 <span class="schedule-group-label">${escapeHtml(deptLabel)}</span>
                 <span class="dept-count">${deptStaff.length}</span>
             </button>
+        </td><td class="schedule-category-fill-cell schedule-group-fill-cell" colspan="${dates.length}" aria-hidden="true">
         </td></tr>`;
 
         if (!groupExpanded) continue;
@@ -3460,7 +3472,9 @@ function renderSchedule() {
                 const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
                 if (sgStaff.length === 0) continue;
 
-                bodyHtml += `<tr class="sub-group-row"><td colspan="${dates.length + 1}"><span class="sub-group-icon">${sg.icon}</span> ${sg.label} <span class="sub-group-count">${sgStaff.length}</span></td></tr>`;
+                bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
+                    <span class="sub-group-icon">${sg.icon}</span> ${escapeHtml(sg.label)} <span class="sub-group-count">${sgStaff.length}</span>
+                </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
 
                 for (const emp of sgStaff) {
                     renderedStaffIds.add(Number(emp.id));
@@ -5117,6 +5131,7 @@ async function initStaffSchedulePage(options = {}) {
         renderDeptFilter();
 
         // Init the rolling window: yesterday, today, and the upcoming days.
+        resetSchedulePrimaryViewMode();
         await goToWeek(getScheduleFocusStart(new Date()));
 
         // Event listeners

@@ -643,7 +643,7 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey,\s*shiftPreferences/);
     });
 
-    it('marks partial shifts with durable load classes and theme-safe colors', () => {
+    it('keeps shift load classes as metadata without painting schedule cells', () => {
         assert.match(staffPage, /const STAFF_FULL_SHIFT_MINUTES = 8 \* 60/);
         assert.match(staffPage, /const STAFF_WEEKEND_FULL_SHIFT_MINUTES = 10 \* 60/);
         assert.match(staffPage, /function scheduleShiftLoadFullShiftMinutes/);
@@ -662,15 +662,13 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(staffPage, /class="sch-load-badge"/);
         assert.match(staffCss, /\.sch-cell \.sch-load-badge/);
         assert.match(staffCss, /display: none !important/);
-        assert.match(staffCss, /--sch-load-marker/);
-        assert.match(staffCss, /--sch-load-bg/);
-        assert.match(staffCss, /\.sch-cell\[class\*="shift-load-"\]::after/);
-        assert.match(staffCss, /\.sch-cell\.shift-load-half/);
-        assert.match(staffCss, /\.sch-cell\.shift-load-three-quarter/);
-        assert.match(staffCss, /\.sch-cell\.shift-load-long/);
-        assert.match(staffCss, /\.sch-cell\.shift-load-full::after/);
-        assert.match(staffCss, /display: none;/);
-        assert.match(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-half/);
-        assert.match(staffCss, /\[data-theme="dark"\] body\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-three-quarter/);
+        assert.match(staffCss, /\.sch-cell\[class\*="shift-load-"\]\s*\{/);
+        assert.match(staffCss, /\.sch-cell\[class\*="shift-load-"\]::after\s*\{[\s\S]*content:\s*none;[\s\S]*display:\s*none;/);
+        assert.doesNotMatch(staffCss, /--sch-load-(?:accent|border|bg|bg-soft|marker)/);
+        assert.doesNotMatch(staffCss, /inset 0 -5px 0 var\(--sch-load-accent\)/);
+        assert.doesNotMatch(staffCss, /\.sch-cell\.shift-load-(?:quarter|half|three-quarter|long|extra-long)[^{]*\{[\s\S]*background:/);
+        assert.doesNotMatch(staffCss, /\.sch-cell\.shift-load-(?:quarter|half|three-quarter|long|extra-long) \.sch-time/);
+        assert.doesNotMatch(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-/);
+        assert.doesNotMatch(staffCss, /\[data-theme="dark"\] body\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-/);
     });
 });

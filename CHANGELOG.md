@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.80 - Staff Schedule Surface Cleanup
+
+### Staff Schedule / Surface cleanup / (10.07.2026) [codex]
+- **Зайві summary chips у графіку прибрано** - блоки `Період`, `На роботі`, `Вихідні`, `Відпустка`, `Лікарняний`, `Віддалено` більше не рендеряться під фільтрами графіка.
+- **Перемикач `Вид` прибрано з графіка** - кнопки `Графік`, `Години`, `Навантаження`, `Акаунти` більше не займають місце у command surface; primary schedule table лишається основною поверхнею.
+- **Фільтри відділів більше не вилазять за рамки** - department chips у графіку отримали стабільні ширини, ellipsis для довгих назв і regression coverage на desktop/mobile.
+- **Regression coverage оновлено** - static UI guard, локальний Playwright smoke і live staff schedule smoke тепер фіксують відсутність старих view/summary блоків.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule shell/styles, tests, smoke scripts і version/cache refs.
+
+---
+
 ## v0.78.79 - Staff Schedule Weekend Full Shift
 
 ### Staff Schedule / Weekend shift markers / (09.07.2026) [codex]

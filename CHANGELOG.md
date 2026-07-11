@@ -4,6 +4,14 @@
 
 ---
 
+## v0.78.92 - Shared Header Actions Hotfix
+
+### Shared UI / Header actions / (11.07.2026) [codex]
+- **Dashboard settings adapter** - dashboard page now exposes `DashboardPage` on `window`, so the shared header gear opens the real dashboard settings overlay on live.
+- **Regression guard** - UI smoke now locks the shared dashboard settings adapter contract to prevent the header gear from silently falling back.
+
+---
+
 ## v0.78.91 - Shared Header Actions
 
 ### Shared UI / Header actions / (11.07.2026) [codex]

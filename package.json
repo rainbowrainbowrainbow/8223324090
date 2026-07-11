@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.91",
+  "version": "0.78.92",
   "eventGenix": {
-    "releaseLabel": "Shared Header Actions"
+    "releaseLabel": "Shared Header Actions Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

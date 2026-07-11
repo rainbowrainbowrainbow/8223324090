@@ -8666,6 +8666,8 @@ const DashboardPage = (() => {
     };
 })();
 
+window.DashboardPage = DashboardPage;
+
 // Auto-init on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
     DashboardPage.init();

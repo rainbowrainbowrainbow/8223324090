@@ -756,7 +756,7 @@ function scheduleHealthIssue({ code, severity = 'warning', scope = 'row', title,
     };
 }
 
-function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = scheduleVisibleStaff()) {
+function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = scheduleVisibleStaff(), options = {}) {
     const dateKeys = dates.map(formatDateStr);
     const dateSet = new Set(dateKeys);
     const staffById = new Map((visibleStaff || []).map(staff => [Number(staff.id), staff]));
@@ -876,7 +876,7 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
         }
     }
 
-    const grouped = groupStaffByScheduleDepartment(visibleStaff || []);
+    const grouped = groupStaffByScheduleDepartment(visibleStaff || [], { department: options.department });
     for (const [department, deptStaff] of Object.entries(grouped)) {
         const minWorking = SCHEDULE_HEALTH_DEPARTMENT_MIN_WORKING[department] || 0;
         if (!minWorking) continue;
@@ -2006,10 +2006,18 @@ function scheduleDepartmentOptions() {
     return ordered;
 }
 
-function groupStaffByScheduleDepartment(staffList = StaffState.staff) {
+function scheduleStaffGroupingDepartmentKeys(staff = {}, options = {}) {
+    const activeDepartment = normalizeScheduleDisplayGroupKey(options.department || options.activeDepartment || '');
+    if (activeDepartment && activeDepartment !== 'all') {
+        return staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : [];
+    }
+    return staffScheduleDepartmentKeys(staff);
+}
+
+function groupStaffByScheduleDepartment(staffList = StaffState.staff, options = {}) {
     const grouped = {};
     for (const staff of staffList) {
-        for (const key of staffScheduleDepartmentKeys(staff)) {
+        for (const key of scheduleStaffGroupingDepartmentKeys(staff, options)) {
             if (!grouped[key]) grouped[key] = [];
             grouped[key].push(staff);
         }
@@ -3452,11 +3460,11 @@ function renderSchedule() {
     const tbody = document.getElementById('scheduleBody');
     const baseFiltered = scheduleVisibleStaff();
     renderScheduleStaffFilterInfo(baseFiltered);
-    const health = buildScheduleHealth(dates, baseFiltered);
+    const health = buildScheduleHealth(dates, baseFiltered, { department: StaffState.activeDept });
     const filtered = scheduleHealthFilteredStaff(baseFiltered, health);
 
     // Group staff by department
-    const grouped = groupStaffByScheduleDepartment(filtered);
+    const grouped = groupStaffByScheduleDepartment(filtered, { department: StaffState.activeDept });
 
     let bodyHtml = '';
 
@@ -4989,7 +4997,7 @@ function scheduleExportCell(entry) {
 
 function buildScheduleWorkbookHtml(options = {}) {
     const dates = getScheduleDates();
-    const grouped = groupStaffByScheduleDepartment(scheduleExportVisibleStaff());
+    const grouped = groupStaffByScheduleDepartment(scheduleExportVisibleStaff(), { department: StaffState.activeDept });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
     const periodLabel = formatScheduleRangeLabel(from, to);

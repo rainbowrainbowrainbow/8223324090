@@ -335,6 +335,42 @@ async function assertNoDuplicateDepartmentSubGroups(page) {
     assert.deepEqual(duplicates, [], 'schedule table does not render duplicate department/subgroup labels');
 }
 
+async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
+    await page.locator('#scheduleStaffSearch').fill('');
+    const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(buttons => buttons
+        .map(button => ({
+            key: button.getAttribute('data-dept') || '',
+            label: button.querySelector('.dept-chip-label')?.textContent?.trim() || button.textContent.trim(),
+            count: Number(button.querySelector('.dept-chip-count')?.textContent?.trim() || 0)
+        }))
+        .filter(item => item.key && item.count > 0));
+    assert.ok(filters.length > 0, 'department filter chips with staff are rendered');
+
+    for (const filter of filters) {
+        await page.evaluate(key => {
+            document.querySelector(`#deptFilter .dept-chip[data-dept="${CSS.escape(key)}"]`)?.click();
+        }, filter.key);
+        await page.waitForFunction(key => {
+            return document.querySelector(`#deptFilter .dept-chip[data-dept="${CSS.escape(key)}"]`)?.getAttribute('aria-pressed') === 'true';
+        }, filter.key);
+
+        const state = await page.locator('#scheduleBody').evaluate(tbody => ({
+            departments: Array.from(tbody.querySelectorAll('tr.dept-row')).map(row => row.getAttribute('data-dept') || ''),
+            hasEmptyState: Boolean(tbody.querySelector('.schedule-health-empty-row'))
+        }));
+        assert.equal(state.hasEmptyState, false, `${filter.label}: active department filter has visible schedule groups`);
+        assert.ok(state.departments.length > 0, `${filter.label}: active department filter renders a group header`);
+        assert.deepEqual(
+            Array.from(new Set(state.departments)),
+            [filter.key],
+            `${filter.label}: active department filter renders only its own schedule group`
+        );
+    }
+
+    await page.evaluate(() => document.querySelector('#deptFilter .dept-chip[data-dept="all"]')?.click());
+    await page.waitForFunction(() => document.querySelector('#deptFilter .dept-chip[data-dept="all"]')?.getAttribute('aria-pressed') === 'true');
+}
+
 async function scheduleEmployeeRowCount(page) {
     return page.locator('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').count();
 }
@@ -680,6 +716,7 @@ async function runDesktopFlow(browser, base, session) {
         await assertHeaderSurface(page);
         await waitForDayColumns(page, 9);
         await assertNoDuplicateDepartmentSubGroups(page);
+        await assertDepartmentFiltersRenderOnlyActiveGroup(page);
         await assertScheduleGroupsCollapsedByDefault(page);
         await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
@@ -729,7 +766,8 @@ async function runDesktopFlow(browser, base, session) {
             secondHalf: `${secondHalf.from}..${secondHalf.to}`,
             month: `${monthRange.from}..${monthRange.to}`,
             exportFilename: `grafik_${monthRange.from}_${monthRange.to}.xls`,
-            headerActions: 'export/print'
+            headerActions: 'export/print',
+            filteredGroups: 'active-department-only'
         };
     } finally {
         await page?.close().catch(() => {});
@@ -799,6 +837,7 @@ async function run() {
         console.log(`Live staff schedule smoke OK: ${base}`);
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
+        console.log(`  OK filters: ${desktop.filteredGroups}`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: Excel schedule table`);
         console.log(`  OK mobile: ${mobile.viewport} month=${mobile.month}, days=${mobile.dayCount}`);

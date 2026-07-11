@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.87 - Staff Schedule Filter Group Fix
+
+### Staff Schedule / Department filters / (11.07.2026) [codex]
+- **Фільтри графіка більше не показують чужі категорії** - при виборі `Рецепшен`, `Кафе`, `Прибирання` або іншого відділу таблиця рендерить тільки активну секцію.
+- **Спільні співробітники лишаються у правильному фільтрі** - люди з кількома професіями все ще знаходяться через потрібний chip, але не розтягують видимий результат на додаткові відділи.
+- **Експорт, друк і health-перевірки синхронізовані з активним фільтром** - workbook/print view і пасивні попередження використовують той самий department context, що й таблиця.
+- **Regression coverage посилено** - static guard і live staff schedule smoke тепер перевіряють, що активний department filter показує тільки свою групу.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule grouping, read-only smoke і version/cache refs.
+
+---
+
 ## v0.78.86 - Staff Schedule CRM Icons
 
 ### Staff Schedule / Department icons / (11.07.2026) [codex]

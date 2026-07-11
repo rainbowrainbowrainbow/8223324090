@@ -48,6 +48,9 @@
         document.querySelector('.header')?.classList.remove('hidden');
         document.getElementById('sidebarToggle')?.classList.remove('hidden');
         document.querySelector('.btn-logout')?.classList.remove('hidden');
+        window.HeaderSettingsActions?.refresh?.();
+        document.getElementById('headerSettingsBtn')?.classList.remove('hidden');
+        document.getElementById('headerThemeToggle')?.classList.remove('hidden');
 
         if (typeof Sidebar !== 'undefined') {
             if (typeof Sidebar.markShellReady === 'function') Sidebar.markShellReady();

@@ -682,6 +682,20 @@
             bindConstructorButton(state.toggleBtn);
             return;
         }
+        const sharedHeaderButton = document.getElementById('headerSettingsBtn');
+        if (sharedHeaderButton) {
+            sharedHeaderButton.id = 'timelineConstructorBtn';
+            sharedHeaderButton.classList.remove('header-settings-btn');
+            sharedHeaderButton.classList.add('timeline-constructor-btn', 'timeline-header-settings-btn', 'toolbarIconButton', 'toolbarGhostButton');
+            sharedHeaderButton.title = 'Налаштування таймлайну';
+            sharedHeaderButton.setAttribute('aria-label', 'Налаштування таймлайну');
+            sharedHeaderButton.setAttribute('aria-pressed', 'false');
+            sharedHeaderButton.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Налаштування</span>';
+            placeConstructorButton(sharedHeaderButton);
+            bindConstructorButton(sharedHeaderButton);
+            state.toggleBtn = sharedHeaderButton;
+            return;
+        }
         const host = constructorButtonHost();
         if (!host) return;
 
@@ -720,7 +734,10 @@
     }
 
     function openSettingsCenter() {
-        if (!canConfigure()) return;
+        if (!canConfigure()) {
+            notify('Налаштування таймлайну недоступні для вашої ролі', 'warning');
+            return;
+        }
         window.location.assign(settingsCenterUrl());
     }
 
@@ -982,7 +999,10 @@
     function refreshAccess() {
         removeBusinessSwitcher();
         const allowed = canConfigure();
-        if (state.toggleBtn) state.toggleBtn.classList.toggle('hidden', !allowed);
+        if (state.toggleBtn) {
+            state.toggleBtn.classList.remove('hidden');
+            state.toggleBtn.dataset.timelineSettingsAllowed = allowed ? 'true' : 'false';
+        }
         if (!allowed && state.constructorActive) toggleConstructorMode(false);
         loadServerSettings().then(data => {
             if (!data) return;

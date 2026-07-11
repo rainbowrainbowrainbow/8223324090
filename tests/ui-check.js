@@ -2869,6 +2869,12 @@ const nonAuthJsLogoutOwners = walkFiles(path.join(ROOT, 'js'), file => file.ends
 const inlineLogoutOwners = pagesWithLogoutButton.filter(page => (
     getInlineScripts(page.html).some(code => code.includes('logoutBtn') && code.includes('addEventListener'))
 ));
+const inlineHeaderSettingsOwners = htmlFiles
+    .map(file => ({ file, html: fs.readFileSync(path.join(ROOT, file), 'utf8') }))
+    .filter(page => getInlineScripts(page.html).some(code => (
+        code.includes('headerSettingsBtn')
+        && (code.includes('addEventListener') || code.includes('onclick'))
+    )));
 const legacyHeaderLogoutOutliers = ['afisha.html', 'certificates.html', 'designs.html']
     .map(file => {
         const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -2888,6 +2894,12 @@ const pagesWithStaticHeaderThemeToggle = htmlFiles.filter(file => {
     dom.window.close();
     return hasToggle;
 });
+const pagesWithStaticHeaderSettingsButton = htmlFiles.filter(file => {
+    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    const hasSettings = !!dom.window.document.getElementById('headerSettingsBtn');
+    dom.window.close();
+    return hasSettings;
+});
 const pagesWithStaticTimelineConstructor = htmlFiles.filter(file => {
     const dom = new JSDOM(fs.readFileSync(path.join(ROOT, file), 'utf8'));
     const hasConstructor = !!dom.window.document.getElementById('timelineConstructorBtn');
@@ -2899,8 +2911,26 @@ check('Auth exposes shared bindLogoutButton', authCode.includes('function bindLo
 check('Auth owns logoutBtn DOM binding', authCode.includes("const btn = document.getElementById('logoutBtn')") && authCode.includes("btn.addEventListener('click'") && authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding calls canonical logout', authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding auto-initializes', authCode.includes('initSharedLogoutBinding();') && authCode.includes("document.addEventListener('DOMContentLoaded', bindLogoutButton"));
+check('Auth initializes shared header actions before the header theme toggle',
+    authCode.includes('function initSharedHeaderActions()')
+    && authCode.includes('function isEmbeddedShellMode()')
+    && authCode.includes("document.querySelectorAll('.header .user-panel')")
+    && authCode.includes("panel.classList.add('header-actions')")
+    && authCode.includes('HEADER_SETTINGS_PLACEHOLDER_TEXT')
+    && authCode.includes('function registerHeaderSettingsAction')
+    && authCode.includes('function createHeaderSettingsButton')
+    && authCode.includes("button.id = 'headerSettingsBtn'")
+    && authCode.includes("button.addEventListener('click', handleHeaderSettingsClick)")
+    && authCode.includes('setTimeout(initSharedHeaderActions, 115);')
+    && authCode.includes('setTimeout(initHeaderThemeToggle, 120);'));
 check('Auth runtime-injects headerThemeToggle after currentUser or before logout', authCode.includes('function initHeaderThemeToggle()') && authCode.includes("btn.id = 'headerThemeToggle'") && authCode.includes("btn.className = 'header-theme-toggle'") && authCode.includes("currentUser.insertAdjacentElement('afterend', btn)") && authCode.includes('userPanel.insertBefore(btn, logoutBtn)') && pagesWithStaticHeaderThemeToggle.length === 0);
-check('Timeline settings gear stays runtime-only in timeline visibility owner', pagesWithStaticTimelineConstructor.length === 0 && authCode.includes('TimelineVisibility.refreshAccess') && fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8').includes("button.id = 'timelineConstructorBtn'"));
+check('Header settings gear stays runtime-only and timeline adopts it without a duplicate',
+    pagesWithStaticHeaderSettingsButton.length === 0
+    && pagesWithStaticTimelineConstructor.length === 0
+    && authCode.includes('window.HeaderSettingsActions')
+    && authCode.includes("window.TimelineVisibility?.openSettingsCenter")
+    && fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8').includes("document.getElementById('headerSettingsBtn')")
+    && fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8').includes("sharedHeaderButton.id = 'timelineConstructorBtn'"));
 check('Auth stores refresh sessions, refreshes verify, and revokes logout sessions',
     authCode.includes("const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token'")
     && authCode.includes('function rememberAuthSession')
@@ -2918,6 +2948,7 @@ check('Root CRM pages do not reference missing favicon.ico asset', brokenRootFav
 check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => scriptIndex(getHtmlScripts(page.html), 'js/auth.js') >= 0));
 check('No page JS owns logoutBtn directly outside auth.js', nonAuthJsLogoutOwners.length === 0);
 check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length === 0);
+check('No inline header settings handlers exist outside the shared runtime owner', inlineHeaderSettingsOwners.length === 0);
 check('Legacy header logout outliers use shared logoutBtn binding', legacyHeaderLogoutOutliers.every(page => page.ok));
 
 // Check shared layout shell guardrails
@@ -2956,6 +2987,16 @@ const sidebarLinkedPagesWithoutShell = sidebarLinkedPages.filter(page => (
     !page.doc.getElementById('sidebarNav') || !page.doc.getElementById('sidebarLinks')
 ));
 const sharedHeaderContractExceptions = new Set(['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html']);
+const STANDARD_AUTH_SHELL_PAGES = [
+    'accounting-deposits.html', 'afisha.html', 'art-director.html', 'center.html', 'certificates.html',
+    'chat.html', 'chat-settings.html', 'content.html', 'copilot.html', 'customers.html',
+    'dashboard.html', 'demo.html', 'designer.html', 'designs.html', 'finance.html',
+    'game.html', 'graduation.html', 'guardian-ops.html', 'hermes-studio.html', 'hr.html',
+    'index.html', 'leads.html', 'omni.html', 'profile.html', 'programs.html',
+    'quiz.html', 'report-agent.html', 'reports.html', 'room.html', 'shop.html',
+    'sound.html', 'staff.html', 'status.html', 'tasks.html', 'timeline-settings.html',
+    'training.html', 'warehouse.html'
+];
 const headerShellPages = htmlFiles
     .map(file => {
         const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -2967,6 +3008,63 @@ const headerShellPagesMissingUserPanel = headerShellPages.filter(page => (
     !sharedHeaderContractExceptions.has(page.file)
     && !page.doc.querySelector('.header .header-content > .user-panel')
 ));
+const standardHeaderShellPages = STANDARD_AUTH_SHELL_PAGES.map(file => {
+    const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const dom = new JSDOM(html, { url: `http://localhost:3000/${file.replace('.html', '')}`, runScripts: 'outside-only' });
+    return { file, dom, doc: dom.window.document, html };
+});
+const missingStandardHeaderShellContract = standardHeaderShellPages.filter(page => (
+    !page.doc.querySelector('.header .header-content > .user-panel')
+    || !page.doc.querySelector('.header .header-content > .user-panel #logoutBtn.btn-logout[type="button"]:not([onclick])')
+    || scriptIndex(getHtmlScripts(page.html), 'js/auth.js') < 0
+    || !page.html.includes('css/layout.css')
+    || !page.html.includes('css/responsive.css')
+    || !page.html.includes('css/dark-mode.css')
+));
+const standardHeaderShellActionDrift = standardHeaderShellPages.filter(page => {
+    const panel = page.doc.querySelector('.header .header-content > .user-panel');
+    return !panel
+        || panel.querySelectorAll('#logoutBtn').length !== 1
+        || page.doc.querySelectorAll('#logoutBtn').length !== 1
+        || page.doc.querySelectorAll('#headerSettingsBtn').length !== 0
+        || page.doc.querySelectorAll('#headerThemeToggle').length !== 0
+        || [...panel.querySelectorAll('#logoutBtn')].some(btn => (
+            btn.getAttribute('type') !== 'button'
+            || btn.hasAttribute('onclick')
+        ));
+});
+const sharedHeaderActionsInitCode = sourceBlock(authCode, 'const HEADER_SETTINGS_PLACEHOLDER_TEXT', 'function clearAuthStorage');
+const runtimeHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { runScripts: 'outside-only' });
+runtimeHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\ninitSharedHeaderActions();\ninitSharedHeaderActions();`);
+const runtimeHeaderActions = runtimeHeaderActionsDom.window.document.querySelectorAll('.header .user-panel.header-actions');
+const runtimeHeaderSettings = runtimeHeaderActionsDom.window.document.querySelectorAll('.header .user-panel.header-actions > #headerSettingsBtn');
+const runtimeHeaderSettingsButton = runtimeHeaderSettings[0];
+const runtimeHeaderSettingsOrderIds = runtimeHeaderActions[0]
+    ? [...runtimeHeaderActions[0].children].map(node => node.id).filter(Boolean)
+    : [];
+const runtimeHeaderFallbackBeforeClick = runtimeHeaderActionsDom.window.document.getElementById('headerSettingsFallbackNotice');
+runtimeHeaderSettings[0]?.click();
+const runtimeHeaderFallbackAfterClick = runtimeHeaderActionsDom.window.document.getElementById('headerSettingsFallbackNotice');
+const dashboardHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { url: 'http://localhost:3000/dashboard', runScripts: 'outside-only' });
+dashboardHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__dashboardSettingsOpened = 0;\nwindow.DashboardPage = { openSettings: function(){ window.__dashboardSettingsOpened += 1; } };\ninitSharedHeaderActions();\ndocument.getElementById('headerSettingsBtn').click();`);
+const chatHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { url: 'http://localhost:3000/chat', runScripts: 'outside-only' });
+chatHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__chatSettingsAllowed = false;\nwindow.canAccessPage = function(page){ window.__chatSettingsAllowed = page === '/chat-settings'; return false; };\ninitSharedHeaderActions();\ndocument.getElementById('headerSettingsBtn').click();`);
+const omniHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { url: 'http://localhost:3000/omni', runScripts: 'outside-only' });
+omniHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__omniSettingsAllowed = false;\nwindow.canAccessPage = function(page){ window.__omniSettingsAllowed = page === '/chat-settings'; return page === '/chat-settings'; };\ninitSharedHeaderActions();\nwindow.__omniSettingsActionSource = String(resolveHeaderSettingsAction());`);
+const embedHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { url: 'http://localhost:3000/programs?embed=1', runScripts: 'outside-only' });
+embedHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__embedInitResult = initSharedHeaderActions();\ninitSharedHeaderActions();`);
+const runtimeStandardHeaderSettingsPages = standardHeaderShellPages.filter(page => {
+    page.dom.window.eval(`${sharedHeaderActionsInitCode}\ninitSharedHeaderActions();\ninitSharedHeaderActions();`);
+    return page.doc.querySelectorAll('.header .user-panel.header-actions > #headerSettingsBtn, .header .user-panel.header-actions > #timelineConstructorBtn').length !== 1;
+});
+const programsEmbedHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
+const graduationEmbedHtml = fs.readFileSync(path.join(ROOT, 'graduation.html'), 'utf8');
+const chatHeaderLocalSettingsHtml = fs.readFileSync(path.join(ROOT, 'chat.html'), 'utf8');
+const omniHeaderLocalSettingsHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
+const profileHeaderHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
+const frontendPageAccessBlock = sourceBlock(authCode, 'const PAGE_ACCESS = {', 'function canAccessPage');
+const backendAuthCodeForHeaderActions = fs.readFileSync(path.join(ROOT, 'middleware', 'auth.js'), 'utf8');
+const backendPageAccessBlock = sourceBlock(backendAuthCodeForHeaderActions, 'const PAGE_ACCESS = {', 'module.exports');
 
 check('No standard page nests main-content inside page-container', nestedShellPages.length === 0);
 check('No shell containers use inline left offsets', inlineOffsetPages.length === 0);
@@ -2976,9 +3074,98 @@ check('Every page that loads shared sidebar assets has sidebarNav/sidebarLinks s
 check('Shared header shell pages keep direct user-panel contract with explicit exceptions',
     ['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html'].every(file => sharedHeaderContractExceptions.has(file))
     && headerShellPagesMissingUserPanel.length === 0);
+check('All 37 standard CRM shell pages keep shared header action prerequisites',
+    STANDARD_AUTH_SHELL_PAGES.length === 37
+    && missingStandardHeaderShellContract.length === 0
+    && STANDARD_AUTH_SHELL_PAGES.every(file => !sharedHeaderContractExceptions.has(file)));
+check('All 37 standard CRM shell pages keep one static logout and runtime-owned settings/theme',
+    standardHeaderShellActionDrift.length === 0
+    && pagesWithStaticHeaderThemeToggle.length === 0
+    && pagesWithStaticHeaderSettingsButton.length === 0
+    && pagesWithStaticTimelineConstructor.length === 0);
+check('Shared header actions runtime init is idempotent',
+    runtimeHeaderActions.length === 1
+    && runtimeHeaderActions[0].className.split(/\s+/).filter(item => item === 'header-actions').length === 1
+    && runtimeHeaderSettings.length === 1
+    && runtimeHeaderSettingsButton?.getAttribute('type') === 'button'
+    && runtimeHeaderSettingsButton?.getAttribute('aria-label') === 'Налаштування'
+    && runtimeHeaderSettingsButton?.getAttribute('title') === 'Налаштування'
+    && runtimeHeaderSettingsButton?.dataset.headerSettingsBound === '1'
+    && runtimeHeaderSettingsOrderIds.indexOf('headerSettingsBtn') >= 0
+    && runtimeHeaderSettingsOrderIds.indexOf('logoutBtn') >= 0
+    && runtimeHeaderSettingsOrderIds.indexOf('headerSettingsBtn') < runtimeHeaderSettingsOrderIds.indexOf('logoutBtn')
+    && !runtimeHeaderFallbackBeforeClick
+    && runtimeHeaderFallbackAfterClick?.textContent === 'Налаштування цього розділу ще не доступні');
+check('Shared header settings adapters keep real actions scoped',
+    dashboardHeaderActionsDom.window.__dashboardSettingsOpened === 1
+    && chatHeaderActionsDom.window.__chatSettingsAllowed === true
+    && omniHeaderActionsDom.window.__omniSettingsAllowed === true
+    && omniHeaderActionsDom.window.__omniSettingsActionSource.includes('/chat-settings')
+    && chatHeaderActionsDom.window.document.getElementById('headerSettingsFallbackNotice')?.textContent === 'Налаштування цього розділу ще не доступні');
+check('All standard CRM shell pages get exactly one runtime settings gear',
+    runtimeStandardHeaderSettingsPages.length === 0);
+check('Shared header controls skip embedded CRM shells and documented public surfaces',
+    embedHeaderActionsDom.window.__embedInitResult === 0
+    && embedHeaderActionsDom.window.document.querySelectorAll('.header-actions, #headerSettingsBtn').length === 0
+    && authCode.includes('if (isEmbeddedShellMode()) return 0;')
+    && authCode.includes('if (isEmbeddedShellMode()) return;')
+    && authCode.includes('if (isEmbeddedShellMode()) return false;')
+    && programsEmbedHtml.includes("document.documentElement.classList.add('embed-mode')")
+    && programsEmbedHtml.includes("!document.documentElement.classList.contains('embed-mode')")
+    && graduationEmbedHtml.includes("document.documentElement.classList.add('embed-mode')")
+    && ['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html'].every(file => sharedHeaderContractExceptions.has(file))
+    && ['checkin.html', 'invite.html'].every(file => {
+        const dom = new JSDOM(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+        const ok = !dom.window.document.querySelector('.header .user-panel')
+            && !dom.window.document.getElementById('logoutBtn')
+            && !dom.window.document.getElementById('headerSettingsBtn');
+        dom.window.close();
+        return ok;
+    }));
+check('Special CRM shells keep local settings separate from the shared header gear',
+    chatHeaderLocalSettingsHtml.includes('id="omniOpenSettingsBtn"')
+    && chatHeaderLocalSettingsHtml.includes('id="chatSettingsBtn"')
+    && omniHeaderLocalSettingsHtml.includes('class="omni-settings-link"')
+    && !chatHeaderLocalSettingsHtml.includes('id="headerSettingsBtn"')
+    && !omniHeaderLocalSettingsHtml.includes('id="headerSettingsBtn"')
+    && authCode.includes("currentPath === '/chat' || currentPath === '/omni'")
+    && omniHeaderActionsDom.window.document.querySelectorAll('.header .user-panel.header-actions > #headerSettingsBtn').length === 1);
+check('Shared header settings fallback does not mutate PAGE_ACCESS or bypass privileged routes',
+    sharedHeaderActionsInitCode.includes('return () => showHeaderSettingsFeedback();')
+    && !sharedHeaderActionsInitCode.includes('PAGE_ACCESS')
+    && !/PAGE_ACCESS\s*\[[^\]]+\]\s*=/.test(authCode)
+    && !authCode.includes('PAGE_ACCESS.')
+    && frontendPageAccessBlock.includes("'/timeline-settings': ['creator', 'director']")
+    && frontendPageAccessBlock.includes("'/chat-settings': ['creator', 'director', 'admin']")
+    && frontendPageAccessBlock.includes("'/checkin':   _HR_PAGE_ACCESS")
+    && backendPageAccessBlock.includes("'/timeline-settings': ['creator', 'director']")
+    && backendPageAccessBlock.includes("'/chat-settings': ['creator', 'director', 'admin']")
+    && !frontendPageAccessBlock.includes('headerSettings')
+    && !backendPageAccessBlock.includes('headerSettings'));
+check('Training and profile recover shared header controls without breaking profile navigation',
+    fs.readFileSync(path.join(ROOT, 'js', 'training-page.js'), 'utf8').includes('window.HeaderSettingsActions?.refresh?.()')
+    && fs.readFileSync(path.join(ROOT, 'js', 'training-page.js'), 'utf8').includes("window.addEventListener('pageshow', restoreTrainingShellVisibility)")
+    && authCode.includes('bindLogoutButton();\n    initSharedHeaderActions();\n    initHeaderThemeToggle();')
+    && authCode.includes("el.classList.add('user-name-clickable')")
+    && authCode.includes("el.setAttribute('role', 'link')")
+    && authCode.includes("el.addEventListener('click', openProfilePage)")
+    && authCode.includes("if (e.key === 'Enter' || e.key === ' ')")
+    && profileHeaderHtml.includes('id="currentUser" class="user-name"'));
+check('Graduation/catalog print modes keep CRM chrome out of printable catalog surfaces',
+    graduationEmbedHtml.includes('@media print') || fs.readFileSync(path.join(ROOT, 'css', 'graduation.css'), 'utf8').includes('@media print')
+    && fs.readFileSync(path.join(ROOT, 'css', 'graduation.css'), 'utf8').includes('.header,')
+    && fs.readFileSync(path.join(ROOT, 'css', 'catalog.css'), 'utf8').includes('body.printing-catalog')
+    && fs.readFileSync(path.join(ROOT, 'css', 'catalog.css'), 'utf8').includes('.header, .sidebar-nav')
+    && fs.readFileSync(path.join(ROOT, 'css', 'assistant-rail-presence.css'), 'utf8').includes('body.printing-catalog .crm-assistant-rail-host'));
 shellPages.forEach(page => page.dom.window.close());
 sidebarLinkedPages.forEach(page => page.dom.window.close());
 headerShellPages.forEach(page => page.dom.window.close());
+standardHeaderShellPages.forEach(page => page.dom.window.close());
+runtimeHeaderActionsDom.window.close();
+dashboardHeaderActionsDom.window.close();
+chatHeaderActionsDom.window.close();
+omniHeaderActionsDom.window.close();
+embedHeaderActionsDom.window.close();
 
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');
@@ -3732,7 +3919,26 @@ check('Sidebar removes duplicated day menu and keeps Additional as the only quic
 check('Role quick access uses one universal baseline for every role', authCode.includes("const ROLE_QUICK_ACCESS_BASE = ['/', '/staff', '/chat', '/certificates']") && authCode.includes('quickAccess: ROLE_QUICK_ACCESS_BASE') && authCode.includes('const _STAFF_PAGE_ACCESS = _ALL_STAFF') && htmlContains('middleware/auth.js', 'const STAFF_PAGE_ACCESS = ALL_STAFF') && sidebarCode.includes("const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v3'") && sidebarCode.includes('const UTILITY_RAIL_MAX_FAVORITES = 4') && sidebarCode.includes("href: '/staff'") && sidebarCode.includes('schedule_daily: _ALL_STAFF') && sidebarCode.includes('_getSelectedExtraMenuHrefs(role)') && sidebarCode.includes('.map(href => byHref.get(href))') && htmlContains('js/staff-page.js', 'StaffState.canManage = canManage') && htmlContains('js/staff-page.js', "cell.setAttribute('aria-readonly', 'true')") && featureRegistryCode.includes("id: 'afisha.events'") && featureRegistryCode.includes("href: '/afisha'") && featureRegistryCode.includes("id: 'products.programs'") && featureRegistryCode.includes("id: 'products.cakes'") && featureRegistryCode.includes("id: 'products.menu'") && featureRegistryCode.includes("id: 'products.animation'"));
 check('Theme switch belongs to the top-right header, not the sidebar or timeline toolbar', authCode.includes('function initHeaderThemeToggle') && authCode.includes('headerThemeToggle') && authCode.includes("currentUser.insertAdjacentElement('afterend', btn)") && authCode.includes('applyCrmThemeMode') && layoutCss.includes('.header-theme-toggle') && layoutCss.includes('.header-theme-glyph--sun') && layoutCss.includes('.header-theme-glyph--moon') && layoutCss.includes('.header-theme-toggle.is-dark .header-theme-thumb') && !layoutCss.includes('.sidebar-theme-btn') && !sidebarCode.includes('_initThemeToggle') && !sidebarCode.includes('sidebar-theme-btn') && !htmlContains('index.html', 'id="darkModeToggle"') && !htmlContains('index.html', 'id="darkModeIcon"'));
 check('CRM dark theme is the default unless a user explicitly chose light', fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8').includes('const CRM_DEFAULT_DARK_MODE = true') && htmlContains('index.html', "var d=s!=='false';") && htmlContains('profile.html', "var d=s!=='false';") && fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8').includes('window.CRM_DEFAULT_DARK_MODE !== false') && fs.readFileSync(path.join(ROOT, 'js/profile-page.js'), 'utf8').includes("localStorage.getItem('pzp_dark_mode') !== 'false'"));
-check('Header right-side actions hide duplicate profile name and share compact control sizing', layoutCss.includes('.header .user-panel > .user-name') && layoutCss.includes('display: none !important') && layoutCss.includes('width: 64px') && layoutCss.includes('min-height: 42px') && layoutCss.includes('border-radius: 12px'));
+check('Header right-side actions hide duplicate profile name and share compact control sizing', layoutCss.includes('.header .user-panel.header-actions') && layoutCss.includes('.header .header-actions > #headerSettingsBtn') && layoutCss.includes('.header-settings-btn') && layoutCss.includes('.header-settings-btn:focus-visible') && layoutCss.includes('.header-settings-fallback-notice') && layoutCss.includes('.header .user-panel > .user-name') && layoutCss.includes('display: none !important') && layoutCss.includes('width: 64px') && layoutCss.includes('min-height: 42px') && layoutCss.includes('border-radius: 12px'));
+check('Shared header actions use timeline-style visual contract across CRM shell pages',
+    layoutCss.includes('v0.78.91: one shared header action visual contract across CRM shell pages.')
+    && layoutCss.includes('--header-actions-control-h: 40px;')
+    && layoutCss.includes('--header-actions-radius: 10px;')
+    && layoutCss.includes('--header-actions-accent: var(--eg-accent, #0EA586);')
+    && layoutCss.includes('border-left: 1px solid var(--header-actions-border);')
+    && layoutCss.includes('.header .header-actions :where(.header-settings-btn, .timeline-header-settings-btn, .header-theme-toggle, .btn-logout)')
+    && layoutCss.includes('.header .header-actions :where(.header-settings-btn, .timeline-header-settings-btn)')
+    && layoutCss.includes('.header .header-actions .header-theme-toggle {\n    width: 52px !important;')
+    && layoutCss.includes('.header .header-actions .btn-logout {\n    padding: 0 18px !important;')
+    && layoutCss.includes('background: var(--header-actions-accent) !important;')
+    && layoutCss.includes('body.dark-mode .header .user-panel.header-actions')
+    && responsiveCss.includes('.header .user-panel.header-actions')
+    && responsiveCss.includes('--header-actions-control-h: 38px;')
+    && responsiveCss.includes('--header-actions-control-h: 36px;')
+    && responsiveCss.includes('--header-actions-control-h: 34px;')
+    && responsiveCss.includes('.header .header-actions .btn-logout')
+    && !authCode.includes('pzp_dark_mode =')
+    && !authCode.includes('localStorage.setItem(\'pzp_dark_mode\', String(dark));\n    initSharedHeaderActions'));
 check('Global search is injected by the shared authenticated header on all CRM pages', authCode.includes('function initGlobalHeaderSearch') && authCode.includes('ensureGlobalSearchModal') && authCode.includes('js/search.js') && authCode.includes('js/crm-feature-registry.js') && authCode.includes('globalHeaderSearchBtn') && layoutCss.includes('v0.56.6: shared header search') && layoutCss.includes('.header-search-btn') && layoutCss.includes('.search-overlay') && layoutCss.includes('.search-container'));
 check('Shared compact header guardrails keep search, theme, and logout controls without regressing timeline search removal',
     authCode.includes('function initGlobalHeaderSearch')
@@ -3740,11 +3946,13 @@ check('Shared compact header guardrails keep search, theme, and logout controls 
     && authCode.includes('function bindLogoutButton')
     && layoutCss.includes('.header .btn-search')
     && layoutCss.includes('.header .header-search-btn')
+    && layoutCss.includes('.header-settings-btn')
     && layoutCss.includes('.header-theme-toggle')
     && layoutCss.includes('.btn-logout')
     && layoutCss.includes('.header .user-panel > .user-name')
     && layoutCss.includes('.header .btn-search:focus-visible')
     && layoutCss.includes('.header .header-search-btn:focus-visible')
+    && layoutCss.includes('.header-settings-btn:focus-visible')
     && !htmlContains('index.html', 'id="globalHeaderSearchBtn"')
     && !htmlContains('index.html', 'class="btn-search"')
     && htmlContains('index.html', 'class="timeline-header-filters"')

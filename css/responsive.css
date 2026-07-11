@@ -675,6 +675,30 @@
         margin-left: auto;
     }
 
+    .header .user-panel.header-actions {
+        --header-actions-control-h: 38px;
+        --header-actions-icon-size: 17px;
+        gap: 6px;
+        padding-left: 8px;
+    }
+
+    .header .header-actions :where(.header-settings-btn, .timeline-header-settings-btn) {
+        width: var(--header-actions-control-h) !important;
+        min-width: var(--header-actions-control-h) !important;
+        flex-basis: var(--header-actions-control-h) !important;
+    }
+
+    .header .header-actions .header-theme-toggle {
+        width: 50px !important;
+        min-width: 50px !important;
+    }
+
+    .header .header-actions .btn-logout {
+        min-width: max-content !important;
+        padding: 0 12px !important;
+        font-size: 13px !important;
+    }
+
     .main-content,
     .page-container {
         margin-left: 0 !important;
@@ -1441,6 +1465,28 @@
     .logo-img-small { width: 26px; height: 26px; }
     .nav-link { padding: 4px 10px; font-size: 14px; }
     .btn-logout { padding: 4px 8px; font-size: 10px; }
+    .header .user-panel.header-actions {
+        --header-actions-control-h: 36px;
+        --header-actions-icon-size: 16px;
+        gap: 5px;
+        padding-left: 6px;
+    }
+    .header .header-actions .header-theme-toggle {
+        width: 46px !important;
+        min-width: 46px !important;
+        padding: 3px !important;
+    }
+    .header .header-actions .header-theme-thumb {
+        width: 28px !important;
+        height: 28px !important;
+    }
+    .header .header-actions .header-theme-toggle.is-dark .header-theme-thumb {
+        transform: translate(12px, -50%) !important;
+    }
+    .header .header-actions .btn-logout {
+        padding: 0 10px !important;
+        font-size: 12px !important;
+    }
 
     /* v7.8.3: Toolbar ultra-compact */
     .control-panel { gap: 8px; padding: 8px; }
@@ -1488,6 +1534,27 @@
     .logo-img-small { width: 24px; height: 24px; }
     .nav-link { padding: 3px 8px; font-size: 13px; }
     .btn-logout { padding: 3px 6px; font-size: 11px; }
+    .header .user-panel.header-actions {
+        --header-actions-control-h: 34px;
+        --header-actions-icon-size: 15px;
+        gap: 4px;
+        padding-left: 5px;
+    }
+    .header .header-actions .header-theme-toggle {
+        width: 44px !important;
+        min-width: 44px !important;
+    }
+    .header .header-actions .header-theme-thumb {
+        width: 26px !important;
+        height: 26px !important;
+    }
+    .header .header-actions .header-theme-toggle.is-dark .header-theme-thumb {
+        transform: translate(12px, -50%) !important;
+    }
+    .header .header-actions .btn-logout {
+        padding: 0 8px !important;
+        font-size: 11px !important;
+    }
 
     .control-panel { gap: 6px; padding: 6px; }
     .date-controls { gap: 4px; }

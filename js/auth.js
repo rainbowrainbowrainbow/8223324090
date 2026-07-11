@@ -261,6 +261,150 @@ function initSharedLogoutBinding() {
 
 initSharedLogoutBinding();
 
+const HEADER_SETTINGS_PLACEHOLDER_TEXT = 'Налаштування цього розділу ще не доступні';
+const _headerSettingsActionRegistry = new Map();
+
+function isEmbeddedShellMode() {
+    const root = document.documentElement;
+    const body = document.body;
+    if (root?.classList?.contains('embed-mode') || body?.classList?.contains('embed-mode')) return true;
+    const params = new URLSearchParams(window.location.search || '');
+    return params.get('embed') === '1' || params.get('embedded') === '1';
+}
+
+function normalizeHeaderSettingsPath(pathname = window.location.pathname) {
+    return String(pathname || '/').split('#')[0].replace(/\.html$/, '').replace(/\/$/, '') || '/';
+}
+
+function showHeaderSettingsFeedback(message = HEADER_SETTINGS_PLACEHOLDER_TEXT, type = 'info') {
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+        return;
+    }
+
+    let notice = document.getElementById('headerSettingsFallbackNotice');
+    if (!notice) {
+        notice = document.createElement('div');
+        notice.id = 'headerSettingsFallbackNotice';
+        notice.className = 'header-settings-fallback-notice';
+        notice.setAttribute('role', 'status');
+        notice.setAttribute('aria-live', 'polite');
+        document.body.appendChild(notice);
+    }
+    notice.textContent = message;
+    notice.hidden = false;
+    clearTimeout(showHeaderSettingsFeedback._timer);
+    showHeaderSettingsFeedback._timer = setTimeout(() => {
+        notice.hidden = true;
+    }, 3600);
+}
+
+function registerHeaderSettingsAction(pathOrAction, maybeAction) {
+    const path = typeof pathOrAction === 'string'
+        ? normalizeHeaderSettingsPath(pathOrAction)
+        : normalizeHeaderSettingsPath();
+    const action = typeof pathOrAction === 'function' ? pathOrAction : maybeAction;
+    if (typeof action !== 'function') return false;
+    _headerSettingsActionRegistry.set(path, action);
+    return true;
+}
+
+function userCanAccessSettingsPage(page) {
+    if (typeof canAccessPage !== 'function') return false;
+    return canAccessPage(page);
+}
+
+function resolveHeaderSettingsAction() {
+    const currentPath = normalizeHeaderSettingsPath();
+    const registered = _headerSettingsActionRegistry.get(currentPath);
+    if (registered) return registered;
+
+    if (currentPath === '/' && window.TimelineVisibility?.openSettingsCenter) {
+        return () => window.TimelineVisibility.openSettingsCenter();
+    }
+
+    if (currentPath === '/dashboard' && window.DashboardPage?.openSettings) {
+        return () => window.DashboardPage.openSettings();
+    }
+
+    if ((currentPath === '/chat' || currentPath === '/omni') && userCanAccessSettingsPage('/chat-settings')) {
+        return () => { window.location.href = '/chat-settings'; };
+    }
+
+    return () => showHeaderSettingsFeedback();
+}
+
+function handleHeaderSettingsClick(event) {
+    event.preventDefault();
+    if (event.currentTarget?.id !== 'headerSettingsBtn') return;
+    const action = resolveHeaderSettingsAction();
+    action();
+}
+
+function createHeaderSettingsButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'headerSettingsBtn';
+    button.className = 'header-settings-btn';
+    button.title = 'Налаштування';
+    button.setAttribute('aria-label', 'Налаштування');
+    button.innerHTML = `
+        <span class="header-settings-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.08.08a2 2 0 1 1-3.84 0L10 20a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.82.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.08a2 2 0 1 1 0-3.84L4 10a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.82l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.08-.08a2 2 0 1 1 3.84 0L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.82-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9c.15.36.35.7.6 1l.08.08a2 2 0 1 1 0 3.84L20 14c-.25.3-.45.64-.6 1Z"></path>
+            </svg>
+        </span>`;
+    return button;
+}
+
+function placeHeaderSettingsButton(userPanel, button) {
+    if (!userPanel || !button) return;
+    const themeAction = userPanel.querySelector('#headerThemeToggle');
+    if (themeAction && themeAction !== button) {
+        userPanel.insertBefore(button, themeAction);
+        return;
+    }
+    const logoutAction = userPanel.querySelector('#logoutBtn');
+    if (logoutAction && logoutAction !== button) {
+        userPanel.insertBefore(button, logoutAction);
+        return;
+    }
+    if (button.parentElement !== userPanel) userPanel.appendChild(button);
+}
+
+function initSharedHeaderActions() {
+    if (isEmbeddedShellMode()) return 0;
+
+    const panels = document.querySelectorAll('.header .user-panel');
+    panels.forEach(panel => {
+        panel.classList.add('header-actions');
+    });
+
+    const userPanel = document.querySelector('.header .user-panel');
+    if (!userPanel) return panels.length;
+
+    if (userPanel.querySelector('#timelineConstructorBtn')) return panels.length;
+
+    let button = document.getElementById('headerSettingsBtn');
+    if (!button) button = createHeaderSettingsButton();
+
+    if (button.dataset.headerSettingsBound !== '1') {
+        button.dataset.headerSettingsBound = '1';
+        button.addEventListener('click', handleHeaderSettingsClick);
+    }
+
+    placeHeaderSettingsButton(userPanel, button);
+    return panels.length;
+}
+
+window.HeaderSettingsActions = {
+    register: registerHeaderSettingsAction,
+    open: () => resolveHeaderSettingsAction()(),
+    feedback: showHeaderSettingsFeedback,
+    refresh: initSharedHeaderActions
+};
+
 function clearAuthStorage() {
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(AUTH_ACCESS_TOKEN_KEY);
@@ -540,6 +684,10 @@ function showAuthenticatedPageShell() {
     const appUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const _userEl = document.getElementById('currentUser');
     if (_userEl && appUser?.name) _userEl.textContent = appUser.name;
+
+    bindLogoutButton();
+    initSharedHeaderActions();
+    initHeaderThemeToggle();
 
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.remove('hidden');
@@ -2562,7 +2710,9 @@ function syncHeaderThemeToggle() {
 }
 
 function initHeaderThemeToggle() {
-    const userPanel = document.querySelector('.user-panel');
+    if (isEmbeddedShellMode()) return;
+
+    const userPanel = document.querySelector('.header .user-panel');
     if (!userPanel) return;
 
     const oldSidebarTheme = document.querySelector('.sidebar-theme-btn');
@@ -2750,6 +2900,8 @@ function openGlobalHeaderSearch() {
 }
 
 function initGlobalHeaderSearch() {
+    if (isEmbeddedShellMode()) return false;
+
     const headerContent = document.querySelector('.header .header-content');
     if (!headerContent) return false;
     if (document.body?.classList?.contains('timeline-dashboard-page')) return false;
@@ -2841,6 +2993,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
     setTimeout(initGlobalHeaderSearch, 110);
+    setTimeout(initSharedHeaderActions, 115);
     setTimeout(initHeaderThemeToggle, 120);
     setTimeout(() => {
         if (document.body.classList.contains('authenticated-shell')) initCrmAssistantRail();

@@ -8,6 +8,7 @@
 
 ### HR / Команда / (11.07.2026) [codex]
 - Кнопки категорій команди переведено на картковий стиль «Пульсу компанії» з іконками, короткими підписами та лічильниками.
+- **Shared header actions** - settings, theme і logout уніфіковано для 37 CRM shell-сторінок без масової правки HTML; порядок, accessibility attrs, fallback для сторінок без налаштувань і standalone/embed exclusions зафіксовані UI regression tests.
 
 ---
 

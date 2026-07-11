@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.85 - Staff Schedule Excel Export Cleanup
+
+### Staff Schedule / Excel export and print / (11.07.2026) [codex]
+- **Експорт графіку тепер формує Excel-сумісну таблицю** - файл `grafik_YYYY-MM-DD_YYYY-MM-DD.xls` містить період, відділи, підгрупи, співробітників, посади та всі дні поточного фільтра.
+- **Excel-таблиця стала читабельнішою** - додано шапку, групові рядки відділів, кольори статусів, фіксовані колонки і акуратніші підписи змін.
+- **Друк із графіку друкує ту саму таблицю** - кнопка `Друк` відкриває окремий print view для таблиці графіку замість друку всієї CRM-сторінки.
+- **Зайвий блок заявок прибрано знизу графіку HR** - вкладка графіку більше не показує `Заявки на відпустки та вихідні` під таблицею.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule export/print, HR schedule markup, guardrails і version/cache refs.
+
+---
+
 ## v0.78.84 - Staff Schedule Date Preset Labels
 
 ### Staff Schedule / Date preset labels / (11.07.2026) [codex]

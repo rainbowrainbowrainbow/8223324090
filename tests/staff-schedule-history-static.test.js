@@ -474,9 +474,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /confirmModal\(confirmLines\.join\('\\n'\), \{ type: 'warning', okText: 'Заповнити' \}\)/);
         assert.match(staffPage, /await goToScheduleRange\(currentRange\.start, currentRange\.end, currentMode\)/);
         assert.match(staffPage, /function renderLoadView\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
-        assert.match(staffPage, /groupStaffByScheduleDepartment\(StaffState\.staff\)/);
-        assert.match(staffPage, /function handleExcelExport\(\) \{[\s\S]*const grouped = groupStaffByScheduleDepartment\(StaffState\.staff\)/);
-        assert.match(staffPage, /function handleExcelExport\(\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
+        assert.match(staffPage, /function scheduleExportVisibleStaff\(\) \{[\s\S]*scheduleVisibleStaff\(\)[\s\S]*StaffState\.staff/);
+        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const grouped = groupStaffByScheduleDepartment\(scheduleExportVisibleStaff\(\)\)/);
+        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set\(\['animators', 'trampoline', 'cafe', 'cleaning'\]\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set\(\['reception', 'tech', 'admin'\]\)/);
         assert.match(staffPage, /function scheduleCopyWeekModeForDepartment/);

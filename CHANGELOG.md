@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.89 - Staff Schedule Monthly View Fit
+
+### Staff Schedule / Monthly layout / (11.07.2026) [codex]
+- **«Весь місяць» тепер уміщується на робочому desktop-екрані** - усі 28–31 денні колонки видно одночасно; прихованої за горизонтальним scroll частини місяця більше немає.
+- **Щільний режим не втрачає зміст зміни** - у комірці показується короткий час на кшталт `10–18`, а повні дані лишаються в доступному описі та редакторі зміни.
+- **Регресію зафіксовано smoke-перевірками** - browser і live smoke перевіряють 28, 30 і 31 день, повну видимість місяця на desktop та локальний scroll на mobile.
+- **DB schema, migrations, auth/roles, env/secrets і Railway settings не змінювалися** - реліз обмежений Staff Schedule frontend, cache refs і tests.
+
+---
+
 ## v0.78.88 - Staff Schedule Commercial Freeze
 
 ### Staff Schedule / Commercial freeze / (11.07.2026) [codex]

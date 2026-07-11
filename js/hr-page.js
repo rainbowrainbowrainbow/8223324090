@@ -2074,7 +2074,6 @@ async function loadHrScheduleModule() {
         host: shell,
         user: AppState.currentUser
     });
-    await loadLeaves();
 }
 
 function initScheduleControls() {
@@ -2154,7 +2153,6 @@ async function loadSchedule() {
     }
 
     renderSchedule(dates);
-    await loadLeaves();
 }
 
 function renderTemplateSelect() {

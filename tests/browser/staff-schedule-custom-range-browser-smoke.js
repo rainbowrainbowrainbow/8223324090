@@ -915,15 +915,29 @@ async function runDesktopFlow(browser, base) {
         const downloadPromise = page.waitForEvent('download');
         await page.locator('#exportExcelBtn').click();
         const download = await downloadPromise;
-        assert.equal(download.suggestedFilename(), `grafik_${firstHalfFrom}_${firstHalfTo}.csv`, 'export filename uses selected first-half range');
+        assert.equal(download.suggestedFilename(), `grafik_${firstHalfFrom}_${firstHalfTo}.xls`, 'export filename uses selected first-half range as an Excel workbook');
         await page.evaluate(() => {
             window.__staffSchedulePrintCount = 0;
-            window.print = () => {
-                window.__staffSchedulePrintCount += 1;
+            window.__staffSchedulePrintHtml = '';
+            window.open = () => {
+                const fakeWindow = {
+                    document: {
+                        open() {},
+                        write(html) { window.__staffSchedulePrintHtml += String(html || ''); },
+                        close() {}
+                    },
+                    focus() {},
+                    print() { window.__staffSchedulePrintCount += 1; },
+                    setTimeout(callback) { callback(); }
+                };
+                return fakeWindow;
             };
         });
         await page.locator('#printBtn').click();
-        assert.equal(await page.evaluate(() => window.__staffSchedulePrintCount), 1, 'print button calls print flow from header');
+        await page.waitForFunction(() => window.__staffSchedulePrintCount === 1);
+        const printHtml = await page.evaluate(() => window.__staffSchedulePrintHtml);
+        assert.match(printHtml, /schedule-export-table/, 'print button renders the Excel table document');
+        assert.match(printHtml, /Графік роботи/, 'print table includes the schedule title');
 
         const scheduleCallsAfterFirstHalf = apiCalls.scheduleRanges.length;
         await page.locator('#scheduleDateFrom').fill(firstHalfTo);

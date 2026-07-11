@@ -4936,17 +4936,44 @@ async function handleExcelImport(e) {
 // EXCEL EXPORT
 // ==========================================
 
-function handleExcelExport() {
-    const dates = getScheduleDates();
-    const grouped = groupStaffByScheduleDepartment(StaffState.staff);
+function scheduleExportVisibleStaff() {
+    return typeof scheduleVisibleStaff === 'function' ? scheduleVisibleStaff() : (StaffState.staff || []);
+}
 
-    // Build CSV (BOM for Excel)
-    let csv = '\ufeff';
-    csv += 'Відділ,Підгрупа,Ім\'я,Посада';
-    for (const d of dates) {
-        csv += `,${d.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[d.getMonth()]} (${STAFF_SCHEDULE_DAYS_UK[d.getDay()]})`;
-    }
-    csv += '\n';
+function scheduleExportCell(entry) {
+    const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
+    const time = (entry?.shift_start && entry?.shift_end)
+        ? `${entry.shift_start.slice(0, 5)}-${entry.shift_end.slice(0, 5)}`
+        : '';
+    const label = STAFF_SCHEDULE_STATUS_LABELS[status] || status || '';
+    const profession = entry?.profession_key ? professionLabel(entry.profession_key) : '';
+    const note = String(entry?.note || '').trim();
+    const lines = [];
+    if (time) lines.push(time);
+    if (status && status !== 'working' && status !== 'unset') lines.push(label);
+    if (!time && status === 'working') lines.push(label);
+    if (profession && ['working', 'remote'].includes(status)) lines.push(profession);
+    if (note) lines.push(note);
+    return {
+        status: String(status || 'unset').replace(/[^a-z0-9_-]/gi, ''),
+        html: lines.map(escapeHtml).join('<br>')
+    };
+}
+
+function buildScheduleWorkbookHtml(options = {}) {
+    const dates = getScheduleDates();
+    const grouped = groupStaffByScheduleDepartment(scheduleExportVisibleStaff());
+    const from = dates[0];
+    const to = getScheduleRangeEnd(dates);
+    const periodLabel = formatScheduleRangeLabel(from, to);
+    const columnCount = dates.length + 4;
+    const generatedAt = new Date().toLocaleString('uk-UA');
+    const headerCells = dates.map(d => `
+            <th class="date-col">
+                <div>${escapeHtml(String(d.getDate()))}</div>
+                <small>${escapeHtml(STAFF_SCHEDULE_DAYS_UK[d.getDay()] || '')}</small>
+            </th>`).join('');
+    let bodyRows = '';
 
     for (const dept of scheduleDepartmentRenderOrder(grouped)) {
         const deptStaff = grouped[dept] || [];
@@ -4955,19 +4982,27 @@ function handleExcelExport() {
         const subGroups = DEPT_SUB_GROUPS[dept];
         const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
 
-        const renderStaffCsv = (emp, sgLabel) => {
-            let row = `"${deptLabel}","${sgLabel}","${emp.name}","${emp.position}"`;
+        bodyRows += `
+        <tr class="dept-row">
+            <td colspan="${columnCount}">${escapeHtml(deptLabel)} · ${deptStaff.length}</td>
+        </tr>`;
+
+        const renderStaffRow = (emp, sgLabel) => {
+            const cells = [];
             for (const d of dates) {
                 const ds = formatDateStr(d);
                 const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
-                const time = (entry?.shift_start && entry?.shift_end)
-                    ? `${entry.shift_start.slice(0,5)}-${entry.shift_end.slice(0,5)}`
-                    : '';
-                const label = STAFF_SCHEDULE_STATUS_LABELS[status] || status;
-                row += `,"${time || label}"`;
+                const cell = scheduleExportCell(entry);
+                cells.push(`<td class="shift-cell status-${escapeHtml(cell.status)}">${cell.html || '&nbsp;'}</td>`);
             }
-            csv += row + '\n';
+            bodyRows += `
+        <tr>
+            <td class="dept-cell">${escapeHtml(deptLabel)}</td>
+            <td class="subgroup-cell">${escapeHtml(sgLabel || '')}</td>
+            <td class="employee-cell">${escapeHtml(emp.name || emp.display_name || '')}</td>
+            <td class="role-cell">${escapeHtml(staffCardRoleSummary(emp) || emp.position || '')}</td>
+            ${cells.join('')}
+        </tr>`;
         };
 
         if (renderableSubGroups.length) {
@@ -4976,24 +5011,88 @@ function handleExcelExport() {
                 const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
                 for (const emp of sgStaff) {
                     renderedStaffIds.add(Number(emp.id));
-                    renderStaffCsv(emp, sg.label);
+                    renderStaffRow(emp, sg.label);
                 }
             }
-            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) renderStaffCsv(emp, '');
+            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) renderStaffRow(emp, '');
         } else {
-            for (const emp of deptStaff) renderStaffCsv(emp, '');
+            for (const emp of deptStaff) renderStaffRow(emp, '');
         }
     }
 
+    if (!bodyRows) {
+        bodyRows = `<tr><td colspan="${columnCount}" class="empty-cell">Немає співробітників у поточному фільтрі</td></tr>`;
+    }
+
+    const printCss = options.print ? `
+        @page { size: landscape; margin: 10mm; }
+        body { background: #fff; }
+        .sheet { box-shadow: none; padding: 0; }
+    ` : '';
+
+    return `<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Графік роботи ${escapeHtml(periodLabel)}</title>
+    <style>
+        body { margin: 0; padding: 18px; background: #eef2f7; color: #111827; font-family: Calibri, Arial, sans-serif; }
+        .sheet { background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12); }
+        h1 { margin: 0 0 4px; font-size: 22px; color: #0f172a; }
+        .meta { margin: 0 0 14px; color: #475569; font-size: 13px; }
+        table.schedule-export-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 12px; }
+        .schedule-export-table th, .schedule-export-table td { border: 1px solid #cbd5e1; padding: 7px 8px; vertical-align: middle; mso-number-format: "\\@"; }
+        .schedule-export-table thead th { background: #0f766e; color: #fff; font-weight: 700; text-align: center; }
+        .schedule-export-table thead th small { display: block; color: #ccfbf1; font-size: 10px; margin-top: 2px; }
+        .dept-cell, .subgroup-cell, .role-cell { color: #475569; }
+        .employee-cell { color: #0f172a; font-weight: 700; min-width: 180px; }
+        .role-cell { min-width: 150px; }
+        .date-col { width: 86px; }
+        .dept-row td { background: #e0f2fe; color: #075985; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+        .shift-cell { text-align: center; white-space: normal; line-height: 1.25; }
+        .status-working { background: #dcfce7; color: #14532d; font-weight: 700; }
+        .status-remote { background: #e0e7ff; color: #3730a3; font-weight: 700; }
+        .status-dayoff, .status-day_off { background: #f1f5f9; color: #475569; }
+        .status-vacation { background: #dbeafe; color: #1d4ed8; font-weight: 700; }
+        .status-sick { background: #fee2e2; color: #991b1b; font-weight: 700; }
+        .status-unset { background: #fff; color: #94a3b8; }
+        .empty-cell { padding: 22px; text-align: center; color: #64748b; }
+        ${printCss}
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <h1>Графік роботи</h1>
+        <p class="meta">Період: ${escapeHtml(periodLabel)} · Згенеровано: ${escapeHtml(generatedAt)}</p>
+        <table class="schedule-export-table">
+            <thead>
+                <tr>
+                    <th>Відділ</th>
+                    <th>Підгрупа</th>
+                    <th>Співробітник</th>
+                    <th>Посада</th>
+                    ${headerCells}
+                </tr>
+            </thead>
+            <tbody>${bodyRows}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+}
+
+function handleExcelExport() {
+    const dates = getScheduleDates();
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
-    const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.xls`;
+    const blob = new Blob(['\ufeff', buildScheduleWorkbookHtml()], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const touchWindow = typeof openTouchDownloadWindow === 'function'
-        ? openTouchDownloadWindow('Графік CSV')
+        ? openTouchDownloadWindow('Графік Excel')
         : null;
     if (typeof finishBlobDownload === 'function') {
-        finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Графік експортовано' });
+        finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Графік експортовано в Excel' });
     } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -5001,7 +5100,7 @@ function handleExcelExport() {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
-        showNotification('Графік експортовано');
+        showNotification('Графік експортовано в Excel');
     }
 }
 
@@ -5010,7 +5109,23 @@ function handleExcelExport() {
 // ==========================================
 
 function handlePrint() {
-    window.print();
+    const printWindow = window.open('', 'staffSchedulePrint', 'width=1280,height=900');
+    if (!printWindow || !printWindow.document) {
+        showNotification('Не вдалося відкрити вікно друку. Дозвольте pop-up або скористайтесь експортом.', 'error');
+        return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(buildScheduleWorkbookHtml({ print: true }));
+    printWindow.document.close();
+    const runPrint = () => {
+        if (typeof printWindow.focus === 'function') printWindow.focus();
+        if (typeof printWindow.print === 'function') printWindow.print();
+    };
+    if (typeof printWindow.setTimeout === 'function') {
+        printWindow.setTimeout(runPrint, 120);
+    } else {
+        window.setTimeout(runPrint, 120);
+    }
 }
 
 // v39.11: Add staff modal

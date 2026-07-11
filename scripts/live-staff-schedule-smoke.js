@@ -591,19 +591,37 @@ async function assertExportFilename(page, range) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
     const download = await downloadPromise;
-    assert.equal(download.suggestedFilename(), `grafik_${range.from}_${range.to}.csv`, 'export filename uses selected period');
+    assert.equal(download.suggestedFilename(), `grafik_${range.from}_${range.to}.xls`, 'export filename uses selected period');
     await download.delete().catch(() => {});
 }
 
 async function assertPrintStub(page) {
     await page.evaluate(() => {
         window.__staffSchedulePrintCount = 0;
-        window.print = () => {
-            window.__staffSchedulePrintCount += 1;
-        };
+        window.__staffSchedulePrintHtml = '';
+        window.open = () => ({
+            document: {
+                open() {},
+                write(html) {
+                    window.__staffSchedulePrintHtml += String(html || '');
+                },
+                close() {}
+            },
+            focus() {},
+            print() {
+                window.__staffSchedulePrintCount += 1;
+            },
+            close() {},
+            setTimeout(callback) {
+                callback();
+            }
+        });
     });
     await page.locator('#printBtn').click();
-    assert.equal(await page.evaluate(() => window.__staffSchedulePrintCount), 1, 'print button calls window.print exactly once');
+    await page.waitForFunction(() => window.__staffSchedulePrintCount === 1);
+    const printedHtml = await page.evaluate(() => window.__staffSchedulePrintHtml);
+    assert.ok(printedHtml.includes('schedule-export-table'), 'print button writes the Excel schedule table');
+    assert.ok(printedHtml.includes('Графік роботи'), 'print table includes the schedule title');
 }
 
 async function assertMobileLayout(page) {
@@ -710,7 +728,7 @@ async function runDesktopFlow(browser, base, session) {
             firstHalf: `${firstHalf.from}..${firstHalf.to}`,
             secondHalf: `${secondHalf.from}..${secondHalf.to}`,
             month: `${monthRange.from}..${monthRange.to}`,
-            exportFilename: `grafik_${monthRange.from}_${monthRange.to}.csv`,
+            exportFilename: `grafik_${monthRange.from}_${monthRange.to}.xls`,
             headerActions: 'export/print'
         };
     } finally {
@@ -782,7 +800,7 @@ async function run() {
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK export: ${desktop.exportFilename}`);
-        console.log(`  OK print: stubbed window.print`);
+        console.log(`  OK print: Excel schedule table`);
         console.log(`  OK mobile: ${mobile.viewport} month=${mobile.month}, days=${mobile.dayCount}`);
         console.log(`  OK narrow mobile: ${narrowMobile.viewport} month=${narrowMobile.month}, days=${narrowMobile.dayCount}`);
         console.log(`  OK read-only guard: no staff mutation requests`);

@@ -363,14 +363,34 @@ function placeHeaderSettingsButton(userPanel, button) {
     const themeAction = userPanel.querySelector('#headerThemeToggle');
     if (themeAction && themeAction !== button) {
         userPanel.insertBefore(button, themeAction);
+        normalizeHeaderActionOrder(userPanel);
         return;
     }
     const logoutAction = userPanel.querySelector('#logoutBtn');
     if (logoutAction && logoutAction !== button) {
         userPanel.insertBefore(button, logoutAction);
+        normalizeHeaderActionOrder(userPanel);
         return;
     }
     if (button.parentElement !== userPanel) userPanel.appendChild(button);
+    normalizeHeaderActionOrder(userPanel);
+}
+
+function normalizeHeaderActionOrder(userPanel) {
+    if (!userPanel) return;
+    const settingsAction = userPanel.querySelector('#headerSettingsBtn, #timelineConstructorBtn');
+    const themeAction = userPanel.querySelector('#headerThemeToggle');
+    const logoutAction = userPanel.querySelector('#logoutBtn');
+
+    if (settingsAction && themeAction && settingsAction.nextElementSibling !== themeAction) {
+        userPanel.insertBefore(settingsAction, themeAction);
+    } else if (settingsAction && !themeAction && logoutAction && settingsAction.nextElementSibling !== logoutAction) {
+        userPanel.insertBefore(settingsAction, logoutAction);
+    }
+
+    if (themeAction && logoutAction && themeAction.nextElementSibling !== logoutAction) {
+        userPanel.insertBefore(themeAction, logoutAction);
+    }
 }
 
 function initSharedHeaderActions() {
@@ -384,7 +404,10 @@ function initSharedHeaderActions() {
     const userPanel = document.querySelector('.header .user-panel');
     if (!userPanel) return panels.length;
 
-    if (userPanel.querySelector('#timelineConstructorBtn')) return panels.length;
+    if (userPanel.querySelector('#timelineConstructorBtn')) {
+        normalizeHeaderActionOrder(userPanel);
+        return panels.length;
+    }
 
     let button = document.getElementById('headerSettingsBtn');
     if (!button) button = createHeaderSettingsButton();
@@ -2756,6 +2779,7 @@ function initHeaderThemeToggle() {
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     }
     syncHeaderThemeToggle();
+    initSharedHeaderActions();
 }
 
 // v0.56.6: global search belongs to the shared authenticated header on every CRM page.

@@ -3053,6 +3053,12 @@ const omniHeaderActionsDom = new JSDOM('<header class="header"><div class="heade
 omniHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__omniSettingsAllowed = false;\nwindow.canAccessPage = function(page){ window.__omniSettingsAllowed = page === '/chat-settings'; return page === '/chat-settings'; };\ninitSharedHeaderActions();\nwindow.__omniSettingsActionSource = String(resolveHeaderSettingsAction());`);
 const embedHeaderActionsDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="logoutBtn"></button></div></div></header>', { url: 'http://localhost:3000/programs?embed=1', runScripts: 'outside-only' });
 embedHeaderActionsDom.window.eval(`${sharedHeaderActionsInitCode}\nwindow.__embedInitResult = initSharedHeaderActions();\ninitSharedHeaderActions();`);
+const runtimeHeaderReorderDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="headerThemeToggle"></button><button id="headerSettingsBtn"></button><button id="logoutBtn"></button></div></div></header>', { runScripts: 'outside-only' });
+runtimeHeaderReorderDom.window.eval(`${sharedHeaderActionsInitCode}\ninitSharedHeaderActions();`);
+const runtimeHeaderReorderIds = [...runtimeHeaderReorderDom.window.document.querySelector('.header .user-panel').children].map(node => node.id).filter(Boolean);
+const runtimeTimelineHeaderReorderDom = new JSDOM('<header class="header"><div class="header-content"><div class="user-panel"><span id="currentUser"></span><button id="headerThemeToggle"></button><button id="timelineConstructorBtn"></button><button id="logoutBtn"></button></div></div></header>', { runScripts: 'outside-only' });
+runtimeTimelineHeaderReorderDom.window.eval(`${sharedHeaderActionsInitCode}\ninitSharedHeaderActions();`);
+const runtimeTimelineHeaderReorderIds = [...runtimeTimelineHeaderReorderDom.window.document.querySelector('.header .user-panel').children].map(node => node.id).filter(Boolean);
 const runtimeStandardHeaderSettingsPages = standardHeaderShellPages.filter(page => {
     page.dom.window.eval(`${sharedHeaderActionsInitCode}\ninitSharedHeaderActions();\ninitSharedHeaderActions();`);
     return page.doc.querySelectorAll('.header .user-panel.header-actions > #headerSettingsBtn, .header .user-panel.header-actions > #timelineConstructorBtn').length !== 1;
@@ -3096,6 +3102,9 @@ check('Shared header actions runtime init is idempotent',
     && runtimeHeaderSettingsOrderIds.indexOf('headerSettingsBtn') < runtimeHeaderSettingsOrderIds.indexOf('logoutBtn')
     && !runtimeHeaderFallbackBeforeClick
     && runtimeHeaderFallbackAfterClick?.textContent === 'Налаштування цього розділу ще не доступні');
+check('Shared header actions normalize settings/theme/logout order',
+    runtimeHeaderReorderIds.join('>') === 'currentUser>headerSettingsBtn>headerThemeToggle>logoutBtn'
+    && runtimeTimelineHeaderReorderIds.join('>') === 'currentUser>timelineConstructorBtn>headerThemeToggle>logoutBtn');
 check('Shared header settings adapters keep real actions scoped',
     dashboardHeaderActionsDom.window.__dashboardSettingsOpened === 1
     && chatHeaderActionsDom.window.__chatSettingsAllowed === true

@@ -1628,7 +1628,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff employee cells are keyboard accessible links', staffCode.includes('role="link"') && staffCode.includes("e.key !== 'Enter'") && staffCode.includes("e.key !== ' '"));
     check('Staff employee cells have profile affordance styling', staffPagesCss.includes('.emp-cell:hover') && staffPagesCss.includes('.emp-cell:focus-visible'));
     check('Staff schedule exposes managed replacement controls and state', staffScheduleShellCode.includes('id="schReplaceBtn"') && staffScheduleShellCode.includes('id="schClearReplacementBtn"') && staffScheduleShellCode.includes('id="schReplacementDetails"') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
-    check('Staff schedule UI uses scheduleable staff guards for rows, replacements, fill, and attendance', staffCode.includes('function isScheduleableStaffForUi') && staffCode.includes('function scheduleableStaffErrorMessage') && staffCode.includes('StaffState.staff = scheduleableStaffForUi(data.data || [])') && staffCode.includes('function scheduleVisibleStaff(staffList = StaffState.staff)') && staffCode.includes('.filter(staff => isScheduleableStaffForUi(staff, entry.date))') && staffCode.includes('targetStaff = scheduleableStaffForUi(targetStaff);') && staffCode.includes("action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())") && staffCode.includes("scheduleableStaffErrorMessage(result, 'Помилка збереження')") && staffCode.includes("scheduleableStaffErrorMessage(apiResult, 'Помилка підміни')"));
+    check('Staff schedule UI uses scheduleable staff guards for rows, replacements, fill, and attendance', staffCode.includes('function isScheduleableStaffForUi') && staffCode.includes('function scheduleableStaffErrorMessage') && staffCode.includes('StaffState.staff = scheduleableStaffForUi(data.data || [])') && staffCode.includes('function scheduleVisibleStaff(staffList = StaffState.staff)') && staffCode.includes('.filter(staff => isScheduleableStaffForUi(staff, entry.date))') && staffCode.includes('targetStaff = uniqueScheduleStaffById(scheduleableStaffForUi(targetStaff));') && staffCode.includes("action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())") && staffCode.includes("scheduleableStaffErrorMessage(result, 'Помилка збереження')") && staffCode.includes("scheduleableStaffErrorMessage(apiResult, 'Помилка підміни')"));
     const staffPulseTabs = [...staffPulseDoc.querySelectorAll('.staff-pulse-tab')];
     const pulseSwitcherLightTokenBlock = sourceBlock(staffPagesCss, ':where(.hr-nav--pulse, .staff-pulse-nav) {', '.hr-nav--pulse {');
     const pulseSwitcherDarkTokenBlock = sourceBlock(staffPagesCss, 'body.dark-mode :where(.hr-nav--pulse, .staff-pulse-nav),', '/* v0.73.52: /staff keeps HR Pulse navigation');
@@ -1664,6 +1664,36 @@ checkPage('staff.html', (doc, html) => {
         'staff-pulse-tab-overlay'
     ];
     const staffPulseBoundedContainer = rule => /position:\s*relative;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*layout paint;/.test(rule);
+    const staffFunctionBlock = functionName => {
+        const marker = new RegExp(`(?:async\\s+)?function\\s+${functionName}\\s*\\(`).exec(staffCode);
+        if (!marker) return '';
+        const start = marker.index;
+        const remainder = staffCode.slice(start + marker[0].length);
+        const nextFunction = /\n(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(/.exec(remainder);
+        return staffCode.slice(start, nextFunction ? start + marker[0].length + nextFunction.index : staffCode.length);
+    };
+    const sharedOpenModalBlock = uiCode.slice(uiCode.indexOf('function openModal('), uiCode.indexOf('function closeModal('));
+    const sharedCloseModalBlock = uiCode.slice(uiCode.indexOf('function closeModal('), uiCode.indexOf('function closeModalFromControl'));
+    const staffScheduleEditingCellMatchesBlock = staffFunctionBlock('scheduleEditingCellMatches');
+    const staffScheduleCellFocusTargetBlock = staffFunctionBlock('scheduleCellFocusTarget');
+    const staffScheduleShiftPreferencesLoadBlock = staffFunctionBlock('loadScheduleShiftPreferences');
+    const staffScheduleOpenCellBlock = staffFunctionBlock('openScheduleCell');
+    const staffScheduleOpenModalBlock = staffFunctionBlock('openEditModal');
+    const staffScheduleCloseModalBlock = staffFunctionBlock('closeEditModal');
+    const staffScheduleHistoryLoadBlock = staffFunctionBlock('loadScheduleCellHistory');
+    const staffScheduleReadOnlyModalBlock = staffFunctionBlock('setScheduleModalReadOnly');
+    const staffScheduleGlobalEscapeStart = staffCode.lastIndexOf("document.addEventListener('keydown', (e) => {");
+    const staffScheduleGlobalEscapeBlock = staffScheduleGlobalEscapeStart > -1
+        ? staffCode.slice(staffScheduleGlobalEscapeStart, staffCode.indexOf('staffScheduleInitialized = true', staffScheduleGlobalEscapeStart))
+        : '';
+    const staffScheduleModalOverlayRule = cssRuleText(staffPagesCss, '.sch-modal-overlay');
+    const staffScheduleModalRule = cssRuleText(staffPagesCss, '.sch-modal');
+    const staffScheduleShiftModalRule = cssRuleText(staffPagesCss, '#schModalOverlay .sch-modal--schedule');
+    const staffScheduleModalScrollRule = cssRuleText(staffPagesCss, '#schModalOverlay .sch-modal-scroll');
+    const staffScheduleModalActionsRule = cssRuleText(staffPagesCss, '#schModalOverlay .sch-primary-actions');
+    const staffScheduleModalActionButtonRule = cssRuleText(staffPagesCss, '#schModalOverlay .sch-primary-actions > button');
+    const staffScheduleResponsiveBlock = sourceBlock(staffPagesCss, '/* Responsive */', '/* Account linking');
+    const staffScheduleResponsivePreferenceRule = cssRuleText(staffScheduleResponsiveBlock, '.sch-shift-preference-options');
     const staffScheduleSummaryIndex = staffScheduleShellCode.indexOf('id="scheduleSummary"');
     const staffScheduleTableIndex = staffScheduleShellCode.indexOf('id="scheduleWrapper"');
     const staffScheduleHealthPanelIndex = staffScheduleShellCode.indexOf('id="scheduleHealthPanel"');
@@ -1680,6 +1710,25 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleWeekNavBlock = staffCode.slice(staffCode.indexOf('async function goToWeek'), staffCode.indexOf('function prevWeek'));
     const staffScheduleInitLoadBlock = staffCode.slice(staffCode.indexOf('async function initStaffSchedulePage'), staffCode.indexOf('// Event listeners'));
     const staffDeptFilterRenderBlock = staffCode.slice(staffCode.indexOf('function renderDeptFilter()'), staffCode.indexOf('function renderWeekLabel()'));
+    const staffScheduleFetchBlock = staffCode.slice(staffCode.indexOf('async function fetchSchedule('), staffCode.indexOf('async function fetchScheduleAttendance'));
+    const staffScheduleAttendanceFetchBlock = staffCode.slice(staffCode.indexOf('async function fetchScheduleAttendance'), staffCode.indexOf('async function fetchScheduleHours'));
+    const staffScheduleRangeNavigationBlock = staffCode.slice(staffCode.indexOf('async function goToScheduleRange'), staffCode.indexOf('async function goToWeek'));
+    const staffSchedulePrintBlock = staffCode.slice(staffCode.indexOf('function handlePrint()'), staffCode.indexOf('// v39.11: Add staff modal'));
+    const staffScheduleNormalizeStaffIdBlock = staffFunctionBlock('normalizeScheduleStaffId');
+    const staffScheduleUniqueStaffBlock = staffFunctionBlock('uniqueScheduleStaffById');
+    const staffScheduleCanonicalGroupBlock = staffFunctionBlock('scheduleCanonicalDisplayGroupKey');
+    const staffScheduleMembershipBlock = staffFunctionBlock('staffScheduleDepartmentKeys');
+    const staffScheduleGroupingKeysBlock = staffFunctionBlock('scheduleStaffGroupingDepartmentKeys');
+    const staffScheduleDepartmentCountBlock = staffFunctionBlock('scheduleDepartmentCountMap');
+    const staffScheduleVisibleWithoutSearchBlock = staffFunctionBlock('scheduleStaffVisibleWithoutSearch');
+    const staffScheduleGroupStaffBlock = staffFunctionBlock('groupStaffByScheduleDepartment');
+    const staffScheduleFinalVisibleBlock = staffFunctionBlock('scheduleFinalVisibleStaffSnapshot');
+    const staffScheduleExportVisibleBlock = staffFunctionBlock('scheduleExportVisibleStaff');
+    const staffScheduleWorkbookBlock = staffFunctionBlock('buildScheduleWorkbookHtml');
+    const staffScheduleDisplayNameBlock = staffFunctionBlock('scheduleStaffDisplayName');
+    const staffScheduleFillModalBlock = staffFunctionBlock('openFillWeekModal');
+    const staffScheduleFillSaveBlock = staffFunctionBlock('handleFillWeekSave');
+    const staffScheduleCopyVisibleIdsBlock = staffFunctionBlock('scheduleCopyWeekVisibleStaffIds');
     const staffScheduleDiagnosticsHiddenRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .schedule-secondary-diagnostics > [hidden]');
     const staffScheduleHealthBadgeCssStart = staffPagesCss.indexOf('body[data-page-group="hr"] .schedule-health-badges');
     const staffScheduleHealthBadgeCssBlock = staffScheduleHealthBadgeCssStart > -1
@@ -1728,6 +1777,85 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleMobileCommandBlock = staffScheduleMobileCommandStart > -1
         ? staffPagesCss.slice(staffScheduleMobileCommandStart, staffPagesCss.indexOf('@media (max-width: 480px)', staffScheduleMobileCommandStart))
         : '';
+    check('Shared modal lifecycle keeps legacy hidden defaults while supporting custom schedule modal options',
+        sharedOpenModalBlock.includes('function openModal(modalEl, triggerEl, options = {})')
+        && sharedOpenModalBlock.includes("if (typeof options.show === 'function') options.show(modalEl)")
+        && sharedOpenModalBlock.includes("else modalEl.classList.remove('hidden')")
+        && sharedOpenModalBlock.includes('const preferred = resolveModalLifecycleTarget(options.initialFocus, modalEl)')
+        && sharedOpenModalBlock.includes("if (typeof options.onRequestClose === 'function')")
+        && sharedOpenModalBlock.includes("options.onRequestClose({ reason: 'escape', modal: modalEl })")
+        && sharedOpenModalBlock.includes('e.preventDefault()')
+        && sharedOpenModalBlock.includes('e.stopPropagation()')
+        && sharedCloseModalBlock.includes('const lifecycleOptions = { ...(trapState.options || {}), ...options }')
+        && sharedCloseModalBlock.includes("if (typeof lifecycleOptions.hide === 'function') lifecycleOptions.hide(modalEl)")
+        && sharedCloseModalBlock.includes("else modalEl.classList.add('hidden')")
+        && sharedCloseModalBlock.includes('resolveModalLifecycleTarget(lifecycleOptions.restoreFocus, modalEl) || trapState.trigger'));
+    check('Staff schedule modal async reads and dismiss requests are stale-safe and single-flight',
+        staffScheduleEditingCellMatchesBlock.includes("overlay?.classList.contains('visible')")
+        && staffScheduleEditingCellMatchesBlock.includes('editing.rangeKey === rangeKey')
+        && staffScheduleShiftPreferencesLoadBlock.includes('++StaffState.shiftPreferencesLoadSeq')
+        && staffScheduleShiftPreferencesLoadBlock.includes('seq !== StaffState.shiftPreferencesLoadSeq')
+        && staffScheduleShiftPreferencesLoadBlock.includes('scheduleEditingCellMatches(numericStaffId, requestedDate, requestedRangeKey)')
+        && staffScheduleHistoryLoadBlock.includes('++StaffState.scheduleHistoryLoadSeq')
+        && staffScheduleHistoryLoadBlock.includes('scheduleCellHistoryAbortController.abort()')
+        && staffScheduleHistoryLoadBlock.includes('fetchScheduleHistory(numericStaffId, normalizedDate, { signal: controller?.signal })')
+        && staffScheduleHistoryLoadBlock.includes('seq !== StaffState.scheduleHistoryLoadSeq')
+        && staffScheduleHistoryLoadBlock.includes('scheduleEditingCellMatches(numericStaffId, normalizedDate, requestedRangeKey)')
+        && staffScheduleCloseModalBlock.includes('if (_staffScheduleClosePromise) return _staffScheduleClosePromise')
+        && staffScheduleCloseModalBlock.includes('_staffScheduleClosePromise = closeRequest')
+        && staffScheduleCloseModalBlock.includes('if (_staffScheduleClosePromise === closeRequest) _staffScheduleClosePromise = null')
+        && staffScheduleCloseModalBlock.includes('StaffState.scheduleHistoryLoadSeq += 1')
+        && staffScheduleCloseModalBlock.includes('StaffState.shiftPreferencesLoadSeq += 1')
+        && staffScheduleCloseModalBlock.includes('scheduleCellHistoryAbortController.abort()'));
+    check('Staff schedule shift modal uses shared focus lifecycle and isolates Escape from legacy overlays',
+        staffScheduleOpenCellBlock.includes("openEditModal(staffId, cell.dataset.date, { trigger: cell })")
+        && staffScheduleOpenModalBlock.includes('openModal(overlay, trigger, {')
+        && staffScheduleOpenModalBlock.includes('show: modal =>')
+        && staffScheduleOpenModalBlock.includes('hide: modal =>')
+        && staffScheduleOpenModalBlock.includes('initialFocus: () => StaffState.canManage')
+        && staffScheduleOpenModalBlock.includes("document.getElementById('schStatus')")
+        && staffScheduleOpenModalBlock.includes("document.getElementById('schCancelBtn')")
+        && staffScheduleOpenModalBlock.includes('onRequestClose: () => closeEditModal(false)')
+        && staffScheduleOpenModalBlock.includes('restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger)')
+        && staffScheduleCellFocusTargetBlock.includes('document.querySelector(selector)')
+        && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleStaffSearch')")
+        && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleWrapper')")
+        && staffScheduleGlobalEscapeBlock.includes("e.key !== 'Escape' || e.defaultPrevented")
+        && !staffScheduleGlobalEscapeBlock.includes('closeEditModal'));
+    check('Staff schedule shift modal exposes labelled controls, read-only context, and live history semantics',
+        /id="schModalOverlay"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="schModalTitle"/.test(staffScheduleShellCode)
+        && !/id="schModalOverlay"[^>]*aria-label=/.test(staffScheduleShellCode)
+        && ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].every(id => staffScheduleShellCode.includes(`<label for="${id}">`))
+        && staffScheduleShellCode.includes('id="schProfession" aria-describedby="schProfessionHint"')
+        && staffScheduleShellCode.includes('id="schProfessionHint"')
+        && !/<input(?=[^>]*id="schNote")(?=[^>]*aria-label=)[^>]*>/.test(staffScheduleShellCode)
+        && staffScheduleShellCode.includes('class="sch-history-panel" role="region" aria-labelledby="schHistoryTitle"')
+        && staffScheduleShellCode.includes('id="schHistoryTitle"')
+        && /id="schHistoryList"[^>]*aria-live="polite"[^>]*aria-busy="false"/.test(staffScheduleShellCode)
+        && staffScheduleReadOnlyModalBlock.includes("overlay.setAttribute('aria-describedby', 'schReadOnlyHint')")
+        && staffScheduleReadOnlyModalBlock.includes("overlay.removeAttribute('aria-describedby')"));
+    check('Staff schedule tables expose captions and column header scopes',
+        (staffScheduleShellCode.match(/<caption class="staff-schedule-table-caption">/g) || []).length === 2
+        && staffScheduleRenderBlock.includes('<th scope="col">')
+        && staffScheduleRenderBlock.includes('<th scope="col" class="${isToday ?')
+        && staffScheduleLoadViewBlock.includes('<th scope="col">')
+        && staffScheduleLoadViewBlock.includes("<th scope=\"col\" class=\"${isToday ?")
+        && (staffScheduleLoadViewBlock.match(/scope="col"/g) || []).length >= 3);
+    check('Staff schedule shift modal stays bounded and operable on narrow viewports',
+        /overflow-y:\s*auto;/.test(staffScheduleModalOverlayRule)
+        && /overscroll-behavior:\s*contain;/.test(staffScheduleModalOverlayRule)
+        && /max-height:\s*calc\(100dvh\s*-\s*32px\);/.test(staffScheduleModalRule)
+        && /margin:\s*auto\s+0;/.test(staffScheduleModalRule)
+        && /display:\s*flex;/.test(staffScheduleShiftModalRule)
+        && /flex-direction:\s*column;/.test(staffScheduleShiftModalRule)
+        && /overflow:\s*hidden;/.test(staffScheduleShiftModalRule)
+        && /flex:\s*1\s+1\s+auto;/.test(staffScheduleModalScrollRule)
+        && /min-height:\s*0;/.test(staffScheduleModalScrollRule)
+        && /overflow-y:\s*auto;/.test(staffScheduleModalScrollRule)
+        && /flex:\s*0\s+0\s+auto;/.test(staffScheduleModalActionsRule)
+        && /min-height:\s*44px;/.test(staffScheduleModalActionButtonRule)
+        && staffScheduleResponsiveBlock.includes('@media (max-width: 768px)')
+        && /grid-template-columns:\s*1fr;/.test(staffScheduleResponsivePreferenceRule));
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
@@ -1817,8 +1945,7 @@ checkPage('staff.html', (doc, html) => {
         && /margin:\s*0\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
         && /padding:\s*0\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
         && /box-shadow:\s*none\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
-        && staffSchedulePrimaryRenderBlock.includes('const health = buildScheduleHealth(dates, baseFiltered, { department: StaffState.activeDept })')
-        && staffSchedulePrimaryRenderBlock.includes('const filtered = scheduleHealthFilteredStaff(baseFiltered, health)')
+        && staffSchedulePrimaryRenderBlock.includes('scheduleFinalVisibleStaffSnapshot(')
         && staffScheduleRenderBlock.includes("tbody.classList.toggle('show-hours', Boolean(StaffState.showHours))")
         && !staffScheduleRenderBlock.includes("tbody.classList.add('show-hours')")
         && !staffScheduleViewModeBlock.includes("classList.add('show-hours')")
@@ -1876,7 +2003,7 @@ checkPage('staff.html', (doc, html) => {
         && staffDeptFilterRenderBlock.includes('aria-pressed="${active ?')
         && staffDeptFilterRenderBlock.includes("c.setAttribute('aria-pressed', 'false')")
         && staffDeptFilterRenderBlock.includes("chip.setAttribute('aria-pressed', 'true')")
-        && staffDeptFilterRenderBlock.includes('const allCount = scheduleableStaffForUi(StaffState.staff).length')
+        && staffDeptFilterRenderBlock.includes('const allCount = uniqueScheduleStaffById(scheduleableStaffForUi(StaffState.staff)).length')
         && staffCode.includes('function scheduleDepartmentCountMap(staffList = StaffState.staff)')
         && staffCode.includes('const counts = scheduleDepartmentCountMap(StaffState.staff)')
         && !staffDeptFilterRenderBlock.includes('${label} (${count})')
@@ -1897,25 +2024,43 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('function scheduleStaffSearchHaystack')
         && staffCode.includes('function scheduleStaffVisibleWithoutSearch')
         && staffCode.includes('function staffMatchesScheduleDepartment')
-        && staffCode.includes('return scheduleable.filter(staff => staffMatchesScheduleDepartment(staff, StaffState.activeDept));')
+        && staffScheduleVisibleWithoutSearchBlock.includes('staffMatchesScheduleDepartment(staff, StaffState.activeDept)')
         && staffCode.includes('function bindScheduleStaffSearchControls')
         && staffCode.includes("document.getElementById('scheduleStaffSearch')")
-        && staffCode.includes('return visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query));')
+        && staffFunctionBlock('scheduleVisibleStaff').includes('visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query))')
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
         && staffCode.includes('const grouped = groupStaffByScheduleDepartment(filtered, { department: StaffState.activeDept })'));
-    check('Staff schedule category grouping counts primary and secondary professions without duplicate subgroup headers',
+    check('Staff schedule subgroup ownership is deterministic while duplicate-label headers stay suppressed',
         staffCode.includes('function staffProfessionKeys(staff = {})')
         && staffCode.includes('function staffScheduleDepartmentKeys(staff = {})')
         && staffCode.includes('function scheduleProfessionDisplayGroupKey(professionKey)')
         && staffCode.includes('for (const professionKey of staffProfessionKeys(staff))')
-        && staffCode.includes('function scheduleRenderableSubGroups(departmentKey = \'\', deptStaff = [], subGroups = null)')
+        && staffCode.includes('function resolveScheduleSubGroup(staff = {}, departmentKey = \'\', context = {})')
+        && staffCode.includes('function partitionScheduleStaffBySubGroup(departmentKey = \'\', deptStaff = [], subGroups = null, context = {})')
+        && staffCode.includes('function scheduleSubGroupProfessionCandidates(staff = {}, activeDepartment = \'\')')
+        && staffCode.includes('function compareScheduleSubGroupCandidates(left = {}, right = {})')
         && staffCode.includes('function shouldSkipScheduleSubGroup(departmentKey = \'\', subGroup = {})')
-        && staffCode.includes('const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups)')
-        && staffCode.includes("if (parentKey && subGroupKey && parentKey === subGroupKey) return true")
-        && staffCode.includes('return staffProfessionKeys(staff).some(roleKey => roleKeys.includes(roleKey));')
-        && !staffCode.includes('const allRoleKeys = departmentSubGroupRoleKeySet(subGroups)')
-        && !staffCode.includes('staffMatchesAnyDepartmentSubGroup'));
+        && (staffCode.match(/partitionScheduleStaffBySubGroup\(dept, deptStaff, subGroups/g) || []).length >= 2
+        && staffCode.includes('.sort(compareScheduleSubGroupCandidates)')
+        && staffCode.includes('ownershipByStaffId.set(staffId, subGroup)')
+        && staffCode.includes('data-schedule-subgroup-label=')
+        && !staffCode.includes('function staffMatchesDepartmentSubGroup')
+        && !staffCode.includes('if (parentKey && subGroupKey && parentKey === subGroupKey) return true'));
+    check('Staff schedule health uses one shift profession department and neutral missing readiness',
+        staffCode.includes('function scheduleHealthShiftProfessionKey(staff = {}, entry = {})')
+        && staffCode.includes('function scheduleHealthShiftDepartment(staff = {}, entry = {})')
+        && staffCode.includes('const workingCountByDepartmentDate = new Map()')
+        && staffCode.includes('workingCountByDepartmentDate.set(countKey')
+        && staffCode.includes('workingCountByDepartmentDate.get(`${department}:${date}`) || 0')
+        && staffCode.includes("data-staff-readiness-state=\"unknown\"")
+        && staffCode.includes('staff-card-badge neutral')
+        && staffCode.includes('Немає даних</span>')
+        && staffCode.includes('readiness.hasData && readiness.total > 0 && readiness.percent < 45')
+        && !staffCode.includes("code: 'missing_readiness'")
+        && staffCode.includes('isScheduleManagerStaff(staff, entry)')
+        && staffScheduleBrowserSmokeCode.includes('async function runDeterministicSubgroupReadinessFlow')
+        && staffScheduleBrowserSmokeCode.includes('runDeterministicSubgroupReadinessFlow('));
     check('Staff schedule groups collapse by default and expand through accessible headers',
         staffCode.includes('expandedScheduleGroups: new Set()')
         && staffCode.includes("const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups'")
@@ -1988,17 +2133,106 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes("return goToScheduleRange(range.start, range.end, 'rolling');")
         && staffCode.includes('scheduleNavigationStepDays()')
         && staffCode.includes('await goToWeek(getScheduleFocusStart(new Date()));'));
+    check('Staff schedule commits confirmed ranges atomically and blocks stale responses',
+        staffScheduleShellCode.includes('id="scheduleDataRegion"')
+        && staffScheduleShellCode.includes('data-schedule-state="idle"')
+        && staffScheduleShellCode.includes('aria-busy="false"')
+        && staffScheduleShellCode.includes('id="scheduleRangeState"')
+        && staffScheduleShellCode.includes('id="scheduleRangeStateTitle"')
+        && staffScheduleShellCode.includes('id="scheduleRangeStateMessage"')
+        && staffScheduleShellCode.includes('id="scheduleRangeRetryBtn"')
+        && /id="exportExcelBtn"[^>]*disabled/.test(staffScheduleShellCode)
+        && /id="printBtn"[^>]*disabled/.test(staffScheduleShellCode)
+        && staffCode.includes('let staffScheduleRangeLoadSeq = 0')
+        && staffCode.includes('let staffScheduleRangeAbortController = null')
+        && staffCode.includes("rangeLoadState: 'idle'")
+        && staffCode.includes('rangePending: null')
+        && staffCode.includes('rangeRetry: null')
+        && staffCode.includes('function setScheduleRangeLoadState')
+        && staffCode.includes('function scheduleRangeDataReady')
+        && staffCode.includes('function retryScheduleRangeLoad')
+        && staffScheduleFetchBlock.includes('signal')
+        && staffScheduleFetchBlock.includes('scheduleRawEntries')
+        && staffScheduleFetchBlock.includes('displayGroups')
+        && !/StaffState\.(?:schedule|scheduleRawEntries|displayGroups|scheduleLoadedRange)\s*=/.test(staffScheduleFetchBlock)
+        && staffScheduleAttendanceFetchBlock.includes('signal')
+        && staffScheduleAttendanceFetchBlock.includes('attendanceSummary')
+        && !/StaffState\.(?:attendance|attendanceSummary|attendanceUnavailable)\s*=/.test(staffScheduleAttendanceFetchBlock)
+        && staffScheduleRangeNavigationBlock.includes('staffScheduleRangeLoadSeq')
+        && staffScheduleRangeNavigationBlock.includes('staffScheduleRangeAbortController')
+        && staffScheduleRangeNavigationBlock.includes('new AbortController()')
+        && staffScheduleRangeNavigationBlock.includes('Promise.all(')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.schedule =')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.scheduleRawEntries =')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.attendance =')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.attendanceSummary =')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.hoursData =')
+        && staffScheduleRangeNavigationBlock.includes('StaffState.scheduleLoadedRange =')
+        && staffScheduleRangeNavigationBlock.includes("setScheduleRangeLoadState('loading'")
+        && staffScheduleRangeNavigationBlock.includes("setScheduleRangeLoadState('error'")
+        && staffScheduleRangeNavigationBlock.includes("'empty'")
+        && staffScheduleRangeNavigationBlock.includes("'ready'")
+        && staffScheduleExportBlock.includes('scheduleRangeDataReady()')
+        && staffSchedulePrintBlock.includes('scheduleRangeDataReady()')
+        && staffPagesCss.includes('.staff-schedule-range-state')
+        && staffPagesCss.includes('[data-schedule-state="loading"]')
+        && staffPagesCss.includes('[data-schedule-state="error"]'));
+    check('Staff schedule keeps multi-profession staff canonical and unique across table, export, and print',
+        staffScheduleNormalizeStaffIdBlock.includes('Number(')
+        && /Number\.is(?:SafeInteger|Integer|Finite)/.test(staffScheduleNormalizeStaffIdBlock)
+        && staffScheduleUniqueStaffBlock.includes('normalizeScheduleStaffId')
+        && staffScheduleUniqueStaffBlock.includes('new Set()')
+        && staffScheduleCanonicalGroupBlock.includes('normalizeScheduleDisplayGroupKey(staff.display_group || staff.displayGroup)')
+        && staffScheduleCanonicalGroupBlock.includes('if (backendGroup) return backendGroup')
+        && staffScheduleCanonicalGroupBlock.includes('normalizeScheduleDisplayGroupKey(legacyScheduleDisplayDepartmentKey(staff))')
+        && (/\|\| 'admin'/.test(staffScheduleCanonicalGroupBlock) || staffScheduleCanonicalGroupBlock.includes("return 'admin'"))
+        && staffScheduleMembershipBlock.includes('staffProfessionKeys(staff)')
+        && staffScheduleMembershipBlock.includes('scheduleProfessionDisplayGroupKey')
+        && staffScheduleMembershipBlock.includes('scheduleCanonicalDisplayGroupKey(staff)')
+        && staffScheduleGroupingKeysBlock.includes('staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : []')
+        && staffScheduleGroupingKeysBlock.includes('return [scheduleCanonicalDisplayGroupKey(staff)]')
+        && staffScheduleGroupingKeysBlock.includes("options.grouping === 'membership'")
+        && staffScheduleDepartmentCountBlock.includes('uniqueScheduleStaffById(')
+        && staffScheduleVisibleWithoutSearchBlock.includes('uniqueScheduleStaffById(')
+        && staffScheduleGroupStaffBlock.includes('uniqueScheduleStaffById(')
+        && staffScheduleFinalVisibleBlock.includes('scheduleVisibleStaff(')
+        && staffScheduleFinalVisibleBlock.includes('scheduleHealthFilteredStaff(')
+        && (staffScheduleFinalVisibleBlock.match(/uniqueScheduleStaffById\(/g) || []).length >= 2
+        && staffSchedulePrimaryRenderBlock.includes('scheduleFinalVisibleStaffSnapshot(')
+        && staffScheduleExportVisibleBlock.includes('scheduleFinalVisibleStaffSnapshot(')
+        && staffScheduleFillModalBlock.includes('scheduleVisibleStaff()')
+        && staffScheduleFillModalBlock.includes('normalizeScheduleStaffId(emp.id)')
+        && staffScheduleFillSaveBlock.includes('uniqueScheduleStaffById(')
+        && staffScheduleCopyVisibleIdsBlock.includes('uniqueScheduleStaffById(')
+        && staffScheduleCopyVisibleIdsBlock.includes('normalizeScheduleStaffId')
+        && staffScheduleDisplayNameBlock.includes('staff.display_name || staff.displayName || staff.name')
+        && staffScheduleWorkbookBlock.includes('data-schedule-export-staff-id=')
+        && staffScheduleWorkbookBlock.includes('scheduleStaffDisplayName(emp)')
+        && staffScheduleBrowserSmokeCode.includes('const STAFF_API_ROWS =')
+        && /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/.test(staffScheduleBrowserSmokeCode)
+        && /secondary_professions:\s*\['manager',\s*'barista'\]/.test(staffScheduleBrowserSmokeCode)
+        && /secondary_professions:\s*\['trampoline_instructor'\]/.test(staffScheduleBrowserSmokeCode)
+        && staffScheduleBrowserSmokeCode.includes("role_type: 'legacy_shift_role'")
+        && /secondary_professions:\s*\['legacy_auxiliary'\]/.test(staffScheduleBrowserSmokeCode)
+        && /\{\s*\.\.\.STAFF_ROWS\[0\],\s*id:\s*'101'\s*\}/.test(staffScheduleBrowserSmokeCode)
+        && staffScheduleBrowserSmokeCode.includes('function scheduleStaffIdsFromDom')
+        && staffScheduleBrowserSmokeCode.includes('function scheduleExportStaffIdsFromHtml')
+        && staffScheduleBrowserSmokeCode.includes('function assertUniqueScheduleStaffIds')
+        && staffScheduleBrowserSmokeCode.includes('function assertScheduleExportParity')
+        && staffScheduleBrowserSmokeCode.includes('async function runCanonicalGroupingFlow')
+        && staffScheduleBrowserSmokeCode.includes('runCanonicalGroupingFlow('));
     check('Staff schedule read-only surfaces use the selected visible period',
         staffSchedulePrimaryRenderBlock.includes('const dates = getScheduleDates()')
         && staffSchedulePrimaryRenderBlock.includes("syncScheduleRangeLayout('scheduleWrapper', dates, 'schedule')")
-        && staffSchedulePrimaryRenderBlock.includes('const health = buildScheduleHealth(dates, baseFiltered, { department: StaffState.activeDept })')
+        && staffSchedulePrimaryRenderBlock.includes('scheduleFinalVisibleStaffSnapshot(')
         && staffScheduleRenderBlock.includes('renderSummary(filtered, dates)')
         && staffScheduleSummaryBlock.includes('function summarizeScheduleRange')
         && staffScheduleSummaryBlock.includes('const ds = typeof d ===')
         && staffScheduleSummaryBlock.includes('updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered)')
         && !staffScheduleSummaryBlock.includes('Не заповнено:')
-        && staffScheduleViewModeBlock.includes('const dates = getScheduleDates()')
-        && staffScheduleViewModeBlock.includes('fetchScheduleHours(from, to)')
+        && staffScheduleViewModeBlock.includes('const target = scheduleNavigationRange()')
+        && staffScheduleViewModeBlock.includes('rangeReloaded = await goToScheduleRange(target.start, target.end, scheduleNavigationMode())')
+        && staffScheduleRangeNavigationBlock.includes('fetchScheduleHours(target.from, target.to, requestOptions)')
         && staffScheduleLoadViewBlock.includes('const dates = getScheduleDates()')
         && staffScheduleLoadViewBlock.includes("syncScheduleRangeLayout('loadViewWrapper', dates, 'load')")
         && staffScheduleExportBlock.includes('const dates = getScheduleDates()')
@@ -2006,9 +2240,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleExportBlock.includes('application/vnd.ms-excel')
         && staffCode.includes('function buildScheduleWorkbookHtml')
         && staffCode.includes('schedule-export-table')
-        && staffCode.includes('await fetchSchedule(from, to);')
-        && staffCode.includes('await fetchScheduleAttendance(from, to);')
-        && staffCode.includes('StaffState.hoursData = hours.success ? hours.data : null;')
+        && staffCode.includes('StaffState.scheduleLoadedRange')
+        && staffCode.includes('scheduleRangeDataReady()')
         && staffCode.includes('function buildScheduleHealth(dates = getScheduleDates()')
         && staffCode.includes('function buildStaffingDemandForecast(dates = getScheduleDates()')
         && staffCode.includes('function buildManagerAccountability(dates = getScheduleDates()')
@@ -2129,7 +2362,8 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('StaffState.showHours = nextMode ===')
         && staffCode.includes('StaffState.showLoadView = nextMode ===')
         && staffCode.includes('StaffState.showLinkView = nextMode ===')
-        && staffCode.includes('await fetchScheduleHours(from, to)')
+        && staffScheduleViewModeBlock.includes('rangeReloaded = await goToScheduleRange(target.start, target.end, scheduleNavigationMode())')
+        && staffScheduleRangeNavigationBlock.includes('fetchScheduleHours(target.from, target.to, requestOptions)')
         && staffCode.includes('await fetchLinkStatus()')
         && staffCode.includes("document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal)")
         && staffCode.includes("document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek)")
@@ -2177,8 +2411,15 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleLiveSmokeCode.includes("'.schedule-toolbar'")
         && staffScheduleBrowserSmokeCode.includes('function assertScheduleGroupExpansionPersists')
         && staffScheduleBrowserSmokeCode.includes('function assertDepartmentChipsFit')
+        && staffScheduleBrowserSmokeCode.includes('async function runPeriodReliabilityFlow')
+        && staffScheduleBrowserSmokeCode.includes('async function runInitialRangeFailureFlow')
+        && staffScheduleBrowserSmokeCode.includes('runPeriodReliabilityFlow(')
+        && staffScheduleBrowserSmokeCode.includes('runInitialRangeFailureFlow(')
         && staffScheduleBrowserSmokeCode.includes('expanded schedule group persists after reload')
-        && staffScheduleBrowserSmokeCode.includes("{ width: 360, height: 800 }, 'mobile-360'")
+        && staffScheduleBrowserSmokeCode.includes('{ width: 320, height: 760 }')
+        && staffScheduleBrowserSmokeCode.includes('{ width: 360, height: 800 }')
+        && staffScheduleBrowserSmokeCode.includes('{ width: 390, height: 844 }')
+        && staffScheduleBrowserSmokeCode.includes('for (const darkMode of [false, true])')
         && staffScheduleLiveSmokeCode.includes('mobile: Object.freeze({ width: 390, height: 844 })')
         && staffScheduleLiveSmokeCode.includes('narrowMobile: Object.freeze({ width: 360, height: 800 })')
         && staffScheduleLiveSmokeCode.includes('function assertScheduleGroupExpansionPersists')

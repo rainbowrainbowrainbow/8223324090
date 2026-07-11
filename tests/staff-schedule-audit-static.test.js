@@ -186,3 +186,39 @@ test('live staff schedule write smoke is explicit QA-only and restorative', () =
     assert.doesNotMatch(script, /process\.env\.DATABASE_URL\s*=/);
     assert.doesNotMatch(script, /\b(TRUNCATE|DROP|ALTER)\b/i);
 });
+
+test('staff schedule release verification stays standalone, complete, and read-only', () => {
+    const packageJson = JSON.parse(read('package.json'));
+    const script = read('scripts', 'staff-schedule-release-verify.js');
+
+    assert.equal(
+        packageJson.scripts['test:staff-schedule'],
+        'node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js'
+    );
+    assert.equal(
+        packageJson.scripts['test:browser:staff-schedule'],
+        'npx --yes --package playwright node tests/browser/staff-schedule-custom-range-browser-smoke.js'
+    );
+    assert.equal(
+        packageJson.scripts['release:staff-schedule:verify'],
+        'node scripts/staff-schedule-release-verify.js'
+    );
+    for (const focusedTest of [
+        'tests/staff-schedule-history-static.test.js',
+        'tests/staff-schedule-audit-static.test.js'
+    ]) {
+        assert.match(packageJson.scripts['test:unit'], new RegExp(focusedTest.replaceAll('.', '\\.')));
+    }
+
+    assert.match(script, /normalizeLiveUrl\(/);
+    assert.match(script, /provide a valid http\(s\) URL argument/);
+    assert.match(script, /runStep\('runtime baseline', \['run', 'check:runtime'\]\)/);
+    assert.match(script, /runStep\('focused deterministic contracts', \['run', 'test:staff-schedule'\]\)/);
+    assert.match(script, /runStep\('full fast CI-equivalent baseline', \['test'\]\)/);
+    assert.match(script, /runStep\('local Playwright regression smoke', \['run', 'test:browser:staff-schedule'\]\)/);
+    assert.match(script, /runStep\('deployed read-only Staff Schedule smoke', \['run', 'smoke:staff-schedule', '--', liveUrl\]\)/);
+    assert.match(script, /runStep\('deployed version contract', \['run', 'version:smoke', '--', liveUrl\]\)/);
+    assert.doesNotMatch(script, /smoke:staff-schedule:write/);
+    assert.doesNotMatch(script, /\.github[\\/]workflows|scripts[\\/]release-gate|release-gate\.js/);
+    assert.doesNotMatch(packageJson.scripts.verify, /release:staff-schedule:verify/);
+});

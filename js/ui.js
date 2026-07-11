@@ -1401,22 +1401,49 @@ if (typeof window !== 'undefined') {
     window.UnsafeDismissGuard = UnsafeDismissGuard;
 }
 
-function openModal(modalEl, triggerEl) {
+function resolveModalLifecycleTarget(target, modalEl) {
+    if (typeof target === 'function') return target(modalEl) || null;
+    if (typeof target === 'string') return modalEl.querySelector(target) || document.querySelector(target);
+    return target || null;
+}
+
+function openModal(modalEl, triggerEl, options = {}) {
     if (!modalEl) return;
+
+    // Re-opening the same surface must replace its existing trap instead of
+    // stacking duplicate listeners and stale focus-restoration targets.
+    for (let index = _focusTrapStack.length - 1; index >= 0; index -= 1) {
+        const existingState = _focusTrapStack[index];
+        if (existingState.modal !== modalEl) continue;
+        if (existingState.handler) modalEl.removeEventListener('keydown', existingState.handler);
+        _focusTrapStack.splice(index, 1);
+    }
+    if (modalEl._focusTrapHandler) {
+        modalEl.removeEventListener('keydown', modalEl._focusTrapHandler);
+        delete modalEl._focusTrapHandler;
+    }
 
     // Save trigger element for focus restoration
     const trapState = {
         modal: modalEl,
         trigger: triggerEl || document.activeElement,
+        options,
         previousTrap: _focusTrapStack[_focusTrapStack.length - 1] || null
     };
     _focusTrapStack.push(trapState);
 
     // Show modal
-    modalEl.classList.remove('hidden');
+    if (typeof options.show === 'function') options.show(modalEl);
+    else modalEl.classList.remove('hidden');
 
     // Focus first focusable element after DOM renders
     requestAnimationFrame(() => {
+        if (!_focusTrapStack.includes(trapState)) return;
+        const preferred = resolveModalLifecycleTarget(options.initialFocus, modalEl);
+        if (preferred && !preferred.disabled && preferred.offsetParent !== null && typeof preferred.focus === 'function') {
+            preferred.focus();
+            return;
+        }
         const focusableEls = modalEl.querySelectorAll(FOCUSABLE_SELECTOR);
         const visible = Array.from(focusableEls).filter(el => el.offsetParent !== null);
         if (visible.length > 0) {
@@ -1432,7 +1459,7 @@ function openModal(modalEl, triggerEl) {
     });
 
     // Attach keydown listener for Tab trap + Escape
-    modalEl._focusTrapHandler = (e) => {
+    trapState.handler = (e) => {
         if (e.key === 'Tab') {
             // Re-query focusable elements (content may change dynamically)
             const focusable = Array.from(
@@ -1460,6 +1487,10 @@ function openModal(modalEl, triggerEl) {
         if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
+            if (typeof options.onRequestClose === 'function') {
+                options.onRequestClose({ reason: 'escape', modal: modalEl });
+                return;
+            }
             if (modalEl.dataset.editableSurface === 'true' && window.UnsafeDismissGuard) {
                 window.UnsafeDismissGuard.attemptCloseEditableSurface(modalEl, () => closeModal(modalEl, { force: true }), { reason: 'escape' });
             } else {
@@ -1468,7 +1499,8 @@ function openModal(modalEl, triggerEl) {
         }
     };
 
-    modalEl.addEventListener('keydown', modalEl._focusTrapHandler);
+    modalEl._focusTrapHandler = trapState.handler;
+    modalEl.addEventListener('keydown', trapState.handler);
 }
 
 function closeModal(modalEl, options = {}) {
@@ -1481,28 +1513,41 @@ function closeModal(modalEl, options = {}) {
         return false;
     }
 
-    // Find this modal in the stack
-    const idx = _focusTrapStack.findIndex(s => s.modal === modalEl);
+    // Find the current instance of this modal in the stack.
+    let idx = -1;
+    for (let index = _focusTrapStack.length - 1; index >= 0; index -= 1) {
+        if (_focusTrapStack[index].modal === modalEl) {
+            idx = index;
+            break;
+        }
+    }
     if (idx === -1) {
         // Not in stack — just hide (fallback)
-        modalEl.classList.add('hidden');
+        if (typeof options.hide === 'function') options.hide(modalEl);
+        else modalEl.classList.add('hidden');
         return;
     }
 
     const trapState = _focusTrapStack.splice(idx, 1)[0];
+    const lifecycleOptions = { ...(trapState.options || {}), ...options };
 
     // Remove keydown handler
+    if (trapState.handler) modalEl.removeEventListener('keydown', trapState.handler);
     if (modalEl._focusTrapHandler) {
-        modalEl.removeEventListener('keydown', modalEl._focusTrapHandler);
+        if (modalEl._focusTrapHandler !== trapState.handler) {
+            modalEl.removeEventListener('keydown', modalEl._focusTrapHandler);
+        }
         delete modalEl._focusTrapHandler;
     }
 
     // Hide modal
-    modalEl.classList.add('hidden');
+    if (typeof lifecycleOptions.hide === 'function') lifecycleOptions.hide(modalEl);
+    else modalEl.classList.add('hidden');
 
     // Restore focus to trigger element
-    if (trapState.trigger && typeof trapState.trigger.focus === 'function') {
-        try { trapState.trigger.focus(); } catch (_) { /* element may no longer exist */ }
+    const restoreTarget = resolveModalLifecycleTarget(lifecycleOptions.restoreFocus, modalEl) || trapState.trigger;
+    if (restoreTarget && restoreTarget.isConnected !== false && typeof restoreTarget.focus === 'function') {
+        try { restoreTarget.focus(); } catch (_) { /* element may no longer exist */ }
     }
 }
 

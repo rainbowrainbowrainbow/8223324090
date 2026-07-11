@@ -4272,6 +4272,295 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 .dept-chip[data-dept="security"] { color: #64748B; }
 .dept-chip[data-dept="security"].active { background: #64748B; color: #fff; }
 
+/* Staff schedule range lifecycle */
+.staff-schedule-data-region {
+    min-width: 0;
+}
+
+.staff-schedule-data-region[data-has-committed-range="false"] > .schedule-summary,
+.staff-schedule-data-region[data-has-committed-range="false"] > .schedule-wrapper,
+.staff-schedule-data-region[data-has-committed-range="false"] > .schedule-secondary-diagnostics {
+    display: none !important;
+}
+
+.staff-schedule-data-region[data-schedule-state="loading"] > .schedule-wrapper,
+.staff-schedule-data-region[data-schedule-state="loading"] > .schedule-secondary-diagnostics {
+    opacity: 0.68;
+}
+
+.staff-schedule-data-region[data-schedule-state="error"] > .schedule-wrapper,
+.staff-schedule-data-region[data-schedule-state="error"] > .schedule-secondary-diagnostics {
+    opacity: 0.84;
+}
+
+.staff-schedule-range-state {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 12px;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 16px;
+    padding: 13px 14px;
+    border: 1px solid #CBD5E1;
+    border-radius: 12px;
+    background: #F8FAFC;
+    color: #334155;
+    box-shadow: var(--shadow-xs);
+}
+
+.staff-schedule-range-state[hidden] {
+    display: none !important;
+}
+
+.staff-schedule-range-state-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    line-height: 1.35;
+}
+
+.staff-schedule-range-state-copy strong {
+    color: #0F172A;
+    font-size: 14px;
+    font-weight: 850;
+}
+
+.staff-schedule-range-state-copy span {
+    color: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.staff-schedule-range-state-indicator {
+    position: relative;
+    display: inline-block;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    color: #64748B;
+}
+
+.staff-schedule-range-state[data-state="loading"] {
+    border-color: #99F6E4;
+    background: #F0FDFA;
+    color: #0F766E;
+}
+
+.staff-schedule-range-state[data-state="loading"] .staff-schedule-range-state-copy strong {
+    color: #115E59;
+}
+
+.staff-schedule-range-state[data-state="loading"] .staff-schedule-range-state-indicator {
+    border-color: rgba(13, 148, 136, 0.26);
+    border-top-color: #0D9488;
+    animation: staff-schedule-range-spin 0.8s linear infinite;
+}
+
+.staff-schedule-range-state[data-state="error"] {
+    border-color: #FCA5A5;
+    background: #FEF2F2;
+    color: #991B1B;
+}
+
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-copy strong {
+    color: #7F1D1D;
+}
+
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-indicator {
+    border-color: #DC2626;
+    color: #DC2626;
+}
+
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-indicator::before,
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-indicator::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    border-radius: 999px;
+    background: currentColor;
+    transform: translateX(-50%);
+}
+
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-indicator::before {
+    top: 3px;
+    width: 2px;
+    height: 6px;
+}
+
+.staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-indicator::after {
+    bottom: 3px;
+    width: 2px;
+    height: 2px;
+}
+
+.staff-schedule-range-state[data-state="empty"] {
+    border-color: #CBD5E1;
+    background: #F8FAFC;
+    color: #475569;
+}
+
+.staff-schedule-range-state[data-state="empty"] .staff-schedule-range-state-indicator {
+    border-color: #94A3B8;
+    box-shadow: inset 0 0 0 4px #F8FAFC, inset 0 0 0 8px #94A3B8;
+}
+
+.staff-schedule-range-retry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 38px;
+    padding: 7px 14px;
+    border: 1px solid #DC2626;
+    border-radius: 10px;
+    background: #FFFFFF;
+    color: #991B1B;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.staff-schedule-range-retry[hidden] {
+    display: none !important;
+}
+
+.staff-schedule-range-retry:hover,
+.staff-schedule-range-retry:focus-visible {
+    outline: none;
+    border-color: #B91C1C;
+    background: #FEE2E2;
+    color: #7F1D1D;
+}
+
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:disabled,
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar[aria-disabled="true"],
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:disabled:hover,
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:disabled:focus-visible {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(241, 245, 249, 0.74);
+    color: #94A3B8;
+    cursor: not-allowed;
+    opacity: 0.72;
+    transform: none;
+    box-shadow: none;
+}
+
+body.dark-mode .staff-schedule-range-state,
+[data-theme="dark"] .staff-schedule-range-state {
+    border-color: rgba(148, 163, 184, 0.30);
+    background: rgba(15, 23, 42, 0.86);
+    color: #CBD5E1;
+    box-shadow: none;
+}
+
+body.dark-mode .staff-schedule-range-state-copy strong,
+[data-theme="dark"] .staff-schedule-range-state-copy strong {
+    color: #F8FAFC;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="loading"],
+[data-theme="dark"] .staff-schedule-range-state[data-state="loading"] {
+    border-color: rgba(45, 212, 191, 0.38);
+    background: rgba(13, 148, 136, 0.14);
+    color: #99F6E4;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="loading"] .staff-schedule-range-state-copy strong,
+[data-theme="dark"] .staff-schedule-range-state[data-state="loading"] .staff-schedule-range-state-copy strong {
+    color: #CCFBF1;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="error"],
+[data-theme="dark"] .staff-schedule-range-state[data-state="error"] {
+    border-color: rgba(248, 113, 113, 0.42);
+    background: rgba(127, 29, 29, 0.24);
+    color: #FCA5A5;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-copy strong,
+[data-theme="dark"] .staff-schedule-range-state[data-state="error"] .staff-schedule-range-state-copy strong {
+    color: #FECACA;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="empty"],
+[data-theme="dark"] .staff-schedule-range-state[data-state="empty"] {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.72);
+    color: #CBD5E1;
+}
+
+body.dark-mode .staff-schedule-range-state[data-state="empty"] .staff-schedule-range-state-indicator,
+[data-theme="dark"] .staff-schedule-range-state[data-state="empty"] .staff-schedule-range-state-indicator {
+    border-color: #64748B;
+    box-shadow: inset 0 0 0 4px #0F172A, inset 0 0 0 8px #64748B;
+}
+
+body.dark-mode .staff-schedule-range-retry,
+[data-theme="dark"] .staff-schedule-range-retry {
+    border-color: rgba(248, 113, 113, 0.58);
+    background: rgba(15, 23, 42, 0.66);
+    color: #FECACA;
+}
+
+body.dark-mode .staff-schedule-range-retry:hover,
+body.dark-mode .staff-schedule-range-retry:focus-visible,
+[data-theme="dark"] .staff-schedule-range-retry:hover,
+[data-theme="dark"] .staff-schedule-range-retry:focus-visible {
+    border-color: #F87171;
+    background: rgba(127, 29, 29, 0.40);
+    color: #FFFFFF;
+}
+
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:disabled,
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar[aria-disabled="true"],
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:disabled,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar[aria-disabled="true"] {
+    border-color: rgba(100, 116, 139, 0.24);
+    background: rgba(15, 23, 42, 0.34);
+    color: #64748B;
+    opacity: 0.78;
+}
+
+@keyframes staff-schedule-range-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+    .staff-schedule-range-state {
+        grid-template-columns: 18px minmax(0, 1fr);
+        align-items: start;
+        gap: 8px 10px;
+        margin-bottom: 12px;
+        padding: 12px;
+    }
+
+    .staff-schedule-range-state-indicator {
+        width: 16px;
+        height: 16px;
+        margin-top: 2px;
+    }
+
+    .staff-schedule-range-retry {
+        grid-column: 1 / -1;
+        width: 100%;
+        min-height: 40px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .staff-schedule-range-state[data-state="loading"] .staff-schedule-range-state-indicator {
+        animation: none;
+    }
+}
+
 /* Summary chips */
 .schedule-summary {
     display: flex;
@@ -4316,6 +4605,19 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-100);
+}
+
+.staff-schedule-table-caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
 }
 
 .schedule-table {
@@ -4559,7 +4861,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 .schedule-group-label {
     min-width: 0;
     overflow: hidden;
+    overflow-wrap: normal;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dept-row[data-dept="animators"] .schedule-group-sticky-cell { border-left: 4px solid #059669; }
@@ -6084,10 +6388,21 @@ body.dark-mode #schModalOverlay .sch-shift-preferences-empty,
     flex: 1;
 }
 
+@media (max-width: 340px) {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply,
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-presets {
+        grid-column: 1;
+    }
+}
+
 /* Print styles */
 @media print {
     .sidebar-nav, .sidebar-overlay, .header, .staff-pulse-nav, .staff-schedule-command, .schedule-controls,
-    .schedule-summary, .link-stats-bar, .skip-link,
+    .schedule-summary, .staff-schedule-range-state, .link-stats-bar, .skip-link,
     .btn-page-primary, .btn-page-secondary,
     #loginOverlay, #profileModal, #notification,
     .sch-modal-overlay, .hr-crosslink, .link-badge,

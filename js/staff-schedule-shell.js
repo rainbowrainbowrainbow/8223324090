@@ -29,9 +29,9 @@
             <div class="workspace-command-bar staff-schedule-command-bar" aria-label="Керування періодом і діями графіка">
                 <div class="schedule-controls">
                     <div class="week-nav">
-                        <button type="button" id="prevWeekBtn" title="Попередній період">‹</button>
+                        <button type="button" id="prevWeekBtn" title="Попередній період" aria-label="Показати попередній період">‹</button>
                         <span id="weekLabel" class="week-label"></span>
-                        <button type="button" id="nextWeekBtn" title="Наступний період">›</button>
+                        <button type="button" id="nextWeekBtn" title="Наступний період" aria-label="Показати наступний період">›</button>
                         <button type="button" id="todayWeekBtn" title="Вчора, сьогодні і найближчі дні">Сьогодні</button>
                     </div>
                     <div class="staff-schedule-range-row" aria-label="Вибір періоду графіка">
@@ -51,8 +51,8 @@
                         </div>
                     </div>
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
-                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel">Експорт</button>
-                        <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку">Друк</button>
+                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" disabled aria-disabled="true">Експорт</button>
+                        <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку" disabled aria-disabled="true">Друк</button>
                     </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
@@ -62,40 +62,53 @@
                 </div>
             </div>
 
-            <div id="scheduleSummary" class="schedule-summary"></div>
+            <section id="scheduleDataRegion" class="staff-schedule-data-region" data-schedule-state="idle" data-has-committed-range="false" aria-label="Дані графіка роботи" aria-busy="false">
+                <div id="scheduleSummary" class="schedule-summary"></div>
 
-            <div id="loadViewWrapper" class="schedule-wrapper" style="display:none">
-                <table class="schedule-table load-table">
-                    <thead id="loadViewHead"></thead>
-                    <tbody id="loadViewBody"></tbody>
-                </table>
-            </div>
+                <div id="scheduleRangeState" class="staff-schedule-range-state" data-state="idle" role="status" aria-live="polite" aria-atomic="true" hidden>
+                    <span class="staff-schedule-range-state-indicator" aria-hidden="true"></span>
+                    <div class="staff-schedule-range-state-copy">
+                        <strong id="scheduleRangeStateTitle"></strong>
+                        <span id="scheduleRangeStateMessage"></span>
+                    </div>
+                    <button type="button" id="scheduleRangeRetryBtn" class="staff-schedule-range-retry" hidden>Повторити</button>
+                </div>
 
-            <div id="scheduleWrapper" class="schedule-wrapper">
-                <table class="schedule-table">
-                    <thead id="scheduleHead"></thead>
-                    <tbody id="scheduleBody"></tbody>
-                </table>
-            </div>
+                <div id="loadViewWrapper" class="schedule-wrapper" style="display:none">
+                    <table class="schedule-table load-table">
+                        <caption class="staff-schedule-table-caption">Навантаження співробітників за вибраний період</caption>
+                        <thead id="loadViewHead"></thead>
+                        <tbody id="loadViewBody"></tbody>
+                    </table>
+                </div>
 
-            <section class="schedule-secondary-diagnostics" aria-label="Schedule diagnostics">
-                <div id="scheduleAttendanceSummary" class="schedule-attendance-summary" aria-live="polite"></div>
-                <div id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite" hidden></div>
-                <div id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite" hidden></div>
-                <div id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite" hidden></div>
+                <div id="scheduleWrapper" class="schedule-wrapper">
+                    <table class="schedule-table">
+                        <caption class="staff-schedule-table-caption">Графік роботи співробітників за вибраний період</caption>
+                        <thead id="scheduleHead"></thead>
+                        <tbody id="scheduleBody"></tbody>
+                    </table>
+                </div>
+
+                <section class="schedule-secondary-diagnostics" aria-label="Schedule diagnostics">
+                    <div id="scheduleAttendanceSummary" class="schedule-attendance-summary" aria-live="polite"></div>
+                    <div id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite" hidden></div>
+                    <div id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite" hidden></div>
+                    <div id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite" hidden></div>
+                </section>
             </section>`;
     }
 
     function scheduleModalTemplate() {
         return `
-            <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Редагувати зміну">
+            <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="schModalTitle" aria-busy="false">
                 <div class="sch-modal sch-modal--schedule">
                     <h3 id="schModalTitle">Редагувати зміну</h3>
                     <div class="sch-modal-scroll">
                         <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
                         <div id="schShiftPreferencePanel" class="sch-shift-preferences" hidden></div>
                         <div class="form-group">
-                            <label>Статус</label>
+                            <label for="schStatus">Статус</label>
                             <select id="schStatus">
                                 <option value="working">Робочий день</option>
                                 <option value="remote">Віддалено</option>
@@ -105,35 +118,35 @@
                             </select>
                         </div>
                         <div id="schProfessionGroup" class="form-group">
-                            <label>Професія у зміні</label>
-                            <select id="schProfession"></select>
-                            <div class="form-hint">Доступні тільки професії з картки співробітника.</div>
+                            <label for="schProfession">Професія у зміні</label>
+                            <select id="schProfession" aria-describedby="schProfessionHint"></select>
+                            <div id="schProfessionHint" class="form-hint">Доступні тільки професії з картки співробітника.</div>
                         </div>
                         <div id="schTimeFields">
                             <div class="form-group">
-                                <label>Початок зміни</label>
+                                <label for="schStart">Початок зміни</label>
                                 <input type="time" id="schStart" value="10:00">
                             </div>
                             <div class="form-group">
-                                <label>Кінець зміни</label>
+                                <label for="schEnd">Кінець зміни</label>
                                 <input type="time" id="schEnd" value="20:00">
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Примітка</label>
-                            <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
+                            <label for="schNote">Примітка</label>
+                            <input type="text" id="schNote" placeholder="Необов'язково">
                         </div>
                         <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
                         <div class="modal-actions sch-replacement-actions">
                             <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
                             <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
                         </div>
-                        <div class="sch-history-panel">
+                        <div class="sch-history-panel" role="region" aria-labelledby="schHistoryTitle">
                             <div class="sch-history-head">
-                                <strong>Історія клітинки</strong>
+                                <strong id="schHistoryTitle">Історія клітинки</strong>
                                 <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
                             </div>
-                            <div id="schHistoryList" class="sch-history-list">
+                            <div id="schHistoryList" class="sch-history-list" aria-live="polite" aria-busy="false">
                                 <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
                             </div>
                         </div>

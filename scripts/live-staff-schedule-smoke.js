@@ -8,11 +8,12 @@
  * - Uses POST only for authentication when token auth is not provided.
  * - Never clicks add/fill/copy/import controls and never edits schedule cells.
  * - Fails the run if a staff mutation endpoint is requested by the browser.
+ * - Never writes staff names, IDs, credentials, or tokens to stdout/stderr.
  *
  * Usage:
  *   npm run smoke:staff-schedule -- https://example.up.railway.app
- *   LIVE_SMOKE_URL=https://example.up.railway.app LIVE_SMOKE_USER=... LIVE_SMOKE_PASS=... npm run smoke:staff-schedule
- *   LIVE_SMOKE_TOKEN=<jwt> npm run smoke:staff-schedule -- https://example.up.railway.app
+ *   LIVE_STAFF_SCHEDULE_URL=https://example.up.railway.app LIVE_STAFF_SCHEDULE_USER=... LIVE_STAFF_SCHEDULE_PASS=... npm run smoke:staff-schedule
+ *   LIVE_STAFF_SCHEDULE_TOKEN=<jwt> npm run smoke:staff-schedule -- https://example.up.railway.app
  */
 
 const assert = require('node:assert/strict');
@@ -52,7 +53,7 @@ function normalizeBase(url) {
     try {
         return new URL(url).origin;
     } catch {
-        fail(`invalid URL "${url || ''}"`);
+        fail('invalid target URL');
     }
 }
 
@@ -190,12 +191,20 @@ function isForbiddenStaffMutation(method, pathname) {
     return false;
 }
 
+function redactedStaffMutationRouteClass(pathname) {
+    if (pathname === '/api/staff/schedule/bulk') return 'staff-schedule-bulk';
+    if (pathname === '/api/staff/schedule/copy-week') return 'staff-schedule-copy';
+    if (pathname === '/api/staff/import-excel') return 'staff-import';
+    if (/^\/api\/users(?:\/|$)/.test(pathname)) return 'user-management';
+    return 'staff-resource';
+}
+
 function attachReadOnlyGuard(page, label) {
     const forbidden = [];
     page.on('request', request => {
         const url = new URL(request.url());
         if (isForbiddenStaffMutation(request.method(), url.pathname)) {
-            forbidden.push(`${label}: ${request.method()} ${url.pathname}`);
+            forbidden.push(`${label}: ${request.method()} ${redactedStaffMutationRouteClass(url.pathname)}`);
         }
     });
     return forbidden;
@@ -233,6 +242,26 @@ async function waitForStaffSchedule(page, base) {
         && document.getElementById('printBtn')
     ));
     await page.waitForFunction(() => document.querySelectorAll('#scheduleHead th').length > 1);
+    try {
+        await page.waitForFunction(() => {
+            const region = document.getElementById('scheduleDataRegion');
+            return region?.dataset.hasCommittedRange === 'true'
+                && ['ready', 'empty'].includes(region?.dataset.scheduleState || '');
+        });
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => {
+            const region = document.getElementById('scheduleDataRegion');
+            return {
+                region: Boolean(region),
+                committed: region?.dataset.hasCommittedRange === 'true',
+                state: region?.dataset.scheduleState || 'missing'
+            };
+        });
+        throw new Error(
+            `atomic range state unavailable (region=${diagnostics.region}, committed=${diagnostics.committed}, state=${diagnostics.state})`,
+            { cause: error }
+        );
+    }
 }
 
 async function waitForDayColumns(page, expected) {
@@ -375,6 +404,149 @@ async function scheduleEmployeeRowCount(page) {
     return page.locator('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').count();
 }
 
+function staffIdsAreUnique(ids) {
+    return ids.every(id => Number.isSafeInteger(id) && id > 0)
+        && new Set(ids).size === ids.length;
+}
+
+function staffIdSetsMatch(left, right) {
+    if (left.length !== right.length) return false;
+    const expected = new Set(left);
+    return right.every(id => expected.has(id));
+}
+
+async function readScheduleStaffSetState(page) {
+    return page.locator('#scheduleBody').evaluate(tbody => {
+        const ids = Array.from(tbody.querySelectorAll('[data-schedule-staff-row]'))
+            .map(row => Number(row.getAttribute('data-schedule-staff-row')));
+        const departments = Array.from(tbody.querySelectorAll('tr.dept-row'))
+            .map(row => row.getAttribute('data-dept') || '')
+            .filter(Boolean);
+        return {
+            ids,
+            rowCount: ids.length,
+            departments,
+            hasEmptyState: Boolean(tbody.querySelector('.schedule-health-empty-row')),
+            groupStaffCount: Array.from(tbody.querySelectorAll('tr.dept-row .dept-count'))
+                .reduce((total, element) => total + Number(element.textContent?.trim() || 0), 0)
+        };
+    });
+}
+
+async function activateDepartmentFilter(page, department) {
+    await page.evaluate(key => {
+        document.querySelector(`#deptFilter .dept-chip[data-dept="${CSS.escape(key)}"]`)?.click();
+    }, department);
+    await page.waitForFunction(key => {
+        return document.querySelector(`#deptFilter .dept-chip[data-dept="${CSS.escape(key)}"]`)
+            ?.getAttribute('aria-pressed') === 'true';
+    }, department);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+async function fillPrivateScheduleSearch(page, privateValue) {
+    await page.evaluate(value => {
+        const input = document.getElementById('scheduleStaffSearch');
+        if (!input) throw new Error('schedule search input is unavailable');
+        input.value = String(value || '');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, privateValue);
+}
+
+function scheduleExportStaffIdsFromHtml(html) {
+    return Array.from(
+        String(html || '').matchAll(/\bdata-schedule-export-staff-id="(\d+)"/g),
+        match => Number(match[1])
+    );
+}
+
+async function captureScheduleWorkbookHtml(page) {
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#exportExcelBtn').click();
+    const download = await downloadPromise;
+    try {
+        const downloadPath = await download.path();
+        assert.equal(Boolean(downloadPath), true, 'workbook download has a readable temporary path');
+        return fs.readFileSync(downloadPath, 'utf8').replace(/^\uFEFF/, '');
+    } finally {
+        await download.delete().catch(() => {});
+    }
+}
+
+async function assertWorkbookStaffSetParity(page, expectedIds, label) {
+    const html = await captureScheduleWorkbookHtml(page);
+    const exportedIds = scheduleExportStaffIdsFromHtml(html);
+    const exportRowAttributeCount = (html.match(/\bdata-schedule-export-staff-id=/g) || []).length;
+
+    assert.equal(html.includes('schedule-export-table'), true, `${label}: generated workbook contains the schedule table`);
+    assert.equal(exportRowAttributeCount, exportedIds.length, `${label}: every workbook staff row has a numeric ID`);
+    assert.equal(staffIdsAreUnique(exportedIds), true, `${label}: workbook staff IDs are unique`);
+    assert.equal(staffIdSetsMatch(expectedIds, exportedIds), true, `${label}: workbook staff set exactly matches the visible table`);
+}
+
+async function assertCommercialStaffSetContracts(page) {
+    await page.locator('#scheduleStaffSearch').fill('');
+    await activateDepartmentFilter(page, 'all');
+    await expandAllScheduleGroups(page);
+
+    const allChipCount = Number(await page.locator('#deptFilter .dept-chip[data-dept="all"] .dept-chip-count').textContent());
+    const allState = await readScheduleStaffSetState(page);
+    assert.equal(allState.hasEmptyState, false, 'all filter has schedule staff rows');
+    assert.equal(staffIdsAreUnique(allState.ids), true, 'all filter renders every numeric staff ID once');
+    assert.equal(allState.rowCount, allChipCount, 'all chip count matches the table staff count');
+    assert.equal(allState.groupStaffCount, allState.rowCount, 'all top-level group counts match the table');
+
+    const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(buttons => buttons
+        .map(button => ({
+            key: button.getAttribute('data-dept') || '',
+            count: Number(button.querySelector('.dept-chip-count')?.textContent?.trim() || 0)
+        }))
+        .filter(item => item.key && item.count > 0));
+    assert.equal(filters.length > 0, true, 'at least one populated department is available for live parity checks');
+
+    for (const filter of filters) {
+        await activateDepartmentFilter(page, filter.key);
+        await expandAllScheduleGroups(page);
+        const state = await readScheduleStaffSetState(page);
+        assert.equal(state.hasEmptyState, false, 'populated department filter has schedule staff rows');
+        assert.equal(staffIdsAreUnique(state.ids), true, 'active department renders every numeric staff ID once');
+        assert.equal(state.rowCount, filter.count, 'department chip count matches the active table staff count');
+        assert.equal(state.groupStaffCount, state.rowCount, 'department top-level group count matches the table');
+        assert.equal(
+            state.departments.length > 0 && state.departments.every(department => department === filter.key),
+            true,
+            'active-department-only: table renders no foreign top-level group'
+        );
+    }
+
+    const exportDepartment = filters[0];
+    await activateDepartmentFilter(page, exportDepartment.key);
+    await expandAllScheduleGroups(page);
+    const departmentState = await readScheduleStaffSetState(page);
+    await assertWorkbookStaffSetParity(page, departmentState.ids, 'active department export');
+
+    const privateSearchTerm = String(await page.locator('#scheduleBody [data-schedule-staff-row] .emp-name-text').first().textContent() || '').trim();
+    assert.equal(Boolean(privateSearchTerm), true, 'a private in-memory search probe is available');
+    await fillPrivateScheduleSearch(page, privateSearchTerm);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    const searchState = await readScheduleStaffSetState(page);
+    assert.equal(searchState.ids.length > 0, true, 'department search keeps at least one matching staff row');
+    assert.equal(staffIdsAreUnique(searchState.ids), true, 'department search renders every numeric staff ID once');
+    assert.equal(searchState.ids.every(id => departmentState.ids.includes(id)), true, 'department search remains a subset of the active department');
+    assert.equal(searchState.groupStaffCount, searchState.rowCount, 'department search group count matches the table');
+    await assertWorkbookStaffSetParity(page, searchState.ids, 'active department and search export');
+
+    await page.locator('#scheduleStaffSearch').fill('');
+    await activateDepartmentFilter(page, 'all');
+
+    return {
+        allCount: allState.rowCount,
+        departmentCount: filters.length,
+        searchedCount: searchState.rowCount
+    };
+}
+
 async function assertScheduleGroupsCollapsedByDefault(page) {
     const toggles = page.locator('[data-schedule-group-toggle]');
     const count = await toggles.count();
@@ -434,7 +606,7 @@ async function assertScheduleGroupExpansionPersists(page) {
 
 async function assertScheduleSearchAutoExpandsGroups(page) {
     const searchTerm = await page.locator('[data-schedule-group-toggle]').first().getAttribute('data-schedule-group-toggle') || 'staff';
-    await page.locator('#scheduleStaffSearch').fill(searchTerm);
+    await fillPrivateScheduleSearch(page, searchTerm);
     await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
     assert.ok(await scheduleEmployeeRowCount(page) > 0, 'active search reveals matching rows even when groups are collapsed');
     assert.ok((await page.locator('[data-schedule-group-toggle][aria-expanded="true"]').count()) > 0, 'active search marks matching groups expanded for accessibility');
@@ -519,16 +691,128 @@ async function assertSearchPersistence(page) {
             .find(Boolean);
         return text ? text.slice(0, 12) : 'staff-smoke';
     });
-    await page.locator('#scheduleStaffSearch').fill(searchTerm);
+    await fillPrivateScheduleSearch(page, searchTerm);
     await applyPreset(page, 'month');
     await waitForColumnsToMatchInputs(page);
-    assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), searchTerm, 'search query survives period preset changes');
+    assert.equal(
+        await page.locator('#scheduleStaffSearch').inputValue() === searchTerm,
+        true,
+        'private search query survives period preset changes'
+    );
 
     const range = await readRangeState(page);
     const monthDays = dateRangeDays(range.from, range.to);
     assert.equal(range.dayCount, monthDays, 'month preset renders all month day columns');
     assert.ok(monthDays >= 28 && monthDays <= 31, `month preset day count is ${monthDays}`);
     return range;
+}
+
+async function assertDarkTheme(page, label) {
+    const theme = await page.evaluate(() => ({
+        rootTheme: document.documentElement.getAttribute('data-theme') || '',
+        bodyDark: document.body.classList.contains('dark-mode'),
+        colorScheme: getComputedStyle(document.documentElement).colorScheme || ''
+    }));
+    assert.equal(theme.rootTheme, 'dark', `${label}: root uses the dark theme`);
+    assert.equal(theme.bodyDark, true, `${label}: body uses the dark theme class`);
+    assert.equal(theme.colorScheme.includes('dark'), true, `${label}: browser controls use a dark color scheme`);
+}
+
+async function assertLoadingControlsDuringPreset(page, preset) {
+    let heldRequest = false;
+    let releaseRequest;
+    let markIntercepted;
+    let markCompleted;
+    const release = new Promise(resolve => { releaseRequest = resolve; });
+    const intercepted = new Promise(resolve => { markIntercepted = resolve; });
+    const completed = new Promise(resolve => { markCompleted = resolve; });
+    const routePattern = '**/api/staff/schedule?**';
+    const routeHandler = async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (!heldRequest && request.method() === 'GET' && url.pathname === '/api/staff/schedule') {
+            heldRequest = true;
+            markIntercepted();
+            try {
+                await release;
+                await route.continue();
+            } finally {
+                markCompleted();
+            }
+            return;
+        }
+        await route.continue();
+    };
+
+    await page.route(routePattern, routeHandler);
+    let flowError = null;
+    try {
+        await page.locator(`[data-schedule-range-preset="${preset}"]`).click();
+        let interceptTimer;
+        try {
+            await Promise.race([
+                intercepted,
+                new Promise((_, reject) => {
+                    interceptTimer = setTimeout(
+                        () => reject(new Error('schedule loading probe did not intercept a read request')),
+                        TIMEOUT_MS
+                    );
+                })
+            ]);
+        } finally {
+            clearTimeout(interceptTimer);
+        }
+        await page.waitForFunction(() => document.getElementById('scheduleDataRegion')?.dataset.scheduleState === 'loading');
+        const loadingState = await page.evaluate(() => {
+            const region = document.getElementById('scheduleDataRegion');
+            const wrapper = document.getElementById('scheduleWrapper');
+            const exportButton = document.getElementById('exportExcelBtn');
+            const printButton = document.getElementById('printBtn');
+            return {
+                state: region?.dataset.scheduleState || '',
+                ariaBusy: region?.getAttribute('aria-busy') || '',
+                tableLocked: Boolean(
+                    wrapper?.inert
+                    || region?.inert
+                    || wrapper?.getAttribute('aria-disabled') === 'true'
+                    || region?.getAttribute('aria-disabled') === 'true'
+                ),
+                exportDisabled: Boolean(exportButton?.disabled),
+                exportAriaDisabled: exportButton?.getAttribute('aria-disabled') || '',
+                printDisabled: Boolean(printButton?.disabled),
+                printAriaDisabled: printButton?.getAttribute('aria-disabled') || ''
+            };
+        });
+        assert.equal(loadingState.state, 'loading', 'range navigation exposes an explicit loading state');
+        assert.equal(loadingState.ariaBusy, 'true', 'range loading exposes aria-busy');
+        assert.equal(loadingState.tableLocked, true, 'range loading locks the schedule table');
+        assert.equal(loadingState.exportDisabled, true, 'range loading disables export');
+        assert.equal(loadingState.exportAriaDisabled, 'true', 'range loading exposes export aria-disabled');
+        assert.equal(loadingState.printDisabled, true, 'range loading disables print');
+        assert.equal(loadingState.printAriaDisabled, 'true', 'range loading exposes print aria-disabled');
+    } catch (error) {
+        flowError = error;
+    } finally {
+        releaseRequest();
+        if (heldRequest) await completed;
+        await page.unroute(routePattern, routeHandler);
+    }
+    if (flowError) throw flowError;
+
+    await page.waitForFunction(expected => {
+        const region = document.getElementById('scheduleDataRegion');
+        const button = document.querySelector(`[data-schedule-range-preset="${CSS.escape(expected)}"]`);
+        return region?.dataset.hasCommittedRange === 'true'
+            && ['ready', 'empty'].includes(region?.dataset.scheduleState || '')
+            && region?.getAttribute('aria-busy') === 'false'
+            && button?.classList.contains('active');
+    }, preset);
+    const readyState = await page.evaluate(() => ({
+        exportDisabled: Boolean(document.getElementById('exportExcelBtn')?.disabled),
+        printDisabled: Boolean(document.getElementById('printBtn')?.disabled)
+    }));
+    assert.equal(readyState.exportDisabled, false, 'confirmed range re-enables export');
+    assert.equal(readyState.printDisabled, false, 'confirmed range re-enables print');
 }
 
 async function assertWideScheduleLayout(page, label, options = {}) {
@@ -713,6 +997,7 @@ async function runDesktopFlow(browser, base, session) {
         ({ context, page } = await openAuthenticatedContext(browser, session, VIEWPORTS.desktop));
         forbidden = attachReadOnlyGuard(page, 'desktop');
         await waitForStaffSchedule(page, base);
+        await assertDarkTheme(page, 'desktop 1440');
         await assertHeaderSurface(page);
         await waitForDayColumns(page, 9);
         await assertNoDuplicateDepartmentSubGroups(page);
@@ -721,9 +1006,10 @@ async function runDesktopFlow(browser, base, session) {
         await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
         await expandAllScheduleGroups(page);
+        const commercialContracts = await assertCommercialStaffSetContracts(page);
         assert.equal(await dayColumnCount(page), 9, 'default schedule range is 9 days');
 
-        await applyPreset(page, 'first-half');
+        await assertLoadingControlsDuringPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
         const firstHalf = await readRangeState(page);
         assert.equal(firstHalf.from.endsWith('-01'), true, '1-15 preset starts on day 1');
@@ -767,7 +1053,8 @@ async function runDesktopFlow(browser, base, session) {
             month: `${monthRange.from}..${monthRange.to}`,
             exportFilename: `grafik_${monthRange.from}_${monthRange.to}.xls`,
             headerActions: 'export/print',
-            filteredGroups: 'active-department-only'
+            filteredGroups: 'active-department-only',
+            commercialContracts
         };
     } finally {
         await page?.close().catch(() => {});
@@ -783,6 +1070,7 @@ async function runMobileFlow(browser, base, session, viewport = VIEWPORTS.mobile
         ({ context, page } = await openAuthenticatedContext(browser, session, viewport));
         forbidden = attachReadOnlyGuard(page, label);
         await waitForStaffSchedule(page, base);
+        await assertDarkTheme(page, label);
         await assertHeaderSurface(page);
         await waitForDayColumns(page, 9);
         await assertNoDuplicateDepartmentSubGroups(page);
@@ -838,8 +1126,10 @@ async function run() {
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK filters: ${desktop.filteredGroups}`);
+        console.log(`  OK staff-set contracts: all=${desktop.commercialContracts.allCount}, departments=${desktop.commercialContracts.departmentCount}, searched=${desktop.commercialContracts.searchedCount}`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: Excel schedule table`);
+        console.log(`  OK dark theme: 1440/390/360`);
         console.log(`  OK mobile: ${mobile.viewport} month=${mobile.month}, days=${mobile.dayCount}`);
         console.log(`  OK narrow mobile: ${narrowMobile.viewport} month=${narrowMobile.month}, days=${narrowMobile.dayCount}`);
         console.log(`  OK read-only guard: no staff mutation requests`);

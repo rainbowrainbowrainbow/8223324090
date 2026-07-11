@@ -19,19 +19,25 @@ const SMOKE_USER = {
 };
 
 const DISPLAY_GROUPS = [
-    { key: 'animators', label: 'Аніматори', is_active: true, sort_order: 1 },
-    { key: 'reception', label: 'Рецепшен', is_active: true, sort_order: 2 },
-    { key: 'admin', label: 'Адміністрація', is_active: true, sort_order: 3 }
+    { key: 'animators', label: 'Аніматори', order: 10 },
+    { key: 'trampoline', label: 'Батутисти', order: 20 },
+    { key: 'reception', label: 'Рецепшен', order: 30 },
+    { key: 'admin', label: 'Адміністрація', order: 40 },
+    { key: 'cafe', label: 'Кафе', order: 50 },
+    { key: 'tech', label: 'Технічний відділ', order: 60 },
+    { key: 'cleaning', label: 'Прибирання', order: 70 }
 ];
 
 const STAFF_ROWS = [
     {
         id: 101,
-        name: 'Пасенко Женя',
-        display_name: 'Пасенко Женя',
+        name: 'Пасенко Євгенія (офіційно)',
+        display_name: 'Женя Пасенко',
         position: 'Аніматор',
         department: 'animators',
         role_type: 'animator',
+        display_group: 'animators',
+        secondary_professions: ['reception', 'reception', 'animator'],
         is_active: true,
         is_freelance: false,
         hr_pool_status: 'core',
@@ -45,6 +51,8 @@ const STAFF_ROWS = [
         position: 'Рецепція',
         department: 'reception',
         role_type: 'reception',
+        display_group: 'reception',
+        secondary_professions: ['reception'],
         is_active: true,
         is_freelance: false,
         hr_pool_status: 'core',
@@ -58,18 +66,106 @@ const STAFF_ROWS = [
         position: 'Адміністратор',
         department: 'admin',
         role_type: 'admin',
+        display_group: 'admin',
+        secondary_professions: ['manager', 'barista'],
         is_active: true,
         is_freelance: false,
         hr_pool_status: 'core',
         has_account: true,
         has_face_descriptor: false
+    },
+    {
+        id: 104,
+        name: 'Мельник Назар',
+        display_name: 'Назар Мельник',
+        position: 'Бариста',
+        department: 'cafe',
+        role_type: 'barista',
+        display_group: 'cafe',
+        secondary_professions: ['trampoline_instructor'],
+        is_active: true,
+        is_freelance: false,
+        hr_pool_status: 'core',
+        has_account: true,
+        has_face_descriptor: true
+    },
+    {
+        id: 105,
+        name: 'Легасі Працівник',
+        display_name: 'Легасі Працівник',
+        position: 'Legacy shift role',
+        department: 'security',
+        role_type: 'legacy_shift_role',
+        secondary_professions: ['legacy_auxiliary'],
+        is_active: true,
+        is_freelance: false,
+        hr_pool_status: 'core',
+        has_account: false,
+        has_face_descriptor: false
+    },
+    {
+        id: 106,
+        name: 'Primary Manager',
+        display_name: 'Primary Manager',
+        position: 'Менеджер',
+        department: 'reception',
+        role_type: 'manager',
+        display_group: 'reception',
+        secondary_professions: ['reception'],
+        is_active: true,
+        is_freelance: false,
+        hr_pool_status: 'core',
+        has_account: true,
+        has_face_descriptor: true
+    },
+    {
+        id: 107,
+        name: 'Primary Waiter',
+        display_name: 'Primary Waiter',
+        position: 'Офіціант',
+        department: 'cafe',
+        role_type: 'waiter',
+        display_group: 'cafe',
+        secondary_professions: ['cook'],
+        training_readiness: { total: 5, completed: 1, percent: 20 },
+        is_active: true,
+        is_freelance: false,
+        hr_pool_status: 'core',
+        has_account: true,
+        has_face_descriptor: true
+    },
+    {
+        id: 108,
+        name: 'Animator Trampoline',
+        display_name: 'Animator Trampoline',
+        position: 'Аніматор / батутист',
+        department: 'animators',
+        role_type: 'animator',
+        display_group: 'animators',
+        secondary_professions: ['trampoline_instructor'],
+        training_readiness: { total: 4, completed: 4, percent: 100 },
+        is_active: true,
+        is_freelance: false,
+        hr_pool_status: 'core',
+        has_account: true,
+        has_face_descriptor: true
     }
+];
+
+const STAFF_API_ROWS = [
+    ...STAFF_ROWS,
+    { ...STAFF_ROWS[0], id: '101' }
 ];
 
 const PROFESSIONS = [
     { key: 'animator', title: 'Аніматор', department: 'animators', is_active: true },
     { key: 'reception', title: 'Рецепція', department: 'reception', is_active: true },
-    { key: 'admin', title: 'Адміністратор', department: 'admin', is_active: true }
+    { key: 'manager', title: 'Менеджер', department: 'reception', is_active: true },
+    { key: 'admin', title: 'Адміністратор', department: 'admin', is_active: true },
+    { key: 'barista', title: 'Бариста', department: 'cafe', is_active: true },
+    { key: 'cook', title: 'Кухар', department: 'cafe', is_active: true },
+    { key: 'waiter', title: 'Офіціант', department: 'cafe', is_active: true },
+    { key: 'trampoline_instructor', title: 'Інструктор батутів', department: 'trampoline', is_active: true }
 ];
 
 const SCHEDULE_FIXTURE_ENTRIES = [
@@ -153,15 +249,154 @@ const SCHEDULE_FIXTURE_ENTRIES = [
         shift_end: '18:00:00',
         status: 'working',
         profession_key: 'animator'
+    },
+    {
+        id: 9201,
+        staff_id: 108,
+        date: '2026-07-11',
+        shift_start: '09:00:00',
+        shift_end: '12:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9202,
+        staff_id: 108,
+        date: '2026-07-12',
+        shift_start: '12:00:00',
+        shift_end: '15:00:00',
+        status: 'working',
+        profession_key: 'trampoline_instructor'
     }
 ];
 
 const apiCalls = {
     scheduleRanges: [],
+    scheduleResponses: [],
+    historyResponses: [],
     hoursRanges: [],
     bulkBodies: [],
     copyWeekBodies: []
 };
+
+const scheduleResponseScenarios = [];
+const activeScheduleResponseScenarios = new Set();
+let scheduleResponseScenarioSequence = 0;
+const historyResponseScenarios = [];
+const activeHistoryResponseScenarios = new Set();
+let historyResponseScenarioSequence = 0;
+
+function createDeferred() {
+    let resolvePromise;
+    let settled = false;
+    const promise = new Promise(resolve => {
+        resolvePromise = value => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+    });
+    return {
+        promise,
+        resolve: resolvePromise,
+        get settled() {
+            return settled;
+        }
+    };
+}
+
+function queueScheduleResponseScenario(options = {}) {
+    const scenario = {
+        id: ++scheduleResponseScenarioSequence,
+        from: options.from || null,
+        to: options.to || null,
+        kind: options.kind || 'success',
+        status: Number(options.status || 500),
+        error: options.error || 'Schedule fixture failure',
+        body: options.body,
+        hold: Boolean(options.hold),
+        started: createDeferred(),
+        gate: createDeferred(),
+        finished: createDeferred(),
+        request: null
+    };
+    if (!scenario.hold) scenario.gate.resolve();
+    scenario.release = () => scenario.gate.resolve();
+    scheduleResponseScenarios.push(scenario);
+    return scenario;
+}
+
+function takeScheduleResponseScenario(from, to) {
+    const index = scheduleResponseScenarios.findIndex(scenario => {
+        const fromMatches = !scenario.from || scenario.from === from;
+        const toMatches = !scenario.to || scenario.to === to;
+        return fromMatches && toMatches;
+    });
+    if (index < 0) return null;
+    const [scenario] = scheduleResponseScenarios.splice(index, 1);
+    activeScheduleResponseScenarios.add(scenario);
+    return scenario;
+}
+
+function releaseScheduleResponseScenarios() {
+    for (const scenario of [...scheduleResponseScenarios, ...activeScheduleResponseScenarios]) {
+        scenario.release();
+    }
+    scheduleResponseScenarios.length = 0;
+}
+
+function scheduleHistoryFixture(marker, staffId, date) {
+    return [{
+        id: `history-${marker}`,
+        action: 'staff_schedule_update',
+        staff_id: Number(staffId),
+        created_at: `${date}T09:15:00.000Z`,
+        performed_by: marker,
+        details: {
+            source: marker,
+            changes: {
+                note: { from: '', to: marker }
+            }
+        }
+    }];
+}
+
+function queueHistoryResponseScenario(options = {}) {
+    const scenario = {
+        id: ++historyResponseScenarioSequence,
+        staffId: options.staffId ? Number(options.staffId) : null,
+        date: options.date || null,
+        marker: options.marker || `HISTORY-${historyResponseScenarioSequence}`,
+        hold: Boolean(options.hold),
+        started: createDeferred(),
+        aborted: createDeferred(),
+        gate: createDeferred(),
+        finished: createDeferred(),
+        request: null
+    };
+    if (!scenario.hold) scenario.gate.resolve();
+    scenario.release = () => scenario.gate.resolve();
+    historyResponseScenarios.push(scenario);
+    return scenario;
+}
+
+function takeHistoryResponseScenario(staffId, date) {
+    const index = historyResponseScenarios.findIndex(scenario => (
+        (!scenario.staffId || scenario.staffId === Number(staffId))
+        && (!scenario.date || scenario.date === date)
+    ));
+    if (index < 0) return null;
+    const [scenario] = historyResponseScenarios.splice(index, 1);
+    activeHistoryResponseScenarios.add(scenario);
+    return scenario;
+}
+
+function releaseHistoryResponseScenarios() {
+    for (const scenario of [...historyResponseScenarios, ...activeHistoryResponseScenarios]) {
+        scenario.release();
+    }
+    historyResponseScenarios.length = 0;
+}
 
 function fail(message) {
     console.error(`Staff schedule custom range browser smoke failed: ${message}`);
@@ -235,6 +470,123 @@ function scheduleFixtureEntriesForRange(from, to) {
     return SCHEDULE_FIXTURE_ENTRIES.filter(entry => entry.date >= from && entry.date <= to);
 }
 
+async function sendScheduleFixtureResponse(req, res, from, to) {
+    const scenario = takeScheduleResponseScenario(from, to);
+    if (!scenario) {
+        sendJson(res, {
+            success: true,
+            data: scheduleFixtureEntriesForRange(from, to),
+            displayGroups: DISPLAY_GROUPS
+        });
+        apiCalls.scheduleResponses.push({ from, to, kind: 'success', scenarioId: null });
+        return;
+    }
+
+    scenario.request = { from, to };
+    scenario.started.resolve(scenario.request);
+    try {
+        await scenario.gate.promise;
+        if (res.destroyed || res.writableEnded) {
+            apiCalls.scheduleResponses.push({ from, to, kind: 'client-aborted', scenarioId: scenario.id });
+            return;
+        }
+
+        if (scenario.kind === 'network-error') {
+            apiCalls.scheduleResponses.push({ from, to, kind: scenario.kind, scenarioId: scenario.id });
+            res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Length': '4096',
+                'Cache-Control': 'no-store'
+            });
+            res.flushHeaders();
+            res.write('{"success":true,"data":[');
+            await new Promise(resolve => setImmediate(resolve));
+            res.destroy();
+            return;
+        }
+
+        if (scenario.kind === 'invalid-json') {
+            res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-store'
+            });
+            res.end('{"success":true,"data":');
+            apiCalls.scheduleResponses.push({ from, to, kind: scenario.kind, scenarioId: scenario.id });
+            return;
+        }
+
+        if (scenario.kind === 'http-error') {
+            sendJson(res, scenario.body || { success: false, error: scenario.error }, scenario.status);
+            apiCalls.scheduleResponses.push({ from, to, kind: scenario.kind, status: scenario.status, scenarioId: scenario.id });
+            return;
+        }
+
+        sendJson(res, scenario.body || {
+            success: true,
+            data: scheduleFixtureEntriesForRange(from, to),
+            displayGroups: DISPLAY_GROUPS
+        });
+        apiCalls.scheduleResponses.push({ from, to, kind: scenario.kind, scenarioId: scenario.id });
+    } finally {
+        activeScheduleResponseScenarios.delete(scenario);
+        scenario.finished.resolve(scenario.request);
+    }
+}
+
+async function sendHistoryFixtureResponse(req, res, staffId, date) {
+    const scenario = takeHistoryResponseScenario(staffId, date);
+    if (!scenario) {
+        sendJson(res, { success: true, data: [] });
+        apiCalls.historyResponses.push({
+            staffId: Number(staffId),
+            date,
+            kind: 'success',
+            scenarioId: null
+        });
+        return;
+    }
+
+    scenario.request = { staffId: Number(staffId), date };
+    scenario.started.resolve(scenario.request);
+    let clientAborted = Boolean(req.aborted);
+    const markClientAborted = () => {
+        clientAborted = true;
+        scenario.aborted.resolve(scenario.request);
+    };
+    req.once('aborted', markClientAborted);
+    res.once('close', () => {
+        if (!res.writableEnded) markClientAborted();
+    });
+
+    try {
+        await scenario.gate.promise;
+        if (clientAborted || req.aborted || res.destroyed || res.writableEnded) {
+            apiCalls.historyResponses.push({
+                staffId: Number(staffId),
+                date,
+                kind: 'client-aborted',
+                scenarioId: scenario.id
+            });
+            return;
+        }
+
+        sendJson(res, {
+            success: true,
+            data: scheduleHistoryFixture(scenario.marker, staffId, date)
+        });
+        apiCalls.historyResponses.push({
+            staffId: Number(staffId),
+            date,
+            kind: 'success',
+            marker: scenario.marker,
+            scenarioId: scenario.id
+        });
+    } finally {
+        activeHistoryResponseScenarios.delete(scenario);
+        scenario.finished.resolve(scenario.request);
+    }
+}
+
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') {
         sendJson(res, { success: true, user: SMOKE_USER });
@@ -247,26 +599,33 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/staff') {
         sendJson(res, {
             success: true,
-            data: STAFF_ROWS,
+            data: STAFF_API_ROWS,
             departments: {
                 animators: 'Аніматори',
+                trampoline: 'Батутисти',
                 reception: 'Рецепшен',
-                admin: 'Адміністрація'
+                admin: 'Адміністрація',
+                cafe: 'Кафе',
+                tech: 'Технічний відділ',
+                cleaning: 'Прибирання'
             },
             displayGroups: DISPLAY_GROUPS
         });
         return true;
     }
     if (url.pathname === '/api/staff/schedule') {
+        const from = url.searchParams.get('from');
+        const to = url.searchParams.get('to');
         apiCalls.scheduleRanges.push({
-            from: url.searchParams.get('from'),
-            to: url.searchParams.get('to')
+            from,
+            to
         });
-        sendJson(res, {
-            success: true,
-            data: scheduleFixtureEntriesForRange(url.searchParams.get('from'), url.searchParams.get('to')),
-            displayGroups: DISPLAY_GROUPS
-        });
+        await sendScheduleFixtureResponse(req, res, from, to);
+        return true;
+    }
+    const scheduleHistoryMatch = url.pathname.match(/^\/api\/staff\/schedule\/history\/(\d+)\/(\d{4}-\d{2}-\d{2})$/);
+    if (scheduleHistoryMatch) {
+        await sendHistoryFixtureResponse(req, res, Number(scheduleHistoryMatch[1]), scheduleHistoryMatch[2]);
         return true;
     }
     const shiftPreferenceMatch = url.pathname.match(/^\/api\/staff\/(\d+)\/shift-preferences$/);
@@ -435,18 +794,58 @@ async function waitForDayColumns(page, dayCount) {
     }, dayCount, { timeout: 20000 });
 }
 
-async function openStaffPage(browser, base, viewport) {
+async function waitForScheduleState(page, expectedState) {
+    const expectedStates = Array.isArray(expectedState) ? expectedState : [expectedState];
+    await page.waitForFunction(states => {
+        const region = document.getElementById('scheduleDataRegion');
+        return Boolean(region && states.includes(region.dataset.scheduleState));
+    }, expectedStates, { timeout: 20000 });
+}
+
+async function waitForCommittedScheduleRange(page, from, to, expectedState = ['ready', 'empty']) {
+    const expectedStates = Array.isArray(expectedState) ? expectedState : [expectedState];
+    await page.waitForFunction(expected => {
+        const region = document.getElementById('scheduleDataRegion');
+        return document.getElementById('scheduleDateFrom')?.value === expected.from
+            && document.getElementById('scheduleDateTo')?.value === expected.to
+            && region?.dataset.hasCommittedRange === 'true'
+            && expected.states.includes(region?.dataset.scheduleState || '');
+    }, { from, to, states: expectedStates }, { timeout: 20000 });
+}
+
+async function settleScheduleDom(page) {
+    await page.evaluate(() => new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    }));
+}
+
+async function openStaffPage(browser, base, viewport, options = {}) {
     const context = await browser.newContext({ viewport, acceptDownloads: true });
-    await context.addInitScript(user => {
+    await context.addInitScript(({ user, ignoreAbort, darkMode }) => {
         localStorage.setItem('pzp_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_access_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_current_user', JSON.stringify(user));
-        localStorage.setItem('pzp_dark_mode', 'false');
+        localStorage.setItem('pzp_dark_mode', darkMode ? 'true' : 'false');
+        if (ignoreAbort) {
+            const NativeAbortController = window.AbortController;
+            window.AbortController = class NonAbortingController {
+                constructor() {
+                    this.nativeController = new NativeAbortController();
+                    this.signal = this.nativeController.signal;
+                }
+
+                abort() {}
+            };
+        }
         if (!sessionStorage.getItem('staff_schedule_smoke_storage_ready')) {
             localStorage.removeItem('pzp_staff_schedule_expanded_groups');
             sessionStorage.setItem('staff_schedule_smoke_storage_ready', 'true');
         }
-    }, SMOKE_USER);
+    }, {
+        user: SMOKE_USER,
+        ignoreAbort: Boolean(options.ignoreAbort),
+        darkMode: Boolean(options.darkMode)
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
     page.on('pageerror', err => {
@@ -458,7 +857,12 @@ async function openStaffPage(browser, base, viewport) {
         && typeof window.StaffSchedulePage.isInitialized === 'function'
         && window.StaffSchedulePage.isInitialized()
     ), null, { timeout: 20000 });
-    await page.waitForSelector('#scheduleBody tr', { timeout: 20000 });
+    if (options.waitForRows === false) {
+        await waitForScheduleState(page, ['error', 'empty', 'ready']);
+    } else {
+        await page.waitForSelector('#scheduleBody tr', { timeout: 20000 });
+        await waitForScheduleState(page, ['empty', 'ready']);
+    }
     return { context, page };
 }
 
@@ -474,9 +878,14 @@ async function applyManualRange(page, from, to) {
     await page.locator('#scheduleDateFrom').fill(from);
     await page.locator('#scheduleDateTo').fill(to);
     await page.locator('#applyScheduleRangeBtn').click();
-    await page.waitForFunction(expected => document.getElementById('scheduleDateFrom')?.value === expected.from
-        && document.getElementById('scheduleDateTo')?.value === expected.to, { from, to }, { timeout: 20000 });
+    await waitForCommittedScheduleRange(page, from, to);
     await waitForDayColumns(page, dateRangeDays(from, to));
+}
+
+async function requestManualRange(page, from, to) {
+    await page.locator('#scheduleDateFrom').fill(from);
+    await page.locator('#scheduleDateTo').fill(to);
+    await page.locator('#applyScheduleRangeBtn').click();
 }
 
 async function assertPeriodPresetLabelsAndSummary(page) {
@@ -611,6 +1020,254 @@ async function expandAllScheduleGroups(page) {
     }
     await page.waitForFunction(() => document.querySelectorAll('[data-schedule-group-toggle][aria-expanded="false"]').length === 0);
     await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
+}
+
+async function collapseAllScheduleGroups(page) {
+    for (let i = 0; i < 20; i += 1) {
+        const expanded = page.locator('[data-schedule-group-toggle][aria-expanded="true"]');
+        if (!(await expanded.count())) break;
+        await expanded.first().click();
+    }
+    await page.waitForFunction(() => document.querySelectorAll('[data-schedule-group-toggle][aria-expanded="true"]').length === 0);
+}
+
+async function activateScheduleDepartment(page, department) {
+    const chip = page.locator(`#deptFilter .dept-chip[data-dept="${department}"]`);
+    await chip.click();
+    await page.waitForFunction(expected => {
+        return document.querySelector(`#deptFilter .dept-chip[data-dept="${CSS.escape(expected)}"]`)
+            ?.getAttribute('aria-pressed') === 'true';
+    }, department);
+    await settleScheduleDom(page);
+}
+
+async function expandScheduleGroup(page, department) {
+    const toggle = page.locator(`[data-schedule-group-toggle="${department}"]`);
+    await toggle.waitFor({ state: 'visible' });
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+    await page.waitForFunction(expected => {
+        return document.querySelector(`[data-schedule-group-toggle="${CSS.escape(expected)}"]`)
+            ?.getAttribute('aria-expanded') === 'true';
+    }, department);
+}
+
+async function scheduleStaffIdsFromDom(page) {
+    return page.locator('#scheduleBody [data-schedule-staff-row]').evaluateAll(rows => (
+        rows.map(row => Number(row.getAttribute('data-schedule-staff-row')))
+    ));
+}
+
+async function scheduleStaffRowsFromDom(page) {
+    return page.locator('#scheduleBody [data-schedule-staff-row]').evaluateAll(rows => (
+        rows.map(row => ({
+            id: Number(row.getAttribute('data-schedule-staff-row')),
+            name: row.querySelector('.emp-name-text')?.textContent?.trim() || ''
+        }))
+    ));
+}
+
+async function scheduleStaffGroupsFromDom(page) {
+    return page.locator('#scheduleBody').evaluate(tbody => {
+        const rows = [];
+        let department = '';
+        for (const row of Array.from(tbody.querySelectorAll('tr'))) {
+            if (row.classList.contains('dept-row')) {
+                department = row.getAttribute('data-dept') || '';
+                continue;
+            }
+            if (!row.hasAttribute('data-schedule-staff-row')) continue;
+            rows.push({
+                id: Number(row.getAttribute('data-schedule-staff-row')),
+                department
+            });
+        }
+        return rows;
+    });
+}
+
+async function scheduleStaffSubGroupsFromDom(page) {
+    return page.locator('#scheduleBody').evaluate(tbody => {
+        const rows = [];
+        let department = '';
+        let subGroup = '';
+        for (const row of Array.from(tbody.querySelectorAll('tr'))) {
+            if (row.classList.contains('dept-row')) {
+                department = row.getAttribute('data-dept') || '';
+                subGroup = '';
+                continue;
+            }
+            if (row.classList.contains('sub-group-row')) {
+                subGroup = row.querySelector('.sub-group-label')?.textContent?.trim() || '';
+                continue;
+            }
+            if (!row.hasAttribute('data-schedule-staff-row')) continue;
+            const ownedSubGroup = row.hasAttribute('data-schedule-subgroup-label')
+                ? (row.getAttribute('data-schedule-subgroup-label') || '')
+                : (row.hasAttribute('data-schedule-subgroup')
+                    ? (row.getAttribute('data-schedule-subgroup') || '')
+                    : subGroup);
+            rows.push({
+                id: Number(row.getAttribute('data-schedule-staff-row')),
+                department,
+                subGroup: ownedSubGroup
+            });
+        }
+        return rows;
+    });
+}
+
+async function scheduleStaffReadinessSnapshot(page, staffId) {
+    return page.locator(`#scheduleBody [data-schedule-staff-row="${staffId}"]`).evaluate(row => {
+        const readinessBadge = Array.from(row.querySelectorAll('.staff-card-badge'))
+            .find(badge => (badge.getAttribute('title') || '').includes('Готовність'));
+        return {
+            rowClass: row.className,
+            readinessClass: readinessBadge?.className || '',
+            readinessText: readinessBadge?.textContent?.trim() || '',
+            readinessTitle: readinessBadge?.getAttribute('title') || '',
+            healthDetails: Array.from(row.querySelectorAll('.schedule-health-badge'))
+                .map(badge => badge.getAttribute('data-health-detail') || badge.getAttribute('title') || '')
+        };
+    });
+}
+
+function assertUniqueScheduleStaffIds(ids, label) {
+    assert.ok(ids.every(Number.isFinite), `${label}: every staff row exposes a numeric ID`);
+    assert.equal(new Set(ids).size, ids.length, `${label}: every numeric staff ID is rendered once`);
+}
+
+function sortedScheduleStaffIds(ids) {
+    return [...ids].sort((left, right) => left - right);
+}
+
+function scheduleExportStaffIdsFromHtml(html) {
+    return Array.from(
+        String(html || '').matchAll(/\bdata-schedule-export-staff-id="(\d+)"/g),
+        match => Number(match[1])
+    );
+}
+
+function scheduleExportTextFromHtml(html) {
+    return String(html || '')
+        .replace(/<br\s*\/?\s*>/gi, ' ')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+        .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function scheduleExportStaffRowsFromHtml(html) {
+    return Array.from(
+        String(html || '').matchAll(/<tr\b[^>]*\bdata-schedule-export-staff-id="(\d+)"[^>]*>([\s\S]*?)<\/tr>/gi),
+        match => {
+            const employeeCell = match[2].match(/<td\b[^>]*\bclass="[^"]*\bemployee-cell\b[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+            return {
+                id: Number(match[1]),
+                name: scheduleExportTextFromHtml(employeeCell?.[1] || '')
+            };
+        }
+    );
+}
+
+async function captureScheduleWorkbookHtml(page) {
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#exportExcelBtn').click();
+    const download = await downloadPromise;
+    const downloadPath = await download.path();
+    assert.ok(downloadPath, 'workbook download has a readable local path');
+    const html = fs.readFileSync(downloadPath, 'utf8').replace(/^\uFEFF/, '');
+    await download.delete().catch(() => {});
+    return html;
+}
+
+async function captureSchedulePrintHtml(page) {
+    await page.evaluate(() => {
+        window.__staffCanonicalPrintCount = 0;
+        window.__staffCanonicalPrintHtml = '';
+        window.open = () => ({
+            document: {
+                open() {},
+                write(html) { window.__staffCanonicalPrintHtml += String(html || ''); },
+                close() {}
+            },
+            focus() {},
+            print() { window.__staffCanonicalPrintCount += 1; },
+            setTimeout(callback) { callback(); }
+        });
+    });
+    await page.locator('#printBtn').click();
+    await page.waitForFunction(() => window.__staffCanonicalPrintCount === 1);
+    return page.evaluate(() => window.__staffCanonicalPrintHtml);
+}
+
+async function assertScheduleExportParity(page, expectedIds, label) {
+    const visibleRows = await scheduleStaffRowsFromDom(page);
+    const workbookHtml = await captureScheduleWorkbookHtml(page);
+    const printHtml = await captureSchedulePrintHtml(page);
+    const workbookIds = scheduleExportStaffIdsFromHtml(workbookHtml);
+    const printIds = scheduleExportStaffIdsFromHtml(printHtml);
+    const workbookRows = scheduleExportStaffRowsFromHtml(workbookHtml);
+    const printRows = scheduleExportStaffRowsFromHtml(printHtml);
+
+    assert.deepEqual(sortedScheduleStaffIds(visibleRows.map(row => row.id)), sortedScheduleStaffIds(expectedIds), `${label}: expected staff set is the visible table set`);
+    assertUniqueScheduleStaffIds(workbookIds, `${label} workbook`);
+    assertUniqueScheduleStaffIds(printIds, `${label} print`);
+    assert.deepEqual(sortedScheduleStaffIds(workbookIds), sortedScheduleStaffIds(expectedIds), `${label}: workbook staff set matches the visible table`);
+    assert.deepEqual(sortedScheduleStaffIds(printIds), sortedScheduleStaffIds(expectedIds), `${label}: print staff set matches the visible table`);
+    assert.deepEqual(sortedScheduleStaffIds(printIds), sortedScheduleStaffIds(workbookIds), `${label}: print and workbook contain the same staff set`);
+
+    for (const visibleRow of visibleRows) {
+        const workbookRow = workbookRows.find(row => row.id === visibleRow.id);
+        const printRow = printRows.find(row => row.id === visibleRow.id);
+        assert.equal(Boolean(workbookRow?.name), true, `${label}: downloaded workbook contains employee cell content for staff ID ${visibleRow.id}`);
+        assert.equal(Boolean(printRow?.name), true, `${label}: print HTML contains employee cell content for staff ID ${visibleRow.id}`);
+        assert.equal(workbookRow?.name === visibleRow.name, true, `${label}: downloaded workbook employee content matches the visible row for staff ID ${visibleRow.id}`);
+        assert.equal(printRow?.name === visibleRow.name, true, `${label}: print employee content matches the visible row for staff ID ${visibleRow.id}`);
+        assert.equal(printRow?.name === workbookRow?.name, true, `${label}: print and workbook employee content match for staff ID ${visibleRow.id}`);
+    }
+
+    if (expectedIds.includes(101)) {
+        assert.match(workbookHtml, /Женя Пасенко/, `${label}: workbook prefers display_name`);
+        assert.doesNotMatch(workbookHtml, /Пасенко Євгенія \(офіційно\)/, `${label}: workbook does not replace display_name with legal name`);
+        assert.match(printHtml, /Женя Пасенко/, `${label}: print prefers display_name`);
+        assert.doesNotMatch(printHtml, /Пасенко Євгенія \(офіційно\)/, `${label}: print does not replace display_name with legal name`);
+    }
+}
+
+async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
+    await page.locator('#scheduleStaffSearch').fill('');
+    const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(chips => chips
+        .map(chip => ({
+            key: chip.getAttribute('data-dept') || '',
+            count: Number(chip.querySelector('.dept-chip-count')?.textContent?.trim() || 0)
+        }))
+        .filter(filter => filter.key && filter.count > 0));
+    assert.ok(filters.length > 0, 'active-department-only contract has non-empty department fixtures');
+
+    for (const filter of filters) {
+        await activateScheduleDepartment(page, filter.key);
+        const departments = await page.locator('#scheduleBody tr.dept-row').evaluateAll(rows => (
+            rows.map(row => row.getAttribute('data-dept') || '')
+        ));
+        assert.deepEqual(
+            Array.from(new Set(departments)),
+            [filter.key],
+            `active-department-only: ${filter.key} renders only its own top-level group`
+        );
+        await expandScheduleGroup(page, filter.key);
+        const staffIds = await scheduleStaffIdsFromDom(page);
+        assertUniqueScheduleStaffIds(staffIds, `active-department-only ${filter.key}`);
+        assert.equal(staffIds.length, filter.count, `active-department-only: ${filter.key} table count matches its unique chip count`);
+    }
+
+    await activateScheduleDepartment(page, 'all');
 }
 
 async function assertScheduleShiftPreferenceQuickLabels(page) {
@@ -806,6 +1463,7 @@ async function assertNoControlOverlap(page, label) {
             search,
             dateFrom,
             dateTo,
+            datesStacked: Boolean(dateFrom && dateTo && dateTo.top >= dateFrom.bottom - 1),
             exportButton,
             printButton,
             viewportWidth: window.innerWidth,
@@ -820,7 +1478,10 @@ async function assertNoControlOverlap(page, label) {
     assert.ok(metrics.range.right <= metrics.command.right + 2, `${label}: range controls stay inside command bar`);
     assert.ok(metrics.search.right <= metrics.command.right + 2, `${label}: search row stays inside command bar`);
     assert.ok(metrics.search.top >= metrics.range.top - 2, `${label}: search does not float above range controls`);
-    assert.ok(metrics.dateFrom?.right <= metrics.dateTo?.left + 1, `${label}: date inputs do not overlap`);
+    assert.ok(
+        metrics.datesStacked || metrics.dateFrom?.right <= metrics.dateTo?.left + 1,
+        `${label}: date inputs are separated horizontally or stacked vertically`
+    );
     assert.ok(metrics.exportButton?.right <= metrics.command.right + 2, `${label}: export stays inside command bar`);
     assert.ok(metrics.printButton?.right <= metrics.command.right + 2, `${label}: print stays inside command bar`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
@@ -856,6 +1517,929 @@ async function assertDepartmentChipsFit(page, label) {
         assert.equal(chip.labelWhiteSpace, 'nowrap', `${label}: ${chip.text} label stays on one line`);
         assert.ok(chip.labelRight <= chip.countLeft + 1, `${label}: ${chip.text} label does not overlap the count`);
         assert.ok(chip.countRight <= chip.chipRight + 1, `${label}: ${chip.text} count stays inside the chip`);
+    }
+}
+
+async function assertNarrowMobileContract(page, label, options) {
+    const metrics = await page.evaluate(() => {
+        const rect = element => {
+            if (!element) return null;
+            const box = element.getBoundingClientRect();
+            return {
+                left: box.left,
+                right: box.right,
+                top: box.top,
+                bottom: box.bottom,
+                width: box.width,
+                height: box.height
+            };
+        };
+        const scrollReachability = (host, childSelector = ':scope > *') => {
+            if (!host) return null;
+            host.scrollLeft = host.scrollWidth;
+            const children = Array.from(host.querySelectorAll(childSelector));
+            const last = children.at(-1);
+            const hostBox = rect(host);
+            const lastBox = rect(last);
+            const style = getComputedStyle(host);
+            return {
+                clientWidth: host.clientWidth,
+                scrollWidth: host.scrollWidth,
+                scrollLeft: host.scrollLeft,
+                overflowX: style.overflowX,
+                overscrollBehaviorX: style.overscrollBehaviorX,
+                lastReachable: Boolean(
+                    lastBox
+                    && hostBox
+                    && lastBox.left >= hostBox.left - 2
+                    && lastBox.right <= hostBox.right + 2
+                ),
+                hostBox,
+                lastBox
+            };
+        };
+        const colorBrightness = value => {
+            const parts = String(value || '').match(/[\d.]+/g)?.slice(0, 3).map(Number) || [];
+            if (parts.length !== 3) return null;
+            return (parts[0] * 299 + parts[1] * 587 + parts[2] * 114) / 1000;
+        };
+        const styleSnapshot = element => {
+            if (!element) return null;
+            const style = getComputedStyle(element);
+            return {
+                position: style.position,
+                backgroundColor: style.backgroundColor,
+                backgroundImage: style.backgroundImage,
+                brightness: colorBrightness(style.backgroundColor),
+                box: rect(element)
+            };
+        };
+
+        const scrollingElement = document.scrollingElement || document.documentElement;
+        scrollingElement.scrollLeft = 0;
+        const pulseOuter = document.querySelector('.staff-pulse-nav');
+        const pulseItems = document.querySelector('.staff-pulse-nav-items');
+        const command = document.querySelector('.staff-schedule-command-bar');
+        const week = document.querySelector('.staff-schedule-command-bar .week-nav');
+        const range = document.querySelector('.staff-schedule-range-row');
+        const actions = document.querySelector('.staff-schedule-header-actions');
+        const search = document.querySelector('.staff-schedule-search-row');
+        const departments = document.querySelector('#deptFilter');
+        const wrapper = document.querySelector('#scheduleWrapper');
+        const table = wrapper?.querySelector('.schedule-table');
+        const fromInput = document.querySelector('#scheduleDateFrom');
+        const toInput = document.querySelector('#scheduleDateTo');
+
+        const pulseScroll = scrollReachability(pulseItems);
+        const departmentScroll = scrollReachability(departments, ':scope > .dept-chip');
+        if (wrapper) wrapper.scrollLeft = Math.min(360, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
+
+        const firstHeader = table?.querySelector('thead th:first-child');
+        const firstEmployeeCell = table?.querySelector('tbody tr[data-schedule-staff-row] > td:first-child');
+        const firstCategoryCell = table?.querySelector('tbody .schedule-category-sticky-cell');
+        const wrapperStyle = wrapper ? getComputedStyle(wrapper) : null;
+        const pulseOuterStyle = pulseOuter ? getComputedStyle(pulseOuter) : null;
+        const fromBox = rect(fromInput);
+        const toBox = rect(toInput);
+        const tableStyle = table ? getComputedStyle(table) : null;
+        const page = document.querySelector('#main-content');
+
+        return {
+            viewportMeta: document.querySelector('meta[name="viewport"]')?.getAttribute('content') || '',
+            viewportWidth: window.innerWidth,
+            documentScrollWidth: document.documentElement.scrollWidth,
+            bodyScrollWidth: document.body.scrollWidth,
+            pageScrollWidth: page?.scrollWidth || 0,
+            pageClientWidth: page?.clientWidth || 0,
+            globalScrollLeft: scrollingElement.scrollLeft,
+            theme: document.documentElement.getAttribute('data-theme') || '',
+            bodyDark: document.body.classList.contains('dark-mode'),
+            commandBox: rect(command),
+            weekBox: rect(week),
+            rangeBox: rect(range),
+            actionsBox: rect(actions),
+            searchBox: rect(search),
+            departmentBox: rect(departments),
+            pulseOuterBox: rect(pulseOuter),
+            pulseOuterOverflowX: pulseOuterStyle?.overflowX || '',
+            pulseScroll,
+            departmentScroll,
+            fromBox,
+            toBox,
+            datesStacked: Boolean(fromBox && toBox && toBox.top >= fromBox.bottom - 1),
+            wrapper: wrapper ? {
+                clientWidth: wrapper.clientWidth,
+                scrollWidth: wrapper.scrollWidth,
+                scrollLeft: wrapper.scrollLeft,
+                overflowX: wrapperStyle?.overflowX || '',
+                overscrollBehaviorX: wrapperStyle?.overscrollBehaviorX || '',
+                box: rect(wrapper)
+            } : null,
+            firstHeader: styleSnapshot(firstHeader),
+            firstEmployeeCell: styleSnapshot(firstEmployeeCell),
+            firstCategoryCell: styleSnapshot(firstCategoryCell),
+            tableBrightness: colorBrightness(tableStyle?.backgroundColor),
+            tableBackground: tableStyle?.backgroundColor || ''
+        };
+    });
+
+    const { width, darkMode } = options;
+    assert.match(metrics.viewportMeta, /width\s*=\s*device-width/i, `${label}: viewport uses the device width`);
+    assert.doesNotMatch(metrics.viewportMeta, /user-scalable\s*=\s*no/i, `${label}: viewport does not disable pinch zoom`);
+    assert.doesNotMatch(metrics.viewportMeta, /maximum-scale\s*=\s*1(?:\.0+)?(?:\D|$)/i, `${label}: viewport does not cap zoom at 1x`);
+    assert.equal(metrics.viewportWidth, width, `${label}: browser keeps the requested narrow viewport`);
+    assert.ok(metrics.documentScrollWidth <= width + 2, `${label}: document has no global horizontal overflow`);
+    assert.ok(metrics.bodyScrollWidth <= width + 2, `${label}: body has no global horizontal overflow`);
+    assert.ok(metrics.pageScrollWidth <= metrics.pageClientWidth + 2, `${label}: main content has no global horizontal overflow`);
+    assert.equal(metrics.globalScrollLeft, 0, `${label}: nested horizontal scrolling does not move the page`);
+
+    for (const [name, box] of [
+        ['pulse switcher', metrics.pulseOuterBox],
+        ['command bar', metrics.commandBox]
+    ]) {
+        assert.ok(box?.width > 0, `${label}: ${name} is measurable`);
+        assert.ok(box.left >= -2 && box.right <= width + 2, `${label}: ${name} stays inside the viewport`);
+    }
+    assert.equal(metrics.pulseOuterOverflowX, 'hidden', `${label}: pulse shell clips instead of owning page overflow`);
+
+    for (const [name, scroll] of [
+        ['pulse switcher items', metrics.pulseScroll],
+        ['department chips', metrics.departmentScroll]
+    ]) {
+        assert.ok(scroll, `${label}: ${name} scroll metrics are available`);
+        assert.ok(['auto', 'scroll'].includes(scroll.overflowX), `${label}: ${name} owns horizontal scrolling`);
+        assert.ok(scroll.scrollWidth > scroll.clientWidth + 2, `${label}: ${name} exposes its overflow intentionally`);
+        assert.ok(scroll.scrollLeft > 0, `${label}: ${name} can scroll to its trailing content`);
+        assert.equal(scroll.lastReachable, true, `${label}: the last ${name} item is fully reachable`);
+    }
+
+    assert.ok(metrics.weekBox && metrics.rangeBox && metrics.actionsBox && metrics.searchBox && metrics.departmentBox, `${label}: mobile command rows are measurable`);
+    assert.ok(metrics.rangeBox.top >= metrics.weekBox.bottom - 2, `${label}: range controls follow week navigation`);
+    assert.ok(metrics.actionsBox.top >= metrics.rangeBox.bottom - 2, `${label}: actions follow range controls`);
+    assert.ok(metrics.searchBox.top >= metrics.actionsBox.bottom - 2, `${label}: search follows actions`);
+    assert.ok(metrics.departmentBox.top >= metrics.searchBox.bottom - 2, `${label}: department chips follow search`);
+    assert.ok(metrics.fromBox?.width > 0 && metrics.toBox?.width > 0, `${label}: both date fields are visible`);
+    assert.ok(
+        metrics.datesStacked || (metrics.fromBox.width >= 120 && metrics.toBox.width >= 120),
+        `${label}: date fields are stacked or wide enough to remain readable`
+    );
+
+    assert.ok(metrics.wrapper, `${label}: schedule wrapper metrics are available`);
+    assert.ok(['auto', 'scroll'].includes(metrics.wrapper.overflowX), `${label}: schedule wrapper owns table scrolling`);
+    assert.equal(metrics.wrapper.overscrollBehaviorX, 'contain', `${label}: schedule wrapper contains horizontal overscroll`);
+    assert.ok(metrics.wrapper.scrollWidth > metrics.wrapper.clientWidth + 20, `${label}: month table remains horizontally scrollable`);
+    assert.ok(metrics.wrapper.scrollLeft > 0, `${label}: month table accepts horizontal scroll`);
+
+    for (const [name, sticky] of [
+        ['header employee column', metrics.firstHeader],
+        ['employee column', metrics.firstEmployeeCell],
+        ['category column', metrics.firstCategoryCell]
+    ]) {
+        assert.ok(sticky?.box, `${label}: ${name} is measurable`);
+        assert.equal(sticky.position, 'sticky', `${label}: ${name} stays sticky`);
+        assert.ok(Math.abs(sticky.box.left - metrics.wrapper.box.left) <= 3, `${label}: ${name} remains pinned after table scroll`);
+        assert.ok(sticky.backgroundImage !== 'none' || sticky.backgroundColor !== 'rgba(0, 0, 0, 0)', `${label}: ${name} paints an opaque reading surface`);
+    }
+    assert.ok(
+        Math.abs(metrics.firstHeader.box.width - metrics.firstEmployeeCell.box.width) <= 3,
+        `${label}: header and employee sticky columns stay aligned`
+    );
+    assert.ok(
+        Math.abs(metrics.firstHeader.box.width - metrics.firstCategoryCell.box.width) <= 3,
+        `${label}: header and category sticky columns stay aligned`
+    );
+
+    if (darkMode) {
+        assert.equal(metrics.theme, 'dark', `${label}: dark theme is applied to the root`);
+        assert.equal(metrics.bodyDark, true, `${label}: dark theme compatibility class is applied`);
+        assert.ok(
+            metrics.firstEmployeeCell.brightness !== null && metrics.firstEmployeeCell.brightness < 100,
+            `${label}: sticky employee column uses a dark reading surface`
+        );
+    } else {
+        assert.equal(metrics.theme, 'light', `${label}: light theme is applied to the root`);
+        assert.equal(metrics.bodyDark, false, `${label}: light theme does not keep the dark compatibility class`);
+        assert.ok(
+            metrics.firstEmployeeCell.brightness !== null && metrics.firstEmployeeCell.brightness > 180,
+            `${label}: sticky employee column uses a light reading surface`
+        );
+    }
+}
+
+function waitForScheduleHttpResponse(page, from, to) {
+    return page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/staff/schedule'
+            && url.searchParams.get('from') === from
+            && url.searchParams.get('to') === to;
+    }, { timeout: 20000 });
+}
+
+async function scheduleRangeDomSnapshot(page) {
+    return page.evaluate(() => {
+        const region = document.getElementById('scheduleDataRegion');
+        const wrapper = document.getElementById('scheduleWrapper');
+        const statePanel = document.getElementById('scheduleRangeState');
+        const exportButton = document.getElementById('exportExcelBtn');
+        const printButton = document.getElementById('printBtn');
+        return {
+            from: document.getElementById('scheduleDateFrom')?.value || '',
+            to: document.getElementById('scheduleDateTo')?.value || '',
+            label: document.getElementById('weekLabel')?.textContent?.trim() || '',
+            state: region?.dataset.scheduleState || '',
+            hasCommittedRange: region?.dataset.hasCommittedRange || '',
+            ariaBusy: region?.getAttribute('aria-busy') || '',
+            wrapperHidden: wrapper ? wrapper.hidden || getComputedStyle(wrapper).display === 'none' : true,
+            editLocked: Boolean(
+                wrapper?.inert
+                || region?.inert
+                || wrapper?.getAttribute('aria-disabled') === 'true'
+                || region?.getAttribute('aria-disabled') === 'true'
+            ),
+            statePanelHidden: statePanel?.hidden ?? true,
+            statePanelText: statePanel?.textContent?.replace(/\s+/g, ' ').trim() || '',
+            retryHidden: document.getElementById('scheduleRangeRetryBtn')?.hidden ?? true,
+            exportDisabled: Boolean(exportButton?.disabled),
+            exportAriaDisabled: exportButton?.getAttribute('aria-disabled') || '',
+            printDisabled: Boolean(printButton?.disabled),
+            printAriaDisabled: printButton?.getAttribute('aria-disabled') || '',
+            headerCount: document.querySelectorAll('#scheduleHead th').length
+        };
+    });
+}
+
+async function assertScheduleActionsBlocked(page, label, expectedBusy) {
+    const state = await scheduleRangeDomSnapshot(page);
+    assert.equal(state.exportDisabled, true, `${label}: export is disabled`);
+    assert.equal(state.exportAriaDisabled, 'true', `${label}: export exposes aria-disabled`);
+    assert.equal(state.printDisabled, true, `${label}: print is disabled`);
+    assert.equal(state.printAriaDisabled, 'true', `${label}: print exposes aria-disabled`);
+    assert.equal(state.editLocked, true, `${label}: committed table is locked against edits`);
+    assert.equal(state.ariaBusy, expectedBusy ? 'true' : 'false', `${label}: aria-busy matches the load state`);
+}
+
+async function assertScheduleActionsAvailable(page, label) {
+    const state = await scheduleRangeDomSnapshot(page);
+    assert.equal(state.exportDisabled, false, `${label}: export is enabled for the confirmed range`);
+    assert.equal(state.exportAriaDisabled, 'false', `${label}: export aria-disabled is cleared`);
+    assert.equal(state.printDisabled, false, `${label}: print is enabled for the confirmed range`);
+    assert.equal(state.printAriaDisabled, 'false', `${label}: print aria-disabled is cleared`);
+    assert.equal(state.editLocked, false, `${label}: confirmed table is editable`);
+    assert.equal(state.ariaBusy, 'false', `${label}: confirmed range is not busy`);
+}
+
+async function installBlockedActionProbe(page) {
+    await page.evaluate(() => {
+        window.__staffScheduleBlockedActionProbe = {
+            downloadAttempts: 0,
+            printWindowAttempts: 0
+        };
+        const originalAnchorClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function (...args) {
+            if (this.hasAttribute('download')) {
+                window.__staffScheduleBlockedActionProbe.downloadAttempts += 1;
+                return undefined;
+            }
+            return originalAnchorClick.apply(this, args);
+        };
+        window.open = () => {
+            window.__staffScheduleBlockedActionProbe.printWindowAttempts += 1;
+            return null;
+        };
+    });
+}
+
+async function dispatchBlockedScheduleActions(page, label) {
+    await page.evaluate(() => {
+        for (const id of ['exportExcelBtn', 'printBtn']) {
+            document.getElementById(id)?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        }
+    });
+    const attempts = await page.evaluate(() => window.__staffScheduleBlockedActionProbe);
+    assert.deepEqual(attempts, { downloadAttempts: 0, printWindowAttempts: 0 }, `${label}: guarded handlers do not launch export or print`);
+}
+
+async function assertConfirmedRange(page, from, to, expectedState, label) {
+    await waitForCommittedScheduleRange(page, from, to, expectedState);
+    const state = await scheduleRangeDomSnapshot(page);
+    assert.equal(state.from, from, `${label}: date-from belongs to the confirmed range`);
+    assert.equal(state.to, to, `${label}: date-to belongs to the confirmed range`);
+    assert.equal(state.state, expectedState, `${label}: schedule state is ${expectedState}`);
+    assert.equal(state.hasCommittedRange, 'true', `${label}: committed-range invariant is exposed`);
+    assert.equal(state.headerCount, dateRangeDays(from, to) + 1, `${label}: header belongs to the confirmed range`);
+}
+
+async function runInitialRangeFailureFlow(browser, base) {
+    const initialFailure = queueScheduleResponseScenario({
+        kind: 'http-error',
+        status: 500,
+        error: 'Initial schedule fixture failure'
+    });
+    let context = null;
+    try {
+        const opened = await openStaffPage(browser, base, { width: 1280, height: 800 }, { waitForRows: false });
+        context = opened.context;
+        const { page } = opened;
+        await initialFailure.finished.promise;
+        await waitForScheduleState(page, 'error');
+
+        const failedState = await scheduleRangeDomSnapshot(page);
+        assert.equal(failedState.state, 'error', 'initial 500 renders the persistent error state');
+        assert.equal(failedState.hasCommittedRange, 'false', 'initial 500 does not invent a committed range');
+        assert.equal(failedState.wrapperHidden, true, 'initial 500 does not show an ordinary empty schedule table');
+        assert.equal(failedState.statePanelHidden, false, 'initial 500 keeps the range error visible');
+        assert.equal(failedState.retryHidden, false, 'initial 500 exposes retry');
+        assert.ok(failedState.statePanelText.length > 0, 'initial 500 explains the failed range');
+        await assertScheduleActionsBlocked(page, 'initial range failure', false);
+
+        assert.ok(initialFailure.request?.from && initialFailure.request?.to, 'initial failure captures the requested range');
+        await page.locator('#scheduleRangeRetryBtn').click();
+        const retryState = scheduleFixtureEntriesForRange(initialFailure.request.from, initialFailure.request.to).length
+            ? 'ready'
+            : 'empty';
+        await assertConfirmedRange(
+            page,
+            initialFailure.request.from,
+            initialFailure.request.to,
+            retryState,
+            'initial retry'
+        );
+        await assertScheduleActionsAvailable(page, 'initial retry');
+
+        await applyManualRange(page, '2026-08-01', '2026-08-05');
+        await assertConfirmedRange(page, '2026-08-01', '2026-08-05', 'empty', 'successful empty response');
+        const emptyState = await scheduleRangeDomSnapshot(page);
+        assert.equal(emptyState.wrapperHidden, false, 'successful empty response keeps the confirmed table surface available');
+        assert.equal(emptyState.statePanelHidden, false, 'successful empty response has its own explicit state');
+        assert.equal(emptyState.retryHidden, true, 'successful empty response is not presented as a retryable failure');
+        await assertScheduleActionsAvailable(page, 'successful empty response');
+    } finally {
+        releaseScheduleResponseScenarios();
+        if (context) await context.close();
+    }
+}
+
+async function runPeriodReliabilityFlow(browser, base) {
+    const RANGE_A = { from: '2026-07-01', to: '2026-07-15' };
+    const RANGE_B = { from: '2026-07-16', to: '2026-07-31' };
+    const RANGE_MONTH = { from: '2026-07-01', to: '2026-07-31' };
+    let context = null;
+    try {
+        const opened = await openStaffPage(
+            browser,
+            base,
+            { width: 1440, height: 900 },
+            { ignoreAbort: true }
+        );
+        context = opened.context;
+        const { page } = opened;
+
+        await applyManualRange(page, RANGE_B.from, RANGE_B.to);
+        await assertConfirmedRange(page, RANGE_B.from, RANGE_B.to, 'ready', 'race baseline B');
+        await installBlockedActionProbe(page);
+
+        const delayedA = queueScheduleResponseScenario({ ...RANGE_A, hold: true });
+        await requestManualRange(page, RANGE_A.from, RANGE_A.to);
+        await delayedA.started.promise;
+        await waitForScheduleState(page, 'loading');
+        const loadingA = await scheduleRangeDomSnapshot(page);
+        assert.equal(loadingA.from, RANGE_B.from, 'loading A keeps date-from on confirmed B');
+        assert.equal(loadingA.to, RANGE_B.to, 'loading A keeps date-to on confirmed B');
+        assert.match(loadingA.label, /16\D+31\D+2026/, 'loading A keeps confirmed B in the header');
+        await assertScheduleActionsBlocked(page, 'delayed A loading', true);
+        await dispatchBlockedScheduleActions(page, 'delayed A loading');
+
+        await requestManualRange(page, RANGE_B.from, RANGE_B.to);
+        await assertConfirmedRange(page, RANGE_B.from, RANGE_B.to, 'ready', 'fast B');
+        const lateAResponse = waitForScheduleHttpResponse(page, RANGE_A.from, RANGE_A.to);
+        delayedA.release();
+        const responseA = await lateAResponse;
+        await responseA.finished();
+        await delayedA.finished.promise;
+        await settleScheduleDom(page);
+        await assertConfirmedRange(page, RANGE_B.from, RANGE_B.to, 'ready', 'late A ignored');
+        await assertScheduleActionsAvailable(page, 'late A ignored');
+
+        await expandAllScheduleGroups(page);
+        const failedBtoA = queueScheduleResponseScenario({
+            ...RANGE_A,
+            kind: 'http-error',
+            status: 500,
+            error: 'Navigation schedule fixture failure'
+        });
+        await requestManualRange(page, RANGE_A.from, RANGE_A.to);
+        await failedBtoA.finished.promise;
+        await waitForScheduleState(page, 'error');
+        const navigationError = await scheduleRangeDomSnapshot(page);
+        assert.equal(navigationError.from, RANGE_B.from, '500 restores date-from to confirmed B');
+        assert.equal(navigationError.to, RANGE_B.to, '500 restores date-to to confirmed B');
+        assert.match(navigationError.label, /16\D+31\D+2026/, '500 preserves the confirmed B header');
+        assert.equal(navigationError.headerCount, 17, '500 preserves B table columns');
+        assert.equal(navigationError.statePanelHidden, false, '500 keeps a persistent error panel');
+        assert.equal(navigationError.retryHidden, false, '500 exposes retry for the failed A range');
+        assert.match(navigationError.statePanelText, /1\D+15\D+2026/, '500 error names the failed A range');
+        assert.match(
+            await page.locator('#scheduleBody .sch-cell[data-staff="101"][data-date="2026-07-31"]').innerText(),
+            /10:00/,
+            '500 preserves confirmed B schedule data'
+        );
+        await assertScheduleActionsBlocked(page, 'navigation 500 error', false);
+        await dispatchBlockedScheduleActions(page, 'navigation 500 error');
+
+        await page.locator('#scheduleRangeRetryBtn').click();
+        await assertConfirmedRange(page, RANGE_A.from, RANGE_A.to, 'ready', '500 retry');
+        const retriedState = await scheduleRangeDomSnapshot(page);
+        assert.equal(retriedState.statePanelHidden, true, 'successful retry clears the persistent error panel');
+        assert.equal(retriedState.retryHidden, true, 'successful retry hides retry');
+        await assertScheduleActionsAvailable(page, '500 retry');
+
+        const invalidJson = queueScheduleResponseScenario({ ...RANGE_B, kind: 'invalid-json' });
+        await requestManualRange(page, RANGE_B.from, RANGE_B.to);
+        await invalidJson.finished.promise;
+        await waitForScheduleState(page, 'error');
+        const invalidJsonState = await scheduleRangeDomSnapshot(page);
+        assert.equal(invalidJsonState.from, RANGE_A.from, 'invalid JSON restores confirmed A start');
+        assert.equal(invalidJsonState.to, RANGE_A.to, 'invalid JSON restores confirmed A end');
+        assert.equal(invalidJsonState.headerCount, 16, 'invalid JSON preserves confirmed A columns');
+
+        const networkFailure = queueScheduleResponseScenario({ ...RANGE_B, kind: 'network-error', hold: true });
+        await requestManualRange(page, RANGE_B.from, RANGE_B.to);
+        await networkFailure.started.promise;
+        await waitForScheduleState(page, 'loading');
+        networkFailure.release();
+        await networkFailure.finished.promise;
+        await waitForScheduleState(page, 'error');
+        const networkState = await scheduleRangeDomSnapshot(page);
+        assert.equal(networkState.from, RANGE_A.from, 'network exception restores confirmed A start');
+        assert.equal(networkState.to, RANGE_A.to, 'network exception restores confirmed A end');
+        assert.equal(networkState.headerCount, 16, 'network exception preserves confirmed A columns');
+        await assertScheduleActionsBlocked(page, 'network exception error', false);
+
+        await page.locator('#scheduleRangeRetryBtn').click();
+        await assertConfirmedRange(page, RANGE_B.from, RANGE_B.to, 'ready', 'network retry');
+        await assertScheduleActionsAvailable(page, 'network retry');
+
+        const delayedFirstHalf = queueScheduleResponseScenario({ ...RANGE_A, hold: true });
+        const delayedSecondHalf = queueScheduleResponseScenario({ ...RANGE_B, hold: true });
+        await page.locator('[data-schedule-range-preset="first-half"]').click();
+        await delayedFirstHalf.started.promise;
+        await waitForScheduleState(page, 'loading');
+        await page.locator('[data-schedule-range-preset="second-half"]').click();
+        await delayedSecondHalf.started.promise;
+        await waitForScheduleState(page, 'loading');
+        await page.locator('[data-schedule-range-preset="month"]').click();
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'rapid preset month winner');
+
+        const lateSecondHalfResponse = waitForScheduleHttpResponse(page, RANGE_B.from, RANGE_B.to);
+        delayedSecondHalf.release();
+        const responseSecondHalf = await lateSecondHalfResponse;
+        await responseSecondHalf.finished();
+        await delayedSecondHalf.finished.promise;
+        await settleScheduleDom(page);
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late second-half ignored');
+
+        const lateFirstHalfResponse = waitForScheduleHttpResponse(page, RANGE_A.from, RANGE_A.to);
+        delayedFirstHalf.release();
+        const responseFirstHalf = await lateFirstHalfResponse;
+        await responseFirstHalf.finished();
+        await delayedFirstHalf.finished.promise;
+        await settleScheduleDom(page);
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late first-half ignored');
+        assert.equal(
+            await page.locator('[data-schedule-range-preset="month"]').getAttribute('aria-pressed'),
+            'true',
+            'rapid first-half to second-half to month keeps month active'
+        );
+
+        const CUSTOM_RANGE = { from: '2026-07-01', to: '2026-07-05' };
+        const NEXT_RANGE = { from: '2026-07-06', to: '2026-07-10' };
+        await applyManualRange(page, CUSTOM_RANGE.from, CUSTOM_RANGE.to);
+        await assertConfirmedRange(page, CUSTOM_RANGE.from, CUSTOM_RANGE.to, 'empty', 'rapid prev-next baseline');
+        const delayedNext = queueScheduleResponseScenario({ ...NEXT_RANGE, hold: true });
+        await page.locator('#nextWeekBtn').click();
+        await delayedNext.started.promise;
+        await waitForScheduleState(page, 'loading');
+        await page.locator('#prevWeekBtn').click();
+        await assertConfirmedRange(page, CUSTOM_RANGE.from, CUSTOM_RANGE.to, 'empty', 'rapid next-prev winner');
+
+        const lateNextResponse = waitForScheduleHttpResponse(page, NEXT_RANGE.from, NEXT_RANGE.to);
+        delayedNext.release();
+        const responseNext = await lateNextResponse;
+        await responseNext.finished();
+        await delayedNext.finished.promise;
+        await settleScheduleDom(page);
+        await assertConfirmedRange(page, CUSTOM_RANGE.from, CUSTOM_RANGE.to, 'empty', 'late next ignored after prev');
+        await assertScheduleActionsAvailable(page, 'rapid next-prev winner');
+    } finally {
+        releaseScheduleResponseScenarios();
+        if (context) await context.close();
+    }
+}
+
+async function runScheduleHistoryIsolationFlow(browser, base) {
+    let context = null;
+    try {
+        const opened = await openStaffPage(
+            browser,
+            base,
+            { width: 1440, height: 900 },
+            { ignoreAbort: true }
+        );
+        context = opened.context;
+        const { page } = opened;
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await expandAllScheduleGroups(page);
+
+        const delayedA = queueHistoryResponseScenario({
+            staffId: 101,
+            date: '2026-07-11',
+            marker: 'HISTORY-A-LATE',
+            hold: true
+        });
+        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').click();
+        await delayedA.started.promise;
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'history A exposes its loading state');
+        assert.match(await page.locator('#schHistoryList').innerText(), /Завантажую історію/, 'history A shows a loading message');
+
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const fastB = queueHistoryResponseScenario({
+            staffId: 108,
+            date: '2026-07-12',
+            marker: 'HISTORY-B'
+        });
+        await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"]').click();
+        await fastB.started.promise;
+        await fastB.finished.promise;
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        await page.waitForFunction(marker => document.getElementById('schHistoryList')?.textContent?.includes(marker), fastB.marker);
+        const fastBModal = await page.locator('#schModalOverlay').evaluate(modal => ({
+            title: modal.querySelector('#schModalTitle')?.textContent?.trim() || '',
+            history: modal.querySelector('#schHistoryList')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+            historyBusy: modal.querySelector('#schHistoryList')?.getAttribute('aria-busy') || ''
+        }));
+        assert.match(fastBModal.title, /Animator Trampoline.+2026-07-12/, 'fast history B owns the open modal title');
+        assert.match(fastBModal.history, /HISTORY-B/, 'fast history B owns the history panel');
+        assert.doesNotMatch(fastBModal.history, /HISTORY-A-LATE/, 'fast history B does not show delayed A');
+        assert.equal(fastBModal.historyBusy, 'false', 'fast history B settles the loading state');
+
+        delayedA.release();
+        await delayedA.finished.promise;
+        await settleScheduleDom(page);
+        const afterLateA = await page.locator('#schModalOverlay').evaluate(modal => ({
+            visible: modal.classList.contains('visible'),
+            title: modal.querySelector('#schModalTitle')?.textContent?.trim() || '',
+            history: modal.querySelector('#schHistoryList')?.textContent?.replace(/\s+/g, ' ').trim() || ''
+        }));
+        assert.equal(afterLateA.visible, true, 'late history A cannot close the newer B modal');
+        assert.match(afterLateA.title, /Animator Trampoline.+2026-07-12/, 'late history A cannot replace the B title');
+        assert.match(afterLateA.history, /HISTORY-B/, 'late history A leaves B history intact');
+        assert.doesNotMatch(afterLateA.history, /HISTORY-A-LATE/, 'late history A cannot mutate the current history DOM');
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+    } finally {
+        releaseHistoryResponseScenarios();
+        if (context) await context.close();
+    }
+
+    context = null;
+    try {
+        const opened = await openStaffPage(browser, base, { width: 1440, height: 900 });
+        context = opened.context;
+        const { page } = opened;
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await expandAllScheduleGroups(page);
+
+        const closeBeforeResponse = queueHistoryResponseScenario({
+            staffId: 101,
+            date: '2026-07-11',
+            marker: 'HISTORY-C-CLOSED',
+            hold: true
+        });
+        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').click();
+        await closeBeforeResponse.started.promise;
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'close-before-response starts with busy history');
+
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        await Promise.race([
+            closeBeforeResponse.aborted.promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('history request was not aborted after modal close')), 5000))
+        ]);
+        closeBeforeResponse.release();
+        await closeBeforeResponse.finished.promise;
+        await settleScheduleDom(page);
+
+        const closedState = await page.locator('#schModalOverlay').evaluate(modal => ({
+            visible: modal.classList.contains('visible'),
+            history: modal.querySelector('#schHistoryList')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+            historyBusy: modal.querySelector('#schHistoryList')?.getAttribute('aria-busy') || ''
+        }));
+        assert.equal(closedState.visible, false, 'late response cannot reopen a closed modal');
+        assert.equal(closedState.historyBusy, 'false', 'closing clears history aria-busy');
+        assert.equal(closedState.history, '', 'closing clears pending history content');
+        assert.doesNotMatch(closedState.history, /HISTORY-C-CLOSED/, 'closed modal ignores its pending history response');
+        const responseRecord = apiCalls.historyResponses.find(record => record.scenarioId === closeBeforeResponse.id);
+        assert.equal(responseRecord?.kind, 'client-aborted', 'close-before-response aborts the underlying history request');
+    } finally {
+        releaseHistoryResponseScenarios();
+        if (context) await context.close();
+    }
+}
+
+async function runScheduleKeyboardAccessibilityFlow(browser, base) {
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
+    try {
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await expandAllScheduleGroups(page);
+
+        const tableName = 'Графік роботи співробітників за вибраний період';
+        assert.equal(await page.getByRole('table', { name: tableName, exact: true }).count(), 1, 'schedule table has a unique caption-derived accessible name');
+        assert.equal((await page.locator('#scheduleWrapper caption').textContent())?.trim(), tableName, 'schedule caption describes the selected-period table');
+        const headerScopes = await page.locator('#scheduleHead th').evaluateAll(headers => headers.map(header => header.getAttribute('scope')));
+        assert.ok(headerScopes.length > 1, 'schedule renders employee and day headers');
+        assert.equal(headerScopes.every(scope => scope === 'col'), true, 'every schedule column header declares scope=col');
+
+        const cellSemantics = await page.locator('#scheduleBody .sch-cell').evaluateAll(cells => cells.map(cell => ({
+            role: cell.getAttribute('role'),
+            tabIndex: cell.getAttribute('tabindex'),
+            ariaLabel: cell.getAttribute('aria-label') || ''
+        })));
+        assert.ok(cellSemantics.length > 0, 'schedule exposes interactive cells');
+        assert.equal(cellSemantics.every(cell => cell.role === 'button'), true, 'every interactive schedule cell exposes button semantics');
+        assert.equal(cellSemantics.every(cell => cell.tabIndex === '0'), true, 'every interactive schedule cell is keyboard reachable');
+        assert.equal(cellSemantics.every(cell => cell.ariaLabel.trim().length > 0), true, 'every interactive schedule cell has an accessible name');
+        assert.equal(await page.getByLabel('Від', { exact: true }).count(), 1, 'range start has an explicit label');
+        assert.equal(await page.getByLabel('До', { exact: true }).count(), 1, 'range end has an explicit label');
+
+        const trigger = page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]');
+        await trigger.evaluate(cell => { window.__scheduleKeyboardTrigger = cell; });
+        await trigger.focus();
+        assert.equal(
+            await trigger.evaluate(cell => document.activeElement === cell),
+            true,
+            'keyboard scenario starts on the schedule cell'
+        );
+        await trigger.press('Enter');
+
+        const dialog = page.getByRole('dialog', { name: /Редагувати:.+2026-07-11/ });
+        await dialog.waitFor({ state: 'visible' });
+        assert.equal(await dialog.getAttribute('aria-modal'), 'true', 'schedule editor exposes modal dialog semantics');
+        await page.waitForFunction(() => document.activeElement?.id === 'schStatus');
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'schStatus', 'Enter opens the editor with initial focus on status');
+        assert.equal(await page.getByLabel('Статус', { exact: true }).count(), 1, 'status control has a programmatic label');
+        assert.equal(await page.getByLabel('Професія у зміні', { exact: true }).count(), 1, 'profession control has a programmatic label');
+        assert.equal(await page.getByLabel('Початок зміни', { exact: true }).count(), 1, 'shift start has a programmatic label');
+        assert.equal(await page.getByLabel('Кінець зміни', { exact: true }).count(), 1, 'shift end has a programmatic label');
+        assert.equal(await page.getByLabel('Примітка', { exact: true }).count(), 1, 'note control has a programmatic label');
+        assert.equal(await page.getByRole('region', { name: 'Історія клітинки', exact: true }).count(), 1, 'history panel has a labelled region');
+
+        await page.evaluate(() => {
+            const selector = [
+                'a[href]',
+                'button:not([disabled])',
+                'input:not([disabled])',
+                'select:not([disabled])',
+                'textarea:not([disabled])',
+                '[tabindex]:not([tabindex="-1"])'
+            ].join(',');
+            const modal = document.getElementById('schModalOverlay');
+            const focusable = Array.from(modal?.querySelectorAll(selector) || [])
+                .filter(element => element.offsetParent !== null);
+            window.__scheduleModalFirstFocusable = focusable[0] || null;
+            window.__scheduleModalLastFocusable = focusable.at(-1) || null;
+            window.__scheduleModalFirstFocusable?.focus();
+        });
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(
+            await page.evaluate(() => document.activeElement === window.__scheduleModalLastFocusable),
+            true,
+            'Shift+Tab loops from the first modal control to the last'
+        );
+        await page.keyboard.press('Tab');
+        assert.equal(
+            await page.evaluate(() => document.activeElement === window.__scheduleModalFirstFocusable),
+            true,
+            'Tab loops from the last modal control to the first'
+        );
+
+        await page.evaluate(() => window.StaffSchedulePage.renderSchedule());
+        await page.waitForFunction(() => window.__scheduleKeyboardTrigger?.isConnected === false);
+        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').waitFor({ state: 'visible' });
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        await page.waitForFunction(() => {
+            const active = document.activeElement;
+            return active?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"]');
+        });
+        assert.equal(
+            await page.evaluate(() => (
+                document.activeElement !== window.__scheduleKeyboardTrigger
+                && document.activeElement?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"]')
+            )),
+            true,
+            'Escape restores focus to the fresh matching cell after a schedule rerender'
+        );
+    } finally {
+        await context.close();
+    }
+}
+
+async function runCanonicalGroupingFlow(browser, base) {
+    const expectedAllIds = [101, 102, 103, 104, 105, 106, 107, 108];
+    const expectedChipCounts = {
+        all: 8,
+        animators: 2,
+        trampoline: 2,
+        reception: 4,
+        admin: 1,
+        cafe: 3,
+        tech: 1,
+        cleaning: 0
+    };
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
+    try {
+        await waitForDayColumns(page, 9);
+        await page.locator('#scheduleStaffSearch').fill('');
+        await activateScheduleDepartment(page, 'all');
+        await expandAllScheduleGroups(page);
+
+        const allIds = await scheduleStaffIdsFromDom(page);
+        assertUniqueScheduleStaffIds(allIds, 'All schedule table');
+        assert.deepEqual(sortedScheduleStaffIds(allIds), expectedAllIds, 'All renders every unique fixture staff ID exactly once');
+        const allStaffGroups = await scheduleStaffGroupsFromDom(page);
+        assert.deepEqual(
+            allStaffGroups.sort((left, right) => left.id - right.id),
+            [
+                { id: 101, department: 'animators' },
+                { id: 102, department: 'reception' },
+                { id: 103, department: 'admin' },
+                { id: 104, department: 'cafe' },
+                { id: 105, department: 'tech' },
+                { id: 106, department: 'reception' },
+                { id: 107, department: 'cafe' },
+                { id: 108, department: 'animators' }
+            ],
+            'All renders each employee only in the canonical display group'
+        );
+
+        const chipCounts = await page.locator('#deptFilter .dept-chip').evaluateAll(chips => Object.fromEntries(
+            chips.map(chip => [
+                chip.getAttribute('data-dept') || '',
+                Number(chip.querySelector('.dept-chip-count')?.textContent?.trim() || 0)
+            ])
+        ));
+        assert.deepEqual(chipCounts, expectedChipCounts, 'department chips count unique membership staff IDs without phantom groups');
+        await assertScheduleExportParity(page, allIds, 'All');
+        await assertDepartmentFiltersRenderOnlyActiveGroup(page);
+
+        await collapseAllScheduleGroups(page);
+        assert.equal(await scheduleEmployeeRowCount(page), 0, 'canonical search starts with every group collapsed');
+        await page.locator('#scheduleStaffSearch').fill('Батутисти');
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 2);
+        const membershipSearchIds = await scheduleStaffIdsFromDom(page);
+        assertUniqueScheduleStaffIds(membershipSearchIds, 'secondary department membership search');
+        assert.deepEqual(sortedScheduleStaffIds(membershipSearchIds), [104, 108], 'search matches every secondary trampoline member once');
+        const membershipSearchGroups = await scheduleStaffGroupsFromDom(page);
+        assert.deepEqual(
+            membershipSearchGroups.sort((left, right) => left.id - right.id),
+            [
+                { id: 104, department: 'cafe' },
+                { id: 108, department: 'animators' }
+            ],
+            'search keeps multi-profession employees in their canonical groups'
+        );
+        assert.equal(
+            await page.locator('[data-schedule-group-toggle="animators"]').getAttribute('aria-expanded'),
+            'true',
+            'search auto-expands the canonical animators group'
+        );
+        assert.equal(
+            await page.locator('[data-schedule-group-toggle="cafe"]').getAttribute('aria-expanded'),
+            'true',
+            'search auto-expands the canonical cafe group without cloning staff into a membership group'
+        );
+        await page.locator('#scheduleStaffSearch').fill('');
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 0);
+
+        await activateScheduleDepartment(page, 'reception');
+        await expandScheduleGroup(page, 'reception');
+        const receptionDepartments = await page.locator('#scheduleBody tr.dept-row').evaluateAll(rows => (
+            rows.map(row => row.getAttribute('data-dept') || '')
+        ));
+        assert.deepEqual(receptionDepartments, ['reception'], 'active reception renders only the reception top-level group');
+        const receptionIds = await scheduleStaffIdsFromDom(page);
+        assertUniqueScheduleStaffIds(receptionIds, 'active reception table');
+        assert.deepEqual(sortedScheduleStaffIds(receptionIds), [101, 102, 103, 106], 'active reception includes unique primary and secondary members');
+        assert.equal(receptionIds.filter(id => id === 101).length, 1, 'shared animator/reception employee appears once in reception');
+
+        await page.locator('#scheduleStaffSearch').fill('Женя Пасенко');
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 1);
+        const receptionSearchIds = await scheduleStaffIdsFromDom(page);
+        assert.deepEqual(receptionSearchIds, [101], 'active reception plus search keeps one shared employee');
+        await assertScheduleExportParity(page, receptionSearchIds, 'reception search');
+        await page.locator('#scheduleStaffSearch').fill('');
+
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        const animatorDepartments = await page.locator('#scheduleBody tr.dept-row').evaluateAll(rows => (
+            rows.map(row => row.getAttribute('data-dept') || '')
+        ));
+        assert.deepEqual(animatorDepartments, ['animators'], 'active animators renders only the animators top-level group');
+        const animatorIds = await scheduleStaffIdsFromDom(page);
+        assertUniqueScheduleStaffIds(animatorIds, 'active animators table');
+        assert.deepEqual(sortedScheduleStaffIds(animatorIds), [101, 108], 'multi-profession animators appear once in animators');
+    } finally {
+        await context.close();
+    }
+}
+
+async function runDeterministicSubgroupReadinessFlow(browser, base) {
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
+    const assertPlacement = (placements, staffId, department, subGroup, label) => {
+        const matches = placements.filter(item => item.id === staffId);
+        assert.equal(matches.length, 1, `${label}: staff ID ${staffId} has exactly one rendered row`);
+        assert.deepEqual(matches[0], { id: staffId, department, subGroup }, `${label}: deterministic subgroup owns the row`);
+    };
+    try {
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await activateScheduleDepartment(page, 'all');
+        await expandAllScheduleGroups(page);
+
+        const allPlacements = await scheduleStaffSubGroupsFromDom(page);
+        assertPlacement(allPlacements, 106, 'reception', 'Менеджери', 'All manager with secondary reception');
+        assertPlacement(allPlacements, 107, 'cafe', 'Офіціанти', 'All waiter with secondary cook');
+        assertPlacement(allPlacements, 108, 'animators', 'Аніматори', 'All animator with secondary trampoline');
+
+        const missingReadiness = await scheduleStaffReadinessSnapshot(page, 106);
+        assert.match(missingReadiness.readinessClass, /\bneutral\b/, 'missing readiness is rendered as neutral metadata');
+        assert.doesNotMatch(missingReadiness.readinessClass, /\bwarn\b/, 'missing readiness is not presented as a warning badge');
+        assert.doesNotMatch(missingReadiness.rowClass, /\bhas-health-warning\b/, 'missing readiness does not create a row health warning');
+        assert.equal(
+            missingReadiness.healthDetails.some(detail => /readiness|готовн/i.test(detail)),
+            false,
+            'missing readiness does not invent a health issue'
+        );
+
+        const lowReadiness = await scheduleStaffReadinessSnapshot(page, 107);
+        assert.match(lowReadiness.readinessClass, /\bwarn\b/, 'explicit low readiness keeps a warning badge');
+        assert.equal(lowReadiness.readinessText, '20%', 'explicit readiness renders the supplied percentage');
+        assert.match(lowReadiness.rowClass, /\bhas-health-warning\b/, 'explicit low readiness creates a row health warning');
+        assert.ok(
+            lowReadiness.healthDetails.some(detail => /Low readiness/.test(detail) && /20%/.test(detail)),
+            'explicit low readiness exposes the truthful low-readiness health detail'
+        );
+
+        assert.equal(
+            await page.locator('#scheduleBody [data-schedule-staff-row="108"]').count(),
+            1,
+            'animator/trampoline entries remain on one employee row'
+        );
+        assert.equal(
+            (await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-11"] .sch-profession').textContent())?.trim(),
+            'Аніматор',
+            'animator shift renders its actual profession'
+        );
+        assert.equal(
+            (await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"] .sch-profession').textContent())?.trim(),
+            'Інструктор батутів',
+            'trampoline shift renders its actual profession'
+        );
+
+        await activateScheduleDepartment(page, 'reception');
+        await expandScheduleGroup(page, 'reception');
+        const receptionPlacements = await scheduleStaffSubGroupsFromDom(page);
+        assertPlacement(receptionPlacements, 106, 'reception', 'Менеджери', 'Active reception manager with secondary reception');
+        assert.equal(
+            receptionPlacements.some(item => item.id === 106 && item.subGroup === 'Рецепція'),
+            false,
+            'manager primary profession wins over secondary reception subgroup'
+        );
+
+        await activateScheduleDepartment(page, 'cafe');
+        await expandScheduleGroup(page, 'cafe');
+        const cafePlacements = await scheduleStaffSubGroupsFromDom(page);
+        assertPlacement(cafePlacements, 107, 'cafe', 'Офіціанти', 'Active cafe waiter with secondary cook');
+        assert.equal(
+            cafePlacements.some(item => item.id === 107 && item.subGroup === 'Кухня'),
+            false,
+            'waiter primary profession wins over secondary cook subgroup'
+        );
+
+        await activateScheduleDepartment(page, 'trampoline');
+        await expandScheduleGroup(page, 'trampoline');
+        const trampolinePlacements = await scheduleStaffSubGroupsFromDom(page);
+        assertPlacement(trampolinePlacements, 108, 'trampoline', 'Батутисти', 'Active trampoline animator with secondary trampoline');
+        assert.equal(
+            trampolinePlacements.filter(item => item.id === 108).length,
+            1,
+            'active trampoline keeps the multi-profession employee unique'
+        );
+    } finally {
+        await context.close();
     }
 }
 
@@ -1004,8 +2588,10 @@ async function runDesktopFlow(browser, base) {
     }
 }
 
-async function runMobileFlow(browser, base, viewport = { width: 390, height: 844 }, label = 'mobile') {
-    const { context, page } = await openStaffPage(browser, base, viewport);
+async function runMobileFlow(browser, base, viewport = { width: 390, height: 844 }, label = 'mobile', options = {}) {
+    const { context, page } = await openStaffPage(browser, base, viewport, {
+        darkMode: Boolean(options.darkMode)
+    });
     try {
         await waitForDayColumns(page, 9);
         await assertPeriodPresetLabelsAndSummary(page);
@@ -1015,17 +2601,23 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await expandAllScheduleGroups(page);
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
-        await assertNoControlOverlap(page, 'mobile first-half');
-        await assertDepartmentChipsFit(page, 'mobile first-half');
+        await assertNoControlOverlap(page, `${label} first-half`);
+        await assertDepartmentChipsFit(page, `${label} first-half`);
         await applyPreset(page, 'month');
         const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
         const monthTo = await page.locator('#scheduleDateTo').inputValue();
         const monthDays = dateRangeDays(monthFrom, monthTo);
         await waitForDayColumns(page, monthDays);
-        await assertNoControlOverlap(page, 'mobile month');
-        await assertDepartmentChipsFit(page, 'mobile month');
-        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 120 });
-        await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
+        await assertNoControlOverlap(page, `${label} month`);
+        await assertDepartmentChipsFit(page, `${label} month`);
+        await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthDays, minDayWidth: 120 });
+        await assertNarrowMobileContract(page, `${label} month`, {
+            width: viewport.width,
+            darkMode: Boolean(options.darkMode)
+        });
+        if (options.screenshot) {
+            await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
+        }
     } finally {
         await context.close();
     }
@@ -1037,9 +2629,30 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
     const { server, base } = await createServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        await runInitialRangeFailureFlow(browser, base);
+        await runPeriodReliabilityFlow(browser, base);
+        await runScheduleHistoryIsolationFlow(browser, base);
+        await runScheduleKeyboardAccessibilityFlow(browser, base);
+        await runCanonicalGroupingFlow(browser, base);
+        await runDeterministicSubgroupReadinessFlow(browser, base);
         await runDesktopFlow(browser, base);
-        await runMobileFlow(browser, base, { width: 390, height: 844 }, 'mobile-390');
-        await runMobileFlow(browser, base, { width: 360, height: 800 }, 'mobile-360');
+        const mobileViewports = [
+            { width: 320, height: 760 },
+            { width: 360, height: 800 },
+            { width: 390, height: 844 }
+        ];
+        for (const viewport of mobileViewports) {
+            for (const darkMode of [false, true]) {
+                const theme = darkMode ? 'dark' : 'light';
+                await runMobileFlow(
+                    browser,
+                    base,
+                    viewport,
+                    `mobile-${viewport.width}-${theme}`,
+                    { darkMode, screenshot: viewport.width === 320 }
+                );
+            }
+        }
         console.log('Staff schedule custom range browser smoke passed');
         console.log(`Screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
     } catch (err) {

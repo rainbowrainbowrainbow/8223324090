@@ -25,6 +25,9 @@ function renderStaffPulseSwitcher() {
 
 let staffScheduleInitPromise = null;
 let staffScheduleInitialized = false;
+let staffScheduleRangeLoadSeq = 0;
+let staffScheduleRangeAbortController = null;
+let scheduleCellHistoryAbortController = null;
 
 function staffScheduleMode(options = {}) {
     return options.mode === 'hr' ? 'hr' : 'standalone';
@@ -60,12 +63,16 @@ const StaffState = {
     rangeStart: null,   // First date of the current visible schedule range
     rangeEnd: null,     // Last date of the current visible schedule range
     rangeMode: 'rolling',
+    rangeLoadState: 'idle',
+    rangePending: null,
+    rangeRetry: null,
     staff: [],
     schedule: {},       // { staffId_date: entry }
     scheduleLoadedRange: null,
     scheduleRawEntries: [], // raw rows for health duplicate/overlap checks
     attendance: {},      // { staffId_date: payroll-ready hr_time_records/staff_checkins row }
     attendanceSummary: null,
+    attendanceUnavailable: false,
     staffingForecast: null,
     staffingForecastBookings: {}, // { date: booking[] } from /api/bookings/:date
     staffingForecastAvailable: false,
@@ -73,8 +80,10 @@ const StaffState = {
     accountabilityDeptFilter: 'all',
     accountabilityManagerFilter: 'all',
     scheduleHistory: {}, // { staffId_date: audit entries }
+    scheduleHistoryLoadSeq: 0,
     shiftPreferences: {}, // { staffId: preference[] }
     shiftPreferencesLoadSeq: 0,
+    scheduleModalSessionSeq: 0,
     departments: {},
     displayGroups: [],
     activeDept: 'all',
@@ -319,19 +328,6 @@ function departmentSubGroupDepartmentKeys(subGroup = {}) {
         .filter(Boolean);
 }
 
-function staffMatchesDepartmentSubGroup(staff = {}, subGroup = {}) {
-    const departmentKeys = departmentSubGroupDepartmentKeys(subGroup);
-    if (departmentKeys.length) {
-        const rawDepartment = String(staff.department || '').trim();
-        return departmentKeys.some(key => {
-            const displayGroup = normalizeScheduleDisplayGroupKey(key);
-            return (displayGroup && staffMatchesScheduleDepartment(staff, displayGroup)) || rawDepartment === key;
-        });
-    }
-    const roleKeys = departmentSubGroupRoleKeys(subGroup);
-    return staffProfessionKeys(staff).some(roleKey => roleKeys.includes(roleKey));
-}
-
 function shouldRenderDepartmentSubGroups(deptStaff = [], subGroups = null) {
     return Array.isArray(subGroups) && subGroups.length > 0 && Array.isArray(deptStaff) && deptStaff.length > 0;
 }
@@ -374,6 +370,23 @@ function staffProfessionKeys(staff = {}) {
         .filter(key => key && !seen.has(key) && seen.add(key));
 }
 
+function normalizeScheduleStaffId(value) {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function uniqueScheduleStaffById(staffList = []) {
+    const seen = new Set();
+    const unique = [];
+    for (const staff of (Array.isArray(staffList) ? staffList : [])) {
+        const id = normalizeScheduleStaffId(staff?.id);
+        if (id === null || seen.has(id)) continue;
+        seen.add(id);
+        unique.push(staff);
+    }
+    return unique;
+}
+
 function professionLabel(key) {
     const normalized = normalizeProfessionKey(key);
     const profession = StaffState.professions.find(item => normalizeProfessionKey(item.key) === normalized);
@@ -406,25 +419,29 @@ function staffCardTrainingReadiness(staff = {}) {
     if (!readiness || typeof readiness !== 'object') {
         return { hasData: false, total: 0, completed: 0, percent: 0 };
     }
-    const total = Number(readiness.total || 0);
-    const completed = Number(readiness.completed || 0);
+    const rawTotal = Number(readiness.total);
+    const rawCompleted = Number(readiness.completed);
+    const total = Number.isFinite(rawTotal) ? Math.max(0, rawTotal) : 0;
+    const completed = Number.isFinite(rawCompleted) ? Math.max(0, rawCompleted) : 0;
+    const rawPercent = Number(readiness.percent);
     const percent = total
-        ? Math.max(0, Math.min(100, Number(readiness.percent || Math.round((completed / total) * 100))))
+        ? Math.max(0, Math.min(100, Number.isFinite(rawPercent) ? rawPercent : Math.round((completed / total) * 100)))
         : 0;
     return { hasData: true, total, completed, percent };
 }
 
 function renderStaffCardReadinessBadge(staff = {}) {
     const readiness = staffCardTrainingReadiness(staff);
-    if (!readiness.hasData) {
-        return '<span class="staff-card-badge warn" title="Готовність: дані навчання не передано у staff-card">Навч.</span>';
-    }
-    if (!readiness.total) {
-        return '<span class="staff-card-badge warn" title="Готовність: чеклісти навчання не налаштовані">Навч.</span>';
+    if (!readiness.hasData || !readiness.total) {
+        const title = readiness.hasData
+            ? 'Готовність: немає достовірних даних — чеклісти навчання не налаштовані'
+            : 'Готовність: немає даних';
+        return `<span class="staff-card-badge neutral" data-staff-readiness-state="unknown" title="${escapeHtml(title)}">Немає даних</span>`;
     }
     const state = readiness.percent >= 85 ? 'ok' : (readiness.percent >= 45 ? 'neutral' : 'warn');
+    const readinessState = readiness.percent >= 85 ? 'ready' : (readiness.percent >= 45 ? 'partial' : 'low');
     const title = `Готовність навчання: ${readiness.completed}/${readiness.total}`;
-    return `<span class="staff-card-badge ${state}" title="${escapeHtml(title)}">${readiness.percent}%</span>`;
+    return `<span class="staff-card-badge ${state}" data-staff-readiness-state="${readinessState}" title="${escapeHtml(title)}">${readiness.percent}%</span>`;
 }
 
 function renderStaffCardBadges(staff = {}) {
@@ -490,6 +507,10 @@ function staffHasProfession(staff = {}, key = '') {
         || staffSecondaryProfessions(staff).includes(normalized);
 }
 
+function scheduleStaffDisplayName(staff = {}) {
+    return String(staff.display_name || staff.displayName || staff.name || '').trim() || 'Співробітник';
+}
+
 function staffUiBoolean(value, fallback = false) {
     if (value === true || value === 1 || value === '1') return true;
     if (value === false || value === 0 || value === '0') return false;
@@ -522,8 +543,10 @@ function isScheduleableStaffForUi(staff = {}, date = '') {
 }
 
 function scheduleableStaffForUi(staffList = [], date = '') {
-    return (Array.isArray(staffList) ? staffList : [])
-        .filter(staff => isScheduleableStaffForUi(staff, date));
+    return uniqueScheduleStaffById(
+        (Array.isArray(staffList) ? staffList : [])
+            .filter(staff => isScheduleableStaffForUi(staff, date))
+    );
 }
 
 function scheduleableStaffErrorMessage(result = {}, fallback = 'Помилка збереження') {
@@ -709,8 +732,21 @@ function scheduleHealthRangesOverlap(a, b) {
     return Math.max(a.start, b.start) < Math.min(a.end, b.end);
 }
 
-function isScheduleManagerStaff(staff = {}) {
-    const keys = [staff.role_type, ...staffSecondaryProfessions(staff)].map(normalizeProfessionKey).filter(Boolean);
+function scheduleHealthShiftProfessionKey(staff = {}, entry = {}) {
+    const explicitProfession = normalizeProfessionKey(entry.profession_key || entry.professionKey);
+    if (explicitProfession) return explicitProfession;
+    return normalizeProfessionKey(staff.role_type || staff.roleType);
+}
+
+function scheduleHealthShiftDepartment(staff = {}, entry = {}) {
+    return scheduleProfessionDisplayGroupKey(scheduleHealthShiftProfessionKey(staff, entry));
+}
+
+function isScheduleManagerStaff(staff = {}, entry = null) {
+    if (entry) return SCHEDULE_HEALTH_MANAGER_ROLES.has(scheduleHealthShiftProfessionKey(staff, entry));
+    const keys = [staff.role_type || staff.roleType, ...staffSecondaryProfessions(staff)]
+        .map(normalizeProfessionKey)
+        .filter(Boolean);
     return keys.some(key => SCHEDULE_HEALTH_MANAGER_ROLES.has(key));
 }
 
@@ -759,7 +795,8 @@ function scheduleHealthIssue({ code, severity = 'warning', scope = 'row', title,
 function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = scheduleVisibleStaff(), options = {}) {
     const dateKeys = dates.map(formatDateStr);
     const dateSet = new Set(dateKeys);
-    const staffById = new Map((visibleStaff || []).map(staff => [Number(staff.id), staff]));
+    const uniqueVisibleStaff = uniqueScheduleStaffById(visibleStaff || []);
+    const staffById = new Map(uniqueVisibleStaff.map(staff => [Number(staff.id), staff]));
     const issues = [];
     const rowIssuesByStaff = new Map();
     const staffIssuesByStaff = new Map();
@@ -767,6 +804,7 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
     const dayIssuesByDate = new Map();
     const departmentIssuesByKey = new Map();
     const rawEntriesByCell = new Map();
+    const workingCountByDepartmentDate = new Map();
 
     const addIssue = (issue) => {
         if (!issue?.code) return;
@@ -791,7 +829,7 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
         scheduleHealthPush(rawEntriesByCell, key, entry);
     }
 
-    for (const staff of visibleStaff || []) {
+    for (const staff of uniqueVisibleStaff) {
         const department = scheduleDisplayDepartmentKey(staff);
         const pool = String(staff.hr_pool_status || '').trim();
         const readiness = staffCardTrainingReadiness(staff);
@@ -812,11 +850,9 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
         if (staff.has_face_descriptor !== true) {
             addIssue(scheduleHealthIssue({ code: 'missing_face_descriptor', severity: 'warning', scope: 'row', title: 'No face descriptor', detail: 'Немає face descriptor для фактичної присутності.', staff, department }));
         }
-        if (!readiness.hasData || !readiness.total) {
-            addIssue(scheduleHealthIssue({ code: 'missing_readiness', severity: 'warning', scope: 'row', title: 'No readiness', detail: 'У staff-card немає підтвердженої readiness/навчальної готовності.', staff, department }));
-        } else if (readiness.percent < 45) {
+        if (readiness.hasData && readiness.total > 0 && readiness.percent < 45) {
             addIssue(scheduleHealthIssue({ code: 'low_readiness', severity: 'warning', scope: 'row', title: 'Low readiness', detail: `Готовність навчання ${readiness.percent}%.`, staff, department }));
-        } else if (readiness.percent < 85) {
+        } else if (readiness.hasData && readiness.total > 0 && readiness.percent < 85) {
             addIssue(scheduleHealthIssue({ code: 'partial_readiness', severity: 'info', scope: 'row', title: 'Partial readiness', detail: `Готовність навчання ${readiness.percent}%.`, staff, department }));
         }
         if (!hasRole) {
@@ -828,21 +864,28 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
             if (!entry) continue;
             const status = normalizeScheduleStatus(entry.status);
             if (!scheduleHealthIsWorkStatus(status)) continue;
-
-            if (staff.is_active === false || pool === 'blacklisted' || pool === 'offboarded' || staff.termination_date) {
-                addIssue(scheduleHealthIssue({ code: 'planned_inactive_staff', severity: 'critical', scope: 'cell', title: 'Inactive staff scheduled', detail: 'На зміну поставлений неактивний/offboarded працівник.', staff, date, department }));
+            const shiftDepartment = scheduleHealthShiftDepartment(staff, entry);
+            const issueDepartment = shiftDepartment || department;
+            if (shiftDepartment) {
+                const countKey = `${shiftDepartment}:${date}`;
+                workingCountByDepartmentDate.set(countKey, (workingCountByDepartmentDate.get(countKey) || 0) + 1);
             }
 
-            const professionKey = normalizeProfessionKey(entry.profession_key || staff.role_type);
+            if (staff.is_active === false || pool === 'blacklisted' || pool === 'offboarded' || staff.termination_date) {
+                addIssue(scheduleHealthIssue({ code: 'planned_inactive_staff', severity: 'critical', scope: 'cell', title: 'Inactive staff scheduled', detail: 'На зміну поставлений неактивний/offboarded працівник.', staff, date, department: issueDepartment }));
+            }
+
+            const professionKey = scheduleHealthShiftProfessionKey(staff, entry);
+            const explicitProfessionKey = normalizeProfessionKey(entry.profession_key || entry.professionKey);
             if (!professionKey) {
-                addIssue(scheduleHealthIssue({ code: 'shift_without_role', severity: 'warning', scope: 'cell', title: 'Shift without role', detail: 'Робоча зміна не має професії/ролі.', staff, date, department }));
-            } else if (entry.profession_key && !staffHasProfession(staff, entry.profession_key)) {
-                addIssue(scheduleHealthIssue({ code: 'profession_mismatch', severity: 'critical', scope: 'cell', title: 'Profession mismatch', detail: 'Професія зміни не відповідає професіям у HR-картці працівника.', staff, date, department }));
+                addIssue(scheduleHealthIssue({ code: 'shift_without_role', severity: 'warning', scope: 'cell', title: 'Shift without role', detail: 'Робоча зміна не має професії/ролі.', staff, date, department: issueDepartment }));
+            } else if (explicitProfessionKey && !staffHasProfession(staff, explicitProfessionKey)) {
+                addIssue(scheduleHealthIssue({ code: 'profession_mismatch', severity: 'critical', scope: 'cell', title: 'Profession mismatch', detail: 'Професія зміни не відповідає професіям у HR-картці працівника.', staff, date, department: issueDepartment }));
             }
 
             const loadMeta = scheduleShiftLoadMeta({ ...entry, status, date });
             if (loadMeta.minutes > SCHEDULE_HEALTH_LONG_SHIFT_MINUTES) {
-                addIssue(scheduleHealthIssue({ code: 'long_shift', severity: 'warning', scope: 'cell', title: 'Long shift', detail: `Зміна триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department }));
+                addIssue(scheduleHealthIssue({ code: 'long_shift', severity: 'warning', scope: 'cell', title: 'Long shift', detail: `Зміна триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department: issueDepartment }));
             }
         }
     }
@@ -852,7 +895,7 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
         const first = entries[0];
         const staff = staffById.get(Number(first.staff_id));
         if (!staff) continue;
-        const department = scheduleDisplayDepartmentKey(staff);
+        const department = scheduleHealthShiftDepartment(staff, first) || scheduleDisplayDepartmentKey(staff);
         const statuses = entries.map(entry => normalizeScheduleStatus(entry.status));
 
         addIssue(scheduleHealthIssue({ code: 'duplicate_shift', severity: 'critical', scope: 'cell', title: 'Duplicate shift', detail: 'Для одного працівника в один день знайдено кілька рядків графіка.', staff, date: first.date, department }));
@@ -876,14 +919,17 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
         }
     }
 
-    const grouped = groupStaffByScheduleDepartment(visibleStaff || [], { department: options.department });
+    const grouped = groupStaffByScheduleDepartment(visibleStaff || [], {
+        department: options.department,
+        grouping: 'membership'
+    });
     for (const [department, deptStaff] of Object.entries(grouped)) {
         const minWorking = SCHEDULE_HEALTH_DEPARTMENT_MIN_WORKING[department] || 0;
         if (!minWorking) continue;
         for (const date of dateKeys) {
             const entries = deptStaff.map(staff => StaffState.schedule[`${staff.id}_${date}`]).filter(Boolean);
             if (!entries.length) continue;
-            const workingCount = entries.filter(entry => scheduleHealthIsWorkStatus(entry.status)).length;
+            const workingCount = workingCountByDepartmentDate.get(`${department}:${date}`) || 0;
             if (workingCount < minWorking) {
                 addIssue(scheduleHealthIssue({
                     code: 'department_understaffed',
@@ -899,14 +945,15 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
     }
 
     for (const date of dateKeys) {
-        const hasVisibleWork = (visibleStaff || []).some(staff => scheduleHealthIsWorkStatus(StaffState.schedule[`${staff.id}_${date}`]?.status));
+        const hasVisibleWork = uniqueVisibleStaff.some(staff => scheduleHealthIsWorkStatus(StaffState.schedule[`${staff.id}_${date}`]?.status));
         if (!hasVisibleWork) continue;
         const managerPool = StaffState.activeDept === 'all' || StaffState.activeDept === 'reception'
-            ? (visibleStaff || [])
+            ? uniqueVisibleStaff
             : StaffState.staff;
-        const hasManager = managerPool.some(staff => (
-            isScheduleManagerStaff(staff) && scheduleHealthIsWorkStatus(StaffState.schedule[`${staff.id}_${date}`]?.status)
-        ));
+        const hasManager = managerPool.some(staff => {
+            const entry = StaffState.schedule[`${staff.id}_${date}`];
+            return scheduleHealthIsWorkStatus(entry?.status) && isScheduleManagerStaff(staff, entry);
+        });
         if (!hasManager) {
             addIssue(scheduleHealthIssue({
                 code: 'no_responsible_manager',
@@ -1431,7 +1478,7 @@ function isManagerAccountabilityStaff(staff = {}) {
 }
 
 function managerAccountabilityDepartmentKeys(staffList = []) {
-    const grouped = groupStaffByScheduleDepartment(staffList || []);
+    const grouped = groupStaffByScheduleDepartment(staffList || [], { grouping: 'membership' });
     return scheduleDepartmentRenderOrder(grouped);
 }
 
@@ -1442,10 +1489,10 @@ function managerAccountabilityManagersForDepartment(department, managers = []) {
     });
 }
 
-function managerAccountabilityMissingReadiness(staffList = []) {
+function managerAccountabilityLowReadiness(staffList = []) {
     return (staffList || []).filter(staff => {
         const readiness = staffCardTrainingReadiness(staff);
-        return !readiness.hasData || !readiness.total;
+        return readiness.hasData && readiness.total > 0 && readiness.percent < 45;
     }).length;
 }
 
@@ -1493,7 +1540,7 @@ function managerAccountabilityMetric(value, source = 'available') {
 }
 
 function buildManagerAccountability(dates = getScheduleDates(), staffList = StaffState.staff, health = null) {
-    const grouped = groupStaffByScheduleDepartment(staffList || []);
+    const grouped = groupStaffByScheduleDepartment(staffList || [], { grouping: 'membership' });
     const departmentKeys = managerAccountabilityDepartmentKeys(staffList);
     const managers = (staffList || []).filter(isManagerAccountabilityStaff);
     const departments = departmentKeys.map(department => {
@@ -1502,7 +1549,7 @@ function buildManagerAccountability(dates = getScheduleDates(), staffList = Staf
         const issues = managerAccountabilityDepartmentIssues(health, department);
         const healthScore = managerAccountabilityHealthScore(health, department);
         const attendance = managerAccountabilityAttendanceCounts(dates, deptStaff);
-        const missingReadiness = managerAccountabilityMissingReadiness(deptStaff);
+        const lowReadiness = managerAccountabilityLowReadiness(deptStaff);
         return {
             department,
             label: scheduleDisplayDepartmentLabel(department),
@@ -1516,8 +1563,8 @@ function buildManagerAccountability(dates = getScheduleDates(), staffList = Staf
             noShows: managerAccountabilityMetric(attendance.noShows),
             unresolvedAttendance: managerAccountabilityMetric(attendance.unresolvedAttendance),
             unapprovedShifts: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.unapprovedShifts),
-            missingReadiness: managerAccountabilityMetric(missingReadiness),
-            unresolvedIssues: issues.critical + issues.warning + attendance.noShows + attendance.unresolvedAttendance + missingReadiness
+            lowReadiness: managerAccountabilityMetric(lowReadiness),
+            unresolvedIssues: issues.critical + issues.warning + attendance.noShows + attendance.unresolvedAttendance + lowReadiness
         };
     });
 
@@ -1617,7 +1664,7 @@ function renderManagerAccountabilityPanel(accountability = null) {
             </td>
             <td>
                 ${renderManagerAccountabilityMetric(row.unapprovedShifts, 'unapproved')}
-                ${renderManagerAccountabilityMetric(row.missingReadiness, 'readiness')}
+                ${renderManagerAccountabilityMetric(row.lowReadiness, 'low readiness')}
             </td>
             <td class="accountability-actions">
                 <button type="button" data-accountability-dept="${escapeHtml(row.department)}">Графік</button>
@@ -1789,10 +1836,14 @@ function getDepartmentOptionsFromStaffState() {
     return Object.entries(source).map(([value, label]) => ({ value, label }));
 }
 
-function scheduleDisplayDepartmentKey(staff = {}) {
+function scheduleCanonicalDisplayGroupKey(staff = {}) {
     const backendGroup = normalizeScheduleDisplayGroupKey(staff.display_group || staff.displayGroup);
     if (backendGroup) return backendGroup;
-    return legacyScheduleDisplayDepartmentKey(staff);
+    return normalizeScheduleDisplayGroupKey(legacyScheduleDisplayDepartmentKey(staff)) || 'admin';
+}
+
+function scheduleDisplayDepartmentKey(staff = {}) {
+    return scheduleCanonicalDisplayGroupKey(staff);
 }
 
 function legacyScheduleDisplayDepartmentKey(staff = {}) {
@@ -1826,14 +1877,6 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
     return scheduleDepartmentLabels()[departmentKey] || departmentKey;
 }
 
-function scheduleDisplayGroupKeyForRawDepartment(departmentKey) {
-    const normalized = normalizeScheduleDisplayGroupKey(departmentKey);
-    if (normalized) return normalized;
-    const raw = String(departmentKey || '').trim();
-    if (raw === 'security') return 'tech';
-    return '';
-}
-
 function scheduleProfessionDisplayGroupKey(professionKey) {
     const key = normalizeProfessionKey(professionKey);
     if (!key) return '';
@@ -1853,10 +1896,10 @@ function staffScheduleDepartmentKeys(staff = {}) {
         seen.add(normalized);
         keys.push(normalized);
     };
+    add(scheduleCanonicalDisplayGroupKey(staff));
     for (const professionKey of staffProfessionKeys(staff)) {
         add(scheduleProfessionDisplayGroupKey(professionKey));
     }
-    add(scheduleDisplayDepartmentKey(staff));
     return keys.length ? keys : ['admin'];
 }
 
@@ -1867,7 +1910,7 @@ function staffMatchesScheduleDepartment(staff = {}, departmentKey = '') {
 
 function scheduleDepartmentCountMap(staffList = StaffState.staff) {
     const counts = new Map();
-    for (const staff of scheduleableStaffForUi(staffList || [])) {
+    for (const staff of uniqueScheduleStaffById(scheduleableStaffForUi(staffList || []))) {
         for (const key of staffScheduleDepartmentKeys(staff)) {
             counts.set(key, (counts.get(key) || 0) + 1);
         }
@@ -1875,41 +1918,101 @@ function scheduleDepartmentCountMap(staffList = StaffState.staff) {
     return counts;
 }
 
-function scheduleSubGroupDisplayDepartmentKey(subGroup = {}) {
-    const departmentKeys = departmentSubGroupDepartmentKeys(subGroup)
-        .map(scheduleDisplayGroupKeyForRawDepartment)
-        .filter(Boolean);
-    if (departmentKeys.length === 1) return departmentKeys[0];
-
-    const roleGroups = new Set(
-        departmentSubGroupRoleKeys(subGroup)
-            .map(scheduleProfessionDisplayGroupKey)
-            .filter(Boolean)
-    );
-    return roleGroups.size === 1 ? Array.from(roleGroups)[0] : '';
-}
-
 function shouldSkipScheduleSubGroup(departmentKey = '', subGroup = {}) {
     const parentKey = normalizeScheduleDisplayGroupKey(departmentKey);
-    const subGroupKey = scheduleSubGroupDisplayDepartmentKey(subGroup);
-    if (parentKey && subGroupKey && parentKey === subGroupKey) return true;
     const parentLabel = normalizeScheduleSearchText(scheduleDisplayDepartmentLabel(parentKey));
     const subGroupLabel = normalizeScheduleSearchText(subGroup.label);
     return Boolean(parentLabel && subGroupLabel && parentLabel === subGroupLabel);
 }
 
-function scheduleSubGroupMatchesParentDepartment(departmentKey = '', subGroup = {}) {
-    const parentKey = normalizeScheduleDisplayGroupKey(departmentKey);
-    const subGroupKey = scheduleSubGroupDisplayDepartmentKey(subGroup);
-    return Boolean(parentKey && subGroupKey && parentKey === subGroupKey);
+function scheduleSubGroupIdentity(subGroup = {}) {
+    const roleKeys = departmentSubGroupRoleKeys(subGroup).sort().join(',');
+    const departmentKeys = departmentSubGroupDepartmentKeys(subGroup).sort().join(',');
+    const label = normalizeScheduleSearchText(subGroup.label);
+    if (roleKeys) return `role:${roleKeys}`;
+    if (departmentKeys) return `department:${departmentKeys}`;
+    return label ? `label:${label}` : '';
 }
 
-function scheduleRenderableSubGroups(departmentKey = '', deptStaff = [], subGroups = null) {
-    if (!shouldRenderDepartmentSubGroups(deptStaff, subGroups)) return [];
-    return (subGroups || [])
-        .filter(subGroup => scheduleSubGroupMatchesParentDepartment(departmentKey, subGroup))
-        .filter(subGroup => !shouldSkipScheduleSubGroup(departmentKey, subGroup))
-        .filter(subGroup => deptStaff.some(staff => staffMatchesDepartmentSubGroup(staff, subGroup)));
+function compareScheduleSubGroupCandidates(left = {}, right = {}) {
+    const leftRoleCount = departmentSubGroupRoleKeys(left).length || Number.MAX_SAFE_INTEGER;
+    const rightRoleCount = departmentSubGroupRoleKeys(right).length || Number.MAX_SAFE_INTEGER;
+    if (leftRoleCount !== rightRoleCount) return leftRoleCount - rightRoleCount;
+    const leftDepartmentCount = departmentSubGroupDepartmentKeys(left).length || Number.MAX_SAFE_INTEGER;
+    const rightDepartmentCount = departmentSubGroupDepartmentKeys(right).length || Number.MAX_SAFE_INTEGER;
+    if (leftDepartmentCount !== rightDepartmentCount) return leftDepartmentCount - rightDepartmentCount;
+    return scheduleSubGroupIdentity(left).localeCompare(scheduleSubGroupIdentity(right), 'uk');
+}
+
+function scheduleSubGroupProfessionCandidates(staff = {}, activeDepartment = '') {
+    const primary = normalizeProfessionKey(staff.role_type || staff.roleType);
+    const secondary = staffSecondaryProfessions(staff);
+    const normalizedDepartment = normalizeScheduleDisplayGroupKey(activeDepartment);
+    if (!normalizedDepartment) return [primary, ...secondary].filter(Boolean);
+
+    const candidates = [];
+    if (primary && scheduleProfessionDisplayGroupKey(primary) === normalizedDepartment) candidates.push(primary);
+    for (const professionKey of secondary) {
+        if (scheduleProfessionDisplayGroupKey(professionKey) === normalizedDepartment) candidates.push(professionKey);
+    }
+    return candidates;
+}
+
+function resolveScheduleSubGroup(staff = {}, departmentKey = '', context = {}) {
+    const subGroups = Array.isArray(context.subGroups)
+        ? context.subGroups
+        : (DEPT_SUB_GROUPS[normalizeScheduleDisplayGroupKey(departmentKey)] || []);
+    if (!subGroups.length) return null;
+
+    const requestedDepartment = String(context.activeDepartment ?? StaffState.activeDept ?? 'all').trim();
+    const activeDepartment = requestedDepartment && requestedDepartment !== 'all'
+        ? normalizeScheduleDisplayGroupKey(requestedDepartment)
+        : '';
+    const professionCandidates = scheduleSubGroupProfessionCandidates(staff, activeDepartment);
+
+    for (const professionKey of professionCandidates) {
+        const matchingGroups = subGroups
+            .filter(subGroup => departmentSubGroupRoleKeys(subGroup).includes(professionKey))
+            .sort(compareScheduleSubGroupCandidates);
+        if (matchingGroups.length) return matchingGroups[0];
+    }
+
+    const rawDepartment = String(staff.department || '').trim();
+    const departmentGroups = subGroups
+        .filter(subGroup => departmentSubGroupDepartmentKeys(subGroup).includes(rawDepartment))
+        .sort(compareScheduleSubGroupCandidates);
+    return departmentGroups[0] || null;
+}
+
+function partitionScheduleStaffBySubGroup(departmentKey = '', deptStaff = [], subGroups = null, context = {}) {
+    if (!shouldRenderDepartmentSubGroups(deptStaff, subGroups)) {
+        return { groups: [], ungrouped: uniqueScheduleStaffById(deptStaff || []), ownershipByStaffId: new Map() };
+    }
+
+    const groupBuckets = new Map();
+    const ownershipByStaffId = new Map();
+    const ungrouped = [];
+    for (const staff of uniqueScheduleStaffById(deptStaff || [])) {
+        const staffId = normalizeScheduleStaffId(staff.id);
+        const subGroup = resolveScheduleSubGroup(staff, departmentKey, { ...context, subGroups });
+        if (!subGroup) {
+            ungrouped.push(staff);
+            continue;
+        }
+        const identity = scheduleSubGroupIdentity(subGroup);
+        if (!identity) {
+            ungrouped.push(staff);
+            continue;
+        }
+        if (!groupBuckets.has(identity)) groupBuckets.set(identity, []);
+        groupBuckets.get(identity).push(staff);
+        ownershipByStaffId.set(staffId, subGroup);
+    }
+
+    const groups = (subGroups || [])
+        .map(subGroup => ({ subGroup, staff: groupBuckets.get(scheduleSubGroupIdentity(subGroup)) || [] }))
+        .filter(group => group.staff.length > 0);
+    return { groups, ungrouped, ownershipByStaffId };
 }
 
 function normalizeScheduleSearchText(value) {
@@ -1943,7 +2046,8 @@ function scheduleEntrySearchParts(entry = null) {
 }
 
 function scheduleStaffSearchHaystack(staff = {}) {
-    const displayGroup = scheduleDisplayDepartmentKey(staff);
+    const displayGroup = scheduleCanonicalDisplayGroupKey(staff);
+    const membershipGroups = staffScheduleDepartmentKeys(staff);
     const secondaryKeys = staffSecondaryProfessions(staff);
     const rawSecondary = parseProfessionArray(staff.secondary_professions || staff.secondaryProfessions);
     const todayEntry = StaffState.schedule[`${staff.id}_${todayStr()}`];
@@ -1969,6 +2073,8 @@ function scheduleStaffSearchHaystack(staff = {}) {
         staff.displayGroup,
         displayGroup,
         scheduleDisplayDepartmentLabel(displayGroup),
+        ...membershipGroups,
+        ...membershipGroups.map(scheduleDisplayDepartmentLabel),
         todayStatus,
         STAFF_SCHEDULE_STATUS_LABELS[todayStatus] || todayStatus,
         ...scheduleEntrySearchParts(todayEntry),
@@ -1977,16 +2083,27 @@ function scheduleStaffSearchHaystack(staff = {}) {
 }
 
 function scheduleStaffVisibleWithoutSearch(staffList = StaffState.staff) {
-    const scheduleable = scheduleableStaffForUi(staffList || []);
+    const scheduleable = uniqueScheduleStaffById(scheduleableStaffForUi(staffList || []));
     if (StaffState.activeDept === 'all') return scheduleable;
-    return scheduleable.filter(staff => staffMatchesScheduleDepartment(staff, StaffState.activeDept));
+    return uniqueScheduleStaffById(
+        scheduleable.filter(staff => staffMatchesScheduleDepartment(staff, StaffState.activeDept))
+    );
 }
 
 function scheduleVisibleStaff(staffList = StaffState.staff) {
     const visible = scheduleStaffVisibleWithoutSearch(staffList);
     const query = normalizeScheduleSearchText(StaffState.searchQuery);
-    if (!query) return visible;
-    return visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query));
+    if (!query) return uniqueScheduleStaffById(visible);
+    return uniqueScheduleStaffById(
+        visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query))
+    );
+}
+
+function scheduleFinalVisibleStaffSnapshot(staffList = StaffState.staff, dates = getScheduleDates()) {
+    const base = uniqueScheduleStaffById(scheduleVisibleStaff(staffList));
+    const health = buildScheduleHealth(dates, base, { department: StaffState.activeDept });
+    const visible = uniqueScheduleStaffById(scheduleHealthFilteredStaff(base, health));
+    return { base, health, visible };
 }
 
 function scheduleDepartmentOptions() {
@@ -2011,14 +2128,20 @@ function scheduleStaffGroupingDepartmentKeys(staff = {}, options = {}) {
     if (activeDepartment && activeDepartment !== 'all') {
         return staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : [];
     }
-    return staffScheduleDepartmentKeys(staff);
+    if (options.grouping === 'membership') return staffScheduleDepartmentKeys(staff);
+    return [scheduleCanonicalDisplayGroupKey(staff)];
 }
 
 function groupStaffByScheduleDepartment(staffList = StaffState.staff, options = {}) {
     const grouped = {};
-    for (const staff of staffList) {
+    const groupedIds = new Map();
+    for (const staff of uniqueScheduleStaffById(staffList)) {
+        const staffId = normalizeScheduleStaffId(staff.id);
         for (const key of scheduleStaffGroupingDepartmentKeys(staff, options)) {
             if (!grouped[key]) grouped[key] = [];
+            if (!groupedIds.has(key)) groupedIds.set(key, new Set());
+            if (groupedIds.get(key).has(staffId)) continue;
+            groupedIds.get(key).add(staffId);
             grouped[key].push(staff);
         }
     }
@@ -2110,9 +2233,9 @@ function scheduleCopyWeekModeForDepartment(department = StaffState.activeDept) {
 }
 
 function scheduleCopyWeekVisibleStaffIds() {
-    return scheduleVisibleStaff()
-        .map(staff => Number(staff.id))
-        .filter(Number.isFinite);
+    return uniqueScheduleStaffById(scheduleVisibleStaff())
+        .map(staff => normalizeScheduleStaffId(staff.id))
+        .filter(id => id !== null);
 }
 
 function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
@@ -2283,6 +2406,54 @@ function scheduleCurrentRange() {
     return getScheduleWindowRange(start || getScheduleFocusStart(new Date()));
 }
 
+function scheduleRangeCandidate(startValue, endValue, mode = 'custom') {
+    const start = cloneScheduleDate(startValue);
+    const end = cloneScheduleDate(endValue);
+    if (!start || !end || start > end) return null;
+    return {
+        start,
+        end,
+        from: formatDateStr(start),
+        to: formatDateStr(end),
+        mode: mode || 'custom'
+    };
+}
+
+function schedulePendingRange() {
+    const pending = StaffState.rangePending;
+    return pending ? scheduleRangeCandidate(pending.start, pending.end, pending.mode) : null;
+}
+
+function scheduleNavigationRange() {
+    return schedulePendingRange() || scheduleCurrentRange();
+}
+
+function scheduleNavigationMode() {
+    return schedulePendingRange()?.mode || StaffState.rangeMode || 'rolling';
+}
+
+function scheduleCommittedRangeKey() {
+    const start = cloneScheduleDate(StaffState.rangeStart);
+    const end = cloneScheduleDate(StaffState.rangeEnd);
+    if (!start || !end || start > end) return '';
+    return `${formatDateStr(start)}:${formatDateStr(end)}`;
+}
+
+function scheduleLoadedRangeMatchesCurrent() {
+    const key = scheduleCommittedRangeKey();
+    if (!key || !StaffState.scheduleLoadedRange) return false;
+    return key === `${StaffState.scheduleLoadedRange.from}:${StaffState.scheduleLoadedRange.to}`;
+}
+
+function scheduleHasCommittedRange() {
+    return scheduleLoadedRangeMatchesCurrent();
+}
+
+function scheduleRangeDataReady() {
+    return ['ready', 'empty'].includes(StaffState.rangeLoadState)
+        && scheduleLoadedRangeMatchesCurrent();
+}
+
 function getScheduleDates(startValue = null, endValue = null) {
     const range = startValue && endValue
         ? { start: cloneScheduleDate(startValue), end: cloneScheduleDate(endValue) }
@@ -2344,11 +2515,17 @@ function syncScheduleRangeControls() {
     const fromInput = document.getElementById('scheduleDateFrom');
     const toInput = document.getElementById('scheduleDateTo');
     if (!fromInput && !toInput) return;
-    const range = scheduleCurrentRange();
+    const fallbackRange = schedulePendingRange()
+        || (StaffState.rangeRetry ? scheduleRangeCandidate(StaffState.rangeRetry.start, StaffState.rangeRetry.end, StaffState.rangeRetry.mode) : null)
+        || scheduleCurrentRange();
+    const range = scheduleHasCommittedRange() ? scheduleCurrentRange() : fallbackRange;
+    const activeMode = scheduleHasCommittedRange()
+        ? StaffState.rangeMode
+        : (schedulePendingRange()?.mode || StaffState.rangeRetry?.mode || '');
     if (fromInput) fromInput.value = formatDateStr(range.start);
     if (toInput) toInput.value = formatDateStr(range.end);
     document.querySelectorAll('[data-schedule-range-preset]').forEach(button => {
-        const active = button.dataset.scheduleRangePreset === StaffState.rangeMode;
+        const active = button.dataset.scheduleRangePreset === activeMode;
         syncScheduleRangePresetLabel(button);
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -2356,7 +2533,7 @@ function syncScheduleRangeControls() {
 }
 
 function schedulePresetBaseDate() {
-    return cloneScheduleDate(StaffState.rangeStart || StaffState.weekStart) || new Date();
+    return cloneScheduleDate(schedulePendingRange()?.start || StaffState.rangeStart || StaffState.weekStart) || new Date();
 }
 
 function scheduleMonthRange(baseDate = schedulePresetBaseDate()) {
@@ -2385,15 +2562,16 @@ function schedulePresetRange(preset, baseDate = schedulePresetBaseDate()) {
 }
 
 function scheduleNavigationStepDays() {
-    if (StaffState.rangeMode === 'rolling' || !StaffState.rangeMode) return 7;
-    const range = scheduleCurrentRange();
+    const mode = scheduleNavigationMode();
+    if (mode === 'rolling' || !mode) return 7;
+    const range = scheduleNavigationRange();
     return Math.max(1, scheduleRangeDayCount(range.start, range.end));
 }
 
 function shiftSchedulePresetRange(direction) {
-    const mode = StaffState.rangeMode || 'rolling';
+    const mode = scheduleNavigationMode();
     if (!['first-half', 'second-half', 'month'].includes(mode)) return null;
-    const range = scheduleCurrentRange();
+    const range = scheduleNavigationRange();
     const base = new Date(range.start.getFullYear(), range.start.getMonth() + direction, 1);
     base.setHours(0, 0, 0, 0);
     return schedulePresetRange(mode, base);
@@ -2418,6 +2596,104 @@ function formatScheduleRangeLabel(from, to) {
 function scheduleCurrentRangeLabel() {
     const range = scheduleCurrentRange();
     return formatScheduleRangeLabel(range.start, range.end);
+}
+
+function syncScheduleRangeActionAvailability() {
+    const ready = scheduleRangeDataReady();
+    ['exportExcelBtn', 'printBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (!button) return;
+        button.disabled = !ready;
+        button.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    });
+
+    ['fillWeekBtn', 'copyWeekBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (!button) return;
+        button.disabled = !ready;
+        button.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    });
+}
+
+function setScheduleRangeLoadState(state, options = {}) {
+    const normalizedState = ['idle', 'loading', 'error', 'empty', 'ready'].includes(state) ? state : 'idle';
+    StaffState.rangeLoadState = normalizedState;
+
+    const hasCommittedRange = scheduleHasCommittedRange();
+    const busy = normalizedState === 'loading';
+    const locked = !scheduleRangeDataReady();
+    const region = document.getElementById('scheduleDataRegion');
+    if (region) {
+        region.dataset.scheduleState = normalizedState;
+        region.dataset.hasCommittedRange = hasCommittedRange ? 'true' : 'false';
+        region.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
+    ['scheduleWrapper', 'loadViewWrapper'].forEach(id => {
+        const wrapper = document.getElementById(id);
+        if (!wrapper) return;
+        wrapper.setAttribute('aria-busy', busy ? 'true' : 'false');
+        if (locked) {
+            wrapper.setAttribute('inert', '');
+            wrapper.setAttribute('aria-disabled', 'true');
+        } else {
+            wrapper.removeAttribute('inert');
+            wrapper.removeAttribute('aria-disabled');
+        }
+    });
+
+    const panel = document.getElementById('scheduleRangeState');
+    const title = document.getElementById('scheduleRangeStateTitle');
+    const message = document.getElementById('scheduleRangeStateMessage');
+    const retryButton = document.getElementById('scheduleRangeRetryBtn');
+    if (panel) {
+        panel.dataset.state = normalizedState;
+        panel.hidden = ['idle', 'ready'].includes(normalizedState);
+        panel.setAttribute('role', normalizedState === 'error' ? 'alert' : 'status');
+    }
+    if (retryButton) retryButton.hidden = normalizedState !== 'error' || !StaffState.rangeRetry;
+
+    const requestedRange = options.range || schedulePendingRange() || StaffState.rangeRetry;
+    const requestedLabel = requestedRange?.start && requestedRange?.end
+        ? formatScheduleRangeLabel(requestedRange.start, requestedRange.end)
+        : '';
+    if (normalizedState === 'loading') {
+        if (title) title.textContent = 'Завантажуємо графік';
+        if (message) message.textContent = requestedLabel ? `Період: ${requestedLabel}.` : 'Очікуємо дані вибраного періоду.';
+    } else if (normalizedState === 'error') {
+        const confirmedCopy = hasCommittedRange
+            ? ` Показано підтверджений період ${scheduleCurrentRangeLabel()}.`
+            : ' Дані графіка не показано.';
+        const errorCopy = String(options.error || '').trim();
+        if (title) title.textContent = 'Період не завантажено';
+        if (message) message.textContent = `Не вдалося завантажити ${requestedLabel || 'вибраний період'}.${confirmedCopy}${errorCopy ? ` ${errorCopy}` : ''}`;
+    } else if (normalizedState === 'empty') {
+        if (title) title.textContent = 'За цей період змін ще немає';
+        if (message) message.textContent = 'Графік успішно завантажено. Клітинки можна заповнювати.';
+    } else {
+        if (title) title.textContent = '';
+        if (message) message.textContent = '';
+    }
+
+    syncScheduleRangeActionAvailability();
+}
+
+function restoreScheduleCommittedRangeUi() {
+    if (scheduleHasCommittedRange()) {
+        renderWeekLabel();
+        return;
+    }
+    const label = document.getElementById('weekLabel');
+    if (label) label.textContent = 'Період не підтверджено';
+    syncScheduleRangeControls();
+    syncScheduleBulkActionLabels();
+    updateScheduleHeaderMetrics();
+}
+
+function retryScheduleRangeLoad() {
+    const retry = StaffState.rangeRetry;
+    if (!retry) return Promise.resolve(false);
+    return goToScheduleRange(retry.start, retry.end, retry.mode);
 }
 
 function isScheduleCustomRangeMode() {
@@ -2528,13 +2804,12 @@ async function setScheduleViewMode(mode = 'schedule') {
     if (loadWrapper) loadWrapper.style.display = StaffState.showLoadView ? '' : 'none';
     if (scheduleWrapper) scheduleWrapper.style.display = StaffState.showLoadView ? 'none' : '';
 
-    if (StaffState.showHours) {
-        const dates = getScheduleDates();
-        const from = formatDateStr(dates[0]);
-        const to = formatDateStr(getScheduleRangeEnd(dates));
-        const result = await fetchScheduleHours(from, to);
-        StaffState.hoursData = result.success ? result.data : null;
-    } else {
+    let rangeReloaded = false;
+    if (StaffState.showHours && (scheduleHasCommittedRange() || schedulePendingRange())) {
+        const target = scheduleNavigationRange();
+        rangeReloaded = await goToScheduleRange(target.start, target.end, scheduleNavigationMode());
+        if (!rangeReloaded) return;
+    } else if (!StaffState.showHours) {
         StaffState.hoursData = null;
     }
 
@@ -2545,11 +2820,13 @@ async function setScheduleViewMode(mode = 'schedule') {
         removeLinkStatsBar();
     }
 
-    syncScheduleViewSwitch();
-    if (StaffState.showLoadView) {
-        renderLoadView();
-    } else {
-        renderSchedule();
+    if (!rangeReloaded) {
+        syncScheduleViewSwitch();
+        if (StaffState.showLoadView) {
+            renderLoadView();
+        } else {
+            renderSchedule();
+        }
     }
 }
 
@@ -2700,57 +2977,97 @@ async function fetchStaff() {
     }
 }
 
-async function fetchSchedule(from, to) {
+function isScheduleAbortError(error) {
+    return error?.name === 'AbortError';
+}
+
+async function parseScheduleReadResponse(response, fallbackError) {
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        return {
+            success: false,
+            status: response.status,
+            error: `${fallbackError}: сервер повернув некоректні дані`
+        };
+    }
+    if (!response.ok || data?.success !== true) {
+        return {
+            success: false,
+            status: response.status,
+            error: data?.error || `${fallbackError} (HTTP ${response.status})`
+        };
+    }
+    return { success: true, status: response.status, data };
+}
+
+async function fetchSchedule(from, to, options = {}) {
     try {
         const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/schedule?from=${from}&to=${to}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: options.signal
         });
-        const data = await res.json();
-        if (data.success) {
-            StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
-            StaffState.schedule = {};
-            StaffState.scheduleRawEntries = [];
-            for (const entry of (data.data || [])) {
-                const normalizedEntry = { ...entry, status: normalizeScheduleStatus(entry.status) };
-                StaffState.scheduleRawEntries.push(normalizedEntry);
-                StaffState.schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
-            }
-            StaffState.scheduleLoadedRange = { from, to };
-        } else {
-            StaffState.scheduleLoadedRange = null;
+        const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити графік');
+        if (!parsed.success) return parsed;
+
+        const schedule = {};
+        const scheduleRawEntries = [];
+        for (const entry of (parsed.data.data || [])) {
+            const normalizedEntry = { ...entry, status: normalizeScheduleStatus(entry.status) };
+            scheduleRawEntries.push(normalizedEntry);
+            schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
         }
-        return data;
+        return {
+            success: true,
+            schedule,
+            scheduleRawEntries,
+            displayGroups: normalizeScheduleDisplayGroups(
+                parsed.data.displayGroups || parsed.data.display_groups || StaffState.displayGroups
+            )
+        };
     } catch (err) {
+        if (isScheduleAbortError(err)) return { success: false, aborted: true };
         console.error('fetchSchedule error:', err);
-        StaffState.scheduleLoadedRange = null;
-        showNotification('Помилка завантаження розкладу', 'error');
-        return { success: false };
+        return { success: false, error: 'Мережева помилка під час завантаження графіка' };
     }
 }
 
-async function fetchScheduleAttendance(from, to) {
+async function fetchScheduleAttendance(from, to, options = {}) {
     try {
         const token = localStorage.getItem('pzp_token');
         const res = await fetch(`/api/staff/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: options.signal
         });
-        const data = await res.json();
-        if (data.success) {
-            StaffState.attendance = {};
-            for (const row of (data.data || [])) {
-                const date = String(row.date || '').slice(0, 10);
-                if (!row.staff_id || !date) continue;
-                StaffState.attendance[`${row.staff_id}_${date}`] = { ...row, date };
-            }
-            StaffState.attendanceSummary = data.summary || null;
+        if (res.status === 403) {
+            return {
+                success: true,
+                attendance: {},
+                attendanceSummary: null,
+                unavailable: true
+            };
         }
-        return data;
+        const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити attendance');
+        if (!parsed.success) return parsed;
+
+        const attendance = {};
+        for (const row of (parsed.data.data || [])) {
+            const date = String(row.date || '').slice(0, 10);
+            if (!row.staff_id || !date) continue;
+            attendance[`${row.staff_id}_${date}`] = { ...row, date };
+        }
+        return {
+            success: true,
+            attendance,
+            attendanceSummary: parsed.data.summary || null,
+            unavailable: false
+        };
     } catch (err) {
+        if (isScheduleAbortError(err)) return { success: false, aborted: true };
         console.error('fetchScheduleAttendance error:', err);
-        StaffState.attendance = {};
-        StaffState.attendanceSummary = null;
-        return { success: false };
+        return { success: false, error: 'Мережева помилка під час завантаження attendance' };
     }
 }
 
@@ -2832,20 +3149,20 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
     return await res.json();
 }
 
-async function fetchScheduleHistory(staffId, date) {
+async function fetchScheduleHistory(staffId, date, options = {}) {
     try {
         const token = localStorage.getItem('pzp_token');
         const res = await fetch(`/api/staff/schedule/history/${encodeURIComponent(staffId)}/${encodeURIComponent(date)}?limit=50`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: options.signal
         });
-        const data = await res.json();
-        if (data.success) {
-            StaffState.scheduleHistory[`${staffId}_${date}`] = Array.isArray(data.data) ? data.data : [];
-        }
-        return data;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success) return { success: false, data: [], error: data?.error || `HTTP ${res.status}` };
+        return { success: true, data: Array.isArray(data.data) ? data.data : [] };
     } catch (err) {
+        if (isScheduleAbortError(err)) return { success: false, data: [], aborted: true };
         console.error('fetchScheduleHistory error:', err);
-        return { success: false };
+        return { success: false, data: [], error: err?.message || 'Network error' };
     }
 }
 
@@ -2893,12 +3210,21 @@ async function copyWeekSchedule(fromMonday, toMonday, options = {}) {
     return await res.json();
 }
 
-async function fetchScheduleHours(from, to) {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/staff/schedule/hours?from=${from}&to=${to}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return await res.json();
+async function fetchScheduleHours(from, to, options = {}) {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/schedule/hours?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: options.signal
+        });
+        const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити години');
+        if (!parsed.success) return parsed;
+        return { success: true, data: parsed.data.data || null };
+    } catch (err) {
+        if (isScheduleAbortError(err)) return { success: false, aborted: true };
+        console.error('fetchScheduleHours error:', err);
+        return { success: false, error: 'Мережева помилка під час завантаження годин' };
+    }
 }
 
 function scheduleAttendanceRecord(staffId, date) {
@@ -3057,6 +3383,10 @@ async function handleAttendanceAction(button) {
     const action = button?.dataset?.attendanceAction;
     const staffId = Number(button?.dataset?.staff);
     if (!action || !Number.isFinite(staffId)) return;
+    if (!scheduleRangeDataReady()) {
+        showNotification('Спочатку дочекайтеся підтвердженого періоду графіка', 'error');
+        return;
+    }
     const staff = StaffState.staff.find(item => Number(item.id) === staffId);
     if (action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }, 'Працівник недоступний для check-in'), 'error');
@@ -3065,10 +3395,14 @@ async function handleAttendanceAction(button) {
     button.disabled = true;
     const result = await postAttendanceAction(action, staffId);
     if (result.success) {
-        const dates = getScheduleDates();
-        await fetchScheduleAttendance(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
-        renderSchedule();
-        showNotification('Attendance оновлено');
+        const range = scheduleCurrentRange();
+        const mode = StaffState.rangeMode || 'custom';
+        const reloaded = await goToScheduleRange(range.start, range.end, mode);
+        if (reloaded) {
+            showNotification('Attendance оновлено');
+        } else {
+            showNotification('Attendance оновлено, але період не вдалося перезавантажити', 'error');
+        }
     } else {
         button.disabled = false;
         showNotification(scheduleableStaffErrorMessage(result, 'Не вдалося оновити attendance'), 'error');
@@ -3092,7 +3426,7 @@ function renderDeptFilter() {
             <strong class="dept-chip-count">${Number(count || 0)}</strong>
         </button>`;
     };
-    const allCount = scheduleableStaffForUi(StaffState.staff).length;
+    const allCount = uniqueScheduleStaffById(scheduleableStaffForUi(StaffState.staff)).length;
     let html = renderChip({ value: 'all', label: 'Всі', count: allCount });
     for (const { value: key, label, count } of options) {
         html += renderChip({ value: key, label, count });
@@ -3301,8 +3635,8 @@ function renderSummary(staffList = null, dates = getScheduleDates()) {
     updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered);
 }
 
-function renderEmpRow(emp, dates, today, health = null) {
-    const employeeName = String(emp.display_name || emp.name || '').trim() || 'Співробітник';
+function renderEmpRow(emp, dates, today, health = null, options = {}) {
+    const employeeName = scheduleStaffDisplayName(emp);
     const initials = employeeName.split(' ').map(w => w[0]).join('').slice(0, 2);
     const hoursData = StaffState.hoursData?.[emp.id];
     const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
@@ -3317,7 +3651,12 @@ function renderEmpRow(emp, dates, today, health = null) {
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
     const focusClass = Number(StaffState.focusedStaffId) === Number(emp.id) ? 'is-schedule-focus' : '';
-    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}">`;
+    const subGroup = options.subGroup || null;
+    const subGroupIdentity = scheduleSubGroupIdentity(subGroup || {});
+    const subGroupAttributes = subGroupIdentity
+        ? ` data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(subGroup.label || '')}"`
+        : '';
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}"${subGroupAttributes}>`;
     html += `<td>
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
              title="Відкрити HR профіль: ${escapeHtml(employeeName)}"
@@ -3403,9 +3742,13 @@ function scheduleCellFromEvent(event, tbody) {
 
 function openScheduleCell(cell) {
     if (!cell) return;
+    if (!scheduleRangeDataReady()) {
+        showNotification('Редагування доступне після успішного завантаження періоду', 'error');
+        return;
+    }
     const staffId = parseInt(cell.dataset.staff, 10);
     if (!Number.isFinite(staffId) || !cell.dataset.date) return;
-    openEditModal(staffId, cell.dataset.date);
+    openEditModal(staffId, cell.dataset.date, { trigger: cell });
 }
 
 function bindScheduleCellActivation(tbody) {
@@ -3444,11 +3787,11 @@ function renderSchedule() {
 
     // Header
     const thead = document.getElementById('scheduleHead');
-    let headHtml = '<tr><th>Співробітник</th>';
+    let headHtml = '<tr><th scope="col">Співробітник</th>';
     for (const d of dates) {
         const ds = formatDateStr(d);
         const isToday = ds === today;
-        headHtml += `<th class="${isToday ? 'today' : ''}">
+        headHtml += `<th scope="col" class="${isToday ? 'today' : ''}">
             <span class="th-date">${d.getDate()}</span>
             <span class="th-day">${STAFF_SCHEDULE_DAYS_UK[d.getDay()]}</span>
         </th>`;
@@ -3458,10 +3801,11 @@ function renderSchedule() {
 
     // Body — group by department
     const tbody = document.getElementById('scheduleBody');
-    const baseFiltered = scheduleVisibleStaff();
+    const visibleSnapshot = scheduleFinalVisibleStaffSnapshot(StaffState.staff, dates);
+    const baseFiltered = visibleSnapshot.base;
     renderScheduleStaffFilterInfo(baseFiltered);
-    const health = buildScheduleHealth(dates, baseFiltered, { department: StaffState.activeDept });
-    const filtered = scheduleHealthFilteredStaff(baseFiltered, health);
+    const health = visibleSnapshot.health;
+    const filtered = visibleSnapshot.visible;
 
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered, { department: StaffState.activeDept });
@@ -3481,7 +3825,11 @@ function renderSchedule() {
         const icon = renderScheduleCrmIcon(DEPT_ICONS[dept], 'dept-icon schedule-crm-icon');
         const deptStaff = grouped[dept];
         const subGroups = DEPT_SUB_GROUPS[dept];
-        const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
+        const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
+            activeDepartment: StaffState.activeDept
+        });
+        const renderableSubGroups = subGroupPartition.groups
+            .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
         const groupExpanded = isScheduleGroupExpandedForRender(dept);
         const groupStateClass = groupExpanded ? 'is-expanded' : 'is-collapsed';
         const groupToggleLabel = groupExpanded
@@ -3501,32 +3849,29 @@ function renderSchedule() {
 
         if (!groupExpanded) continue;
 
-        if (renderableSubGroups.length) {
-            // Render sub-groups within department
-            const renderedStaffIds = new Set();
-            for (const sg of renderableSubGroups) {
-                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
-                if (sgStaff.length === 0) continue;
-                const subGroupIcon = renderScheduleCrmIcon(sg.icon, 'sub-group-icon schedule-crm-icon');
+        const renderedStaffIds = new Set();
+        for (const group of renderableSubGroups) {
+            const sg = group.subGroup;
+            const sgStaff = group.staff.filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)));
+            if (sgStaff.length === 0) continue;
+            const subGroupIcon = renderScheduleCrmIcon(sg.icon, 'sub-group-icon schedule-crm-icon');
 
-                bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
-                    ${subGroupIcon}<span class="sub-group-label">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
-                </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
+            bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
+                ${subGroupIcon}<span class="sub-group-label">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
+            </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
 
-                for (const emp of sgStaff) {
-                    renderedStaffIds.add(Number(emp.id));
-                    bodyHtml += renderEmpRow(emp, dates, today, health);
-                }
+            for (const emp of sgStaff) {
+                const staffId = normalizeScheduleStaffId(emp.id);
+                renderedStaffIds.add(staffId);
+                bodyHtml += renderEmpRow(emp, dates, today, health, { subGroup: sg });
             }
-            // Render staff covered by skipped duplicate sub-groups or by no sub-group.
-            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) {
-                bodyHtml += renderEmpRow(emp, dates, today, health);
-            }
-        } else {
-            // Small department — render without sub-groups
-            for (const emp of deptStaff) {
-                bodyHtml += renderEmpRow(emp, dates, today, health);
-            }
+        }
+        // Duplicate-label and ungrouped rows stay under the top-level header without a redundant subgroup header.
+        for (const emp of uniqueScheduleStaffById(deptStaff).filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
+            const staffId = normalizeScheduleStaffId(emp.id);
+            bodyHtml += renderEmpRow(emp, dates, today, health, {
+                subGroup: subGroupPartition.ownershipByStaffId.get(staffId) || null
+            });
         }
     }
 
@@ -3589,6 +3934,7 @@ function renderSchedule() {
         });
         if (applied) StaffState.focusScrollPending = false;
     }
+    syncScheduleRangeActionAvailability();
 }
 
 // ==========================================
@@ -3597,6 +3943,54 @@ function renderSchedule() {
 
 let _staffScheduleInitialState = '';
 let _staffFillInitialState = '';
+let _staffScheduleClosePromise = null;
+
+function scheduleEditingCellMatches(staffId, date, rangeKey = '') {
+    const editing = StaffState.editingCell;
+    const overlay = document.getElementById('schModalOverlay');
+    return Boolean(
+        editing
+        && overlay?.classList.contains('visible')
+        && Number(editing.staffId) === Number(staffId)
+        && String(editing.date || '') === String(date || '')
+        && (!rangeKey || editing.rangeKey === rangeKey)
+    );
+}
+
+function scheduleModalSessionIsCurrent(session) {
+    return Boolean(session && StaffState.editingCell === session);
+}
+
+function beginScheduleModalMutation(session) {
+    if (!scheduleModalSessionIsCurrent(session) || session.mutationPending) return false;
+    session.mutationPending = true;
+    const overlay = document.getElementById('schModalOverlay');
+    overlay?.setAttribute?.('aria-busy', 'true');
+    ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = true;
+    });
+    return true;
+}
+
+function finishScheduleModalMutation(session) {
+    if (!scheduleModalSessionIsCurrent(session)) return;
+    session.mutationPending = false;
+    const overlay = document.getElementById('schModalOverlay');
+    overlay?.setAttribute?.('aria-busy', 'false');
+    ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = false;
+    });
+}
+
+function scheduleCellFocusTarget(staffId, date, fallback = null) {
+    const selector = `.sch-cell[data-staff="${Number(staffId)}"][data-date="${String(date || '')}"]`;
+    return document.querySelector(selector)
+        || (fallback?.isConnected ? fallback : null)
+        || document.getElementById('scheduleStaffSearch')
+        || document.getElementById('scheduleWrapper');
+}
 
 const SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS = {
     weekday: 'ПН-ПТ',
@@ -3653,10 +4047,10 @@ async function fetchScheduleShiftPreferences(staffId, options = {}) {
     try {
         const res = await staffApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`);
         const data = await res.json().catch(() => ({}));
-        if (data?.success) {
-            StaffState.shiftPreferences[numericStaffId] = Array.isArray(data.data) ? data.data : [];
+        if (!res.ok || !data?.success) {
+            return { success: false, data: [], error: data?.error || `HTTP ${res.status}` };
         }
-        return data;
+        return { success: true, data: Array.isArray(data.data) ? data.data : [] };
     } catch (err) {
         console.error('fetchScheduleShiftPreferences error:', err);
         return { success: false, data: [] };
@@ -3766,11 +4160,14 @@ function renderScheduleShiftPreferenceLoading() {
 
 async function loadScheduleShiftPreferences(staffId, options = {}) {
     const numericStaffId = Number(staffId);
+    const requestedEditing = StaffState.editingCell;
+    const requestedDate = String(requestedEditing?.date || '');
+    const requestedRangeKey = requestedEditing?.rangeKey || '';
     const seq = ++StaffState.shiftPreferencesLoadSeq;
     renderScheduleShiftPreferenceLoading();
     const result = await fetchScheduleShiftPreferences(numericStaffId, { force: options.force });
-    const editing = StaffState.editingCell;
-    if (seq !== StaffState.shiftPreferencesLoadSeq || !editing || Number(editing.staffId) !== numericStaffId) return result;
+    if (seq !== StaffState.shiftPreferencesLoadSeq
+        || !scheduleEditingCellMatches(numericStaffId, requestedDate, requestedRangeKey)) return result;
     if (!result?.success) {
         const panel = document.getElementById('schShiftPreferencePanel');
         if (panel) {
@@ -3785,6 +4182,7 @@ async function loadScheduleShiftPreferences(staffId, options = {}) {
         }
         return result;
     }
+    StaffState.shiftPreferences[numericStaffId] = result.data;
     renderScheduleShiftPreferencePanel(result.data || [], {
         autoApply: options.autoApply,
         onlyIfState: options.onlyIfState,
@@ -3808,7 +4206,9 @@ function getStaffFillState() {
     }).join('|') + '|days:' + dayState;
 }
 
-function openEditModal(staffId, date) {
+function openEditModal(staffId, date, options = {}) {
+    if (_staffScheduleClosePromise || StaffState.editingCell?.mutationPending) return;
+    if (!scheduleRangeDataReady()) return;
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
     if (StaffState.canManage && !isScheduleableStaffForUi(emp, date)) {
@@ -3817,7 +4217,14 @@ function openEditModal(staffId, date) {
     }
 
     const entry = StaffState.schedule[`${staffId}_${date}`];
-    StaffState.editingCell = { staffId, date, entry };
+    StaffState.editingCell = {
+        staffId,
+        date,
+        entry,
+        rangeKey: scheduleCommittedRangeKey(),
+        sessionId: ++StaffState.scheduleModalSessionSeq,
+        mutationPending: false
+    };
 
     document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'Редагувати' : 'Перегляд'}: ${emp.name} — ${date}`;
     document.getElementById('schStatus').value = entry?.status || 'working';
@@ -3865,43 +4272,97 @@ function openEditModal(staffId, date) {
 
     toggleTimeFields();
     setScheduleModalReadOnly(!StaffState.canManage);
-    loadScheduleCellHistory(staffId, date);
     const stateBeforePreferences = getStaffScheduleState();
+    const overlay = document.getElementById('schModalOverlay');
+    overlay?.setAttribute?.('aria-busy', 'false');
+    _staffScheduleInitialState = stateBeforePreferences;
+    const trigger = options.trigger || document.activeElement;
+    if (overlay && typeof openModal === 'function') {
+        openModal(overlay, trigger, {
+            show: modal => {
+                modal.classList.remove('hidden');
+                modal.classList.add('visible');
+            },
+            hide: modal => {
+                modal.classList.remove('visible');
+                modal.classList.add('hidden');
+            },
+            initialFocus: () => StaffState.canManage
+                ? document.getElementById('schStatus')
+                : document.getElementById('schCancelBtn'),
+            onRequestClose: () => closeEditModal(false),
+            restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger)
+        });
+    } else {
+        overlay?.classList.remove('hidden');
+        overlay?.classList.add('visible');
+    }
+    if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
+    if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
+    loadScheduleCellHistory(staffId, date);
     loadScheduleShiftPreferences(staffId, {
         autoApply: (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
         onlyIfState: stateBeforePreferences,
         resetInitialState: true
     });
-    const overlay = document.getElementById('schModalOverlay');
-    _staffScheduleInitialState = stateBeforePreferences;
-    overlay?.classList.add('visible');
-    if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
-    if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
 }
 
-async function closeEditModal(force = false) {
+async function closeEditModal(force = false, expectedSession = null) {
+    const closingSession = expectedSession || StaffState.editingCell;
+    if (expectedSession && !scheduleModalSessionIsCurrent(expectedSession)) return false;
+    if (!force && closingSession?.mutationPending) {
+        showNotification('Зачекайте завершення операції зі зміною.', 'info');
+        return false;
+    }
+    if (_staffScheduleClosePromise) return _staffScheduleClosePromise;
     const overlay = document.getElementById('schModalOverlay');
     const closeNow = () => {
-        overlay?.classList.remove('visible');
+        if (closingSession && !scheduleModalSessionIsCurrent(closingSession)) return false;
+        StaffState.scheduleHistoryLoadSeq += 1;
+        StaffState.shiftPreferencesLoadSeq += 1;
+        if (scheduleCellHistoryAbortController) {
+            scheduleCellHistoryAbortController.abort();
+            scheduleCellHistoryAbortController = null;
+        }
+        if (overlay && typeof closeModal === 'function') closeModal(overlay, { force: true });
+        else {
+            overlay?.classList.remove('visible');
+            overlay?.classList.add('hidden');
+        }
         StaffState.editingCell = null;
+        overlay?.setAttribute?.('aria-busy', 'false');
         const shiftPreferencePanel = document.getElementById('schShiftPreferencePanel');
         if (shiftPreferencePanel) {
             shiftPreferencePanel.hidden = true;
             shiftPreferencePanel.innerHTML = '';
         }
+        const historyPanel = document.getElementById('schHistoryList');
+        if (historyPanel) {
+            historyPanel.setAttribute('aria-busy', 'false');
+            historyPanel.innerHTML = '';
+        }
         _staffScheduleInitialState = getStaffScheduleState();
+        return true;
     };
-    if (window.UnsafeDismissGuard && overlay) {
-        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
-            force,
-            isDirty: () => getStaffScheduleState() !== _staffScheduleInitialState,
-            message: 'Є незбережені зміни розкладу. Закрити без збереження?',
-            okText: 'Закрити без збереження',
-            cancelText: 'Повернутись'
-        });
+    const closeRequest = (async () => {
+        if (window.UnsafeDismissGuard && overlay) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+                force,
+                isDirty: () => getStaffScheduleState() !== _staffScheduleInitialState,
+                message: 'Є незбережені зміни розкладу. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        closeNow();
+        return true;
+    })();
+    _staffScheduleClosePromise = closeRequest;
+    try {
+        return await closeRequest;
+    } finally {
+        if (_staffScheduleClosePromise === closeRequest) _staffScheduleClosePromise = null;
     }
-    closeNow();
-    return true;
 }
 
 function toggleTimeFields() {
@@ -3995,6 +4456,7 @@ function formatScheduleAuditTime(value) {
 function renderScheduleHistoryList(staffId, date, state = 'ready') {
     const container = document.getElementById('schHistoryList');
     if (!container) return;
+    container.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
     if (state === 'loading') {
         container.innerHTML = '<div class="sch-history-empty">Завантажую історію...</div>';
         return;
@@ -4022,9 +4484,35 @@ function renderScheduleHistoryList(staffId, date, state = 'ready') {
 }
 
 async function loadScheduleCellHistory(staffId, date) {
-    renderScheduleHistoryList(staffId, date, 'loading');
-    const result = await fetchScheduleHistory(staffId, date);
-    renderScheduleHistoryList(staffId, date, result.success ? 'ready' : 'error');
+    const numericStaffId = Number(staffId);
+    const normalizedDate = String(date || '');
+    const requestedRangeKey = StaffState.editingCell?.rangeKey || '';
+    const seq = ++StaffState.scheduleHistoryLoadSeq;
+    if (scheduleCellHistoryAbortController) scheduleCellHistoryAbortController.abort();
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    scheduleCellHistoryAbortController = controller;
+
+    if (!scheduleEditingCellMatches(numericStaffId, normalizedDate, requestedRangeKey)) {
+        if (scheduleCellHistoryAbortController === controller) scheduleCellHistoryAbortController = null;
+        return { success: false, data: [], stale: true };
+    }
+    renderScheduleHistoryList(numericStaffId, normalizedDate, 'loading');
+    try {
+        const result = await fetchScheduleHistory(numericStaffId, normalizedDate, { signal: controller?.signal });
+        if (seq !== StaffState.scheduleHistoryLoadSeq
+            || !scheduleEditingCellMatches(numericStaffId, normalizedDate, requestedRangeKey)) {
+            return { ...result, stale: true };
+        }
+        if (result.success) {
+            StaffState.scheduleHistory[`${numericStaffId}_${normalizedDate}`] = result.data;
+        }
+        if (!result.aborted) {
+            renderScheduleHistoryList(numericStaffId, normalizedDate, result.success ? 'ready' : 'error');
+        }
+        return result;
+    } finally {
+        if (scheduleCellHistoryAbortController === controller) scheduleCellHistoryAbortController = null;
+    }
 }
 
 function setScheduleModalReadOnly(readOnly) {
@@ -4036,14 +4524,26 @@ function setScheduleModalReadOnly(readOnly) {
     if (saveBtn) saveBtn.hidden = readOnly;
     const readOnlyHint = document.getElementById('schReadOnlyHint');
     if (readOnlyHint) readOnlyHint.hidden = !readOnly;
+    const overlay = document.getElementById('schModalOverlay');
+    if (overlay) {
+        if (readOnly) overlay.setAttribute('aria-describedby', 'schReadOnlyHint');
+        else overlay.removeAttribute('aria-describedby');
+    }
     document.querySelectorAll('#schShiftPreferencePanel .sch-shift-preference-option').forEach(button => {
         button.disabled = readOnly;
     });
 }
 
 async function handleSave() {
-    const { staffId, date } = StaffState.editingCell;
-    const previousEntry = StaffState.editingCell?.entry || StaffState.schedule[`${staffId}_${date}`] || null;
+    if (!StaffState.editingCell || !scheduleRangeDataReady()
+        || StaffState.editingCell.rangeKey !== scheduleCommittedRangeKey()) {
+        showNotification('Період графіка змінився. Відкрийте клітинку повторно.', 'error');
+        return;
+    }
+    const editingSession = StaffState.editingCell;
+    const { staffId, date } = editingSession;
+    const editingRangeKey = editingSession.rangeKey;
+    const previousEntry = editingSession.entry || StaffState.schedule[`${staffId}_${date}`] || null;
     const emp = StaffState.staff.find(staff => Number(staff.id) === Number(staffId));
     if (emp && !isScheduleableStaffForUi(emp, date)) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
@@ -4056,14 +4556,23 @@ async function handleSave() {
     const professionKey = showTime ? (document.getElementById('schProfession')?.value || null) : null;
     const note = document.getElementById('schNote')?.value.trim() || null;
 
-    const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey);
-    if (result.success) {
-        replaceScheduleStateEntry(previousEntry, result.data);
-        renderSchedule();
-        closeEditModal(true);
-        showNotification('Зміну збережено');
-    } else {
-        showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
+    if (!beginScheduleModalMutation(editingSession)) return;
+    try {
+        const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey);
+        if (result.success) {
+            if (scheduleRangeDataReady() && editingRangeKey === scheduleCommittedRangeKey()) {
+                replaceScheduleStateEntry(previousEntry, result.data);
+                renderSchedule();
+            }
+            if (scheduleModalSessionIsCurrent(editingSession)) {
+                await closeEditModal(true, editingSession);
+            }
+            showNotification('Зміну збережено');
+        } else {
+            showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
+        }
+    } finally {
+        finishScheduleModalMutation(editingSession);
     }
 }
 
@@ -4074,6 +4583,13 @@ function getEditingScheduleEntry() {
 }
 
 async function handleReplaceSchedule() {
+    if (!StaffState.editingCell || !scheduleRangeDataReady()
+        || StaffState.editingCell.rangeKey !== scheduleCommittedRangeKey()) {
+        showNotification('Період графіка змінився. Відкрийте клітинку повторно.', 'error');
+        return;
+    }
+    const editingSession = StaffState.editingCell;
+    const editingRangeKey = editingSession.rangeKey;
     const entry = getEditingScheduleEntry();
     if (!entry?.id || typeof formModal !== 'function') {
         showNotification('Спочатку збережіть робочий слот графіка', 'error');
@@ -4086,57 +4602,82 @@ async function handleReplaceSchedule() {
         return;
     }
 
-    const result = await formModal('Підміна зміни', [
-        {
-            key: 'replacementStaffId',
-            label: 'Кого поставити',
-            type: 'select',
-            options: candidates,
-            defaultValue: candidates[0].value,
-            required: true
-        },
-        {
-            key: 'reason',
-            label: 'Причина',
-            type: 'textarea',
-            placeholder: 'Хвороба, форс-мажор, домовленість...'
-        }
-    ], { icon: '↔', okText: isReplacementEntry(entry) ? 'Змінити заміну' : 'Виставити заміну', type: 'warning' });
-    if (!result) return;
+    if (!beginScheduleModalMutation(editingSession)) return;
+    try {
+        const result = await formModal('Підміна зміни', [
+            {
+                key: 'replacementStaffId',
+                label: 'Кого поставити',
+                type: 'select',
+                options: candidates,
+                defaultValue: candidates[0].value,
+                required: true
+            },
+            {
+                key: 'reason',
+                label: 'Причина',
+                type: 'textarea',
+                placeholder: 'Хвороба, форс-мажор, домовленість...'
+            }
+        ], { icon: '↔', okText: isReplacementEntry(entry) ? 'Змінити заміну' : 'Виставити заміну', type: 'warning' });
+        if (!result || !scheduleModalSessionIsCurrent(editingSession)) return;
 
-    const apiResult = await replaceScheduleEntry(entry.id, result.replacementStaffId, result.reason);
-    if (apiResult.success) {
-        replaceScheduleStateEntry(entry, apiResult.data);
-        renderSchedule();
-        closeEditModal(true);
-        showNotification('Підміну виставлено');
-    } else {
-        showNotification(scheduleableStaffErrorMessage(apiResult, 'Помилка підміни'), 'error');
+        const apiResult = await replaceScheduleEntry(entry.id, result.replacementStaffId, result.reason);
+        if (apiResult.success) {
+            if (scheduleRangeDataReady() && editingRangeKey === scheduleCommittedRangeKey()) {
+                replaceScheduleStateEntry(entry, apiResult.data);
+                renderSchedule();
+            }
+            if (scheduleModalSessionIsCurrent(editingSession)) {
+                await closeEditModal(true, editingSession);
+            }
+            showNotification('Підміну виставлено');
+        } else {
+            showNotification(scheduleableStaffErrorMessage(apiResult, 'Помилка підміни'), 'error');
+        }
+    } finally {
+        finishScheduleModalMutation(editingSession);
     }
 }
 
 async function handleClearReplacement() {
+    if (!StaffState.editingCell || !scheduleRangeDataReady()
+        || StaffState.editingCell.rangeKey !== scheduleCommittedRangeKey()) {
+        showNotification('Період графіка змінився. Відкрийте клітинку повторно.', 'error');
+        return;
+    }
+    const editingSession = StaffState.editingCell;
+    const editingRangeKey = editingSession.rangeKey;
     const entry = getEditingScheduleEntry();
     if (!entry?.id || !isReplacementEntry(entry)) {
         showNotification('У цьому слоті немає активної підміни', 'error');
         return;
     }
-    if (!await confirmModal('Скасувати підміну і повернути зміну оригінальному працівнику?', {
-        type: 'warning',
-        okText: 'Повернути',
-        cancelText: 'Не чіпати'
-    })) {
-        return;
-    }
+    if (!beginScheduleModalMutation(editingSession)) return;
+    try {
+        if (!await confirmModal('Скасувати підміну і повернути зміну оригінальному працівнику?', {
+            type: 'warning',
+            okText: 'Повернути',
+            cancelText: 'Не чіпати'
+        }) || !scheduleModalSessionIsCurrent(editingSession)) {
+            return;
+        }
 
-    const result = await clearScheduleReplacement(entry.id);
-    if (result.success) {
-        replaceScheduleStateEntry(entry, result.data);
-        renderSchedule();
-        closeEditModal(true);
-        showNotification('Підміну скасовано');
-    } else {
-        showNotification(result.error || 'Помилка скасування підміни', 'error');
+        const result = await clearScheduleReplacement(entry.id);
+        if (result.success) {
+            if (scheduleRangeDataReady() && editingRangeKey === scheduleCommittedRangeKey()) {
+                replaceScheduleStateEntry(entry, result.data);
+                renderSchedule();
+            }
+            if (scheduleModalSessionIsCurrent(editingSession)) {
+                await closeEditModal(true, editingSession);
+            }
+            showNotification('Підміну скасовано');
+        } else {
+            showNotification(result.error || 'Помилка скасування підміни', 'error');
+        }
+    } finally {
+        finishScheduleModalMutation(editingSession);
     }
 }
 
@@ -4151,20 +4692,81 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
         syncScheduleRangeControls();
         return false;
     }
-    setScheduleRangeState(validation.start, validation.end, mode);
-    renderWeekLabel();
-    const from = formatDateStr(validation.start);
-    const to = formatDateStr(validation.end);
-    await fetchSchedule(from, to);
-    await fetchScheduleAttendance(from, to);
-    if (StaffState.showHours) {
-        const hours = await fetchScheduleHours(from, to);
-        StaffState.hoursData = hours.success ? hours.data : null;
+
+    const target = scheduleRangeCandidate(validation.start, validation.end, mode);
+    const requestSeq = ++staffScheduleRangeLoadSeq;
+    if (staffScheduleRangeAbortController) staffScheduleRangeAbortController.abort();
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    staffScheduleRangeAbortController = controller;
+    StaffState.rangePending = target;
+    StaffState.rangeRetry = null;
+    setScheduleRangeLoadState('loading', { range: target });
+    syncScheduleRangeControls();
+
+    const requestOptions = controller ? { signal: controller.signal } : {};
+    const includeHours = Boolean(StaffState.showHours);
+    try {
+        const [scheduleResult, attendanceResult, hoursResult] = await Promise.all([
+            fetchSchedule(target.from, target.to, requestOptions),
+            fetchScheduleAttendance(target.from, target.to, requestOptions),
+            includeHours
+                ? fetchScheduleHours(target.from, target.to, requestOptions)
+                : Promise.resolve({ success: true, data: null })
+        ]);
+
+        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted) return false;
+
+        const failedResult = [scheduleResult, attendanceResult, hoursResult].find(result => !result?.success);
+        if (failedResult) {
+            if (failedResult.aborted) return false;
+            StaffState.rangePending = null;
+            StaffState.rangeRetry = target;
+            restoreScheduleCommittedRangeUi();
+            setScheduleRangeLoadState('error', {
+                range: target,
+                error: failedResult.error || 'Спробуйте повторити завантаження.'
+            });
+            return false;
+        }
+
+        // Atomic latest-only commit: no individual read mutates committed schedule state.
+        StaffState.schedule = scheduleResult.schedule;
+        StaffState.scheduleRawEntries = scheduleResult.scheduleRawEntries;
+        StaffState.displayGroups = scheduleResult.displayGroups;
+        StaffState.attendance = attendanceResult.attendance;
+        StaffState.attendanceSummary = attendanceResult.attendanceSummary;
+        StaffState.attendanceUnavailable = Boolean(attendanceResult.unavailable);
+        StaffState.hoursData = includeHours ? hoursResult.data : null;
+        setScheduleRangeState(target.start, target.end, target.mode);
+        StaffState.scheduleLoadedRange = { from: target.from, to: target.to };
+        StaffState.rangePending = null;
+        StaffState.rangeRetry = null;
+
+        renderWeekLabel();
+        renderSchedule();
+        if (StaffState.showLoadView) renderLoadView();
+        syncScheduleViewSwitch();
+        setScheduleRangeLoadState(
+            StaffState.scheduleRawEntries.length ? 'ready' : 'empty',
+            { range: target }
+        );
+        return true;
+    } catch (err) {
+        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted || isScheduleAbortError(err)) return false;
+        console.error('goToScheduleRange error:', err);
+        StaffState.rangePending = null;
+        StaffState.rangeRetry = target;
+        restoreScheduleCommittedRangeUi();
+        setScheduleRangeLoadState('error', {
+            range: target,
+            error: 'Непередбачена помилка завантаження. Спробуйте ще раз.'
+        });
+        return false;
+    } finally {
+        if (requestSeq === staffScheduleRangeLoadSeq && staffScheduleRangeAbortController === controller) {
+            staffScheduleRangeAbortController = null;
+        }
     }
-    renderSchedule();
-    if (StaffState.showLoadView) renderLoadView();
-    syncScheduleViewSwitch();
-    return true;
 }
 
 async function goToWeek(monday) {
@@ -4175,30 +4777,30 @@ async function goToWeek(monday) {
 function prevWeek() {
     const presetRange = shiftSchedulePresetRange(-1);
     if (presetRange) {
-        goToScheduleRange(presetRange.start, presetRange.end, StaffState.rangeMode);
+        goToScheduleRange(presetRange.start, presetRange.end, scheduleNavigationMode());
         return;
     }
-    const range = scheduleCurrentRange();
+    const range = scheduleNavigationRange();
     const step = scheduleNavigationStepDays();
     goToScheduleRange(
         shiftScheduleDate(range.start, -step),
         shiftScheduleDate(range.end, -step),
-        StaffState.rangeMode || 'rolling'
+        scheduleNavigationMode()
     );
 }
 
 function nextWeek() {
     const presetRange = shiftSchedulePresetRange(1);
     if (presetRange) {
-        goToScheduleRange(presetRange.start, presetRange.end, StaffState.rangeMode);
+        goToScheduleRange(presetRange.start, presetRange.end, scheduleNavigationMode());
         return;
     }
-    const range = scheduleCurrentRange();
+    const range = scheduleNavigationRange();
     const step = scheduleNavigationStepDays();
     goToScheduleRange(
         shiftScheduleDate(range.start, step),
         shiftScheduleDate(range.end, step),
-        StaffState.rangeMode || 'rolling'
+        scheduleNavigationMode()
     );
 }
 
@@ -4211,12 +4813,16 @@ function goToday() {
 // ==========================================
 
 function openFillWeekModal() {
+    if (!scheduleRangeDataReady()) {
+        showNotification('Заповнення доступне після успішного завантаження періоду', 'error');
+        return;
+    }
     const select = document.getElementById('fillStaffSelect');
     const filtered = scheduleVisibleStaff();
 
     select.innerHTML = '<option value="all">Всі видимі працівники</option>';
     for (const emp of filtered) {
-        select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.name)} — ${escapeHtml(emp.position)}</option>`;
+        select.innerHTML += `<option value="${normalizeScheduleStaffId(emp.id)}">${escapeHtml(scheduleStaffDisplayName(emp))} — ${escapeHtml(emp.position)}</option>`;
     }
 
     document.getElementById('fillStatus').value = 'working';
@@ -4259,6 +4865,10 @@ function toggleFillTimeFields() {
 }
 
 async function handleFillWeekSave() {
+    if (!scheduleRangeDataReady()) {
+        showNotification('Період графіка змінився. Відкрийте заповнення повторно.', 'error');
+        return;
+    }
     const staffValue = document.getElementById('fillStaffSelect')?.value;
     const status = document.getElementById('fillStatus')?.value;
     const showTime = status === 'working' || status === 'remote';
@@ -4281,9 +4891,10 @@ async function handleFillWeekSave() {
     if (staffValue === 'all') {
         targetStaff = scheduleVisibleStaff();
     } else {
-        targetStaff = StaffState.staff.filter(s => s.id === parseInt(staffValue));
+        const selectedStaffId = normalizeScheduleStaffId(staffValue);
+        targetStaff = StaffState.staff.filter(s => normalizeScheduleStaffId(s.id) === selectedStaffId);
     }
-    targetStaff = scheduleableStaffForUi(targetStaff);
+    targetStaff = uniqueScheduleStaffById(scheduleableStaffForUi(targetStaff));
 
     // Build entries for the visible period; selected weekdays stay as a filter inside that period.
     const dates = getScheduleDates();
@@ -4294,7 +4905,7 @@ async function handleFillWeekSave() {
             if (!checkedDays.includes(d.getDay())) continue;
             if (!isScheduleableStaffForUi(emp, date)) continue;
             entries.push({
-                staffId: emp.id,
+                staffId: normalizeScheduleStaffId(emp.id),
                 date,
                 shiftStart, shiftEnd, status, note,
                 professionKey: showTime ? normalizeProfessionKey(emp.role_type) : null
@@ -4340,6 +4951,10 @@ async function handleFillWeekSave() {
 // ==========================================
 
 async function handleCopyWeek() {
+    if (!scheduleRangeDataReady()) {
+        showNotification('Копіювання доступне після успішного завантаження періоду', 'error');
+        return;
+    }
     if (!canCopyWeekInCurrentRange()) {
         const rangeLabel = scheduleCurrentRangeLabel();
         const message = [
@@ -4412,16 +5027,16 @@ function renderLoadView() {
 
     // Header
     const thead = document.getElementById('loadViewHead');
-    let headHtml = '<tr><th>Показник</th>';
+    let headHtml = '<tr><th scope="col">Показник</th>';
     for (const d of dates) {
         const ds = formatDateStr(d);
         const isToday = ds === today;
-        headHtml += `<th class="${isToday ? 'today' : ''}">
+        headHtml += `<th scope="col" class="${isToday ? 'today' : ''}">
             <span class="th-date">${d.getDate()}</span>
             <span class="th-day">${STAFF_SCHEDULE_DAYS_UK[d.getDay()]}</span>
         </th>`;
     }
-    headHtml += '<th>Разом</th></tr>';
+    headHtml += '<th scope="col">Разом</th></tr>';
     thead.innerHTML = headHtml;
 
     // Calculate stats per day
@@ -4468,7 +5083,7 @@ function renderLoadView() {
 
     // Department breakdown (if showing all departments)
     if (StaffState.activeDept === 'all') {
-        const grouped = groupStaffByScheduleDepartment(filtered);
+        const grouped = groupStaffByScheduleDepartment(filtered, { grouping: 'membership' });
         bodyHtml += `<tr><td colspan="${dates.length + 2}" style="padding:8px 16px;font-weight:800;font-size:12px;color:var(--gray-500);background:var(--gray-50);border-top:2px solid var(--gray-200)">По відділах (на роботі + віддалено)</td></tr>`;
 
         for (const dept of scheduleDepartmentRenderOrder(grouped)) {
@@ -4972,7 +5587,7 @@ async function handleExcelImport(e) {
 // ==========================================
 
 function scheduleExportVisibleStaff() {
-    return typeof scheduleVisibleStaff === 'function' ? scheduleVisibleStaff() : (StaffState.staff || []);
+    return scheduleFinalVisibleStaffSnapshot(StaffState.staff, getScheduleDates()).visible;
 }
 
 function scheduleExportCell(entry) {
@@ -4997,14 +5612,15 @@ function scheduleExportCell(entry) {
 
 function buildScheduleWorkbookHtml(options = {}) {
     const dates = getScheduleDates();
-    const grouped = groupStaffByScheduleDepartment(scheduleExportVisibleStaff(), { department: StaffState.activeDept });
+    const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
+    const grouped = groupStaffByScheduleDepartment(exportStaff, { department: StaffState.activeDept });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
     const periodLabel = formatScheduleRangeLabel(from, to);
     const columnCount = dates.length + 4;
     const generatedAt = new Date().toLocaleString('uk-UA');
     const headerCells = dates.map(d => `
-            <th class="date-col">
+            <th scope="col" class="date-col">
                 <div>${escapeHtml(String(d.getDate()))}</div>
                 <small>${escapeHtml(STAFF_SCHEDULE_DAYS_UK[d.getDay()] || '')}</small>
             </th>`).join('');
@@ -5015,14 +5631,24 @@ function buildScheduleWorkbookHtml(options = {}) {
         if (deptStaff.length === 0) continue;
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const subGroups = DEPT_SUB_GROUPS[dept];
-        const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
+        const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
+            activeDepartment: StaffState.activeDept
+        });
+        const renderableSubGroups = subGroupPartition.groups
+            .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
 
         bodyRows += `
         <tr class="dept-row">
             <td colspan="${columnCount}">${escapeHtml(deptLabel)} · ${deptStaff.length}</td>
         </tr>`;
 
-        const renderStaffRow = (emp, sgLabel) => {
+        const renderStaffRow = (emp, subGroup = null) => {
+            const staffId = normalizeScheduleStaffId(emp.id);
+            const subGroupIdentity = scheduleSubGroupIdentity(subGroup || {});
+            const subGroupLabel = subGroup?.label || '';
+            const subGroupAttributes = subGroupIdentity
+                ? ` data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(subGroupLabel)}"`
+                : '';
             const cells = [];
             for (const d of dates) {
                 const ds = formatDateStr(d);
@@ -5031,27 +5657,26 @@ function buildScheduleWorkbookHtml(options = {}) {
                 cells.push(`<td class="shift-cell status-${escapeHtml(cell.status)}">${cell.html || '&nbsp;'}</td>`);
             }
             bodyRows += `
-        <tr>
+        <tr data-schedule-export-staff-id="${staffId}"${subGroupAttributes}>
             <td class="dept-cell">${escapeHtml(deptLabel)}</td>
-            <td class="subgroup-cell">${escapeHtml(sgLabel || '')}</td>
-            <td class="employee-cell">${escapeHtml(emp.name || emp.display_name || '')}</td>
+            <td class="subgroup-cell">${escapeHtml(subGroupLabel)}</td>
+            <td class="employee-cell">${escapeHtml(scheduleStaffDisplayName(emp))}</td>
             <td class="role-cell">${escapeHtml(staffCardRoleSummary(emp) || emp.position || '')}</td>
             ${cells.join('')}
         </tr>`;
         };
 
-        if (renderableSubGroups.length) {
-            const renderedStaffIds = new Set();
-            for (const sg of renderableSubGroups) {
-                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
-                for (const emp of sgStaff) {
-                    renderedStaffIds.add(Number(emp.id));
-                    renderStaffRow(emp, sg.label);
-                }
+        const renderedStaffIds = new Set();
+        for (const group of renderableSubGroups) {
+            for (const emp of group.staff.filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
+                const staffId = normalizeScheduleStaffId(emp.id);
+                renderedStaffIds.add(staffId);
+                renderStaffRow(emp, group.subGroup);
             }
-            for (const emp of deptStaff.filter(s => !renderedStaffIds.has(Number(s.id)))) renderStaffRow(emp, '');
-        } else {
-            for (const emp of deptStaff) renderStaffRow(emp, '');
+        }
+        for (const emp of uniqueScheduleStaffById(deptStaff).filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
+            const staffId = normalizeScheduleStaffId(emp.id);
+            renderStaffRow(emp, subGroupPartition.ownershipByStaffId.get(staffId) || null);
         }
     }
 
@@ -5102,10 +5727,10 @@ function buildScheduleWorkbookHtml(options = {}) {
         <table class="schedule-export-table">
             <thead>
                 <tr>
-                    <th>Відділ</th>
-                    <th>Підгрупа</th>
-                    <th>Співробітник</th>
-                    <th>Посада</th>
+                    <th scope="col">Відділ</th>
+                    <th scope="col">Підгрупа</th>
+                    <th scope="col">Співробітник</th>
+                    <th scope="col">Посада</th>
                     ${headerCells}
                 </tr>
             </thead>
@@ -5118,6 +5743,10 @@ function buildScheduleWorkbookHtml(options = {}) {
 }
 
 function handleExcelExport() {
+    if (!scheduleRangeDataReady()) {
+        showNotification('Експорт доступний лише для підтвердженого періоду', 'error');
+        return false;
+    }
     const dates = getScheduleDates();
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
@@ -5137,6 +5766,7 @@ function handleExcelExport() {
         URL.revokeObjectURL(url);
         showNotification('Графік експортовано в Excel');
     }
+    return true;
 }
 
 // ==========================================
@@ -5144,10 +5774,14 @@ function handleExcelExport() {
 // ==========================================
 
 function handlePrint() {
+    if (!scheduleRangeDataReady()) {
+        showNotification('Друк доступний лише для підтвердженого періоду', 'error');
+        return false;
+    }
     const printWindow = window.open('', 'staffSchedulePrint', 'width=1280,height=900');
     if (!printWindow || !printWindow.document) {
         showNotification('Не вдалося відкрити вікно друку. Дозвольте pop-up або скористайтесь експортом.', 'error');
-        return;
+        return false;
     }
     printWindow.document.open();
     printWindow.document.write(buildScheduleWorkbookHtml({ print: true }));
@@ -5161,6 +5795,7 @@ function handlePrint() {
     } else {
         window.setTimeout(runPrint, 120);
     }
+    return true;
 }
 
 // v39.11: Add staff modal
@@ -5233,6 +5868,7 @@ async function initStaffSchedulePage(options = {}) {
         hydrateScheduleExpandedGroups();
         const host = ensureStaffScheduleShell(options);
         if (!host) throw new Error('Staff schedule shell is not available');
+        setScheduleRangeLoadState('idle');
 
         if (typeof initDarkMode === 'function') initDarkMode();
         if (mode !== 'hr') renderStaffPulseSwitcher();
@@ -5340,6 +5976,7 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
         document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
         document.getElementById('printBtn')?.addEventListener('click', handlePrint);
+        document.getElementById('scheduleRangeRetryBtn')?.addEventListener('click', retryScheduleRangeLoad);
 
         // v39.11: Add staff button
         document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal);
@@ -5365,12 +6002,10 @@ async function initStaffSchedulePage(options = {}) {
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeEditModal(false);
-                closeFillWeekModal(false);
-                closeLinkModal();
-                closeBulkResults();
-            }
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            if (document.getElementById('fillWeekOverlay')?.classList.contains('visible')) closeFillWeekModal(false);
+            else if (document.getElementById('linkModalOverlay')?.classList.contains('visible')) closeLinkModal();
+            else if (document.getElementById('bulkResultsOverlay')?.classList.contains('visible')) closeBulkResults();
         });
 
         staffScheduleInitialized = true;

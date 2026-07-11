@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.80",
+  "version": "0.78.81",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Surface Cleanup"
+    "releaseLabel": "Staff Schedule Dark Mode Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -66,6 +66,7 @@
     "smoke:lead-conversion": "npx --yes --package playwright node scripts/live-lead-conversion-smoke.js",
     "smoke:booking-customer-context": "npx --yes --package playwright node scripts/live-booking-customer-context-smoke.js",
     "smoke:cake-decorations": "npx --yes --package playwright node scripts/live-cake-decorations-smoke.js",
+    "smoke:my-day": "npx --yes --package playwright node scripts/live-my-day-smoke.js",
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",

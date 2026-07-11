@@ -5536,11 +5536,22 @@ body.dark-mode .dept-row td,
     border-top-color: rgba(148, 163, 184, 0.22);
 }
 
+body.dark-mode .dept-row .schedule-category-fill-cell,
+[data-theme="dark"] .dept-row .schedule-category-fill-cell {
+    background: #111827;
+    border-left-color: rgba(148, 163, 184, 0.12);
+}
+
 body.dark-mode .sub-group-row td,
 [data-theme="dark"] .sub-group-row td {
     background: rgba(15, 23, 42, 0.92);
     color: #94A3B8;
     border-top-color: rgba(148, 163, 184, 0.14);
+}
+
+body.dark-mode .sub-group-row .schedule-category-fill-cell,
+[data-theme="dark"] .sub-group-row .schedule-category-fill-cell {
+    background: rgba(15, 23, 42, 0.92);
 }
 
 body.dark-mode .dept-count,

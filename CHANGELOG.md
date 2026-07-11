@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.81 - Staff Schedule Dark Mode Cleanup
+
+### Staff Schedule / Dark mode cleanup / My Day smoke / (11.07.2026) [codex]
+- **Темний режим графіка більше не показує світлі прямокутники у згорнутих групах** - fill-клітинки для відділів і підгруп отримали окремі dark-theme правила.
+- **Нижні attendance diagnostics прибрано з графіка** - картки `late`, `absent`, `review` по датах більше не рендеряться під таблицею змін.
+- **My Day live smoke додано до release toolbox** - `npm run smoke:my-day -- https://<live-crm-host>` перевіряє `/profile?tab=myday` у браузері без task mutations.
+- **Regression coverage оновлено** - static UI guard фіксує темні fill-клітинки графіка і забороняє повернення видимих attendance day cards.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule styles/rendering, My Day smoke script/docs, tests і version/cache refs.
+
+---
+
 ## v0.78.80 - Staff Schedule Surface Cleanup
 
 ### Staff Schedule / Surface cleanup / (10.07.2026) [codex]

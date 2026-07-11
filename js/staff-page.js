@@ -2997,24 +2997,8 @@ function buildScheduleAttendanceSummary(dates = [], staffList = []) {
 function renderScheduleAttendanceSummary(dates = [], staffList = []) {
     const container = document.getElementById('scheduleAttendanceSummary');
     if (!container) return;
-    const days = buildScheduleAttendanceSummary(dates, staffList);
-    if (!staffList.length) {
-        container.innerHTML = '<div class="attendance-summary-empty">Немає видимих рядків для attendance summary.</div>';
-        return;
-    }
-    container.innerHTML = days.map(day => `
-        <div class="attendance-day-card">
-            <div class="attendance-day-head">
-                <span>${escapeHtml(day.date.slice(5))}</span>
-                <b>${day.counts.checked_in + day.counts.late + day.counts.completed + day.counts.left_early}/${day.plannedWork}</b>
-            </div>
-            <div class="attendance-day-metrics">
-                <span class="is-late">${day.counts.late} late</span>
-                <span class="is-absent">${day.counts.absent} absent</span>
-                <span class="is-review">${day.counts.manual_review} review</span>
-            </div>
-        </div>
-    `).join('');
+    container.innerHTML = '';
+    container.hidden = true;
 }
 
 async function handleAttendanceAction(button) {

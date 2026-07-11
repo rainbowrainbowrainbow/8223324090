@@ -72,6 +72,7 @@ These commands are available. They are not all mandatory for every task; use the
 - UI/static smoke check: `npm run test:ui`
 - API smoke suite against a running app/DB: `npm run test:api`
 - Broader Node test sweep against a running app/DB: `npm run test:integration`
+- My Day live browser smoke: `npm run smoke:my-day -- https://<live-crm-host>`
 - Focused Node tests: `node --test tests/<file>.test.js`
 - DB migrations standalone: `node db/migrate.js`
 - Static migration governance check: `npm run check:migrations`

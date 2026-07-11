@@ -4702,45 +4702,57 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 }
 
 #scheduleWrapper.is-full-range .schedule-table .sch-cell {
-    min-height: 54px;
-    gap: 2px;
-    padding: 6px 8px;
-    border-radius: 8px;
+    min-height: 42px;
+    gap: 1px;
+    padding: 3px 1px;
+    border-radius: 6px;
 }
 
 #scheduleWrapper.is-full-range .schedule-table .sch-time {
     display: block;
     max-width: 100%;
     overflow: hidden;
-    text-overflow: clip;
-    font-size: 12px;
+    text-overflow: ellipsis;
+    font-size: 0;
     font-weight: 850;
     line-height: 1.15;
     letter-spacing: 0;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-profession {
-    max-width: calc(var(--schedule-day-column-width, 144px) - 24px);
-    margin-top: 1px;
+#scheduleWrapper.is-full-range .schedule-table .sch-time::after {
+    content: attr(data-schedule-compact-time);
+    display: block;
     font-size: 8px;
-    line-height: 1.1;
-}
-
-#scheduleWrapper.is-full-range .schedule-table .sch-label {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding-inline: 6px;
-    font-size: 9px;
     line-height: 1.15;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-note {
-    max-width: calc(var(--schedule-day-column-width, 144px) - 24px);
+#scheduleWrapper.is-full-range .schedule-table .sch-profession {
+    display: none;
+}
+
+#scheduleWrapper.is-full-range .schedule-table .sch-label {
+    max-width: calc(var(--schedule-day-column-width, 30px) - 4px);
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
+    padding: 0;
+    font-size: 0;
+    line-height: 1;
+    background: transparent;
+}
+
+#scheduleWrapper.is-full-range .schedule-table .sch-label .sch-icon {
+    margin: 0;
+    font-size: 10px;
+}
+
+#scheduleWrapper.is-full-range .schedule-table .sch-note {
+    display: none;
+}
+
+#scheduleWrapper.is-full-range .schedule-table .sch-replacement-badge,
+#scheduleWrapper.is-full-range .schedule-table .sch-replacement-from {
+    display: none;
 }
 
 .schedule-table thead th {

@@ -820,6 +820,7 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     const expectedDays = options.expectedDays;
     const expectedHeaderCount = options.expectedHeaderCount || expectedDays;
     const minDayWidth = options.minDayWidth || 96;
+    const shouldFit = Boolean(options.shouldFit);
     const metrics = await page.evaluate(({ wrapperSelector, expectedDays, expectedHeaderCount }) => {
         const wrapper = document.querySelector(wrapperSelector);
         const table = wrapper?.querySelector('.schedule-table');
@@ -830,12 +831,17 @@ async function assertWideScheduleLayout(page, label, options = {}) {
         const firstHeader = table?.querySelector('thead th:first-child');
         const firstBodyCell = table?.querySelector('tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child');
         if (!wrapper || !table || !firstHeader || !firstBodyCell) return null;
-        wrapper.scrollLeft = Math.min(260, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
+        wrapper.scrollLeft = 0;
         const wrapperBox = wrapper.getBoundingClientRect();
         const tableBox = table.getBoundingClientRect();
         const firstHeaderBox = firstHeader.getBoundingClientRect();
         const firstBodyBox = firstBodyCell.getBoundingClientRect();
         const dayWidths = dayHeaders.map(header => header.getBoundingClientRect().width).filter(Boolean);
+        const fullyVisibleDayCount = dayHeaders.filter(header => {
+            const box = header.getBoundingClientRect();
+            return box.left >= wrapperBox.left - 1 && box.right <= wrapperBox.right + 1;
+        }).length;
+        wrapper.scrollLeft = Math.min(260, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
         return {
             isLongRange: wrapper.classList.contains('is-long-range'),
             isFullRange: wrapper.classList.contains('is-full-range'),
@@ -845,6 +851,7 @@ async function assertWideScheduleLayout(page, label, options = {}) {
             tableWidth: tableBox.width,
             minDayWidth: dayWidths.length ? Math.min(...dayWidths) : 0,
             maxDayWidth: dayWidths.length ? Math.max(...dayWidths) : 0,
+            fullyVisibleDayCount,
             dayHeaderCount: dayHeaders.length,
             expectedDays,
             expectedHeaderCount,
@@ -862,7 +869,12 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     if (expectedDays >= 28) assert.equal(metrics.isFullRange, true, `${label}: wrapper enters full-range mode`);
     assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records visible day count`);
     assert.equal(metrics.dayHeaderCount, expectedHeaderCount, `${label}: day header count matches range`);
-    assert.ok(metrics.wrapperScrollWidth > metrics.wrapperClientWidth + 20, `${label}: wrapper owns horizontal scrolling`);
+    if (shouldFit) {
+        assert.ok(metrics.wrapperScrollWidth <= metrics.wrapperClientWidth + 4, `${label}: all month columns fit without horizontal scrolling`);
+        assert.equal(metrics.fullyVisibleDayCount, expectedHeaderCount, `${label}: every month day is visible at once`);
+    } else {
+        assert.ok(metrics.wrapperScrollWidth > metrics.wrapperClientWidth + 20, `${label}: wrapper owns horizontal scrolling`);
+    }
     assert.ok(metrics.tableWidth >= metrics.wrapperScrollWidth - 2, `${label}: table width matches wrapper scroll width`);
     assert.ok(metrics.minDayWidth >= minDayWidth, `${label}: date columns remain readable`);
     assert.ok(metrics.maxDayWidth - metrics.minDayWidth <= 2, `${label}: date columns stay aligned`);
@@ -1038,7 +1050,7 @@ async function runDesktopFlow(browser, base, session) {
         const monthDays = dateRangeDays(monthRange.from, monthRange.to);
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForColumnsToMatchInputs(page);
-        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 136 });
+        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 28, shouldFit: true });
         await assertScheduleExtraViewsRemoved(page);
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month-search.png'), fullPage: true });
 
@@ -1088,7 +1100,7 @@ async function runMobileFlow(browser, base, session, viewport = VIEWPORTS.mobile
         await waitForColumnsToMatchInputs(page);
         const monthRange = await readRangeState(page);
         await assertMobileLayout(page);
-        await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthRange.dayCount, minDayWidth: 120 });
+        await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthRange.dayCount, minDayWidth: 40 });
         await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
         assertNoForbiddenStaffWrites(forbidden, label);
 

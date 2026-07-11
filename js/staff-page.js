@@ -2273,7 +2273,13 @@ const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40;
 const STAFF_SCHEDULE_LAYOUT = {
     schedule: {
         desktop: { minWidth: 900, stickyColumn: 240, dayColumn: 144 },
-        mobile: { minWidth: 900, stickyColumn: 176, dayColumn: 128 }
+        mobile: { minWidth: 900, stickyColumn: 176, dayColumn: 128 },
+        // A monthly view is an overview: keep every day visible on a standard
+        // desktop workspace instead of making the user hunt through a long row.
+        fullRange: {
+            desktop: { minWidth: 900, stickyColumn: 220, dayColumn: 30 },
+            mobile: { minWidth: 900, stickyColumn: 160, dayColumn: 42 }
+        }
     },
     load: {
         desktop: { minWidth: 900, stickyColumn: 156, dayColumn: 82, trailingColumn: 92 },
@@ -2287,12 +2293,13 @@ function syncScheduleRangeLayout(wrapperId, dates = [], variant = 'schedule') {
     const table = wrapper.querySelector('.schedule-table');
     const dayCount = Array.isArray(dates) ? dates.length : 0;
     const layout = STAFF_SCHEDULE_LAYOUT[variant] || STAFF_SCHEDULE_LAYOUT.schedule;
+    const fullRange = dayCount >= 28;
+    const rangeLayout = fullRange && layout.fullRange ? layout.fullRange : layout;
     const compactViewport = typeof window !== 'undefined'
         && typeof window.matchMedia === 'function'
         && window.matchMedia('(max-width: 768px)').matches;
-    const config = layout[compactViewport ? 'mobile' : 'desktop'] || layout.desktop || layout;
+    const config = rangeLayout[compactViewport ? 'mobile' : 'desktop'] || rangeLayout.desktop || rangeLayout;
     const longRange = dayCount > STAFF_SCHEDULE_LONG_RANGE_DAYS;
-    const fullRange = dayCount >= 28;
     const tableMinWidth = Math.max(
         config.minWidth,
         config.stickyColumn + (dayCount * config.dayColumn) + (config.trailingColumn || 0)
@@ -3690,7 +3697,8 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         const attendanceDetails = scheduleAttendanceDetails(entry, attendanceRecord, ds);
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
-            cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+            const compactTime = `${shiftStart.slice(0,2)}–${shiftEnd.slice(0,2)}`;
+            cellContent = `<span class="sch-time" data-schedule-compact-time="${compactTime}">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
             const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
             if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
             if (isReplacement) {

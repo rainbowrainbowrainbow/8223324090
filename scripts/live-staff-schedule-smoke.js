@@ -442,6 +442,7 @@ async function assertScheduleExtraViewsRemoved(page) {
 }
 
 async function assertInvalidRangesStayPut(page, from, to) {
+    const expectedDays = dateRangeDays(from, to);
     const callsBefore = await page.evaluate(() => performance.getEntriesByType('resource')
         .filter(entry => String(entry.name || '').includes('/api/staff/schedule?')).length);
 
@@ -450,14 +451,14 @@ async function assertInvalidRangesStayPut(page, from, to) {
     await page.locator('#applyScheduleRangeBtn').click();
     await page.waitForFunction(expected => document.getElementById('scheduleDateFrom')?.value === expected, from);
     await page.waitForFunction(expected => document.getElementById('scheduleDateTo')?.value === expected, to);
-    await waitForDayColumns(page, 15);
+    await waitForDayColumns(page, expectedDays);
 
     const tooLongTo = addDays(from, 40);
     await page.locator('#scheduleDateFrom').fill(from);
     await page.locator('#scheduleDateTo').fill(tooLongTo);
     await page.locator('#applyScheduleRangeBtn').click();
     await page.waitForFunction(expected => document.getElementById('scheduleDateTo')?.value === expected, to);
-    await waitForDayColumns(page, 15);
+    await waitForDayColumns(page, expectedDays);
 
     const callsAfter = await page.evaluate(() => performance.getEntriesByType('resource')
         .filter(entry => String(entry.name || '').includes('/api/staff/schedule?')).length);
@@ -670,8 +671,6 @@ async function runDesktopFlow(browser, base, session) {
         await assertCompactHeaderActions(page);
         await assertScheduleExtraViewsRemoved(page);
 
-        await assertInvalidRangesStayPut(page, firstHalf.from, firstHalf.to);
-
         await applyPreset(page, 'second-half');
         await waitForColumnsToMatchInputs(page);
         const secondHalf = await readRangeState(page);
@@ -683,6 +682,8 @@ async function runDesktopFlow(browser, base, session) {
         await assertFittedScheduleLayout(page, 'desktop second-half schedule', { expectedDays: secondHalfDays });
         await assertScheduleExtraViewsRemoved(page);
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-second-half.png'), fullPage: true });
+
+        await assertInvalidRangesStayPut(page, secondHalf.from, secondHalf.to);
 
         const monthRange = await assertSearchPersistence(page);
         const monthDays = dateRangeDays(monthRange.from, monthRange.to);

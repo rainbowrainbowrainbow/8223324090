@@ -68,6 +68,7 @@
     "smoke:cake-decorations": "npx --yes --package playwright node scripts/live-cake-decorations-smoke.js",
     "smoke:my-day": "npx --yes --package playwright node scripts/live-my-day-smoke.js",
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
+    "smoke:staff-schedule:write": "npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""

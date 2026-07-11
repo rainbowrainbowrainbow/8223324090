@@ -158,3 +158,31 @@ test('staff lifecycle cleanup is centralized and preserves historical evidence',
     assert.match(hrRoute, /\['blacklisted', 'reserve'\]\.includes\(requestedPoolStatus\)/);
     assert.match(hrRoute, /account_deactivation: accountDeactivation/);
 });
+
+test('live staff schedule write smoke is explicit QA-only and restorative', () => {
+    const script = read('scripts', 'live-staff-schedule-write-smoke.js');
+    const packageJson = JSON.parse(read('package.json'));
+
+    assert.equal(
+        packageJson.scripts['smoke:staff-schedule:write'],
+        'npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js'
+    );
+    assert.match(script, /I_CONFIRM_STAFF_SCHEDULE_QA_WRITES/);
+    assert.match(script, /LIVE_STAFF_SCHEDULE_QA_STAFF_ID/);
+    assert.match(script, /LIVE_STAFF_SCHEDULE_QA_DATE/);
+    assert.match(script, /LIVE_STAFF_SCHEDULE_QA_REPLACEMENT_STAFF_ID/);
+    assert.match(script, /LIVE_STAFF_SCHEDULE_ALLOW_NON_QA_STAFF/);
+    assert.match(script, /assertQaStaff/);
+    assert.match(script, /existing schedule entry is required for safe restore/);
+    assert.match(script, /finally/);
+    assert.match(script, /putSchedule\(base, session\.token, previousPayload\)/);
+    assert.match(script, /\/api\/staff\/schedule\/\$\{currentOriginal\.id\}\/replace/);
+    assert.match(script, /\/api\/staff\/schedule\/\$\{replacementAfterReplace\.id\}\/replacement-clear/);
+    assert.match(script, /async function clearActiveReplacementIfPresent/);
+    assert.match(script, /clearActiveReplacementIfPresent\(base, session\.token, QA_REPLACEMENT_STAFF_ID, QA_DATE\)/);
+    assert.match(script, /dryRun:\s*true/);
+    assert.match(script, /\/api\/staff\/attendance\?from=/);
+    assert.match(script, /after-ui-save\.png/);
+    assert.doesNotMatch(script, /process\.env\.DATABASE_URL\s*=/);
+    assert.doesNotMatch(script, /\b(TRUNCATE|DROP|ALTER)\b/i);
+});

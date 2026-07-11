@@ -528,6 +528,22 @@ Known environment blocker:
 - `audit:staff-schedule` requires a configured PostgreSQL environment through
   `DATABASE_URL` or `PGHOST` / `PGDATABASE` / `PGUSER`.
 
+Live schedule QA:
+
+- Read-only browser smoke:
+  `npm run smoke:staff-schedule -- https://<live-crm-host>`
+- Controlled write acceptance smoke:
+  `npm run smoke:staff-schedule:write -- https://<live-crm-host>`
+- The write smoke requires:
+  `LIVE_STAFF_SCHEDULE_WRITE_CONFIRM=I_CONFIRM_STAFF_SCHEDULE_QA_WRITES`,
+  `LIVE_STAFF_SCHEDULE_QA_STAFF_ID`, and `LIVE_STAFF_SCHEDULE_QA_DATE`.
+- Replacement coverage is optional and requires
+  `LIVE_STAFF_SCHEDULE_QA_REPLACEMENT_STAFF_ID`.
+- Use only QA staff/date cells. The script refuses non-QA-looking staff by
+  default, requires an existing primary schedule entry, verifies UI save,
+  API persistence, audit history, bulk write, copy-week dry-run, attendance
+  read contract, optional replacement set/clear, and restores the primary cell.
+
 ## Release Notes Handling
 
 No version, changelog, or `index.html` release notes are changed by this

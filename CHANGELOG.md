@@ -4,6 +4,14 @@
 
 ---
 
+## v0.78.93 - Header Action Order Hotfix
+
+### Shared UI / Header actions / (12.07.2026) [codex]
+- **Порядок header controls** - shared initializer тепер нормалізує порядок `settings → theme → logout` навіть коли theme toggle створюється після settings або timeline має власну settings-кнопку.
+- **Creator regression** - UI smoke фіксує порядок для generic settings gear і timeline constructor button, щоб creator-сторінки не повертали `theme → settings`.
+
+---
+
 ## v0.78.92 - Shared Header Actions Hotfix
 
 ### Shared UI / Header actions / (11.07.2026) [codex]

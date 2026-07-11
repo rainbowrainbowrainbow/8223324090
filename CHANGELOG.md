@@ -4,11 +4,19 @@
 
 ---
 
+## v0.78.91 - Shared Header Actions
+
+### Shared UI / Header actions / (11.07.2026) [codex]
+- **Єдині кнопки header** - settings, theme і logout уніфіковано для 37 CRM shell-сторінок без масової правки HTML.
+- **Налаштування без мертвих кнопок** - timeline і dashboard відкривають реальні налаштування, chat/omni ведуть у дозволені chat settings, а сторінки без налаштувань показують доступний fallback.
+- **Regression guardrails** - UI smoke фіксує порядок settings → theme → logout, accessibility attrs, embed/public exclusions, training recovery, profile navigation і незмінність PAGE_ACCESS.
+
+---
+
 ## v0.78.90 - HR Team Icon Navigation
 
 ### HR / Команда / (11.07.2026) [codex]
 - Кнопки категорій команди переведено на картковий стиль «Пульсу компанії» з іконками, короткими підписами та лічильниками.
-- **Shared header actions** - settings, theme і logout уніфіковано для 37 CRM shell-сторінок без масової правки HTML; порядок, accessibility attrs, fallback для сторінок без налаштувань і standalone/embed exclusions зафіксовані UI regression tests.
 
 ---
 

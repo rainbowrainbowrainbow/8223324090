@@ -2290,6 +2290,22 @@ function setScheduleRangeState(startValue, endValue, mode = 'custom') {
     StaffState.weekStart = start;
 }
 
+function formatSchedulePresetDayRange(presetRange = {}) {
+    if (!presetRange.start || !presetRange.end) return '';
+    return `${presetRange.start.getDate()}-${presetRange.end.getDate()}`;
+}
+
+function syncScheduleRangePresetLabel(button) {
+    const preset = button?.dataset?.scheduleRangePreset || '';
+    if (!['first-half', 'second-half'].includes(preset)) return;
+    const presetRange = schedulePresetRange(preset);
+    const label = formatSchedulePresetDayRange(presetRange);
+    if (!label) return;
+    button.textContent = label;
+    button.title = `Показати ${label} число місяця`;
+    button.setAttribute('aria-label', `Показати ${label} число місяця`);
+}
+
 function syncScheduleRangeControls() {
     const fromInput = document.getElementById('scheduleDateFrom');
     const toInput = document.getElementById('scheduleDateTo');
@@ -2299,6 +2315,7 @@ function syncScheduleRangeControls() {
     if (toInput) toInput.value = formatDateStr(range.end);
     document.querySelectorAll('[data-schedule-range-preset]').forEach(button => {
         const active = button.dataset.scheduleRangePreset === StaffState.rangeMode;
+        syncScheduleRangePresetLabel(button);
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });

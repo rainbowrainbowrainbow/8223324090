@@ -480,15 +480,23 @@ async function applyManualRange(page, from, to) {
 }
 
 async function assertPeriodPresetLabelsAndSummary(page) {
-    const presetState = await page.locator('[data-schedule-range-preset]').evaluateAll(buttons => buttons.map(button => ({
-        preset: button.getAttribute('data-schedule-range-preset'),
-        label: button.textContent.trim(),
-        title: button.getAttribute('title') || '',
-        ariaLabel: button.getAttribute('aria-label') || ''
-    })));
-    assert.deepEqual(presetState.map(item => item.label), ['1 половина', '2 половина', 'Весь місяць'], 'period preset labels are human-readable');
-    assert.equal(presetState.some(item => item.label.includes('кінець')), false, 'period preset labels do not use "кінець"');
-    assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, 'Показати другу половину місяця', 'second-half preset keeps an accessible label');
+    const { presetState, expectedLabels } = await page.locator('[data-schedule-range-preset]').evaluateAll(buttons => {
+        const from = document.getElementById('scheduleDateFrom')?.value || '';
+        const base = from ? new Date(`${from}T00:00:00`) : new Date();
+        const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+        return {
+            expectedLabels: [`1-${Math.min(15, lastDay)}`, `${Math.min(16, lastDay)}-${lastDay}`, 'Весь місяць'],
+            presetState: buttons.map(button => ({
+                preset: button.getAttribute('data-schedule-range-preset'),
+                label: button.textContent.trim(),
+                title: button.getAttribute('title') || '',
+                ariaLabel: button.getAttribute('aria-label') || ''
+            }))
+        };
+    });
+    assert.deepEqual(presetState.map(item => item.label), expectedLabels, 'period preset labels expose concrete current-month dates');
+    assert.equal(presetState.some(item => item.label.includes('половина') || item.label.includes('кінець')), false, 'period preset labels do not use vague half-month copy');
+    assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, `Показати ${expectedLabels[1]} число місяця`, 'second-half preset keeps an accessible date-range label');
     assert.match(presetState.find(item => item.preset === 'second-half')?.title || '', /16/, 'second-half preset title explains the date range');
     const summaryState = await page.locator('#scheduleSummary').evaluate(summary => ({
         hidden: summary.hidden,

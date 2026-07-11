@@ -524,6 +524,27 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
     });
 
+    it('renders schedule department and subgroup icons as CRM SVG icons instead of emoji', () => {
+        const emojiPattern = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+        const departmentIconsBlock = staffPage.match(/const DEPT_ICONS = \{[\s\S]*?\n\};/)?.[0] || '';
+        const subGroupsBlock = staffPage.match(/const DEPT_SUB_GROUPS = \{[\s\S]*?\n\};/)?.[0] || '';
+
+        assert.match(staffPage, /const SCHEDULE_CRM_ICON_SVG = \{/);
+        assert.match(staffPage, /function renderScheduleCrmIcon/);
+        assert.match(departmentIconsBlock, /animators:\s*'drama'/);
+        assert.match(departmentIconsBlock, /trampoline:\s*'activity'/);
+        assert.match(departmentIconsBlock, /cafe:\s*'coffee'/);
+        assert.match(subGroupsBlock, /label:\s*'Аніматори',\s*icon:\s*'drama'/);
+        assert.match(subGroupsBlock, /label:\s*'Батутисти',\s*icon:\s*'activity'/);
+        assert.match(staffPage, /renderScheduleCrmIcon\(DEPT_ICONS\[dept\], 'dept-icon schedule-crm-icon'\)/);
+        assert.match(staffPage, /renderScheduleCrmIcon\(sg\.icon, 'sub-group-icon schedule-crm-icon'\)/);
+        assert.doesNotMatch(departmentIconsBlock, emojiPattern);
+        assert.doesNotMatch(subGroupsBlock, emojiPattern);
+        assert.match(staffCss, /\.schedule-crm-icon\s*\{/);
+        assert.match(staffCss, /\.schedule-crm-icon svg\s*\{/);
+        assert.match(staffCss, /\.dept-row\[data-dept="animators"\] \.dept-icon/);
+    });
+
     it('does not render cross-category subgroup headers inside expanded schedule groups', () => {
         const renderableSubGroupsBlock = staffPage.slice(
             staffPage.indexOf('function scheduleRenderableSubGroups'),

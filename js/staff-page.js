@@ -103,15 +103,41 @@ const StaffState = {
 const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups';
 
 const DEPT_ICONS = {
-    animators: '🎭',
-    trampoline: '🤸',
-    reception: '🛎️',
-    admin: '💼',
-    cafe: '☕',
-    tech: '🔧',
-    cleaning: '🧹',
-    security: '🛡️'
+    animators: 'drama',
+    trampoline: 'activity',
+    reception: 'bell',
+    admin: 'briefcase',
+    cafe: 'coffee',
+    tech: 'wrench',
+    cleaning: 'sparkles',
+    security: 'shield'
 };
+
+const SCHEDULE_CRM_ICON_SVG = {
+    activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+    briefcase: '<path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 12h18"/><path d="M9 12v2h6v-2"/>',
+    chef: '<path d="M6 13.9A4 4 0 0 1 7 6a5 5 0 0 1 10 0 4 4 0 0 1 1 7.9"/><path d="M6 14h12v6H6z"/><path d="M9 14v6"/><path d="M15 14v6"/>',
+    clipboard: '<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/><path d="M8 12h8"/><path d="M8 16h5"/>',
+    coffee: '<path d="M4 8h12v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4Z"/><path d="M16 10h2a3 3 0 0 1 0 6h-2"/><path d="M7 3v2"/><path d="M11 3v2"/><path d="M15 3v2"/>',
+    coins: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v5c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 11v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>',
+    crown: '<path d="m3 8 4 3 5-7 5 7 4-3-2 11H5Z"/><path d="M5 19h14"/>',
+    drama: '<path d="M8 3c2 0 3.5 1 4 2.5C12.5 4 14 3 16 3c2.8 0 5 2.3 5 5.1 0 5.2-6 8.9-9 10.9C9 17 3 13.3 3 8.1 3 5.3 5.2 3 8 3Z"/><path d="M8 9h.01"/><path d="M16 9h.01"/><path d="M9 13c1.2.8 4.8.8 6 0"/>',
+    pizza: '<path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="M3 21 21 3a18 18 0 0 1-18 18Z"/><path d="M9 15a6 6 0 0 0 0-6"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-5"/>',
+    sparkles: '<path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7Z"/><path d="m5 16 .8 2.2L8 19l-2.2.8L5 22l-.8-2.2L2 19l2.2-.8Z"/><path d="m19 14 .6 1.4L21 16l-1.4.6L19 18l-.6-1.4L17 16l1.4-.6Z"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    utensils: '<path d="M4 3v8"/><path d="M8 3v8"/><path d="M4 7h4"/><path d="M6 11v10"/><path d="M17 3v18"/><path d="M17 3c2.2 1.3 3 3 3 5s-.8 3.7-3 5"/>',
+    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.5 2.5-2.3-2.3Z"/>'
+};
+
+function renderScheduleCrmIcon(iconKey, className = 'schedule-crm-icon') {
+    const key = String(iconKey || '').trim().replace(/[^a-z0-9_-]/gi, '') || 'users';
+    const path = SCHEDULE_CRM_ICON_SVG[key] || SCHEDULE_CRM_ICON_SVG.users;
+    return `<span class="${escapeHtml(className)} schedule-crm-icon--${escapeHtml(key)}" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" focusable="false">${path}</svg>
+    </span>`;
+}
 
 const STAFF_SCHEDULE_STATUS_LABELS = {
     working: 'Робочий',
@@ -202,39 +228,39 @@ const STAFFING_FORECAST_TECH_EVENING_MINUTES = 18 * 60;
 // Sub-groups within large departments (by role_type)
 const DEPT_SUB_GROUPS = {
     animators: [
-        { key: 'animator', label: 'Аніматори', icon: '🎭' },
-        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: '🤸' }
+        { key: 'animator', label: 'Аніматори', icon: 'drama' },
+        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: 'activity' }
     ],
     trampoline: [
-        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: '🤸' },
-        { key: 'animator', label: 'Аніматори', icon: '🎭' }
+        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: 'activity' },
+        { key: 'animator', label: 'Аніматори', icon: 'drama' }
     ],
     admin: [
-        { key: 'vice_director,art_director,senior_manager', label: 'Керівники', icon: '👑' },
-        { key: 'manager', label: 'Менеджери', icon: '💼' },
-        { key: 'admin', label: 'Адміністратори', icon: '📋' },
-        { key: 'reception', label: 'Рецепція', icon: '🛎️' },
-        { key: 'accountant', label: 'Бухгалтери', icon: '💰' },
-        { key: 'hr', label: 'HR', icon: '👥' }
+        { key: 'vice_director,art_director,senior_manager', label: 'Керівники', icon: 'crown' },
+        { key: 'manager', label: 'Менеджери', icon: 'briefcase' },
+        { key: 'admin', label: 'Адміністратори', icon: 'clipboard' },
+        { key: 'reception', label: 'Рецепція', icon: 'bell' },
+        { key: 'accountant', label: 'Бухгалтери', icon: 'coins' },
+        { key: 'hr', label: 'HR', icon: 'users' }
     ],
     reception: [
-        { key: 'reception', label: 'Рецепція', icon: '🛎️' },
-        { key: 'manager,senior_manager', label: 'Менеджери', icon: '💼' }
+        { key: 'reception', label: 'Рецепція', icon: 'bell' },
+        { key: 'manager,senior_manager', label: 'Менеджери', icon: 'briefcase' }
     ],
     cafe: [
-        { key: 'cook', label: 'Кухня', icon: '🍳' },
-        { key: 'pizzaiolo', label: 'Піцайоло', icon: '🍕' },
-        { key: 'barista', label: 'Бариста', icon: '☕' },
-        { key: 'waiter', label: 'Офіціанти', icon: '🍽️' }
+        { key: 'cook', label: 'Кухня', icon: 'chef' },
+        { key: 'pizzaiolo', label: 'Піцайоло', icon: 'pizza' },
+        { key: 'barista', label: 'Бариста', icon: 'coffee' },
+        { key: 'waiter', label: 'Офіціанти', icon: 'utensils' }
     ],
     tech: [
-        { departments: 'tech', label: 'Технічний відділ', icon: '🔧' },
-        { departments: 'security', key: 'security', label: 'Охорона', icon: '🛡️' }
+        { departments: 'tech', label: 'Технічний відділ', icon: 'wrench' },
+        { departments: 'security', key: 'security', label: 'Охорона', icon: 'shield' }
     ],
     cleaning: [
-        { key: 'cleaner,cleaning', label: 'Прибиральники', icon: '🧹' },
-        { key: 'dishwasher', label: 'Мийка', icon: '🧽' },
-        { key: 'wardrobe', label: 'Гардероб', icon: '🧥' }
+        { key: 'cleaner,cleaning', label: 'Прибиральники', icon: 'sparkles' },
+        { key: 'dishwasher', label: 'Мийка', icon: 'sparkles' },
+        { key: 'wardrobe', label: 'Гардероб', icon: 'briefcase' }
     ]
 };
 
@@ -3444,7 +3470,7 @@ function renderSchedule() {
     for (const dept of scheduleDepartmentRenderOrder(grouped)) {
         if (!grouped[dept]) continue;
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
-        const icon = DEPT_ICONS[dept] || '';
+        const icon = renderScheduleCrmIcon(DEPT_ICONS[dept], 'dept-icon schedule-crm-icon');
         const deptStaff = grouped[dept];
         const subGroups = DEPT_SUB_GROUPS[dept];
         const renderableSubGroups = scheduleRenderableSubGroups(dept, deptStaff, subGroups);
@@ -3458,7 +3484,7 @@ function renderSchedule() {
         bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td class="schedule-category-sticky-cell schedule-group-sticky-cell">
             <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}">
                 <span class="schedule-group-caret" aria-hidden="true"></span>
-                <span class="dept-icon" aria-hidden="true">${icon}</span>
+                ${icon}
                 <span class="schedule-group-label">${escapeHtml(deptLabel)}</span>
                 <span class="dept-count">${deptStaff.length}</span>
             </button>
@@ -3473,9 +3499,10 @@ function renderSchedule() {
             for (const sg of renderableSubGroups) {
                 const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg) && !renderedStaffIds.has(Number(s.id)));
                 if (sgStaff.length === 0) continue;
+                const subGroupIcon = renderScheduleCrmIcon(sg.icon, 'sub-group-icon schedule-crm-icon');
 
                 bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
-                    <span class="sub-group-icon">${sg.icon}</span> ${escapeHtml(sg.label)} <span class="sub-group-count">${sgStaff.length}</span>
+                    ${subGroupIcon}<span class="sub-group-label">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
                 </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
 
                 for (const emp of sgStaff) {
@@ -4439,9 +4466,9 @@ function renderLoadView() {
         for (const dept of scheduleDepartmentRenderOrder(grouped)) {
             const deptStaff = grouped[dept] || [];
             if (deptStaff.length === 0) continue;
-            const icon = DEPT_ICONS[dept] || '';
+            const icon = renderScheduleCrmIcon(DEPT_ICONS[dept], 'load-dept-icon schedule-crm-icon');
             const label = scheduleDisplayDepartmentLabel(dept);
-            bodyHtml += `<tr class="load-row-status"><td>${icon} ${label}</td>`;
+            bodyHtml += `<tr class="load-row-status"><td><span class="load-dept-label">${icon}<span>${escapeHtml(label)}</span></span></td>`;
             for (const d of dates) {
                 const ds = formatDateStr(d);
                 let active = 0;

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.86 - Staff Schedule CRM Icons
+
+### Staff Schedule / Department icons / (11.07.2026) [codex]
+- **Emoji біля груп графіка замінено на CRM SVG-іконки** - відділи й підгрупи графіка тепер використовують єдині line-icons у стилі карток `Сьогодні / Графік / Звіти`.
+- **Темна тема графіка збережена** - іконки мають контрольовані кольори, розмір і фон для collapsed/expanded рядків, не залежать від emoji-шрифту ОС.
+- **Regression coverage додано** - static guard фіксує, що `DEPT_ICONS` і `DEPT_SUB_GROUPS` більше не повертаються до emoji.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule icons, CSS, tests і version/cache refs.
+
+---
+
 ## v0.78.85 - Staff Schedule Excel Export Cleanup
 
 ### Staff Schedule / Excel export and print / (11.07.2026) [codex]

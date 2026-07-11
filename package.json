@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.85",
+  "version": "0.78.86",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Excel Export Cleanup"
+    "releaseLabel": "Staff Schedule CRM Icons"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

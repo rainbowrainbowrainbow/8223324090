@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.83",
+  "version": "0.78.84",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Second Half Fix"
+    "releaseLabel": "Staff Schedule Date Preset Labels"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

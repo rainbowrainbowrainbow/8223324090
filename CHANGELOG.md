@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.84 - Staff Schedule Date Preset Labels
+
+### Staff Schedule / Date preset labels / (11.07.2026) [codex]
+- **Кнопки швидкого вибору періоду тепер показують конкретні дати** - замість `1 половина` і `2 половина` у графіку відображається `1-15` та `16-останній день місяця`.
+- **Останній день рахується від поточного місяця** - для місяців на 31 день кнопка показує `16-31`, для 30-денних `16-30`, для лютого `16-28/29`.
+- **Regression coverage оновлено** - static, browser і live smoke більше не приймають старі нечіткі підписи з `половина`.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule labels, guardrails і version/cache refs.
+
+---
+
 ## v0.78.83 - Staff Schedule Second Half Fix
 
 ### Staff Schedule / Half-month range / (11.07.2026) [codex]

@@ -3025,6 +3025,15 @@ body.dark-mode[data-page-group="hr"] .schedule-controls,
     box-shadow: var(--shadow-lg);
 }
 
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
 body.dark-mode[data-page-group="hr"] .schedule-controls .week-nav,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-controls .week-nav {
     background: color-mix(in srgb, var(--white) 4%, transparent);

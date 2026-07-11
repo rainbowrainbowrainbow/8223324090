@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.82 - Staff Schedule Command Surface Fix
+
+### Staff Schedule / Command surface / (11.07.2026) [codex]
+- **Заливка панелі керування графіком більше не обривається біля рамки** - внутрішній `.schedule-controls` у staff command bar знову прозорий, тому зовнішня рамка і фон працюють як одна суцільна поверхня.
+- **Темний режим збережено без вкладеної картки** - загальні dark правила для `.schedule-controls` більше не перебивають scoped layout графіка персоналу.
+- **Regression coverage додано** - static UI guard фіксує, що command bar у темному режимі має один continuous surface без внутрішньої заливки, бордера і тіні.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule CSS, UI guard і version/cache refs.
+
+---
+
 ## v0.78.81 - Staff Schedule Dark Mode Cleanup
 
 ### Staff Schedule / Dark mode cleanup / My Day smoke / (11.07.2026) [codex]

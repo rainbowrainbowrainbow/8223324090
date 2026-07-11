@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.83 - Staff Schedule Second Half Fix
+
+### Staff Schedule / Half-month range / (11.07.2026) [codex]
+- **Друга половина місяця у графіку відображається повністю** - пресет `2 половина` більше не вмикає wide-layout для 16-денного діапазону у місяцях на 31 день.
+- **Пресети лишаються привʼязаними до поточного місяця** - `1 половина` показує `1-15`, `2 половина` показує `16-останній день місяця`, а `Весь місяць` показує реальну довжину місяця.
+- **Regression coverage додано** - browser smoke перевіряє липневий діапазон `16.07.2026-31.07.2026`, 16 колонок і наявність даних до 31 числа.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend staff schedule layout, browser/static guardrails і version/cache refs.
+
+---
+
 ## v0.78.82 - Staff Schedule Command Surface Fix
 
 ### Staff Schedule / Command surface / (11.07.2026) [codex]

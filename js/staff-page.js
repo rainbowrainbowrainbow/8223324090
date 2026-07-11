@@ -2110,7 +2110,8 @@ const STAFF_SCHEDULE_MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тр�
 const STAFF_SCHEDULE_WINDOW_DAYS = 9;
 const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1;
 const STAFF_SCHEDULE_MAX_RANGE_DAYS = 31;
-const STAFF_SCHEDULE_LONG_RANGE_DAYS = 15;
+// A 31-day month has a 16-day second half; keep both half-month presets fitted.
+const STAFF_SCHEDULE_LONG_RANGE_DAYS = 16;
 const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40;
 const STAFF_SCHEDULE_LAYOUT = {
     schedule: {

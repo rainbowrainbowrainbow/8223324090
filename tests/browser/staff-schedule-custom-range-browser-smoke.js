@@ -126,6 +126,33 @@ const SCHEDULE_FIXTURE_ENTRIES = [
         shift_end: '20:00:00',
         status: 'working',
         profession_key: 'animator'
+    },
+    {
+        id: 9116,
+        staff_id: 101,
+        date: '2026-07-16',
+        shift_start: '11:00:00',
+        shift_end: '20:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9124,
+        staff_id: 101,
+        date: '2026-07-24',
+        shift_start: '12:00:00',
+        shift_end: '20:00:00',
+        status: 'working',
+        profession_key: 'animator'
+    },
+    {
+        id: 9131,
+        staff_id: 101,
+        date: '2026-07-31',
+        shift_start: '10:00:00',
+        shift_end: '18:00:00',
+        status: 'working',
+        profession_key: 'animator'
     }
 ];
 
@@ -715,6 +742,33 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
 }
 
+async function assertHalfMonthScheduleLayout(page, label, expectedDays) {
+    const metrics = await page.evaluate(expectedDays => {
+        const wrapper = document.querySelector('#scheduleWrapper');
+        const table = wrapper?.querySelector('.schedule-table');
+        if (!wrapper || !table) return null;
+        const dayHeaders = Array.from(table.querySelectorAll('thead th:not(:first-child)'));
+        return {
+            isLongRange: wrapper.classList.contains('is-long-range'),
+            isFullRange: wrapper.classList.contains('is-full-range'),
+            dataDays: Number(wrapper.dataset.scheduleDayCount || 0),
+            dayHeaderCount: dayHeaders.length,
+            wrapperClientWidth: wrapper.clientWidth,
+            wrapperScrollWidth: wrapper.scrollWidth,
+            viewportWidth: window.innerWidth,
+            pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+            expectedDays
+        };
+    }, expectedDays);
+    assert.ok(metrics, `${label}: half-month layout metrics are available`);
+    assert.equal(metrics.isLongRange, false, `${label}: 16-day half-month stays in fitted schedule mode`);
+    assert.equal(metrics.isFullRange, false, `${label}: half-month does not use full-month density`);
+    assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records the half-month day count`);
+    assert.equal(metrics.dayHeaderCount, expectedDays, `${label}: all half-month headers render`);
+    assert.ok(metrics.wrapperScrollWidth <= metrics.wrapperClientWidth + 2, `${label}: half-month fits without schedule-table horizontal scrolling`);
+    assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
+}
+
 async function assertNoControlOverlap(page, label) {
     const metrics = await page.evaluate(() => {
         const rect = selector => {
@@ -871,14 +925,27 @@ async function runDesktopFlow(browser, base) {
         assert.equal(apiCalls.scheduleRanges.length, scheduleCallsAfterFirstHalf, 'invalid reversed range does not refetch schedule');
         await waitForDayColumns(page, 15);
 
+        await applyPreset(page, 'second-half');
+        const secondHalfFrom = await page.locator('#scheduleDateFrom').inputValue();
+        const secondHalfTo = await page.locator('#scheduleDateTo').inputValue();
+        const secondHalfDays = dateRangeDays(secondHalfFrom, secondHalfTo);
+        assert.equal(secondHalfFrom, '2026-07-16', 'second-half starts on day 16 of the selected month');
+        assert.equal(secondHalfTo, '2026-07-31', 'second-half ends on the actual last day of a 31-day month');
+        assert.equal(secondHalfDays, 16, 'second-half can render a 16-day range for 31-day months');
+        await waitForDayColumns(page, secondHalfDays);
+        assert.match(await page.locator('#weekLabel').innerText(), /16 .+31 .+20\d{2}/, 'visible label reflects 16-end-of-month range');
+        await assertHalfMonthScheduleLayout(page, 'desktop second-half', secondHalfDays);
+        assert.match(await page.locator('#scheduleBody .sch-cell[data-staff="101"][data-date="2026-07-31"]').innerText(), /10:00/, 'second-half renders schedule data through the last day');
+
+        const scheduleCallsAfterSecondHalf = apiCalls.scheduleRanges.length;
         const tooLongEnd = new Date(`${firstHalfFrom}T00:00:00`);
         tooLongEnd.setDate(tooLongEnd.getDate() + 40);
         await page.locator('#scheduleDateFrom').fill(firstHalfFrom);
         await page.locator('#scheduleDateTo').fill(formatInputDate(tooLongEnd));
         await page.locator('#applyScheduleRangeBtn').click();
-        await page.waitForFunction(expected => document.querySelector('#scheduleDateTo')?.value === expected, firstHalfTo, { timeout: 20000 });
-        assert.equal(apiCalls.scheduleRanges.length, scheduleCallsAfterFirstHalf, 'range over 31 days does not refetch schedule');
-        await waitForDayColumns(page, 15);
+        await page.waitForFunction(expected => document.querySelector('#scheduleDateTo')?.value === expected, secondHalfTo, { timeout: 20000 });
+        assert.equal(apiCalls.scheduleRanges.length, scheduleCallsAfterSecondHalf, 'range over 31 days does not refetch schedule');
+        await waitForDayColumns(page, secondHalfDays);
 
         const manualLongRanges = [
             ['2026-02-01', '2026-02-28', 28],

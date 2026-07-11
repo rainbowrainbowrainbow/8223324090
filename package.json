@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.82",
+  "version": "0.78.83",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Command Surface Fix"
+    "releaseLabel": "Staff Schedule Second Half Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

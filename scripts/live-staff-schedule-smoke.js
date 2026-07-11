@@ -544,6 +544,40 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
 }
 
+async function assertFittedScheduleLayout(page, label, options = {}) {
+    const expectedDays = options.expectedDays;
+    const metrics = await page.evaluate(expectedDays => {
+        const wrapper = document.querySelector('#scheduleWrapper');
+        const table = wrapper?.querySelector('.schedule-table');
+        const dayHeaders = table ? Array.from(table.querySelectorAll('thead th:not(:first-child)')) : [];
+        const dayWidths = dayHeaders.map(header => header.getBoundingClientRect().width).filter(Boolean);
+        if (!wrapper || !table) return null;
+        return {
+            isLongRange: wrapper.classList.contains('is-long-range'),
+            isFullRange: wrapper.classList.contains('is-full-range'),
+            dataDays: Number(wrapper.dataset.scheduleDayCount || 0),
+            wrapperClientWidth: wrapper.clientWidth,
+            wrapperScrollWidth: wrapper.scrollWidth,
+            tableWidth: table.getBoundingClientRect().width,
+            minDayWidth: dayWidths.length ? Math.min(...dayWidths) : 0,
+            maxDayWidth: dayWidths.length ? Math.max(...dayWidths) : 0,
+            dayHeaderCount: dayHeaders.length,
+            expectedDays,
+            viewportWidth: window.innerWidth,
+            pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+        };
+    }, expectedDays);
+    assert.ok(metrics, `${label}: fitted layout metrics are available`);
+    assert.equal(metrics.isLongRange, false, `${label}: wrapper does not enter long-range mode`);
+    assert.equal(metrics.isFullRange, false, `${label}: wrapper does not enter full-range mode`);
+    assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records visible day count`);
+    assert.equal(metrics.dayHeaderCount, expectedDays, `${label}: day header count matches range`);
+    assert.ok(metrics.wrapperScrollWidth <= metrics.wrapperClientWidth + 4, `${label}: wrapper does not need horizontal scrolling`);
+    assert.ok(metrics.tableWidth <= metrics.wrapperClientWidth + 4, `${label}: table fits the wrapper`);
+    assert.ok(metrics.minDayWidth > 0, `${label}: date columns are measurable`);
+    assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
+}
+
 async function assertExportFilename(page, range) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
@@ -637,6 +671,19 @@ async function runDesktopFlow(browser, base, session) {
         await assertScheduleExtraViewsRemoved(page);
 
         await assertInvalidRangesStayPut(page, firstHalf.from, firstHalf.to);
+
+        await applyPreset(page, 'second-half');
+        await waitForColumnsToMatchInputs(page);
+        const secondHalf = await readRangeState(page);
+        const secondHalfDays = dateRangeDays(secondHalf.from, secondHalf.to);
+        assert.equal(secondHalf.from.endsWith('-16'), true, '16-last-day preset starts on day 16');
+        assert.ok(secondHalfDays >= 13 && secondHalfDays <= 16, `16-last-day preset day count is ${secondHalfDays}`);
+        assert.equal(secondHalf.dayCount, secondHalfDays, '16-last-day preset renders every day column');
+        assert.match(secondHalf.label, /16[\s\S]+20\d{2}/, 'period label reflects 16-last-day range');
+        await assertFittedScheduleLayout(page, 'desktop second-half schedule', { expectedDays: secondHalfDays });
+        await assertScheduleExtraViewsRemoved(page);
+        await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-second-half.png'), fullPage: true });
+
         const monthRange = await assertSearchPersistence(page);
         const monthDays = dateRangeDays(monthRange.from, monthRange.to);
         await page.locator('#scheduleStaffSearch').fill('');
@@ -652,6 +699,7 @@ async function runDesktopFlow(browser, base, session) {
         return {
             defaultDays: 9,
             firstHalf: `${firstHalf.from}..${firstHalf.to}`,
+            secondHalf: `${secondHalf.from}..${secondHalf.to}`,
             month: `${monthRange.from}..${monthRange.to}`,
             exportFilename: `grafik_${monthRange.from}_${monthRange.to}.csv`,
             headerActions: 'export/print'
@@ -722,7 +770,7 @@ async function run() {
         const narrowMobile = await runMobileFlow(browser, base, session, VIEWPORTS.narrowMobile, 'mobile-360');
 
         console.log(`Live staff schedule smoke OK: ${base}`);
-        console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, month=${desktop.month}`);
+        console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: stubbed window.print`);

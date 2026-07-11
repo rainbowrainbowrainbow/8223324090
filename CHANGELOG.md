@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.88 - Staff Schedule Commercial Freeze
+
+### Staff Schedule / Commercial freeze / (11.07.2026) [codex]
+- **Графік роботи зафіксовано для комерційного використання** - період, header, date inputs, attendance, hours, export і print тепер комітяться атомарно й не можуть показувати дані різних діапазонів.
+- **Multi-profession staff більше не дублюються** - один staff ID має один рядок у `Всі`, один рядок у конкретному department filter, а export/print повторюють той самий visible staff set.
+- **Subgroup і health semantics стали детермінованими** - subgroup визначається primary/relevant profession rules, а staffing health рахує професію конкретної зміни, не всі професії картки співробітника.
+- **Shift modal і narrow mobile доведені до release gate** - history response захищено sequence guard, keyboard/focus flow використовує canonical modal lifecycle, 320-1440 px і dark/light покриті browser smoke.
+- **Regression gate додано для freeze** - staff schedule tests, browser smoke, read-only live smoke і standalone `release:staff-schedule:verify` фіксують stale range, duplicate rows, export parity, active-department-only і loading/error states.
+- **DB schema, migrations, auth/roles, billing, env/secrets, Railway settings і shared CI/release-gate не змінювались** - реліз обмежений Staff Schedule frontend state/UX, tests, smoke, release verifier і version/cache refs.
+
+---
+
 ## v0.78.87 - Staff Schedule Filter Group Fix
 
 ### Staff Schedule / Department filters / (11.07.2026) [codex]

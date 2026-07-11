@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.87",
+  "version": "0.78.88",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Filter Group Fix"
+    "releaseLabel": "Staff Schedule Commercial Freeze"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

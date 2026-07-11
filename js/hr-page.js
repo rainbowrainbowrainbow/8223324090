@@ -204,17 +204,30 @@ function hrPulseNavItems() {
 function renderHrPulseNavButton(item) {
     const switcher = hrPulseSwitcher();
     if (!switcher || typeof switcher.renderTab !== 'function') return '';
-    return switcher.renderTab({ ...item }, {
+    const visualDetails = item.bucket ? HR_PEOPLE_NAV_DETAILS[item.bucket] : null;
+    return switcher.renderTab({ ...visualDetails, ...item }, {
         tag: 'button',
         className: 'hr-tab hr-pulse-card ui-tab-card',
         classPrefix: 'hr-pulse-card',
         attrs: pulseItem => ({
             'data-nav-id': pulseItem.id,
             'data-tab': pulseItem.tab || pulseItem.id,
+            'data-bucket': pulseItem.bucket || '',
             'data-href': pulseItem.href || ''
-        })
+        }),
+        titleTrailing: pulseItem => pulseItem.bucket
+            ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(pulseItem.bucket)}">0</span>`
+            : ''
     });
 }
+
+const HR_PEOPLE_NAV_DETAILS = Object.freeze({
+    workers: Object.freeze({ subtitle: 'Основна команда', icon: 'users', tone: 'people' }),
+    interns: Object.freeze({ subtitle: 'Навчання та адаптація', icon: 'graduation', tone: 'people' }),
+    blacklist: Object.freeze({ subtitle: 'Обмежений доступ', icon: 'shield', tone: 'people' }),
+    reserve: Object.freeze({ subtitle: 'Кадровий резерв', icon: 'reserve', tone: 'people' }),
+    dismissed: Object.freeze({ subtitle: 'Архів профілів', icon: 'archive', tone: 'people' })
+});
 
 const HR_NAV_GROUPS = [
     {
@@ -1371,8 +1384,9 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     const workspaceMode = Boolean(workspaceGroupId);
     const peopleMode = workspaceGroupId === 'people';
     const pulseMode = !workspaceMode && isHrPulseWorkspaceTab(target);
+    const cardMode = pulseMode || peopleMode;
     nav.classList.toggle('hr-nav--structure-only', workspaceMode && !peopleMode);
-    nav.classList.toggle('hr-nav--pulse', pulseMode);
+    nav.classList.toggle('hr-nav--pulse', cardMode);
     nav.classList.toggle('hr-nav--people', peopleMode);
     nav.setAttribute('aria-label', workspaceGroupId === 'people' ? 'Навігація команди' : workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація вакансій' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
     const groups = HR_NAV_GROUPS
@@ -1382,9 +1396,10 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
             items: group.items.filter(isHrNavItemVisible)
         }))
         .filter(group => group.items.length > 0);
+    const groupTitleHidden = workspaceMode || pulseMode ? ' hidden' : '';
     nav.innerHTML = groups.length ? groups.map(group => `
         <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
-            <div class="hr-nav-group-title"${workspaceMode || pulseMode ? ' hidden' : ''}>
+            <div class="hr-nav-group-title"${peopleMode ? ' hidden' : groupTitleHidden}>
                 <span>${escapeHtml(group.label)}</span>
                 ${group.note ? `<small>${escapeHtml(group.note)}</small>` : ''}
             </div>
@@ -1392,7 +1407,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                 ${group.items.map(item => {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
-                    if (pulseMode) return renderHrPulseNavButton(item);
+                    if (cardMode) return renderHrPulseNavButton(item);
                     const content = `${escapeHtml(item.label)}${countBadge}`;
                     return `
                     <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${content}</button>

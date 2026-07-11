@@ -4,6 +4,13 @@
 
 ---
 
+## v0.78.90 - HR Team Icon Navigation
+
+### HR / Команда / (11.07.2026) [codex]
+- Кнопки категорій команди переведено на картковий стиль «Пульсу компанії» з іконками, короткими підписами та лічильниками.
+
+---
+
 ## v0.78.89 - Staff Schedule Monthly View Fit
 
 ### Staff Schedule / Monthly layout / (11.07.2026) [codex]

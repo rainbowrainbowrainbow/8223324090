@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.2 - Безпечний запуск CRM без pre-auth запитів
+
+### Release / Versioning / (13.07.2026) [codex]
+- **Timeline auth gate** — resize, business-context та інші ранні render triggers більше не запускають bookings/lines API на login screen.
+- **Protected deep links** — автоматичне відкриття панелей виконується лише після успішної перевірки сесії.
+- **Live regression fix** — прибрано 401/error console loop, знайдений під час production logout/reload QA v0.79.1.
+
+---
+
 ## v0.79.1 - Безпечний Service Worker та відновлення сесії
 
 ### Release / Versioning / (13.07.2026) [codex]

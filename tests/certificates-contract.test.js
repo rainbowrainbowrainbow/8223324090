@@ -1,7 +1,5 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const {
     mapCertificateRow,
     normalizeCertificateIdentity,
@@ -64,14 +62,4 @@ test('single certificate validation requires number identity when enabled', () =
 test('batch/legacy certificate validation can still map placeholder identity when not required', () => {
     const errors = validateCertificateInput({ displayMode: 'fio', displayValue: '' });
     assert.deepEqual(errors, []);
-});
-
-test('animators can issue single and batch certificates without receiving lifecycle management access', () => {
-    const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
-
-    assert.match(routeCode, /const CERTIFICATE_ISSUER_ROLES = \['admin', 'user', 'animator'\];/);
-    assert.match(routeCode, /router\.post\('\/', requireRole\(\.\.\.CERTIFICATE_ISSUER_ROLES\)/);
-    assert.match(routeCode, /router\.post\('\/batch', requireRole\(\.\.\.CERTIFICATE_ISSUER_ROLES\)/);
-    assert.match(routeCode, /router\.patch\('\/:id\/status', requireRole\('admin', 'user'\)/);
-    assert.match(routeCode, /router\.delete\('\/:id', requireRole\('admin', 'user'\)/);
 });

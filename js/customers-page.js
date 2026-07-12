@@ -1574,9 +1574,7 @@ async function resetCustomerFilters() {
         const el = document.getElementById(id);
         if (el) el.value = value;
     });
-    await fetchCustomers();
-    renderCustomerTable();
-    renderPagination();
+    await reloadCustomers();
 }
 
 function normalizeCustomerTagCatalogItem(item = {}) {
@@ -1870,6 +1868,14 @@ async function fetchCustomers() {
     }
 }
 
+async function reloadCustomers() {
+    const applied = await fetchCustomers();
+    if (!applied) return false;
+    renderCustomerTable();
+    renderPagination();
+    return true;
+}
+
 async function fetchStats() {
     const token = localStorage.getItem('pzp_token');
     const res = await fetch(customerApiUrl('/api/customers/stats'), {
@@ -2055,9 +2061,7 @@ function renderPagination() {
     el.querySelectorAll('button[data-page]').forEach(btn => {
         btn.addEventListener('click', async () => {
             CrmState.page = parseInt(btn.dataset.page);
-            await fetchCustomers();
-            renderCustomerTable();
-            renderPagination();
+            await reloadCustomers();
         });
     });
 }
@@ -3040,11 +3044,13 @@ function switchTab(tab) {
 // ==========================================
 
 async function refreshData() {
-    await Promise.all([fetchCustomers(), fetchStats(), fetchCustomerTags()]);
+    const [customersApplied] = await Promise.all([fetchCustomers(), fetchStats(), fetchCustomerTags()]);
     renderTagFilters();
     renderStats();
-    renderCustomerTable();
-    renderPagination();
+    if (customersApplied) {
+        renderCustomerTable();
+        renderPagination();
+    }
     syncCustomerReadOnlyUi();
     if (CrmState.activeTab === 'rfm') {
         await fetchRFM();
@@ -3143,42 +3149,32 @@ async function initPage() {
         searchTimeout = setTimeout(async () => {
             CrmState.filters.search = e.target.value;
             CrmState.page = 1;
-            await fetchCustomers();
-            renderCustomerTable();
-            renderPagination();
+            await reloadCustomers();
         }, 300);
     });
 
     document.getElementById('sourceFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.source = e.target.value;
         CrmState.page = 1;
-        await fetchCustomers();
-        renderCustomerTable();
-        renderPagination();
+        await reloadCustomers();
     });
 
     document.getElementById('sortFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.sortBy = e.target.value;
         CrmState.page = 1;
-        await fetchCustomers();
-        renderCustomerTable();
-        renderPagination();
+        await reloadCustomers();
     });
 
     document.getElementById('dateFromFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.dateFrom = e.target.value;
         CrmState.page = 1;
-        await fetchCustomers();
-        renderCustomerTable();
-        renderPagination();
+        await reloadCustomers();
     });
 
     document.getElementById('dateToFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.dateTo = e.target.value;
         CrmState.page = 1;
-        await fetchCustomers();
-        renderCustomerTable();
-        renderPagination();
+        await reloadCustomers();
     });
 
     // Add customer
@@ -3204,9 +3200,7 @@ async function initPage() {
     document.getElementById('tagFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.tag = e.target.value;
         CrmState.page = 1;
-        await fetchCustomers();
-        renderCustomerTable();
-        renderPagination();
+        await reloadCustomers();
     });
     document.addEventListener('click', async (e) => {
         const clear = e.target.closest('[data-explain-clear="customers"]');

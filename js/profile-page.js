@@ -20,6 +20,8 @@ let leaderboardData = null;
 let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'professions';
+let profileTabRequestSeq = 0;
+const profileResourceStates = new Map();
 let activeProfessionKey = null;
 let profileMaterialsState = {
     key: null,
@@ -1317,29 +1319,67 @@ async function loadProfileData(userId) {
     await ensureProfileTabData(activeTab);
 }
 
+function getProfileResourceState(key) {
+    return profileResourceStates.get(key) || { status: 'unloaded', promise: null, value: undefined, error: null };
+}
+
+function loadProfileResource(key, loader) {
+    const current = getProfileResourceState(key);
+    if (current.status === 'loaded') return Promise.resolve(current.value);
+    if (current.status === 'loading') return current.promise;
+
+    const promise = Promise.resolve()
+        .then(loader)
+        .then(value => {
+            profileResourceStates.set(key, { status: 'loaded', promise: null, value, error: null });
+            return value;
+        })
+        .catch(error => {
+            profileResourceStates.set(key, { status: 'error', promise: null, value: undefined, error });
+            throw error;
+        });
+    profileResourceStates.set(key, { status: 'loading', promise, value: undefined, error: null });
+    return promise;
+}
+
 async function ensureProfileTabData(tab = activeTab) {
     if (!isOwnProfile) {
-        if (tab === 'achievements' && !myAchievements.length) myAchievements = await apiGet('/achievements') || [];
+        if (tab === 'achievements') {
+            myAchievements = await loadProfileResource('achievements', async () => await apiGet('/achievements') || []);
+        }
         return;
     }
-    if (['inventory', 'shop'].includes(tab) && (!walletData || !myInventory.length)) {
-        const [wallet, inventory] = await Promise.all([apiGet('/wallet'), apiGet('/inventory')]);
-        walletData = wallet;
-        myInventory = inventory || [];
+    if (['inventory', 'shop'].includes(tab)) {
+        const inventoryResource = await loadProfileResource('inventory', async () => {
+            const [wallet, inventory] = await Promise.all([apiGet('/wallet'), apiGet('/inventory')]);
+            return { wallet, inventory: inventory || [] };
+        });
+        walletData = inventoryResource.wallet;
+        myInventory = inventoryResource.inventory;
     }
-    if (tab === 'achievements' && !myAchievements.length) myAchievements = await apiGet('/achievements') || [];
-    if (['quests', 'titles'].includes(tab) && (!questsData || !titlesData || !allStreaks)) {
-        const [quests, titles, streaks] = await Promise.all([apiGet('/quests/daily'), apiGet('/quests/titles'), apiGet('/streaks')]);
-        questsData = quests;
-        titlesData = titles;
-        allStreaks = streaks;
+    if (tab === 'achievements') {
+        myAchievements = await loadProfileResource('achievements', async () => await apiGet('/achievements') || []);
     }
-    if (isProfileTaskProjectionTab(tab) && !myCabinetData) {
-        await loadMyCabinetProjection();
-        applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
-        await refreshCabinetPulseCounts();
+    if (['quests', 'titles'].includes(tab)) {
+        const questResource = await loadProfileResource('quests', async () => {
+            const [quests, titles, streaks] = await Promise.all([apiGet('/quests/daily'), apiGet('/quests/titles'), apiGet('/streaks')]);
+            return { quests, titles, streaks };
+        });
+        questsData = questResource.quests;
+        titlesData = questResource.titles;
+        allStreaks = questResource.streaks;
     }
-    if (tab === 'settings' && !profileSecurityData) profileSecurityData = await apiGet('/auth/security');
+    if (isProfileTaskProjectionTab(tab)) {
+        await loadProfileResource('cabinet', async () => {
+            await loadMyCabinetProjection();
+            applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
+            await refreshCabinetPulseCounts();
+            return myCabinetData;
+        });
+    }
+    if (tab === 'settings') {
+        profileSecurityData = await loadProfileResource('security', () => apiGet('/auth/security'));
+    }
 }
 
 function profileCockpitWidgetDef(id) {
@@ -1769,10 +1809,12 @@ function renderProfile() {
 
 async function switchTab(tab, options = {}) {
     tab = normalizeProfileTab(tab);
+    const requestSeq = ++profileTabRequestSeq;
     activeTab = tab;
     if (!options.skipUrl) syncProfileTabToUrl(tab);
     const locked = profileTabLock(tab);
     if (!locked) await ensureProfileTabData(tab);
+    if (requestSeq !== profileTabRequestSeq || activeTab !== tab) return false;
     // Lazy load data for tabs that need it
     if (!locked && tab === 'shop' && shopItems.length === 0) await loadShopItems();
     if (!locked && tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
@@ -1780,6 +1822,7 @@ async function switchTab(tab, options = {}) {
     if (!locked && tab === 'teams' && !teamsData) await loadTeamsData();
     if (!locked && tab === 'referral' && !referralData) await loadReferralData();
     if (!locked && tab === 'materials') await loadProfileWorkMaterials(profileActiveProfessionEntry().key);
+    if (requestSeq !== profileTabRequestSeq || activeTab !== tab) return false;
 
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
@@ -1805,6 +1848,7 @@ async function switchTab(tab, options = {}) {
     document.querySelectorAll('.profile-soon-menu-item').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.profileTab === tab);
     });
+    return true;
 }
 
 async function setProfileProfessionContext(key) {

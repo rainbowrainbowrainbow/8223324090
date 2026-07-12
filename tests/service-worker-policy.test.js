@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {
     API_CACHE_ALLOWLIST,
+    APP_SHELL_POLICY,
     MUTATION_QUEUE_ALLOWLIST,
     SENSITIVE_API_PATH_PREFIXES,
     SERVICE_WORKER_POLICY,
@@ -18,24 +19,35 @@ function loadPolicy(options = {}) {
     const listeners = {};
     const deletedCaches = [];
     const deletedDatabases = [];
+    const appShellAdds = [];
+    const cachePuts = [];
+    const openedCaches = [];
+    let skipWaitingCalls = 0;
+    let claimCalls = 0;
     const context = {
         console,
         URL,
         Request,
         Response,
-        fetch: async () => new Response('{}', { status: 200 }),
+        fetch: options.fetch || (async () => new Response('{}', { status: 200 })),
         caches: {
             async keys() { return options.cacheKeys || []; },
-            async open() {
+            async open(name) {
+                openedCaches.push(name);
                 return {
-                    async addAll() {},
+                    async addAll(urls) {
+                        appShellAdds.push([...urls]);
+                        if (options.addAllError) throw options.addAllError;
+                    },
                     async add() {},
-                    async put() {},
+                    async put(request) { cachePuts.push(request); },
                     async delete() {},
                     async match() { return null; }
                 };
             },
-            async match() { return null; },
+            async match(request) {
+                return options.cacheMatch ? options.cacheMatch(request) : null;
+            },
             async delete(name) {
                 deletedCaches.push(name);
                 return true;
@@ -52,10 +64,10 @@ function loadPolicy(options = {}) {
         self: {
             location: { origin: 'https://event-genix.test' },
             addEventListener(type, handler) { listeners[type] = handler; },
-            skipWaiting() {},
+            skipWaiting() { skipWaitingCalls += 1; },
             registration: { showNotification: async () => {} },
             clients: {
-                claim: async () => {},
+                claim: async () => { claimCalls += 1; },
                 matchAll: async () => [],
                 openWindow: async () => {}
             }
@@ -71,6 +83,10 @@ function loadPolicy(options = {}) {
             isApiCacheAllowed,
             isMutationQueueAllowed,
             clearPrivateCaches,
+            cacheFirstWithNetwork,
+            networkFirstPage,
+            APP_SHELL,
+            OFFLINE_FALLBACK_URL,
             OFFLINE_DB_NAME,
             __deletedCaches: ${JSON.stringify(null)},
             __deletedDatabases: ${JSON.stringify(null)}
@@ -80,6 +96,11 @@ function loadPolicy(options = {}) {
     context.self.__policy.__deletedCaches = deletedCaches;
     context.self.__policy.__deletedDatabases = deletedDatabases;
     context.self.__policy.__listeners = listeners;
+    context.self.__policy.__appShellAdds = appShellAdds;
+    context.self.__policy.__cachePuts = cachePuts;
+    context.self.__policy.__openedCaches = openedCaches;
+    context.self.__policy.__skipWaitingCalls = () => skipWaitingCalls;
+    context.self.__policy.__claimCalls = () => claimCalls;
     return context.self.__policy;
 }
 
@@ -89,6 +110,12 @@ function get(url, headers = {}) {
 
 function post(url) {
     return new Request(`https://event-genix.test${url}`, { method: 'POST' });
+}
+
+async function waitForWorkerEvent(listener) {
+    let pending;
+    listener({ waitUntil(promise) { pending = promise; } });
+    await pending;
 }
 
 describe('Service Worker cache safety policy', () => {
@@ -129,6 +156,79 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(policy.isMutationQueueAllowed(post('/api/bookings')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/finance/transactions')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/chat/messages')), false);
+    });
+
+    it('cold install precaches only the reviewed minimal offline shell', async () => {
+        const runtimePolicy = loadPolicy();
+        await waitForWorkerEvent(runtimePolicy.__listeners.install);
+
+        assert.deepEqual(
+            JSON.parse(JSON.stringify(runtimePolicy.APP_SHELL)),
+            APP_SHELL_POLICY.installAssets
+        );
+        assert.deepEqual(runtimePolicy.__appShellAdds, [APP_SHELL_POLICY.installAssets]);
+        assert.equal(runtimePolicy.APP_SHELL.filter(url => url === '/index.html').length, 1);
+        assert.equal(runtimePolicy.APP_SHELL.includes('/'), false);
+        assert.equal(runtimePolicy.APP_SHELL.some(url => url.startsWith('/js/')), false);
+        assert.equal(runtimePolicy.APP_SHELL.some(url => url.startsWith('/images/')), false);
+        assert.equal(runtimePolicy.OFFLINE_FALLBACK_URL, APP_SHELL_POLICY.offlineFallbackUrl);
+        assert.equal(runtimePolicy.__skipWaitingCalls(), 1);
+    });
+
+    it('cleans obsolete caches during an update and claims clients', async () => {
+        const runtimePolicy = loadPolicy({
+            cacheKeys: [
+                'event-genix-v0.0.0',
+                'event-genix-api-v0.0.0',
+                'unrelated-cache'
+            ]
+        });
+
+        await waitForWorkerEvent(runtimePolicy.__listeners.activate);
+
+        assert.deepEqual(runtimePolicy.__deletedCaches.sort(), [
+            'event-genix-api-v0.0.0',
+            'event-genix-v0.0.0',
+            'unrelated-cache'
+        ]);
+        assert.equal(runtimePolicy.__claimCalls(), 1);
+    });
+
+    it('uses one canonical cache key for root and index navigations', async () => {
+        const runtimePolicy = loadPolicy();
+        await runtimePolicy.networkFirstPage(get('/'));
+
+        assert.equal(runtimePolicy.__cachePuts.length, 1);
+        assert.equal(new URL(runtimePolicy.__cachePuts[0].url).pathname, '/index.html');
+    });
+
+    it('keeps booking, timeline, and images out of install while allowing runtime static cache', async () => {
+        const runtimePolicy = loadPolicy();
+
+        await runtimePolicy.cacheFirstWithNetwork(get('/js/booking.js'));
+        await runtimePolicy.cacheFirstWithNetwork(get('/js/timeline.js'));
+        await runtimePolicy.cacheFirstWithNetwork(get('/images/logo-new.png'));
+
+        assert.deepEqual(
+            runtimePolicy.__cachePuts.map(request => new URL(request.url).pathname),
+            ['/js/booking.js', '/js/timeline.js', '/images/logo-new.png']
+        );
+    });
+
+    it('returns the canonical shell as an offline navigation fallback', async () => {
+        const runtimePolicy = loadPolicy({
+            fetch: async () => { throw new Error('offline'); },
+            cacheMatch(request) {
+                const value = typeof request === 'string' ? request : request.url;
+                return new URL(value, 'https://event-genix.test').pathname === '/index.html'
+                    ? new Response('<main>Offline shell</main>', { status: 200 })
+                    : null;
+            }
+        });
+
+        const response = await runtimePolicy.networkFirstPage(get('/reports.html'));
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), '<main>Offline shell</main>');
     });
 
     it('clears private API caches and the legacy offline DB on explicit cleanup', async () => {

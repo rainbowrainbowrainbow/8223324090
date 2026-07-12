@@ -11,6 +11,7 @@ const path = require('path');
 const vm = require('vm');
 const {
     API_CACHE_ALLOWLIST,
+    APP_SHELL_POLICY,
     MUTATION_QUEUE_ALLOWLIST,
     SENSITIVE_API_PATH_PREFIXES,
     SERVICE_WORKER_POLICY,
@@ -106,6 +107,8 @@ function loadRuntimePolicy(swSource) {
     vm.runInContext(`${swSource}
         self.__policy = {
             API_CACHE_ALLOWLIST,
+            APP_SHELL,
+            OFFLINE_FALLBACK_URL,
             SENSITIVE_API_PATH_PREFIXES,
             MUTATION_QUEUE_ALLOWLIST,
             CACHE_NAME,
@@ -156,6 +159,10 @@ ensureDocMentions(doc, SERVICE_WORKER_POLICY.invalidationMessage, 'service worke
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.offlineDatabaseName, 'service worker policy docs');
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.apiPolicy, 'service worker policy docs');
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.mutationReplayPolicy, 'service worker policy docs');
+ensureDocMentions(doc, 'APP_SHELL_POLICY', 'service worker policy docs');
+ensureDocMentions(doc, APP_SHELL_POLICY.offlineFallbackUrl, 'service worker policy docs');
+ensureDocMentions(doc, APP_SHELL_POLICY.navigationStrategy, 'service worker policy docs');
+ensureDocMentions(doc, APP_SHELL_POLICY.staticRuntimeStrategy, 'service worker policy docs');
 
 for (const entry of API_CACHE_ALLOWLIST) {
     const label = `API cache allowlist ${entry.path}`;
@@ -174,13 +181,30 @@ if (MUTATION_QUEUE_ALLOWLIST.length !== 0) {
     fail('MUTATION_QUEUE_ALLOWLIST must remain empty until a reviewed endpoint is documented with conflict handling');
 }
 
+if (!Array.isArray(APP_SHELL_POLICY.installAssets) || APP_SHELL_POLICY.installAssets.length === 0) {
+    fail('APP_SHELL_POLICY.installAssets must define the reviewed minimal offline shell');
+}
+if (APP_SHELL_POLICY.installAssets.includes('/')) {
+    fail('APP_SHELL_POLICY.installAssets must not precache / alongside /index.html');
+}
+if (APP_SHELL_POLICY.installAssets.filter(asset => asset === APP_SHELL_POLICY.offlineFallbackUrl).length !== 1) {
+    fail('APP_SHELL_POLICY must contain exactly one canonical offline fallback document');
+}
+if (APP_SHELL_POLICY.installAssets.some(asset => asset.startsWith('/js/') || asset.startsWith('/images/'))) {
+    fail('APP_SHELL_POLICY must keep JavaScript and images out of install precache');
+}
+
 if (runtime) {
     compareJson('runtime API cache allowlist', runtime.API_CACHE_ALLOWLIST, runtimeApiAllowlist());
+    compareJson('runtime app shell', runtime.APP_SHELL, APP_SHELL_POLICY.installAssets);
     compareJson('runtime sensitive API prefixes', runtime.SENSITIVE_API_PATH_PREFIXES, SENSITIVE_API_PATH_PREFIXES);
     compareJson('runtime mutation queue allowlist', runtime.MUTATION_QUEUE_ALLOWLIST, MUTATION_QUEUE_ALLOWLIST);
 
     if (runtime.OFFLINE_DB_NAME !== SERVICE_WORKER_POLICY.offlineDatabaseName) {
         fail(`OFFLINE_DB_NAME mismatch; actual ${runtime.OFFLINE_DB_NAME}; expected ${SERVICE_WORKER_POLICY.offlineDatabaseName}`);
+    }
+    if (runtime.OFFLINE_FALLBACK_URL !== APP_SHELL_POLICY.offlineFallbackUrl) {
+        fail(`OFFLINE_FALLBACK_URL mismatch; actual ${runtime.OFFLINE_FALLBACK_URL}; expected ${APP_SHELL_POLICY.offlineFallbackUrl}`);
     }
 
     for (const entry of runtimeApiAllowlist()) {

@@ -22,61 +22,18 @@
 const CACHE_NAME = 'event-genix-v0.78.101';
 const API_CACHE_NAME = 'event-genix-api-v0.78.101';
 
-// App Shell — static assets to pre-cache on install
+// Minimal offline shell. Large CRM modules and images use runtime cache only
+// after a client actually requests them.
+const OFFLINE_FALLBACK_URL = '/index.html';
 const APP_SHELL = [
-    '/',
-    '/index.html',
+    OFFLINE_FALLBACK_URL,
     '/manifest.json',
-    // CSS modules (22 files)
+    // Login, layout, dark mode, and mobile shell only.
     '/css/base.css',
     '/css/auth.css',
     '/css/layout.css',
-    '/css/sidebar-aurora.css',
-    '/css/sidebar-aurora-shell.css',
-    '/css/sidebar-aurora-cockpit.css',
-    '/css/sidebar-aurora-design-system.css',
-    '/css/sidebar-aurora-today.css',
-    '/css/sidebar-aurora-legacy-shell.css',
-    '/css/sidebar-aurora-compact.css',
-    '/css/sidebar-aurora-identity.css',
-    '/css/sidebar-aurora-enterprise.css',
-    '/css/sidebar-aurora-rail.css',
-    '/css/sidebar-aurora-rhythm.css',
-    '/css/sidebar-aurora-profile.css',
-    '/css/timeline.css',
-    '/css/panel.css',
-    '/css/modals.css',
-    '/css/controls.css',
-    '/css/features.css',
     '/css/dark-mode.css',
-    '/css/responsive.css',
-    // JS modules (8 original + 4 timeline helpers)
-    '/js/kitchen-menu-images.js',
-    '/js/config.js',
-    '/js/api.js',
-    '/js/ui.js',
-    '/js/auth.js',
-    '/js/timeline-banquet-inspector-helpers.js',
-    '/js/timeline.js',
-    '/js/booking-activity-schedule.js',
-    '/js/booking.js',
-    '/js/settings.js',
-    '/js/app.js',
-    '/js/ws.js',
-    '/js/offline.js',
-    // Images — logo, favicons, program icons
-    '/images/logo-new.png',
-    '/images/favicon-192.png',
-    '/images/favicon-512.png',
-    '/images/favicon.svg',
-    '/images/apple-touch-icon.png',
-    '/images/empty-state.png',
-    '/images/icon-quest.png',
-    '/images/icon-animation.png',
-    '/images/icon-show.png',
-    '/images/icon-photo.png',
-    '/images/icon-masterclass.png',
-    '/images/icon-pinata.png'
+    '/css/responsive.css'
 ];
 
 const API_CACHE_PREFIX = 'event-genix-api-';
@@ -271,7 +228,7 @@ async function cacheFirstWithNetwork(request) {
     } catch (err) {
         // If both cache and network fail, return offline fallback for navigation
         if (request.mode === 'navigate') {
-            const fallback = await caches.match('/index.html');
+            const fallback = await caches.match(OFFLINE_FALLBACK_URL);
             if (fallback) return fallback;
         }
         return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
@@ -308,14 +265,18 @@ async function networkFirstPage(request) {
         const networkResponse = await fetch(request);
         if (networkResponse.ok) {
             const cache = await caches.open(CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            const pathname = new URL(request.url).pathname;
+            const cacheKey = pathname === '/' || pathname === OFFLINE_FALLBACK_URL
+                ? new Request(new URL(OFFLINE_FALLBACK_URL, self.location.origin).toString())
+                : request;
+            cache.put(cacheKey, networkResponse.clone());
         }
         return networkResponse;
     } catch (err) {
         const cachedResponse = await caches.match(request);
         if (cachedResponse) return cachedResponse;
 
-        const shell = await caches.match('/index.html');
+        const shell = await caches.match(OFFLINE_FALLBACK_URL);
         if (shell) return shell;
 
         return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });

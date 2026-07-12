@@ -110,17 +110,10 @@ this document, and `npm run test:ui` coverage in the same pack.
 
 ## Service Worker App-Shell CSS
 
-The Service Worker currently pre-caches this CSS subset from `sw.js`:
-
-`css/base.css`, `css/auth.css`, `css/layout.css`, `css/sidebar-aurora.css`,
-`css/sidebar-aurora-shell.css`, `css/sidebar-aurora-cockpit.css`,
-`css/sidebar-aurora-design-system.css`, `css/sidebar-aurora-today.css`,
-`css/sidebar-aurora-legacy-shell.css`, `css/sidebar-aurora-compact.css`,
-`css/sidebar-aurora-identity.css`, `css/sidebar-aurora-enterprise.css`,
-`css/sidebar-aurora-rail.css`, `css/sidebar-aurora-rhythm.css`,
-`css/sidebar-aurora-profile.css`, `css/timeline.css`, `css/panel.css`,
-`css/modals.css`, `css/controls.css`, `css/features.css`,
-`css/dark-mode.css`, and `css/responsive.css`.
+The Service Worker currently pre-caches only the minimal offline shell CSS
+subset from `sw.js`: `css/base.css`, `css/auth.css`, `css/layout.css`,
+`css/dark-mode.css`, and `css/responsive.css`. Page, timeline, sidebar, and
+feature CSS is cache-first only after a client requests it at runtime.
 
 Changing that list is a cache behavior change. Update
 `config/cssSurface.js`, this document, and focused verification in the same

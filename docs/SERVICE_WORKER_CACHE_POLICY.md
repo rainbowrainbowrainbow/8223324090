@@ -12,7 +12,8 @@ Event Genix is an authenticated CRM. Private API data must not be served from
 stale Cache Storage by default, and failed mutations must not be replayed later
 unless a specific endpoint has reviewed conflict behavior.
 
-The rule going forward is simple: `sw.js` may cache the static app shell, but
+The rule going forward is simple: `sw.js` pre-caches only a minimal offline
+shell, while large static assets are cached only after a client requests them.
 API GET caching is `default-deny`. Offline mutation replay is
 `disabled-until-reviewed`.
 
@@ -33,6 +34,21 @@ messages for private cache cleanup.
 and delete both the active `event-genix-api-*` Cache Storage namespace and the
 legacy `park-offline` database. This keeps logout/account switches from
 leaving stale private API responses or old offline mutations behind.
+
+## Offline Shell and Static Assets
+
+`APP_SHELL_POLICY` in `config/serviceWorkerPolicy.js` is the reviewed install
+manifest. It contains only `/index.html`, `/manifest.json`, and the base,
+auth, layout, dark-mode, and responsive CSS required to render a useful
+offline login shell. `/index.html` is the sole canonical document key: `/` is
+not precached, and a successful root navigation is written under the same
+`/index.html` cache key.
+
+Navigations stay `network-first`. When offline, they fall back to the cached
+`/index.html` shell. Booking/timeline JavaScript, other CRM modules, logos,
+favicons, and optional program images are not install-time assets; the normal
+static `cache-first-after-request` path may retain them only after the browser
+has requested them during regular use.
 
 ## API GET Cache Allowlist
 
@@ -79,6 +95,9 @@ This pack is considered done when all of these remain true:
 - `npm test` includes `npm run check:service-worker-policy`.
 - New Service Worker API cache entries update `config/serviceWorkerPolicy.js`,
   `sw.js`, `docs/SERVICE_WORKER_CACHE_POLICY.md`, and focused tests in the same
+  commit.
+- App-shell changes update `APP_SHELL_POLICY`, `sw.js`, this document,
+  `config/cssSurface.js`, `docs/CSS_SURFACE.md`, and focused tests in the same
   commit.
 - `MUTATION_QUEUE_ALLOWLIST` remains empty unless a reviewed endpoint has
   conflict handling, idempotency, and tests.

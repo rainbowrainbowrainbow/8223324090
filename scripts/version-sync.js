@@ -481,6 +481,7 @@ syncFirstScreenLabels('dashboard.html', version, releaseLabel);
 syncServiceWorker(version);
 syncCssImportVersions('css/assistant-rail.css', version);
 syncCssImportVersions('css/pages.css', version);
+syncCssImportVersions('css/pages-shell.css', version);
 syncCssImportVersions('css/sidebar-aurora.css', version);
 
 for (const file of collectVersionedAssetFiles()) {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.102 - Продуктивність: швидший старт CRM
+
+### Release / Versioning / (12.07.2026) [codex]
+- **Безпечне бронювання** - customer-значення більше не потрапляють у inline JavaScript, а copy-actions працюють з апострофами й спеціальними символами.
+- **Leads і Tasks** - додано посторінкове завантаження без прихованого ліміту в 500 записів, зі збереженням views, counts і deep links.
+- **Поступове завантаження** - Center, Profile, Reports і Customers зменшують початкові запити та не дозволяють застарілим відповідям перезаписати актуальний стан.
+- **Швидший cold start** - changelog і сторінкові CSS завантажуються за потреби; Service Worker precache містить лише мінімальний offline shell.
+
+---
+
 ## v0.78.101 - HR write-QA: date normalization
 
 ### HR / Live write-QA / (12.07.2026) [codex]

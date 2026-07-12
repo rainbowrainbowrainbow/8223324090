@@ -19,8 +19,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v0.78.101';
-const API_CACHE_NAME = 'event-genix-api-v0.78.101';
+const CACHE_NAME = 'event-genix-v0.78.102';
+const API_CACHE_NAME = 'event-genix-api-v0.78.102';
 
 // Minimal offline shell. Large CRM modules and images use runtime cache only
 // after a client actually requests them.

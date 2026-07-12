@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.98",
+  "version": "0.78.99",
   "eventGenix": {
-    "releaseLabel": "HR Команда: контрольована картка працівника"
+    "releaseLabel": "HR Команда: CI та write-QA"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

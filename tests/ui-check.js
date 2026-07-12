@@ -6368,6 +6368,7 @@ check('HR Team readiness uses honest photo, Face ID, CRM, and actionable setup f
     hrCode.includes('const HR_TEAM_SETUP_FILTERS')
     && hrCode.includes("id: 'missing_profile_photo'")
     && hrCode.includes("id: 'missing_face'")
+    && hrCode.includes("label: 'Без камери / Face ID'")
     && hrCode.includes("id: 'missing_crm'")
     && hrCode.includes("id: 'missing_structure'")
     && hrCode.includes("id: 'training_zero'")

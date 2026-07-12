@@ -53,9 +53,11 @@ const HARNESS_CODE = String.raw`
     ]);
     const pendingProfiles = new Map();
     const pendingHistory = new Map();
+    const pendingLazyTabs = new Map();
     const requestCounts = new Map();
     let holdProfileLoads = false;
     let holdHistoryLoads = false;
+    let holdLazyTabLoads = false;
 
     function profileResponse(id) {
         const profile = staffProfiles.get(Number(id));
@@ -88,6 +90,19 @@ const HARNESS_CODE = String.raw`
         const promise = new Promise(done => { resolve = done; });
         pendingHistory.set(Number(id), { promise, resolve });
         return promise;
+    }
+
+    function deferredLazyTab(requestPath) {
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        pendingLazyTabs.set(String(requestPath), { promise, resolve });
+        return promise;
+    }
+
+    function lazyTabResponse(requestPath) {
+        return String(requestPath).includes('/offboarding-readiness')
+            ? { success: true, data: {} }
+            : { success: true, data: [] };
     }
 
     function setupDom() {
@@ -180,11 +195,13 @@ const HARNESS_CODE = String.raw`
         if (String(path).includes('/lifecycle-checklist')) {
             return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 0, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 0, open_payroll_count: 0 }, sections: [] } };
         }
-        if (String(path).includes('/documents')) return { success: true, data: [] };
-        if (String(path).includes('/medical-book')) return { success: true, data: [] };
-        if (String(path).includes('/resources')) return { success: true, data: [] };
-        if (String(path).includes('/offboarding-readiness')) return { success: true, data: {} };
-        if (String(path).includes('/offboarding')) return { success: true, data: [] };
+        if (String(path).includes('/documents')
+            || String(path).includes('/medical-book')
+            || String(path).includes('/resources')
+            || String(path).includes('/offboarding-readiness')
+            || String(path).includes('/offboarding')) {
+            return holdLazyTabLoads ? deferredLazyTab(requestPath) : lazyTabResponse(requestPath);
+        }
         if (String(path).includes('/role-assignments')) return { success: true, data: [] };
         if (String(path).includes('/shift-preferences')) return { success: true, data: [] };
         if (String(path).includes('/payroll-scheme')) return { success: true, data: { fallback_hourly_rate: 100, fallback_rate_unit: 'hour' } };
@@ -205,6 +222,8 @@ const HARNESS_CODE = String.raw`
             requestCounts.clear();
             pendingHistory.clear();
             holdHistoryLoads = false;
+            pendingLazyTabs.clear();
+            holdLazyTabLoads = false;
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
             activePeopleBucket = 'workers';
@@ -260,6 +279,21 @@ const HARNESS_CODE = String.raw`
         },
         releaseHistoryHold() {
             holdHistoryLoads = false;
+        },
+        enableLazyTabHold() {
+            holdLazyTabLoads = true;
+            pendingLazyTabs.clear();
+        },
+        resolveLazyTab(fragment) {
+            Array.from(pendingLazyTabs.entries())
+                .filter(([requestPath]) => requestPath.includes(String(fragment)))
+                .forEach(([requestPath, pending]) => {
+                    pending.resolve(lazyTabResponse(requestPath));
+                    pendingLazyTabs.delete(requestPath);
+                });
+        },
+        releaseLazyTabHold() {
+            holdLazyTabLoads = false;
         }
     };
 })();
@@ -331,8 +365,14 @@ async function assertTeamNavigation(page) {
         assert.equal(await activeChip.getAttribute('aria-pressed'), 'false', `${filterId} clear action resets aria state`);
     }
 
+    assert.equal(
+        await page.locator('.hr-setup-filter-chip').filter({ hasText: 'Без камери / Face ID' }).count(),
+        1,
+        'Face ID setup filter exposes its complete user-facing meaning'
+    );
+
     await page.evaluate(() => window.__hrTeamBrowserSmoke.setSetupFilter('missing_face'));
-    assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'setup filter Без камери filters to matching card');
+    assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'setup filter Без камери / Face ID filters to matching card');
     assert.equal(await page.locator('#teamGrid').evaluate(el => el.dataset.peopleMode), 'setup', 'setup filter uses global setup render mode');
     assert.equal(await page.locator('.hr-setup-filter-chip[aria-pressed="true"]').filter({ hasText: 'Без камери' }).count(), 1, 'active setup filter has aria-pressed');
     await page.evaluate(() => window.__hrTeamBrowserSmoke.search('not-a-real-profile'));
@@ -497,6 +537,44 @@ async function assertHistoryRaceAndLazyTabs(page) {
     assert.equal(historyRequestsAfterReopen, historyRequestsAfterFirstOpen, 'reopening a loaded tab does not duplicate its request');
 }
 
+async function assertIndependentLazyTabRaces(page) {
+    await openProfile(page, 1);
+    await page.evaluate(() => {
+        window.__hrTeamBrowserSmoke.enableLazyTabHold();
+        window.__hrTeamBrowserSmoke.startTab('resources');
+    });
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents') === 1);
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('offboarding'));
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding') >= 2);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveLazyTab('/offboarding'));
+    await page.waitForFunction(() => !document.getElementById('editStaffOffboarding')?.textContent.includes('завантажується'));
+
+    await page.evaluate(() => {
+        window.__hrTeamBrowserSmoke.resolveLazyTab('/documents');
+        window.__hrTeamBrowserSmoke.resolveLazyTab('/medical-book');
+        window.__hrTeamBrowserSmoke.resolveLazyTab('/resources');
+        window.__hrTeamBrowserSmoke.releaseLazyTabHold();
+    });
+    await page.waitForFunction(() => [
+        document.getElementById('editStaffDocuments'),
+        document.getElementById('editMedicalBookList'),
+        document.getElementById('editStaffResources')
+    ].every(root => root && !root.textContent.includes('завантажується')));
+
+    const requestsBeforeReopen = await page.evaluate(() => ({
+        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents'),
+        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding')
+    }));
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.openTab('resources'));
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.openTab('offboarding'));
+    const requestsAfterReopen = await page.evaluate(() => ({
+        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents'),
+        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding')
+    }));
+    assert.deepEqual(requestsAfterReopen, requestsBeforeReopen, 'independently loaded lazy tabs remain cached without duplicate requests');
+}
+
 async function assertFocusTrap(page) {
     await openProfile(page, 1);
     await page.locator('#staffProfileTabMain').focus();
@@ -547,6 +625,7 @@ async function run() {
         await assertProfileCleanDirtyAndFocus(page);
         await assertRapidProfileSwitching(page);
         await assertHistoryRaceAndLazyTabs(page);
+        await assertIndependentLazyTabRaces(page);
         await assertFocusTrap(page);
         await assertMobileAndTheme(page);
         console.log('HR Team browser smoke passed');

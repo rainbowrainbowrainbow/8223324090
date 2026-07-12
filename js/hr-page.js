@@ -342,7 +342,7 @@ const HR_TEAM_SETUP_FILTERS = [
     },
     {
         id: 'missing_face',
-        label: 'Без камери',
+        label: 'Без камери / Face ID',
         shortLabel: 'Face ID',
         icon: '📷',
         description: 'Немає запису у staff_face_descriptors. Face ID реєструється через модуль Камера / check-in.'
@@ -471,6 +471,8 @@ let pendingPeopleBucket = null;
 let activeTeamSetupFilter = 'all';
 let draggedTeamStaffId = null;
 let staffFoundationLoadSeq = 0;
+let staffDocumentsResourcesLoadSeq = 0;
+let staffOffboardingLoadSeq = 0;
 let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
 let staffPayrollSchemeLoadSeq = 0;
@@ -6622,7 +6624,7 @@ async function loadStaffDocumentsAndResources(staffId) {
     const resourcesRoot = document.getElementById('editStaffResources');
     if (!docsRoot && !medicalRoot && !resourcesRoot) return null;
     const id = Number(staffId);
-    const seq = ++staffFoundationLoadSeq;
+    const seq = ++staffDocumentsResourcesLoadSeq;
     if (!canManage) {
         const restricted = renderStaffFoundationEmpty('Доступ до HR-документів і ресурсів має тільки HR/керівник.');
         if (docsRoot) docsRoot.innerHTML = restricted;
@@ -6638,7 +6640,7 @@ async function loadStaffDocumentsAndResources(staffId) {
         hrFetch(`/staff/${id}/medical-book`).catch(() => null),
         hrFetch(`/staff/${id}/resources`).catch(() => null)
     ]);
-    if (seq !== staffFoundationLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
+    if (seq !== staffDocumentsResourcesLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     if (docsRoot) docsRoot.innerHTML = docs?.success ? renderStaffDocuments(docs.data || []) : renderStaffFoundationEmpty(docs?.error || 'Не вдалося завантажити документи.');
     if (medicalRoot) medicalRoot.innerHTML = medical?.success ? renderStaffMedicalBook(medical.data || []) : renderStaffFoundationEmpty(medical?.error || 'Не вдалося завантажити медкнижку.');
     if (resourcesRoot) resourcesRoot.innerHTML = resources?.success ? renderStaffResources(resources.data || []) : renderStaffFoundationEmpty(resources?.error || 'Не вдалося завантажити ресурси.');
@@ -6650,7 +6652,7 @@ async function loadStaffOffboardingSurface(staffId) {
     const readinessRoot = document.getElementById('editOffboardingReadiness');
     if (!offboardingRoot && !readinessRoot) return null;
     const id = Number(staffId);
-    const seq = ++staffFoundationLoadSeq;
+    const seq = ++staffOffboardingLoadSeq;
     if (!canManage) {
         const restricted = renderStaffFoundationEmpty('Завершення співпраці доступне тільки HR/керівнику.');
         if (offboardingRoot) offboardingRoot.innerHTML = restricted;
@@ -6663,7 +6665,7 @@ async function loadStaffOffboardingSurface(staffId) {
         hrFetch(`/staff/${id}/offboarding`).catch(() => null),
         hrFetch(`/staff/${id}/offboarding-readiness`).catch(() => null)
     ]);
-    if (seq !== staffFoundationLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
+    if (seq !== staffOffboardingLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     staffOffboardingReadiness = readiness?.success ? (readiness.data || null) : null;
     if (offboardingRoot) offboardingRoot.innerHTML = offboarding?.success ? renderStaffOffboarding(offboarding.data || []) : renderStaffFoundationEmpty(offboarding?.error || 'Не вдалося завантажити події завершення співпраці.');
     if (readinessRoot) readinessRoot.innerHTML = readiness?.success ? renderStaffOffboardingReadiness(readiness.data || {}) : renderStaffFoundationEmpty(readiness?.error || 'Не вдалося завантажити перевірку готовності.');

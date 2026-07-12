@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.94 - HR Команда: профіль і готовність
+
+### HR / Команда / (12.07.2026) [codex]
+- **Профіль працівника став безпечним для відкриття й закриття** — fresh load, sequence guards і scoped dirty baseline прибрали фальшиві “незбережені зміни”, stale history та race conditions.
+- **Навігація bucket-ів і пошук стали єдиним джерелом правди** — активна категорія рендериться без прихованих карток інших bucket-ів, а глобальний пошук показує збіги з badge категорії.
+- **Картки команди ущільнено під операційний стиль HR Pulse** — на картці лишається основна інформація й одна дія відкриття, а другорядні/небезпечні дії винесені в меню.
+- **Readiness-статуси стали чесними й actionable** — “Фото профілю” відокремлено від “Камера / Face ID”, CRM без підтвердженого правила не маркується як critical blocker, а показники працюють як setup-фільтри.
+- **Regression coverage посилено** — додано browser smoke для clean/dirty close, rapid switching, cross-bucket search, active DOM, sticky drawer actions, mobile fullscreen, dark/light, ARIA states і focus trap.
+
+---
+
 ## v0.78.93 - Header Action Order Hotfix
 
 ### Shared UI / Header actions / (12.07.2026) [codex]

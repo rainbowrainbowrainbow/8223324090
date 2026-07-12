@@ -52,7 +52,7 @@
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
     "test:browser:customer-child-create": "npx --yes --package playwright node tests/browser/customer-child-create-browser-smoke.js",
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
-    "test:browser:hr-team": "npx --yes --package playwright node tests/browser/hr-team-browser-smoke.js",
+    "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:timeline-summary": "npx --yes --package playwright node tests/browser/timeline-room-summary-browser-smoke.js",
     "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",
@@ -73,6 +73,7 @@
     "smoke:my-day": "npx --yes --package playwright node scripts/live-my-day-smoke.js",
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
     "smoke:staff-schedule:write": "npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js",
+    "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""

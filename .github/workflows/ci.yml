@@ -40,3 +40,30 @@ jobs:
 
       - name: Run fast verification baseline
         run: npm test
+
+  hr-team-browser:
+    name: HR Team browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
+
+      - name: Run HR Team browser smoke
+        run: npm run test:browser:hr-team

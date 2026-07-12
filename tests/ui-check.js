@@ -35,6 +35,7 @@ const {
 const bookingSummaryBrowserSmokeCode = fileText('tests/browser/booking-summary-browser-smoke.js');
 const hrPulseBrowserSmokeCode = fileText('tests/browser/hr-pulse-browser-smoke.js');
 const hrTeamBrowserSmokeCode = fileText('tests/browser/hr-team-browser-smoke.js');
+const ciWorkflow = fileText('.github/workflows/ci.yml');
 const inviteShareCode = fileText('js/invite-share.js');
 
 runInviteChecks(ui);
@@ -6394,7 +6395,7 @@ check('HR Team readiness uses honest photo, Face ID, CRM, and actionable setup f
     && htmlContains('css/hr-page.css', '.hr-setup-filter-chip')
     && htmlContains('css/hr-page.css', 'body.dark-mode .hr-setup-banner'));
 check('HR Team browser smoke covers drawer, filters, race, theme, mobile, and focus regressions',
-    pkg.scripts?.['test:browser:hr-team'] === 'npx --yes --package playwright node tests/browser/hr-team-browser-smoke.js'
+    pkg.scripts?.['test:browser:hr-team'] === 'npm exec --yes --package=playwright -c "node tests/browser/hr-team-browser-smoke.js"'
     && hrTeamBrowserSmokeCode.includes('assertTeamNavigation')
     && hrTeamBrowserSmokeCode.includes('assertProfileCleanDirtyAndFocus')
     && hrTeamBrowserSmokeCode.includes('assertRapidProfileSwitching')
@@ -6411,6 +6412,11 @@ check('HR Team browser smoke covers drawer, filters, race, theme, mobile, and fo
     && hrTeamBrowserSmokeCode.includes('aria-pressed')
     && hrTeamBrowserSmokeCode.includes('non-sticky')
     && !pkg.scripts?.verify?.includes('test:browser:hr-team'));
+check('HR Team browser smoke is a required Chromium CI gate',
+    ciWorkflow.includes('hr-team-browser:')
+    && ciWorkflow.includes('name: HR Team browser smoke')
+    && ciWorkflow.includes('playwright install --with-deps chromium')
+    && ciWorkflow.includes('run: npm run test:browser:hr-team'));
 check('HR Team browser smoke mounts the production drawer and protects its visual contract',
     hrTeamBrowserSmokeCode.includes("const STAFF_EDIT_MODAL_HTML = extractElementMarkup(HR_HTML, 'staffEditModal');")
     && hrTeamBrowserSmokeCode.includes('window.__hrTeamBrowserModalMarkup = markup;')

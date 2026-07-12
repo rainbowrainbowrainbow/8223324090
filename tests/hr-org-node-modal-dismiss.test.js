@@ -745,6 +745,30 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
     assert.match(foundationCss, /\.hr-staff-foundation-actions button,[\s\S]*?min-height:\s*44px/);
 });
 
+test('HR staff profile write smoke is explicit, QA-only, browser-driven, and restorative', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'scripts', 'live-hr-staff-profile-write-smoke.js'), 'utf8');
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+
+    assert.equal(
+        pkg.scripts['smoke:hr-team:write'],
+        'npm exec --yes --package=playwright -c "node scripts/live-hr-staff-profile-write-smoke.js"'
+    );
+    assert.match(script, /LIVE_HR_PROFILE_WRITE_CONFIRM/);
+    assert.match(script, /I_CONFIRM_HR_PROFILE_QA_WRITES/);
+    assert.match(script, /LIVE_HR_PROFILE_QA_STAFF_ID/);
+    assert.match(script, /LIVE_HR_PROFILE_QA_NAME_PATTERN/);
+    assert.match(script, /LIVE_HR_PROFILE_ALLOW_NON_QA_STAFF/);
+    assert.match(script, /window\.openStaffEdit/);
+    assert.match(script, /#editPhone/);
+    assert.match(script, /#editSave/);
+    assert.match(script, /expectedPayloadFields/);
+    assert.match(script, /onWriteStarted/);
+    assert.match(script, /restoreOriginalPhone/);
+    assert.match(script, /finally/);
+    assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}/);
+    assert.doesNotMatch(script, /\/(documents|resources)|\/staff\/\$\{staffId\}\/offboarding|payroll-scheme/i);
+});
+
 test('HR staff update route persists every staff edit form field explicitly', () => {
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
     const start = source.indexOf("router.put('/staff/:id'");

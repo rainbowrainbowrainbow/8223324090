@@ -148,7 +148,7 @@ function createStaffProfileHarness() {
                         '<div id="staffEditModal" class="hr-modal-overlay" style="display:none;" aria-hidden="true">',
                         '<div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true" aria-labelledby="editStaffHeaderName">',
                         '<input type="hidden" id="editStaffId">',
-                        '<button type="button" id="editCloseTop">close</button>',
+                        '<button type="button" id="editCloseTop" class="hr-staff-profile-close" aria-label="Close staff profile"><span aria-hidden="true">✕</span></button>',
                         '<strong id="editStaffHeaderName"></strong>',
                         '<input id="editStaffName">',
                         '<input id="editPhone">',
@@ -177,7 +177,7 @@ function createStaffProfileHarness() {
                         '<select id="editPayrollSchemeType"><option value="hourly">hourly</option><option value="per_shift">per_shift</option><option value="monthly_fixed">monthly_fixed</option><option value="hybrid">hybrid</option></select><input id="editPayrollSchemeAmount"><input id="editPayrollSchemeTitle"><input id="editPayrollSchemeEffectiveFrom"><input id="editPayrollSchemeEffectiveTo"><span id="editPayrollSchemeSummary"></span><span id="editPayrollSchemeAmountLabel"></span><div id="editPayrollHybridConfig"></div>',
                         '<input id="editOffboardingDate"><select id="editOffboardingPoolStatus"><option value="reserve">reserve</option></select><select id="editOffboardingAccountAction"><option value="review">review</option></select><textarea id="editOffboardingReason"></textarea><textarea id="editOffboardingNotes"></textarea>',
                         '<div id="editStaffHistory"></div><div id="editStaffLifecycleChecklist"></div><div id="editStaffDocuments"></div><div id="editMedicalBookList"></div><div id="editStaffResources"></div><div id="editStaffOffboarding"></div><div id="editOffboardingReadiness"></div><div id="editStaffRoleAssignments"></div><div id="editStaffShiftPreferences"></div>',
-                        '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editCancel"></button><button type="button" id="editSave"></button>',
+                        '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editSave"></button>',
                         '</div></div>'
                     ].join('');
                     initModals();
@@ -624,8 +624,125 @@ test('HR staff edit modal uses the shared modal layer and viewport-safe scrollin
     assert.match(html, /class="hr-staff-profile-tabs" role="tablist"/);
     assert.match(html, /data-staff-profile-tab="resources"/);
     assert.match(showModalFn, /setAttribute\('aria-hidden', 'false'\)/);
-    assert.match(showModalFn, /scrollTop = 0/);
-    assert.match(showModalFn, /dialog\.scrollTop = 0/);
+    assert.match(showModalFn, /target\.querySelector\('\.hr-staff-profile-body'\)/);
+    assert.match(showModalFn, /scrollRoot\.scrollTop = 0/);
+    assert.doesNotMatch(showModalFn, /dialog\.scrollTop = 0/);
+});
+
+test('HR staff profile declares one production tab panel per profile section', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
+    const expectedTabs = ['main', 'work', 'training', 'payroll', 'resources', 'offboarding', 'history'];
+    const panels = Array.from(body?.children || []).filter(node => node.matches?.('[data-staff-profile-panel]'));
+
+    assert.equal(panels.length, expectedTabs.length, 'production drawer exposes exactly seven top-level panels');
+    assert.deepEqual(panels.map(panel => panel.dataset.staffProfilePanel), [
+        'main', 'training', 'work', 'payroll', 'resources', 'offboarding', 'history'
+    ]);
+
+    expectedTabs.forEach(tab => {
+        const button = document.querySelector(`#staffProfileTab${tab.charAt(0).toUpperCase()}${tab.slice(1)}`);
+        const panel = document.querySelector(`#staffProfilePanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`);
+        assert.ok(button, `${tab} tab button exists`);
+        assert.ok(panel, `${tab} panel exists`);
+        assert.equal(button.getAttribute('aria-controls'), panel.id, `${tab} tab controls its production panel`);
+        assert.equal(panel.getAttribute('role'), 'tabpanel', `${tab} panel has tabpanel semantics`);
+        assert.equal(panel.getAttribute('aria-labelledby'), button.id, `${tab} panel is labelled by its tab`);
+    });
+
+    assert.ok(document.querySelector('#staffProfilePanelPayroll #editHourlyRate'));
+    assert.ok(document.querySelector('#staffProfilePanelPayroll #editProfessionRates'));
+    assert.equal(document.querySelector('#staffProfilePanelWork #editHourlyRate'), null, 'base rate does not leak into work');
+    assert.equal(document.querySelector('#staffProfilePanelWork #editProfessionRates'), null, 'profession rates do not leak into work');
+    assert.doesNotMatch(js, /function setStaffProfilePanel/);
+    assert.doesNotMatch(js, /function staffProfileClosestSection/);
+    assert.doesNotMatch(js, /insertAdjacentHTML\('afterend', `<div class="hr-staff-profile-save-scope"/);
+});
+
+test('HR staff profile panel contract rejects the legacy leaked-panel layout', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
+    const assertSevenDirectPanels = () => {
+        const panels = Array.from(body?.children || []).filter(node => node.matches?.('[data-staff-profile-panel]'));
+        assert.equal(panels.length, 7, 'staff profile must expose exactly seven direct tab panels');
+    };
+
+    assertSevenDirectPanels();
+    const leakedLegacySection = document.createElement('div');
+    leakedLegacySection.dataset.staffProfilePanel = 'main';
+    leakedLegacySection.dataset.staffProfileScope = 'basic';
+    body.append(leakedLegacySection);
+    assert.throws(assertSevenDirectPanels, /exactly seven direct tab panels/, 'the legacy extra main section must fail the production panel contract');
+});
+
+test('HR staff profile drawer uses a single body scroll root and timeline-style close action', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const profileHeadCss = css.match(/\.hr-staff-profile-drawer-head\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const profileTabsCss = css.match(/\.hr-staff-profile-tabs\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const profileBodyCss = css.match(/\.hr-staff-profile-body\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const closeCss = css.match(/\.hr-staff-profile-close\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const close = document.getElementById('editCloseTop');
+
+    assert.match(profileHeadCss, /flex:\s*0 0 auto/);
+    assert.match(profileTabsCss, /flex:\s*0 0 auto/);
+    assert.doesNotMatch(profileHeadCss, /position:\s*sticky/);
+    assert.doesNotMatch(profileTabsCss, /position:\s*sticky/);
+    assert.match(profileTabsCss, /overflow-x:\s*auto/);
+    assert.match(profileTabsCss, /overflow-y:\s*hidden/);
+    assert.match(profileBodyCss, /overflow-y:\s*auto/);
+    assert.match(profileBodyCss, /safe-area-inset-bottom/);
+
+    assert.ok(close?.classList.contains('hr-staff-profile-close'));
+    assert.equal(close?.getAttribute('aria-label'), 'Закрити картку працівника');
+    assert.equal(close?.textContent.trim(), '✕');
+    assert.match(closeCss, /background:\s*#0f766e/);
+    assert.match(closeCss, /width:\s*38px/);
+    assert.equal(document.getElementById('editCancel'), null, 'persistent close button is removed');
+    assert.equal(document.querySelector('.hr-staff-profile-bottom-actions'), null, 'persistent profile footer is removed');
+});
+
+test('HR staff profile save actions isolate payloads and expose modal action states', () => {
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
+    const foundationCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-hr-foundation.css'), 'utf8');
+    const mainBuilder = js.slice(js.indexOf('function buildStaffMainPayload'), js.indexOf('function buildStaffWorkPayload'));
+    const workBuilder = js.slice(js.indexOf('function buildStaffWorkPayload'), js.indexOf('function buildStaffRatesPayload'));
+    const ratesBuilder = js.slice(js.indexOf('function buildStaffRatesPayload'), js.indexOf('async function updateStaffProfileFields'));
+    const payrollSave = js.slice(js.indexOf('async function saveStaffPayrollScheme'), js.indexOf('async function loadStaffResourceOptions'));
+
+    assert.match(mainBuilder, /name:/);
+    assert.match(mainBuilder, /phone:/);
+    assert.match(mainBuilder, /photo_url:/);
+    assert.doesNotMatch(mainBuilder, /role_type:|hourly_rate:|notes:/);
+    assert.match(workBuilder, /role_type:/);
+    assert.match(workBuilder, /notes:/);
+    assert.doesNotMatch(workBuilder, /^\s*(?:name|phone|photo_url|hourly_rate|profession_rates):/m);
+    assert.match(ratesBuilder, /hourly_rate:/);
+    assert.match(ratesBuilder, /rate_unit:/);
+    assert.match(ratesBuilder, /profession_rates:/);
+    assert.doesNotMatch(ratesBuilder, /^\s*(?:name|phone|notes):/m);
+    assert.match(payrollSave, /dirtyScopes\.has\('rates'\)/);
+    assert.match(payrollSave, /dirtyScopes\.has\('payroll'\)/);
+    assert.match(payrollSave, /saveStaffRates\(staffId\)/);
+    assert.match(js, /button\.dataset\.staffActionPending === 'true'/);
+    assert.match(js, /button\.disabled = true/);
+    assert.match(js, /setStaffProfileActionState\(button, 'success'/);
+    assert.match(js, /setStaffProfileActionState\(button, 'error'/);
+    assert.match(js, /markStaffProfileScopesClean\(\[scope\]\)/);
+    assert.match(js, /payrollSave\.textContent = 'Зберегти оплату'/);
+    assert.match(profileCss, /#staffEditModal \.hr-staff-action,[\s\S]*?min-height:\s*44px/);
+    assert.match(profileCss, /\[data-action-state="loading"\]/);
+    assert.match(profileCss, /\[data-action-state="success"\]/);
+    assert.match(profileCss, /\[data-action-state="error"\]/);
+    assert.match(foundationCss, /\.hr-staff-foundation-actions button,[\s\S]*?min-height:\s*44px/);
 });
 
 test('HR staff update route persists every staff edit form field explicitly', () => {

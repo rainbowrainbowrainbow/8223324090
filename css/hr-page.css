@@ -4029,9 +4029,7 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     background: rgba(15, 23, 42, 0.54);
 }
 .hr-staff-profile-drawer-head {
-    position: sticky;
-    top: 0;
-    z-index: 6;
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -4044,6 +4042,7 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     box-shadow: 0 10px 24px rgba(15,23,42,0.08);
 }
 .hr-staff-profile-heading {
+    flex: 1 1 auto;
     display: grid;
     gap: 5px;
     min-width: 0;
@@ -4080,16 +4079,49 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     font-size: 11px;
     font-weight: 900;
 }
+.hr-staff-profile-close {
+    flex: 0 0 auto;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(94, 234, 212, 0.34);
+    border-radius: 12px;
+    background: #0f766e;
+    color: #E5F6F4;
+    box-shadow: 0 12px 28px rgba(2, 6, 23, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 1;
+    transition: transform var(--speed-fast) var(--ease-smooth),
+                background var(--speed-fast) var(--ease-smooth),
+                border-color var(--speed-fast) var(--ease-smooth),
+                color var(--speed-fast) var(--ease-smooth),
+                box-shadow var(--speed-fast) var(--ease-smooth);
+}
+.hr-staff-profile-close:hover,
+.hr-staff-profile-close:focus-visible {
+    border-color: rgba(45, 212, 191, 0.7);
+    background: #0d9488;
+    color: #FFFFFF;
+    box-shadow: 0 16px 32px rgba(13, 148, 136, 0.26), 0 12px 30px rgba(2, 6, 23, 0.32);
+    outline: none;
+    transform: translateY(-1px);
+}
 .hr-staff-profile-tabs {
-    position: sticky;
-    top: 0;
-    z-index: 5;
+    flex: 0 0 auto;
     display: flex;
     gap: 7px;
     padding: 10px 22px;
     border-bottom: 1px solid rgba(148,163,184,0.16);
     background: color-mix(in srgb, var(--white) 94%, transparent);
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: thin;
 }
 .hr-staff-profile-tabs button {
@@ -4136,9 +4168,15 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     display: grid;
     align-content: start;
     gap: 14px;
-    padding: 18px 22px 24px;
+    padding: 18px 22px calc(24px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
+}
+.hr-staff-profile-panel {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    min-width: 0;
 }
 .hr-staff-profile-body [data-staff-profile-panel][hidden] {
     display: none !important;
@@ -4160,20 +4198,91 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     font-weight: 800;
     line-height: 1.35;
 }
-.hr-staff-profile-bottom-actions {
-    flex: 0 0 auto;
+#staffEditModal .hr-staff-action,
+#staffEditModal .btn-primary,
+#staffEditModal .btn-secondary,
+#staffEditModal .btn-danger {
+    --staff-action-border: color-mix(in srgb, var(--gray-300) 76%, transparent);
+    --staff-action-bg: color-mix(in srgb, var(--white) 92%, transparent);
+    --staff-action-color: var(--gray-700);
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    margin: 0;
-    padding: 12px 22px;
-    border-top: 1px solid rgba(148,163,184,0.18);
-    background: color-mix(in srgb, var(--white) 96%, transparent);
+    justify-content: center;
+    gap: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--staff-action-border);
+    border-radius: 11px;
+    background: var(--staff-action-bg);
+    color: var(--staff-action-color);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+    transition: transform var(--speed-fast) var(--ease-smooth), background var(--speed-fast) var(--ease-smooth), border-color var(--speed-fast) var(--ease-smooth), color var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast) var(--ease-smooth), opacity var(--speed-fast) var(--ease-smooth);
 }
-.hr-staff-profile-bottom-actions span {
-    color: var(--gray-500);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.35;
+#staffEditModal .hr-staff-action--primary,
+#staffEditModal .btn-primary {
+    --staff-action-border: color-mix(in srgb, var(--primary) 42%, transparent);
+    --staff-action-bg: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    --staff-action-color: #FFFFFF;
+    box-shadow: 0 10px 22px rgba(16,185,129,0.22), inset 0 1px 0 rgba(255,255,255,0.22);
+}
+#staffEditModal .hr-staff-action--danger,
+#staffEditModal .btn-danger {
+    --staff-action-border: rgba(239,68,68,0.30);
+    --staff-action-bg: rgba(239,68,68,0.09);
+    --staff-action-color: #B91C1C;
+}
+#staffEditModal .hr-staff-action--icon {
+    width: 44px;
+    padding: 0;
+}
+#staffEditModal .hr-staff-action:hover:not(:disabled),
+#staffEditModal .hr-staff-action:focus-visible,
+#staffEditModal .btn-primary:hover:not(:disabled),
+#staffEditModal .btn-primary:focus-visible,
+#staffEditModal .btn-secondary:hover:not(:disabled),
+#staffEditModal .btn-secondary:focus-visible,
+#staffEditModal .btn-danger:hover:not(:disabled),
+#staffEditModal .btn-danger:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--staff-action-border));
+    box-shadow: 0 10px 22px rgba(15,23,42,0.14);
+    transform: translateY(-1px);
+}
+#staffEditModal .hr-staff-action[aria-busy="true"]::before {
+    width: 13px;
+    height: 13px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 999px;
+    content: '';
+    animation: hr-staff-action-spin 0.72s linear infinite;
+}
+#staffEditModal .hr-staff-action[data-action-state="loading"],
+#staffEditModal .hr-staff-action:disabled {
+    cursor: progress;
+    opacity: 0.68;
+    transform: none;
+}
+#staffEditModal .hr-staff-action[data-action-state="success"] {
+    --staff-action-border: rgba(16,185,129,0.48);
+    --staff-action-bg: rgba(16,185,129,0.14);
+    --staff-action-color: #047857;
+}
+#staffEditModal .hr-staff-action[data-action-state="error"] {
+    --staff-action-border: rgba(239,68,68,0.48);
+    --staff-action-bg: rgba(239,68,68,0.12);
+    --staff-action-color: #B91C1C;
+}
+@keyframes hr-staff-action-spin {
+    to { transform: rotate(360deg); }
 }
 .hr-staff-profile-hero {
     display: grid;
@@ -4684,8 +4793,7 @@ body.dark-mode .hr-modal .form-group textarea {
     color-scheme: dark;
 }
 body.dark-mode .hr-staff-profile-drawer-head,
-body.dark-mode .hr-staff-profile-tabs,
-body.dark-mode .hr-staff-profile-bottom-actions {
+body.dark-mode .hr-staff-profile-tabs {
     background:
         linear-gradient(135deg, rgba(20,184,166,0.09), rgba(59,130,246,0.06)),
         #1E1E38;
@@ -4696,9 +4804,26 @@ body.dark-mode .hr-staff-profile-heading > strong {
     color: #F8FAFC;
 }
 body.dark-mode .hr-staff-profile-heading > span,
-body.dark-mode .hr-staff-profile-bottom-actions span,
 body.dark-mode .hr-staff-profile-save-scope span {
     color: #94A3B8;
+}
+body.dark-mode #staffEditModal .hr-staff-action,
+body.dark-mode #staffEditModal .btn-secondary {
+    --staff-action-border: rgba(148,163,184,0.24);
+    --staff-action-bg: rgba(255,255,255,0.06);
+    --staff-action-color: #E2E8F0;
+}
+body.dark-mode #staffEditModal .hr-staff-action--primary,
+body.dark-mode #staffEditModal .btn-primary {
+    --staff-action-border: rgba(94,234,212,0.34);
+    --staff-action-bg: linear-gradient(135deg, #0f766e 0%, #047857 100%);
+    --staff-action-color: #F0FDFA;
+}
+body.dark-mode #staffEditModal .hr-staff-action--danger,
+body.dark-mode #staffEditModal .btn-danger {
+    --staff-action-border: rgba(248,113,113,0.38);
+    --staff-action-bg: rgba(248,113,113,0.14);
+    --staff-action-color: #FECACA;
 }
 body.dark-mode .hr-staff-profile-meta i,
 body.dark-mode .hr-staff-profile-tabs button[aria-selected="true"] {
@@ -5341,14 +5466,14 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         border-radius: 0;
     }
     .hr-staff-profile-drawer-head {
-        padding: 14px 12px 10px;
+        padding: calc(14px + env(safe-area-inset-top, 0px)) 12px 10px;
         gap: 10px;
     }
     .hr-staff-profile-heading > strong {
         font-size: 21px;
     }
     .hr-staff-profile-tabs {
-        padding: 8px 12px;
+        padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
         gap: 6px;
     }
     .hr-staff-profile-tabs button {
@@ -5357,16 +5482,17 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         font-size: 11px;
     }
     .hr-staff-profile-body {
-        padding: 12px;
+        padding: 12px max(12px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
         gap: 12px;
     }
-    .hr-staff-profile-save-scope,
-    .hr-staff-profile-bottom-actions {
+    .hr-staff-profile-save-scope {
         align-items: stretch;
         flex-direction: column;
     }
-    .hr-staff-profile-bottom-actions {
-        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    .hr-staff-profile-close {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
     }
     .hr-tabs,
     .hr-nav { gap: 6px; }

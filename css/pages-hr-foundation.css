@@ -132,7 +132,7 @@
 
 .hr-offboarding-readiness-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -166,6 +166,106 @@
     line-height: 1.2;
     text-transform: uppercase;
     overflow-wrap: anywhere;
+}
+
+.hr-offboarding-readiness-section,
+.hr-offboarding-form,
+.hr-offboarding-history {
+    margin-top: 12px;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.38);
+    padding: 12px;
+}
+
+.hr-offboarding-readiness-section {
+    margin-top: 0;
+    border-color: rgba(245, 158, 11, 0.28);
+    background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.04));
+}
+
+.hr-offboarding-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.hr-offboarding-section-head strong,
+.hr-offboarding-section-head span {
+    display: block;
+}
+
+.hr-offboarding-section-head strong {
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.hr-offboarding-section-head span {
+    margin-top: 3px;
+    color: var(--gray-500);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.hr-offboarding-form {
+    border-color: rgba(239,68,68,0.24);
+}
+
+.hr-offboarding-consequence-summary,
+.hr-offboarding-action-status {
+    margin-top: 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.hr-offboarding-consequence-summary {
+    border: 1px solid rgba(148,163,184,0.22);
+    background: rgba(15,23,42,0.035);
+    color: var(--gray-600);
+    padding: 10px;
+}
+
+.hr-offboarding-consequence-summary strong {
+    display: block;
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.hr-offboarding-consequence-summary ul {
+    display: grid;
+    gap: 4px;
+    margin: 7px 0 0;
+    padding-left: 18px;
+}
+
+.hr-offboarding-action-status {
+    border: 1px solid rgba(245,158,11,0.32);
+    background: rgba(245,158,11,0.09);
+    color: #92400E;
+    padding: 9px 10px;
+}
+
+.hr-offboarding-action-status.is-ready {
+    border-color: rgba(16,185,129,0.30);
+    background: rgba(16,185,129,0.08);
+    color: #047857;
+}
+
+.hr-offboarding-action-status.is-blocked {
+    border-color: rgba(239,68,68,0.34);
+    background: rgba(239,68,68,0.08);
+    color: #B91C1C;
+}
+
+.hr-offboarding-action-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
 }
 
 .hr-offboarding-readiness-grid .is-ok b {
@@ -627,8 +727,9 @@
 .hr-staff-foundation-panel .btn-secondary,
 .hr-staff-foundation-panel .btn-primary,
 .hr-staff-foundation-panel .btn-danger {
-    padding: 7px 10px;
-    font-size: 12px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
 }
 
 .hr-staff-foundation-empty {
@@ -637,6 +738,88 @@
     color: var(--gray-500);
     font-size: 12px;
     padding: 10px;
+}
+
+.hr-staff-workspace-state,
+.hr-staff-resource-options-state,
+.hr-staff-workspace-feedback {
+    border: 1px dashed var(--gray-200);
+    border-radius: 9px;
+    color: var(--gray-500);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.hr-staff-workspace-state,
+.hr-staff-resource-options-state {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 52px;
+    padding: 10px;
+}
+
+.hr-staff-workspace-state__message,
+.hr-staff-resource-options-state__message {
+    min-width: 0;
+}
+
+.hr-staff-workspace-state[data-state="loading"] {
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.hr-staff-workspace-skeleton {
+    display: grid;
+    gap: 6px;
+}
+
+.hr-staff-workspace-skeleton span {
+    display: block;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(148,163,184,0.12), rgba(148,163,184,0.32), rgba(148,163,184,0.12));
+    background-size: 220% 100%;
+    animation: hr-staff-workspace-shimmer 1.2s ease-in-out infinite;
+}
+
+.hr-staff-workspace-skeleton span:nth-child(2) {
+    width: 72%;
+}
+
+.hr-staff-workspace-skeleton span:nth-child(3) {
+    width: 54%;
+}
+
+.hr-staff-workspace-state[data-state="error"],
+.hr-staff-resource-options-state[data-state="error"],
+.hr-staff-workspace-feedback[data-state="error"] {
+    border-style: solid;
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.06);
+    color: #B91C1C;
+}
+
+.hr-staff-workspace-state[data-state="restricted"] {
+    border-style: solid;
+    border-color: rgba(245, 158, 11, 0.36);
+    background: rgba(245, 158, 11, 0.08);
+    color: #92400E;
+}
+
+.hr-staff-workspace-feedback {
+    margin-top: 10px;
+    padding: 9px 10px;
+}
+
+.hr-staff-resource-options-state {
+    margin-top: 7px;
+}
+
+@keyframes hr-staff-workspace-shimmer {
+    to { background-position: -220% 0; }
 }
 
 .hr-staff-foundation-warning {
@@ -707,6 +890,27 @@ body.dark-mode .hr-staff-foundation-empty {
     border-color: rgba(148,163,184,0.22);
 }
 
+body.dark-mode .hr-staff-workspace-state,
+body.dark-mode .hr-staff-resource-options-state,
+body.dark-mode .hr-staff-workspace-feedback {
+    border-color: rgba(148,163,184,0.22);
+    color: #94A3B8;
+}
+
+body.dark-mode .hr-staff-workspace-state[data-state="error"],
+body.dark-mode .hr-staff-resource-options-state[data-state="error"],
+body.dark-mode .hr-staff-workspace-feedback[data-state="error"] {
+    border-color: rgba(248,113,113,0.38);
+    background: rgba(248,113,113,0.10);
+    color: #FCA5A5;
+}
+
+body.dark-mode .hr-staff-workspace-state[data-state="restricted"] {
+    border-color: rgba(251,191,36,0.34);
+    background: rgba(251,191,36,0.10);
+    color: #FCD34D;
+}
+
 body.dark-mode .hr-offboarding-readiness-card {
     background: rgba(15,23,42,0.44);
     border-color: rgba(148,163,184,0.16);
@@ -720,6 +924,51 @@ body.dark-mode .hr-offboarding-readiness-card.is-ok {
 body.dark-mode .hr-offboarding-readiness-card.is-warning {
     background: rgba(245,158,11,0.10);
     border-color: rgba(245,158,11,0.28);
+}
+
+body.dark-mode .hr-offboarding-readiness-section,
+body.dark-mode .hr-offboarding-form,
+body.dark-mode .hr-offboarding-history {
+    background: rgba(15,23,42,0.40);
+    border-color: rgba(148,163,184,0.18);
+}
+
+body.dark-mode .hr-offboarding-readiness-section {
+    border-color: rgba(251,191,36,0.26);
+    background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(248,113,113,0.06));
+}
+
+body.dark-mode .hr-offboarding-section-head strong,
+body.dark-mode .hr-offboarding-consequence-summary strong {
+    color: #F8FAFC;
+}
+
+body.dark-mode .hr-offboarding-section-head span,
+body.dark-mode .hr-offboarding-consequence-summary {
+    color: #CBD5E1;
+}
+
+body.dark-mode .hr-offboarding-consequence-summary {
+    border-color: rgba(148,163,184,0.20);
+    background: rgba(15,23,42,0.52);
+}
+
+body.dark-mode .hr-offboarding-action-status {
+    border-color: rgba(251,191,36,0.32);
+    background: rgba(251,191,36,0.11);
+    color: #FCD34D;
+}
+
+body.dark-mode .hr-offboarding-action-status.is-ready {
+    border-color: rgba(52,211,153,0.34);
+    background: rgba(16,185,129,0.12);
+    color: #6EE7B7;
+}
+
+body.dark-mode .hr-offboarding-action-status.is-blocked {
+    border-color: rgba(248,113,113,0.38);
+    background: rgba(248,113,113,0.12);
+    color: #FCA5A5;
 }
 
 body.dark-mode .hr-offboarding-readiness-grid > div {

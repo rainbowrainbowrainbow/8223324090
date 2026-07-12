@@ -36,11 +36,32 @@ function requirePlaywright() {
 
 const UI_CODE = readRepo('js', 'ui.js');
 const HR_CODE = readRepo('js', 'hr-page.js');
+const HR_HTML = readRepo('hr.html');
 const CSS_BUNDLE = [
+    readRepo('css', 'base.css'),
     readRepo('css', 'hr-page.css'),
     readRepo('css', 'pages-hr-foundation.css'),
     readRepo('css', 'pages-hr-staff.css')
 ].join('\n');
+
+function extractElementMarkup(source, id) {
+    const marker = `<div id="${id}"`;
+    const start = source.indexOf(marker);
+    if (start < 0) throw new Error(`Unable to find #${id} in production markup`);
+
+    const divTag = /<\/?div\b[^>]*>/gi;
+    divTag.lastIndex = start;
+    let depth = 0;
+    let match;
+    while ((match = divTag.exec(source))) {
+        if (/^<div\b/i.test(match[0])) depth += 1;
+        else depth -= 1;
+        if (depth === 0) return source.slice(start, divTag.lastIndex);
+    }
+    throw new Error(`Unable to extract #${id} from production markup`);
+}
+
+const STAFF_EDIT_MODAL_HTML = extractElementMarkup(HR_HTML, 'staffEditModal');
 
 const HARNESS_CODE = String.raw`
 (() => {
@@ -54,10 +75,39 @@ const HARNESS_CODE = String.raw`
     const pendingProfiles = new Map();
     const pendingHistory = new Map();
     const pendingLazyTabs = new Map();
+    const pendingStaffUpdates = [];
     const requestCounts = new Map();
+    const staffUpdates = [];
+    const workspaceOperations = [];
+    const downloads = [];
+    const workspace = { documents: [], medical: [], resources: [] };
     let holdProfileLoads = false;
     let holdHistoryLoads = false;
     let holdLazyTabLoads = false;
+    let holdStaffUpdates = false;
+    let failNextStaffUpdate = false;
+    let failNextWorkspaceRequest = '';
+    let nextWorkspaceId = 1000;
+
+    function resetWorkspace() {
+        workspace.documents = [];
+        workspace.medical = [];
+        workspace.resources = [];
+        workspaceOperations.length = 0;
+        downloads.length = 0;
+        failNextWorkspaceRequest = '';
+        nextWorkspaceId = 1000;
+    }
+
+    function copyWorkspaceRows(rows) {
+        return rows.map(row => ({ ...row }));
+    }
+
+    function shouldFailWorkspaceRequest(requestPath) {
+        if (!failNextWorkspaceRequest || !String(requestPath).includes(failNextWorkspaceRequest)) return false;
+        failNextWorkspaceRequest = '';
+        return true;
+    }
 
     function profileResponse(id) {
         const profile = staffProfiles.get(Number(id));
@@ -99,10 +149,38 @@ const HARNESS_CODE = String.raw`
         return promise;
     }
 
+    function staffUpdateResponse(id, body = {}) {
+        const profile = staffProfiles.get(Number(id));
+        if (!profile) return { success: false, error: 'missing profile' };
+        const updated = { ...profile, ...body, id: Number(id) };
+        staffProfiles.set(Number(id), updated);
+        return { success: true, data: updated };
+    }
+
+    function deferredStaffUpdate(id, body) {
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        pendingStaffUpdates.push({ id: Number(id), body, resolve });
+        return promise;
+    }
+
     function lazyTabResponse(requestPath) {
-        return String(requestPath).includes('/offboarding-readiness')
-            ? { success: true, data: {} }
-            : { success: true, data: [] };
+        if (String(requestPath).includes('/offboarding-readiness')) {
+            return {
+                success: true,
+                data: {
+                    open_resource_count: 1,
+                    open_resources: [{ title: 'QA headset', quantity: 1, due_return_at: '2026-08-01' }],
+                    active_account_count: 1,
+                    active_accounts: [{ username: 'qa.staff', role: 'animator', is_current_user: false, is_protected: false }],
+                    document_alert_count: 1,
+                    document_alerts: [{ source: 'document', title: 'QA medical book', expires_at: '2026-08-10' }],
+                    disable_available: false,
+                    disable_blockers: [{ username: 'qa.staff', block_reason: 'requires_manage_accounts' }]
+                }
+            };
+        }
+        return { success: true, data: [] };
     }
 
     function setupDom() {
@@ -123,40 +201,7 @@ const HARNESS_CODE = String.raw`
             '<div id="teamMissingBanner"></div>',
             '<div id="teamGrid" class="hr-team-grid"></div>',
             '</main>',
-            '<div id="staffEditModal" class="hr-modal-overlay hr-staff-profile-overlay" style="display:none;" aria-hidden="true">',
-            '<div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true" aria-labelledby="editStaffHeaderName" aria-describedby="editStaffHeaderMeta">',
-            '<input type="hidden" id="editStaffId">',
-            '<header class="hr-staff-profile-drawer-head">',
-            '<div class="hr-staff-profile-heading"><span>Картка працівника</span><strong id="editStaffHeaderName">ПІБ</strong><div id="editStaffHeaderMeta" class="hr-staff-profile-meta"><i id="editStaffHeaderRole"></i><i id="editStaffHeaderStatus"></i></div></div>',
-            '<button type="button" id="editCloseTop" class="btn-secondary">Закрити</button>',
-            '</header>',
-            '<nav class="hr-staff-profile-tabs" role="tablist" aria-label="Розділи профілю працівника">',
-            '<button type="button" id="staffProfileTabMain" role="tab" data-staff-profile-tab="main" aria-controls="staffProfilePanelMain" aria-selected="true">Основне</button>',
-            '<button type="button" id="staffProfileTabWork" role="tab" data-staff-profile-tab="work" aria-controls="staffProfilePanelWork" aria-selected="false" tabindex="-1">Робота</button>',
-            '<button type="button" id="staffProfileTabTraining" role="tab" data-staff-profile-tab="training" aria-controls="staffProfilePanelTraining" aria-selected="false" tabindex="-1">Навчання</button>',
-            '<button type="button" id="staffProfileTabPayroll" role="tab" data-staff-profile-tab="payroll" aria-controls="staffProfilePanelPayroll" aria-selected="false" tabindex="-1">Оплата</button>',
-            '<button type="button" id="staffProfileTabResources" role="tab" data-staff-profile-tab="resources" aria-controls="staffProfilePanelResources" aria-selected="false" tabindex="-1">Документи та ресурси</button>',
-            '<button type="button" id="staffProfileTabOffboarding" role="tab" data-staff-profile-tab="offboarding" aria-controls="staffProfilePanelOffboarding" aria-selected="false" tabindex="-1" class="is-danger-tab">Завершення співпраці</button>',
-            '<button type="button" id="staffProfileTabHistory" role="tab" data-staff-profile-tab="history" aria-controls="staffProfilePanelHistory" aria-selected="false" tabindex="-1">Історія</button>',
-            '</nav>',
-            '<div class="hr-staff-profile-body" data-active-profile-tab="main">',
-            '<section id="staffProfilePanelMain" class="hr-staff-profile-hero" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain"><span class="hr-staff-profile-section">Команда</span><div class="hr-staff-profile-card"><span>Картка співробітника</span><strong id="editStaffMainName">ПІБ</strong></div><div class="hr-staff-profile-quick-fields"><label><span>ФІО</span><input id="editStaffName"></label><label><span>Телефон</span><input id="editPhone"></label></div></section>',
-            '<div class="form-group hr-staff-photo-field" data-staff-profile-panel="main" data-staff-profile-scope="basic"><label for="editPhotoUrl">Фото профілю</label><div class="hr-staff-photo-editor"><div id="editPhotoPreview" class="hr-staff-photo-preview"></div><div class="hr-staff-photo-controls"><input id="editPhotoUrl"><div class="hr-staff-photo-actions"><small class="form-hint">Камера / Face ID реєструється окремо.</small></div></div></div></div>',
-            '<section id="staffProfilePanelTraining" class="hr-staff-foundation-panel hr-lifecycle-panel" data-staff-profile-panel="training" role="tabpanel" aria-labelledby="staffProfileTabTraining"><div id="editStaffLifecycleChecklist"></div></section>',
-            '<div class="form-group"><select id="editRoleType"><option value="animator">Аніматор</option><option value="technician">Технік</option><option value="intern">Стажер</option></select></div>',
-            '<div class="form-group"><select id="editSecondaryProfessions" multiple></select><input id="editSecondaryProfessionSearch"><div id="editSecondaryProfessionChips"></div><div id="editSecondaryProfessionOptions"></div></div>',
-            '<div class="form-group"><div id="editProfessionRates"></div><select id="editCompanyStructureNode"></select></div>',
-            '<div class="form-group"><input id="editBirthDate"><input id="editAddress"><input id="editEmergencyContact"><input id="editEmergencyPhone"></div>',
-            '<div class="form-group"><input id="editHourlyRate"><select id="editRateUnit"><option value="hour">hour</option><option value="day">day</option><option value="month">month</option></select><span id="editHourlyRateLabel"></span><span id="editHourlyRateHint"></span></div>',
-            '<div class="form-group"><input id="editTelegramId"><input id="editTelegramUsername"><select id="editContractType"><option value="parttime">parttime</option></select><input id="editSkills"><textarea id="editNotes"></textarea></div>',
-            '<section id="staffProfilePanelResources" class="hr-staff-foundation-panel" data-staff-profile-panel="resources" data-staff-profile-scope="documents"><input id="editDocumentTitle"><textarea id="editDocumentNotes"></textarea><input id="editDocumentFile" type="file"><select id="editDocumentType"><option value="other">other</option></select><input id="editMedicalIssuedAt"><input id="editMedicalExpiresAt"><textarea id="editMedicalNotes"></textarea><select id="editResourceKind"><option value="custom">custom</option></select><select id="editResourceSourceId"></select><div id="editResourceSourceHint"></div><div id="editResourceSourceGroup"></div><div id="editResourceTitleGroup"></div><input id="editResourceTitle"><input id="editResourceDueReturnAt"><textarea id="editResourceNotes"></textarea><input id="editResourceQuantity"><div id="editStaffDocuments"></div><div id="editMedicalBookList"></div><div id="editStaffResources"></div></section>',
-            '<section id="staffProfilePanelPayroll" class="hr-staff-foundation-panel" data-staff-profile-panel="payroll" data-staff-profile-scope="payroll"><select id="editPayrollSchemeType"><option value="hourly">hourly</option><option value="per_shift">per_shift</option><option value="monthly_fixed">monthly_fixed</option><option value="hybrid">hybrid</option></select><input id="editPayrollSchemeAmount"><input id="editPayrollSchemeTitle"><input id="editPayrollSchemeEffectiveFrom"><input id="editPayrollSchemeEffectiveTo"><span id="editPayrollSchemeSummary"></span><span id="editPayrollSchemeAmountLabel"></span><div id="editPayrollHybridConfig"></div><select id="editPayrollBaseKind"><option value="hourly">hourly</option></select><input id="editPayrollBaseQuantity"><input id="editPayrollBonusLabel"><input id="editPayrollBonusAmount"><input id="editPayrollHybridPercentRate"><input id="editPayrollHybridPercentBase"><input id="editPayrollDeductionLabel"><input id="editPayrollDeductionAmount"><input id="editPayrollAdvanceLabel"><input id="editPayrollAdvanceAmount"></section>',
-            '<section id="staffProfilePanelOffboarding" class="hr-staff-foundation-panel" data-staff-profile-panel="offboarding" data-staff-profile-scope="offboarding"><input id="editOffboardingDate"><select id="editOffboardingPoolStatus"><option value="reserve">reserve</option></select><select id="editOffboardingAccountAction"><option value="review">review</option></select><textarea id="editOffboardingReason"></textarea><textarea id="editOffboardingNotes"></textarea><div id="editOffboardingReadiness"></div><div id="editStaffOffboarding"></div></section>',
-            '<section id="staffProfilePanelHistory" class="hr-staff-foundation-panel" data-staff-profile-panel="history" role="tabpanel" aria-labelledby="staffProfileTabHistory"><div id="editStaffHistory"></div><button type="button" id="editHistoryRefresh"></button></section>',
-            '<section id="staffProfilePanelWork" class="hr-staff-foundation-panel" data-staff-profile-panel="work"><div id="editStaffRoleAssignments"></div><div id="editStaffShiftPreferences"></div></section>',
-            '</div>',
-            '<div class="hr-modal-actions hr-staff-profile-bottom-actions"><span>Закриття профілю не зберігає незалежні секції.</span><button type="button" id="editCancel" class="btn-secondary">Закрити профіль</button><button type="button" id="editSave" class="btn-primary">Зберегти основне</button></div>',
-            '</div></div>',
+            window.__hrTeamBrowserModalMarkup,
             '<button id="outsideButton">outside</button>'
         ].join('');
         initModals();
@@ -177,12 +222,22 @@ const HARNESS_CODE = String.raw`
     ensureProfessionsLoaded = async () => hrProfessions;
     ensureCompanyStructureNodesLoaded = async () => companyStructureNodes;
     crmApiFetch = async () => ({ success: true, data: [] });
-    hrFetch = async path => {
+    hrFetch = async (path, options = {}) => {
         const requestPath = String(path);
         requestCounts.set(requestPath, Number(requestCounts.get(requestPath) || 0) + 1);
         const profileMatch = String(path).match(/^\/staff\/(\d+)$/);
         if (profileMatch) {
             const id = Number(profileMatch[1]);
+            if (String(options?.method || '').toUpperCase() === 'PUT') {
+                const body = typeof options.body === 'string' ? JSON.parse(options.body) : (options.body || {});
+                staffUpdates.push({ path: requestPath, body });
+                if (failNextStaffUpdate) {
+                    failNextStaffUpdate = false;
+                    return { success: false, error: 'simulated staff update failure' };
+                }
+                if (holdStaffUpdates) return deferredStaffUpdate(id, body);
+                return staffUpdateResponse(id, body);
+            }
             if (holdProfileLoads) return deferredProfile(id);
             return profileResponse(id);
         }
@@ -193,26 +248,108 @@ const HARNESS_CODE = String.raw`
             return historyResponse(id);
         }
         if (String(path).includes('/lifecycle-checklist')) {
-            return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 0, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 0, open_payroll_count: 0 }, sections: [] } };
+            return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 1, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 2, open_time_record_count: 1, open_payroll_count: 0 }, sections: [] } };
         }
-        if (String(path).includes('/documents')
-            || String(path).includes('/medical-book')
-            || String(path).includes('/resources')
-            || String(path).includes('/offboarding-readiness')
-            || String(path).includes('/offboarding')) {
+        const workspaceMatch = requestPath.match(/^\/staff\/(\d+)\/(documents|medical-book|resources)(?:\/(\d+)(\/return)?)?$/);
+        if (workspaceMatch) {
+            const [, , workspaceSection, itemId, returnSuffix] = workspaceMatch;
+            const method = String(options?.method || 'GET').toUpperCase();
+            if (method === 'GET' && holdLazyTabLoads) return deferredLazyTab(requestPath);
+            if (method === 'GET' && shouldFailWorkspaceRequest(requestPath)) {
+                return { success: false, error: 'simulated ' + workspaceSection + ' load failure' };
+            }
+            if (workspaceSection === 'documents') {
+                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.documents) };
+                if (method === 'POST') {
+                    const form = options.body;
+                    const file = form?.get?.('document');
+                    const row = {
+                        id: nextWorkspaceId++,
+                        title: form?.get?.('title') || file?.name || 'QA document',
+                        original_name: file?.name || 'qa-document.txt',
+                        document_type: form?.get?.('document_type') || 'other',
+                        file_size: file?.size || 12,
+                        notes: form?.get?.('notes') || '',
+                        issued_at: null,
+                        expires_at: null
+                    };
+                    workspace.documents.push(row);
+                    workspaceOperations.push('document-upload');
+                    return { success: true, data: { ...row } };
+                }
+                if (method === 'DELETE') {
+                    const index = workspace.documents.findIndex(row => Number(row.id) === Number(itemId));
+                    if (index < 0) return { success: false, error: 'missing document' };
+                    const [archived] = workspace.documents.splice(index, 1);
+                    workspaceOperations.push('document-archive');
+                    return { success: true, data: { ...archived, archived_at: new Date().toISOString() } };
+                }
+            }
+            if (workspaceSection === 'medical-book') {
+                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.medical) };
+                if (method === 'POST') {
+                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'active' };
+                    workspace.medical.unshift(row);
+                    workspaceOperations.push('medical-save');
+                    return { success: true, data: { ...row } };
+                }
+            }
+            if (workspaceSection === 'resources') {
+                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.resources) };
+                if (method === 'POST') {
+                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'issued' };
+                    workspace.resources.unshift(row);
+                    workspaceOperations.push('resource-issue:' + row.resource_kind);
+                    return { success: true, data: { ...row } };
+                }
+                if (method === 'PUT' && returnSuffix === '/return') {
+                    const row = workspace.resources.find(item => Number(item.id) === Number(itemId));
+                    if (!row) return { success: false, error: 'missing resource assignment' };
+                    row.status = 'returned';
+                    workspaceOperations.push('resource-return');
+                    return { success: true, data: { ...row } };
+                }
+            }
+            return { success: false, error: 'unsupported workspace request' };
+        }
+        if (String(path).includes('/resource-options')) {
+            if (shouldFailWorkspaceRequest(requestPath)) return { success: false, error: 'simulated resource options failure' };
+            const kind = requestPath.includes('kind=costume') ? 'costume' : 'warehouse_stock';
+            const label = kind === 'costume' ? 'QA Costume' : 'QA Warehouse Item';
+            return { success: true, data: [{ id: kind + '-qa', label, subtitle: 'QA available' }] };
+        }
+        if (String(path).includes('/offboarding-readiness') || String(path).includes('/offboarding')) {
             return holdLazyTabLoads ? deferredLazyTab(requestPath) : lazyTabResponse(requestPath);
         }
         if (String(path).includes('/role-assignments')) return { success: true, data: [] };
         if (String(path).includes('/shift-preferences')) return { success: true, data: [] };
         if (String(path).includes('/payroll-scheme')) return { success: true, data: { fallback_hourly_rate: 100, fallback_rate_unit: 'hour' } };
-        if (String(path).includes('/resource-options')) return { success: true, data: [] };
         return { success: true, data: [] };
+    };
+
+    window.apiFetchWithAuthRetry = async requestPath => {
+        if (String(requestPath).includes('/documents/') && String(requestPath).includes('/download')) {
+            workspaceOperations.push('document-download');
+            return {
+                ok: true,
+                blob: async () => new Blob(['QA document'], { type: 'text/plain' })
+            };
+        }
+        return { ok: false, json: async () => ({ error: 'unexpected download request' }) };
+    };
+    window.finishBlobDownload = (_blob, filename) => {
+        downloads.push(String(filename || 'staff-document'));
+        return null;
     };
 
     window.__confirmCalls = [];
     window.__confirmResult = false;
     confirmModal = async (message, options = {}) => {
         window.__confirmCalls.push({ message, options });
+        return window.__confirmResult;
+    };
+    window.customConfirm = async (message, title = '') => {
+        window.__confirmCalls.push({ message, title });
         return window.__confirmResult;
     };
 
@@ -224,6 +361,11 @@ const HARNESS_CODE = String.raw`
             holdHistoryLoads = false;
             pendingLazyTabs.clear();
             holdLazyTabLoads = false;
+            pendingStaffUpdates.length = 0;
+            staffUpdates.length = 0;
+            holdStaffUpdates = false;
+            failNextStaffUpdate = false;
+            resetWorkspace();
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
             activePeopleBucket = 'workers';
@@ -249,9 +391,24 @@ const HARNESS_CODE = String.raw`
                 .filter(([requestPath]) => requestPath.includes(String(fragment)))
                 .reduce((total, [, count]) => total + Number(count || 0), 0);
         },
+        workspaceOperations: () => workspaceOperations.slice(),
+        downloads: () => downloads.slice(),
+        failNextWorkspaceRequest(fragment) {
+            failNextWorkspaceRequest = String(fragment || '');
+        },
         close: () => closeHrEditableModal('staffEditModal'),
         confirmCalls: () => window.__confirmCalls,
         setConfirmResult: value => { window.__confirmResult = Boolean(value); },
+        staffUpdates: () => staffUpdates.map(item => ({ path: item.path, body: { ...item.body } })),
+        enableStaffUpdateHold() { holdStaffUpdates = true; },
+        failNextStaffUpdate() { failNextStaffUpdate = true; },
+        resolveStaffUpdates() {
+            while (pendingStaffUpdates.length) {
+                const pending = pendingStaffUpdates.shift();
+                pending.resolve(staffUpdateResponse(pending.id, pending.body));
+            }
+            holdStaffUpdates = false;
+        },
         activeId: activeEditStaffId,
         enableProfileHold() {
             holdProfileLoads = true;
@@ -300,7 +457,10 @@ const HARNESS_CODE = String.raw`
 `;
 
 async function installHarness(page, options = {}) {
-    await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body></body></html>`);
+    await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body data-page-group="hr"></body></html>`);
+    await page.evaluate(markup => {
+        window.__hrTeamBrowserModalMarkup = markup;
+    }, STAFF_EDIT_MODAL_HTML);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
         window.__notifications = [];
@@ -451,16 +611,179 @@ async function openProfile(page, staffId = 1) {
     await waitForCleanHydration(page);
 }
 
+async function assertExactProfileTabPanels(page) {
+    await openProfile(page, 1);
+    const expectedOrder = ['main', 'training', 'work', 'payroll', 'resources', 'offboarding', 'history'];
+    const tabOrder = ['main', 'work', 'training', 'payroll', 'resources', 'offboarding', 'history'];
+    const panelContract = await page.evaluate(() => {
+        const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
+        const panels = Array.from(body?.children || []).filter(element => element.matches('[data-staff-profile-panel]'));
+        return {
+            directChildCount: panels.length,
+            panels: panels.map(panel => ({
+                tab: panel.dataset.staffProfilePanel,
+                id: panel.id,
+                role: panel.getAttribute('role'),
+                labelledBy: panel.getAttribute('aria-labelledby')
+            }))
+        };
+    });
+    assert.equal(panelContract.directChildCount, 7, 'real production drawer has exactly seven direct tab panels');
+    assert.deepEqual(panelContract.panels.map(panel => panel.tab), expectedOrder, 'real production drawer keeps the canonical panel order');
+    panelContract.panels.forEach(panel => {
+        const tabId = `staffProfileTab${panel.tab.charAt(0).toUpperCase()}${panel.tab.slice(1)}`;
+        const panelId = `staffProfilePanel${panel.tab.charAt(0).toUpperCase()}${panel.tab.slice(1)}`;
+        assert.equal(panel.id, panelId, `${panel.tab} has its canonical production panel id`);
+        assert.equal(panel.role, 'tabpanel', `${panel.tab} has tabpanel semantics`);
+        assert.equal(panel.labelledBy, tabId, `${panel.tab} is labelled by its production tab`);
+    });
+
+    for (const tab of tabOrder) {
+        await page.locator(`#staffProfileTab${tab.charAt(0).toUpperCase()}${tab.slice(1)}`).click();
+        await page.waitForFunction(expectedTab => {
+            const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
+            const visible = Array.from(body?.children || [])
+                .filter(element => element.matches('[data-staff-profile-panel]'))
+                .filter(panel => !panel.hidden && getComputedStyle(panel).display !== 'none')
+                .map(panel => panel.dataset.staffProfilePanel);
+            return visible.length === 1 && visible[0] === expectedTab;
+        }, tab);
+        const visiblePanels = await page.evaluate(() => {
+            const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
+            return Array.from(body?.children || [])
+                .filter(element => element.matches('[data-staff-profile-panel]'))
+                .filter(panel => !panel.hidden && getComputedStyle(panel).display !== 'none')
+                .map(panel => panel.dataset.staffProfilePanel);
+        });
+        assert.deepEqual(visiblePanels, [tab], `${tab} exposes exactly its own top-level panel`);
+    }
+    await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
+}
+
+async function assertDrawerGeometryAndButtonStyles(page, label) {
+    const layout = await page.evaluate(() => {
+        const modal = document.querySelector('#staffEditModal .hr-staff-profile-modal');
+        const header = document.querySelector('.hr-staff-profile-drawer-head');
+        const tabs = document.querySelector('.hr-staff-profile-tabs');
+        const body = document.querySelector('.hr-staff-profile-body');
+        const buttonSelectors = {
+            primary: '#editSave',
+            secondary: '#editDocumentUpload',
+            danger: '#editOffboardingComplete',
+            icon: '#editCloseTop'
+        };
+        const styles = Object.fromEntries(Object.entries(buttonSelectors).map(([kind, selector]) => {
+            const element = document.querySelector(selector);
+            const computed = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            return [kind, {
+                className: element.className,
+                minHeight: Number.parseFloat(computed.minHeight),
+                width: box.width,
+                height: box.height,
+                borderRadius: Number.parseFloat(computed.borderRadius),
+                borderStyle: computed.borderStyle,
+                backgroundImage: computed.backgroundImage,
+                backgroundColor: computed.backgroundColor,
+                color: computed.color
+            }];
+        }));
+        const modalBox = modal.getBoundingClientRect();
+        const headerBox = header.getBoundingClientRect();
+        const tabsBox = tabs.getBoundingClientRect();
+        const bodyBox = body.getBoundingClientRect();
+        return {
+            modalBox: { top: modalBox.top, right: modalBox.right, bottom: modalBox.bottom, left: modalBox.left },
+            headerBox: { top: headerBox.top, bottom: headerBox.bottom, left: headerBox.left, right: headerBox.right },
+            tabsBox: { top: tabsBox.top, bottom: tabsBox.bottom, left: tabsBox.left, right: tabsBox.right },
+            bodyBox: { top: bodyBox.top, bottom: bodyBox.bottom, left: bodyBox.left, right: bodyBox.right },
+            viewport: { width: window.innerWidth, height: window.innerHeight },
+            bodyScrollsVertically: body.scrollHeight >= body.clientHeight,
+            bodyHasHorizontalOverflow: body.scrollWidth > body.clientWidth + 1,
+            hasPersistentFooter: Boolean(document.querySelector('.hr-staff-profile-bottom-actions')),
+            styles
+        };
+    });
+    assert.ok(layout.modalBox.top >= -1 && layout.modalBox.bottom <= layout.viewport.height + 1, `${label}: drawer stays inside the viewport vertically`);
+    assert.ok(layout.headerBox.top >= layout.modalBox.top - 1, `${label}: header starts inside the drawer`);
+    assert.ok(layout.headerBox.bottom <= layout.tabsBox.top + 1, `${label}: header does not overlap tabs`);
+    assert.ok(layout.tabsBox.bottom <= layout.bodyBox.top + 1, `${label}: tabs do not overlap scroll body`);
+    assert.ok(layout.bodyBox.bottom <= layout.modalBox.bottom + 1, `${label}: scroll body reaches the drawer bottom without a footer overlay`);
+    assert.ok(layout.bodyBox.left >= layout.modalBox.left - 1 && layout.bodyBox.right <= layout.modalBox.right + 1, `${label}: body stays inside the drawer width`);
+    assert.equal(layout.bodyHasHorizontalOverflow, false, `${label}: drawer body has no accidental horizontal overflow`);
+    assert.equal(layout.hasPersistentFooter, false, `${label}: persistent drawer footer is absent`);
+
+    const { primary, secondary, danger, icon } = layout.styles;
+    for (const [kind, style] of Object.entries({ primary, secondary, danger })) {
+        assert.ok(style.className.includes('btn-'), `${label}: ${kind} action uses the shared modal button class`);
+        assert.ok(style.minHeight >= 44, `${label}: ${kind} action keeps a 44px target`);
+        assert.ok(style.borderRadius >= 8 && style.borderStyle === 'solid', `${label}: ${kind} action has explicit modal chrome (${JSON.stringify(style)})`);
+        assert.ok(style.backgroundImage !== 'none' || style.backgroundColor !== 'rgba(0, 0, 0, 0)', `${label}: ${kind} action is not a browser-default button`);
+    }
+    assert.ok(icon.className.includes('hr-staff-profile-close'), `${label}: icon action uses the timeline close pattern`);
+    assert.ok(icon.width >= 38 && icon.height >= 38 && icon.borderRadius >= 8, `${label}: icon action retains an explicit hit target and chrome`);
+}
+
 async function assertProfileCleanDirtyAndFocus(page) {
     await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('workers'));
     await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-open').click();
     await waitForCleanHydration(page);
 
-    const headerPosition = await page.locator('.hr-staff-profile-drawer-head').evaluate(el => getComputedStyle(el).position);
-    const tabsPosition = await page.locator('.hr-staff-profile-tabs').evaluate(el => getComputedStyle(el).position);
-    assert.equal(headerPosition, 'sticky', 'drawer header is sticky');
-    assert.equal(tabsPosition, 'sticky', 'drawer tabs are sticky');
-    assert.equal(await page.locator('.hr-staff-profile-bottom-actions #editSave').isVisible(), true, 'drawer bottom save action remains visible');
+    const drawerLayout = await page.evaluate(() => {
+        const header = document.querySelector('.hr-staff-profile-drawer-head');
+        const tabs = document.querySelector('.hr-staff-profile-tabs');
+        const body = document.querySelector('.hr-staff-profile-body');
+        const close = document.getElementById('editCloseTop');
+        const headerBox = header?.getBoundingClientRect();
+        const tabsBox = tabs?.getBoundingClientRect();
+        const bodyBox = body?.getBoundingClientRect();
+        return {
+            headerPosition: getComputedStyle(header).position,
+            tabsPosition: getComputedStyle(tabs).position,
+            bodyOverflowY: getComputedStyle(body).overflowY,
+            closeClass: close?.classList.contains('hr-staff-profile-close'),
+            closeLabel: close?.getAttribute('aria-label'),
+            closeWidth: close?.getBoundingClientRect().width,
+            hasPersistentFooter: Boolean(document.querySelector('.hr-staff-profile-bottom-actions')),
+            headerBottom: headerBox?.bottom,
+            tabsTop: tabsBox?.top,
+            tabsBottom: tabsBox?.bottom,
+            bodyTop: bodyBox?.top
+        };
+    });
+    assert.equal(drawerLayout.headerPosition, 'static', 'drawer header is a normal flex child');
+    assert.equal(drawerLayout.tabsPosition, 'static', 'drawer tabs are a normal flex child');
+    assert.equal(drawerLayout.bodyOverflowY, 'auto', 'only the profile body owns vertical scrolling');
+    assert.equal(drawerLayout.closeClass, true, 'drawer uses the dedicated profile close pattern');
+    assert.equal(drawerLayout.closeLabel, 'Закрити картку працівника', 'drawer close has an accessible label');
+    assert.ok(drawerLayout.closeWidth >= 38, 'drawer close preserves the timeline close hit area');
+    assert.equal(drawerLayout.hasPersistentFooter, false, 'drawer no longer renders a persistent close footer');
+    assert.ok(drawerLayout.headerBottom <= drawerLayout.tabsTop + 1, 'header does not overlap tabs');
+    assert.ok(drawerLayout.tabsBottom <= drawerLayout.bodyTop + 1, 'tabs do not overlap the scroll body');
+
+    const lowerContent = await page.evaluate(() => {
+        const body = document.querySelector('.hr-staff-profile-body');
+        const mainPanel = document.getElementById('staffProfilePanelMain');
+        const marker = document.createElement('div');
+        marker.dataset.testId = 'profile-lower-content';
+        marker.style.height = '1600px';
+        marker.style.marginTop = '12px';
+        mainPanel.append(marker);
+        body.scrollTop = body.scrollHeight;
+        const bodyBox = body.getBoundingClientRect();
+        const markerBox = marker.getBoundingClientRect();
+        return {
+            scrollHeight: body.scrollHeight,
+            clientHeight: body.clientHeight,
+            reachedEnd: body.scrollTop + body.clientHeight >= body.scrollHeight - 1,
+            markerBottom: markerBox.bottom,
+            bodyBottom: bodyBox.bottom
+        };
+    });
+    assert.ok(lowerContent.scrollHeight > lowerContent.clientHeight, 'long profile content scrolls inside the body');
+    assert.equal(lowerContent.reachedEnd, true, 'profile body can reach its lowest content');
+    assert.ok(lowerContent.markerBottom <= lowerContent.bodyBottom + 1, 'lowest profile content is not hidden behind a footer');
 
     await page.locator('#editCloseTop').click();
     await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
@@ -477,6 +800,70 @@ async function assertProfileCleanDirtyAndFocus(page) {
     await page.locator('#editCloseTop').click();
     await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
     assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length >= 2), 'dirty accepted close asks before closing');
+}
+
+async function assertScopedSavesAndActionStates(page) {
+    await openProfile(page, 1);
+    const mainSave = page.locator('#editSave');
+    assert.equal(await mainSave.evaluate(el => el.classList.contains('hr-staff-action')), true, 'main save uses the modal action contract');
+    assert.ok(await mainSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'main save has a 44px target');
+
+    await page.fill('#editPhone', '+380999-main-save');
+    await page.locator('#staffProfileTabWork').click();
+    await page.fill('#editNotes', 'work scope note');
+    await page.locator('#staffProfileTabMain').click();
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.enableStaffUpdateHold());
+    const beforeMainSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
+    await mainSave.click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeMainSave + 1);
+    await page.evaluate(() => { void document.getElementById('editSave').onclick(); });
+    await page.waitForTimeout(25);
+    const pendingMainSave = await mainSave.evaluate(el => ({
+        disabled: el.disabled,
+        busy: el.getAttribute('aria-busy'),
+        state: el.dataset.actionState
+    }));
+    assert.deepEqual(pendingMainSave, { disabled: true, busy: 'true', state: 'loading' }, 'main save exposes a disabled loading state');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length), beforeMainSave + 1, 'second main-save trigger does not send a duplicate request');
+
+    const mainPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
+    assert.deepEqual(Object.keys(mainPayload).sort(), ['name', 'phone', 'photo_url'], 'main save sends only main-profile fields');
+    assert.equal(mainPayload.phone, '+380999-main-save');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveStaffUpdates());
+    await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'success');
+    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), false, 'successful main save clears the main dirty state');
+    assert.equal(await page.locator('#staffProfileTabWork').evaluate(el => el.classList.contains('is-dirty')), true, 'main save keeps independently dirty work fields unsaved');
+
+    await page.locator('#staffProfileTabWork').click();
+    const beforeWorkSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
+    await page.locator('#editSaveWork').click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeWorkSave + 1);
+    const workPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
+    assert.ok('notes' in workPayload && 'role_type' in workPayload, 'work save includes work fields');
+    assert.equal('name' in workPayload, false, 'work save does not resend the name');
+    assert.equal('phone' in workPayload, false, 'work save does not resend the phone');
+    assert.equal('photo_url' in workPayload, false, 'work save does not resend the photo');
+    assert.equal('hourly_rate' in workPayload, false, 'work save does not resend rates');
+
+    await page.locator('#staffProfileTabPayroll').click();
+    await page.fill('#editHourlyRate', '145');
+    const payrollSave = page.locator('#editPayrollSchemeSave');
+    assert.equal(await payrollSave.textContent(), 'Зберегти оплату', 'payroll action names every payload it can save');
+    assert.ok(await payrollSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'payroll save has a 44px target');
+    const beforeRatesSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
+    await payrollSave.click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeRatesSave + 1);
+    const ratesPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
+    assert.deepEqual(Object.keys(ratesPayload).sort(), ['hourly_rate', 'profession_rates', 'rate_unit'], 'payroll rate save sends only rate fields');
+    assert.equal(ratesPayload.hourly_rate, 145);
+
+    await page.locator('#staffProfileTabMain').click();
+    await page.fill('#editPhone', '+380999-error-state');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextStaffUpdate());
+    await mainSave.click();
+    await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'error');
+    assert.equal(await mainSave.isDisabled(), true, 'failed save remains disabled while the error state is visible');
 }
 
 async function assertRapidProfileSwitching(page) {
@@ -499,54 +886,54 @@ async function assertRapidProfileSwitching(page) {
 }
 
 async function assertHistoryRaceAndLazyTabs(page) {
-    await openProfile(page, 1);
+    await openProfile(page, 4);
     await page.evaluate(() => {
         window.__hrTeamBrowserSmoke.enableHistoryHold();
         window.__hrTeamBrowserSmoke.startTab('history');
     });
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history') === 1);
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/history') === 1);
 
-    await openProfile(page, 2);
+    await openProfile(page, 5);
     await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('history'));
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/history') === 1);
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveHistory(2));
-    await page.waitForFunction(() => document.getElementById('editStaffHistory')?.textContent.includes('QA staff 2'));
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/5/history') === 1);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveHistory(5));
+    await page.waitForFunction(() => document.getElementById('editStaffHistory')?.textContent.includes('QA staff 5'));
     await page.evaluate(() => {
-        window.__hrTeamBrowserSmoke.resolveHistory(1);
+        window.__hrTeamBrowserSmoke.resolveHistory(4);
         window.__hrTeamBrowserSmoke.releaseHistoryHold();
     });
     await page.waitForTimeout(50);
     const activeHistoryText = await page.locator('#editStaffHistory').textContent();
-    assert.match(activeHistoryText, /QA staff 2/, 'stale history response does not replace the active profile history');
+    assert.match(activeHistoryText, /QA staff 5/, 'stale history response does not replace the active profile history');
     assert.match(activeHistoryText, /Призначено підміну зміни/, 'history translates schedule replacement actions');
     assert.match(activeHistoryText, /початок зміни/, 'history translates schedule field keys');
     assert.doesNotMatch(activeHistoryText, /staff_schedule_replacement_set|shiftStart|professionKey/, 'history does not expose raw internal labels');
 
-    await openProfile(page, 1);
-    const historyRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    await openProfile(page, 3);
+    const historyRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/3/history'));
     await page.locator('#staffProfileTabMain').focus();
     await page.keyboard.press('End');
     await page.waitForFunction(() => document.getElementById('staffProfileTabHistory')?.getAttribute('aria-selected') === 'true');
-    const historyRequestsAfterFirstOpen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    const historyRequestsAfterFirstOpen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/3/history'));
     assert.equal(historyRequestsAfterFirstOpen, historyRequestsBefore + 1, 'history tab loads lazily on first open');
     await page.keyboard.press('Home');
     assert.equal(await page.locator('#staffProfileTabMain').getAttribute('aria-selected'), 'true', 'Home keyboard navigation activates the first profile tab');
     await page.keyboard.press('End');
     assert.equal(await page.locator('#staffProfileTabHistory').getAttribute('aria-selected'), 'true', 'End keyboard navigation activates the last profile tab');
-    const historyRequestsAfterReopen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    const historyRequestsAfterReopen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/3/history'));
     assert.equal(historyRequestsAfterReopen, historyRequestsAfterFirstOpen, 'reopening a loaded tab does not duplicate its request');
 }
 
 async function assertIndependentLazyTabRaces(page) {
-    await openProfile(page, 1);
+    await openProfile(page, 2);
     await page.evaluate(() => {
         window.__hrTeamBrowserSmoke.enableLazyTabHold();
         window.__hrTeamBrowserSmoke.startTab('resources');
     });
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents') === 1);
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/documents') === 1);
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('offboarding'));
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding') >= 2);
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding') >= 2);
     await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveLazyTab('/offboarding'));
     await page.waitForFunction(() => !document.getElementById('editStaffOffboarding')?.textContent.includes('завантажується'));
 
@@ -563,16 +950,139 @@ async function assertIndependentLazyTabRaces(page) {
     ].every(root => root && !root.textContent.includes('завантажується')));
 
     const requestsBeforeReopen = await page.evaluate(() => ({
-        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents'),
-        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding')
+        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/2/documents'),
+        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding')
     }));
     await page.evaluate(() => window.__hrTeamBrowserSmoke.openTab('resources'));
     await page.evaluate(() => window.__hrTeamBrowserSmoke.openTab('offboarding'));
     const requestsAfterReopen = await page.evaluate(() => ({
-        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/1/documents'),
-        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/1/offboarding')
+        documents: window.__hrTeamBrowserSmoke.requestCount('/staff/2/documents'),
+        offboarding: window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding')
     }));
     assert.deepEqual(requestsAfterReopen, requestsBeforeReopen, 'independently loaded lazy tabs remain cached without duplicate requests');
+}
+
+async function assertResourcesWorkspaceStatesAndActions(page) {
+    await openProfile(page, 4);
+    await page.evaluate(() => {
+        const body = document.querySelector('.hr-staff-profile-body');
+        const main = document.getElementById('staffProfilePanelMain');
+        const marker = document.createElement('div');
+        marker.style.height = '1400px';
+        main.append(marker);
+        body.scrollTop = body.scrollHeight;
+        window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/documents');
+    });
+    await page.locator('#staffProfileTabResources').click();
+    await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.dataset.state === 'error');
+    assert.equal(await page.locator('.hr-staff-profile-body').evaluate(el => el.scrollTop), 0, 'opening the resources workspace resets the body scroll position');
+    assert.equal(await page.locator('#editStaffDocuments [data-state="error"]').count(), 1, 'document load failure renders a section-specific error state');
+    assert.equal(await page.locator('#editStaffDocuments button').count(), 1, 'document load failure exposes a retry action');
+
+    await page.locator('#editStaffDocuments button').click();
+    await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.dataset.state === 'ready');
+    assert.equal(await page.locator('#editStaffDocuments [data-state="empty"]').count(), 1, 'successful document retry renders the explicit empty state');
+
+    await page.fill('#editDocumentTitle', 'QA uploaded scan');
+    await page.locator('#editDocumentFile').setInputFiles({
+        name: 'qa-upload.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('QA document upload')
+    });
+    await page.locator('#editDocumentUpload').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-upload'));
+    await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.textContent.includes('QA uploaded scan'));
+    assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /додано/i, 'document upload reports a local section result');
+
+    await page.locator('#editStaffDocuments button').first().click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-download'));
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.downloads().length), 1, 'document download completes through the guarded download flow');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setConfirmResult(true));
+    await page.locator('#editStaffDocuments button').last().click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-archive'));
+    await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-state="empty"]'));
+    assert.equal(await page.locator('#editStaffDocuments [data-state="empty"]').count(), 1, 'archiving a document updates the documents subsection');
+
+    await page.fill('#editMedicalIssuedAt', '2026-07-01');
+    await page.fill('#editMedicalExpiresAt', '2027-07-01');
+    await page.locator('#editMedicalSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-save'));
+    assert.equal(await page.locator('#editMedicalBookList .hr-staff-foundation-item').count(), 1, 'medical-book save updates its own subsection');
+
+    await page.fill('#editResourceTitle', 'QA custom resource');
+    await page.locator('#editResourceIssue').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-issue:custom'));
+    await page.locator('#editStaffResources button').first().click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-return'));
+
+    let expectedReturnCount = 1;
+    for (const kind of ['warehouse_stock', 'costume']) {
+        await page.selectOption('#editResourceKind', kind);
+        await page.evaluate(selectedKind => loadStaffResourceOptions(selectedKind), kind);
+        await page.waitForFunction(() => document.getElementById('editResourceSourceId')?.options.length > 1);
+        const option = kind === 'costume' ? 'costume-qa' : 'warehouse_stock-qa';
+        await page.selectOption('#editResourceSourceId', option);
+        await page.evaluate(() => syncResourceTitleFromOption());
+        await page.locator('#editResourceIssue').click();
+        await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.workspaceOperations().includes(`resource-issue:${expected}`), kind);
+        await page.locator('#editStaffResources button').first().click();
+        expectedReturnCount += 1;
+        await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.workspaceOperations().filter(operation => operation === 'resource-return').length >= expected, expectedReturnCount);
+    }
+    const operations = await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations());
+    assert.ok(operations.includes('resource-issue:warehouse_stock'), 'warehouse issue uses the resource workspace route');
+    assert.ok(operations.includes('resource-issue:costume'), 'costume issue uses the resource workspace route');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/resource-options'));
+    await page.selectOption('#editResourceKind', 'warehouse_stock');
+    await page.evaluate(() => loadStaffResourceOptions('warehouse_stock'));
+    await page.waitForFunction(() => document.getElementById('editResourceOptionsState')?.dataset.state === 'error');
+    assert.equal(await page.locator('#editResourceOptionsState button').count(), 1, 'resource-picker failure exposes a local retry action');
+    await page.locator('#editResourceOptionsState button').click();
+    await page.waitForFunction(() => document.getElementById('editResourceOptionsState')?.hidden === true);
+
+    await page.evaluate(async () => {
+        canManage = false;
+        await loadStaffDocumentsAndResources(activeEditStaffId(), { force: true });
+    });
+    assert.equal(await page.locator('#editStaffDocuments [data-state="restricted"]').count(), 1, 'restricted documents state is explicit');
+    assert.equal(await page.locator('#editMedicalBookList [data-state="restricted"]').count(), 1, 'restricted medical state is explicit');
+    assert.equal(await page.locator('#editStaffResources [data-state="restricted"]').count(), 1, 'restricted resources state is explicit');
+    await page.evaluate(() => { canManage = true; });
+}
+
+async function assertOffboardingDangerFlow(page) {
+    await openProfile(page, 1);
+    await page.locator('#staffProfileTabOffboarding').click();
+    await page.waitForFunction(() => document.querySelectorAll('#editOffboardingReadiness .hr-offboarding-readiness-grid > div').length === 4);
+
+    const complete = page.locator('#editOffboardingComplete');
+    assert.equal(await complete.isDisabled(), true, 'offboarding action is disabled before date and reason are provided');
+    assert.equal(await page.locator('.hr-offboarding-history #editStaffOffboarding').count(), 1, 'past offboarding events are isolated from the readiness section');
+    assert.match(await page.locator('#editOffboardingActionStatus').textContent(), /дату/i, 'disabled action explains the missing date');
+
+    await page.fill('#editOffboardingReason', 'QA controlled offboarding');
+    assert.equal(await complete.isDisabled(), true, 'reason alone does not unlock offboarding');
+    await page.fill('#editOffboardingDate', '2026-08-15');
+    await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
+    assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /неактивним/i, 'visible consequence summary explains the profile outcome');
+    assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /майбутніх змін: 2/i, 'visible consequence summary includes future shifts');
+
+    await page.selectOption('#editOffboardingAccountAction', 'disable');
+    await page.waitForFunction(() => document.getElementById('editOffboardingComplete')?.disabled === true);
+    assert.match(await page.locator('#editOffboardingActionStatus').textContent(), /manage_accounts/i, 'account permission blocker explains why automatic disable is unavailable');
+    await page.selectOption('#editOffboardingAccountAction', 'review');
+    await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
+
+    const confirmationCount = await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setConfirmResult(false));
+    await complete.click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.confirmCalls().length === expected + 1, confirmationCount);
+    const confirmation = await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().at(-1));
+    assert.match(confirmation.message, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
+    assert.match(confirmation.message, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'cancelled final confirmation does not change the profile');
 }
 
 async function assertFocusTrap(page) {
@@ -591,6 +1101,23 @@ async function assertMobileAndTheme(page) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
         await installHarness(page, { dark: false });
         await assertCardLayoutAndOverflow(page, { testOverflow: false });
+        await openProfile(page, 1);
+        await assertDrawerGeometryAndButtonStyles(page, `${width}px light`);
+        const viewportLayout = await page.evaluate(() => {
+            const header = document.querySelector('.hr-staff-profile-drawer-head');
+            const tabs = document.querySelector('.hr-staff-profile-tabs');
+            const body = document.querySelector('.hr-staff-profile-body');
+            return {
+                headerPosition: getComputedStyle(header).position,
+                tabsPosition: getComputedStyle(tabs).position,
+                tabsCanScrollHorizontally: tabs.scrollWidth > tabs.clientWidth,
+                bodyOverflowY: getComputedStyle(body).overflowY
+            };
+        });
+        assert.equal(viewportLayout.headerPosition, 'static', `header remains non-sticky at ${width}px`);
+        assert.equal(viewportLayout.tabsPosition, 'static', `tabs remain non-sticky at ${width}px`);
+        assert.equal(viewportLayout.bodyOverflowY, 'auto', `body remains the vertical scroll root at ${width}px`);
+        if (width === 390) assert.equal(viewportLayout.tabsCanScrollHorizontally, true, 'mobile tabs remain horizontally reachable');
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -600,16 +1127,19 @@ async function assertMobileAndTheme(page) {
     assert.ok(mobileBox.width <= 391, 'mobile profile uses full-screen width');
     assert.ok(mobileBox.height >= 840, 'mobile profile uses full-screen height');
     assert.equal(await page.locator('.hr-staff-profile-modal').evaluate(el => getComputedStyle(el).borderRadius), '0px', 'mobile profile removes desktop drawer radius');
+    assert.ok(await page.locator('#editCloseTop').evaluate(el => el.getBoundingClientRect().width >= 44), 'mobile close action has a 44px touch target');
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await installHarness(page, { dark: true });
     await openProfile(page, 1);
+    await assertDrawerGeometryAndButtonStyles(page, '1440px dark');
     assert.equal(await page.evaluate(() => document.body.classList.contains('dark-mode')), true, 'dark mode class is active');
     const darkHeader = await page.locator('.hr-staff-profile-drawer-head').evaluate(el => getComputedStyle(el).backgroundColor + getComputedStyle(el).backgroundImage);
     assert.match(darkHeader, /15,\s*23,\s*42|30,\s*30,\s*56|45,\s*212,\s*191/, 'dark drawer header uses dark/themed surface');
 
     await installHarness(page, { dark: false });
     await openProfile(page, 1);
+    await assertDrawerGeometryAndButtonStyles(page, '1440px light rerender');
     assert.equal(await page.evaluate(() => document.body.classList.contains('dark-mode')), false, 'light mode class is inactive');
 }
 
@@ -622,10 +1152,14 @@ async function run() {
         await installHarness(page, { dark: false });
         await assertCardLayoutAndOverflow(page);
         await assertTeamNavigation(page);
+        await assertExactProfileTabPanels(page);
         await assertProfileCleanDirtyAndFocus(page);
+        await assertScopedSavesAndActionStates(page);
         await assertRapidProfileSwitching(page);
         await assertHistoryRaceAndLazyTabs(page);
         await assertIndependentLazyTabRaces(page);
+        await assertResourcesWorkspaceStatesAndActions(page);
+        await assertOffboardingDangerFlow(page);
         await assertFocusTrap(page);
         await assertMobileAndTheme(page);
         console.log('HR Team browser smoke passed');

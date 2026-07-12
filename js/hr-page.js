@@ -479,16 +479,17 @@ let staffPayrollSchemeLoadSeq = 0;
 let staffShiftPreferencesLoadSeq = 0;
 let staffShiftPreferencesByStaffId = new Map();
 let staffOffboardingReadiness = null;
+let staffOffboardingLifecycle = null;
 let staffLifecycleLoadSeq = 0;
 let staffProfileHistoryLoadSeq = 0;
 let staffEditOpenSeq = 0;
 let hrRealtimeRefreshTimer = null;
 const STAFF_PROFILE_DEFAULT_TAB = 'main';
 const STAFF_PROFILE_TABS = [
-    { id: 'main', label: 'Основне', scopes: ['basic'] },
-    { id: 'work', label: 'Робота', scopes: ['basic', 'shift', 'roles'] },
+    { id: 'main', label: 'Основне', scopes: ['main'] },
+    { id: 'work', label: 'Робота', scopes: ['work', 'shift', 'roles'] },
     { id: 'training', label: 'Навчання', scopes: [] },
-    { id: 'payroll', label: 'Оплата', scopes: ['payroll'] },
+    { id: 'payroll', label: 'Оплата', scopes: ['rates', 'payroll'] },
     { id: 'resources', label: 'Документи та ресурси', scopes: ['documents', 'resources'] },
     { id: 'offboarding', label: 'Завершення співпраці', scopes: ['offboarding'] },
     { id: 'history', label: 'Історія', scopes: [] }
@@ -496,24 +497,27 @@ const STAFF_PROFILE_TABS = [
 const STAFF_PROFILE_TAB_IDS = new Set(STAFF_PROFILE_TABS.map(tab => tab.id));
 const STAFF_PROFILE_TAB_SCOPES = Object.fromEntries(STAFF_PROFILE_TABS.map(tab => [tab.id, tab.scopes]));
 const STAFF_PROFILE_SCOPE_LABELS = {
-    basic: 'Основне',
+    main: 'Основне',
+    work: 'Робочі дані',
     shift: 'Типові зміни',
     roles: 'Ролі та допуски',
+    rates: 'Ставки професій',
     payroll: 'Зарплатна схема',
     documents: 'Документи',
     resources: 'Ресурси',
     offboarding: 'Завершення співпраці'
 };
 const STAFF_PROFILE_SCOPE_SELECTORS = {
-    basic: [
-        '#editStaffName', '#editPhone', '#editPhotoUrl', '#editBirthDate', '#editAddress',
-        '#editEmergencyContact', '#editEmergencyPhone', '#editRoleType', '#editSecondaryProfessions',
-        '#editRateUnit', '#editHourlyRate', '#editCompanyStructureNode', '#editTelegramId',
-        '#editTelegramUsername', '#editContractType', '#editSkills', '#editNotes',
-        '#editPoolStatus', '[data-profession-rate]'
+    main: ['#editStaffName', '#editPhone', '#editPhotoUrl'],
+    work: [
+        '#editBirthDate', '#editAddress', '#editEmergencyContact', '#editEmergencyPhone',
+        '#editRoleType', '#editSecondaryProfessions', '#editCompanyStructureNode',
+        '#editTelegramId', '#editTelegramUsername', '#editContractType', '#editSkills',
+        '#editNotes', '#editPoolStatus'
     ],
     shift: ['#editStaffShiftPreferences input', '#editStaffShiftPreferences select', '#editStaffShiftPreferences textarea'],
     roles: ['#editStaffRoleAssignments input', '#editStaffRoleAssignments select', '#editStaffRoleAssignments textarea'],
+    rates: ['#editRateUnit', '#editHourlyRate', '[data-profession-rate]'],
     payroll: [
         '#editPayrollSchemeType', '#editPayrollSchemeAmount', '#editPayrollBaseKind',
         '#editPayrollBaseQuantity', '#editPayrollBonusLabel', '#editPayrollBonusAmount',
@@ -5157,15 +5161,21 @@ async function saveStaffShiftPreferences(staffId) {
     return data;
 }
 
-async function saveStaffShiftPreferencesScope() {
-    const staffId = activeEditStaffId();
-    const data = await saveStaffShiftPreferences(staffId);
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося зберегти типові зміни', 'error');
-        return;
-    }
-    markStaffProfileScopesClean(['shift']);
-    showNotification('Типові зміни збережено', 'success');
+async function saveStaffShiftPreferencesScope(button = null) {
+    return runStaffProfileAction(button || 'editShiftPreferencesSave', {
+        loadingLabel: 'Збереження…',
+        successLabel: 'Збережено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const data = await saveStaffShiftPreferences(activeEditStaffId());
+        if (!data?.success) {
+            showNotification(data?.error || 'Не вдалося зберегти типові зміни', 'error');
+            return data || { success: false };
+        }
+        markStaffProfileScopesClean(['shift']);
+        showNotification('Типові зміни збережено', 'success');
+        return data;
+    });
 }
 
 function renderStaffProfessionRatesEditor(staff = {}) {
@@ -5444,9 +5454,15 @@ function clearStaffPhotoUrl() {
     const input = document.getElementById('editPhotoUrl');
     if (input) {
         input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
         input.focus();
     }
     updateStaffPhotoPreview('');
+    const button = decorateStaffProfileActionButton(document.querySelector('#staffEditModal .hr-staff-photo-actions .btn-secondary'));
+    if (button) {
+        setStaffProfileActionState(button, 'success', 'Очищено');
+        scheduleStaffProfileActionReset(button);
+    }
 }
 
 function formatStaffDateValue(value) {
@@ -5629,6 +5645,103 @@ function refreshStaffRoleAssignmentsFromCurrentForm() {
     root.innerHTML = renderStaffRoleAssignments(rows);
 }
 
+const STAFF_WORKSPACE_SECTION_CONFIG = {
+    documents: {
+        rootId: 'editStaffDocuments',
+        feedbackId: 'editStaffDocumentsFeedback',
+        loading: 'Завантажуємо документи та скани…',
+        empty: 'Документи ще не додані.',
+        restricted: 'Документи та скани доступні тільки HR/керівнику.',
+        error: 'Не вдалося завантажити документи.'
+    },
+    medical: {
+        rootId: 'editMedicalBookList',
+        feedbackId: 'editMedicalBookFeedback',
+        loading: 'Завантажуємо медкнижку…',
+        empty: 'Медкнижка ще не зафіксована.',
+        restricted: 'Медкнижка доступна тільки HR/керівнику.',
+        error: 'Не вдалося завантажити медкнижку.'
+    },
+    resources: {
+        rootId: 'editStaffResources',
+        feedbackId: 'editStaffResourcesFeedback',
+        loading: 'Завантажуємо видані ресурси…',
+        empty: 'Немає активних виданих ресурсів.',
+        restricted: 'Видані ресурси доступні тільки HR/керівнику.',
+        error: 'Не вдалося завантажити ресурси.'
+    }
+};
+
+function getStaffWorkspaceSectionConfig(section) {
+    return STAFF_WORKSPACE_SECTION_CONFIG[section] || null;
+}
+
+function getStaffWorkspaceRoot(section) {
+    const config = getStaffWorkspaceSectionConfig(section);
+    return config ? document.getElementById(config.rootId) : null;
+}
+
+function renderStaffWorkspaceState(section, state, message = '') {
+    const config = getStaffWorkspaceSectionConfig(section);
+    if (!config) return '';
+    const fallback = config[state] || config.empty;
+    const text = escapeHtml(message || fallback);
+    if (state === 'loading') {
+        return `<div class="hr-staff-workspace-state" data-state="loading" role="status">
+            <span class="hr-staff-workspace-skeleton" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="hr-staff-workspace-state__message">${text}</span>
+        </div>`;
+    }
+    const retry = state === 'error'
+        ? `<button type="button" class="hr-staff-action hr-staff-action--secondary" onclick="retryStaffWorkspaceSection('${section}', this)">Повторити</button>`
+        : '';
+    return `<div class="hr-staff-workspace-state" data-state="${escapeHtml(state)}" role="${state === 'error' ? 'alert' : 'status'}">
+        <span class="hr-staff-workspace-state__message">${text}</span>${retry}
+    </div>`;
+}
+
+function setStaffWorkspaceState(section, state, message = '') {
+    const root = getStaffWorkspaceRoot(section);
+    if (!root) return;
+    root.dataset.state = state;
+    root.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+    root.innerHTML = renderStaffWorkspaceState(section, state, message);
+}
+
+function setStaffWorkspaceContent(section, html) {
+    const root = getStaffWorkspaceRoot(section);
+    if (!root) return;
+    root.dataset.state = 'ready';
+    root.setAttribute('aria-busy', 'false');
+    root.innerHTML = html;
+}
+
+function setStaffWorkspaceFeedback(section, state = '', message = '') {
+    const config = getStaffWorkspaceSectionConfig(section);
+    const root = config ? document.getElementById(config.feedbackId) : null;
+    if (!root) return;
+    root.hidden = !state || !message;
+    root.dataset.state = state || '';
+    root.setAttribute('role', state === 'error' ? 'alert' : 'status');
+    root.textContent = message || '';
+}
+
+function setStaffResourceOptionsState(state = '', message = '') {
+    const root = document.getElementById('editResourceOptionsState');
+    if (!root) return;
+    root.hidden = !state || !message;
+    root.dataset.state = state || '';
+    root.setAttribute('role', state === 'error' ? 'alert' : 'status');
+    if (!state || !message) {
+        root.textContent = '';
+        return;
+    }
+    const retry = state === 'error'
+        ? `<button type="button" class="hr-staff-action hr-staff-action--secondary" onclick="retryStaffResourceOptions(this)">Повторити</button>`
+        : '';
+    root.innerHTML = `<span class="hr-staff-resource-options-state__message">${escapeHtml(message)}</span>${retry}`;
+}
+
 function renderStaffResourceOptions(items = [], selected = '') {
     if (!items.length) return '<option value="">Немає доступних позицій</option>';
     return [
@@ -5667,7 +5780,7 @@ function updateResourcePickerVisibility() {
 
 function renderStaffDocuments(rows = []) {
     staffDocumentNameById = new Map(rows.map(doc => [Number(doc.id), doc.original_name || doc.title || 'staff-document']));
-    if (!rows.length) return renderStaffFoundationEmpty('Документи ще не додані.');
+    if (!rows.length) return renderStaffWorkspaceState('documents', 'empty');
     return rows.map(doc => {
         const title = doc.title || doc.original_name || 'Документ';
         const type = STAFF_DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type || 'Документ';
@@ -5680,15 +5793,15 @@ function renderStaffDocuments(rows = []) {
                 <span>${escapeHtml(type)} · ${escapeHtml(formatStaffFileSize(doc.file_size))}${escapeHtml(issued)}${escapeHtml(expires)}${escapeHtml(note)}</span>
             </div>
             <div class="hr-staff-foundation-actions">
-                <button type="button" class="btn-secondary" onclick="downloadStaffDocument(${Number(doc.id)})">Скачати</button>
-                <button type="button" class="btn-secondary" onclick="archiveStaffDocument(${Number(doc.id)})">Архів</button>
+                <button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="downloadStaffDocument(${Number(doc.id)}, 'staff-document', this)">Скачати</button>
+                <button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="archiveStaffDocument(${Number(doc.id)}, this)">Архів</button>
             </div>
         </article>`;
     }).join('');
 }
 
 function renderStaffMedicalBook(rows = []) {
-    if (!rows.length) return renderStaffFoundationEmpty('Медкнижка ще не зафіксована.');
+    if (!rows.length) return renderStaffWorkspaceState('medical', 'empty');
     return rows.slice(0, 5).map(item => {
         const status = item.status === 'expired' ? 'прострочено' : 'активно';
         const doc = item.document_title ? ` · файл: ${item.document_title}` : '';
@@ -5703,7 +5816,7 @@ function renderStaffMedicalBook(rows = []) {
 }
 
 function renderStaffResources(rows = []) {
-    if (!rows.length) return renderStaffFoundationEmpty('Немає активних виданих ресурсів.');
+    if (!rows.length) return renderStaffWorkspaceState('resources', 'empty');
     return rows.map(item => {
         const kind = STAFF_RESOURCE_KIND_LABELS[item.resource_kind] || item.resource_kind || 'Ресурс';
         const status = STAFF_RESOURCE_STATUS_LABELS[item.status] || item.status || '';
@@ -5717,7 +5830,7 @@ function renderStaffResources(rows = []) {
                 <span>${escapeHtml(kind)} · ${escapeHtml(status)} · ${escapeHtml(item.quantity || 1)} шт.${escapeHtml(due)}${escapeHtml(movement)}${escapeHtml(note)}</span>
             </div>
             <div class="hr-staff-foundation-actions">
-                ${item.status === 'issued' ? `<button type="button" class="btn-secondary" onclick="returnStaffResource(${Number(item.id)})">Повернуто</button>` : ''}
+                ${item.status === 'issued' ? `<button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="returnStaffResource(${Number(item.id)}, this)">Повернути</button>` : ''}
             </div>
         </article>`;
     }).join('');
@@ -5738,16 +5851,20 @@ function renderStaffOffboarding(rows = []) {
     }).join('');
 }
 
-function renderStaffOffboardingReadiness(payload = {}) {
+function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
     const openResources = Number(payload.open_resource_count || 0);
     const activeAccounts = Number(payload.active_account_count || 0);
     const documentAlerts = Number(payload.document_alert_count || 0);
+    const lifecycleMetrics = lifecycle?.metrics || null;
+    const futureScheduleCount = Number(lifecycleMetrics?.future_schedule_count || 0);
+    const openTimeRecordCount = Number(lifecycleMetrics?.open_time_record_count || 0);
+    const activeChanges = futureScheduleCount + openTimeRecordCount;
     const hasBlockers = Array.isArray(payload.disable_blockers) && payload.disable_blockers.length > 0;
     const hasPermissionBlocker = (payload.disable_blockers || []).some(item => item.block_reason === 'requires_manage_accounts');
     const blockerAlert = hasPermissionBlocker
         ? 'Автоматичне вимкнення акаунта потребує доступу manage_accounts.'
         : 'Автоматичне вимкнення акаунта заблоковано для поточного або protected-акаунта.';
-    const summaryTone = openResources || documentAlerts || hasBlockers ? 'is-warning' : 'is-ok';
+    const summaryTone = openResources || documentAlerts || hasBlockers || activeChanges ? 'is-warning' : 'is-ok';
     const resourceList = (payload.open_resources || []).slice(0, 3).map(item => {
         const due = item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
         return `<span>${escapeHtml(item.title || 'Ресурс')} · ${escapeHtml(String(item.quantity || 1))} шт.${escapeHtml(due)}</span>`;
@@ -5762,20 +5879,109 @@ function renderStaffOffboardingReadiness(payload = {}) {
         const expires = item.expires_at ? ` · до ${formatStaffDateValue(item.expires_at)}` : '';
         return `<span>${escapeHtml(source)}: ${escapeHtml(item.title || 'без назви')}${escapeHtml(expires)}</span>`;
     }).join('');
+    const changeList = lifecycleMetrics
+        ? `<span>Майбутніх змін: ${futureScheduleCount}. Активних тайм-записів: ${openTimeRecordCount}.</span>`
+        : '<span>Стан майбутніх і активних змін поки не завантажено.</span>';
     const details = [
         resourceList || '<span>Неповернутих ресурсів немає.</span>',
         accountList || '<span>Активного CRM-акаунта не знайдено.</span>',
-        documentList || '<span>Критичних строків документів на 30 днів немає.</span>'
+        documentList || '<span>Критичних строків документів на 30 днів немає.</span>',
+        changeList
     ].join('');
     return `<div class="hr-offboarding-readiness-card ${summaryTone}">
         <div class="hr-offboarding-readiness-grid">
             <div class="${openResources ? 'is-warning' : 'is-ok'}"><b>${openResources}</b><span>ресурси</span></div>
             <div class="${activeAccounts ? 'is-info' : 'is-muted'}"><b>${activeAccounts}</b><span>акаунти</span></div>
             <div class="${documentAlerts ? 'is-warning' : 'is-ok'}"><b>${documentAlerts}</b><span>документи</span></div>
+            <div class="${lifecycleMetrics ? (activeChanges ? 'is-warning' : 'is-ok') : 'is-muted'}"><b>${lifecycleMetrics ? activeChanges : '—'}</b><span>активні зміни</span></div>
         </div>
         <div class="hr-offboarding-readiness-detail">${details}</div>
         ${hasBlockers ? `<div class="hr-offboarding-readiness-alert">${escapeHtml(blockerAlert)}</div>` : ''}
     </div>`;
+}
+
+function getStaffOffboardingPreview() {
+    const date = document.getElementById('editOffboardingDate')?.value || '';
+    const reason = document.getElementById('editOffboardingReason')?.value?.trim() || '';
+    const poolStatus = document.getElementById('editOffboardingPoolStatus')?.value || 'reserve';
+    const accountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
+    const readiness = staffOffboardingReadiness && typeof staffOffboardingReadiness === 'object'
+        ? staffOffboardingReadiness
+        : null;
+    const lifecycleMetrics = staffOffboardingLifecycle?.metrics || null;
+    const blockers = [];
+    if (!date) blockers.push('Вкажіть дату завершення співпраці.');
+    if (!reason) blockers.push('Вкажіть причину завершення співпраці.');
+    if (!readiness) blockers.push('Перевірку готовності не завантажено. Оновіть readiness.');
+
+    const activeAccounts = Number(readiness?.active_account_count || 0);
+    const openResources = Number(readiness?.open_resource_count || 0);
+    const documentAlerts = Number(readiness?.document_alert_count || 0);
+    const futureScheduleCount = Number(lifecycleMetrics?.future_schedule_count || 0);
+    const openTimeRecordCount = Number(lifecycleMetrics?.open_time_record_count || 0);
+    const needsAccountAccess = (readiness?.disable_blockers || []).some(item => item.block_reason === 'requires_manage_accounts');
+    if (accountAction === 'disable' && readiness?.disable_available === false) {
+        blockers.push(needsAccountAccess
+            ? 'Вимкнення CRM-акаунта потребує доступу manage_accounts.'
+            : 'Вибраний CRM-акаунт захищений або є поточним користувачем.');
+    }
+
+    const accountText = accountAction === 'disable'
+        ? activeAccounts > 0
+            ? `CRM-акаунтів для вимкнення: ${activeAccounts}.`
+            : 'Активних CRM-акаунтів немає — дію вимкнення буде пропущено.'
+        : accountAction === 'none'
+            ? 'CRM-акаунти не змінюються.'
+            : 'CRM-акаунти потребують ручної перевірки.';
+    const consequences = [
+        date
+            ? `Профіль стане неактивним з ${formatStaffDateValue(date)}.`
+            : 'Дата завершення ще не вказана.',
+        `HR-статус після завершення: ${HR_POOL_LABELS[poolStatus] || poolStatus}.`,
+        accountText,
+        lifecycleMetrics
+            ? `Буде прибрано майбутніх змін: ${futureScheduleCount}; активних тайм-записів: ${openTimeRecordCount}.`
+            : 'Стан майбутніх та активних змін ще перевіряється.',
+        openResources || documentAlerts
+            ? `Попередження не блокують серверну операцію: ресурси ${openResources}, документи ${documentAlerts}.`
+            : 'Ресурсів і критичних документів у readiness не знайдено.'
+    ];
+    return {
+        date,
+        reason,
+        poolStatus,
+        accountAction,
+        activeAccounts,
+        openResources,
+        documentAlerts,
+        futureScheduleCount,
+        openTimeRecordCount,
+        blockers,
+        consequences,
+        ready: blockers.length === 0
+    };
+}
+
+function updateStaffOffboardingActionState() {
+    const button = document.getElementById('editOffboardingComplete');
+    const summaryRoot = document.getElementById('editOffboardingConsequenceSummary');
+    const statusRoot = document.getElementById('editOffboardingActionStatus');
+    const preview = getStaffOffboardingPreview();
+    if (summaryRoot) {
+        summaryRoot.innerHTML = `<strong>Що буде змінено</strong><ul>${preview.consequences.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+    }
+    if (statusRoot) {
+        statusRoot.className = `hr-offboarding-action-status ${preview.ready ? 'is-ready' : (preview.blockers.some(item => item.includes('акаунт') || item.includes('manage_accounts')) ? 'is-blocked' : '')}`.trim();
+        statusRoot.textContent = preview.ready
+            ? 'Готово до фінального підтвердження. Перед submit ще раз буде показано підсумок наслідків.'
+            : preview.blockers.join(' ');
+    }
+    if (button && button.dataset.staffActionPending !== 'true') {
+        button.disabled = !preview.ready;
+        button.setAttribute('aria-disabled', preview.ready ? 'false' : 'true');
+        button.title = preview.ready ? 'Показати фінальне підтвердження завершення співпраці' : preview.blockers.join(' ');
+    }
+    return preview;
 }
 
 const LIFECYCLE_SECTION_LABELS_UK = {
@@ -6007,18 +6213,19 @@ function renderStaffLifecycleChecklist(payload = {}) {
 async function loadStaffLifecycleChecklist(staffId, options = {}) {
     const root = document.getElementById('editStaffLifecycleChecklist');
     const id = Number(staffId);
-    if (!root || !Number.isFinite(id) || id <= 0) return;
+    if (!root || !Number.isFinite(id) || id <= 0) return { success: false, error: 'missing_staff_id' };
     if (!canManage) {
         root.innerHTML = renderStaffFoundationEmpty('Чекліст життєвого циклу доступний тільки HR/керівнику.');
-        return;
+        return { success: false, error: 'restricted' };
     }
     const seq = ++staffLifecycleLoadSeq;
     root.innerHTML = 'Чекліст життєвого циклу завантажується...';
     const data = await hrFetch(`/staff/${id}/lifecycle-checklist`).catch(() => null);
-    if (seq !== staffLifecycleLoadSeq || !isActiveStaffEditLoad(id)) return data;
+    if (seq !== staffLifecycleLoadSeq || !isActiveStaffEditLoad(id)) return data || { success: false, stale: true };
     root.innerHTML = data?.success
         ? renderStaffLifecycleChecklist(data.data || {})
         : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити чекліст життєвого циклу.');
+    return data || { success: false };
 }
 
 function setStaffFoundationLoading() {
@@ -6084,28 +6291,35 @@ async function loadStaffRoleAssignments(staffId) {
         : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити ролі.');
 }
 
-async function saveStaffRoleAssignments() {
-    const staffId = activeEditStaffId();
-    if (!staffId) return;
-    const assignments = readStaffRoleAssignmentRows();
-    if (!assignments.length) {
-        showNotification('Немає ролей для збереження', 'error');
-        return;
-    }
-    const data = await hrFetch(`/staff/${staffId}/role-assignments`, {
-        method: 'PUT',
-        body: {
-            primary_role: document.getElementById('editRoleType')?.value || assignments[0].profession_key,
-            assignments
+async function saveStaffRoleAssignments(button = null) {
+    return runStaffProfileAction(button || 'editRoleAssignmentsSave', {
+        loadingLabel: 'Збереження…',
+        successLabel: 'Збережено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId) return { success: false, error: 'missing_staff_id' };
+        const assignments = readStaffRoleAssignmentRows();
+        if (!assignments.length) {
+            showNotification('Немає ролей для збереження', 'error');
+            return { success: false, error: 'empty_role_assignments' };
         }
+        const data = await hrFetch(`/staff/${staffId}/role-assignments`, {
+            method: 'PUT',
+            body: {
+                primary_role: document.getElementById('editRoleType')?.value || assignments[0].profession_key,
+                assignments
+            }
+        });
+        if (!data?.success) {
+            showNotification(data?.error || 'Не вдалося оновити ролі', 'error');
+            return data || { success: false };
+        }
+        await loadStaffRoleAssignments(staffId);
+        markStaffProfileScopesClean(['roles']);
+        showNotification('Ролі та допуски оновлено', 'success');
+        return data;
     });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося оновити ролі', 'error');
-        return;
-    }
-    showNotification('Ролі та допуски оновлено', 'success');
-    await loadStaffRoleAssignments(staffId);
-    markStaffProfileScopesClean(['roles']);
 }
 
 function setPayrollSchemeForm(payload = {}) {
@@ -6147,259 +6361,397 @@ async function loadStaffPayrollScheme(staffId) {
     setPayrollSchemeForm(data.data || {});
 }
 
-async function saveStaffPayrollScheme() {
-    const staffId = activeEditStaffId();
-    if (!staffId) return;
-    const schemeType = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
-    const amount = Number(document.getElementById('editPayrollSchemeAmount')?.value || 0);
-    const config = collectPayrollSchemeConfigFromForm(schemeType, amount);
-    const data = await hrFetch(`/staff/${staffId}/payroll-scheme`, {
-        method: 'PUT',
-        body: {
-            scheme_type: schemeType,
-            amount,
-            config,
-            title: document.getElementById('editPayrollSchemeTitle')?.value || PAYROLL_SCHEME_LABELS[schemeType] || schemeType,
-            effective_from: document.getElementById('editPayrollSchemeEffectiveFrom')?.value || null,
-            effective_to: document.getElementById('editPayrollSchemeEffectiveTo')?.value || null
+async function saveStaffPayrollScheme(button = null) {
+    return runStaffProfileAction(button || 'editPayrollSchemeSave', {
+        loadingLabel: 'Збереження…',
+        successLabel: 'Збережено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId) return { success: false, error: 'missing_staff_id' };
+        const dirtyScopes = new Set(staffProfileDirtyScopes());
+        let savedRates = false;
+        let savedScheme = false;
+        let result = { success: true, noChanges: true };
+
+        if (dirtyScopes.has('rates')) {
+            result = await saveStaffRates(staffId);
+            if (!result?.success) return result || { success: false };
+            savedRates = true;
         }
+        if (dirtyScopes.has('payroll')) {
+            const schemeType = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
+            const amount = Number(document.getElementById('editPayrollSchemeAmount')?.value || 0);
+            const config = collectPayrollSchemeConfigFromForm(schemeType, amount);
+            result = await hrFetch(`/staff/${staffId}/payroll-scheme`, {
+                method: 'PUT',
+                body: {
+                    scheme_type: schemeType,
+                    amount,
+                    config,
+                    title: document.getElementById('editPayrollSchemeTitle')?.value || PAYROLL_SCHEME_LABELS[schemeType] || schemeType,
+                    effective_from: document.getElementById('editPayrollSchemeEffectiveFrom')?.value || null,
+                    effective_to: document.getElementById('editPayrollSchemeEffectiveTo')?.value || null
+                }
+            });
+            if (!result?.success) {
+                showNotification(result?.error || 'Не вдалося зберегти зарплатну схему', 'error');
+                return result || { success: false };
+            }
+            await loadStaffPayrollScheme(staffId);
+            markStaffProfileScopesClean(['payroll']);
+            savedScheme = true;
+        }
+        if (savedRates && savedScheme) showNotification('Оплату збережено', 'success');
+        else if (savedRates) showNotification('Ставки професій збережено', 'success');
+        else if (savedScheme) showNotification('Зарплатну схему оновлено', 'success');
+        else showNotification('Змін в оплаті немає', 'info');
+        return result;
     });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося зберегти зарплатну схему', 'error');
-        return;
-    }
-    showNotification('Зарплатну схему оновлено', 'success');
-    await loadStaffPayrollScheme(staffId);
-    markStaffProfileScopesClean(['payroll']);
 }
 
 async function loadStaffResourceOptions(kind = document.getElementById('editResourceKind')?.value || 'custom') {
     updateResourcePickerVisibility();
     const sourceSelect = document.getElementById('editResourceSourceId');
     const hint = document.getElementById('editResourceSourceHint');
-    if (!sourceSelect) return;
+    if (!sourceSelect) return { success: false, error: 'resource_picker_unavailable' };
     if (kind === 'custom') {
         sourceSelect.innerHTML = '<option value="">Ручний запис</option>';
+        sourceSelect.disabled = false;
         if (hint) hint.textContent = 'Для ручного ресурсу достатньо назви.';
-        return;
+        setStaffResourceOptionsState();
+        return { success: true, data: [] };
     }
     const seq = ++staffResourceOptionsLoadSeq;
     sourceSelect.innerHTML = '<option value="">Завантаження...</option>';
+    sourceSelect.disabled = true;
     if (hint) hint.textContent = kind === 'costume' ? 'Підтягується з розділу Склад → Костюми.' : 'Підтягується з активних складських позицій.';
+    setStaffResourceOptionsState('loading', 'Завантажуємо доступні позиції…');
     const data = await hrFetch(`/resource-options?kind=${encodeURIComponent(kind)}&limit=80`).catch(() => null);
-    if (seq !== staffResourceOptionsLoadSeq) return;
-    sourceSelect.innerHTML = data?.success ? renderStaffResourceOptions(data.data || []) : '<option value="">Не вдалося завантажити</option>';
+    if (seq !== staffResourceOptionsLoadSeq) return { success: false, stale: true };
+    if (!data?.success) {
+        sourceSelect.innerHTML = '<option value="">Не вдалося завантажити</option>';
+        sourceSelect.disabled = true;
+        setStaffResourceOptionsState('error', data?.error || 'Не вдалося завантажити доступні позиції.');
+        return data || { success: false, error: 'resource_options_failed' };
+    }
+    const items = data.data || [];
+    sourceSelect.innerHTML = renderStaffResourceOptions(items);
+    sourceSelect.disabled = !items.length;
+    setStaffResourceOptionsState(items.length ? '' : 'empty', items.length ? '' : 'Немає доступних позицій для видачі.');
     syncResourceTitleFromOption();
+    return data;
 }
 
-async function uploadStaffDocument() {
-    const staffId = activeEditStaffId();
-    const fileInput = document.getElementById('editDocumentFile');
-    const file = fileInput?.files?.[0];
-    if (!staffId || !file) {
-        showNotification('Виберіть файл документа', 'error');
-        return;
-    }
-    const body = new FormData();
-    body.append('document', file);
-    body.append('document_type', document.getElementById('editDocumentType')?.value || 'other');
-    body.append('title', document.getElementById('editDocumentTitle')?.value || file.name);
-    body.append('notes', document.getElementById('editDocumentNotes')?.value || '');
-    const data = await hrFetch(`/staff/${staffId}/documents`, { method: 'POST', body });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося завантажити документ', 'error');
-        return;
-    }
-    ['editDocumentTitle', 'editDocumentNotes'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
+async function retryStaffResourceOptions(button = null) {
+    return runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, () => loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom'));
+}
+
+async function uploadStaffDocument(button = null) {
+    return runStaffProfileAction(button || 'editDocumentUpload', {
+        workspaceSection: 'documents',
+        workspaceErrorMessage: 'Не вдалося завантажити документ. Спробуйте ще раз.',
+        loadingLabel: 'Завантаження…',
+        successLabel: 'Додано',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        const fileInput = document.getElementById('editDocumentFile');
+        const file = fileInput?.files?.[0];
+        if (!staffId || !file) {
+            setStaffWorkspaceFeedback('documents', 'error', 'Виберіть файл документа перед завантаженням.');
+            showNotification('Виберіть файл документа', 'error');
+            return { success: false, error: 'missing_document_file' };
+        }
+        const body = new FormData();
+        body.append('document', file);
+        body.append('document_type', document.getElementById('editDocumentType')?.value || 'other');
+        body.append('title', document.getElementById('editDocumentTitle')?.value || file.name);
+        body.append('notes', document.getElementById('editDocumentNotes')?.value || '');
+        const data = await hrFetch(`/staff/${staffId}/documents`, { method: 'POST', body });
+        if (!data?.success) {
+            setStaffWorkspaceFeedback('documents', 'error', data?.error || 'Не вдалося завантажити документ.');
+            showNotification(data?.error || 'Не вдалося завантажити документ', 'error');
+            return data || { success: false };
+        }
+        ['editDocumentTitle', 'editDocumentNotes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        if (fileInput) fileInput.value = '';
+        await loadStaffDocumentsAndResources(staffId);
+        setStaffWorkspaceFeedback('documents', 'success', 'Документ додано до картки працівника.');
+        markStaffProfileScopesClean(['documents']);
+        showNotification('Документ додано', 'success');
+        return data;
     });
-    if (fileInput) fileInput.value = '';
-    showNotification('Документ додано', 'success');
-    await loadStaffDocumentsAndResources(staffId);
-    markStaffProfileScopesClean(['documents']);
 }
 
-async function downloadStaffDocument(documentId, fallbackName = 'staff-document') {
-    const staffId = activeEditStaffId();
-    if (!staffId || !documentId) return;
-    const touchWindow = typeof openTouchDownloadWindow === 'function'
-        ? openTouchDownloadWindow('Документ працівника')
-        : null;
-    try {
-        const resp = typeof apiFetchWithAuthRetry === 'function'
-            ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
-            : await fetch(`/api/hr/staff/${staffId}/documents/${documentId}/download`);
-        if (!resp?.ok) {
-            const payload = await resp?.json?.().catch(() => ({}));
-            showNotification(payload?.error || 'Не вдалося скачати документ', 'error');
+async function downloadStaffDocument(documentId, fallbackName = 'staff-document', button = null) {
+    return runStaffProfileAction(button, {
+        workspaceSection: 'documents',
+        workspaceErrorMessage: 'Не вдалося скачати документ. Спробуйте ще раз.',
+        loadingLabel: 'Підготовка…',
+        successLabel: 'Готово',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId || !documentId) {
+            setStaffWorkspaceFeedback('documents', 'error', 'Не вдалося визначити документ для завантаження.');
+            return { success: false, error: 'missing_document_id' };
+        }
+        const touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Документ працівника')
+            : null;
+        try {
+            const resp = typeof apiFetchWithAuthRetry === 'function'
+                ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
+                : await fetch(`/api/hr/staff/${staffId}/documents/${documentId}/download`);
+            if (!resp?.ok) {
+                const payload = await resp?.json?.().catch(() => ({}));
+                setStaffWorkspaceFeedback('documents', 'error', payload?.error || 'Не вдалося скачати документ.');
+                showNotification(payload?.error || 'Не вдалося скачати документ', 'error');
+                if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+                return { success: false, error: payload?.error || 'download_failed' };
+            }
+            const blob = await resp.blob();
+            const filename = staffDocumentNameById.get(Number(documentId)) || fallbackName || 'staff-document';
+            if (typeof finishBlobDownload === 'function') {
+                finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Документ підготовлено' });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }
+            setStaffWorkspaceFeedback('documents', 'success', 'Документ підготовлено до завантаження.');
+            return { success: true };
+        } catch (err) {
             if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
-            return;
+            setStaffWorkspaceFeedback('documents', 'error', 'Не вдалося скачати документ. Спробуйте ще раз.');
+            showNotification('Не вдалося скачати документ', 'error');
+            return { success: false, error: err?.message || 'download_failed' };
         }
-        const blob = await resp.blob();
-        const filename = staffDocumentNameById.get(Number(documentId)) || fallbackName || 'staff-document';
-        if (typeof finishBlobDownload === 'function') {
-            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Документ підготовлено' });
-        } else {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-        }
-    } catch (err) {
-        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
-        showNotification('Не вдалося скачати документ', 'error');
-    }
-}
-
-async function archiveStaffDocument(documentId) {
-    const staffId = activeEditStaffId();
-    if (!staffId || !documentId) return;
-    const ok = await confirmHrAction('Архівувати документ? Файл не буде видимий у активному списку, але залишиться в аудиті.');
-    if (!ok) return;
-    const data = await hrFetch(`/staff/${staffId}/documents/${documentId}`, { method: 'DELETE' });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося архівувати документ', 'error');
-        return;
-    }
-    showNotification('Документ перенесено в архів', 'success');
-    await loadStaffDocumentsAndResources(staffId);
-    markStaffProfileScopesClean(['documents']);
-}
-
-async function saveStaffMedicalBook() {
-    const staffId = activeEditStaffId();
-    if (!staffId) return;
-    const body = {
-        issued_at: document.getElementById('editMedicalIssuedAt')?.value || null,
-        expires_at: document.getElementById('editMedicalExpiresAt')?.value || null,
-        notes: document.getElementById('editMedicalNotes')?.value || null
-    };
-    if (!body.issued_at && !body.expires_at) {
-        showNotification('Вкажіть дату медкнижки', 'error');
-        return;
-    }
-    const data = await hrFetch(`/staff/${staffId}/medical-book`, { method: 'POST', body });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося оновити медкнижку', 'error');
-        return;
-    }
-    showNotification('Медкнижку оновлено', 'success');
-    await loadStaffDocumentsAndResources(staffId);
-    markStaffProfileScopesClean(['documents']);
-}
-
-async function issueStaffResource() {
-    const staffId = activeEditStaffId();
-    if (!staffId) return;
-    const resourceKind = document.getElementById('editResourceKind')?.value || 'custom';
-    const selectedResource = selectedStaffResourceOption();
-    const body = {
-        resource_kind: resourceKind,
-        title: document.getElementById('editResourceTitle')?.value || selectedResource?.title || null,
-        quantity: Number(document.getElementById('editResourceQuantity')?.value || 1),
-        due_return_at: document.getElementById('editResourceDueReturnAt')?.value || null,
-        notes: document.getElementById('editResourceNotes')?.value || null
-    };
-    if (resourceKind === 'warehouse_stock') body.warehouse_stock_id = selectedResource?.id || null;
-    if (resourceKind === 'costume') body.costume_id = selectedResource?.id || null;
-    if (resourceKind !== 'custom' && !selectedResource?.id) {
-        showNotification('Виберіть позицію ресурсу', 'error');
-        return;
-    }
-    if (!body.title) {
-        showNotification('Вкажіть назву ресурсу', 'error');
-        return;
-    }
-    const data = await hrFetch(`/staff/${staffId}/resources`, { method: 'POST', body });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося видати ресурс', 'error');
-        return;
-    }
-    ['editResourceTitle', 'editResourceDueReturnAt', 'editResourceNotes'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
     });
-    const source = document.getElementById('editResourceSourceId');
-    if (source) source.value = '';
-    const quantity = document.getElementById('editResourceQuantity');
-    if (quantity) quantity.value = '1';
-    showNotification('Ресурс видано', 'success');
-    if (resourceKind !== 'custom') loadStaffResourceOptions(resourceKind);
-    await loadStaffDocumentsAndResources(staffId);
-    markStaffProfileScopesClean(['resources']);
 }
 
-async function returnStaffResource(assignmentId) {
-    const staffId = activeEditStaffId();
-    if (!staffId || !assignmentId) return;
-    const data = await hrFetch(`/staff/${staffId}/resources/${assignmentId}/return`, { method: 'PUT', body: {} });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося повернути ресурс', 'error');
-        return;
-    }
-    showNotification('Ресурс позначено як повернутий', 'success');
-    loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom');
-    await loadStaffDocumentsAndResources(staffId);
-    markStaffProfileScopesClean(['resources']);
+async function archiveStaffDocument(documentId, button = null) {
+    return runStaffProfileAction(button, {
+        workspaceSection: 'documents',
+        workspaceErrorMessage: 'Не вдалося архівувати документ. Спробуйте ще раз.',
+        loadingLabel: 'Архівація…',
+        successLabel: 'В архіві',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId || !documentId) {
+            setStaffWorkspaceFeedback('documents', 'error', 'Не вдалося визначити документ для архівації.');
+            return { success: false, error: 'missing_document_id' };
+        }
+        const ok = await confirmHrAction('Архівувати документ? Файл не буде видимий у активному списку, але залишиться в аудиті.');
+        if (!ok) return { success: false, cancelled: true };
+        const data = await hrFetch(`/staff/${staffId}/documents/${documentId}`, { method: 'DELETE' });
+        if (!data?.success) {
+            setStaffWorkspaceFeedback('documents', 'error', data?.error || 'Не вдалося архівувати документ.');
+            showNotification(data?.error || 'Не вдалося архівувати документ', 'error');
+            return data || { success: false };
+        }
+        await loadStaffDocumentsAndResources(staffId);
+        setStaffWorkspaceFeedback('documents', 'success', 'Документ перенесено в архів.');
+        markStaffProfileScopesClean(['documents']);
+        showNotification('Документ перенесено в архів', 'success');
+        return data;
+    });
 }
 
-async function completeStaffOffboarding() {
-    const staffId = activeEditStaffId();
-    if (!staffId) return;
-    const reason = document.getElementById('editOffboardingReason')?.value || '';
-    if (!reason.trim()) {
-        showNotification('Вкажіть причину завершення співпраці', 'error');
-        return;
-    }
-    const selectedAccountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
-    const hasOffboardingReadiness = Boolean(staffOffboardingReadiness && typeof staffOffboardingReadiness === 'object');
-    const activeAccountCount = hasOffboardingReadiness ? Number(staffOffboardingReadiness.active_account_count || 0) : null;
-    let accountAction = selectedAccountAction;
-    let skippedAccountActionNote = '';
-    if (selectedAccountAction === 'disable' && hasOffboardingReadiness && activeAccountCount <= 0) {
-        accountAction = 'none';
-        skippedAccountActionNote = ' Активного CRM-акаунта немає, тому дію з акаунтом пропущено.';
-    }
-    if (accountAction === 'disable' && hasOffboardingReadiness && staffOffboardingReadiness.disable_available === false) {
-        const needsAccountAccess = (staffOffboardingReadiness.disable_blockers || [])
-            .some(item => item.block_reason === 'requires_manage_accounts');
-        showNotification(needsAccountAccess
-            ? 'Вимкнення CRM-акаунта потребує доступу manage_accounts.'
-            : 'CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
-        return;
-    }
-    const openResources = hasOffboardingReadiness ? Number(staffOffboardingReadiness.open_resource_count || 0) : 0;
-    const documentAlerts = hasOffboardingReadiness ? Number(staffOffboardingReadiness.document_alert_count || 0) : 0;
-    const readinessNote = !hasOffboardingReadiness
-        ? ' Перевірку готовності не завантажено; сервер перевірить доступ і акаунти під час завершення.'
-        : openResources || documentAlerts
-        ? ` Є хвости: ресурси ${openResources}, документи ${documentAlerts}.`
-        : '';
-    const ok = await confirmHrAction(`Завершити співпрацю з цим співробітником? Профіль стане неактивним.${readinessNote}`);
-    if (!ok) return;
-    const body = {
-        effective_date: document.getElementById('editOffboardingDate')?.value || todayStr(),
-        target_pool_status: document.getElementById('editOffboardingPoolStatus')?.value || 'reserve',
-        account_action: accountAction,
-        reason,
-        notes: document.getElementById('editOffboardingNotes')?.value || null
-    };
-    const data = await hrFetch(`/staff/${staffId}/offboarding`, { method: 'POST', body, allowForbiddenResponse: true });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося завершити співпрацю', 'error');
-        return;
-    }
-    const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
-    const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
-    showNotification(`Співпрацю завершено.${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
-    await closeHrEditableModal('staffEditModal', true);
-    await loadTeam();
-    await refreshHrOperationalViews();
+async function saveStaffMedicalBook(button = null) {
+    return runStaffProfileAction(button || 'editMedicalSave', {
+        workspaceSection: 'medical',
+        workspaceErrorMessage: 'Не вдалося оновити медкнижку. Спробуйте ще раз.',
+        loadingLabel: 'Збереження…',
+        successLabel: 'Збережено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId) {
+            setStaffWorkspaceFeedback('medical', 'error', 'Не вдалося визначити картку працівника.');
+            return { success: false, error: 'missing_staff_id' };
+        }
+        const body = {
+            issued_at: document.getElementById('editMedicalIssuedAt')?.value || null,
+            expires_at: document.getElementById('editMedicalExpiresAt')?.value || null,
+            notes: document.getElementById('editMedicalNotes')?.value || null
+        };
+        if (!body.issued_at && !body.expires_at) {
+            setStaffWorkspaceFeedback('medical', 'error', 'Вкажіть дату видачі або дату завершення медкнижки.');
+            showNotification('Вкажіть дату медкнижки', 'error');
+            return { success: false, error: 'missing_medical_date' };
+        }
+        const data = await hrFetch(`/staff/${staffId}/medical-book`, { method: 'POST', body });
+        if (!data?.success) {
+            setStaffWorkspaceFeedback('medical', 'error', data?.error || 'Не вдалося оновити медкнижку.');
+            showNotification(data?.error || 'Не вдалося оновити медкнижку', 'error');
+            return data || { success: false };
+        }
+        await loadStaffDocumentsAndResources(staffId);
+        setStaffWorkspaceFeedback('medical', 'success', 'Медкнижку оновлено.');
+        markStaffProfileScopesClean(['documents']);
+        showNotification('Медкнижку оновлено', 'success');
+        return data;
+    });
+}
+
+async function issueStaffResource(button = null) {
+    return runStaffProfileAction(button || 'editResourceIssue', {
+        workspaceSection: 'resources',
+        workspaceErrorMessage: 'Не вдалося видати ресурс. Спробуйте ще раз.',
+        loadingLabel: 'Видача…',
+        successLabel: 'Видано',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId) {
+            setStaffWorkspaceFeedback('resources', 'error', 'Не вдалося визначити картку працівника.');
+            return { success: false, error: 'missing_staff_id' };
+        }
+        const resourceKind = document.getElementById('editResourceKind')?.value || 'custom';
+        const selectedResource = selectedStaffResourceOption();
+        const body = {
+            resource_kind: resourceKind,
+            title: document.getElementById('editResourceTitle')?.value || selectedResource?.title || null,
+            quantity: Number(document.getElementById('editResourceQuantity')?.value || 1),
+            due_return_at: document.getElementById('editResourceDueReturnAt')?.value || null,
+            notes: document.getElementById('editResourceNotes')?.value || null
+        };
+        if (resourceKind === 'warehouse_stock') body.warehouse_stock_id = selectedResource?.id || null;
+        if (resourceKind === 'costume') body.costume_id = selectedResource?.id || null;
+        if (resourceKind !== 'custom' && !selectedResource?.id) {
+            setStaffWorkspaceFeedback('resources', 'error', 'Виберіть доступну позицію ресурсу перед видачею.');
+            showNotification('Виберіть позицію ресурсу', 'error');
+            return { success: false, error: 'missing_resource_option' };
+        }
+        if (!body.title) {
+            setStaffWorkspaceFeedback('resources', 'error', 'Вкажіть назву ручного ресурсу.');
+            showNotification('Вкажіть назву ресурсу', 'error');
+            return { success: false, error: 'missing_resource_title' };
+        }
+        const data = await hrFetch(`/staff/${staffId}/resources`, { method: 'POST', body });
+        if (!data?.success) {
+            setStaffWorkspaceFeedback('resources', 'error', data?.error || 'Не вдалося видати ресурс.');
+            showNotification(data?.error || 'Не вдалося видати ресурс', 'error');
+            return data || { success: false };
+        }
+        ['editResourceTitle', 'editResourceDueReturnAt', 'editResourceNotes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const source = document.getElementById('editResourceSourceId');
+        if (source) source.value = '';
+        const quantity = document.getElementById('editResourceQuantity');
+        if (quantity) quantity.value = '1';
+        if (resourceKind !== 'custom') loadStaffResourceOptions(resourceKind);
+        await loadStaffDocumentsAndResources(staffId);
+        setStaffWorkspaceFeedback('resources', 'success', 'Ресурс видано працівнику.');
+        markStaffProfileScopesClean(['resources']);
+        showNotification('Ресурс видано', 'success');
+        return data;
+    });
+}
+
+async function returnStaffResource(assignmentId, button = null) {
+    return runStaffProfileAction(button, {
+        workspaceSection: 'resources',
+        workspaceErrorMessage: 'Не вдалося повернути ресурс. Спробуйте ще раз.',
+        loadingLabel: 'Повернення…',
+        successLabel: 'Повернено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId || !assignmentId) {
+            setStaffWorkspaceFeedback('resources', 'error', 'Не вдалося визначити ресурс для повернення.');
+            return { success: false, error: 'missing_resource_assignment' };
+        }
+        const data = await hrFetch(`/staff/${staffId}/resources/${assignmentId}/return`, { method: 'PUT', body: {} });
+        if (!data?.success) {
+            setStaffWorkspaceFeedback('resources', 'error', data?.error || 'Не вдалося повернути ресурс.');
+            showNotification(data?.error || 'Не вдалося повернути ресурс', 'error');
+            return data || { success: false };
+        }
+        loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom');
+        await loadStaffDocumentsAndResources(staffId);
+        setStaffWorkspaceFeedback('resources', 'success', 'Ресурс позначено як повернутий.');
+        markStaffProfileScopesClean(['resources']);
+        showNotification('Ресурс позначено як повернутий', 'success');
+        return data;
+    });
+}
+
+async function completeStaffOffboarding(button = null) {
+    return runStaffProfileAction(button || 'editOffboardingComplete', {
+        loadingLabel: 'Завершення…',
+        successLabel: 'Завершено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const staffId = activeEditStaffId();
+        if (!staffId) return { success: false, error: 'missing_staff_id' };
+        const preview = updateStaffOffboardingActionState();
+        if (!preview.ready) {
+            showNotification(preview.blockers[0] || 'Завершення співпраці поки недоступне', 'error');
+            return { success: false, error: 'offboarding_not_ready' };
+        }
+        const reason = preview.reason;
+        const selectedAccountAction = preview.accountAction;
+        const hasOffboardingReadiness = Boolean(staffOffboardingReadiness && typeof staffOffboardingReadiness === 'object');
+        const activeAccountCount = hasOffboardingReadiness ? Number(staffOffboardingReadiness.active_account_count || 0) : null;
+        let accountAction = selectedAccountAction;
+        let skippedAccountActionNote = '';
+        if (selectedAccountAction === 'disable' && hasOffboardingReadiness && activeAccountCount <= 0) {
+            accountAction = 'none';
+            skippedAccountActionNote = ' Активного CRM-акаунта немає, тому дію з акаунтом пропущено.';
+        }
+        if (accountAction === 'disable' && hasOffboardingReadiness && staffOffboardingReadiness.disable_available === false) {
+            const needsAccountAccess = (staffOffboardingReadiness.disable_blockers || [])
+                .some(item => item.block_reason === 'requires_manage_accounts');
+            showNotification(needsAccountAccess
+                ? 'Вимкнення CRM-акаунта потребує доступу manage_accounts.'
+                : 'CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
+            return { success: false, error: 'offboarding_account_not_allowed' };
+        }
+        const confirmationSummary = preview.consequences.map(item => `• ${item}`).join('\n');
+        const ok = await confirmHrAction(
+            `Підтвердьте завершення співпраці.\n\n${confirmationSummary}\n\nПричину буде збережено в історії HR-картки.`,
+            'Фінальне підтвердження offboarding'
+        );
+        if (!ok) return { success: false, cancelled: true };
+        const body = {
+            effective_date: preview.date,
+            target_pool_status: document.getElementById('editOffboardingPoolStatus')?.value || 'reserve',
+            account_action: accountAction,
+            reason,
+            notes: document.getElementById('editOffboardingNotes')?.value || null
+        };
+        const data = await hrFetch(`/staff/${staffId}/offboarding`, { method: 'POST', body, allowForbiddenResponse: true });
+        if (!data?.success) {
+            showNotification(data?.error || 'Не вдалося завершити співпрацю', 'error');
+            return data || { success: false };
+        }
+        const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
+        const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
+        showNotification(`Співпрацю завершено.${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
+        markStaffProfileScopesClean(['offboarding']);
+        await closeHrEditableModal('staffEditModal', true);
+        await loadTeam();
+        await refreshHrOperationalViews();
+        return data;
+    });
 }
 
 function staffEditRestoreFocusTarget(staffId, fallback = null) {
@@ -6513,17 +6865,139 @@ function bindStaffProfileScopeDirtyTracking(modal) {
     modal.addEventListener('change', handler, true);
 }
 
-function setStaffProfilePanel(element, tab, scope = '') {
-    if (!element) return;
-    element.dataset.staffProfilePanel = normalizeStaffProfileTab(tab);
-    if (scope) element.dataset.staffProfileScope = scope;
-    if (!element.getAttribute('role')) element.setAttribute('role', 'tabpanel');
-    const tabButton = document.querySelector(`[data-staff-profile-tab="${normalizeStaffProfileTab(tab)}"]`);
-    if (tabButton?.id) element.setAttribute('aria-labelledby', tabButton.id);
+function staffProfileActionButton(buttonOrId) {
+    if (buttonOrId && typeof buttonOrId === 'object' && buttonOrId.nodeType === 1) return buttonOrId;
+    if (typeof buttonOrId === 'string' && buttonOrId) return document.getElementById(buttonOrId);
+    return null;
 }
 
-function staffProfileClosestSection(selector) {
-    return document.querySelector(selector)?.closest('section, .form-group, .hr-staff-profile-save-scope');
+function decorateStaffProfileActionButton(button) {
+    if (!button) return null;
+    button.classList.add('hr-staff-action');
+    if (button.classList.contains('btn-primary')) button.classList.add('hr-staff-action--primary');
+    else if (button.classList.contains('btn-danger')) button.classList.add('hr-staff-action--danger');
+    else button.classList.add('hr-staff-action--secondary');
+    if (!button.dataset.staffActionLabel) button.dataset.staffActionLabel = button.textContent.trim();
+    return button;
+}
+
+function setStaffProfileActionState(button, state, label = '') {
+    if (!button) return;
+    button.dataset.actionState = state;
+    button.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+    if (label) button.textContent = label;
+}
+
+function resetStaffProfileActionState(button) {
+    if (!button) return;
+    button.disabled = button.dataset.staffActionWasDisabled === 'true';
+    delete button.dataset.staffActionPending;
+    delete button.dataset.actionState;
+    button.removeAttribute('aria-busy');
+    if (button.dataset.staffActionLabel) button.textContent = button.dataset.staffActionLabel;
+}
+
+function scheduleStaffProfileActionReset(button) {
+    window.setTimeout(() => resetStaffProfileActionState(button), 1200);
+}
+
+async function runStaffProfileAction(buttonOrId, options, action) {
+    const button = decorateStaffProfileActionButton(staffProfileActionButton(buttonOrId));
+    if (!button) return action();
+    if (button.dataset.staffActionPending === 'true' || button.disabled) {
+        return { success: false, ignored: true };
+    }
+    button.dataset.staffActionPending = 'true';
+    button.dataset.staffActionWasDisabled = button.disabled ? 'true' : 'false';
+    button.disabled = true;
+    setStaffProfileActionState(button, 'loading', options?.loadingLabel || 'Обробка…');
+    try {
+        const result = await action();
+        if (result?.cancelled) {
+            resetStaffProfileActionState(button);
+            return result;
+        }
+        if (result?.success === false) {
+            setStaffProfileActionState(button, 'error', options?.errorLabel || 'Помилка');
+            scheduleStaffProfileActionReset(button);
+            return result;
+        }
+        setStaffProfileActionState(button, 'success', options?.successLabel || 'Готово');
+        scheduleStaffProfileActionReset(button);
+        return result || { success: true };
+    } catch (err) {
+        console.error('Staff profile action failed', err);
+        if (options?.workspaceSection) {
+            setStaffWorkspaceFeedback(options.workspaceSection, 'error', options?.workspaceErrorMessage || 'Не вдалося виконати дію. Спробуйте ще раз.');
+        }
+        showNotification(options?.errorMessage || 'Не вдалося виконати дію', 'error');
+        setStaffProfileActionState(button, 'error', options?.errorLabel || 'Помилка');
+        scheduleStaffProfileActionReset(button);
+        return { success: false, error: err?.message || 'action_failed' };
+    }
+}
+
+function bindStaffProfileActionButton(id, handler) {
+    const button = decorateStaffProfileActionButton(document.getElementById(id));
+    if (!button) return;
+    button.onclick = event => {
+        event?.preventDefault?.();
+        return handler(button);
+    };
+}
+
+function prepareStaffProfileActionButtons(modal) {
+    if (!modal || modal.dataset.staffProfileActionsReady === 'true') return;
+    modal.dataset.staffProfileActionsReady = 'true';
+    const payrollSave = modal.querySelector('#editPayrollSchemeSave');
+    if (payrollSave) {
+        payrollSave.textContent = 'Зберегти оплату';
+        payrollSave.title = 'Зберегти ставки професій і зарплатну схему';
+    }
+    modal.querySelectorAll('.btn-primary, .btn-secondary, .btn-danger').forEach(decorateStaffProfileActionButton);
+
+    bindStaffProfileActionButton('editSave', button => saveStaffEdit({ scope: 'main', button }));
+    bindStaffProfileActionButton('editSaveWork', button => saveStaffEdit({ scope: 'work', button }));
+    bindStaffProfileActionButton('editShiftPreferencesSave', button => saveStaffShiftPreferencesScope(button));
+    bindStaffProfileActionButton('editRoleAssignmentsSave', button => saveStaffRoleAssignments(button));
+    bindStaffProfileActionButton('editPayrollSchemeSave', button => saveStaffPayrollScheme(button));
+    bindStaffProfileActionButton('editDocumentUpload', button => uploadStaffDocument(button));
+    bindStaffProfileActionButton('editMedicalSave', button => saveStaffMedicalBook(button));
+    bindStaffProfileActionButton('editResourceIssue', button => issueStaffResource(button));
+    bindStaffProfileActionButton('editOffboardingComplete', button => completeStaffOffboarding(button));
+    bindStaffProfileActionButton('editOffboardingReadinessRefresh', button => runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, () => loadStaffProfileTabData('offboarding', { force: true })));
+    bindStaffProfileActionButton('editLifecycleRefresh', button => runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, () => loadStaffLifecycleChecklist(activeEditStaffId(), { force: true })));
+    bindStaffProfileActionButton('editShiftPreferencesRefresh', button => runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, () => loadStaffShiftPreferences(activeEditStaffId(), { force: true })));
+    bindStaffProfileActionButton('editHistoryRefresh', button => runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, () => loadStaffProfileTabData('history', { force: true })));
+}
+
+function bindStaffOffboardingActionState(modal) {
+    if (!modal || modal.dataset.staffOffboardingActionStateReady === 'true') return;
+    modal.dataset.staffOffboardingActionStateReady = 'true';
+    ['editOffboardingDate', 'editOffboardingReason', 'editOffboardingPoolStatus', 'editOffboardingAccountAction']
+        .map(id => modal.querySelector(`#${id}`))
+        .filter(Boolean)
+        .forEach(field => {
+            field.addEventListener('input', updateStaffOffboardingActionState);
+            field.addEventListener('change', updateStaffOffboardingActionState);
+        });
+    updateStaffOffboardingActionState();
 }
 
 function prepareStaffProfileDrawerLayout() {
@@ -6531,61 +7005,21 @@ function prepareStaffProfileDrawerLayout() {
     if (!modal || modal.dataset.staffProfileDrawerReady === 'true') return;
     modal.dataset.staffProfileDrawerReady = 'true';
     bindStaffProfileScopeDirtyTracking(modal);
-
-    [
-        ['#staffProfilePanelMain', 'main', 'basic'],
-        ['.hr-staff-photo-field', 'main', 'basic'],
-        ['#editBirthDate', 'main', 'basic'],
-        ['#editAddress', 'main', 'basic'],
-        ['#editEmergencyContact', 'main', 'basic'],
-        ['#editEmergencyPhone', 'main', 'basic'],
-        ['#editSave', 'main', 'basic'],
-        ['#staffProfilePanelWork', 'work', 'basic'],
-        ['#editSecondaryProfessions', 'work', 'basic'],
-        ['#editStaffShiftPreferences', 'work', 'shift'],
-        ['#editStaffRoleAssignments', 'work', 'roles'],
-        ['#editCompanyStructureNode', 'work', 'basic'],
-        ['#editTelegramId', 'work', 'basic'],
-        ['#editTelegramUsername', 'work', 'basic'],
-        ['#editContractType', 'work', 'basic'],
-        ['#editSkills', 'work', 'basic'],
-        ['#editNotes', 'work', 'basic'],
-        ['#editPayrollSchemeSummary', 'payroll', 'payroll'],
-        ['#editStaffDocumentsPanel', 'resources', 'documents'],
-        ['#editMedicalBookList', 'resources', 'documents'],
-        ['#editStaffResources', 'resources', 'resources'],
-        ['#editStaffOffboarding', 'offboarding', 'offboarding'],
-        ['#editStaffHistory', 'history', '']
-    ].forEach(([selector, tab, scope]) => setStaffProfilePanel(staffProfileClosestSection(selector), tab, scope));
-
-    const lifecycle = document.getElementById('staffProfilePanelTraining') || staffProfileClosestSection('#editStaffLifecycleChecklist');
-    setStaffProfilePanel(lifecycle, 'training');
-    const offboarding = staffProfileClosestSection('#editOffboardingReadiness');
-    setStaffProfilePanel(offboarding, 'offboarding', 'offboarding');
-
-    if (!document.getElementById('editSaveWork')) {
-        const notesGroup = staffProfileClosestSection('#editNotes');
-        if (notesGroup) {
-            notesGroup.insertAdjacentHTML('afterend', `<div class="hr-staff-profile-save-scope" data-staff-profile-panel="work" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabWork">
-                <span>Зберігає професії, структуру, Telegram, контракт, навички й нотатки.</span>
-                <button type="button" id="editSaveWork" class="btn-primary" onclick="saveStaffEdit({ scope: 'work' })">Зберегти основне</button>
-            </div>`);
-        }
-    }
+    prepareStaffProfileActionButtons(modal);
+    bindStaffOffboardingActionState(modal);
 
     STAFF_PROFILE_TABS.forEach(tab => {
         const panelId = `staffProfilePanel${tab.id.charAt(0).toUpperCase()}${tab.id.slice(1)}`;
-        const panel = document.getElementById(panelId) || document.querySelector(`[data-staff-profile-panel="${tab.id}"]`);
-        if (panel && !panel.id) panel.id = panelId;
-        const button = document.querySelector(`[data-staff-profile-tab="${tab.id}"]`);
+        const panel = modal.querySelector(`#${panelId}`);
+        const button = modal.querySelector(`[data-staff-profile-tab="${tab.id}"]`);
         if (button) button.setAttribute('aria-controls', panel?.id || panelId);
     });
 
-    document.querySelectorAll('[data-staff-profile-tab]').forEach(button => {
+    modal.querySelectorAll('[data-staff-profile-tab]').forEach(button => {
         button.addEventListener('click', () => activateStaffProfileTab(button.dataset.staffProfileTab));
         button.addEventListener('keydown', event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-            const tabs = Array.from(document.querySelectorAll('[data-staff-profile-tab]'));
+            const tabs = Array.from(modal.querySelectorAll('[data-staff-profile-tab]'));
             const current = tabs.indexOf(button);
             if (current < 0) return;
             event.preventDefault();
@@ -6618,33 +7052,72 @@ function setStaffProfileTabLoading(tabId, loading) {
     if (button) button.classList.toggle('is-loading', Boolean(loading));
 }
 
-async function loadStaffDocumentsAndResources(staffId) {
-    const docsRoot = document.getElementById('editStaffDocuments');
-    const medicalRoot = document.getElementById('editMedicalBookList');
-    const resourcesRoot = document.getElementById('editStaffResources');
-    if (!docsRoot && !medicalRoot && !resourcesRoot) return null;
+async function loadStaffDocumentsAndResources(staffId, options = {}) {
+    const availableSections = ['documents', 'medical', 'resources'].filter(section => getStaffWorkspaceRoot(section));
+    const requested = Array.isArray(options.sections)
+        ? availableSections.filter(section => options.sections.includes(section))
+        : availableSections;
+    if (!requested.length) return null;
+
     const id = Number(staffId);
     const seq = ++staffDocumentsResourcesLoadSeq;
     if (!canManage) {
-        const restricted = renderStaffFoundationEmpty('Доступ до HR-документів і ресурсів має тільки HR/керівник.');
-        if (docsRoot) docsRoot.innerHTML = restricted;
-        if (medicalRoot) medicalRoot.innerHTML = restricted;
-        if (resourcesRoot) resourcesRoot.innerHTML = restricted;
+        requested.forEach(section => {
+            setStaffWorkspaceState(section, 'restricted');
+            setStaffWorkspaceFeedback(section);
+        });
         return { success: false, error: 'restricted' };
     }
-    if (docsRoot) docsRoot.innerHTML = 'Документи завантажуються...';
-    if (medicalRoot) medicalRoot.innerHTML = 'Медкнижка завантажується...';
-    if (resourcesRoot) resourcesRoot.innerHTML = 'Ресурси завантажуються...';
-    const [docs, medical, resources] = await Promise.all([
-        hrFetch(`/staff/${id}/documents`).catch(() => null),
-        hrFetch(`/staff/${id}/medical-book`).catch(() => null),
-        hrFetch(`/staff/${id}/resources`).catch(() => null)
-    ]);
+
+    requested.forEach(section => {
+        setStaffWorkspaceFeedback(section);
+        setStaffWorkspaceState(section, 'loading');
+    });
+
+    const requestBySection = {
+        documents: () => hrFetch(`/staff/${id}/documents`).catch(() => null),
+        medical: () => hrFetch(`/staff/${id}/medical-book`).catch(() => null),
+        resources: () => hrFetch(`/staff/${id}/resources`).catch(() => null)
+    };
+    const responses = await Promise.all(requested.map(async section => [section, await requestBySection[section]()]));
     if (seq !== staffDocumentsResourcesLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
-    if (docsRoot) docsRoot.innerHTML = docs?.success ? renderStaffDocuments(docs.data || []) : renderStaffFoundationEmpty(docs?.error || 'Не вдалося завантажити документи.');
-    if (medicalRoot) medicalRoot.innerHTML = medical?.success ? renderStaffMedicalBook(medical.data || []) : renderStaffFoundationEmpty(medical?.error || 'Не вдалося завантажити медкнижку.');
-    if (resourcesRoot) resourcesRoot.innerHTML = resources?.success ? renderStaffResources(resources.data || []) : renderStaffFoundationEmpty(resources?.error || 'Не вдалося завантажити ресурси.');
-    return { success: Boolean(docs?.success || medical?.success || resources?.success), docs, medical, resources };
+
+    const result = Object.fromEntries(responses);
+    requested.forEach(section => {
+        const data = result[section];
+        if (!data?.success) {
+            setStaffWorkspaceState(section, 'error', data?.error || getStaffWorkspaceSectionConfig(section)?.error);
+            return;
+        }
+        const rows = data.data || [];
+        const renderer = section === 'documents'
+            ? renderStaffDocuments
+            : section === 'medical'
+                ? renderStaffMedicalBook
+                : renderStaffResources;
+        setStaffWorkspaceContent(section, renderer(rows));
+    });
+
+    return {
+        success: requested.some(section => result[section]?.success),
+        docs: result.documents,
+        medical: result.medical,
+        resources: result.resources
+    };
+}
+
+async function retryStaffWorkspaceSection(section, button = null) {
+    const staffId = activeEditStaffId();
+    if (!getStaffWorkspaceSectionConfig(section) || !staffId) return { success: false, error: 'missing_workspace_context' };
+    return runStaffProfileAction(button, {
+        loadingLabel: 'Оновлення…',
+        successLabel: 'Оновлено',
+        errorLabel: 'Помилка'
+    }, async () => {
+        const result = await loadStaffDocumentsAndResources(staffId, { sections: [section], force: true });
+        const response = section === 'documents' ? result?.docs : result?.[section];
+        return response?.success ? response : { success: false, error: response?.error || result?.error || 'workspace_retry_failed' };
+    });
 }
 
 async function loadStaffOffboardingSurface(staffId) {
@@ -6654,22 +7127,39 @@ async function loadStaffOffboardingSurface(staffId) {
     const id = Number(staffId);
     const seq = ++staffOffboardingLoadSeq;
     if (!canManage) {
+        staffOffboardingReadiness = null;
+        staffOffboardingLifecycle = null;
         const restricted = renderStaffFoundationEmpty('Завершення співпраці доступне тільки HR/керівнику.');
         if (offboardingRoot) offboardingRoot.innerHTML = restricted;
         if (readinessRoot) readinessRoot.innerHTML = restricted;
+        updateStaffOffboardingActionState();
         return { success: false, error: 'restricted' };
     }
+    staffOffboardingReadiness = null;
+    staffOffboardingLifecycle = null;
     if (offboardingRoot) offboardingRoot.innerHTML = 'Завершення співпраці завантажується...';
-    if (readinessRoot) readinessRoot.innerHTML = 'Перевірка готовності завантажується...';
-    const [offboarding, readiness] = await Promise.all([
+    if (readinessRoot) {
+        readinessRoot.setAttribute('aria-busy', 'true');
+        readinessRoot.innerHTML = 'Перевірка готовності завантажується...';
+    }
+    updateStaffOffboardingActionState();
+    const [offboarding, readiness, lifecycle] = await Promise.all([
         hrFetch(`/staff/${id}/offboarding`).catch(() => null),
-        hrFetch(`/staff/${id}/offboarding-readiness`).catch(() => null)
+        hrFetch(`/staff/${id}/offboarding-readiness`).catch(() => null),
+        hrFetch(`/staff/${id}/lifecycle-checklist`).catch(() => null)
     ]);
     if (seq !== staffOffboardingLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     staffOffboardingReadiness = readiness?.success ? (readiness.data || null) : null;
+    staffOffboardingLifecycle = lifecycle?.success ? (lifecycle.data || null) : null;
     if (offboardingRoot) offboardingRoot.innerHTML = offboarding?.success ? renderStaffOffboarding(offboarding.data || []) : renderStaffFoundationEmpty(offboarding?.error || 'Не вдалося завантажити події завершення співпраці.');
-    if (readinessRoot) readinessRoot.innerHTML = readiness?.success ? renderStaffOffboardingReadiness(readiness.data || {}) : renderStaffFoundationEmpty(readiness?.error || 'Не вдалося завантажити перевірку готовності.');
-    return { success: Boolean(offboarding?.success || readiness?.success), offboarding, readiness };
+    if (readinessRoot) {
+        readinessRoot.setAttribute('aria-busy', 'false');
+        readinessRoot.innerHTML = readiness?.success
+            ? renderStaffOffboardingReadiness(readiness.data || {}, staffOffboardingLifecycle)
+            : renderStaffFoundationEmpty(readiness?.error || 'Не вдалося завантажити перевірку готовності.');
+    }
+    updateStaffOffboardingActionState();
+    return { success: Boolean(offboarding?.success || readiness?.success), offboarding, readiness, lifecycle };
 }
 
 async function loadStaffProfileTabData(tabId, options = {}) {
@@ -6721,18 +7211,21 @@ async function activateStaffProfileTab(tabId, options = {}) {
     prepareStaffProfileDrawerLayout();
     const modal = document.getElementById('staffEditModal');
     const body = modal?.querySelector('.hr-staff-profile-body');
+    const previousTab = normalizeStaffProfileTab(modal?.dataset.activeProfileTab || body?.dataset.activeProfileTab);
+    const tabChanged = previousTab !== tab;
     if (modal) modal.dataset.activeProfileTab = tab;
     if (body) body.dataset.activeProfileTab = tab;
-    document.querySelectorAll('[data-staff-profile-tab]').forEach(button => {
+    modal?.querySelectorAll('[data-staff-profile-tab]').forEach(button => {
         const active = normalizeStaffProfileTab(button.dataset.staffProfileTab) === tab;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
         button.tabIndex = active ? 0 : -1;
     });
-    document.querySelectorAll('[data-staff-profile-panel]').forEach(panel => {
+    body?.querySelectorAll(':scope > [data-staff-profile-panel]').forEach(panel => {
         const active = normalizeStaffProfileTab(panel.dataset.staffProfilePanel) === tab;
         panel.hidden = !active;
     });
+    if (body && tabChanged) body.scrollTop = 0;
     const result = await loadStaffProfileTabData(tab, options);
     updateStaffProfileDirtyIndicators();
     return result;
@@ -6831,12 +7324,14 @@ async function openStaffEdit(staffId, options = {}) {
     const resourceQuantity = document.getElementById('editResourceQuantity');
     if (resourceQuantity) resourceQuantity.value = '1';
     const offboardingDate = document.getElementById('editOffboardingDate');
-    if (offboardingDate) offboardingDate.value = todayStr();
+    if (offboardingDate) offboardingDate.value = '';
     const offboardingPool = document.getElementById('editOffboardingPoolStatus');
     if (offboardingPool) offboardingPool.value = 'reserve';
     const offboardingAccount = document.getElementById('editOffboardingAccountAction');
     if (offboardingAccount) offboardingAccount.value = 'review';
     staffOffboardingReadiness = null;
+    staffOffboardingLifecycle = null;
+    updateStaffOffboardingActionState();
 
     const modal = document.getElementById('staffEditModal');
     setStaffProfileHydrationState(modal, true);
@@ -6850,52 +7345,92 @@ async function openStaffEdit(staffId, options = {}) {
     });
 }
 
-async function saveStaffEdit(options = {}) {
-    const staffId = document.getElementById('editStaffId')?.value;
-    const scope = typeof options === 'string' ? options : options?.scope || 'basic';
-    const body = {
+function buildStaffMainPayload() {
+    return {
         name: document.getElementById('editStaffName')?.value || null,
-        role_type: document.getElementById('editRoleType')?.value,
-        secondary_professions: normalizeProfessionList(readStaffSecondaryProfessionSelection(), [document.getElementById('editRoleType')?.value]),
         phone: document.getElementById('editPhone')?.value || null,
-        photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null,
+        photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null
+    };
+}
+
+function buildStaffWorkPayload() {
+    const primaryRole = document.getElementById('editRoleType')?.value;
+    const body = {
+        role_type: primaryRole,
+        secondary_professions: normalizeProfessionList(readStaffSecondaryProfessionSelection(), [primaryRole]),
         birth_date: document.getElementById('editBirthDate')?.value || null,
         address: document.getElementById('editAddress')?.value || null,
         emergency_contact: document.getElementById('editEmergencyContact')?.value || null,
         emergency_phone: document.getElementById('editEmergencyPhone')?.value || null,
-        hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
-        rate_unit: currentEditRateUnit(),
         telegram_id: document.getElementById('editTelegramId')?.value || null,
         telegram_username: document.getElementById('editTelegramUsername')?.value || null,
         contract_type: document.getElementById('editContractType')?.value || 'parttime',
         company_structure_node_id: document.getElementById('editCompanyStructureNode')?.value || null,
-        profession_rates: readStaffProfessionRates(),
-        skills: document.getElementById('editSkills')?.value ? document.getElementById('editSkills')?.value.split(',').map(s => s.trim()).filter(Boolean) : null,
+        skills: document.getElementById('editSkills')?.value
+            ? document.getElementById('editSkills').value.split(',').map(value => value.trim()).filter(Boolean)
+            : null,
         notes: document.getElementById('editNotes')?.value || null
     };
     const editPoolStatus = document.getElementById('editPoolStatus');
     if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';
+    return body;
+}
 
-    const data = await hrFetch(`/staff/${staffId}`, {
+function buildStaffRatesPayload() {
+    return {
+        hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
+        rate_unit: currentEditRateUnit(),
+        profession_rates: readStaffProfessionRates()
+    };
+}
+
+async function updateStaffProfileFields(staffId, body) {
+    return hrFetch(`/staff/${staffId}`, {
         method: 'PUT',
         body: JSON.stringify(body)
     });
-    if (data && data.success) {
-        mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
-        syncStaffProfileHeaderName(body.name || '', teamStaff.find(item => Number(item.id) === Number(staffId)) || body);
-        markStaffProfileScopesClean(['basic']);
-        const preferenceData = { success: true };
-        if (!preferenceData?.success) {
-            showNotification(preferenceData?.error || 'Профіль оновлено, але типові зміни не збереглися.', 'error');
-            return;
+}
+
+async function saveStaffEdit(options = {}) {
+    const staffId = activeEditStaffId();
+    const scope = (typeof options === 'string' ? options : options?.scope) === 'work' ? 'work' : 'main';
+    const button = typeof options === 'object' ? options?.button : null;
+    const body = scope === 'work' ? buildStaffWorkPayload() : buildStaffMainPayload();
+    const labels = scope === 'work'
+        ? { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' }
+        : { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' };
+
+    return runStaffProfileAction(button || (scope === 'work' ? 'editSaveWork' : 'editSave'), labels, async () => {
+        const data = await updateStaffProfileFields(staffId, body);
+        if (!data?.success) {
+            showNotification(data?.error || 'Не вдалося зберегти дані профілю', 'error');
+            return data || { success: false };
         }
-        showNotification(scope === 'work' ? 'Робочі дані профілю збережено' : 'Основне профілю збережено', 'success');
+        const fresh = mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
+        if (scope === 'main') syncStaffProfileHeaderName(body.name || '', fresh || body);
+        markStaffProfileScopesClean([scope]);
+        showNotification(scope === 'work' ? 'Робочі дані збережено' : 'Основні дані збережено', 'success');
         if (options?.closeAfterSave) await closeHrEditableModal('staffEditModal', true);
         await loadTeam();
         await refreshHrOperationalViews();
-    } else {
-        showNotification(data?.error || 'Помилка', 'error');
+        return data;
+    });
+}
+
+async function saveStaffRates(staffId) {
+    if (staffProfileDirtyScopes().includes('work')) {
+        showNotification('Спершу збережіть робочі дані: ставки залежать від вибраних професій.', 'error');
+        return { success: false, error: 'work_scope_dirty' };
     }
+    const body = buildStaffRatesPayload();
+    const data = await updateStaffProfileFields(staffId, body);
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося зберегти ставки професій', 'error');
+        return data || { success: false };
+    }
+    mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
+    markStaffProfileScopesClean(['rates']);
+    return data;
 }
 
 // ==========================================
@@ -8476,9 +9011,11 @@ function showHrEditableModal(id, options = {}) {
     const show = target => {
         target.style.display = 'flex';
         target.setAttribute('aria-hidden', 'false');
-        target.scrollTop = 0;
         const dialog = target.querySelector('.hr-modal');
-        if (dialog) dialog.scrollTop = 0;
+        const scrollRoot = id === 'staffEditModal'
+            ? target.querySelector('.hr-staff-profile-body')
+            : dialog;
+        if (scrollRoot) scrollRoot.scrollTop = 0;
     };
     const hide = target => {
         target.style.display = 'none';
@@ -8556,12 +9093,7 @@ function initModals() {
 
     // Staff edit modal
     prepareStaffProfileDrawerLayout();
-    document.getElementById('editSave')?.addEventListener('click', () => saveStaffEdit({ scope: 'basic' }));
-    document.getElementById('editCancel')?.addEventListener('click', () => closeHrEditableModal('staffEditModal', false, 'Є незбережені зміни співробітника. Закрити без збереження?'));
     document.getElementById('editCloseTop')?.addEventListener('click', () => closeHrEditableModal('staffEditModal'));
-    document.getElementById('editHistoryRefresh')?.addEventListener('click', () => {
-        loadStaffProfileTabData('history', { force: true });
-    });
 
     // Correction modal
     document.getElementById('corrSave')?.addEventListener('click', saveCorrection);

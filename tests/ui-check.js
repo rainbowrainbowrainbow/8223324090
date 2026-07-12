@@ -6401,6 +6401,7 @@ check('HR Team browser smoke covers drawer, filters, race, theme, mobile, and fo
     && hrTeamBrowserSmokeCode.includes('assertHistoryRaceAndLazyTabs')
     && hrTeamBrowserSmokeCode.includes('assertCardLayoutAndOverflow')
     && hrTeamBrowserSmokeCode.includes('assertFocusTrap')
+    && hrTeamBrowserSmokeCode.includes('assertScopedSavesAndActionStates')
     && hrTeamBrowserSmokeCode.includes('assertMobileAndTheme')
     && hrTeamBrowserSmokeCode.includes('missing_face')
     && hrTeamBrowserSmokeCode.includes('Dismissed Epsilon')
@@ -6408,8 +6409,19 @@ check('HR Team browser smoke covers drawer, filters, race, theme, mobile, and fo
     && hrTeamBrowserSmokeCode.includes('stale history response')
     && hrTeamBrowserSmokeCode.includes('does not duplicate its request')
     && hrTeamBrowserSmokeCode.includes('aria-pressed')
-    && hrTeamBrowserSmokeCode.includes('sticky')
+    && hrTeamBrowserSmokeCode.includes('non-sticky')
     && !pkg.scripts?.verify?.includes('test:browser:hr-team'));
+check('HR Team browser smoke mounts the production drawer and protects its visual contract',
+    hrTeamBrowserSmokeCode.includes("const STAFF_EDIT_MODAL_HTML = extractElementMarkup(HR_HTML, 'staffEditModal');")
+    && hrTeamBrowserSmokeCode.includes('window.__hrTeamBrowserModalMarkup = markup;')
+    && hrTeamBrowserSmokeCode.includes('window.__hrTeamBrowserModalMarkup,')
+    && !hrTeamBrowserSmokeCode.includes("'<div id=\"staffEditModal\"")
+    && hrTeamBrowserSmokeCode.includes('assertExactProfileTabPanels')
+    && hrTeamBrowserSmokeCode.includes('assertDrawerGeometryAndButtonStyles')
+    && hrTeamBrowserSmokeCode.includes('exactly seven direct tab panels')
+    && hrTeamBrowserSmokeCode.includes('header does not overlap tabs')
+    && hrTeamBrowserSmokeCode.includes('tabs do not overlap scroll body')
+    && hrTeamBrowserSmokeCode.includes('is not a browser-default button'));
 check('HR staff history translates schedule replacement actions and field keys',
     hrCode.includes("staff_schedule_replacement_set: 'Призначено підміну зміни'")
     && hrCode.includes("staff_schedule_replacement_clear_removed: 'Знято підміну зі зміни'")
@@ -6419,7 +6431,7 @@ check('HR staff history translates schedule replacement actions and field keys',
     && hrTeamBrowserSmokeCode.includes('history does not expose raw internal labels'));
 check('HR Team profile action has a single primary open button instead of avatar/name/profile duplicates', hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)})`;') && hrCode.includes('hr-team-open') && hrCode.includes("card?.querySelector?.('.hr-team-open, .hr-team-overflow-trigger')") && !hrCode.includes('hr-team-profile-trigger') && !hrCode.includes('hr-team-name-button') && !hrCode.includes('hr-team-edit hr-team-edit--top') && htmlContains('css/hr-page.css', '.hr-team-open') && htmlContains('css/hr-page.css', '.hr-team-overflow-trigger'));
 check('HR staff profile opens with team identity card and editable name/phone/photo row',
-    htmlContains('hr.html', 'class="hr-staff-profile-hero"')
+    htmlContains('hr.html', 'class="hr-staff-profile-panel hr-staff-profile-hero"')
     && htmlContains('hr.html', 'id="editStaffHeaderName"')
     && htmlContains('hr.html', 'id="editStaffName"')
     && htmlContains('hr.html', 'id="editPhone"')
@@ -6449,12 +6461,16 @@ check('HR staff profile uses drawer tabs, lazy profile loaders, and explicit sav
     && htmlContains('hr.html', 'Зберегти основне')
     && htmlContains('hr.html', 'Зберегти типові зміни')
     && htmlContains('hr.html', 'Зберегти ролі та допуски')
-    && htmlContains('hr.html', 'Зберегти зарплатну схему')
+    && hrCode.includes("payrollSave.textContent = 'Зберегти оплату'")
     && htmlContains('css/hr-page.css', '.hr-staff-profile-overlay')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-drawer-head')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-tabs')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-body')
+    && htmlContains('css/hr-page.css', '.hr-staff-profile-close')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-save-scope')
+    && htmlContains('hr.html', 'id="editCloseTop" class="hr-staff-profile-close"')
+    && !htmlContains('hr.html', 'id="editCancel"')
+    && !htmlContains('hr.html', 'hr-staff-profile-bottom-actions')
     && hrCode.includes('const STAFF_PROFILE_TABS')
     && hrCode.includes('function activateStaffProfileTab')
     && hrCode.includes('function loadStaffProfileTabData')
@@ -6465,7 +6481,7 @@ check('HR staff profile uses drawer tabs, lazy profile loaders, and explicit sav
     && !/hydrateStaffEditProfile[\s\S]{0,900}loadStaffProfileHistory\(numericStaffId\)/.test(hrCode));
 check('HR staff profile shows derived lifecycle checklist without a new schema',
     htmlContains('hr.html', 'id="editStaffLifecycleChecklist"')
-    && htmlContains('hr.html', 'class="hr-staff-foundation-panel hr-lifecycle-panel"')
+    && htmlContains('hr.html', 'class="hr-staff-profile-panel hr-staff-foundation-panel hr-lifecycle-panel"')
     && htmlContains('hr.html', 'Чекліст життєвого циклу')
     && !htmlContains('hr.html', 'Lifecycle checklist')
     && hrCode.includes('function renderStaffLifecycleChecklist')

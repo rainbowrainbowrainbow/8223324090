@@ -536,7 +536,9 @@
                         <i id="editStaffHeaderStatus">Статус не заданий</i>
                     </div>
                 </div>
-                <button type="button" id="editCloseTop" class="btn-secondary" aria-label="Закрити профіль">Закрити</button>
+                <button type="button" id="editCloseTop" class="hr-staff-profile-close" title="Закрити картку працівника" aria-label="Закрити картку працівника">
+                    <span aria-hidden="true">✕</span>
+                </button>
             </header>
             <nav class="hr-staff-profile-tabs" role="tablist" aria-label="Розділи профілю працівника">
                 <button type="button" id="staffProfileTabMain" role="tab" data-staff-profile-tab="main" aria-controls="staffProfilePanelMain" aria-selected="true">Основне</button>
@@ -548,7 +550,7 @@
                 <button type="button" id="staffProfileTabHistory" role="tab" data-staff-profile-tab="history" aria-controls="staffProfilePanelHistory" aria-selected="false" tabindex="-1">Історія</button>
             </nav>
             <div class="hr-staff-profile-body" data-active-profile-tab="main">
-            <section id="staffProfilePanelMain" class="hr-staff-profile-hero" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
+            <section id="staffProfilePanelMain" class="hr-staff-profile-panel hr-staff-profile-hero" data-staff-profile-panel="main" role="tabpanel" aria-labelledby="staffProfileTabMain">
                 <span class="hr-staff-profile-section">Команда</span>
                 <div class="hr-staff-profile-card">
                     <span>Картка співробітника</span>
@@ -564,8 +566,7 @@
                         <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
                     </label>
                 </div>
-            </section>
-            <div class="form-group hr-staff-photo-field" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
+            <div class="form-group hr-staff-photo-field">
                 <label for="editPhotoUrl">Фото профілю</label>
                 <div class="hr-staff-photo-editor">
                     <div id="editPhotoPreview" class="hr-staff-photo-preview" aria-hidden="true">!</div>
@@ -578,7 +579,12 @@
                     </div>
                 </div>
             </div>
-            <section id="staffProfilePanelTraining" class="hr-staff-foundation-panel hr-lifecycle-panel" aria-label="Чекліст життєвого циклу" data-staff-profile-panel="training" role="tabpanel" aria-labelledby="staffProfileTabTraining">
+            <div class="hr-staff-profile-save-scope">
+                <span>Зберігає ПІБ, контакти, фото й базові поля профілю.</span>
+                <button type="button" id="editSave" class="btn-primary">Зберегти основне</button>
+            </div>
+            </section>
+            <section id="staffProfilePanelTraining" class="hr-staff-profile-panel hr-staff-foundation-panel hr-lifecycle-panel" aria-label="Чекліст життєвого циклу" data-staff-profile-panel="training" role="tabpanel" aria-labelledby="staffProfileTabTraining">
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Чекліст життєвого циклу</strong>
@@ -588,6 +594,7 @@
                 </div>
                 <div id="editStaffLifecycleChecklist" class="hr-lifecycle-checklist">Чекліст життєвого циклу завантажується...</div>
             </section>
+            <section id="staffProfilePanelWork" class="hr-staff-profile-panel" data-staff-profile-panel="work" role="tabpanel" aria-labelledby="staffProfileTabWork">
             <div class="form-group">
                 <label>Основна професія</label>
                 <select id="editRoleType">
@@ -616,21 +623,6 @@
                     </optgroup>
                 </select>
                 <small class="form-hint">Основна професія керує головним групуванням, графіком і таймлайном.</small>
-                <div class="hr-primary-rate-card">
-                    <div class="hr-rate-label-row">
-                        <span>Базова ставка основної професії</span>
-                        <select id="editRateUnit" aria-label="Одиниця ставки">
-                            <option value="hour">За годину</option>
-                            <option value="day">За день</option>
-                            <option value="month">За місяць</option>
-                        </select>
-                    </div>
-                    <label class="hr-primary-rate-field">
-                        <span id="editHourlyRateLabel">Ставка грн/год</span>
-                        <input type="number" id="editHourlyRate" min="0" step="10" value="0">
-                    </label>
-                    <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується для основної професії та як fallback для додаткових професій без окремої ставки.</small>
-                </div>
             </div>
             <div class="form-group">
                 <label>Додаткові професії</label>
@@ -647,13 +639,6 @@
                     <div id="editSecondaryProfessionOptions" class="hr-profession-options"></div>
                 </div>
                 <small class="form-hint">Клік по професії додає її до чіпів. Основну професію дублювати не можна.</small>
-                <div class="hr-profession-rate-panel">
-                    <div class="hr-profession-rate-head">
-                        <strong>Ставки додаткових професій</strong>
-                        <span>Одиниця оплати одна для співробітника: година, день або місяць.</span>
-                    </div>
-                    <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
-                </div>
             </div>
             <section class="hr-staff-foundation-panel hr-shift-preferences-panel" aria-label="Типові зміни">
                 <div class="hr-staff-foundation-head">
@@ -669,7 +654,7 @@
                     <button type="button" id="editShiftPreferencesSave" class="btn-primary" onclick="saveStaffShiftPreferencesScope()">Зберегти типові зміни</button>
                 </div>
             </section>
-            <div id="staffProfilePanelWork" class="form-group" data-staff-profile-panel="work" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabWork">
+            <div class="form-group">
                 <label>Дата народження</label>
                 <input type="date" id="editBirthDate">
             </div>
@@ -685,10 +670,6 @@
                 <label>Телефон екстр. контакту</label>
                 <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
             </div>
-            <div class="hr-staff-profile-save-scope" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
-                <span>Зберігає ПІБ, контакти, фото й базові поля профілю.</span>
-                <button type="button" id="editSave" class="btn-primary">Зберегти основне</button>
-            </div>
             <section class="hr-staff-foundation-panel" aria-label="Ролі та допуски">
                 <div class="hr-staff-foundation-head">
                     <div>
@@ -699,7 +680,63 @@
                 </div>
                 <div id="editStaffRoleAssignments" class="hr-staff-role-assignment-list">Ролі завантажуються...</div>
             </section>
-            <section class="hr-staff-foundation-panel" aria-label="Зарплатна схема">
+            <div class="form-group">
+                <label>Вузол структури</label>
+                <select id="editCompanyStructureNode"></select>
+                <small class="form-hint">Якщо не вибрано вручну, картка бере структуру з основної професії.</small>
+            </div>
+            <div class="form-group">
+                <label>Telegram ID</label>
+                <input type="text" id="editTelegramId" aria-label="123456789" placeholder="123456789">
+            </div>
+            <div class="form-group">
+                <label>Telegram нік</label>
+                <input type="text" id="editTelegramUsername" aria-label="@username" placeholder="@username">
+            </div>
+            <div class="form-group">
+                <label>Тип контракту</label>
+                <select id="editContractType">
+                    <option value="parttime">Часткова зайнятість</option>
+                    <option value="fulltime">Повна зайнятість</option>
+                    <option value="freelance">Фріланс</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Навички (через кому)</label>
+                <input type="text" id="editSkills" aria-label="анімація, квести, МК..." placeholder="анімація, квести, МК...">
+            </div>
+            <div class="form-group">
+                <label>Нотатки</label>
+                <textarea id="editNotes" rows="3"></textarea>
+            </div>
+            <div class="hr-staff-profile-save-scope">
+                <span>Зберігає професії, структуру, Telegram, контракт, навички й нотатки.</span>
+                <button type="button" id="editSaveWork" class="btn-primary" onclick="saveStaffEdit({ scope: 'work' })">Зберегти робочі дані</button>
+            </div>
+            </section>
+            <section id="staffProfilePanelPayroll" class="hr-staff-profile-panel hr-staff-foundation-panel" aria-label="Оплата" data-staff-profile-panel="payroll" role="tabpanel" aria-labelledby="staffProfileTabPayroll">
+                <div class="hr-primary-rate-card">
+                    <div class="hr-rate-label-row">
+                        <span>Базова ставка основної професії</span>
+                        <select id="editRateUnit" aria-label="Одиниця ставки">
+                            <option value="hour">За годину</option>
+                            <option value="day">За день</option>
+                            <option value="month">За місяць</option>
+                        </select>
+                    </div>
+                    <label class="hr-primary-rate-field">
+                        <span id="editHourlyRateLabel">Ставка грн/год</span>
+                        <input type="number" id="editHourlyRate" min="0" step="10" value="0">
+                    </label>
+                    <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується для основної професії та як fallback для додаткових професій без окремої ставки.</small>
+                </div>
+                <div class="hr-profession-rate-panel">
+                    <div class="hr-profession-rate-head">
+                        <strong>Ставки додаткових професій</strong>
+                        <span>Одиниця оплати одна для співробітника: година, день або місяць.</span>
+                    </div>
+                    <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
+                </div>
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Зарплатна схема</strong>
@@ -793,35 +830,7 @@
                     </div>
                 </div>
             </section>
-            <div class="form-group">
-                <label>Вузол структури</label>
-                <select id="editCompanyStructureNode"></select>
-                <small class="form-hint">Якщо не вибрано вручну, картка бере структуру з основної професії.</small>
-            </div>
-            <div class="form-group">
-                <label>Telegram ID</label>
-                <input type="text" id="editTelegramId" aria-label="123456789" placeholder="123456789">
-            </div>
-            <div class="form-group">
-                <label>Telegram нік</label>
-                <input type="text" id="editTelegramUsername" aria-label="@username" placeholder="@username">
-            </div>
-            <div class="form-group">
-                <label>Тип контракту</label>
-                <select id="editContractType">
-                    <option value="parttime">Часткова зайнятість</option>
-                    <option value="fulltime">Повна зайнятість</option>
-                    <option value="freelance">Фріланс</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Навички (через кому)</label>
-                <input type="text" id="editSkills" aria-label="анімація, квести, МК..." placeholder="анімація, квести, МК...">
-            </div>
-            <div class="form-group">
-                <label>Нотатки</label>
-                <textarea id="editNotes" rows="3"></textarea>
-            </div>
+            <section id="staffProfilePanelResources" class="hr-staff-profile-panel" data-staff-profile-panel="resources" role="tabpanel" aria-labelledby="staffProfileTabResources">
             <section id="editStaffDocumentsPanel" class="hr-staff-foundation-panel" aria-label="Приватні HR-документи" data-ui-contract="hr-staff-documents-panel">
                 <div class="hr-staff-foundation-head">
                     <div>
@@ -857,7 +866,8 @@
                         <textarea id="editDocumentNotes" rows="2" placeholder="Що це за документ або коли перевірити"></textarea>
                     </div>
                 </div>
-                <div id="editStaffDocuments" class="hr-staff-foundation-list">Документи завантажуються...</div>
+                <div id="editStaffDocumentsFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
+                <div id="editStaffDocuments" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Документи завантажуються...</div>
             </section>
             <section class="hr-staff-foundation-panel" aria-label="Медична книжка">
                 <div class="hr-staff-foundation-head">
@@ -881,7 +891,8 @@
                         <textarea id="editMedicalNotes" rows="2" placeholder="Напр. перевірити за 2 тижні до завершення"></textarea>
                     </div>
                 </div>
-                <div id="editMedicalBookList" class="hr-staff-foundation-list">Медкнижка завантажується...</div>
+                <div id="editMedicalBookFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
+                <div id="editMedicalBookList" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Медкнижка завантажується...</div>
             </section>
             <section class="hr-staff-foundation-panel" aria-label="Видані ресурси">
                 <div class="hr-staff-foundation-head">
@@ -906,6 +917,7 @@
                             <option value="">Спочатку виберіть тип</option>
                         </select>
                         <small class="form-hint" id="editResourceSourceHint">Вибір підтягується зі складу або костюмів.</small>
+                        <div id="editResourceOptionsState" class="hr-staff-resource-options-state" aria-live="polite" hidden></div>
                     </div>
                     <div class="form-group hr-resource-title-group" id="editResourceTitleGroup">
                         <label>Назва</label>
@@ -924,60 +936,87 @@
                         <textarea id="editResourceNotes" rows="2" placeholder="Стан, серійний номер, відповідальний"></textarea>
                     </div>
                 </div>
-                <div id="editStaffResources" class="hr-staff-foundation-list">Ресурси завантажуються...</div>
+                <div id="editStaffResourcesFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
+                <div id="editStaffResources" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Ресурси завантажуються...</div>
             </section>
-            <section class="hr-staff-foundation-panel hr-staff-foundation-danger" aria-label="Завершення співпраці">
+            </section>
+            <section id="staffProfilePanelOffboarding" class="hr-staff-profile-panel hr-staff-foundation-panel hr-staff-foundation-danger" aria-label="Завершення співпраці" data-staff-profile-panel="offboarding" role="tabpanel" aria-labelledby="staffProfileTabOffboarding">
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Завершення співпраці</strong>
-                        <span>Фіксує причину, дату, цільовий HR-статус, акаунт і чек-лист закриття.</span>
+                        <span>Контрольований процес: спочатку readiness і наслідки, потім незворотна дія.</span>
                     </div>
-                    <button type="button" id="editOffboardingComplete" class="btn-danger" onclick="completeStaffOffboarding()">Завершити</button>
+                    <button type="button" id="editOffboardingReadinessRefresh" class="btn-secondary">Оновити readiness</button>
                 </div>
-                <div id="editOffboardingReadiness" class="hr-offboarding-readiness">Перевірка готовності завантажується...</div>
-                <div class="hr-staff-foundation-grid">
-                    <div class="form-group">
-                        <label>Дата</label>
-                        <input type="date" id="editOffboardingDate">
+                <section class="hr-offboarding-readiness-section" aria-labelledby="editOffboardingReadinessTitle">
+                    <div class="hr-offboarding-section-head">
+                        <div>
+                            <strong id="editOffboardingReadinessTitle">Перевірка та блокери</strong>
+                            <span>Read-only перевірка ресурсів, документів, CRM-акаунтів та активних змін.</span>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Після завершення</label>
-                        <select id="editOffboardingPoolStatus">
-                            <option value="reserve">Резерв</option>
-                            <option value="blacklisted">Чорний список</option>
-                            <option value="core">Основна команда</option>
-                        </select>
+                    <div id="editOffboardingReadiness" class="hr-offboarding-readiness" aria-live="polite" aria-busy="true">Перевірка готовності завантажується...</div>
+                </section>
+                <section class="hr-offboarding-form" aria-labelledby="editOffboardingFormTitle">
+                    <div class="hr-offboarding-section-head">
+                        <div>
+                            <strong id="editOffboardingFormTitle">Параметри завершення</strong>
+                            <span>Причина і дата обовʼязкові. Сервер окремо перевірить доступи та дію з акаунтом.</span>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Дія з акаунтом</label>
-                        <select id="editOffboardingAccountAction">
-                            <option value="review">Перевірити вручну</option>
-                            <option value="none">Не чіпати</option>
-                            <option value="disable">Вимкнути CRM-акаунт</option>
-                        </select>
+                    <div class="hr-staff-foundation-grid">
+                        <div class="form-group">
+                            <label>Дата</label>
+                            <input type="date" id="editOffboardingDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Після завершення</label>
+                            <select id="editOffboardingPoolStatus">
+                                <option value="reserve">Резерв</option>
+                                <option value="blacklisted">Чорний список</option>
+                                <option value="core">Основна команда</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Дія з акаунтом</label>
+                            <select id="editOffboardingAccountAction">
+                                <option value="review">Перевірити вручну</option>
+                                <option value="none">Не чіпати</option>
+                                <option value="disable">Вимкнути CRM-акаунт</option>
+                            </select>
+                        </div>
+                        <div class="form-group is-wide">
+                            <label>Причина</label>
+                            <textarea id="editOffboardingReason" rows="2" placeholder="Причина завершення співпраці"></textarea>
+                        </div>
+                        <div class="form-group is-wide">
+                            <label>Нотатка</label>
+                            <textarea id="editOffboardingNotes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group is-wide">
-                        <label>Причина</label>
-                        <textarea id="editOffboardingReason" rows="2" placeholder="Причина завершення співпраці"></textarea>
+                    <div id="editOffboardingConsequenceSummary" class="hr-offboarding-consequence-summary" aria-live="polite"></div>
+                    <div id="editOffboardingActionStatus" class="hr-offboarding-action-status" role="status" aria-live="polite"></div>
+                    <div class="hr-offboarding-action-row">
+                        <button type="button" id="editOffboardingComplete" class="btn-danger" aria-describedby="editOffboardingConsequenceSummary editOffboardingActionStatus" disabled>Завершити співпрацю</button>
                     </div>
-                    <div class="form-group is-wide">
-                        <label>Нотатка</label>
-                        <textarea id="editOffboardingNotes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
+                </section>
+                <section class="hr-offboarding-history" aria-labelledby="editOffboardingHistoryTitle">
+                    <div class="hr-offboarding-section-head">
+                        <div>
+                            <strong id="editOffboardingHistoryTitle">Історія попередніх завершень</strong>
+                            <span>Завершені події зберігаються окремо від актуальних попереджень.</span>
+                        </div>
                     </div>
-                </div>
-                <div id="editStaffOffboarding" class="hr-staff-foundation-list">Завершення співпраці завантажується...</div>
+                    <div id="editStaffOffboarding" class="hr-staff-foundation-list" aria-live="polite">Історія завершення співпраці завантажується...</div>
+                </section>
             </section>
-            <section class="hr-staff-history-panel" aria-label="Історія змін профілю">
+            <section id="staffProfilePanelHistory" class="hr-staff-profile-panel hr-staff-history-panel" aria-label="Історія змін профілю" data-staff-profile-panel="history" role="tabpanel" aria-labelledby="staffProfileTabHistory">
                 <div class="hr-staff-history-head">
                     <strong>Історія змін</strong>
                     <button type="button" id="editHistoryRefresh" class="btn-secondary">Оновити дані</button>
                 </div>
                 <div id="editStaffHistory" class="hr-staff-history-list">Історія завантажується...</div>
             </section>
-            </div>
-            <div class="hr-modal-actions hr-staff-profile-bottom-actions">
-                <span>Збереження рознесене по вкладках: основне, типові зміни, ролі та зарплатна схема.</span>
-                <button type="button" id="editCancel" class="btn-secondary">Закрити профіль</button>
             </div>
         </div>
     </div>

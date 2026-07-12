@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.95 - HR Команда: читабельні профілі
+
+### HR / Команда / (12.07.2026) [codex]
+- **Довгі ПІБ більше не ламають картки** — імʼя отримує повну текстову ширину, переноситься по словах і має контрольований дворядковий ліміт.
+- **Actions більше не стискають header картки** — “Відкрити” та overflow-меню розміщені окремим компактним рядом під роллю.
+- **Сітка адаптується до реальної ширини** — картки не звужуються нижче практичного desktop/tablet мінімуму, а внутрішній контент не розтягується штучно.
+- **HR UI доведено до української термінології** — прибрано видимі “onboarding owner” і “setup-фільтр”.
+- **Browser regressions посилено** — додано 390/768/1280/1440 geometry checks, archive/setup filters, keyboard overflow, stale history та lazy-tab request deduplication.
+- **Protected areas не змінювалися** — DB, migrations, auth/roles, HR/payroll API semantics, Railway, env, secrets, infrastructure і dependencies лишилися без змін.
+
+---
+
 ## v0.78.94 - HR Команда: профіль і готовність
 
 ### HR / Команда / (12.07.2026) [codex]

@@ -6409,6 +6409,13 @@ check('HR Team browser smoke covers drawer, filters, race, theme, mobile, and fo
     && hrTeamBrowserSmokeCode.includes('aria-pressed')
     && hrTeamBrowserSmokeCode.includes('sticky')
     && !pkg.scripts?.verify?.includes('test:browser:hr-team'));
+check('HR staff history translates schedule replacement actions and field keys',
+    hrCode.includes("staff_schedule_replacement_set: 'Призначено підміну зміни'")
+    && hrCode.includes("staff_schedule_replacement_clear_removed: 'Знято підміну зі зміни'")
+    && hrCode.includes("shiftStart: 'початок зміни'")
+    && hrCode.includes("professionKey: 'професія'")
+    && hrCode.includes("replacementReason: 'причина підміни'")
+    && hrTeamBrowserSmokeCode.includes('history does not expose raw internal labels'));
 check('HR Team profile action has a single primary open button instead of avatar/name/profile duplicates', hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)})`;') && hrCode.includes('hr-team-open') && hrCode.includes("card?.querySelector?.('.hr-team-open, .hr-team-overflow-trigger')") && !hrCode.includes('hr-team-profile-trigger') && !hrCode.includes('hr-team-name-button') && !hrCode.includes('hr-team-edit hr-team-edit--top') && htmlContains('css/hr-page.css', '.hr-team-open') && htmlContains('css/hr-page.css', '.hr-team-overflow-trigger'));
 check('HR staff profile opens with team identity card and editable name/phone/photo row',
     htmlContains('hr.html', 'class="hr-staff-profile-hero"')

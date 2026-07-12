@@ -74,7 +74,12 @@ const HARNESS_CODE = String.raw`
     function historyResponse(id) {
         return {
             success: true,
-            data: [{ action: 'qa', performed_by: 'QA staff ' + Number(id), created_at: new Date().toISOString() }]
+            data: [{
+                action: 'staff_schedule_replacement_set',
+                performed_by: 'QA staff ' + Number(id),
+                created_at: new Date().toISOString(),
+                details: { changed_fields: ['note', 'status', 'shiftStart', 'shiftEnd', 'professionKey', 'originalStaffId', 'replacementReason'] }
+            }]
         };
     }
 
@@ -471,7 +476,11 @@ async function assertHistoryRaceAndLazyTabs(page) {
         window.__hrTeamBrowserSmoke.releaseHistoryHold();
     });
     await page.waitForTimeout(50);
-    assert.match(await page.locator('#editStaffHistory').textContent(), /QA staff 2/, 'stale history response does not replace the active profile history');
+    const activeHistoryText = await page.locator('#editStaffHistory').textContent();
+    assert.match(activeHistoryText, /QA staff 2/, 'stale history response does not replace the active profile history');
+    assert.match(activeHistoryText, /Призначено підміну зміни/, 'history translates schedule replacement actions');
+    assert.match(activeHistoryText, /початок зміни/, 'history translates schedule field keys');
+    assert.doesNotMatch(activeHistoryText, /staff_schedule_replacement_set|shiftStart|professionKey/, 'history does not expose raw internal labels');
 
     await openProfile(page, 1);
     const historyRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));

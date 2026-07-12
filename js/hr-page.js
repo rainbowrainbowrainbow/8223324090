@@ -5309,6 +5309,8 @@ const STAFF_HISTORY_ACTION_LABELS = {
     shift_update: 'Оновлено зміну',
     shift_replace: 'Підміна зміни',
     shift_delete: 'Видалено зміну',
+    staff_schedule_replacement_set: 'Призначено підміну зміни',
+    staff_schedule_replacement_clear_removed: 'Знято підміну зі зміни',
     correction: 'Корекція часу'
 };
 
@@ -5323,6 +5325,18 @@ const STAFF_HISTORY_FIELD_LABELS = {
     hourly_rate: 'ставка',
     rate_unit: 'тип ставки',
     phone: 'телефон',
+    note: 'примітка',
+    status: 'статус зміни',
+    shiftStart: 'початок зміни',
+    shift_start: 'початок зміни',
+    shiftEnd: 'кінець зміни',
+    shift_end: 'кінець зміни',
+    professionKey: 'професія',
+    profession_key: 'професія',
+    originalStaffId: 'основний працівник',
+    original_staff_id: 'основний працівник',
+    replacementReason: 'причина підміни',
+    replacement_reason: 'причина підміни',
     emergency_contact: 'екстрений контакт',
     emergency_phone: 'телефон екстр. контакту',
     telegram_id: 'Telegram ID',

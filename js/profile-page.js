@@ -1306,39 +1306,40 @@ async function initProfilePage() {
 }
 
 async function loadProfileData(userId) {
-    const results = await Promise.all([
-        apiGet(isOwnProfile ? '/auth/profile' : `/auth/profile/${userId}`),
-        isOwnProfile ? apiGet('/wallet') : null,
-        isOwnProfile ? apiGet('/inventory') : null,
-        apiGet('/achievements'),
-        null, // notes retired from My Cabinet/profile surface
-        isOwnProfile ? apiGet('/quests/daily') : null,
-        isOwnProfile ? apiGet('/quests/titles') : null,
-        isOwnProfile ? apiGet('/streaks') : null,
-        isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
-        isOwnProfile ? apiGetScoped('/business/live-counters') : null,
-        isOwnProfile ? apiGet('/auth/security') : null
-    ]);
-
-    profileData = syncOwnProfileAvatarSession(results[0]);
-    walletData = results[1];
-    myInventory = results[2] || [];
-    myAchievements = results[3] || [];
-    myNotes = results[4] || [];
-    questsData = results[5];
-    titlesData = results[6];
-    allStreaks = results[7];
-    if (isOwnProfile) {
-        setMyCabinetProjectionData(results[8]);
-    } else {
+    profileData = syncOwnProfileAvatarSession(await apiGet(isOwnProfile ? '/auth/profile' : `/auth/profile/${userId}`));
+    myNotes = [];
+    if (!isOwnProfile) {
         myCabinetData = null;
         myCabinetLoadError = '';
     }
-    applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
-    syncCabinetPulseCounts(results[9]);
-    profileSecurityData = results[10];
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
     ensureActiveProfessionKey();
+    await ensureProfileTabData(activeTab);
+}
+
+async function ensureProfileTabData(tab = activeTab) {
+    if (!isOwnProfile) {
+        if (tab === 'achievements' && !myAchievements.length) myAchievements = await apiGet('/achievements') || [];
+        return;
+    }
+    if (['inventory', 'shop'].includes(tab) && (!walletData || !myInventory.length)) {
+        const [wallet, inventory] = await Promise.all([apiGet('/wallet'), apiGet('/inventory')]);
+        walletData = wallet;
+        myInventory = inventory || [];
+    }
+    if (tab === 'achievements' && !myAchievements.length) myAchievements = await apiGet('/achievements') || [];
+    if (['quests', 'titles'].includes(tab) && (!questsData || !titlesData || !allStreaks)) {
+        const [quests, titles, streaks] = await Promise.all([apiGet('/quests/daily'), apiGet('/quests/titles'), apiGet('/streaks')]);
+        questsData = quests;
+        titlesData = titles;
+        allStreaks = streaks;
+    }
+    if (isProfileTaskProjectionTab(tab) && !myCabinetData) {
+        await loadMyCabinetProjection();
+        applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
+        await refreshCabinetPulseCounts();
+    }
+    if (tab === 'settings' && !profileSecurityData) profileSecurityData = await apiGet('/auth/security');
 }
 
 function profileCockpitWidgetDef(id) {
@@ -1771,14 +1772,7 @@ async function switchTab(tab, options = {}) {
     activeTab = tab;
     if (!options.skipUrl) syncProfileTabToUrl(tab);
     const locked = profileTabLock(tab);
-    if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab) && !myCabinetData) {
-        await loadMyCabinetProjection();
-        applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
-    }
-    if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab)) {
-        await refreshCabinetPulseCounts();
-    }
-
+    if (!locked) await ensureProfileTabData(tab);
     // Lazy load data for tabs that need it
     if (!locked && tab === 'shop' && shopItems.length === 0) await loadShopItems();
     if (!locked && tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();

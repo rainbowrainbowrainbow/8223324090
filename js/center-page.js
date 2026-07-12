@@ -20,6 +20,7 @@ let catalogFilter = 'all';
 let pricePositionsData = [];
 let operationsData = null;
 let operationsLoading = false;
+const centerSectionState = new Map();
 
 const BANQUET_TERMS_PRICE_RULES = Object.freeze([
     {
@@ -3040,6 +3041,7 @@ async function initCenterPage() {
 
     setInitialLoadingStates();
 
+    enhanceCenterSectionHeaders();
     // Restore collapsed sections from localStorage
     restoreCollapsedState();
 
@@ -3053,32 +3055,9 @@ async function initCenterPage() {
         });
     });
 
-    // Load all data in parallel
-    await Promise.all([
-        loadOverview(),
-        loadWorkers(),
-        loadPrices(),
-        loadTasks(),
-        loadReport(),
-        loadCharts(),
-        loadLoyalty(),
-        loadDiscounts(),
-        loadProposals(),
-        loadBriefing(),
-        loadWorkload(),
-        loadProgramPerformance(),
-        loadHeatmap(),
-        loadCrossSell(),
-        loadCatalog(),
-        loadReconciliation(),
-        loadEventLog(),
-        loadHotLeads(),
-        loadConversion()
-    ]);
+    bindCenterSectionLoading();
+    await loadCenterSection('kpiSection');
     initAddLeadBtn();
-
-    // Load goals after overview (needs KPI data)
-    await loadGoals();
 
     // Profile handler
     if (typeof initProfileHandler === 'function') initProfileHandler();
@@ -3092,12 +3071,19 @@ function toggleSection(titleEl) {
     const section = titleEl.closest('.center-section');
     if (!section) return;
     section.classList.toggle('collapsed');
+    const expanded = !section.classList.contains('collapsed');
+    const toggle = section.querySelector('.center-section-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     // Save state
     const sectionId = section.id;
     if (sectionId) {
         const collapsed = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
         collapsed[sectionId] = section.classList.contains('collapsed');
         localStorage.setItem('center_collapsed', JSON.stringify(collapsed));
+    }
+    if (expanded) {
+        void loadCenterSection(sectionId);
+        window.dispatchEvent(new CustomEvent('center:section-open', { detail: { sectionId } }));
     }
 }
 
@@ -3115,6 +3101,101 @@ function restoreCollapsedState() {
             // Default: collapse everything except KPI and Charts
             if (!defaultOpen.includes(id)) section.classList.add('collapsed');
         }
+        const toggle = section.querySelector('.center-section-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+    });
+}
+
+function enhanceCenterSectionHeaders() {
+    document.querySelectorAll('.center-section').forEach(section => {
+        const title = section.querySelector(':scope > .center-section-title');
+        const body = section.querySelector(':scope > .section-body');
+        if (!title || !body || title.dataset.centerSectionEnhanced === 'true') return;
+        const bodyId = body.id || `${section.id || 'center'}Body`;
+        body.id = bodyId;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'center-section-toggle';
+        toggle.setAttribute('aria-controls', bodyId);
+        toggle.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+        Array.from(title.childNodes).forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE && node.matches('.btn-center-action')) return;
+            toggle.appendChild(node);
+        });
+        title.removeAttribute('onclick');
+        title.prepend(toggle);
+        toggle.addEventListener('click', () => toggleSection(toggle));
+        title.dataset.centerSectionEnhanced = 'true';
+    });
+}
+
+function centerSectionLoader(sectionId) {
+    const loaders = {
+        kpiSection: loadOverview,
+        hotLeadsSection: loadHotLeads,
+        conversionSection: loadConversion,
+        chartsSection: loadCharts,
+        goalsSection: loadGoals,
+        briefingSection: loadBriefing,
+        workersSection: loadWorkers,
+        workloadSection: loadWorkload,
+        tasksSection: loadTasks,
+        perfSection: loadProgramPerformance,
+        heatmapSection: loadHeatmap,
+        crossSellSection: loadCrossSell,
+        loyaltySection: loadLoyalty,
+        discountsSection: loadDiscounts,
+        proposalsSection: loadProposals,
+        pricesSection: loadPrices,
+        catalogSection: loadCatalog,
+        reconciliationSection: loadReconciliation,
+        eventLogSection: loadEventLog,
+        reportSection: loadReport
+    };
+    return loaders[sectionId] || null;
+}
+
+function centerSectionRetry(section) {
+    const body = section?.querySelector('.section-body');
+    if (!body || body.querySelector('[data-center-section-retry]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn-center-action';
+    button.dataset.centerSectionRetry = section.id;
+    button.textContent = 'Повторити';
+    body.appendChild(button);
+}
+
+async function loadCenterSection(sectionId, { force = false } = {}) {
+    const loader = centerSectionLoader(sectionId);
+    if (!loader) return;
+    const previous = centerSectionState.get(sectionId);
+    if (!force && (previous?.status === 'loaded' || previous?.status === 'loading')) return previous?.promise;
+    const section = document.getElementById(sectionId);
+    const promise = Promise.resolve()
+        .then(loader)
+        .then(() => {
+            const failed = Boolean(section?.querySelector('.center-state.is-error, .center-state--error, .center-error'));
+            centerSectionState.set(sectionId, { status: failed ? 'error' : 'loaded', promise: null });
+            if (failed) centerSectionRetry(section);
+        })
+        .catch(err => {
+            console.error(`Center section ${sectionId} load failed`, err);
+            centerSectionState.set(sectionId, { status: 'error', promise: null });
+            centerSectionRetry(section);
+        });
+    centerSectionState.set(sectionId, { status: 'loading', promise });
+    return promise;
+}
+
+function bindCenterSectionLoading() {
+    if (bindCenterSectionLoading.bound) return;
+    bindCenterSectionLoading.bound = true;
+    document.addEventListener('click', event => {
+        const retry = event.target.closest('[data-center-section-retry]');
+        if (!retry) return;
+        event.preventDefault();
+        void loadCenterSection(retry.dataset.centerSectionRetry, { force: true });
     });
 }
 

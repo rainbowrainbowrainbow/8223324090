@@ -79,6 +79,8 @@ const SOURCE_ALIASES = {
     lead: ['lead', 'лід', 'з ліда'],
     other: ['other', 'інше', 'інший', 'інше джерело']
 };
+let customersRequestController = null;
+let customersRequestSeq = 0;
 
 const CUSTOMER_CHILD_DIETARY_TAGS = Object.freeze([
     Object.freeze({ tag: 'nuts', label: 'Горіхи' }),
@@ -1826,6 +1828,9 @@ function customerEmptyHtml() {
 // ==========================================
 
 async function fetchCustomers() {
+    const requestSeq = ++customersRequestSeq;
+    customersRequestController?.abort();
+    customersRequestController = typeof AbortController === 'function' ? new AbortController() : null;
     const token = localStorage.getItem('pzp_token');
     const params = new URLSearchParams();
     params.set('page', CrmState.page);
@@ -1842,18 +1847,27 @@ async function fetchCustomers() {
     const tableBody = document.getElementById('crmTableBody');
     if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
 
-    const res = await fetch(customerApiUrl(`/api/customers?${params}`), {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (res.status === 401 || res.status === 403) {
-        window.location.href = '/';
-        return;
+    try {
+        const res = await fetch(customerApiUrl(`/api/customers?${params}`), {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: customersRequestController?.signal
+        });
+        if (res.status === 401 || res.status === 403) {
+            window.location.href = '/';
+            return false;
+        }
+        const data = await res.json();
+        if (requestSeq !== customersRequestSeq) return false;
+        CrmState.customers = data.customers || [];
+        CrmState.total = data.total || 0;
+        CrmState.pages = data.pages || 1;
+        CrmState.page = data.page || 1;
+        return true;
+    } catch (err) {
+        if (err?.name === 'AbortError') return false;
+        if (requestSeq === customersRequestSeq) throw err;
+        return false;
     }
-    const data = await res.json();
-    CrmState.customers = data.customers || [];
-    CrmState.total = data.total || 0;
-    CrmState.pages = data.pages || 1;
-    CrmState.page = data.page || 1;
 }
 
 async function fetchStats() {

@@ -1419,8 +1419,8 @@ const ReportsPage = (() => {
 
     async function loadSubmitters() {
         try {
-            const data = await apiRequest('GET', '/api/reports?limit=500');
-            const names = [...new Set((data.reports || []).map(r => r.submittedBy).filter(Boolean))];
+            const data = await apiRequest('GET', '/api/reports/submitters');
+            const names = Array.isArray(data.submitters) ? data.submitters : [];
             const select = document.getElementById('submittedByFilter');
             if (!select) return;
             while (select.options.length > 1) select.remove(1);

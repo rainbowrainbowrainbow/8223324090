@@ -54,6 +54,12 @@
             display: flex; align-items: center; gap: 8px;
             cursor: pointer; user-select: none;
         }
+        .center-section-toggle {
+            appearance: none; border: 0; background: transparent; color: inherit; font: inherit;
+            font-weight: inherit; font-size: inherit; cursor: pointer; display: inline-flex;
+            align-items: center; gap: 8px; padding: 0; text-align: left; min-width: 0;
+        }
+        .center-section-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
         .center-section-title .section-icon { font-size: 18px; }
         .center-section-title .collapse-arrow {
             font-size: 14px; color: var(--gray-500);

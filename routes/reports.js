@@ -1056,6 +1056,28 @@ router.get('/accountants', async (req, res) => {
     }
 });
 
+// GET /api/reports/submitters — lightweight distinct filter options
+router.get('/submitters', async (req, res) => {
+    try {
+        const businessScope = ensureReportBusinessScope(req, res);
+        if (!businessScope) return;
+        const params = [];
+        const scopeSql = reportScopeCondition(params, businessScope, 'r');
+        const result = await pool.query(
+            `SELECT DISTINCT NULLIF(BTRIM(r.submitted_by), '') AS submitted_by
+             FROM reports r
+             WHERE ${scopeSql}
+               AND NULLIF(BTRIM(r.submitted_by), '') IS NOT NULL
+             ORDER BY submitted_by ASC`,
+            params
+        );
+        res.json({ submitters: result.rows.map(row => row.submitted_by).filter(Boolean) });
+    } catch (err) {
+        log.error('GET /reports/submitters error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
 // ==========================================
 // GET /api/reports/hashtags — hashtag stats
 // ==========================================
@@ -1066,30 +1088,27 @@ router.get('/hashtags', async (req, res) => {
         const params = [];
         const scopeSql = reportScopeCondition(params, businessScope, '');
         const result = await pool.query(
-            `SELECT hashtags, amount, hashtag_active, type
-             FROM reports
-             WHERE status IN ('done', 'new', 'processing')
-               AND ${scopeSql}`,
+            `SELECT tag.value AS hashtag,
+                    COUNT(*)::int AS count,
+                    COALESCE(SUM(r.amount) FILTER (WHERE r.hashtag_active IS NOT FALSE), 0) AS total,
+                    COUNT(*) FILTER (WHERE r.hashtag_active IS NOT FALSE)::int AS active_count,
+                    COUNT(*) FILTER (WHERE r.hashtag_active IS FALSE)::int AS inactive_count
+             FROM reports r
+             CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(r.hashtags, '[]'::jsonb)) AS tag(value)
+             WHERE r.status IN ('done', 'new', 'processing')
+               AND ${scopeSql}
+             GROUP BY tag.value
+             ORDER BY total DESC, tag.value ASC`,
             params
         );
 
-        const stats = {};
-        for (const row of result.rows) {
-            const tags = parseHashtags(row.hashtags);
-            for (const tag of tags) {
-                if (!stats[tag]) stats[tag] = { hashtag: tag, total: 0, count: 0, activeCount: 0, inactiveCount: 0 };
-                const isActive = row.hashtag_active !== false && row.hashtag_active !== 0;
-                stats[tag].count += 1;
-                if (isActive) {
-                    stats[tag].total += parseFloat(row.amount) || 0;
-                    stats[tag].activeCount += 1;
-                } else {
-                    stats[tag].inactiveCount += 1;
-                }
-            }
-        }
-
-        res.json(Object.values(stats).sort((a, b) => b.total - a.total));
+        res.json(result.rows.map(row => ({
+            hashtag: row.hashtag,
+            total: parseFloat(row.total || 0),
+            count: parseInt(row.count || 0, 10),
+            activeCount: parseInt(row.active_count || 0, 10),
+            inactiveCount: parseInt(row.inactive_count || 0, 10)
+        })));
     } catch (err) {
         log.error('GET /reports/hashtags error', err);
         res.status(500).json({ error: 'Database error' });

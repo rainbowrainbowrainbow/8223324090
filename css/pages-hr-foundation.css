@@ -46,6 +46,45 @@
     line-height: 1.35;
 }
 
+.hr-staff-workspace-head-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.hr-staff-workspace-view-switch {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+}
+
+.hr-staff-workspace-view-switch button {
+    min-width: 44px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gray-500);
+    padding: 6px 10px;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.hr-staff-workspace-view-switch button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.22);
+}
+
+.hr-staff-workspace-view-switch button[aria-pressed="true"] {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
 .hr-staff-foundation-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -408,10 +447,19 @@
 }
 
 .hr-lifecycle-metrics-help summary {
+    display: inline-flex;
+    align-items: center;
     width: fit-content;
+    min-height: 44px;
     cursor: pointer;
     color: #2563EB;
     font-weight: 950;
+}
+
+.hr-lifecycle-metrics-help summary:focus-visible,
+.hr-lifecycle-action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
 }
 
 .hr-lifecycle-metrics-help p {
@@ -562,6 +610,11 @@
 }
 
 .hr-lifecycle-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
     border: 1px solid rgba(37,99,235,0.24);
     background: rgba(37,99,235,0.08);
     color: #1d4ed8;

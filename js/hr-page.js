@@ -471,7 +471,7 @@ let pendingPeopleBucket = null;
 let activeTeamSetupFilter = 'all';
 let draggedTeamStaffId = null;
 let staffFoundationLoadSeq = 0;
-let staffDocumentsResourcesLoadSeq = 0;
+let staffWorkspaceSectionLoadSeq = new Map();
 let staffOffboardingLoadSeq = 0;
 let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
@@ -490,7 +490,7 @@ const STAFF_PROFILE_TABS = [
     { id: 'work', label: 'Робота', scopes: ['work', 'shift', 'roles'] },
     { id: 'training', label: 'Навчання', scopes: [] },
     { id: 'payroll', label: 'Оплата', scopes: ['rates', 'payroll'] },
-    { id: 'resources', label: 'Документи та ресурси', scopes: ['documents', 'resources'] },
+    { id: 'resources', label: 'Документи та ресурси', scopes: ['documents', 'medical', 'resourceIssue'] },
     { id: 'offboarding', label: 'Завершення співпраці', scopes: ['offboarding'] },
     { id: 'history', label: 'Історія', scopes: [] }
 ];
@@ -504,7 +504,8 @@ const STAFF_PROFILE_SCOPE_LABELS = {
     rates: 'Ставки професій',
     payroll: 'Зарплатна схема',
     documents: 'Документи',
-    resources: 'Ресурси',
+    medical: 'Медкнижка',
+    resourceIssue: 'Видача ресурсу',
     offboarding: 'Завершення співпраці'
 };
 const STAFF_PROFILE_SCOPE_SELECTORS = {
@@ -527,15 +528,17 @@ const STAFF_PROFILE_SCOPE_SELECTORS = {
         '#editPayrollSchemeTitle', '#editPayrollSchemeEffectiveFrom', '#editPayrollSchemeEffectiveTo'
     ],
     documents: [
-        '#editDocumentType', '#editDocumentTitle', '#editDocumentFile', '#editDocumentNotes',
-        '#editMedicalIssuedAt', '#editMedicalExpiresAt', '#editMedicalNotes'
+        '#editDocumentType', '#editDocumentTitle', '#editDocumentFile', '#editDocumentNotes'
     ],
-    resources: ['#editResourceKind', '#editResourceSourceId', '#editResourceTitle', '#editResourceQuantity', '#editResourceDueReturnAt', '#editResourceNotes'],
+    medical: ['#editMedicalIssuedAt', '#editMedicalExpiresAt', '#editMedicalNotes'],
+    resourceIssue: ['#editResourceKind', '#editResourceSourceId', '#editResourceTitle', '#editResourceQuantity', '#editResourceDueReturnAt', '#editResourceNotes'],
     offboarding: ['#editOffboardingDate', '#editOffboardingPoolStatus', '#editOffboardingAccountAction', '#editOffboardingReason', '#editOffboardingNotes']
 };
 let staffProfileLoadedTabs = new Set();
 let staffProfileTabLoadPromises = new Map();
 let staffProfileScopeBaselines = new Map();
+let staffDocumentListView = 'active';
+let staffResourceListView = 'active';
 
 // ==========================================
 // HELPERS
@@ -1406,9 +1409,15 @@ async function crmApiFetch(path, options = {}) {
     return data;
 }
 
-async function confirmHrAction(message, title = 'Підтвердження') {
-    if (typeof customConfirm === 'function') return customConfirm(message, title);
-    showNotification('Модалка підтвердження недоступна. Оновіть сторінку і повторіть дію.', 'error');
+async function confirmHrAction(message, options = {}) {
+    if (typeof confirmModal === 'function') {
+        return confirmModal(message, {
+            type: options.type || 'warning',
+            okText: options.okText || 'Підтвердити',
+            cancelText: options.cancelText || 'Скасувати'
+        });
+    }
+    showNotification('Підтвердження дії недоступне. Оновіть сторінку і повторіть дію.', 'error');
     return false;
 }
 
@@ -5778,23 +5787,78 @@ function updateResourcePickerVisibility() {
     if (titleGroup) titleGroup.hidden = false;
 }
 
+const STAFF_WORKSPACE_VIEW_STORAGE_KEYS = {
+    documents: 'eventgenix.hr.staff.documents.view',
+    resources: 'eventgenix.hr.staff.resources.view'
+};
+const staffWorkspaceViewMemory = new Map();
+
+function readStaffWorkspaceStoredView(section, fallback = 'active') {
+    try {
+        const value = window.sessionStorage?.getItem(STAFF_WORKSPACE_VIEW_STORAGE_KEYS[section]);
+        if (section === 'documents' && ['active', 'archive'].includes(value)) return value;
+        if (section === 'resources' && ['active', 'history'].includes(value)) return value;
+    } catch (_) { /* session storage may be unavailable */ }
+    const memoryValue = staffWorkspaceViewMemory.get(section);
+    if (section === 'documents' && ['active', 'archive'].includes(memoryValue)) return memoryValue;
+    if (section === 'resources' && ['active', 'history'].includes(memoryValue)) return memoryValue;
+    return fallback;
+}
+
+function currentStaffWorkspaceView(section) {
+    return section === 'documents' ? staffDocumentListView : section === 'resources' ? staffResourceListView : 'active';
+}
+
+function syncStaffWorkspaceViewControls(section) {
+    const activeView = currentStaffWorkspaceView(section);
+    document.querySelectorAll(`[data-staff-workspace-view^="${section}:"]`).forEach(button => {
+        const view = String(button.dataset.staffWorkspaceView || '').split(':')[1];
+        button.setAttribute('aria-pressed', view === activeView ? 'true' : 'false');
+    });
+}
+
+async function setStaffWorkspaceView(section, view, button = null) {
+    const allowed = section === 'documents' ? ['active', 'archive'] : section === 'resources' ? ['active', 'history'] : [];
+    if (!allowed.includes(view)) return { success: false, error: 'invalid_workspace_view' };
+    if (section === 'documents') staffDocumentListView = view;
+    if (section === 'resources') staffResourceListView = view;
+    staffWorkspaceViewMemory.set(section, view);
+    try { window.sessionStorage?.setItem(STAFF_WORKSPACE_VIEW_STORAGE_KEYS[section], view); } catch (_) { /* optional persistence */ }
+    syncStaffWorkspaceViewControls(section);
+    return retryStaffWorkspaceSection(section, button);
+}
+
+function restoreStaffWorkspaceViews() {
+    staffDocumentListView = readStaffWorkspaceStoredView('documents');
+    staffResourceListView = readStaffWorkspaceStoredView('resources');
+    syncStaffWorkspaceViewControls('documents');
+    syncStaffWorkspaceViewControls('resources');
+}
+
 function renderStaffDocuments(rows = []) {
+    const view = currentStaffWorkspaceView('documents');
+    rows = rows.filter(doc => view === 'archive' ? doc.status === 'archived' : doc.status !== 'archived');
     staffDocumentNameById = new Map(rows.map(doc => [Number(doc.id), doc.original_name || doc.title || 'staff-document']));
-    if (!rows.length) return renderStaffWorkspaceState('documents', 'empty');
+    if (!rows.length) return renderStaffWorkspaceState('documents', 'empty', view === 'archive' ? 'Архів документів порожній.' : 'Документи ще не додані.');
     return rows.map(doc => {
         const title = doc.title || doc.original_name || 'Документ';
         const type = STAFF_DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type || 'Документ';
         const expires = doc.expires_at ? ` · діє до ${formatStaffDateValue(doc.expires_at)}` : '';
         const issued = doc.issued_at ? ` · видано ${formatStaffDateValue(doc.issued_at)}` : '';
         const note = doc.notes ? ` · ${doc.notes}` : '';
-        return `<article class="hr-staff-foundation-item ${staffDateTone(doc.expires_at)}">
+        const status = doc.status === 'archived' ? 'В архіві' : 'Активний';
+        const auditDate = doc.status === 'archived' ? doc.archived_at : doc.created_at;
+        const auditActor = doc.status === 'archived' ? doc.archived_by : doc.uploaded_by;
+        const audit = `${status}${auditDate ? ` · ${formatStaffDateValue(auditDate)}` : ''}${auditActor ? ` · ${auditActor}` : ''}`;
+        return `<article class="hr-staff-foundation-item ${staffDateTone(doc.expires_at)}" data-document-status="${escapeHtml(doc.status || 'active')}">
             <div>
                 <b>${escapeHtml(title)}</b>
                 <span>${escapeHtml(type)} · ${escapeHtml(formatStaffFileSize(doc.file_size))}${escapeHtml(issued)}${escapeHtml(expires)}${escapeHtml(note)}</span>
+                <span>${escapeHtml(audit)}</span>
             </div>
             <div class="hr-staff-foundation-actions">
                 <button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="downloadStaffDocument(${Number(doc.id)}, 'staff-document', this)">Скачати</button>
-                <button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="archiveStaffDocument(${Number(doc.id)}, this)">Архів</button>
+                ${doc.status !== 'archived' ? `<button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="archiveStaffDocument(${Number(doc.id)}, this)">Архів</button>` : ''}
             </div>
         </article>`;
     }).join('');
@@ -5816,7 +5880,9 @@ function renderStaffMedicalBook(rows = []) {
 }
 
 function renderStaffResources(rows = []) {
-    if (!rows.length) return renderStaffWorkspaceState('resources', 'empty');
+    const view = currentStaffWorkspaceView('resources');
+    rows = rows.filter(item => view === 'history' ? item.status === 'returned' : item.status === 'issued');
+    if (!rows.length) return renderStaffWorkspaceState('resources', 'empty', view === 'history' ? 'Історія повернень порожня.' : 'Немає активних виданих ресурсів.');
     return rows.map(item => {
         const kind = STAFF_RESOURCE_KIND_LABELS[item.resource_kind] || item.resource_kind || 'Ресурс';
         const status = STAFF_RESOURCE_STATUS_LABELS[item.status] || item.status || '';
@@ -5824,10 +5890,14 @@ function renderStaffResources(rows = []) {
         const note = item.notes ? ` · ${item.notes}` : '';
         const movementId = item.status === 'returned' ? item.warehouse_return_movement_id : item.warehouse_issue_movement_id;
         const movement = movementId ? ` · рух складу #${movementId}` : '';
-        return `<article class="hr-staff-foundation-item ${item.status === 'issued' ? staffDateTone(item.due_return_at) : ''}">
+        const auditDate = item.status === 'returned' ? item.returned_at : item.issued_at;
+        const auditActor = item.status === 'returned' ? item.returned_by : item.issued_by;
+        const audit = `${item.status === 'returned' ? 'Повернуто' : 'Видано'}${auditDate ? ` · ${formatStaffDateValue(auditDate)}` : ''}${auditActor ? ` · ${auditActor}` : ''}`;
+        return `<article class="hr-staff-foundation-item ${item.status === 'issued' ? staffDateTone(item.due_return_at) : ''}" data-resource-status="${escapeHtml(item.status || '')}">
             <div>
                 <b>${escapeHtml(item.title || 'Ресурс')}</b>
                 <span>${escapeHtml(kind)} · ${escapeHtml(status)} · ${escapeHtml(item.quantity || 1)} шт.${escapeHtml(due)}${escapeHtml(movement)}${escapeHtml(note)}</span>
+                <span>${escapeHtml(audit)}</span>
             </div>
             <div class="hr-staff-foundation-actions">
                 ${item.status === 'issued' ? `<button type="button" class="btn-secondary hr-staff-action hr-staff-action--secondary" onclick="returnStaffResource(${Number(item.id)}, this)">Повернути</button>` : ''}
@@ -6556,7 +6626,10 @@ async function archiveStaffDocument(documentId, button = null) {
             setStaffWorkspaceFeedback('documents', 'error', 'Не вдалося визначити документ для архівації.');
             return { success: false, error: 'missing_document_id' };
         }
-        const ok = await confirmHrAction('Архівувати документ? Файл не буде видимий у активному списку, але залишиться в аудиті.');
+        const ok = await confirmHrAction(
+            'Архівувати документ? Файл не буде видимий у активному списку, але залишиться в аудиті.',
+            { type: 'warning', okText: 'Архівувати' }
+        );
         if (!ok) return { success: false, cancelled: true };
         const data = await hrFetch(`/staff/${staffId}/documents/${documentId}`, { method: 'DELETE' });
         if (!data?.success) {
@@ -6566,7 +6639,6 @@ async function archiveStaffDocument(documentId, button = null) {
         }
         await loadStaffDocumentsAndResources(staffId);
         setStaffWorkspaceFeedback('documents', 'success', 'Документ перенесено в архів.');
-        markStaffProfileScopesClean(['documents']);
         showNotification('Документ перенесено в архів', 'success');
         return data;
     });
@@ -6603,7 +6675,7 @@ async function saveStaffMedicalBook(button = null) {
         }
         await loadStaffDocumentsAndResources(staffId);
         setStaffWorkspaceFeedback('medical', 'success', 'Медкнижку оновлено.');
-        markStaffProfileScopesClean(['documents']);
+        markStaffProfileScopesClean(['medical']);
         showNotification('Медкнижку оновлено', 'success');
         return data;
     });
@@ -6660,7 +6732,7 @@ async function issueStaffResource(button = null) {
         if (resourceKind !== 'custom') loadStaffResourceOptions(resourceKind);
         await loadStaffDocumentsAndResources(staffId);
         setStaffWorkspaceFeedback('resources', 'success', 'Ресурс видано працівнику.');
-        markStaffProfileScopesClean(['resources']);
+        markStaffProfileScopesClean(['resourceIssue']);
         showNotification('Ресурс видано', 'success');
         return data;
     });
@@ -6688,7 +6760,6 @@ async function returnStaffResource(assignmentId, button = null) {
         loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom');
         await loadStaffDocumentsAndResources(staffId);
         setStaffWorkspaceFeedback('resources', 'success', 'Ресурс позначено як повернутий.');
-        markStaffProfileScopesClean(['resources']);
         showNotification('Ресурс позначено як повернутий', 'success');
         return data;
     });
@@ -6728,7 +6799,7 @@ async function completeStaffOffboarding(button = null) {
         const confirmationSummary = preview.consequences.map(item => `• ${item}`).join('\n');
         const ok = await confirmHrAction(
             `Підтвердьте завершення співпраці.\n\n${confirmationSummary}\n\nПричину буде збережено в історії HR-картки.`,
-            'Фінальне підтвердження offboarding'
+            { type: 'danger', okText: 'Завершити співпрацю', cancelText: 'Повернутись' }
         );
         if (!ok) return { success: false, cancelled: true };
         const body = {
@@ -6805,20 +6876,46 @@ function staffProfileFieldValue(el) {
     return el.value || '';
 }
 
-function staffProfileScopeSnapshot(scope) {
+function staffProfileScopeFieldSnapshot(scope) {
     const selectors = STAFF_PROFILE_SCOPE_SELECTORS[scope] || [];
-    if (!selectors.length) return '';
+    if (!selectors.length) return new Map();
     const fields = selectors.flatMap(selector => Array.from(document.querySelectorAll(selector)));
-    return fields
+    return new Map(fields
         .filter((el, index) => el && !el.disabled && fields.indexOf(el) === index)
-        .map(el => `${el.id || el.name || el.dataset.key || el.tagName}:${staffProfileFieldValue(el)}`)
-        .join('|');
+        .map((el, index) => [el.id || el.name || el.dataset.key || `${el.tagName}:${index}`, staffProfileFieldValue(el)]));
+}
+
+function staffProfileScopeFieldsChanged(scope, fieldIds = []) {
+    const baseline = staffProfileScopeBaselines.get(scope);
+    if (!(baseline instanceof Map)) return fieldIds.length > 0;
+    const current = staffProfileScopeFieldSnapshot(scope);
+    return fieldIds.some(fieldId => current.get(fieldId) !== baseline.get(fieldId));
+}
+
+function captureStaffProfileScopeFields(scope, fieldIds = []) {
+    const current = staffProfileScopeFieldSnapshot(scope);
+    return new Map(fieldIds.filter(fieldId => current.has(fieldId)).map(fieldId => [fieldId, current.get(fieldId)]));
+}
+
+function markStaffProfileScopeFieldsClean(scope, submittedFields) {
+    if (!(submittedFields instanceof Map)) return;
+    const baseline = new Map(staffProfileScopeBaselines.get(scope) || []);
+    submittedFields.forEach((value, fieldId) => baseline.set(fieldId, value));
+    staffProfileScopeBaselines.set(scope, baseline);
+    updateStaffProfileDirtyIndicators();
+    const modal = document.getElementById('staffEditModal');
+    if (modal && !isStaffProfileDirty() && window.UnsafeDismissGuard) {
+        window.UnsafeDismissGuard.markClean(modal);
+    }
 }
 
 function staffProfileDirtyScopes() {
     return Object.keys(STAFF_PROFILE_SCOPE_LABELS).filter(scope => {
         if (!staffProfileScopeBaselines.has(scope)) return false;
-        return staffProfileScopeBaselines.get(scope) !== staffProfileScopeSnapshot(scope);
+        const baseline = staffProfileScopeBaselines.get(scope);
+        const current = staffProfileScopeFieldSnapshot(scope);
+        if (!(baseline instanceof Map) || baseline.size !== current.size) return true;
+        return Array.from(current).some(([key, value]) => baseline.get(key) !== value);
     });
 }
 
@@ -6847,7 +6944,7 @@ function markStaffProfileScopesClean(scopes = Object.keys(STAFF_PROFILE_SCOPE_LA
     const list = Array.isArray(scopes) ? scopes : [scopes];
     list.forEach(scope => {
         if (STAFF_PROFILE_SCOPE_LABELS[scope]) {
-            staffProfileScopeBaselines.set(scope, staffProfileScopeSnapshot(scope));
+            staffProfileScopeBaselines.set(scope, staffProfileScopeFieldSnapshot(scope));
         }
     });
     updateStaffProfileDirtyIndicators();
@@ -6886,6 +6983,14 @@ function setStaffProfileActionState(button, state, label = '') {
     button.dataset.actionState = state;
     button.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
     if (label) button.textContent = label;
+    if (label) announceStaffProfileStatus(label);
+}
+
+function announceStaffProfileStatus(message = '') {
+    const status = document.getElementById('staffProfileLiveStatus');
+    if (!status) return;
+    status.textContent = '';
+    window.requestAnimationFrame(() => { status.textContent = String(message || ''); });
 }
 
 function resetStaffProfileActionState(button) {
@@ -7038,18 +7143,27 @@ function resetStaffProfileLazyState(staffId) {
     staffProfileLoadedTabs = new Set();
     staffProfileTabLoadPromises = new Map();
     staffProfileScopeBaselines = new Map();
+    staffWorkspaceSectionLoadSeq = new Map();
     const modal = document.getElementById('staffEditModal');
     if (modal) {
         modal.dataset.staffProfileStaffId = String(staffId || '');
         modal.dataset.activeProfileTab = STAFF_PROFILE_DEFAULT_TAB;
     }
+    restoreStaffWorkspaceViews();
     updateStaffProfileDirtyIndicators();
 }
 
 function setStaffProfileTabLoading(tabId, loading) {
     const tab = normalizeStaffProfileTab(tabId);
     const button = document.querySelector(`[data-staff-profile-tab="${tab}"]`);
-    if (button) button.classList.toggle('is-loading', Boolean(loading));
+    const panel = document.querySelector(`[data-staff-profile-panel="${tab}"]`);
+    const label = STAFF_PROFILE_TABS.find(item => item.id === tab)?.label || tab;
+    if (button) {
+        button.classList.toggle('is-loading', Boolean(loading));
+        button.setAttribute('aria-busy', loading ? 'true' : 'false');
+    }
+    if (panel) panel.setAttribute('aria-busy', loading ? 'true' : 'false');
+    announceStaffProfileStatus(loading ? `Завантажуємо: ${label}` : `Розділ готовий: ${label}`);
 }
 
 async function loadStaffDocumentsAndResources(staffId, options = {}) {
@@ -7060,7 +7174,6 @@ async function loadStaffDocumentsAndResources(staffId, options = {}) {
     if (!requested.length) return null;
 
     const id = Number(staffId);
-    const seq = ++staffDocumentsResourcesLoadSeq;
     if (!canManage) {
         requested.forEach(section => {
             setStaffWorkspaceState(section, 'restricted');
@@ -7069,21 +7182,26 @@ async function loadStaffDocumentsAndResources(staffId, options = {}) {
         return { success: false, error: 'restricted' };
     }
 
+    const requestTokens = new Map();
     requested.forEach(section => {
+        const token = Number(staffWorkspaceSectionLoadSeq.get(section) || 0) + 1;
+        staffWorkspaceSectionLoadSeq.set(section, token);
+        requestTokens.set(section, token);
         setStaffWorkspaceFeedback(section);
         setStaffWorkspaceState(section, 'loading');
     });
 
     const requestBySection = {
-        documents: () => hrFetch(`/staff/${id}/documents`).catch(() => null),
+        documents: () => hrFetch(`/staff/${id}/documents${currentStaffWorkspaceView('documents') === 'archive' ? '?include_archived=true' : ''}`).catch(() => null),
         medical: () => hrFetch(`/staff/${id}/medical-book`).catch(() => null),
-        resources: () => hrFetch(`/staff/${id}/resources`).catch(() => null)
+        resources: () => hrFetch(`/staff/${id}/resources${currentStaffWorkspaceView('resources') === 'history' ? '?include_returned=true' : ''}`).catch(() => null)
     };
     const responses = await Promise.all(requested.map(async section => [section, await requestBySection[section]()]));
-    if (seq !== staffDocumentsResourcesLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
+    if (!isActiveStaffEditLoad(id)) return { success: false, stale: true };
 
     const result = Object.fromEntries(responses);
     requested.forEach(section => {
+        if (staffWorkspaceSectionLoadSeq.get(section) !== requestTokens.get(section)) return;
         const data = result[section];
         if (!data?.success) {
             setStaffWorkspaceState(section, 'error', data?.error || getStaffWorkspaceSectionConfig(section)?.error);
@@ -7376,6 +7494,43 @@ function buildStaffWorkPayload() {
     return body;
 }
 
+const STAFF_MAIN_PAYLOAD_FIELDS = {
+    name: ['editStaffName'],
+    phone: ['editPhone'],
+    photo_url: ['editPhotoUrl']
+};
+
+const STAFF_WORK_PAYLOAD_FIELDS = {
+    role_type: ['editRoleType', 'editSecondaryProfessions'],
+    secondary_professions: ['editRoleType', 'editSecondaryProfessions'],
+    birth_date: ['editBirthDate'],
+    address: ['editAddress'],
+    emergency_contact: ['editEmergencyContact'],
+    emergency_phone: ['editEmergencyPhone'],
+    telegram_id: ['editTelegramId'],
+    telegram_username: ['editTelegramUsername'],
+    contract_type: ['editContractType'],
+    company_structure_node_id: ['editCompanyStructureNode'],
+    skills: ['editSkills'],
+    notes: ['editNotes'],
+    hr_pool_status: ['editPoolStatus']
+};
+
+function buildChangedStaffPayload(scope, fullPayload, payloadFields) {
+    const body = {};
+    const submittedFieldIds = new Set();
+    Object.entries(payloadFields).forEach(([payloadKey, fieldIds]) => {
+        if (!Object.prototype.hasOwnProperty.call(fullPayload, payloadKey)) return;
+        if (!staffProfileScopeFieldsChanged(scope, fieldIds)) return;
+        body[payloadKey] = fullPayload[payloadKey];
+        fieldIds.forEach(fieldId => submittedFieldIds.add(fieldId));
+    });
+    return {
+        body,
+        submittedFields: captureStaffProfileScopeFields(scope, Array.from(submittedFieldIds))
+    };
+}
+
 function buildStaffRatesPayload() {
     return {
         hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
@@ -7395,7 +7550,12 @@ async function saveStaffEdit(options = {}) {
     const staffId = activeEditStaffId();
     const scope = (typeof options === 'string' ? options : options?.scope) === 'work' ? 'work' : 'main';
     const button = typeof options === 'object' ? options?.button : null;
-    const body = scope === 'work' ? buildStaffWorkPayload() : buildStaffMainPayload();
+    const fullPayload = scope === 'work' ? buildStaffWorkPayload() : buildStaffMainPayload();
+    const { body, submittedFields } = buildChangedStaffPayload(
+        scope,
+        fullPayload,
+        scope === 'work' ? STAFF_WORK_PAYLOAD_FIELDS : STAFF_MAIN_PAYLOAD_FIELDS
+    );
     const labels = scope === 'work'
         ? { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' }
         : { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' };
@@ -7408,7 +7568,7 @@ async function saveStaffEdit(options = {}) {
         }
         const fresh = mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
         if (scope === 'main') syncStaffProfileHeaderName(body.name || '', fresh || body);
-        markStaffProfileScopesClean([scope]);
+        markStaffProfileScopeFieldsClean(scope, submittedFields);
         showNotification(scope === 'work' ? 'Робочі дані збережено' : 'Основні дані збережено', 'success');
         if (options?.closeAfterSave) await closeHrEditableModal('staffEditModal', true);
         await loadTeam();

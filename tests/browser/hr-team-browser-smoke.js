@@ -39,6 +39,7 @@ const HR_CODE = readRepo('js', 'hr-page.js');
 const HR_HTML = readRepo('hr.html');
 const CSS_BUNDLE = [
     readRepo('css', 'base.css'),
+    readRepo('css', 'modals.css'),
     readRepo('css', 'hr-page.css'),
     readRepo('css', 'pages-hr-foundation.css'),
     readRepo('css', 'pages-hr-staff.css')
@@ -80,6 +81,7 @@ const HARNESS_CODE = String.raw`
     const staffUpdates = [];
     const workspaceOperations = [];
     const downloads = [];
+    const offboardingSubmissions = [];
     const workspace = { documents: [], medical: [], resources: [] };
     let holdProfileLoads = false;
     let holdHistoryLoads = false;
@@ -95,6 +97,7 @@ const HARNESS_CODE = String.raw`
         workspace.resources = [];
         workspaceOperations.length = 0;
         downloads.length = 0;
+        offboardingSubmissions.length = 0;
         failNextWorkspaceRequest = '';
         nextWorkspaceId = 1000;
     }
@@ -250,7 +253,8 @@ const HARNESS_CODE = String.raw`
         if (String(path).includes('/lifecycle-checklist')) {
             return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 1, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 2, open_time_record_count: 1, open_payroll_count: 0 }, sections: [] } };
         }
-        const workspaceMatch = requestPath.match(/^\/staff\/(\d+)\/(documents|medical-book|resources)(?:\/(\d+)(\/return)?)?$/);
+        const workspacePath = requestPath.split('?')[0];
+        const workspaceMatch = workspacePath.match(/^\/staff\/(\d+)\/(documents|medical-book|resources)(?:\/(\d+)(\/return)?)?$/);
         if (workspaceMatch) {
             const [, , workspaceSection, itemId, returnSuffix] = workspaceMatch;
             const method = String(options?.method || 'GET').toUpperCase();
@@ -258,8 +262,11 @@ const HARNESS_CODE = String.raw`
             if (method === 'GET' && shouldFailWorkspaceRequest(requestPath)) {
                 return { success: false, error: 'simulated ' + workspaceSection + ' load failure' };
             }
+            if (method !== 'GET' && shouldFailWorkspaceRequest(requestPath)) {
+                return { success: false, error: 'simulated ' + workspaceSection + ' write failure' };
+            }
             if (workspaceSection === 'documents') {
-                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.documents) };
+                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.documents.filter(row => requestPath.includes('include_archived=true') || row.status !== 'archived')) };
                 if (method === 'POST') {
                     const form = options.body;
                     const file = form?.get?.('document');
@@ -271,7 +278,10 @@ const HARNESS_CODE = String.raw`
                         file_size: file?.size || 12,
                         notes: form?.get?.('notes') || '',
                         issued_at: null,
-                        expires_at: null
+                        expires_at: null,
+                        status: 'active',
+                        uploaded_by: 'QA HR',
+                        created_at: '2026-07-12T09:00:00.000Z'
                     };
                     workspace.documents.push(row);
                     workspaceOperations.push('document-upload');
@@ -280,7 +290,10 @@ const HARNESS_CODE = String.raw`
                 if (method === 'DELETE') {
                     const index = workspace.documents.findIndex(row => Number(row.id) === Number(itemId));
                     if (index < 0) return { success: false, error: 'missing document' };
-                    const [archived] = workspace.documents.splice(index, 1);
+                    const archived = workspace.documents[index];
+                    archived.status = 'archived';
+                    archived.archived_by = 'QA HR';
+                    archived.archived_at = '2026-07-12T10:00:00.000Z';
                     workspaceOperations.push('document-archive');
                     return { success: true, data: { ...archived, archived_at: new Date().toISOString() } };
                 }
@@ -295,9 +308,9 @@ const HARNESS_CODE = String.raw`
                 }
             }
             if (workspaceSection === 'resources') {
-                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.resources) };
+                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.resources.filter(row => requestPath.includes('include_returned=true') || row.status === 'issued')) };
                 if (method === 'POST') {
-                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'issued' };
+                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'issued', issued_by: 'QA HR', issued_at: '2026-07-12' };
                     workspace.resources.unshift(row);
                     workspaceOperations.push('resource-issue:' + row.resource_kind);
                     return { success: true, data: { ...row } };
@@ -306,6 +319,8 @@ const HARNESS_CODE = String.raw`
                     const row = workspace.resources.find(item => Number(item.id) === Number(itemId));
                     if (!row) return { success: false, error: 'missing resource assignment' };
                     row.status = 'returned';
+                    row.returned_by = 'QA HR';
+                    row.returned_at = '2026-07-13';
                     workspaceOperations.push('resource-return');
                     return { success: true, data: { ...row } };
                 }
@@ -317,6 +332,11 @@ const HARNESS_CODE = String.raw`
             const kind = requestPath.includes('kind=costume') ? 'costume' : 'warehouse_stock';
             const label = kind === 'costume' ? 'QA Costume' : 'QA Warehouse Item';
             return { success: true, data: [{ id: kind + '-qa', label, subtitle: 'QA available' }] };
+        }
+        if (String(path).includes('/offboarding') && String(options?.method || 'GET').toUpperCase() === 'POST') {
+            offboardingSubmissions.push({ path: requestPath, body: { ...(options.body || {}) } });
+            workspaceOperations.push('offboarding-complete');
+            return { success: true, open_resource_count: 0, disabled_accounts: 0 };
         }
         if (String(path).includes('/offboarding-readiness') || String(path).includes('/offboarding')) {
             return holdLazyTabLoads ? deferredLazyTab(requestPath) : lazyTabResponse(requestPath);
@@ -342,20 +362,13 @@ const HARNESS_CODE = String.raw`
         return null;
     };
 
-    window.__confirmCalls = [];
-    window.__confirmResult = false;
-    confirmModal = async (message, options = {}) => {
-        window.__confirmCalls.push({ message, options });
-        return window.__confirmResult;
-    };
-    window.customConfirm = async (message, title = '') => {
-        window.__confirmCalls.push({ message, title });
-        return window.__confirmResult;
-    };
+    const productionConfirmModal = confirmModal;
 
     window.__hrTeamBrowserSmoke = {
         setup({ dark = false } = {}) {
             setupDom();
+            window.__notifications.length = 0;
+            showNotification = (message, type = 'info') => window.__notifications.push({ message, type });
             requestCounts.clear();
             pendingHistory.clear();
             holdHistoryLoads = false;
@@ -393,12 +406,14 @@ const HARNESS_CODE = String.raw`
         },
         workspaceOperations: () => workspaceOperations.slice(),
         downloads: () => downloads.slice(),
+        offboardingSubmissions: () => offboardingSubmissions.map(item => ({ path: item.path, body: { ...item.body } })),
+        notifications: () => window.__notifications.map(item => ({ ...item })),
+        disableConfirmationImplementation() { confirmModal = undefined; },
+        restoreConfirmationImplementation() { confirmModal = productionConfirmModal; },
         failNextWorkspaceRequest(fragment) {
             failNextWorkspaceRequest = String(fragment || '');
         },
         close: () => closeHrEditableModal('staffEditModal'),
-        confirmCalls: () => window.__confirmCalls,
-        setConfirmResult: value => { window.__confirmResult = Boolean(value); },
         staffUpdates: () => staffUpdates.map(item => ({ path: item.path, body: { ...item.body } })),
         enableStaffUpdateHold() { holdStaffUpdates = true; },
         failNextStaffUpdate() { failNextStaffUpdate = true; },
@@ -722,7 +737,40 @@ async function assertDrawerGeometryAndButtonStyles(page, label) {
         assert.ok(style.backgroundImage !== 'none' || style.backgroundColor !== 'rgba(0, 0, 0, 0)', `${label}: ${kind} action is not a browser-default button`);
     }
     assert.ok(icon.className.includes('hr-staff-profile-close'), `${label}: icon action uses the timeline close pattern`);
-    assert.ok(icon.width >= 38 && icon.height >= 38 && icon.borderRadius >= 8, `${label}: icon action retains an explicit hit target and chrome`);
+    assert.ok(icon.width >= 44 && icon.height >= 44 && icon.borderRadius >= 8, `${label}: icon action retains a 44px hit target and chrome`);
+
+    for (const tab of ['main', 'work', 'training', 'payroll', 'resources', 'offboarding', 'history']) {
+        await page.locator(`[data-staff-profile-tab="${tab}"]`).click();
+        const targetAudit = await page.evaluate(activeTab => {
+            const modal = document.querySelector('#staffEditModal .hr-staff-profile-modal');
+            const panel = document.querySelector(`[data-staff-profile-panel="${activeTab}"]`);
+            const modalBox = modal.getBoundingClientRect();
+            const selector = 'button,a[href],summary,input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),select,textarea';
+            const targets = [document.getElementById('editCloseTop'), ...document.querySelectorAll('.hr-staff-profile-tabs button'), ...panel.querySelectorAll(selector)]
+                .filter((element, index, all) => element && all.indexOf(element) === index)
+                .filter(element => {
+                    const style = getComputedStyle(element);
+                    const box = element.getBoundingClientRect();
+                    return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0;
+                })
+                .map(element => {
+                    const box = element.getBoundingClientRect();
+                    return {
+                        id: element.id || element.textContent.trim().slice(0, 40) || element.tagName,
+                        width: box.width,
+                        height: box.height,
+                        left: box.left,
+                        right: box.right
+                    };
+                });
+            const panelHasHorizontalOverflow = panel.scrollWidth > panel.clientWidth + 1;
+            return { targets, panelHasHorizontalOverflow, modalLeft: modalBox.left, modalRight: modalBox.right };
+        }, tab);
+        assert.equal(targetAudit.panelHasHorizontalOverflow, false, `${label}/${tab}: active panel has no horizontal clipping`);
+        targetAudit.targets.forEach(target => {
+            assert.ok(target.width >= 44 && target.height >= 44, `${label}/${tab}: ${target.id} has a 44x44px touch target (${target.width}x${target.height})`);
+        });
+    }
 }
 
 async function assertProfileCleanDirtyAndFocus(page) {
@@ -787,19 +835,24 @@ async function assertProfileCleanDirtyAndFocus(page) {
 
     await page.locator('#editCloseTop').click();
     await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
-    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length), 0, 'clean close does not ask for discard confirmation');
+    assert.equal(await page.locator('.confirm-overlay').count(), 0, 'clean close does not ask for discard confirmation');
     assert.equal(await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-open').evaluate(el => document.activeElement === el), true, 'focus returns to source card action');
 
     await openProfile(page, 1);
     await page.fill('#editPhone', '+380999-dirty');
     await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog'));
     assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'dirty rejected close keeps profile open');
-    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length), 1, 'dirty close opens discard confirmation');
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /незбережені зміни/i, 'dirty close opens the production discard confirmation');
 
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.setConfirmResult(true));
+    await page.locator('.confirm-overlay .confirm-cancel').click();
+    assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'cancelled discard keeps profile open');
     await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+    await page.locator('.confirm-overlay .confirm-ok').click();
     await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
-    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length >= 2), 'dirty accepted close asks before closing');
+    await page.waitForFunction(() => !document.querySelector('.confirm-overlay'));
+    assert.equal(await page.locator('.confirm-overlay').count(), 0, 'accepted discard closes the production confirmation');
 }
 
 async function assertScopedSavesAndActionStates(page) {
@@ -827,20 +880,30 @@ async function assertScopedSavesAndActionStates(page) {
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length), beforeMainSave + 1, 'second main-save trigger does not send a duplicate request');
 
     const mainPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
-    assert.deepEqual(Object.keys(mainPayload).sort(), ['name', 'phone', 'photo_url'], 'main save sends only main-profile fields');
+    assert.deepEqual(Object.keys(mainPayload), ['phone'], 'main save sends only the changed main-profile field');
     assert.equal(mainPayload.phone, '+380999-main-save');
 
+    await page.fill('#editStaffName', 'Concurrent local name');
     await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveStaffUpdates());
     await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'success');
-    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), false, 'successful main save clears the main dirty state');
+    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), true, 'successful main save preserves a concurrent same-scope edit');
     assert.equal(await page.locator('#staffProfileTabWork').evaluate(el => el.classList.contains('is-dirty')), true, 'main save keeps independently dirty work fields unsaved');
+
+    await page.waitForFunction(() => !document.getElementById('editSave')?.disabled);
+    await mainSave.click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeMainSave + 2);
+    const concurrentPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
+    assert.deepEqual(Object.keys(concurrentPayload), ['name'], 'retry sends only the concurrent same-scope field');
+    assert.equal(concurrentPayload.name, 'Concurrent local name');
+    await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'success');
+    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), false, 'retry clears only the confirmed concurrent field');
 
     await page.locator('#staffProfileTabWork').click();
     const beforeWorkSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
     await page.locator('#editSaveWork').click();
     await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeWorkSave + 1);
     const workPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
-    assert.ok('notes' in workPayload && 'role_type' in workPayload, 'work save includes work fields');
+    assert.deepEqual(Object.keys(workPayload), ['notes'], 'work save includes only the changed work field');
     assert.equal('name' in workPayload, false, 'work save does not resend the name');
     assert.equal('phone' in workPayload, false, 'work save does not resend the phone');
     assert.equal('photo_url' in workPayload, false, 'work save does not resend the photo');
@@ -864,6 +927,15 @@ async function assertScopedSavesAndActionStates(page) {
     await mainSave.click();
     await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'error');
     assert.equal(await mainSave.isDisabled(), true, 'failed save remains disabled while the error state is visible');
+    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), true, 'failed save keeps the main scope dirty');
+    await page.waitForFunction(() => !document.getElementById('editSave')?.disabled);
+    const beforeRetry = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
+    await mainSave.click();
+    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.staffUpdates().length === expected, beforeRetry + 1);
+    const retryPayload = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body);
+    assert.deepEqual(Object.keys(retryPayload), ['phone'], 'retry preserves the minimal failed-save payload');
+    await page.waitForFunction(() => document.getElementById('editSave')?.dataset.actionState === 'success');
+    assert.equal(await page.locator('#staffProfileTabMain').evaluate(el => el.classList.contains('is-dirty')), false, 'successful retry clears its own dirty field');
 }
 
 async function assertRapidProfileSwitching(page) {
@@ -931,6 +1003,10 @@ async function assertIndependentLazyTabRaces(page) {
         window.__hrTeamBrowserSmoke.startTab('resources');
     });
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/documents') === 1);
+    assert.equal(await page.locator('#staffProfileTabResources').getAttribute('aria-busy'), 'true', 'lazy resources tab exposes aria-busy while loading');
+    assert.equal(await page.locator('#staffProfilePanelResources').getAttribute('aria-busy'), 'true', 'lazy resources panel exposes aria-busy while loading');
+    await page.waitForFunction(() => /Завантажуємо.*Документи/i.test(document.getElementById('staffProfileLiveStatus')?.textContent || ''));
+    assert.match(await page.locator('#staffProfileLiveStatus').textContent(), /Завантажуємо.*Документи/i, 'lazy loading is announced through the live status');
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('offboarding'));
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding') >= 2);
@@ -948,6 +1024,8 @@ async function assertIndependentLazyTabRaces(page) {
         document.getElementById('editMedicalBookList'),
         document.getElementById('editStaffResources')
     ].every(root => root && !root.textContent.includes('завантажується')));
+    assert.equal(await page.locator('#staffProfileTabResources').getAttribute('aria-busy'), 'false', 'lazy resources tab clears aria-busy after loading');
+    assert.equal(await page.locator('#staffProfilePanelResources').getAttribute('aria-busy'), 'false', 'lazy resources panel clears aria-busy after loading');
 
     const requestsBeforeReopen = await page.evaluate(() => ({
         documents: window.__hrTeamBrowserSmoke.requestCount('/staff/2/documents'),
@@ -983,6 +1061,7 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.dataset.state === 'ready');
     assert.equal(await page.locator('#editStaffDocuments [data-state="empty"]').count(), 1, 'successful document retry renders the explicit empty state');
 
+    await page.fill('#editMedicalNotes', 'independent medical draft');
     await page.fill('#editDocumentTitle', 'QA uploaded scan');
     await page.locator('#editDocumentFile').setInputFiles({
         name: 'qa-upload.txt',
@@ -993,28 +1072,102 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-upload'));
     await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.textContent.includes('QA uploaded scan'));
     assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /додано/i, 'document upload reports a local section result');
+    assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['medical'], 'document upload clears only its own scope');
+
+    await page.fill('#editDocumentNotes', 'independent archive-time draft');
 
     await page.locator('#editStaffDocuments button').first().click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-download'));
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.downloads().length), 1, 'document download completes through the guarded download flow');
 
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.setConfirmResult(true));
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.disableConfirmationImplementation());
     await page.locator('#editStaffDocuments button').last().click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.notifications().some(item => /Підтвердження дії недоступне/.test(item.message)));
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-archive').length), 0, 'missing confirmation implementation fails closed before archive request');
+    assert.equal(await page.locator('#editStaffDocuments .hr-staff-foundation-item').count(), 1, 'fail-closed archive keeps the document visible');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.restoreConfirmationImplementation());
+
+    await page.locator('#editStaffDocuments button').last().click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog'));
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /Архівувати документ/i, 'archive opens the production confirmation');
+    await page.locator('.confirm-overlay .confirm-cancel').click();
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-archive').length), 0, 'cancelled archive does not send a request');
+
+    await page.locator('#editStaffDocuments button').last().click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+    await page.locator('.confirm-overlay .confirm-ok').click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-archive'));
     await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-state="empty"]'));
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-archive').length), 1, 'confirmed archive sends exactly one request');
     assert.equal(await page.locator('#editStaffDocuments [data-state="empty"]').count(), 1, 'archiving a document updates the documents subsection');
+    assert.deepEqual((await page.evaluate(() => staffProfileDirtyScopes())).sort(), ['documents', 'medical'], 'inline archive preserves document and medical form drafts');
+    const dirtyMessage = await page.evaluate(() => staffProfileDirtyMessage('fallback'));
+    assert.match(dirtyMessage, /Документи/, 'close warning names the unsaved document scope');
+    assert.match(dirtyMessage, /Медкнижка/, 'close warning names the unsaved medical scope');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('include_archived=true'));
+    await page.locator('[data-staff-workspace-view="documents:archive"]').click();
+    await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.dataset.state === 'error');
+    assert.equal(await page.locator('#editStaffDocuments [data-state="error"] button').count(), 1, 'document archive error exposes its own retry');
+    await page.locator('#editStaffDocuments [data-state="error"] button').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-document-status="archived"]'));
+    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/documents?include_archived=true') >= 1), 'document archive view requests archived metadata explicitly');
+    assert.match(await page.locator('#editStaffDocuments').textContent(), /В архіві.*QA HR/s, 'document archive shows status, date, and audit actor');
+    assert.equal(await page.locator('#editStaffDocuments button').count(), 1, 'archived document remains downloadable without a second archive action');
+    await page.evaluate(() => {
+        staffDocumentListView = 'active';
+        restoreStaffWorkspaceViews();
+    });
+    assert.equal(await page.locator('[data-staff-workspace-view="documents:archive"]').getAttribute('aria-pressed'), 'true', 'document archive filter restores from session state after reinitialization');
+    await page.locator('[data-staff-workspace-view="documents:active"]').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-state="empty"]'));
 
     await page.fill('#editMedicalIssuedAt', '2026-07-01');
     await page.fill('#editMedicalExpiresAt', '2027-07-01');
     await page.locator('#editMedicalSave').click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-save'));
     assert.equal(await page.locator('#editMedicalBookList .hr-staff-foundation-item').count(), 1, 'medical-book save updates its own subsection');
+    assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['documents'], 'medical save clears only the medical scope');
 
     await page.fill('#editResourceTitle', 'QA custom resource');
-    await page.locator('#editResourceIssue').click();
+    const issueRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources'));
+    await page.evaluate(() => {
+        void document.getElementById('editResourceIssue').onclick();
+        void document.getElementById('editResourceIssue').onclick();
+    });
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-issue:custom'));
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources')), issueRequestsBefore + 2, 'double-click sends one resource issue plus its single refresh request');
+    await page.fill('#editResourceNotes', 'independent return-time draft');
     await page.locator('#editStaffResources button').first().click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-return'));
+    assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), 'inline resource return preserves the issue-form draft');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('include_returned=true'));
+    await page.locator('[data-staff-workspace-view="resources:history"]').click();
+    await page.waitForFunction(() => document.getElementById('editStaffResources')?.dataset.state === 'error');
+    assert.equal(await page.locator('#editStaffResources [data-state="error"] button').count(), 1, 'resource history error exposes its own retry');
+    await page.locator('#editStaffResources [data-state="error"] button').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffResources [data-resource-status="returned"]'));
+    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources?include_returned=true') >= 1), 'resource history requests returned assignments explicitly');
+    assert.match(await page.locator('#editStaffResources').textContent(), /Повернуто.*QA HR/s, 'resource history shows status, date, and audit actor');
+    await page.evaluate(() => {
+        staffResourceListView = 'active';
+        restoreStaffWorkspaceViews();
+    });
+    assert.equal(await page.locator('[data-staff-workspace-view="resources:history"]').getAttribute('aria-pressed'), 'true', 'resource history filter restores from session state after reinitialization');
+    await page.locator('[data-staff-workspace-view="resources:active"]').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffResources [data-state="empty"]'));
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/staff/4/resources'));
+    await page.fill('#editResourceTitle', 'QA retry resource');
+    await page.locator('#editResourceIssue').click();
+    await page.waitForFunction(() => document.getElementById('editResourceIssue')?.dataset.actionState === 'error');
+    assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), 'resource issue error keeps its dirty scope');
+    await page.waitForFunction(() => !document.getElementById('editResourceIssue')?.disabled);
+    await page.locator('#editResourceIssue').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'resource-issue:custom').length === 2);
+    assert.equal((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), false, 'successful resource retry clears only the issue form');
+    assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('documents'), 'resource retry keeps the independent document draft');
 
     let expectedReturnCount = 1;
     for (const kind of ['warehouse_stock', 'costume']) {
@@ -1075,25 +1228,50 @@ async function assertOffboardingDangerFlow(page) {
     await page.selectOption('#editOffboardingAccountAction', 'review');
     await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
 
-    const confirmationCount = await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().length);
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.setConfirmResult(false));
     await complete.click();
-    await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.confirmCalls().length === expected + 1, confirmationCount);
-    const confirmation = await page.evaluate(() => window.__hrTeamBrowserSmoke.confirmCalls().at(-1));
-    assert.match(confirmation.message, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
-    assert.match(confirmation.message, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog.danger'));
+    const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
+    assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
+    assert.match(confirmationMessage, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    await page.locator('.confirm-overlay .confirm-cancel').click();
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions().length), 0, 'cancelled offboarding does not send a request');
     assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'cancelled final confirmation does not change the profile');
+
+    await complete.click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+    await page.locator('.confirm-overlay .confirm-ok').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.offboardingSubmissions().length === 1);
+    const submissions = await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions());
+    assert.equal(submissions.length, 1, 'confirmed offboarding sends exactly one request');
+    assert.deepEqual(submissions[0].body, {
+        effective_date: '2026-08-15',
+        target_pool_status: 'reserve',
+        account_action: 'review',
+        reason: 'QA controlled offboarding',
+        notes: null
+    }, 'confirmed offboarding preserves the reviewed consequence payload');
 }
 
 async function assertFocusTrap(page) {
+    await installHarness(page, { dark: false });
     await openProfile(page, 1);
     await page.locator('#staffProfileTabMain').focus();
+    const tabFocusStyle = await page.locator('#staffProfileTabMain').evaluate(el => getComputedStyle(el).boxShadow);
+    assert.notEqual(tabFocusStyle, 'none', 'focused profile tab has an explicit focus-visible ring');
     for (let i = 0; i < 16; i += 1) {
         await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.getElementById('staffEditModal').contains(document.activeElement)), true, `focus stays inside profile drawer after Tab ${i + 1}`);
     }
+    for (let i = 0; i < 8; i += 1) {
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(await page.evaluate(() => document.getElementById('staffEditModal').contains(document.activeElement)), true, `focus stays inside profile drawer after Shift+Tab ${i + 1}`);
+    }
+    await page.locator('#editCloseTop').focus();
+    const closeFocusStyle = await page.locator('#editCloseTop').evaluate(el => getComputedStyle(el).boxShadow);
+    assert.notEqual(closeFocusStyle, 'none', 'focused close action has an explicit focus-visible ring');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.getElementById('staffEditModal')?.style.display === 'none');
+    assert.equal(await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-open').evaluate(el => document.activeElement === el), true, 'Escape restores focus to the source profile action');
 }
 
 async function assertMobileAndTheme(page) {

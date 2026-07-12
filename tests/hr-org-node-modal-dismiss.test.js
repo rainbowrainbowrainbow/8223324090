@@ -704,7 +704,7 @@ test('HR staff profile drawer uses a single body scroll root and timeline-style 
     assert.equal(close?.getAttribute('aria-label'), 'Закрити картку працівника');
     assert.equal(close?.textContent.trim(), '✕');
     assert.match(closeCss, /background:\s*#0f766e/);
-    assert.match(closeCss, /width:\s*38px/);
+    assert.match(closeCss, /width:\s*44px/);
     assert.equal(document.getElementById('editCancel'), null, 'persistent close button is removed');
     assert.equal(document.querySelector('.hr-staff-profile-bottom-actions'), null, 'persistent profile footer is removed');
 });
@@ -714,7 +714,7 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
     const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
     const foundationCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-hr-foundation.css'), 'utf8');
     const mainBuilder = js.slice(js.indexOf('function buildStaffMainPayload'), js.indexOf('function buildStaffWorkPayload'));
-    const workBuilder = js.slice(js.indexOf('function buildStaffWorkPayload'), js.indexOf('function buildStaffRatesPayload'));
+    const workBuilder = js.slice(js.indexOf('function buildStaffWorkPayload'), js.indexOf('const STAFF_MAIN_PAYLOAD_FIELDS'));
     const ratesBuilder = js.slice(js.indexOf('function buildStaffRatesPayload'), js.indexOf('async function updateStaffProfileFields'));
     const payrollSave = js.slice(js.indexOf('async function saveStaffPayrollScheme'), js.indexOf('async function loadStaffResourceOptions'));
 
@@ -736,13 +736,67 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
     assert.match(js, /button\.disabled = true/);
     assert.match(js, /setStaffProfileActionState\(button, 'success'/);
     assert.match(js, /setStaffProfileActionState\(button, 'error'/);
-    assert.match(js, /markStaffProfileScopesClean\(\[scope\]\)/);
+    assert.match(js, /markStaffProfileScopeFieldsClean\(scope, submittedFields\)/);
+    assert.match(js, /scopes: \['documents', 'medical', 'resourceIssue'\]/);
+    assert.doesNotMatch(js.slice(js.indexOf('async function archiveStaffDocument'), js.indexOf('async function saveStaffMedicalBook')), /markStaffProfileScopesClean/);
+    assert.doesNotMatch(js.slice(js.indexOf('async function returnStaffResource'), js.indexOf('async function completeStaffOffboarding')), /markStaffProfileScopesClean/);
     assert.match(js, /payrollSave\.textContent = 'Зберегти оплату'/);
     assert.match(profileCss, /#staffEditModal \.hr-staff-action,[\s\S]*?min-height:\s*44px/);
     assert.match(profileCss, /\[data-action-state="loading"\]/);
     assert.match(profileCss, /\[data-action-state="success"\]/);
     assert.match(profileCss, /\[data-action-state="error"\]/);
     assert.match(foundationCss, /\.hr-staff-foundation-actions button,[\s\S]*?min-height:\s*44px/);
+});
+
+test('HR staff destructive actions use the shared dynamic confirmation and fail closed without it', () => {
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const confirmHelper = js.slice(js.indexOf('async function confirmHrAction'), js.indexOf('// ==========================================', js.indexOf('async function confirmHrAction')));
+    const archiveAction = js.slice(js.indexOf('async function archiveStaffDocument'), js.indexOf('async function saveStaffMedicalBook'));
+    const offboardingAction = js.slice(js.indexOf('async function completeStaffOffboarding'), js.indexOf('function staffEditRestoreFocusTarget'));
+
+    assert.match(confirmHelper, /typeof confirmModal === 'function'/);
+    assert.match(confirmHelper, /return confirmModal\(message,/);
+    assert.match(confirmHelper, /Підтвердження дії недоступне/);
+    assert.doesNotMatch(confirmHelper, /customConfirm/);
+    assert.match(archiveAction, /okText: 'Архівувати'/);
+    assert.match(offboardingAction, /type: 'danger'/);
+    assert.match(offboardingAction, /okText: 'Завершити співпрацю'/);
+});
+
+test('HR staff documents and resources expose persisted archive/history workspaces', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const routes = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+
+    assert.match(html, /data-staff-workspace-view="documents:archive"/);
+    assert.match(html, /data-staff-workspace-view="resources:history"/);
+    assert.match(js, /include_archived=true/);
+    assert.match(js, /include_returned=true/);
+    assert.match(js, /archived_at/);
+    assert.match(js, /archived_by/);
+    assert.match(js, /returned_at/);
+    assert.match(js, /returned_by/);
+    assert.match(js, /sessionStorage/);
+    assert.match(routes, /req\.query\.include_archived === 'true'/);
+    assert.match(routes, /req\.query\.include_returned === 'true'/);
+});
+
+test('HR staff drawer exposes 44px controls, focus rings, and live lazy-tab status', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
+    const foundationCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-hr-foundation.css'), 'utf8');
+
+    assert.match(html, /id="staffProfileLiveStatus"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(profileCss, /\.hr-staff-profile-close\s*\{[\s\S]*?width:\s*44px[\s\S]*?height:\s*44px/);
+    assert.match(profileCss, /\.hr-staff-profile-tabs button\s*\{[\s\S]*?min-height:\s*44px/);
+    assert.match(profileCss, /\.hr-staff-profile-tabs button:focus-visible/);
+    assert.match(profileCss, /#staffEditModal input:focus-visible/);
+    assert.match(foundationCss, /\.hr-lifecycle-action\s*\{[\s\S]*?min-width:\s*44px[\s\S]*?min-height:\s*44px/);
+    assert.match(foundationCss, /\.hr-lifecycle-metrics-help summary\s*\{[\s\S]*?min-height:\s*44px/);
+    assert.match(js, /button\.setAttribute\('aria-busy', loading \? 'true' : 'false'\)/);
+    assert.match(js, /panel\.setAttribute\('aria-busy', loading \? 'true' : 'false'\)/);
+    assert.match(js, /announceStaffProfileStatus/);
 });
 
 test('HR staff profile write smoke is explicit, QA-only, browser-driven, and restorative', () => {
@@ -756,17 +810,21 @@ test('HR staff profile write smoke is explicit, QA-only, browser-driven, and res
     assert.match(script, /LIVE_HR_PROFILE_WRITE_CONFIRM/);
     assert.match(script, /I_CONFIRM_HR_PROFILE_QA_WRITES/);
     assert.match(script, /LIVE_HR_PROFILE_QA_STAFF_ID/);
-    assert.match(script, /LIVE_HR_PROFILE_QA_NAME_PATTERN/);
-    assert.match(script, /LIVE_HR_PROFILE_ALLOW_NON_QA_STAFF/);
+    assert.match(script, /QA_STAFF_ID !== 818/);
+    assert.match(script, /LIVE_HR_PROFILE_DISPOSABLE_FIXTURE/);
+    assert.match(script, /LIVE_HR_PROFILE_WRITE_SCENARIOS/);
     assert.match(script, /window\.openStaffEdit/);
     assert.match(script, /#editPhone/);
     assert.match(script, /#editSave/);
-    assert.match(script, /expectedPayloadFields/);
-    assert.match(script, /onWriteStarted/);
-    assert.match(script, /restoreOriginalPhone/);
+    assert.match(script, /exact one-field payload/);
+    assert.match(script, /double-click sends one request/);
+    assert.match(script, /assertDrawerPersistence/);
+    assert.match(script, /defensive profile restore failed/);
+    assert.match(script, /restoreError/);
     assert.match(script, /finally/);
-    assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}/);
-    assert.doesNotMatch(script, /\/(documents|resources)|\/staff\/\$\{staffId\}\/offboarding|payroll-scheme/i);
+    assert.match(script, /\/api\/hr\/staff\/\$\{QA_STAFF_ID\}/);
+    assert.doesNotMatch(script, /\/api\/hr\/staff\/\$\{QA_STAFF_ID\}\/(?:documents|resources|offboarding)/i);
+    assert.doesNotMatch(pkg.scripts.test, /smoke:hr-team:write/);
 });
 
 test('HR staff update route persists every staff edit form field explicitly', () => {

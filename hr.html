@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.78.99">
-    <link rel="stylesheet" href="css/layout.css?v=0.78.99">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.99">
-    <link rel="stylesheet" href="css/pages.css?v=0.78.99">
-    <link rel="stylesheet" href="css/modals.css?v=0.78.99">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.99">
-    <link rel="stylesheet" href="css/responsive.css?v=0.78.99">
+    <link rel="stylesheet" href="css/base.css?v=0.78.100">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.100">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.100">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.100">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.100">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.100">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.100">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.78.99">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.78.100">
 </head>
 <body data-page-group="hr">
     <script>
@@ -549,6 +549,7 @@
                 <button type="button" id="staffProfileTabOffboarding" role="tab" data-staff-profile-tab="offboarding" aria-controls="staffProfilePanelOffboarding" aria-selected="false" tabindex="-1" class="is-danger-tab">Завершення співпраці</button>
                 <button type="button" id="staffProfileTabHistory" role="tab" data-staff-profile-tab="history" aria-controls="staffProfilePanelHistory" aria-selected="false" tabindex="-1">Історія</button>
             </nav>
+            <div id="staffProfileLiveStatus" class="hr-staff-profile-live-status" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="hr-staff-profile-body" data-active-profile-tab="main">
             <section id="staffProfilePanelMain" class="hr-staff-profile-panel hr-staff-profile-hero" data-staff-profile-panel="main" role="tabpanel" aria-labelledby="staffProfileTabMain">
                 <span class="hr-staff-profile-section">Команда</span>
@@ -837,7 +838,13 @@
                         <strong>Документи й скани</strong>
                         <span>Файли зберігаються приватно в базі й не доступні через публічний /uploads.</span>
                     </div>
-                    <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати скан</button>
+                    <div class="hr-staff-workspace-head-actions">
+                        <div class="hr-staff-workspace-view-switch" role="group" aria-label="Фільтр документів">
+                            <button type="button" data-staff-workspace-view="documents:active" aria-pressed="true" onclick="setStaffWorkspaceView('documents', 'active', this)">Активні</button>
+                            <button type="button" data-staff-workspace-view="documents:archive" aria-pressed="false" onclick="setStaffWorkspaceView('documents', 'archive', this)">Архів</button>
+                        </div>
+                        <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати скан</button>
+                    </div>
                 </div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
@@ -900,7 +907,13 @@
                         <strong>Видані ресурси</strong>
                         <span>Перший облік майна: костюм, складський товар або ручний запис.</span>
                     </div>
-                    <button type="button" id="editResourceIssue" class="btn-secondary" onclick="issueStaffResource()">Видати</button>
+                    <div class="hr-staff-workspace-head-actions">
+                        <div class="hr-staff-workspace-view-switch" role="group" aria-label="Фільтр ресурсів">
+                            <button type="button" data-staff-workspace-view="resources:active" aria-pressed="true" onclick="setStaffWorkspaceView('resources', 'active', this)">Активні</button>
+                            <button type="button" data-staff-workspace-view="resources:history" aria-pressed="false" onclick="setStaffWorkspaceView('resources', 'history', this)">Історія</button>
+                        </div>
+                        <button type="button" id="editResourceIssue" class="btn-secondary" onclick="issueStaffResource()">Видати</button>
+                    </div>
                 </div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
@@ -1068,18 +1081,18 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.78.99"></script>
-    <script src="js/config.js?v=0.78.99"></script>
-    <script src="js/notification.js?v=0.78.99"></script>
-    <script src="js/api.js?v=0.78.99"></script>
-    <script src="js/auth.js?v=0.78.99"></script>
-    <script src="js/components/sidebar.js?v=0.78.99"></script>
+    <script src="js/ui.js?v=0.78.100"></script>
+    <script src="js/config.js?v=0.78.100"></script>
+    <script src="js/notification.js?v=0.78.100"></script>
+    <script src="js/api.js?v=0.78.100"></script>
+    <script src="js/auth.js?v=0.78.100"></script>
+    <script src="js/components/sidebar.js?v=0.78.100"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.78.99"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.78.99"></script>
-    <script src="js/staff-schedule-shell.js?v=0.78.99"></script>
-    <script src="js/staff-page.js?v=0.78.99"></script>
-    <script src="js/hr-page.js?v=0.78.99"></script>
-    <script src="js/alerts.js?v=0.78.99"></script>
+    <script src="js/ws.js?v=0.78.100"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.78.100"></script>
+    <script src="js/staff-schedule-shell.js?v=0.78.100"></script>
+    <script src="js/staff-page.js?v=0.78.100"></script>
+    <script src="js/hr-page.js?v=0.78.100"></script>
+    <script src="js/alerts.js?v=0.78.100"></script>
 </body>
 </html>

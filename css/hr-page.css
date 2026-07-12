@@ -4081,9 +4081,9 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
 }
 .hr-staff-profile-close {
     flex: 0 0 auto;
-    width: 38px;
-    min-width: 38px;
-    height: 38px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4113,6 +4113,9 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     outline: none;
     transform: translateY(-1px);
 }
+.hr-staff-profile-close:focus-visible {
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.34), 0 16px 32px rgba(13, 148, 136, 0.26);
+}
 .hr-staff-profile-tabs {
     flex: 0 0 auto;
     display: flex;
@@ -4127,8 +4130,8 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
 .hr-staff-profile-tabs button {
     position: relative;
     flex: 0 0 auto;
-    min-height: 36px;
-    padding: 8px 11px;
+    min-height: 44px;
+    padding: 10px 13px;
     border: 1px solid rgba(148,163,184,0.24);
     border-radius: 999px;
     background: rgba(148,163,184,0.08);
@@ -4137,6 +4140,11 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     font-size: 12px;
     font-weight: 900;
     cursor: pointer;
+}
+.hr-staff-profile-tabs button:focus-visible {
+    outline: none;
+    border-color: rgba(13, 148, 136, 0.72);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.22);
 }
 .hr-staff-profile-tabs button[aria-selected="true"] {
     border-color: rgba(20,184,166,0.42);
@@ -4161,6 +4169,17 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
 }
 .hr-staff-profile-tabs button.is-loading {
     opacity: 0.72;
+}
+.hr-staff-profile-live-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 .hr-staff-profile-body {
     flex: 1 1 auto;
@@ -4255,6 +4274,26 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     border-color: color-mix(in srgb, var(--primary) 42%, var(--staff-action-border));
     box-shadow: 0 10px 22px rgba(15,23,42,0.14);
     transform: translateY(-1px);
+}
+#staffEditModal .hr-staff-action:focus-visible,
+#staffEditModal .btn-primary:focus-visible,
+#staffEditModal .btn-secondary:focus-visible,
+#staffEditModal .btn-danger:focus-visible {
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.24), 0 10px 22px rgba(15,23,42,0.14);
+}
+
+#staffEditModal input:not([type="checkbox"]):not([type="radio"]),
+#staffEditModal select,
+#staffEditModal textarea {
+    min-height: 44px;
+}
+
+#staffEditModal input:focus-visible,
+#staffEditModal select:focus-visible,
+#staffEditModal textarea:focus-visible {
+    outline: none;
+    border-color: rgba(13, 148, 136, 0.72);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
 }
 #staffEditModal .hr-staff-action[aria-busy="true"]::before {
     width: 13px;
@@ -5477,8 +5516,8 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         gap: 6px;
     }
     .hr-staff-profile-tabs button {
-        min-height: 34px;
-        padding: 7px 10px;
+        min-height: 44px;
+        padding: 10px 12px;
         font-size: 11px;
     }
     .hr-staff-profile-body {

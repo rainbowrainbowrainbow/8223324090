@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.100 - HR-картка: безпечні дії та write-QA
+
+### HR / Картка працівника / (12.07.2026) [codex]
+- **Безпечні confirmation і dirty scopes** — archive/offboarding працюють через спільну production-модалку, а documents, medical і resource issue більше не очищають стан одне одного.
+- **Архів та історія** — архівовані документи й повернуті ресурси доступні зі статусом, датою та audit metadata.
+- **Accessibility і responsive** — 44×44 px targets, focus-visible, keyboard navigation, live status і geometry checks для 390/768/1280/1440 px.
+- **Write-QA** — reversible one-field matrix для #818, суворий restore у `finally`, opt-in shift/rates/payroll і disposable integration fixtures.
+
+---
+
 ## v0.78.99 - HR Команда: CI та write-QA
 
 ### HR / Команда / (12.07.2026) [codex]

@@ -60,4 +60,5 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-07-12, `booking-detail-safe-open`: explicit product-owner approval for a security fix. Customer name, phone, and Instagram copy actions now use encoded `data-*` attributes with one delegated handler instead of inline JavaScript; canonical booking detail identity, API source, and modal ownership are unchanged.
 - 2026-07-07, `booking-detail-safe-open`: booking detail invite generation now receives the resolved banquet snapshot so public invite links can carry canonical banquet arrival time while keeping private booking/customer fields out of the URL.

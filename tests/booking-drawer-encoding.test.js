@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -1090,6 +1091,80 @@ test('booking lifecycle actions force fresh day snapshots before mutating the se
     assert.doesNotMatch(changeStatusSource, /apiUpdateBooking/);
     assert.match(bookingJs, /invalidateBookingTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
     assert.match(uiJs, /invalidateTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
+});
+
+test('booking customer copy actions keep dynamic values out of inline JavaScript', async () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function renderBookingCustomerCopyAction(value, label)');
+    const helperEnd = bookingJs.indexOf('function bookingDetailSafeRender', helperStart);
+    const customerBlockStart = bookingJs.indexOf('if (booking.customerId) {', helperEnd);
+    const customerBlockEnd = bookingJs.indexOf('function selectedBanquetCandidateRole', customerBlockStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'customer copy helpers exist before the protected booking detail block');
+    assert.ok(customerBlockStart >= 0 && customerBlockEnd > customerBlockStart, 'customer detail block exists');
+
+    const customerBlock = bookingJs.slice(customerBlockStart, customerBlockEnd);
+    assert.match(customerBlock, /renderBookingCustomerCopyAction\(customer\.name/);
+    assert.match(customerBlock, /renderBookingCustomerCopyAction\(customer\.phone/);
+    assert.match(customerBlock, /renderBookingCustomerCopyAction\(`@\$\{igName\}`/);
+    assert.match(customerBlock, /bindBookingCustomerCopyActions\(block\)/);
+    assert.doesNotMatch(customerBlock, /onclick="navigator\.clipboard\.writeText/);
+
+    const dom = new JSDOM('<!doctype html><html><body><div id="customer"></div></body></html>', {
+        runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    const copied = [];
+    window.escapeHtml = value => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    window.showNotification = () => {};
+    window.setTimeout = () => 0;
+    Object.defineProperty(window.navigator, 'clipboard', {
+        configurable: true,
+        value: {
+            writeText: async value => copied.push(value)
+        }
+    });
+
+    vm.runInContext(`
+        ${bookingJs.slice(helperStart, helperEnd)}
+        this.__bookingCustomerCopyHooks = {
+            renderBookingCustomerCopyAction,
+            bindBookingCustomerCopyActions
+        };
+    `, dom.getInternalVMContext(), { filename: 'js/booking.js' });
+
+    const values = [
+        "O'Connor",
+        '"quoted"\n<script>alert(1)</script>',
+        "');window.__injected=true;//"
+    ];
+    const container = window.document.getElementById('customer');
+    container.innerHTML = values
+        .map((value, index) => window.__bookingCustomerCopyHooks.renderBookingCustomerCopyAction(value, `Copy ${index + 1}`))
+        .join('');
+    window.__bookingCustomerCopyHooks.bindBookingCustomerCopyActions(container);
+    window.__bookingCustomerCopyHooks.bindBookingCustomerCopyActions(container);
+
+    const buttons = [...container.querySelectorAll('[data-booking-customer-copy]')];
+    assert.equal(buttons.length, values.length);
+    assert.equal(container.querySelector('script'), null);
+    assert.equal(window.__injected, undefined);
+    buttons.forEach(button => {
+        assert.equal(button.getAttribute('onclick'), null);
+        button.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepEqual(copied, values);
+
+    buttons[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    await Promise.resolve();
+    assert.deepEqual(copied, [...values, values[0]], 'the delegated listener is bound only once');
+    dom.window.close();
 });
 
 test('booking drawer keeps readable Ukrainian labels for manager-facing controls', () => {

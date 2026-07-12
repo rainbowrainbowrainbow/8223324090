@@ -12755,6 +12755,39 @@ async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot 
     }
 }
 
+function renderBookingCustomerCopyAction(value, label) {
+    const encodedValue = encodeURIComponent(String(value ?? ''));
+    return `<button type="button" class="customer-action-btn" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-booking-customer-copy="${escapeHtml(encodedValue)}">📋</button>`;
+}
+
+function bindBookingCustomerCopyActions(container) {
+    if (!container || container.dataset.bookingCustomerCopyBound === 'true') return;
+    container.dataset.bookingCustomerCopyBound = 'true';
+    container.addEventListener('click', async event => {
+        const button = event.target?.closest?.('[data-booking-customer-copy]');
+        if (!button || !container.contains(button)) return;
+
+        let text = '';
+        try {
+            text = decodeURIComponent(button.dataset.bookingCustomerCopy || '');
+        } catch {
+            return;
+        }
+        if (!text) return;
+
+        try {
+            if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+                throw new Error('Clipboard API unavailable');
+            }
+            await navigator.clipboard.writeText(text);
+            button.textContent = '✓';
+            setTimeout(() => { button.textContent = '📋'; }, 800);
+        } catch {
+            if (typeof showNotification === 'function') showNotification('Не вдалося скопіювати', 'error');
+        }
+    });
+}
+
 function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '') {
     try {
         return renderFn();
@@ -13162,7 +13195,7 @@ async function showBookingDetails(bookingId, options = {}) {
                 <span class="customer-row-icon">👤</span>
                 <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Відкрити картку клієнта">${escapeHtml(customer.name)}</a>
                 <span class="customer-row-actions">
-                    <button type="button" class="customer-action-btn" title="Скопіювати імʼя" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                    ${renderBookingCustomerCopyAction(customer.name, 'Скопіювати імʼя')}
                 </span>
             </div>`);
             // Phone — tel: link + copy + TG
@@ -13172,7 +13205,7 @@ async function showBookingDetails(bookingId, options = {}) {
                     <span class="customer-row-icon">📞</span>
                     <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Зателефонувати">${escapeHtml(customer.phone)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                        ${renderBookingCustomerCopyAction(customer.phone, 'Скопіювати')}
                         <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="Написати в Telegram">💬</a>
                     </span>
                 </div>`);
@@ -13184,7 +13217,7 @@ async function showBookingDetails(bookingId, options = {}) {
                     <span class="customer-row-icon">📸</span>
                     <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Відкрити Instagram">@${escapeHtml(igName)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                        ${renderBookingCustomerCopyAction(`@${igName}`, 'Скопіювати')}
                     </span>
                 </div>`);
             }
@@ -13218,6 +13251,7 @@ async function showBookingDetails(bookingId, options = {}) {
                     </div>
                     ${rows.join('')}
                 </div>`;
+            bindBookingCustomerCopyActions(block);
         });
     }
     return true;

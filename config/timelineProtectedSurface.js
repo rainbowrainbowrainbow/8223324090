@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '82847eab1ba9ca7dc8f80e5d67759adbb24052a7fdd96ef54201d6eb81df305c',
+        sha256: '26c9394b950202065f64ed93c984cae9c9dd19ae888790023a031c12ef3af883',
         approval: {
-            approvedBy: 'Serhii',
-            approvedOn: '2026-07-07',
-            reason: 'Booking detail invite model must receive canonical banquet arrival from the resolved banquet snapshot without exposing private fields.'
+            approvedBy: 'Product owner (explicit Codex task approval)',
+            approvedOn: '2026-07-12',
+            reason: 'Customer copy actions move from inline JavaScript to delegated data attributes, preventing stored script injection without changing booking identity, API sources, or modal ownership.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

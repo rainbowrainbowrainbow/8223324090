@@ -46,6 +46,47 @@ const SENSITIVE_API_PATH_PREFIXES = [
 
 const MUTATION_QUEUE_ALLOWLIST = [];
 
+const STATIC_RUNTIME_CACHE_ALLOWLIST = [
+    {
+        type: 'exact',
+        path: '/manifest.json',
+        owner: 'frontend-shell',
+        reason: 'The public web app manifest is non-user-specific.'
+    },
+    {
+        type: 'prefix',
+        path: '/css',
+        owner: 'frontend-shell',
+        reason: 'Versioned application styles are public static assets.'
+    },
+    {
+        type: 'prefix',
+        path: '/js',
+        owner: 'frontend-shell',
+        reason: 'Versioned frontend modules are public static assets.'
+    },
+    {
+        type: 'prefix',
+        path: '/images',
+        owner: 'frontend-shell',
+        reason: 'Repository-owned application images are public static assets.'
+    },
+    {
+        type: 'prefix',
+        path: '/assets',
+        owner: 'frontend-shell',
+        reason: 'Repository-owned application assets are public and non-user-specific.'
+    },
+    {
+        type: 'prefix',
+        path: '/landing',
+        owner: 'marketing',
+        reason: 'Landing-page resources are public and non-user-specific.'
+    }
+];
+
+const PRIVATE_RUNTIME_PATH_PREFIXES = ['/uploads'];
+
 const APP_SHELL_POLICY = {
     installAssets: [
         '/index.html',
@@ -58,8 +99,8 @@ const APP_SHELL_POLICY = {
     ],
     offlineFallbackUrl: '/index.html',
     navigationStrategy: 'network-first',
-    staticRuntimeStrategy: 'cache-first-after-request',
-    reason: 'Keep install small while retaining a responsive branded offline shell; large CRM modules and images cache only after an explicit request.'
+    staticRuntimeStrategy: 'explicit-public-allowlist',
+    reason: 'Keep install small while caching only reviewed public assets; uploads and unknown runtime paths remain network-only.'
 };
 
 const SERVICE_WORKER_POLICY = {
@@ -72,6 +113,7 @@ const SERVICE_WORKER_POLICY = {
     offlineDatabaseName: 'park-offline',
     apiPolicy: 'default-deny',
     mutationReplayPolicy: 'disabled-until-reviewed',
+    staticRuntimePolicy: 'default-deny',
     appShellPolicy: APP_SHELL_POLICY,
     reason: 'Authenticated CRM data must stay network-only unless a public endpoint is explicitly reviewed.'
 };
@@ -80,11 +122,18 @@ function runtimeApiAllowlist() {
     return API_CACHE_ALLOWLIST.map(({ type, path }) => ({ type, path }));
 }
 
+function runtimeStaticAllowlist() {
+    return STATIC_RUNTIME_CACHE_ALLOWLIST.map(({ type, path }) => ({ type, path }));
+}
+
 module.exports = {
     API_CACHE_ALLOWLIST,
     APP_SHELL_POLICY,
     MUTATION_QUEUE_ALLOWLIST,
+    PRIVATE_RUNTIME_PATH_PREFIXES,
     SENSITIVE_API_PATH_PREFIXES,
     SERVICE_WORKER_POLICY,
-    runtimeApiAllowlist
+    STATIC_RUNTIME_CACHE_ALLOWLIST,
+    runtimeApiAllowlist,
+    runtimeStaticAllowlist
 };

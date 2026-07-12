@@ -13,8 +13,8 @@ stale Cache Storage by default, and failed mutations must not be replayed later
 unless a specific endpoint has reviewed conflict behavior.
 
 The rule going forward is simple: `sw.js` pre-caches only a minimal offline
-shell, while large static assets are cached only after a client requests them.
-API GET caching is `default-deny`. Offline mutation replay is
+shell, while runtime assets use an `explicit-public-allowlist`. API GET and
+static runtime caching are both `default-deny`. Offline mutation replay is
 `disabled-until-reviewed`.
 
 ## Runtime Files
@@ -28,12 +28,16 @@ API GET caching is `default-deny`. Offline mutation replay is
 
 The Service Worker also keeps `park-offline` as the legacy offline IndexedDB
 name and supports explicit `CLEAR_PRIVATE_CACHES` and `INVALIDATE_CACHE`
-messages for private cache cleanup.
+messages for private cache cleanup. `js/auth.js` owns the single guarded
+registration entrypoint; it registers `/sw.js` only after authentication has
+succeeded.
 
 `CLEAR_PRIVATE_CACHES` must run through `event.waitUntil(clearPrivateCaches())`
-and delete both the active `event-genix-api-*` Cache Storage namespace and the
-legacy `park-offline` database. This keeps logout/account switches from
-leaving stale private API responses or old offline mutations behind.
+and delete every `event-genix-api-*` and `event-genix-v*` Cache Storage
+namespace plus the legacy `park-offline` database. It then best-effort restores
+only the reviewed public app shell. This keeps logout/account switches from
+leaving stale API responses, authenticated navigations, private uploads, or
+old offline mutations behind.
 
 ## Offline Shell and Static Assets
 
@@ -45,10 +49,14 @@ not precached, and a successful root navigation is written under the same
 `/index.html` cache key.
 
 Navigations stay `network-first`. When offline, they fall back to the cached
-`/index.html` shell. Booking/timeline JavaScript, other CRM modules, logos,
-favicons, and optional program images are not install-time assets; the normal
-static `cache-first-after-request` path may retain them only after the browser
-has requested them during regular use.
+`/index.html` shell. Only `/` and `/index.html` network responses may refresh
+that canonical document key; authenticated page navigations are never retained.
+
+Runtime static caching is an explicit public allowlist: `/manifest.json`,
+`/css`, `/js`, `/images`, `/assets`, and `/landing`. These paths may use the
+cache only without an `Authorization` header. `/uploads` and every unknown
+runtime asset path remain network-only, so future private asset locations do
+not become cacheable by accident.
 
 ## API GET Cache Allowlist
 

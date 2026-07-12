@@ -13,9 +13,12 @@ const {
     API_CACHE_ALLOWLIST,
     APP_SHELL_POLICY,
     MUTATION_QUEUE_ALLOWLIST,
+    PRIVATE_RUNTIME_PATH_PREFIXES,
     SENSITIVE_API_PATH_PREFIXES,
     SERVICE_WORKER_POLICY,
-    runtimeApiAllowlist
+    STATIC_RUNTIME_CACHE_ALLOWLIST,
+    runtimeApiAllowlist,
+    runtimeStaticAllowlist
 } = require('../config/serviceWorkerPolicy');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -107,6 +110,8 @@ function loadRuntimePolicy(swSource) {
     vm.runInContext(`${swSource}
         self.__policy = {
             API_CACHE_ALLOWLIST,
+            STATIC_RUNTIME_CACHE_ALLOWLIST,
+            PRIVATE_RUNTIME_PATH_PREFIXES,
             APP_SHELL,
             OFFLINE_FALLBACK_URL,
             SENSITIVE_API_PATH_PREFIXES,
@@ -115,6 +120,8 @@ function loadRuntimePolicy(swSource) {
             API_CACHE_NAME,
             OFFLINE_DB_NAME,
             isApiCacheAllowed,
+            isPrivateRuntimePath,
+            isStaticRuntimeCacheAllowed,
             isMutationQueueAllowed,
             isSensitiveApiPath,
             clearPrivateCaches
@@ -159,6 +166,7 @@ ensureDocMentions(doc, SERVICE_WORKER_POLICY.invalidationMessage, 'service worke
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.offlineDatabaseName, 'service worker policy docs');
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.apiPolicy, 'service worker policy docs');
 ensureDocMentions(doc, SERVICE_WORKER_POLICY.mutationReplayPolicy, 'service worker policy docs');
+ensureDocMentions(doc, SERVICE_WORKER_POLICY.staticRuntimePolicy, 'service worker policy docs');
 ensureDocMentions(doc, 'APP_SHELL_POLICY', 'service worker policy docs');
 ensureDocMentions(doc, APP_SHELL_POLICY.offlineFallbackUrl, 'service worker policy docs');
 ensureDocMentions(doc, APP_SHELL_POLICY.navigationStrategy, 'service worker policy docs');
@@ -170,6 +178,18 @@ for (const entry of API_CACHE_ALLOWLIST) {
     if (entry.type !== 'exact') fail(`${label}: only exact API cache entries are currently allowed`);
     if (!entry.path.startsWith('/api/')) fail(`${label}: path must start with /api/`);
     ensureDocMentions(doc, entry.path, label);
+}
+
+for (const entry of STATIC_RUNTIME_CACHE_ALLOWLIST) {
+    const label = `static runtime cache allowlist ${entry.path}`;
+    if (!entry.type || !entry.path || !entry.owner || !entry.reason) fail(`${label}: incomplete manifest entry`);
+    if (!entry.path.startsWith('/')) fail(`${label}: path must be root-relative`);
+    ensureDocMentions(doc, entry.path, label);
+}
+
+for (const prefix of PRIVATE_RUNTIME_PATH_PREFIXES) {
+    if (!prefix.startsWith('/')) fail(`private runtime prefix ${prefix}: must be root-relative`);
+    ensureDocMentions(doc, prefix, `private runtime prefix ${prefix}`);
 }
 
 for (const prefix of SENSITIVE_API_PATH_PREFIXES) {
@@ -196,6 +216,8 @@ if (APP_SHELL_POLICY.installAssets.some(asset => asset.startsWith('/js/') || ass
 
 if (runtime) {
     compareJson('runtime API cache allowlist', runtime.API_CACHE_ALLOWLIST, runtimeApiAllowlist());
+    compareJson('runtime static cache allowlist', runtime.STATIC_RUNTIME_CACHE_ALLOWLIST, runtimeStaticAllowlist());
+    compareJson('runtime private path prefixes', runtime.PRIVATE_RUNTIME_PATH_PREFIXES, PRIVATE_RUNTIME_PATH_PREFIXES);
     compareJson('runtime app shell', runtime.APP_SHELL, APP_SHELL_POLICY.installAssets);
     compareJson('runtime sensitive API prefixes', runtime.SENSITIVE_API_PATH_PREFIXES, SENSITIVE_API_PATH_PREFIXES);
     compareJson('runtime mutation queue allowlist', runtime.MUTATION_QUEUE_ALLOWLIST, MUTATION_QUEUE_ALLOWLIST);
@@ -213,6 +235,22 @@ if (runtime) {
         }
         if (runtime.isApiCacheAllowed(get(entry.path, { Authorization: 'Bearer token' }))) {
             fail(`${entry.path}: Authorization header must force network-only runtime behavior`);
+        }
+    }
+
+    for (const entry of runtimeStaticAllowlist()) {
+        if (!runtime.isStaticRuntimeCacheAllowed(get(entry.path))) {
+            fail(`${entry.path}: allowlisted public static path is not cache-allowed at runtime`);
+        }
+        if (runtime.isStaticRuntimeCacheAllowed(get(entry.path, { Authorization: 'Bearer token' }))) {
+            fail(`${entry.path}: Authorization header must force network-only static behavior`);
+        }
+    }
+
+    for (const prefix of PRIVATE_RUNTIME_PATH_PREFIXES) {
+        if (!runtime.isPrivateRuntimePath(prefix)) fail(`${prefix}: runtime isPrivateRuntimePath returned false`);
+        if (runtime.isStaticRuntimeCacheAllowed(get(`${prefix}/private.bin`))) {
+            fail(`${prefix}: private runtime path must be network-only`);
         }
     }
 
@@ -238,8 +276,8 @@ if (!swSource.includes('clearPrivateCaches')) {
 if (!/addEventListener\('message'[\s\S]*CLEAR_PRIVATE_CACHES[\s\S]*event\.waitUntil\(clearPromise\)/.test(swSource)) {
     fail(`${SERVICE_WORKER_POLICY.file}: CLEAR_PRIVATE_CACHES message must wait for clearPrivateCaches`);
 }
-if (!/clearPrivateCaches[\s\S]*name === API_CACHE_NAME \|\| name\.startsWith\(API_CACHE_PREFIX\)[\s\S]*caches\.delete\(name\)[\s\S]*clearOfflineMutationQueue\(\)/.test(swSource)) {
-    fail(`${SERVICE_WORKER_POLICY.file}: private cleanup must delete API cache namespace and clear offline DB`);
+if (!/clearPrivateCaches[\s\S]*name\.startsWith\(API_CACHE_PREFIX\) \|\| name\.startsWith\(RUNTIME_CACHE_PREFIX\)[\s\S]*caches\.delete\(name\)[\s\S]*clearOfflineMutationQueue\(\)/.test(swSource)) {
+    fail(`${SERVICE_WORKER_POLICY.file}: private cleanup must delete API/runtime cache namespaces and clear offline DB`);
 }
 if (!test.includes('config/serviceWorkerPolicy')) {
     fail(`${SERVICE_WORKER_POLICY.testFile}: focused test must import config/serviceWorkerPolicy`);

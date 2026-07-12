@@ -5,18 +5,7 @@
  * Security note: authenticated CRM API data is network-only by default. Do not
  * add API cache or mutation replay paths without checking data sensitivity.
  *
- * Integration: In index.html, add before </body>:
- *   <script>
- *     if ('serviceWorker' in navigator) {
- *       navigator.serviceWorker.register('/sw.js')
- *         .then(reg => console.log('[SW] Registered, scope:', reg.scope))
- *         .catch(err => console.error('[SW] Registration failed:', err));
- *     }
- *   </script>
- *
- * Integration: In index.html, add <script> tags:
- *   <script src="js/offline.js"></script>
- *   <script src="js/ws.js"></script>
+ * Registration is owned by the authenticated runtime in js/auth.js.
  */
 
 const CACHE_NAME = 'event-genix-v0.79.0';
@@ -37,6 +26,7 @@ const APP_SHELL = [
 ];
 
 const API_CACHE_PREFIX = 'event-genix-api-';
+const RUNTIME_CACHE_PREFIX = 'event-genix-v';
 const OFFLINE_DB_NAME = 'park-offline';
 
 // Public, non-user-specific API GET responses that are safe to cache.
@@ -84,6 +74,19 @@ const SENSITIVE_API_PATH_PREFIXES = [
 // HR/customer/report/uploads data by default.
 const MUTATION_QUEUE_ALLOWLIST = [];
 
+// Only reviewed public frontend assets may enter runtime Cache Storage.
+// Authenticated uploads and every unknown runtime path stay network-only.
+const STATIC_RUNTIME_CACHE_ALLOWLIST = [
+    { type: 'exact', path: '/manifest.json' },
+    { type: 'prefix', path: '/css' },
+    { type: 'prefix', path: '/js' },
+    { type: 'prefix', path: '/images' },
+    { type: 'prefix', path: '/assets' },
+    { type: 'prefix', path: '/landing' }
+];
+
+const PRIVATE_RUNTIME_PATH_PREFIXES = ['/uploads'];
+
 function matchesPathPolicy(pathname, policies) {
     return policies.some((policy) => {
         if (policy.type === 'exact') return pathname === policy.path;
@@ -113,6 +116,17 @@ function isMutationQueueAllowed(request, url = new URL(request.url)) {
     if (request.method === 'GET') return false;
     if (isSensitiveApiPath(url.pathname)) return false;
     return matchesPathPolicy(url.pathname, MUTATION_QUEUE_ALLOWLIST);
+}
+
+function isPrivateRuntimePath(pathname) {
+    return PRIVATE_RUNTIME_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isStaticRuntimeCacheAllowed(request, url = new URL(request.url)) {
+    if (request.method !== 'GET') return false;
+    if (requestHasAuthorization(request)) return false;
+    if (isPrivateRuntimePath(url.pathname)) return false;
+    return matchesPathPolicy(url.pathname, STATIC_RUNTIME_CACHE_ALLOWLIST);
 }
 
 // ==========================================
@@ -201,7 +215,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     // --- Static assets (App Shell) — cache-first ---
-    event.respondWith(cacheFirstWithNetwork(event.request));
+    if (isStaticRuntimeCacheAllowed(event.request, url)) {
+        event.respondWith(cacheFirstWithNetwork(event.request));
+    } else {
+        event.respondWith(networkOnlyAsset(event.request));
+    }
 });
 
 // ==========================================
@@ -256,6 +274,18 @@ async function networkOnly(request) {
     }
 }
 
+async function networkOnlyAsset(request) {
+    try {
+        return await fetch(request);
+    } catch (err) {
+        return new Response('Offline', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Cache-Control': 'no-store' }
+        });
+    }
+}
+
 /**
  * Network-first strategy for navigations.
  * Cache shell pages separately from API data and fall back to the shell only.
@@ -266,10 +296,10 @@ async function networkFirstPage(request) {
         if (networkResponse.ok) {
             const cache = await caches.open(CACHE_NAME);
             const pathname = new URL(request.url).pathname;
-            const cacheKey = pathname === '/' || pathname === OFFLINE_FALLBACK_URL
-                ? new Request(new URL(OFFLINE_FALLBACK_URL, self.location.origin).toString())
-                : request;
-            cache.put(cacheKey, networkResponse.clone());
+            if (pathname === '/' || pathname === OFFLINE_FALLBACK_URL) {
+                const cacheKey = new Request(new URL(OFFLINE_FALLBACK_URL, self.location.origin).toString());
+                cache.put(cacheKey, networkResponse.clone());
+            }
         }
         return networkResponse;
     } catch (err) {
@@ -423,13 +453,20 @@ async function clearPrivateCaches() {
     const cacheNames = await caches.keys();
     await Promise.all(
         cacheNames
-            .filter((name) => name === API_CACHE_NAME || name.startsWith(API_CACHE_PREFIX))
+            .filter((name) => name.startsWith(API_CACHE_PREFIX) || name.startsWith(RUNTIME_CACHE_PREFIX))
             .map((name) => {
-                console.log('[SW] Clearing private API cache:', name);
+                console.log('[SW] Clearing authenticated runtime cache:', name);
                 return caches.delete(name);
             })
     );
     await clearOfflineMutationQueue();
+
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(APP_SHELL);
+    } catch (err) {
+        console.warn('[SW] Public shell could not be restored after private cleanup:', err);
+    }
 }
 
 // ==========================================

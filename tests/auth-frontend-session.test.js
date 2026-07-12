@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const AUTH_CODE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+const ALERTS_CODE = fs.readFileSync(path.join(ROOT, 'js', 'alerts.js'), 'utf8');
 const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
@@ -86,12 +87,15 @@ function loadCheckSessionHarness(overrides = {}) {
             }
         },
         window: { WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) } },
+        navigator: { onLine: true },
         setTimeout: fn => fn(),
         hasStoredRefreshSession: () => false,
         apiVerifyToken: async () => { throw new Error('verify failed'); },
         hydrateBusinessOperatingProfile: async () => calls.push(['hydrateBusinessOperatingProfile']),
         hydrateActionPermissions: async () => calls.push(['hydrateActionPermissions']),
         showMainApp: () => calls.push(['showMainApp']),
+        resetAuthenticatedRuntimeReady: () => {},
+        scheduleOfflineSessionRecovery: () => calls.push(['scheduleOfflineSessionRecovery']),
         clearAuthStorage: () => {
             calls.push(['clearAuthStorage']);
             store.delete('pzp_token');
@@ -198,6 +202,7 @@ function loadLogoutShellHarness(pathname = '/') {
             }
         },
         revokeStoredRefreshToken: () => calls.push(['revokeStoredRefreshToken']),
+        resetAuthenticatedRuntimeReady: () => calls.push(['resetAuthenticatedRuntimeReady']),
         clearAuthStorage: () => calls.push(['clearAuthStorage']),
         clearPrivateClientCaches: () => calls.push(['clearPrivateClientCaches'])
     };
@@ -258,6 +263,74 @@ test('checkSession falls back to login instead of leaving a blank shell when ver
     );
 });
 
+test('checkSession preserves an offline session and can recover when connectivity returns', async () => {
+    let verifyOnline = false;
+    const navigator = { onLine: false };
+    const { context, calls, store } = loadCheckSessionHarness({
+        navigator,
+        apiVerifyToken: async () => verifyOnline ? { id: 7, username: 'cached.user' } : null
+    });
+
+    assert.equal(await context.checkSession(), false);
+    assert.equal(store.get('pzp_token'), 'stored-token');
+    assert.match(store.get('pzp_current_user'), /cached\.user/);
+    assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'clearPrivateClientCaches'), false);
+    assert.equal(calls.some(call => call[0] === 'scheduleOfflineSessionRecovery'), true);
+
+    navigator.onLine = true;
+    verifyOnline = true;
+    assert.equal(await context.checkSession(), true);
+    assert.equal(context.AppState.currentUser.username, 'cached.user');
+    assert.equal(calls.some(call => call[0] === 'showMainApp'), true);
+});
+
+test('Service Worker registration is canonical, authenticated, and idempotent', async () => {
+    const registrationCalls = [];
+    const events = [];
+    const store = new Map();
+    const context = {
+        console,
+        AppState: { currentUser: null },
+        localStorage: { getItem: key => store.get(key) || null },
+        navigator: {
+            serviceWorker: {
+                register: async path => {
+                    registrationCalls.push(path);
+                    return { scope: '/' };
+                }
+            }
+        },
+        window: { dispatchEvent: event => events.push(event.type) },
+        CustomEvent: class CustomEvent { constructor(type) { this.type = type; } }
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
+        const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
+        let serviceWorkerRegistrationPromise = null;
+        let authenticatedRuntimeReady = false;
+        ${extractAuthFunction('hasAuthenticatedRuntimeSession')}
+        ${extractAuthFunction('isAuthenticatedRuntimeReady')}
+        ${extractAuthFunction('registerAuthenticatedServiceWorker')}
+        ${extractAuthFunction('markAuthenticatedRuntimeReady')}
+    `, context, { filename: 'js/auth.js' });
+
+    assert.equal(await context.registerAuthenticatedServiceWorker(), null);
+    assert.deepEqual(registrationCalls, []);
+
+    context.AppState.currentUser = { id: 7 };
+    store.set('pzp_token', 'token');
+    await context.registerAuthenticatedServiceWorker();
+    await context.registerAuthenticatedServiceWorker();
+    context.markAuthenticatedRuntimeReady();
+
+    assert.deepEqual(registrationCalls, ['/sw.js']);
+    assert.deepEqual(events, ['crm:authenticated-runtime-ready']);
+    assert.equal(context.isAuthenticatedRuntimeReady(), true);
+    assert.equal((AUTH_CODE.match(/navigator\.serviceWorker\.register\('\/sw\.js'\)/g) || []).length, 1);
+});
+
 test('showLoginScreen clears logout exit state before showing the canonical login screen', () => {
     const { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs } = loadLogoutShellHarness('/');
 
@@ -303,14 +376,59 @@ test('logout clears session data and exits to a stable login visual state', () =
     assert.deepEqual(calls.slice(0, 4).map(call => call[0]), [
         'ParkWS.disconnect',
         'revokeStoredRefreshToken',
+        'resetAuthenticatedRuntimeReady',
         'clearAuthStorage',
-        'clearPrivateClientCaches'
     ]);
+    assert.equal(calls.some(call => call[0] === 'clearPrivateClientCaches'), true);
     assert.equal(bodyClasses.set.has('auth-screen'), true);
     assert.equal(bodyClasses.set.has('page-exiting'), false);
     assert.equal(bodyAttrs.has('aria-busy'), false);
     assert.equal(loginClasses.set.has('hidden'), false);
     assert.equal(mainClasses.set.has('hidden'), true);
+});
+
+test('logout cache fallback removes API and runtime namespaces', async () => {
+    const deleted = [];
+    const messages = [];
+    const cacheStorage = {
+        async keys() {
+            return ['event-genix-api-v0.79.0', 'event-genix-v0.79.0', 'unrelated-cache'];
+        },
+        async delete(key) {
+            deleted.push(key);
+            return true;
+        }
+    };
+    const context = {
+        OfflineQueue: { clearQueue: async () => {} },
+        navigator: {
+            serviceWorker: {
+                controller: { postMessage: message => messages.push(message) }
+            }
+        },
+        window: { caches: cacheStorage },
+        caches: cacheStorage
+    };
+    vm.createContext(context);
+    vm.runInContext(extractAuthFunction('clearPrivateClientCaches'), context, { filename: 'js/auth.js' });
+
+    context.clearPrivateClientCaches();
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(JSON.parse(JSON.stringify(messages)), [{ type: 'CLEAR_PRIVATE_CACHES' }]);
+    assert.deepEqual(deleted.sort(), ['event-genix-api-v0.79.0', 'event-genix-v0.79.0']);
+});
+
+test('alerts wait for authenticated runtime readiness before protected loading', () => {
+    assert.match(
+        ALERTS_CODE,
+        /async function loadAlertBell\(\) \{\s*if \(typeof window\.isAuthenticatedRuntimeReady[^\n]+return;/
+    );
+    assert.match(
+        ALERTS_CODE,
+        /document\.addEventListener\('DOMContentLoaded', \(\) => \{\s*startAlertRuntime\(\);\s*\}\);/
+    );
+    assert.match(ALERTS_CODE, /window\.addEventListener\('crm:authenticated-runtime-ready', startAlertRuntime\)/);
 });
 
 test('apiFetchWithAuthRetry refreshes before protected task mutations when the legacy token is missing', async () => {

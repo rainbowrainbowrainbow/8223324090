@@ -7,9 +7,12 @@ const {
     API_CACHE_ALLOWLIST,
     APP_SHELL_POLICY,
     MUTATION_QUEUE_ALLOWLIST,
+    PRIVATE_RUNTIME_PATH_PREFIXES,
     SENSITIVE_API_PATH_PREFIXES,
     SERVICE_WORKER_POLICY,
-    runtimeApiAllowlist
+    STATIC_RUNTIME_CACHE_ALLOWLIST,
+    runtimeApiAllowlist,
+    runtimeStaticAllowlist
 } = require('../config/serviceWorkerPolicy');
 
 const ROOT = path.join(__dirname, '..');
@@ -78,10 +81,14 @@ function loadPolicy(options = {}) {
     vm.runInContext(`${swSource}
         self.__policy = {
             API_CACHE_ALLOWLIST,
+            STATIC_RUNTIME_CACHE_ALLOWLIST,
+            PRIVATE_RUNTIME_PATH_PREFIXES,
             SENSITIVE_API_PATH_PREFIXES,
             MUTATION_QUEUE_ALLOWLIST,
             isApiCacheAllowed,
             isMutationQueueAllowed,
+            isPrivateRuntimePath,
+            isStaticRuntimeCacheAllowed,
             clearPrivateCaches,
             cacheFirstWithNetwork,
             networkFirstPage,
@@ -158,6 +165,30 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(policy.isMutationQueueAllowed(post('/api/chat/messages')), false);
     });
 
+    it('uses an explicit public allowlist for runtime static cache', () => {
+        assert.deepEqual(
+            JSON.parse(JSON.stringify(policy.STATIC_RUNTIME_CACHE_ALLOWLIST)),
+            runtimeStaticAllowlist()
+        );
+        assert.deepEqual(
+            STATIC_RUNTIME_CACHE_ALLOWLIST.map(({ type, path }) => ({ type, path })),
+            runtimeStaticAllowlist()
+        );
+        assert.equal(policy.isStaticRuntimeCacheAllowed(get('/js/auth.js')), true);
+        assert.equal(policy.isStaticRuntimeCacheAllowed(get('/images/logo-new.png')), true);
+        assert.equal(policy.isStaticRuntimeCacheAllowed(get('/private/generated.pdf')), false);
+    });
+
+    it('keeps uploads and authorized static requests out of runtime cache', () => {
+        assert.ok(PRIVATE_RUNTIME_PATH_PREFIXES.includes('/uploads'));
+        assert.equal(policy.isPrivateRuntimePath('/uploads/customer-contract.pdf'), true);
+        assert.equal(policy.isStaticRuntimeCacheAllowed(get('/uploads/customer-contract.pdf')), false);
+        assert.equal(
+            policy.isStaticRuntimeCacheAllowed(get('/js/auth.js', { Authorization: 'Bearer token' })),
+            false
+        );
+    });
+
     it('cold install precaches only the reviewed minimal offline shell', async () => {
         const runtimePolicy = loadPolicy();
         await waitForWorkerEvent(runtimePolicy.__listeners.install);
@@ -202,6 +233,13 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(new URL(runtimePolicy.__cachePuts[0].url).pathname, '/index.html');
     });
 
+    it('does not retain authenticated page navigations in runtime cache', async () => {
+        const runtimePolicy = loadPolicy();
+        await runtimePolicy.networkFirstPage(get('/customers'));
+
+        assert.equal(runtimePolicy.__cachePuts.length, 0);
+    });
+
     it('keeps booking, timeline, and images out of install while allowing runtime static cache', async () => {
         const runtimePolicy = loadPolicy();
 
@@ -231,7 +269,7 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(await response.text(), '<main>Offline shell</main>');
     });
 
-    it('clears private API caches and the legacy offline DB on explicit cleanup', async () => {
+    it('clears API and runtime caches, restores the public shell, and deletes the legacy offline DB', async () => {
         const runtimePolicy = loadPolicy({
             cacheKeys: [
                 'event-genix-v0.77.15',
@@ -245,8 +283,10 @@ describe('Service Worker cache safety policy', () => {
 
         assert.deepEqual(runtimePolicy.__deletedCaches.sort(), [
             'event-genix-api-old',
-            'event-genix-api-v0.77.15'
+            'event-genix-api-v0.77.15',
+            'event-genix-v0.77.15'
         ]);
+        assert.deepEqual(runtimePolicy.__appShellAdds, [APP_SHELL_POLICY.installAssets]);
         assert.deepEqual(runtimePolicy.__deletedDatabases, [SERVICE_WORKER_POLICY.offlineDatabaseName]);
         assert.equal(runtimePolicy.OFFLINE_DB_NAME, SERVICE_WORKER_POLICY.offlineDatabaseName);
         assert.equal(typeof runtimePolicy.__listeners.message, 'function');

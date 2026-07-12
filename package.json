@@ -57,6 +57,7 @@
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
     "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
+    "test:browser:service-worker": "npx --yes --package playwright node tests/browser/service-worker-browser-smoke.js",
     "test:browser:timeline-summary": "npx --yes --package playwright node tests/browser/timeline-room-summary-browser-smoke.js",
     "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",
     "test:browser:staff-schedule": "npx --yes --package playwright node tests/browser/staff-schedule-custom-range-browser-smoke.js",

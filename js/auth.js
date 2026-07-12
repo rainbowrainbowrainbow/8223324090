@@ -12,6 +12,61 @@ let profileModalPasswordBaseline = '';
 const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
 const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
 const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
+let serviceWorkerRegistrationPromise = null;
+let authenticatedRuntimeReady = false;
+let offlineSessionRecoveryBound = false;
+
+function hasAuthenticatedRuntimeSession() {
+    if (typeof AppState === 'undefined' || !AppState.currentUser) return false;
+    return Boolean(
+        localStorage.getItem('pzp_token')
+        || localStorage.getItem(AUTH_ACCESS_TOKEN_KEY)
+        || localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)
+    );
+}
+
+function isAuthenticatedRuntimeReady() {
+    return authenticatedRuntimeReady && hasAuthenticatedRuntimeSession();
+}
+
+function registerAuthenticatedServiceWorker() {
+    if (!hasAuthenticatedRuntimeSession()) return Promise.resolve(null);
+    if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+    if (serviceWorkerRegistrationPromise) return serviceWorkerRegistrationPromise;
+
+    serviceWorkerRegistrationPromise = navigator.serviceWorker.register('/sw.js')
+        .catch((err) => {
+            serviceWorkerRegistrationPromise = null;
+            console.warn('[auth] Service Worker registration failed', err);
+            return null;
+        });
+    return serviceWorkerRegistrationPromise;
+}
+
+function markAuthenticatedRuntimeReady() {
+    if (!hasAuthenticatedRuntimeSession()) return false;
+    void registerAuthenticatedServiceWorker();
+    if (authenticatedRuntimeReady) return true;
+
+    authenticatedRuntimeReady = true;
+    window.dispatchEvent(new CustomEvent('crm:authenticated-runtime-ready'));
+    return true;
+}
+
+function resetAuthenticatedRuntimeReady() {
+    authenticatedRuntimeReady = false;
+}
+
+function scheduleOfflineSessionRecovery() {
+    if (offlineSessionRecoveryBound) return;
+    offlineSessionRecoveryBound = true;
+    window.addEventListener('online', () => {
+        offlineSessionRecoveryBound = false;
+        void checkSession();
+    }, { once: true });
+}
+
+window.isAuthenticatedRuntimeReady = isAuthenticatedRuntimeReady;
 
 (function initSidebarSmartMenuLoader() {
     function assetVersion() {
@@ -177,16 +232,24 @@ async function checkSession() {
                 window.WorkingRole?.hydrate?.();
                 showMainApp();
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
-                return;
+                return true;
             }
         } catch (err) {
             console.warn('[auth] Session bootstrap failed; returning to login screen', err);
         }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            resetAuthenticatedRuntimeReady();
+            scheduleOfflineSessionRecovery();
+            showLoginScreen();
+            return false;
+        }
         // Token expired or invalid
+        resetAuthenticatedRuntimeReady();
         clearAuthStorage();
         clearPrivateClientCaches();
     }
     showLoginScreen();
+    return false;
 }
 
 async function login(username, password) {
@@ -197,6 +260,7 @@ async function login(username, password) {
         await hydrateBusinessOperatingProfile(data.user || AppState.currentUser);
         await hydrateActionPermissions(data.user || AppState.currentUser);
         window.WorkingRole?.hydrate?.();
+        await registerAuthenticatedServiceWorker();
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         // Start every authenticated session from the account's timeline surface.
@@ -235,6 +299,7 @@ function logout() {
     revokeStoredRefreshToken();
 
     AppState.currentUser = null;
+    resetAuthenticatedRuntimeReady();
     clearAuthStorage();
     clearPrivateClientCaches();
     showLoginScreen();
@@ -526,7 +591,7 @@ function clearPrivateClientCaches() {
             caches.keys()
                 .then((keys) => Promise.all(
                     keys
-                        .filter((key) => key.startsWith('event-genix-api-'))
+                        .filter((key) => key.startsWith('event-genix-api-') || key.startsWith('event-genix-v'))
                         .map((key) => caches.delete(key))
                 ))
                 .catch(() => {});
@@ -695,6 +760,7 @@ function initCrmAssistantRail() {
 }
 
 function showAuthenticatedPageShell() {
+    markAuthenticatedRuntimeReady();
     document.body.classList.remove('auth-screen');
     document.body.classList.add('authenticated-shell');
     document.getElementById('loginScreen')?.classList.add('hidden');

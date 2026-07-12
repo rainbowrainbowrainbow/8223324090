@@ -5,6 +5,8 @@
 const _ALERTS_KEY = 'crm_alerts_read_v2';
 const _ALERTS_DISMISSED_KEY = 'crm_alerts_dismissed';
 let _alertsData = [];
+let _alertRuntimeStarted = false;
+let _alertInterval = null;
 
 // ─── Self-inject bell + panel ───────────────────
 function _ensureAlertElements() {
@@ -63,6 +65,7 @@ function _replaceAlertsData(alerts) {
 
 // ─── Badge update ───────────────────────────────
 async function loadAlertBell() {
+    if (typeof window.isAuthenticatedRuntimeReady !== 'function' || !window.isAuthenticatedRuntimeReady()) return;
     const badge = document.getElementById('alertBadge');
     try {
         const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
@@ -491,10 +494,14 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') _closeAlertsPanel();
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+function startAlertRuntime() {
+    if (_alertRuntimeStarted) return false;
+    if (typeof window.isAuthenticatedRuntimeReady !== 'function' || !window.isAuthenticatedRuntimeReady()) return false;
+
+    _alertRuntimeStarted = true;
     _ensureAlertElements();
-    loadAlertBell();
-    const _alertInterval = setInterval(loadAlertBell, 1800000);
+    void loadAlertBell();
+    _alertInterval = setInterval(loadAlertBell, 1800000);
     window.addEventListener('beforeunload', () => clearInterval(_alertInterval));
     window.addEventListener('ws:alert', (e) => {
         const { payload } = e.detail || {};
@@ -510,6 +517,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     // Clear old dismissed (>24h)
     try { const d = _getDismissed(); if (d.size > 50) { localStorage.removeItem(_ALERTS_DISMISSED_KEY); } } catch {}
+    return true;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    startAlertRuntime();
 });
+
+window.addEventListener('crm:authenticated-runtime-ready', startAlertRuntime);
 
 window._closeAlertsPanel = _closeAlertsPanel;

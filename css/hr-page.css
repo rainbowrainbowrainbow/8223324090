@@ -1974,7 +1974,7 @@ body.dark-mode .hr-org-detail {
 }
 .hr-team-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
     gap: 10px;
 }
 .hr-team-card {
@@ -1988,6 +1988,7 @@ body.dark-mode .hr-org-detail {
     box-shadow: var(--shadow-xs);
     display: grid;
     gap: 9px;
+    align-content: start;
     min-width: 0;
     transition: border-color var(--speed-fast), box-shadow var(--speed-fast), transform var(--speed-fast);
 }
@@ -2132,7 +2133,7 @@ button.hr-team-onboarding-compact:focus-visible {
 .hr-people-bucket.is-open .hr-people-bucket-body { display: block; }
 .hr-people-bucket-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
     gap: 10px;
 }
 .hr-people-results {
@@ -2141,7 +2142,7 @@ button.hr-team-onboarding-compact:focus-visible {
 }
 .hr-people-results-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
     gap: 10px;
 }
 .hr-people-empty {
@@ -2202,11 +2203,6 @@ button.hr-team-onboarding-compact:focus-visible {
 
 .hr-team-details { min-width: 0; }
 .hr-team-name-row {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: start;
-    gap: 7px;
     min-width: 0;
 }
 .hr-team-title-main {
@@ -2217,12 +2213,27 @@ button.hr-team-onboarding-compact:focus-visible {
     min-width: 0;
 }
 .hr-team-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    width: 100%;
     font-weight: 900;
     font-size: 15px;
     line-height: 1.25;
     color: var(--gray-800);
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
+}
+.hr-team-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    margin-top: 7px;
+    min-width: 0;
 }
 .hr-team-role {
     display: flex;

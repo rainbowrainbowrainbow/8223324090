@@ -45,14 +45,17 @@ const CSS_BUNDLE = [
 const HARNESS_CODE = String.raw`
 (() => {
     const staffProfiles = new Map([
-        [1, { id: 1, name: 'QA Worker Alpha', role_type: 'animator', secondary_professions: [], phone: '+380111', photo_url: '/uploads/worker.jpg', hourly_rate: 100, rate_unit: 'hour', company_structure_node_id: 'animators', has_face_descriptor: true, has_account: true, training_readiness: { total: 4, completed: 4, percent: 100 }, onboarding_assignment: { responsible_user_id: 7, responsible_name: 'HR Lead', percent: 100, training_status: 'completed' }, skills: [] }],
+        [1, { id: 1, name: 'QA Codex Schedule Replacement', role_type: 'animator', secondary_professions: [], phone: '+380111', photo_url: '/uploads/worker.jpg', hourly_rate: 100, rate_unit: 'hour', company_structure_node_id: 'animators', has_face_descriptor: true, has_account: true, training_readiness: { total: 4, completed: 4, percent: 100 }, onboarding_assignment: { responsible_user_id: 7, responsible_name: 'HR Lead', percent: 100, training_status: 'completed' }, skills: [] }],
         [2, { id: 2, name: 'QA Reserve Beta', role_type: 'technician', secondary_professions: [], phone: '+380222', photo_url: '/uploads/reserve.jpg', hourly_rate: 120, rate_unit: 'hour', hr_pool_status: 'reserve', company_structure_node_id: 'tech', has_face_descriptor: false, has_account: true, training_readiness: { total: 3, completed: 0, percent: 0 }, onboarding_assignment: { responsible_user_id: 7, responsible_name: 'HR Lead', percent: 20, training_status: 'in_progress' }, skills: [] }],
         [3, { id: 3, name: 'QA Intern Gamma', role_type: 'intern', secondary_professions: [], phone: '+380333', photo_url: '/uploads/intern.jpg', hourly_rate: 90, rate_unit: 'hour', company_structure_node_id: 'interns', has_face_descriptor: true, has_account: true, training_readiness: { total: 2, completed: 1, percent: 50 }, skills: [] }],
         [4, { id: 4, name: 'QA Blacklist Delta', role_type: 'animator', secondary_professions: [], phone: '+380444', photo_url: '', hourly_rate: 80, rate_unit: 'hour', hr_pool_status: 'blacklisted', blacklist_reason: 'QA contract', company_structure_node_id: null, has_face_descriptor: true, has_account: false, training_readiness: { total: 1, completed: 1, percent: 100 }, skills: [] }],
         [5, { id: 5, name: 'QA Dismissed Epsilon', role_type: 'animator', secondary_professions: [], phone: '+380555', photo_url: '', hourly_rate: 70, rate_unit: 'hour', is_active: false, company_structure_node_id: null, has_face_descriptor: false, has_account: false, training_readiness: { total: 0, completed: 0, percent: 0 }, skills: [] }]
     ]);
     const pendingProfiles = new Map();
+    const pendingHistory = new Map();
+    const requestCounts = new Map();
     let holdProfileLoads = false;
+    let holdHistoryLoads = false;
 
     function profileResponse(id) {
         const profile = staffProfiles.get(Number(id));
@@ -65,6 +68,20 @@ const HARNESS_CODE = String.raw`
         let resolve;
         const promise = new Promise(done => { resolve = done; });
         pendingProfiles.set(Number(id), { promise, resolve });
+        return promise;
+    }
+
+    function historyResponse(id) {
+        return {
+            success: true,
+            data: [{ action: 'qa', performed_by: 'QA staff ' + Number(id), created_at: new Date().toISOString() }]
+        };
+    }
+
+    function deferredHistory(id) {
+        let resolve;
+        const promise = new Promise(done => { resolve = done; });
+        pendingHistory.set(Number(id), { promise, resolve });
         return promise;
     }
 
@@ -141,13 +158,20 @@ const HARNESS_CODE = String.raw`
     ensureCompanyStructureNodesLoaded = async () => companyStructureNodes;
     crmApiFetch = async () => ({ success: true, data: [] });
     hrFetch = async path => {
+        const requestPath = String(path);
+        requestCounts.set(requestPath, Number(requestCounts.get(requestPath) || 0) + 1);
         const profileMatch = String(path).match(/^\/staff\/(\d+)$/);
         if (profileMatch) {
             const id = Number(profileMatch[1]);
             if (holdProfileLoads) return deferredProfile(id);
             return profileResponse(id);
         }
-        if (String(path).includes('/history')) return { success: true, data: [{ action: 'qa', created_at: new Date().toISOString() }] };
+        const historyMatch = requestPath.match(/^\/staff\/(\d+)\/history/);
+        if (historyMatch) {
+            const id = Number(historyMatch[1]);
+            if (holdHistoryLoads) return deferredHistory(id);
+            return historyResponse(id);
+        }
         if (String(path).includes('/lifecycle-checklist')) {
             return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 0, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 0, open_payroll_count: 0 }, sections: [] } };
         }
@@ -173,6 +197,9 @@ const HARNESS_CODE = String.raw`
     window.__hrTeamBrowserSmoke = {
         setup({ dark = false } = {}) {
             setupDom();
+            requestCounts.clear();
+            pendingHistory.clear();
+            holdHistoryLoads = false;
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
             activePeopleBucket = 'workers';
@@ -189,6 +216,15 @@ const HARNESS_CODE = String.raw`
             filterAndRenderTeam();
         },
         open: id => openStaffEdit(id),
+        openTab: tab => activateStaffProfileTab(tab),
+        startTab(tab) {
+            activateStaffProfileTab(tab).catch(err => { window.__tabError = err.message; });
+        },
+        requestCount(fragment) {
+            return Array.from(requestCounts.entries())
+                .filter(([requestPath]) => requestPath.includes(String(fragment)))
+                .reduce((total, [, count]) => total + Number(count || 0), 0);
+        },
         close: () => closeHrEditableModal('staffEditModal'),
         confirmCalls: () => window.__confirmCalls,
         setConfirmResult: value => { window.__confirmResult = Boolean(value); },
@@ -208,6 +244,17 @@ const HARNESS_CODE = String.raw`
         },
         releaseProfileHold() {
             holdProfileLoads = false;
+        },
+        enableHistoryHold() {
+            holdHistoryLoads = true;
+            pendingHistory.clear();
+        },
+        resolveHistory(id) {
+            const pending = pendingHistory.get(Number(id));
+            if (pending) pending.resolve(historyResponse(id));
+        },
+        releaseHistoryHold() {
+            holdHistoryLoads = false;
         }
     };
 })();
@@ -248,7 +295,7 @@ function cardNames(page) {
 }
 
 async function assertTeamNavigation(page) {
-    assert.deepEqual(await cardNames(page), ['QA Worker Alpha'], 'active workers bucket renders only worker card');
+    assert.deepEqual(await cardNames(page), ['QA Codex Schedule Replacement'], 'active workers bucket renders only worker card');
     assert.equal(await page.locator('#teamGrid .hr-team-card').count(), 1, 'closed bucket cards are not left in DOM');
     assert.equal(await page.locator('.hr-tab[data-bucket="workers"]').getAttribute('aria-pressed'), 'true', 'workers nav has active aria state');
     assert.equal(await page.locator('.hr-tab[data-bucket="reserve"]').getAttribute('aria-pressed'), 'false', 'reserve nav has inactive aria state');
@@ -258,10 +305,34 @@ async function assertTeamNavigation(page) {
     assert.match(await page.locator('#teamFilterInfo').textContent(), /Резерв/, 'search result explains found bucket');
     assert.equal(await page.locator('[data-card-bucket="reserve"]').count(), 1, 'search result shows bucket badge');
 
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('Dismissed Epsilon', false));
+    assert.deepEqual(await cardNames(page), [], 'archive profile is excluded from global search by default');
+    assert.match(await page.locator('#teamFilterInfo').textContent(), /0 знайдено без архіву/, 'archive-off search explains the empty result');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('Dismissed Epsilon', true));
+    assert.deepEqual(await cardNames(page), ['QA Dismissed Epsilon'], 'archive toggle includes dismissed profiles');
+    assert.equal(await page.locator('[data-card-bucket="dismissed"]').count(), 1, 'archive result carries a dismissed bucket badge');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('', false));
+
+    for (const filterId of ['needs_setup', 'missing_profile_photo', 'missing_face', 'missing_crm', 'missing_structure', 'training_zero', 'missing_onboarding_owner']) {
+        await page.evaluate(id => window.__hrTeamBrowserSmoke.setSetupFilter(id), filterId);
+        const activeChip = page.locator(`.hr-setup-filter-chip[onclick="setTeamSetupFilter('${filterId}')"]`);
+        assert.equal(await activeChip.getAttribute('aria-pressed'), 'true', `${filterId} exposes its active aria state`);
+        assert.equal(await page.locator('#teamGrid').evaluate(el => el.dataset.peopleMode), 'setup', `${filterId} uses setup result mode`);
+        const shownCount = await page.locator('#teamGrid .hr-team-card').count();
+        const metricCount = Number(await activeChip.locator('i').textContent());
+        assert.equal(shownCount, metricCount, `${filterId} counter matches rendered results`);
+        await page.evaluate(() => window.__hrTeamBrowserSmoke.setSetupFilter('all'));
+        assert.equal(await activeChip.getAttribute('aria-pressed'), 'false', `${filterId} clear action resets aria state`);
+    }
+
     await page.evaluate(() => window.__hrTeamBrowserSmoke.setSetupFilter('missing_face'));
     assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'setup filter Без камери filters to matching card');
     assert.equal(await page.locator('#teamGrid').evaluate(el => el.dataset.peopleMode), 'setup', 'setup filter uses global setup render mode');
     assert.equal(await page.locator('.hr-setup-filter-chip[aria-pressed="true"]').filter({ hasText: 'Без камери' }).count(), 1, 'active setup filter has aria-pressed');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('not-a-real-profile'));
+    assert.equal(await page.locator('#teamGrid .hr-people-empty').count(), 1, 'empty setup result renders one explicit empty state');
+    assert.equal(await page.locator('.hr-setup-filter-reset').isVisible(), true, 'empty setup result keeps a visible reset action');
 
     await page.evaluate(() => {
         window.__hrTeamBrowserSmoke.setSetupFilter('all');
@@ -270,6 +341,54 @@ async function assertTeamNavigation(page) {
     });
     assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'bucket switch renders selected bucket only');
     assert.equal(await page.locator('.hr-tab[data-bucket="reserve"]').getAttribute('aria-pressed'), 'true', 'reserve bucket has aria active state after switch');
+    assert.match(await page.evaluate(() => window.__lastReplaceStateUrl || ''), /#reserve$/, 'bucket navigation writes the canonical reserve hash');
+}
+
+async function assertCardLayoutAndOverflow(page, options = {}) {
+    const longName = page.locator('.hr-team-card[data-staff-id="1"] .hr-team-name');
+    const geometry = await longName.evaluate(el => {
+        const card = el.closest('.hr-team-card');
+        const avatar = card.querySelector('.hr-team-avatar');
+        const actions = card.querySelector('.hr-team-card-actions');
+        const style = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return {
+            cardWidth: card.getBoundingClientRect().width,
+            avatarWidth: avatar.getBoundingClientRect().width,
+            nameWidth: box.width,
+            nameHeight: box.height,
+            lineHeight: Number.parseFloat(style.lineHeight),
+            overflowWrap: style.overflowWrap,
+            wordBreak: style.wordBreak,
+            actionTop: actions.getBoundingClientRect().top,
+            nameBottom: box.bottom
+        };
+    });
+    assert.ok(
+        geometry.nameWidth >= geometry.cardWidth - geometry.avatarWidth - 70,
+        `actions do not steal the long-name text column: ${JSON.stringify(geometry)}`
+    );
+    assert.ok(geometry.nameHeight <= (geometry.lineHeight * 2) + 1, 'long name uses a controlled two-line clamp');
+    assert.equal(geometry.overflowWrap, 'break-word', 'long names wrap at word-safe boundaries');
+    assert.equal(geometry.wordBreak, 'normal', 'long names do not use per-character word breaking');
+    assert.ok(geometry.actionTop >= geometry.nameBottom, 'card actions render below the name instead of compressing it');
+
+    if (options.testOverflow === false) return;
+
+    const trigger = page.locator('.hr-team-card[data-staff-id="1"] .hr-team-overflow-trigger');
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const menu = page.locator('.hr-team-card[data-staff-id="1"] [data-team-card-menu]');
+    assert.equal(await menu.isVisible(), true, 'overflow menu opens from the keyboard');
+    await page.waitForFunction(() => {
+        const activeMenu = document.querySelector('.hr-team-card[data-staff-id="1"] [data-team-card-menu]');
+        return activeMenu?.contains(document.activeElement);
+    });
+    assert.equal(await menu.evaluate(el => el.contains(document.activeElement)), true, 'overflow menu moves focus to its first action');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.hr-team-card[data-staff-id="1"] [data-team-card-menu]')?.hidden === true);
+    assert.equal(await menu.isVisible(), false, 'Escape closes the overflow menu');
+    assert.equal(await trigger.evaluate(el => document.activeElement === el), true, 'Escape returns focus to the overflow trigger');
 }
 
 async function waitForCleanHydration(page) {
@@ -334,6 +453,41 @@ async function assertRapidProfileSwitching(page) {
     assert.equal(await page.inputValue('#editStaffId'), '3', 'stale profile responses do not overwrite current profile');
 }
 
+async function assertHistoryRaceAndLazyTabs(page) {
+    await openProfile(page, 1);
+    await page.evaluate(() => {
+        window.__hrTeamBrowserSmoke.enableHistoryHold();
+        window.__hrTeamBrowserSmoke.startTab('history');
+    });
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history') === 1);
+
+    await openProfile(page, 2);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('history'));
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/history') === 1);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveHistory(2));
+    await page.waitForFunction(() => document.getElementById('editStaffHistory')?.textContent.includes('QA staff 2'));
+    await page.evaluate(() => {
+        window.__hrTeamBrowserSmoke.resolveHistory(1);
+        window.__hrTeamBrowserSmoke.releaseHistoryHold();
+    });
+    await page.waitForTimeout(50);
+    assert.match(await page.locator('#editStaffHistory').textContent(), /QA staff 2/, 'stale history response does not replace the active profile history');
+
+    await openProfile(page, 1);
+    const historyRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    await page.locator('#staffProfileTabMain').focus();
+    await page.keyboard.press('End');
+    await page.waitForFunction(() => document.getElementById('staffProfileTabHistory')?.getAttribute('aria-selected') === 'true');
+    const historyRequestsAfterFirstOpen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    assert.equal(historyRequestsAfterFirstOpen, historyRequestsBefore + 1, 'history tab loads lazily on first open');
+    await page.keyboard.press('Home');
+    assert.equal(await page.locator('#staffProfileTabMain').getAttribute('aria-selected'), 'true', 'Home keyboard navigation activates the first profile tab');
+    await page.keyboard.press('End');
+    assert.equal(await page.locator('#staffProfileTabHistory').getAttribute('aria-selected'), 'true', 'End keyboard navigation activates the last profile tab');
+    const historyRequestsAfterReopen = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/1/history'));
+    assert.equal(historyRequestsAfterReopen, historyRequestsAfterFirstOpen, 'reopening a loaded tab does not duplicate its request');
+}
+
 async function assertFocusTrap(page) {
     await openProfile(page, 1);
     await page.locator('#staffProfileTabMain').focus();
@@ -346,6 +500,12 @@ async function assertFocusTrap(page) {
 }
 
 async function assertMobileAndTheme(page) {
+    for (const width of [390, 768, 1280, 1440]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        await installHarness(page, { dark: false });
+        await assertCardLayoutAndOverflow(page, { testOverflow: false });
+    }
+
     await page.setViewportSize({ width: 390, height: 844 });
     await installHarness(page, { dark: false });
     await openProfile(page, 1);
@@ -373,9 +533,11 @@ async function run() {
     page.setDefaultTimeout(15000);
     try {
         await installHarness(page, { dark: false });
+        await assertCardLayoutAndOverflow(page);
         await assertTeamNavigation(page);
         await assertProfileCleanDirtyAndFocus(page);
         await assertRapidProfileSwitching(page);
+        await assertHistoryRaceAndLazyTabs(page);
         await assertFocusTrap(page);
         await assertMobileAndTheme(page);
         console.log('HR Team browser smoke passed');

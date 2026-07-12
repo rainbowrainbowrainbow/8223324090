@@ -370,7 +370,7 @@ const HR_TEAM_SETUP_FILTERS = [
     },
     {
         id: 'missing_onboarding_owner',
-        label: 'Без onboarding owner',
+        label: 'Без відповідального за онбординг',
         shortLabel: 'Онбординг',
         icon: '👤',
         description: 'Немає відповідального за онбординг.'
@@ -898,7 +898,7 @@ function renderTeamSetupBanner() {
         </button>`;
     }).join('');
     const reset = activeFilter
-        ? '<button type="button" class="hr-setup-filter-reset" onclick="setTeamSetupFilter(\'all\')">Скинути setup-фільтр</button>'
+        ? '<button type="button" class="hr-setup-filter-reset" onclick="setTeamSetupFilter(\'all\')">Скинути фільтр</button>'
         : '';
     banner.innerHTML = `<section class="hr-setup-banner" aria-label="Фільтри налаштування HR-профілів">
         <div class="hr-setup-banner-head">
@@ -3459,7 +3459,7 @@ function filterAndRenderTeam() {
         renderTeamSearchResults(results, {
             setupFilter: activeTeamSetupFilter,
             emptyText: hasSetupFilter
-                ? 'За цим setup-фільтром нічого не знайдено. Скиньте фільтр або увімкніть “Шукати в архіві”.'
+                ? 'За цим фільтром налаштування нічого не знайдено. Скиньте фільтр або увімкніть “Шукати в архіві”.'
                 : undefined
         });
         return;
@@ -3518,7 +3518,7 @@ function updateTeamFilterInfo(context = {}) {
     }
     if (context.mode === 'setup') {
         const setupFilter = teamSetupFilterById(context.setupFilter);
-        const label = setupFilter?.label || 'setup-фільтр';
+        const label = setupFilter?.label || 'фільтр налаштування';
         const count = Number(context.resultCount || 0);
         if (!count) {
             info.textContent = `0 знайдено: ${label}`;
@@ -3846,6 +3846,7 @@ function renderTeamCards(staff, options = {}) {
             ? `<button type="button" class="hr-team-open" onclick="${profileClick}" aria-label="Відкрити профіль: ${escapeHtml(s.name)}">Відкрити</button>`
             : '';
         const overflowMenu = renderTeamCardOverflowMenu(s);
+        const cardActions = [profileTopAction, overflowMenu].filter(Boolean).join('');
         const statusChips = renderTeamCardStatusChips(s, bucketBadge);
         const onboardingCompact = renderTeamOnboardingCompact(s, options);
 
@@ -3857,13 +3858,12 @@ function renderTeamCards(staff, options = {}) {
                         <div class="hr-team-title-main">
                             ${nameNode}
                         </div>
-                        ${profileTopAction}
-                        ${overflowMenu}
                     </div>
                     <div class="hr-team-role">
                         <strong>${escapeHtml(primaryRole)}</strong>
                         ${legacyPosition ? `<span>${escapeHtml(legacyPosition)}</span>` : ''}
                     </div>
+                    ${cardActions ? `<div class="hr-team-card-actions">${cardActions}</div>` : ''}
                 </div>
             </div>
             <div class="hr-team-profession-area">

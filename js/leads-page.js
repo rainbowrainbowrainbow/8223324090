@@ -208,6 +208,10 @@ let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let leadStatsData = null;
 let leadLoadSeq = 0;
+const LEAD_TABLE_PAGE_SIZE = 100;
+const LEAD_KANBAN_PAGE_SIZE = 100;
+let leadPagination = { total: 0, limit: LEAD_TABLE_PAGE_SIZE, offset: 0, nextOffset: 0, hasMore: false, loadingMore: false };
+let leadKanbanPagination = {};
 let leadCustomerSearchMatches = [];
 let leadCustomerSearchQuery = '';
 let pipelineData = {};
@@ -818,16 +822,22 @@ async function loadLeads() {
         if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
         if (currentDateFilter) params.set('event_date', currentDateFilter);
         if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
-        if (currentView === 'kanban') params.set('order', 'kanban');
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
-        const [stats, leads] = await Promise.all([
-            loadLeadQueueStats(),
-            fetchAllLeadPages(params)
-        ]);
+        const statsPromise = loadLeadQueueStats();
+        let leadsResult;
+        if (currentView === 'kanban') {
+            leadsResult = await fetchKanbanLeadPages(params);
+        } else if (currentView === 'mailing') {
+            leadsResult = { leads: [], pagination: { total: 0, hasMore: false } };
+        } else {
+            leadsResult = await fetchLeadPage(params, { limit: LEAD_TABLE_PAGE_SIZE, offset: 0 });
+        }
+        const stats = await statsPromise;
         if (loadSeq !== leadLoadSeq) return;
         leadStatsData = stats;
-        leadsData = leads;
+        leadsData = leadsResult.leads;
+        if (currentView === 'table') leadPagination = { ...leadsResult.pagination, loadingMore: false };
         if (leadsData.length === 0 && shouldLoadLeadCustomerFallback(search)) {
             leadCustomerSearchQuery = search;
             leadCustomerSearchMatches = await loadLeadCustomerSearchFallback(search);
@@ -847,7 +857,13 @@ async function loadLeads() {
         if (loadSeq !== leadLoadSeq) return;
         console.error('Load leads error', err);
         const tbody = document.getElementById('leadsTableBody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Помилка завантаження</td></tr>';
+        const retryHtml = '<button type="button" class="btn-secondary" data-lead-retry>Повторити</button>';
+        if (currentView === 'kanban') {
+            const kanbanWrap = document.getElementById('kanbanView');
+            if (kanbanWrap) kanbanWrap.innerHTML = `<div class="kanban-empty">Помилка завантаження. ${retryHtml}</div>`;
+        } else if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Помилка завантаження ${retryHtml}</td></tr>`;
+        }
     }
 }
 
@@ -907,26 +923,78 @@ function setLeadQueue(queue, { replace = true } = {}) {
     loadLeads();
 }
 
-async function fetchAllLeadPages(baseParams) {
-    const all = [];
-    const pageSize = 500;
-    let offset = 0;
-    let guard = 0;
-    while (guard < 50) {
-        guard += 1;
+function leadListParams() {
+    const params = new URLSearchParams();
+    if (currentFilter) params.set('status', currentFilter);
+    if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
+    if (currentDateFilter) params.set('event_date', currentDateFilter);
+    if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
+    const search = document.getElementById('leadsSearch')?.value?.trim();
+    if (search) params.set('search', search);
+    return params;
+}
+
+async function fetchLeadPage(baseParams, { limit = LEAD_TABLE_PAGE_SIZE, offset = 0, order = '' } = {}) {
+    const params = new URLSearchParams(baseParams);
+    params.set('limit', String(limit));
+    params.set('offset', String(Math.max(0, Number(offset) || 0)));
+    if (order) params.set('order', order);
+    const res = await apiFetch(`/api/leads?${params}`);
+    if (!res?.ok) throw new Error(`Lead list failed: ${res?.status || 'offline'}`);
+    const data = await res.json();
+    return {
+        leads: Array.isArray(data?.leads) ? data.leads : [],
+        pagination: data?.pagination || { total: 0, limit, offset, nextOffset: offset, hasMore: false }
+    };
+}
+
+async function fetchKanbanLeadPages(baseParams) {
+    const stages = currentPipelineStage ? [currentPipelineStage] : PIPELINE_STAGES.map(stage => stage.key);
+    const pages = await Promise.all(stages.map(async stage => {
         const params = new URLSearchParams(baseParams);
-        params.set('limit', String(pageSize));
-        params.set('offset', String(offset));
-        const res = await apiFetch(`/api/leads?${params}`);
-        if (!res) break;
-        const data = await res.json();
-        const page = Array.isArray(data.leads) ? data.leads : [];
-        all.push(...page);
-        const pagination = data.pagination || {};
-        if (!pagination.hasMore || page.length === 0) break;
-        offset = Number.isFinite(Number(pagination.nextOffset)) ? Number(pagination.nextOffset) : offset + page.length;
+        params.set('pipeline_stage', stage);
+        const page = await fetchLeadPage(params, { limit: LEAD_KANBAN_PAGE_SIZE, offset: 0, order: 'kanban' });
+        return [stage, page];
+    }));
+    leadKanbanPagination = Object.fromEntries(pages.map(([stage, page]) => [stage, { ...page.pagination, loadingMore: false }]));
+    return {
+        leads: pages.flatMap(([, page]) => page.leads),
+        pagination: { total: pages.reduce((sum, [, page]) => sum + Number(page.pagination.total || 0), 0), hasMore: pages.some(([, page]) => page.pagination.hasMore) }
+    };
+}
+
+async function loadMoreLeads({ stage = '' } = {}) {
+    const loadSeq = ++leadLoadSeq;
+    const isKanban = currentView === 'kanban';
+    const state = isKanban ? leadKanbanPagination[stage] : leadPagination;
+    if (!state?.hasMore || state.loadingMore) return;
+    const nextState = { ...state, loadingMore: true };
+    if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: nextState };
+    else leadPagination = nextState;
+    if (isKanban) renderKanban(); else renderTable();
+
+    try {
+        const params = leadListParams();
+        if (isKanban) params.set('pipeline_stage', stage);
+        const page = await fetchLeadPage(params, {
+            limit: isKanban ? LEAD_KANBAN_PAGE_SIZE : LEAD_TABLE_PAGE_SIZE,
+            offset: state.nextOffset,
+            order: isKanban ? 'kanban' : ''
+        });
+        if (loadSeq !== leadLoadSeq) return;
+        const existingIds = new Set(leadsData.map(lead => Number(lead.id)));
+        leadsData = [...leadsData, ...page.leads.filter(lead => !existingIds.has(Number(lead.id)))];
+        if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...page.pagination, loadingMore: false } };
+        else leadPagination = { ...page.pagination, loadingMore: false };
+        if (isKanban) renderKanban(); else renderTable();
+    } catch (err) {
+        if (loadSeq !== leadLoadSeq) return;
+        console.error('Load more leads error', err);
+        if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...state, loadingMore: false } };
+        else leadPagination = { ...state, loadingMore: false };
+        if (typeof showNotification === 'function') showNotification('Не вдалося завантажити наступні ліди. Спробуйте ще раз.', 'error');
+        if (isKanban) renderKanban(); else renderTable();
     }
-    return all;
 }
 
 function normalizeLeadCount(value) {
@@ -1351,7 +1419,7 @@ function renderTable() {
         return;
     }
 
-    tbody.innerHTML = leadsData.map(l => {
+    const rows = leadsData.map(l => {
         const st = STATUS_MAP[l.status] || { label: l.status, emoji: '❓', cls: '' };
         const lt = LEAD_TYPE_MAP[l.lead_type] || LEAD_TYPE_MAP.quality;
         const src = leadSourceLabel(l);
@@ -1382,6 +1450,11 @@ function renderTable() {
             </td>
         </tr>`;
     }).join('');
+    const pagination = leadPagination || {};
+    const loadMoreRow = pagination.hasMore
+        ? `<tr class="lead-pagination-row"><td colspan="8"><button type="button" class="btn-secondary" data-lead-load-more ${pagination.loadingMore ? 'disabled aria-disabled="true"' : ''}>${pagination.loadingMore ? 'Завантаження…' : `Завантажити ще (${leadsData.length} з ${pagination.total || '…'})`}</button></td></tr>`
+        : '';
+    tbody.innerHTML = rows + loadMoreRow;
     syncLeadReadOnlyUi();
 }
 
@@ -2566,8 +2639,10 @@ function renderKanban() {
 
     kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
         const leads = grouped[stage.key] || [];
+        const pagination = leadKanbanPagination[stage.key] || { total: leads.length, hasMore: false, loadingMore: false };
+        const total = Number(pagination.total || leads.length);
         const isEmpty = leads.length === 0;
-        const isOverWip = leads.length > WIP_LIMIT;
+        const isOverWip = total > WIP_LIMIT;
 
         // Sum of budget_approx for the column
         const totalSum = leads.reduce((sum, l) => sum + leadPotentialValue(l), 0);
@@ -2610,13 +2685,14 @@ function renderKanban() {
                     <span>${stage.emoji} ${escapeHtml(stage.label)}</span>
                     ${renderPipelineStageHelp(stage)}
                 </div>
-                <span class="kanban-count" style="background:${stage.color};color:#fff">${leads.length}${wipWarning}</span>
+                    <span class="kanban-count" style="background:${stage.color};color:#fff">${leads.length}${total > leads.length ? ` / ${total}` : ''}${wipWarning}</span>
             </div>
             ${totalSum > 0 ? `<div class="kanban-column-sum">${totalSum.toLocaleString('uk-UA')} ₴</div>` : ''}
-            <div class="kanban-cards" data-stage="${stage.key}">
-                ${cards || '<div class="kanban-empty">—</div>'}
-            </div>
-        </div>`;
+                <div class="kanban-cards" data-stage="${stage.key}">
+                    ${cards || '<div class="kanban-empty">—</div>'}
+                </div>
+                ${pagination.hasMore ? `<button type="button" class="btn-secondary kanban-load-more" data-lead-load-more data-lead-load-stage="${escapeHtml(stage.key)}" ${pagination.loadingMore ? 'disabled aria-disabled="true"' : ''}>${pagination.loadingMore ? 'Завантаження…' : `Завантажити ще (${leads.length} з ${total})`}</button>` : ''}
+            </div>`;
     }).join('');
 
     bindKanbanLeadTypeTriggerControls(kanbanWrap);
@@ -4021,6 +4097,18 @@ function setupEvents() {
         if (!createFromCustomer) return;
         e.preventDefault();
         openLeadFromCustomerFallback(createFromCustomer.dataset.leadCustomerCreateLead);
+    });
+    document.addEventListener('click', (e) => {
+        const retry = e.target.closest('[data-lead-retry]');
+        if (retry) {
+            e.preventDefault();
+            loadLeads();
+            return;
+        }
+        const loadMore = e.target.closest('[data-lead-load-more]');
+        if (!loadMore || loadMore.disabled) return;
+        e.preventDefault();
+        loadMoreLeads({ stage: loadMore.dataset.leadLoadStage || '' });
     });
 
     // Add lead button

@@ -6,6 +6,7 @@ const {
     calculateCompletionStreak,
     taskSourceGroup
 } = require('../services/taskProductivity');
+const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 
 test('derives productivity summary, streak, charts, and source insights from task rows', () => {
     const data = buildTaskProductivity([
@@ -122,4 +123,22 @@ test('keeps current streak alive from yesterday until today has activity', () =>
     assert.equal(streak.longest, 3);
     assert.equal(streak.activeToday, false);
     assert.equal(streak.lastActiveDate, '2026-05-22');
+});
+
+test('task pagination metadata covers empty, boundary, and overflow datasets', () => {
+    const cases = [
+        { total: 0, returned: 0, hasMore: false },
+        { total: 1, returned: 1, hasMore: false },
+        { total: 499, returned: 499, hasMore: false },
+        { total: 500, returned: 500, hasMore: false },
+        { total: 501, returned: 500, hasMore: true }
+    ];
+    for (const sample of cases) {
+        const pagination = buildTaskPaginationMetadata({ total: sample.total, page: 1, limit: 500, returned: sample.returned });
+        assert.equal(pagination.total, sample.total);
+        assert.equal(pagination.offset, 0);
+        assert.equal(pagination.hasMore, sample.hasMore);
+    }
+    const secondPage = buildTaskPaginationMetadata({ total: 501, page: 2, limit: 500, returned: 1 });
+    assert.deepEqual(secondPage, { total: 501, page: 2, limit: 500, offset: 500, nextPage: 3, hasMore: false });
 });

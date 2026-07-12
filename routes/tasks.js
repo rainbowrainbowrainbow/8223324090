@@ -5,6 +5,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth');
+const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 
 // v39.8: Security — require authentication for all task endpoints
 router.use(authenticateToken);
@@ -943,7 +944,7 @@ router.get('/', async (req, res) => {
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
-            view, include_duplicates, includeDuplicates
+            view, include_duplicates, includeDuplicates, pagination, paginated
         } = req.query;
         const conditions = [];
         const params = [];
@@ -970,14 +971,6 @@ router.get('/', async (req, res) => {
         if (date_to && /^\d{4}-\d{2}-\d{2}$/.test(date_to)) {
             conditions.push(`t.date <= $${idx++}`);
             params.push(date_to);
-        }
-        if (view === 'done_today') {
-            conditions.push(`COALESCE(t.status, 'todo') = 'done'`);
-            conditions.push(`DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = CURRENT_DATE`);
-        }
-        if (view === 'deferred') {
-            conditions.push(`COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`);
-            conditions.push(`t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW()`);
         }
         if (assigned_to) {
             if (/^\d+$/.test(String(assigned_to))) {
@@ -1108,11 +1101,76 @@ router.get('/', async (req, res) => {
             idx = params.length + 1;
         }
 
+        // `pagination=1` is an opt-in response contract. Keep the historical array
+        // response intact for integrations that call /api/tasks without it.
+        const paginatedResponse = isTruthy(pagination || paginated);
+        const taskView = String(view || '').trim();
+        const activeTaskSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`;
+        const notDeferredSql = `(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())`;
+        const workloadDateSql = taskWorkloadDateSql('t');
+        const weekStartSql = `date_trunc('week', CURRENT_DATE)::date`;
+
+        // Apply the active view before LIMIT/OFFSET so populated views cannot be
+        // hidden behind unrelated rows in the first legacy page.
+        switch (taskView) {
+            case 'inbox':
+                conditions.push(activeTaskSql, notDeferredSql);
+                conditions.push(`(COALESCE(t.workflow_state, 'todo') = 'inbox' OR (t.date IS NULL AND t.deadline IS NULL AND t.scheduled_start_at IS NULL))`);
+                break;
+            case 'today':
+                conditions.push(activeTaskSql, notDeferredSql, `(${workloadDateSql} = CURRENT_DATE OR ${workloadDateSql} IS NULL)`);
+                break;
+            case 'next':
+                conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} > CURRENT_DATE`, `${workloadDateSql} <= (${weekStartSql} + 6)`);
+                break;
+            case 'deferred':
+                conditions.push(activeTaskSql, `t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW()`);
+                break;
+            case 'waiting':
+                conditions.push(activeTaskSql, `(COALESCE(t.workflow_state, 'todo') = 'waiting' OR COALESCE(t.task_kind, 'action') = 'waiting')`);
+                break;
+            case 'team':
+                conditions.push(activeTaskSql, `COALESCE(t.visibility, 'team') = 'team'`, `COALESCE(t.task_mode, 'work') = 'work'`);
+                break;
+            case 'week':
+                conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} >= ${weekStartSql}`, `${workloadDateSql} <= (${weekStartSql} + 6)`);
+                break;
+            case 'my': {
+                const viewerId = normalizeUserId(req.user) || 0;
+                conditions.push(activeTaskSql, `(t.owner_user_id = $${idx++} OR t.created_by_user_id = $${idx++})`);
+                params.push(viewerId, viewerId);
+                break;
+            }
+            case 'board':
+                conditions.push(`COALESCE(t.status, 'todo') NOT IN ('archived','cancelled')`);
+                break;
+            case 'routines':
+                conditions.push(activeTaskSql, `(COALESCE(t.task_kind, 'action') = 'routine' OR t.type = 'recurring')`);
+                break;
+            case 'done_today':
+                conditions.push(`COALESCE(t.status, 'todo') = 'done'`, `DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = CURRENT_DATE`);
+                break;
+            case 'archive':
+                conditions.push(`t.status = 'archived'`);
+                break;
+            default:
+                break;
+        }
+
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         // Pagination (optional — backwards compatible: omit page/limit to get all)
-        const limit = Math.min(parseInt(lim) || 500, 500);
-        const offset = ((parseInt(page) || 1) - 1) * limit;
+        const limit = Math.max(1, Math.min(parseInt(lim, 10) || (paginatedResponse ? 100 : 500), 500));
+        const currentPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (currentPage - 1) * limit;
+        let total = null;
+        if (paginatedResponse) {
+            const countResult = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM tasks t ${where}`,
+                params
+            );
+            total = Number(countResult.rows[0]?.total || 0);
+        }
         const viewerUserIdParam = idx++;
         params.push(normalizeUserId(req.user) || 0);
         const orderViewParam = idx++;
@@ -1189,7 +1247,13 @@ router.get('/', async (req, res) => {
             LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
-        res.json(result.rows.map(normalizeTaskPayload));
+        const tasks = result.rows.map(normalizeTaskPayload);
+        if (!paginatedResponse) return res.json(tasks);
+        return res.json({
+            success: true,
+            tasks,
+            pagination: buildTaskPaginationMetadata({ total, page: currentPage, limit, returned: tasks.length })
+        });
     } catch (err) {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });

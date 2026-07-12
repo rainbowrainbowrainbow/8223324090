@@ -253,6 +253,8 @@ let currentSubcategory = 'all';
 let currentScopeFilter = 'all';
 let assistantTaskFilter = '';
 let allTasks = [];
+let taskLoadSeq = 0;
+let taskPagination = { page: 0, limit: 100, total: 0, hasMore: false, loadingMore: false, view: 'inbox' };
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
 let currentTaskBusinessContext = 'event_genix';
@@ -1218,7 +1220,7 @@ function activateTaskView(view = 'inbox') {
     applyTaskViewShell(view);
     updateTaskExplainability();
     if (view === 'templates') loadTemplates();
-    else renderBoard();
+    else void loadAllTasks();
 }
 
 function keepNewTaskVisible(task = {}, fallback = {}) {
@@ -1565,6 +1567,23 @@ async function apiPatchTaskStatus(id, status) {
     }
 }
 
+async function apiGetTasksPage({ view = currentView, page = 1, limit = 100 } = {}) {
+    const params = new URLSearchParams({
+        pagination: '1',
+        view: String(view || 'inbox'),
+        page: String(Math.max(1, Number(page) || 1)),
+        limit: String(Math.max(1, Math.min(500, Number(limit) || 100)))
+    });
+    const response = await taskApiFetch(`${API_BASE}/tasks?${params}`, { headers: getAuthHeaders(false) });
+    if (handleAuthError(response)) throw new Error('Unauthorized');
+    if (!response?.ok) throw new Error(`Tasks API error: ${response?.status || 'offline'}`);
+    const payload = await response.json();
+    if (!payload?.success || !Array.isArray(payload.tasks) || !payload.pagination) {
+        throw new Error('/api/tasks pagination contract is invalid');
+    }
+    return payload;
+}
+
 async function apiPatchTaskPriority(id, priority) {
     try {
         const response = await taskApiFetch(`${API_BASE}/tasks/${id}/priority`, {
@@ -1878,23 +1897,44 @@ function renderSubcategoryFilters() {
 }
 
 async function loadAllTasks(options = {}) {
-    const { fatal = false } = options;
+    const { fatal = false, append = false } = options;
+    const loadSeq = ++taskLoadSeq;
     const board = document.getElementById('boardContent');
-    if (board) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
+    if (board && !append) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
+    if (append) {
+        taskPagination = { ...taskPagination, loadingMore: true };
+        renderBoard();
+    }
     try {
-        const tasks = await apiGetTasks();
-        if (!Array.isArray(tasks)) {
-            throw new Error('/api/tasks returned non-array payload');
-        }
-        allTasks = tasks;
+        const targetPage = append ? Math.max(1, Number(taskPagination.nextPage) || Number(taskPagination.page || 0) + 1) : 1;
+        const payload = await apiGetTasksPage({ view: currentView, page: targetPage, limit: taskPagination.limit || 100 });
+        if (loadSeq !== taskLoadSeq) return;
+        const incoming = payload.tasks;
+        allTasks = append
+            ? [...allTasks, ...incoming.filter(task => !allTasks.some(current => Number(current.id) === Number(task.id)))]
+            : incoming;
+        taskPagination = { ...payload.pagination, loadingMore: false, view: currentView };
         updateCounts();
         renderBoard();
     } catch (err) {
+        if (loadSeq !== taskLoadSeq) return;
         console.error('loadAllTasks error:', err);
         if (fatal) throw err;
         showNotification('Помилка завантаження задач', 'error');
-        if (board) board.innerHTML = '';
+        taskPagination = { ...taskPagination, loadingMore: false };
+        if (board) board.innerHTML = '<div class="empty-state">Не вдалося завантажити задачі. <button type="button" class="btn-secondary" data-task-retry>Повторити</button></div>';
     }
+}
+
+function renderTaskPagination(container) {
+    if (!container || currentView === 'templates') return;
+    const { total = 0, hasMore = false, loadingMore = false } = taskPagination || {};
+    if (!hasMore && total <= allTasks.length) return;
+    const label = loadingMore ? 'Завантаження…' : `Завантажити ще (${allTasks.length} з ${total})`;
+    container.insertAdjacentHTML('beforeend', `
+        <div class="task-pagination" aria-live="polite">
+            <button type="button" class="btn-secondary" data-task-load-more ${loadingMore ? 'disabled aria-disabled="true"' : ''}>${label}</button>
+        </div>`);
 }
 
 async function apiCreateOperationPack(data) {
@@ -2277,6 +2317,24 @@ function updateCounts() {
     setCount('summaryToday', todayTasks.length);
     setCount('summaryWaiting', active.filter(isWaitingTask).length);
     setCount('summaryDoneToday', doneToday.length);
+
+    // A paged view knows its complete server-side total even before every page is
+    // loaded; keep the active navigation counter truthful instead of reflecting a
+    // partial client array.
+    const total = Number(taskPagination?.total);
+    if (!Number.isFinite(total) || taskPagination?.view !== currentView) return;
+    const activeCountTargets = {
+        inbox: ['countInbox'],
+        today: ['countToday', 'summaryToday'],
+        next: ['countNext'],
+        deferred: ['countDeferred'],
+        waiting: ['countWaiting', 'summaryWaiting'],
+        team: ['countTeam'],
+        week: ['countWeek'],
+        my: ['countMy', 'summaryMy'],
+        done_today: ['countDoneToday', 'summaryDoneToday']
+    };
+    (activeCountTargets[currentView] || []).forEach(id => setCount(id, total));
 }
 
 function getTasksAssistantViewBase(view = currentView) {
@@ -2511,6 +2569,7 @@ function renderBoard() {
         case 'archive': renderArchiveView(container); break;
         default: renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий.');
     }
+    renderTaskPagination(container);
 }
 
 function renderSimpleTaskView(container, view, predicate, emptyText, completedPredicate = predicate) {
@@ -4434,6 +4493,18 @@ function setupTaskActionDelegation() {
     board.addEventListener('click', async (event) => {
         if (Date.now() - lastKanbanDragEndedAt < 300) {
             event.preventDefault();
+            return;
+        }
+        const retryButton = event.target.closest('[data-task-retry]');
+        if (retryButton && board.contains(retryButton)) {
+            event.preventDefault();
+            await loadAllTasks();
+            return;
+        }
+        const loadMoreButton = event.target.closest('[data-task-load-more]');
+        if (loadMoreButton && board.contains(loadMoreButton)) {
+            event.preventDefault();
+            if (!taskPagination.loadingMore && taskPagination.hasMore) await loadAllTasks({ append: true });
             return;
         }
         const actionButton = event.target.closest('[data-task-action]');

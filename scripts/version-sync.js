@@ -262,11 +262,12 @@ function defaultReleaseDateLabel(date = new Date()) {
 
 function buildDefaultChangelogModalSection(version, releaseLabel) {
     const title = releaseLabel || `Release v${version}`;
-    const heading = `v${version}${releaseLabel ? ` вЂ” ${releaseLabel}` : ''}`;
+    const separator = String.fromCharCode(0x2014);
+    const heading = `v${version}${releaseLabel ? ` ${separator} ${releaseLabel}` : ''}`;
     return `                <div class="changelog-section">
                     <h4>${htmlEscape(heading)}</h4>
                     <ul>
-                        <li><b>${htmlEscape(title)}</b> вЂ” release marker, cache tags and visible version metadata were prepared automatically.</li>
+                        <li><b>${htmlEscape(title)}</b> ${separator} release marker, cache tags and visible version metadata were prepared automatically.</li>
                     </ul>
                 </div>
 `;

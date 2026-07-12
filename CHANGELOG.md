@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.1 - Безпечний Service Worker та відновлення сесії
+
+### Release / Versioning / (13.07.2026) [codex]
+- **Автоматична реєстрація** — Service Worker має один guarded entrypoint і запускається лише після успішної авторизації.
+- **Logout privacy** — API, authenticated navigations і приватні uploads очищаються з runtime cache під час виходу.
+- **Стабільна сесія** — offline-помилка перевірки не стирає токени; після повернення мережі авторизація відновлюється автоматично.
+- **Default-deny для assets** — runtime cache приймає лише явно погоджені public static paths, а `/uploads/` і невідомі ресурси залишаються network-only.
+
+---
+
 ## v0.79.0 - Продуктивність: швидший старт CRM
 
 ### Release / Versioning / (12.07.2026) [codex]

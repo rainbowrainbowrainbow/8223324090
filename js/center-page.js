@@ -3056,7 +3056,7 @@ async function initCenterPage() {
     });
 
     bindCenterSectionLoading();
-    await loadCenterSection('kpiSection');
+    await loadInitiallyVisibleCenterSections();
     initAddLeadBtn();
 
     // Profile handler
@@ -3089,20 +3089,16 @@ function toggleSection(titleEl) {
 
 function restoreCollapsedState() {
     const saved = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
-    // Default: all collapsed except KPI and Charts
-    const defaultOpen = ['kpiSection', 'chartsSection'];
+    // Keep the first screen focused on KPI. Sections explicitly left open by a
+    // user are restored and loaded once during startup below.
+    const defaultOpen = ['kpiSection'];
     document.querySelectorAll('.center-section').forEach(section => {
         const id = section.id;
         if (!id) return;
-        if (id in saved) {
-            // User has explicitly set this section
-            if (saved[id]) section.classList.add('collapsed');
-        } else {
-            // Default: collapse everything except KPI and Charts
-            if (!defaultOpen.includes(id)) section.classList.add('collapsed');
-        }
+        const collapsed = id in saved ? Boolean(saved[id]) : !defaultOpen.includes(id);
+        section.classList.toggle('collapsed', collapsed);
         const toggle = section.querySelector('.center-section-toggle');
-        if (toggle) toggle.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+        if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     });
 }
 
@@ -3166,18 +3162,38 @@ function centerSectionRetry(section) {
     body.appendChild(button);
 }
 
+function clearCenterSectionRetry(section) {
+    section?.querySelectorAll('[data-center-section-retry]').forEach(button => button.remove());
+}
+
+function isInitiallyVisibleCenterSection(section) {
+    if (!section?.id || section.classList.contains('collapsed')) return false;
+    if (section.hidden || section.style.display === 'none') return false;
+    return !section.closest('[hidden], .hidden');
+}
+
+async function loadInitiallyVisibleCenterSections() {
+    const sections = [...document.querySelectorAll('.center-section')]
+        .filter(isInitiallyVisibleCenterSection)
+        .filter(section => typeof centerSectionLoader(section.id) === 'function');
+    await Promise.all(sections.map(section => loadCenterSection(section.id)));
+}
+
 async function loadCenterSection(sectionId, { force = false } = {}) {
     const loader = centerSectionLoader(sectionId);
     if (!loader) return;
     const previous = centerSectionState.get(sectionId);
-    if (!force && (previous?.status === 'loaded' || previous?.status === 'loading')) return previous?.promise;
+    if (previous?.status === 'loading') return previous.promise;
+    if (!force && previous?.status === 'loaded') return previous.promise;
     const section = document.getElementById(sectionId);
+    clearCenterSectionRetry(section);
     const promise = Promise.resolve()
         .then(loader)
         .then(() => {
             const failed = Boolean(section?.querySelector('.center-state.is-error, .center-state--error, .center-error'));
             centerSectionState.set(sectionId, { status: failed ? 'error' : 'loaded', promise: null });
             if (failed) centerSectionRetry(section);
+            else clearCenterSectionRetry(section);
         })
         .catch(err => {
             console.error(`Center section ${sectionId} load failed`, err);

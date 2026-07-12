@@ -90,6 +90,8 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-certificates.css` | shared-ui | `shared` | active | Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by `pages.css`. |
 | `css/pages-customers.css` | shared-ui | `shared` | active | Customer detail hero, funnel stage, booking summary, Omni shortcut, dark-mode, and responsive styles imported by `pages.css`. |
 | `css/pages-core.css` | shared-ui | `shared` | active | Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by `pages.css`. |
+| `css/pages-shared-widgets.css` | shared-ui | `shared` | active | Shared event-card and booking price widget styles split from the primary page runtime shell. |
+| `css/pages-shell.css` | shared-ui | `shared` | active | Small runtime entrypoint for shared page primitives and widgets; page-specific modules are linked by each HTML entrypoint. |
 | `css/pages-leads.css` | shared-ui | `shared` | active | Sales funnel kanban stage hint controls and tooltip styles imported by `pages.css`. |
 | `css/pages-profile.css` | shared-ui | `shared` | active | Profile avatar crop controls and compact soon-tab menu styles imported by `pages.css`. |
 | `css/pages-reports.css` | reports | `page-scoped` | active | Reports workspace payroll reconciliation, discrepancy badges, and dark-mode report table review styles imported by `pages.css`. |

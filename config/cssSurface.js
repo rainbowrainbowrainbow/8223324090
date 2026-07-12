@@ -510,6 +510,20 @@ const CSS_SURFACE = [
         reason: 'Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by pages.css.'
     },
     {
+        file: 'css/pages-shared-widgets.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Shared event-card and booking price widget styles split from the primary page runtime shell.'
+    },
+    {
+        file: 'css/pages-shell.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Small runtime entrypoint for shared page primitives and widgets; page-specific modules are linked by each HTML entrypoint.'
+    },
+    {
         file: 'css/pages-leads.css',
         owner: 'shared-ui',
         category: 'shared',

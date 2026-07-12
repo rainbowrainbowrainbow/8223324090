@@ -75,7 +75,19 @@ function cssImportVersionTagsAreCurrent(filename) {
 }
 
 check('Aggregate CSS imports carry current asset versions',
-    ['css/assistant-rail.css', 'css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
+    ['css/assistant-rail.css', 'css/pages.css', 'css/pages-shell.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
+
+const pagesShellCss = fileText('css/pages-shell.css');
+const sidebarAuroraEntrypointCss = fileText('css/sidebar-aurora.css');
+check('Primary page runtime CSS keeps page modules isolated',
+    pagesShellCss.includes('pages-core.css')
+    && pagesShellCss.includes('pages-shared-widgets.css')
+    && !/pages-(tasks|profile|reports|hr-staff|hr-foundation)\.css/.test(pagesShellCss)
+    && sidebarAuroraEntrypointCss.includes('sidebar-aurora-profile.css')
+    && htmlContains('tasks.html', 'css/pages-tasks.css')
+    && htmlContains('reports.html', 'css/pages-reports.css')
+    && htmlContains('profile.html', 'css/pages-profile.css')
+    && htmlContains('hr.html', 'css/pages-hr-staff.css'));
 
 const HR_WORKSPACE_PAGES = ['hr.html', 'staff.html', 'reports.html'];
 const HR_WORKSPACE_ACTION_BUTTON_SELECTOR = [
@@ -1336,14 +1348,15 @@ checkPage('index.html', (doc, html) => {
     check('login tagline uses clean release title without CRM marker duplication', doc.querySelector('.tagline')?.textContent === `AI First CRM v${pkg.version} — ${loginDisplayLabel}`);
     check('login changelog button keeps one version marker', doc.getElementById('changelogBtn')?.textContent.trim() === `Що нового у v${pkg.version}`);
     check('login form supports smart paste for copied credential blocks', appCode.includes('parseLoginCredentialBlock') && appCode.includes('bindSmartCredentialPaste') && appCode.includes("clipboardData?.getData('text')"));
+    const completeChangelogHtml = `${html}\n${fileText('changelog-history.fragment')}`;
     const recentChangelogOrder = ['v0.55.45','v0.55.44','v0.55.43','v0.55.42','v0.55.41','v0.55.40','v0.55.39','v0.55.38','v0.55.37','v0.55.36','v0.55.35','v0.55.34','v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
-    const recentChangelogPositions = recentChangelogOrder.map(version => html.indexOf(`<h4>${version}`));
+    const recentChangelogPositions = recentChangelogOrder.map(version => completeChangelogHtml.indexOf(`<h4>${version}`));
     check('changelog modal does not jump from latest v0.55 release straight to v0.55.8', recentChangelogPositions.every(pos => pos >= 0) && recentChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
     const recent058ChangelogOrder = ['v0.58.13','v0.58.12','v0.58.11','v0.58.10','v0.58.9','v0.58.8','v0.58.7','v0.58.6','v0.58.5','v0.58.4','v0.58.3','v0.58.2','v0.58.1','v0.58.0'];
-    const recent058ChangelogPositions = recent058ChangelogOrder.map(version => html.indexOf(`<h4>${version} `));
+    const recent058ChangelogPositions = recent058ChangelogOrder.map(version => completeChangelogHtml.indexOf(`<h4>${version} `));
     check('changelog modal keeps the full v0.58 release history without gaps', recent058ChangelogPositions.every(pos => pos >= 0) && recent058ChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
 const recent060ChangelogOrder = ['v0.60.8','v0.60.7','v0.60.6','v0.60.5','v0.60.4','v0.60.3','v0.60.2','v0.60.1','v0.60.0'];
-    const recent060ChangelogPositions = recent060ChangelogOrder.map(version => html.indexOf(`<h4>${version} `));
+    const recent060ChangelogPositions = recent060ChangelogOrder.map(version => completeChangelogHtml.indexOf(`<h4>${version} `));
     check('changelog modal keeps the full v0.60 release history without gaps', recent060ChangelogPositions.every(pos => pos >= 0) && recent060ChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
 });
 
@@ -1433,7 +1446,7 @@ checkPage('center.html', (doc, html) => {
         && centerPageCode.includes('Не знайдено правила')
         && centerPageCode.includes('confirmPriceChange(this)')
         && centerPageCode.includes('apiUpdatePrice(code')
-        && html.includes('css/pages.css')
+        && html.includes('css/pages-shell.css')
         && centerCss.includes('.banquet-terms-price-panel')
         && centerCss.includes('.banquet-terms-price-row')
         && centerCss.includes('.banquet-terms-price-grid')

@@ -21,6 +21,10 @@ function versionParts(version) {
     return version.split('.').map(Number);
 }
 
+function fullModalVersions() {
+    return [...`${read('index.html')}\n${read('changelog-history.fragment')}`.matchAll(/<h4>v([0-9.]+)/g)].map(match => match[1]);
+}
+
 function currentReleasePrefix() {
     const pkg = JSON.parse(read('package.json'));
     const [major, minor] = String(pkg.version || '').split('.');
@@ -50,14 +54,14 @@ function previousPatch(version) {
 describe('visible changelog version continuity', () => {
     it('keeps current and legacy active release notes present in the login changelog modal', () => {
         const source = changelogVersions().filter(isVisibleContinuityTrain);
-        const visible = new Set(indexModalVersions());
+        const visible = new Set(fullModalVersions());
 
         const missing = source.filter(version => !visible.has(version));
         assert.deepEqual(missing, []);
     });
 
     it('does not skip current or legacy active patch versions in the visible top chain', () => {
-        const visibleActive = indexModalVersions().filter(isVisibleContinuityTrain);
+        const visibleActive = fullModalVersions().filter(isVisibleContinuityTrain);
         const sourceActive = new Set(changelogVersions().filter(isVisibleContinuityTrain));
         assert.ok(visibleActive.length > 10);
 
@@ -75,7 +79,7 @@ describe('visible changelog version continuity', () => {
         assert.ok(Number.isInteger(patch), 'package.json version must include a numeric patch');
 
         const source = new Set(changelogVersions());
-        const visible = new Set(indexModalVersions());
+        const visible = new Set(fullModalVersions());
         const oldestPatch = Math.max(0, patch - 5);
 
         for (let currentPatch = patch; currentPatch >= oldestPatch; currentPatch -= 1) {
@@ -95,5 +99,18 @@ describe('visible changelog version continuity', () => {
         assert.match(script, /buildDefaultChangelogModalSection\(version, releaseLabel\)/);
         assert.match(script, /buildDefaultMarkdownChangelogEntry\(version, releaseLabel\)/);
         assert.match(script, /actualVersion === version/);
+    });
+
+    it('keeps only recent releases inline and lazy-loads the complete static history', () => {
+        const index = read('index.html');
+        const app = read('js/app.js');
+        const history = read('changelog-history.fragment');
+
+        assert.match(index, /id="changelogHistory"[^>]+data-src="changelog-history\.fragment\?v=/);
+        assert.match(index, /<h4>v0\.78\.101/);
+        assert.doesNotMatch(index, /<h4>v0\.78\.98/);
+        assert.match(history, /<h4>v0\.78\.98/);
+        assert.match(app, /loadChangelogHistory/);
+        assert.match(app, /fetch\(host\.dataset\.src, \{ credentials: 'same-origin' \}\)/);
     });
 });

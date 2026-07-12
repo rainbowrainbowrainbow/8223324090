@@ -572,10 +572,43 @@ function initAuthListeners() {
     });
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
+    let changelogHistoryPromise = null;
+    const loadChangelogHistory = async () => {
+        const host = document.getElementById('changelogHistory');
+        if (!host || host.dataset.loaded === 'true') return;
+        if (changelogHistoryPromise) return changelogHistoryPromise;
+
+        host.setAttribute('aria-busy', 'true');
+        changelogHistoryPromise = fetch(host.dataset.src, { credentials: 'same-origin' })
+            .then(response => {
+                if (!response.ok) throw new Error(`Changelog history request failed: ${response.status}`);
+                return response.text();
+            })
+            .then(markup => {
+                host.innerHTML = markup;
+                host.dataset.loaded = 'true';
+            })
+            .catch(() => {
+                host.dataset.loaded = 'error';
+                host.innerHTML = '<div class="center-state"><strong>Не вдалося завантажити повну історію</strong><button type="button" class="btn-secondary" data-changelog-history-retry>Спробувати ще раз</button></div>';
+            })
+            .finally(() => {
+                host.removeAttribute('aria-busy');
+                changelogHistoryPromise = null;
+            });
+
+        return changelogHistoryPromise;
+    };
+
+    document.getElementById('changelogHistory')?.addEventListener('click', event => {
+        if (event.target.closest('[data-changelog-history-retry]')) void loadChangelogHistory();
+    });
+
     const changelogBtn = document.getElementById('changelogBtn');
     if (changelogBtn) {
         changelogBtn.addEventListener('click', () => {
             document.getElementById('changelogModal')?.classList.remove('hidden');
+            void loadChangelogHistory();
         });
     }
 }

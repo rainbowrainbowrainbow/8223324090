@@ -136,34 +136,8 @@
                 <div class="hr-team-controls" aria-label="Фільтри команди">
                     <div class="hr-team-filter-row">
                     <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук по ПІБ, професії, телефону або структурі" placeholder="Пошук: ПІБ, професія, телефон, структура...">
-                    <select id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true">
-                        <option value="">Всі ролі</option>
-                        <optgroup label="Керівництво">
-                            <option value="director">Директор</option>
-                            <option value="vice_director">Зам. директора</option>
-                            <option value="manager">Менеджер</option>
-                            <option value="hr_manager">HR-менеджер</option>
-                            <option value="admin">Адмін</option>
-                        </optgroup>
-                        <optgroup label="Аніматори і ведучі">
-                            <option value="animator">Аніматор</option>
-                            <option value="host">Ведуча</option>
-                            <option value="trampoline_instructor">Інструктор батутів</option>
-                            <option value="intern">Стажер</option>
-                        </optgroup>
-                        <optgroup label="Кухня">
-                            <option value="head_cook">Шеф-повар</option>
-                            <option value="cook">Повар</option>
-                            <option value="bartender">Бармен</option>
-                            <option value="waiter">Офіціант</option>
-                        </optgroup>
-                        <optgroup label="Технічний персонал">
-                            <option value="technician">Технік</option>
-                            <option value="cleaner">Прибиральник</option>
-                        </optgroup>
-                    </select>
                     <label class="hr-team-active-toggle">
-                        <input type="checkbox" id="teamActiveOnly" checked> Показувати звільнених
+                        <input type="checkbox" id="teamArchiveSearch"> Шукати в архіві
                     </label>
                         <div id="teamFilterInfo" class="hr-team-filter-info" aria-live="polite"></div>
                     </div>
@@ -550,14 +524,35 @@
     </div>
 
     <!-- Staff edit modal -->
-    <div id="staffEditModal" class="hr-modal-overlay" style="display:none;">
-        <div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true">
+    <div id="staffEditModal" class="hr-modal-overlay hr-staff-profile-overlay" style="display:none;" aria-hidden="true">
+        <div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true" aria-labelledby="editStaffHeaderName" aria-describedby="editStaffHeaderMeta">
             <input type="hidden" id="editStaffId">
-            <div class="hr-staff-profile-hero">
+            <header class="hr-staff-profile-drawer-head">
+                <div class="hr-staff-profile-heading">
+                    <span>Картка працівника</span>
+                    <strong id="editStaffHeaderName">ПІБ</strong>
+                    <div id="editStaffHeaderMeta" class="hr-staff-profile-meta">
+                        <i id="editStaffHeaderRole">Професія не задана</i>
+                        <i id="editStaffHeaderStatus">Статус не заданий</i>
+                    </div>
+                </div>
+                <button type="button" id="editCloseTop" class="btn-secondary" aria-label="Закрити профіль">Закрити</button>
+            </header>
+            <nav class="hr-staff-profile-tabs" role="tablist" aria-label="Розділи профілю працівника">
+                <button type="button" id="staffProfileTabMain" role="tab" data-staff-profile-tab="main" aria-controls="staffProfilePanelMain" aria-selected="true">Основне</button>
+                <button type="button" id="staffProfileTabWork" role="tab" data-staff-profile-tab="work" aria-controls="staffProfilePanelWork" aria-selected="false" tabindex="-1">Робота</button>
+                <button type="button" id="staffProfileTabTraining" role="tab" data-staff-profile-tab="training" aria-controls="staffProfilePanelTraining" aria-selected="false" tabindex="-1">Навчання</button>
+                <button type="button" id="staffProfileTabPayroll" role="tab" data-staff-profile-tab="payroll" aria-controls="staffProfilePanelPayroll" aria-selected="false" tabindex="-1">Оплата</button>
+                <button type="button" id="staffProfileTabResources" role="tab" data-staff-profile-tab="resources" aria-controls="staffProfilePanelResources" aria-selected="false" tabindex="-1">Документи та ресурси</button>
+                <button type="button" id="staffProfileTabOffboarding" role="tab" data-staff-profile-tab="offboarding" aria-controls="staffProfilePanelOffboarding" aria-selected="false" tabindex="-1" class="is-danger-tab">Завершення співпраці</button>
+                <button type="button" id="staffProfileTabHistory" role="tab" data-staff-profile-tab="history" aria-controls="staffProfilePanelHistory" aria-selected="false" tabindex="-1">Історія</button>
+            </nav>
+            <div class="hr-staff-profile-body" data-active-profile-tab="main">
+            <section id="staffProfilePanelMain" class="hr-staff-profile-hero" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
                 <span class="hr-staff-profile-section">Команда</span>
                 <div class="hr-staff-profile-card">
                     <span>Картка співробітника</span>
-                    <strong id="editStaffHeaderName">ПІБ</strong>
+                    <strong id="editStaffMainName">ПІБ</strong>
                 </div>
                 <div class="hr-staff-profile-quick-fields">
                     <label>
@@ -569,29 +564,29 @@
                         <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
                     </label>
                 </div>
-            </div>
-            <div class="form-group hr-staff-photo-field">
-                <label for="editPhotoUrl">Фото для пульсу</label>
+            </section>
+            <div class="form-group hr-staff-photo-field" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
+                <label for="editPhotoUrl">Фото профілю</label>
                 <div class="hr-staff-photo-editor">
                     <div id="editPhotoPreview" class="hr-staff-photo-preview" aria-hidden="true">!</div>
                     <div class="hr-staff-photo-controls">
                         <input type="text" id="editPhotoUrl" maxlength="500" inputmode="url" autocomplete="off" placeholder="/uploads/... або https://..." oninput="updateStaffPhotoPreview()">
                         <div class="hr-staff-photo-actions">
-                            <small class="form-hint">Використовується у сотах пульсу. Дозволено https, /uploads або /images.</small>
+                            <small class="form-hint">Використовується як аватар у картці та пульсі. Це не Face ID; Камера / Face ID реєструється окремо через модуль Камера / check-in. Дозволено https, /uploads або /images.</small>
                             <button type="button" class="btn-secondary" onclick="clearStaffPhotoUrl()">Очистити фото</button>
                         </div>
                     </div>
                 </div>
             </div>
-            <section class="hr-staff-foundation-panel hr-lifecycle-panel" aria-label="Lifecycle checklist">
+            <section id="staffProfilePanelTraining" class="hr-staff-foundation-panel hr-lifecycle-panel" aria-label="Чекліст життєвого циклу" data-staff-profile-panel="training" role="tabpanel" aria-labelledby="staffProfileTabTraining">
                 <div class="hr-staff-foundation-head">
                     <div>
-                        <strong>Lifecycle checklist</strong>
-                        <span>Єдина воронка: найм, HR-картка, акаунт, readiness, графік, payroll і offboarding.</span>
+                        <strong>Чекліст життєвого циклу</strong>
+                        <span>Єдина воронка: найм, HR-картка, акаунт, готовність навчання, графік, зарплата і завершення співпраці.</span>
                     </div>
-                    <button type="button" id="editLifecycleRefresh" class="btn-secondary" onclick="loadStaffLifecycleChecklist(activeEditStaffId(), { force: true })">Оновити</button>
+                    <button type="button" id="editLifecycleRefresh" class="btn-secondary" onclick="loadStaffLifecycleChecklist(activeEditStaffId(), { force: true })">Оновити дані</button>
                 </div>
-                <div id="editStaffLifecycleChecklist" class="hr-lifecycle-checklist">Lifecycle checklist завантажується...</div>
+                <div id="editStaffLifecycleChecklist" class="hr-lifecycle-checklist">Чекліст життєвого циклу завантажується...</div>
             </section>
             <div class="form-group">
                 <label>Основна професія</label>
@@ -666,11 +661,15 @@
                         <strong>Типові зміни</strong>
                         <span>Дефолтний час для графіка за професією, буднями та вихідними.</span>
                     </div>
-                    <button type="button" id="editShiftPreferencesRefresh" class="btn-secondary" onclick="loadStaffShiftPreferences(activeEditStaffId(), { force: true })">Оновити</button>
+                    <button type="button" id="editShiftPreferencesRefresh" class="btn-secondary" onclick="loadStaffShiftPreferences(activeEditStaffId(), { force: true })">Оновити дані</button>
                 </div>
                 <div id="editStaffShiftPreferences" class="hr-shift-preferences-list">Типові зміни завантажуються...</div>
+                <div class="hr-staff-profile-save-scope">
+                    <span>Зберігає тільки дефолтні години для графіка.</span>
+                    <button type="button" id="editShiftPreferencesSave" class="btn-primary" onclick="saveStaffShiftPreferencesScope()">Зберегти типові зміни</button>
+                </div>
             </section>
-            <div class="form-group">
+            <div id="staffProfilePanelWork" class="form-group" data-staff-profile-panel="work" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabWork">
                 <label>Дата народження</label>
                 <input type="date" id="editBirthDate">
             </div>
@@ -686,13 +685,17 @@
                 <label>Телефон екстр. контакту</label>
                 <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
             </div>
+            <div class="hr-staff-profile-save-scope" data-staff-profile-panel="main" data-staff-profile-scope="basic" role="tabpanel" aria-labelledby="staffProfileTabMain">
+                <span>Зберігає ПІБ, контакти, фото й базові поля профілю.</span>
+                <button type="button" id="editSave" class="btn-primary">Зберегти основне</button>
+            </div>
             <section class="hr-staff-foundation-panel" aria-label="Ролі та допуски">
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Ролі та допуски</strong>
                         <span>Статуси по кожній професії синхронізуються зі старими полями профілю, графіком і ставками.</span>
                     </div>
-                    <button type="button" id="editRoleAssignmentsSave" class="btn-secondary" onclick="saveStaffRoleAssignments()">Оновити</button>
+                    <button type="button" id="editRoleAssignmentsSave" class="btn-primary" onclick="saveStaffRoleAssignments()">Зберегти ролі та допуски</button>
                 </div>
                 <div id="editStaffRoleAssignments" class="hr-staff-role-assignment-list">Ролі завантажуються...</div>
             </section>
@@ -702,7 +705,7 @@
                         <strong>Зарплатна схема</strong>
                         <span>Працює через загальний payroll service: нова активна схема замінює попередню.</span>
                     </div>
-                    <button type="button" id="editPayrollSchemeSave" class="btn-secondary" onclick="saveStaffPayrollScheme()">Зберегти</button>
+                    <button type="button" id="editPayrollSchemeSave" class="btn-primary" onclick="saveStaffPayrollScheme()">Зберегти зарплатну схему</button>
                 </div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
@@ -862,7 +865,7 @@
                         <strong>Медкнижка</strong>
                         <span>Окремий HR-контроль строку дії через сертифікації.</span>
                     </div>
-                    <button type="button" id="editMedicalSave" class="btn-secondary" onclick="saveStaffMedicalBook()">Оновити</button>
+                    <button type="button" id="editMedicalSave" class="btn-primary" onclick="saveStaffMedicalBook()">Зберегти медкнижку</button>
                 </div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
@@ -967,13 +970,14 @@
             <section class="hr-staff-history-panel" aria-label="Історія змін профілю">
                 <div class="hr-staff-history-head">
                     <strong>Історія змін</strong>
-                    <button type="button" id="editHistoryRefresh" class="btn-secondary">Оновити</button>
+                    <button type="button" id="editHistoryRefresh" class="btn-secondary">Оновити дані</button>
                 </div>
                 <div id="editStaffHistory" class="hr-staff-history-list">Історія завантажується...</div>
             </section>
-            <div class="hr-modal-actions">
-                <button type="button" id="editCancel" class="btn-secondary">Скасувати</button>
-                <button type="button" id="editSave" class="btn-primary">Зберегти</button>
+            </div>
+            <div class="hr-modal-actions hr-staff-profile-bottom-actions">
+                <span>Збереження рознесене по вкладках: основне, типові зміни, ролі та зарплатна схема.</span>
+                <button type="button" id="editCancel" class="btn-secondary">Закрити профіль</button>
             </div>
         </div>
     </div>

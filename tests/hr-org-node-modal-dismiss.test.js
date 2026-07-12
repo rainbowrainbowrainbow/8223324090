@@ -103,6 +103,242 @@ function createHarness() {
     return { window, api: window.__hrOrgNodeModalTest };
 }
 
+function createStaffProfileHarness() {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'http://localhost/hr#team',
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetParent', {
+        configurable: true,
+        get() {
+            return this.hidden || this.style?.display === 'none' ? null : this.ownerDocument.body;
+        }
+    });
+    window.console = console;
+    window.showNotification = () => {};
+    window.apiVerifyToken = async () => ({ id: 1, role: 'creator', name: 'Tester' });
+    window.requestAnimationFrame = callback => callback();
+
+    const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    vm.runInContext(uiCode, dom.getInternalVMContext());
+
+    const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);
+    window.document.addEventListener = (type, listener, options) => {
+        if (type === 'DOMContentLoaded') return;
+        return originalDocumentAddEventListener(type, listener, options);
+    };
+    try {
+        vm.runInContext(`${hrCode}
+            window.__hrStaffProfileTest = (() => {
+                const historyDefers = new Map();
+                const staffProfiles = new Map([
+                    [1, { id: 1, name: 'Cached One', role_type: 'animator', secondary_professions: [], phone: 'old-1', hourly_rate: 100, rate_unit: 'hour', skills: [] }],
+                    [2, { id: 2, name: 'Cached Two', role_type: 'instructor', secondary_professions: [], phone: 'old-2', hourly_rate: 120, rate_unit: 'hour', skills: [] }],
+                    [3, { id: 3, name: 'Cached Three', role_type: 'animator', secondary_professions: [], phone: 'old-3', hourly_rate: 130, rate_unit: 'hour', skills: [] }]
+                ]);
+
+                function setupDom() {
+                    document.body.innerHTML = [
+                        '<button id="staffTrigger" data-staff-id="1">trigger</button>',
+                        '<article class="hr-team-card" data-staff-id="1"><button class="hr-team-open">profile 1</button></article>',
+                        '<article class="hr-team-card" data-staff-id="2"><button class="hr-team-open">profile 2</button></article>',
+                        '<div id="staffEditModal" class="hr-modal-overlay" style="display:none;" aria-hidden="true">',
+                        '<div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true" aria-labelledby="editStaffHeaderName">',
+                        '<input type="hidden" id="editStaffId">',
+                        '<button type="button" id="editCloseTop">close</button>',
+                        '<strong id="editStaffHeaderName"></strong>',
+                        '<input id="editStaffName">',
+                        '<input id="editPhone">',
+                        '<input id="editPhotoUrl">',
+                        '<div id="editPhotoPreview"></div>',
+                        '<input id="editBirthDate">',
+                        '<input id="editAddress">',
+                        '<input id="editEmergencyContact">',
+                        '<input id="editEmergencyPhone">',
+                        '<select id="editRoleType"></select>',
+                        '<select id="editSecondaryProfessions" multiple></select>',
+                        '<input id="editSecondaryProfessionSearch">',
+                        '<div id="editProfessionRates"></div>',
+                        '<select id="editCompanyStructureNode"></select>',
+                        '<input id="editHourlyRate">',
+                        '<select id="editRateUnit"><option value="hour">hour</option><option value="day">day</option><option value="month">month</option></select>',
+                        '<span id="editHourlyRateLabel"></span><span id="editHourlyRateHint"></span>',
+                        '<input id="editTelegramId">',
+                        '<input id="editTelegramUsername">',
+                        '<select id="editContractType"><option value="parttime">parttime</option></select>',
+                        '<input id="editSkills">',
+                        '<textarea id="editNotes"></textarea>',
+                        '<input id="editDocumentTitle"><textarea id="editDocumentNotes"></textarea><input id="editDocumentFile" type="file"><select id="editDocumentType"><option value="other">other</option></select>',
+                        '<input id="editMedicalIssuedAt"><input id="editMedicalExpiresAt"><textarea id="editMedicalNotes"></textarea>',
+                        '<select id="editResourceKind"><option value="custom">custom</option></select><select id="editResourceSourceId"></select><div id="editResourceSourceHint"></div><div id="editResourceSourceGroup"></div><div id="editResourceTitleGroup"></div><input id="editResourceTitle"><input id="editResourceDueReturnAt"><textarea id="editResourceNotes"></textarea><input id="editResourceQuantity">',
+                        '<select id="editPayrollSchemeType"><option value="hourly">hourly</option><option value="per_shift">per_shift</option><option value="monthly_fixed">monthly_fixed</option><option value="hybrid">hybrid</option></select><input id="editPayrollSchemeAmount"><input id="editPayrollSchemeTitle"><input id="editPayrollSchemeEffectiveFrom"><input id="editPayrollSchemeEffectiveTo"><span id="editPayrollSchemeSummary"></span><span id="editPayrollSchemeAmountLabel"></span><div id="editPayrollHybridConfig"></div>',
+                        '<input id="editOffboardingDate"><select id="editOffboardingPoolStatus"><option value="reserve">reserve</option></select><select id="editOffboardingAccountAction"><option value="review">review</option></select><textarea id="editOffboardingReason"></textarea><textarea id="editOffboardingNotes"></textarea>',
+                        '<div id="editStaffHistory"></div><div id="editStaffLifecycleChecklist"></div><div id="editStaffDocuments"></div><div id="editMedicalBookList"></div><div id="editStaffResources"></div><div id="editStaffOffboarding"></div><div id="editOffboardingReadiness"></div><div id="editStaffRoleAssignments"></div><div id="editStaffShiftPreferences"></div>',
+                        '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editCancel"></button><button type="button" id="editSave"></button>',
+                        '</div></div>'
+                    ].join('');
+                    initModals();
+                }
+
+                function createHistoryDefer(staffId) {
+                    const item = { promise: null, resolve: null };
+                    item.promise = new Promise(resolve => { item.resolve = resolve; });
+                    historyDefers.set(Number(staffId), item);
+                    return item;
+                }
+
+                canManage = true;
+                teamStaff = Array.from(staffProfiles.values()).map(item => ({ ...item }));
+                hrProfessions = [
+                    { key: 'animator', value: 'animator', label: 'Animator', title: 'Animator' },
+                    { key: 'instructor', value: 'instructor', label: 'Instructor', title: 'Instructor' }
+                ];
+                companyStructureNodes = [];
+                ensureProfessionsLoaded = async () => hrProfessions;
+                ensureCompanyStructureNodesLoaded = async () => companyStructureNodes;
+                hrFetch = async path => {
+                    const profileMatch = path.match(/^\\/staff\\/(\\d+)$/);
+                    if (profileMatch) {
+                        const id = Number(profileMatch[1]);
+                        const profile = staffProfiles.get(id);
+                        return profile ? { success: true, data: { ...profile, name: 'Fresh ' + id, phone: 'fresh-' + id } } : { success: false, error: 'missing' };
+                    }
+                    const historyMatch = path.match(/^\\/staff\\/(\\d+)\\/history/);
+                    if (historyMatch) return createHistoryDefer(Number(historyMatch[1])).promise;
+                    if (path.includes('/lifecycle-checklist')) return { success: true, data: { staff: { id: Number(activeEditStaffId()) }, summary: {}, metrics: {}, sections: [] } };
+                    if (path.includes('/documents')) return { success: true, data: [] };
+                    if (path.includes('/medical-book')) return { success: true, data: [] };
+                    if (path.includes('/resources')) return { success: true, data: [] };
+                    if (path.includes('/offboarding-readiness')) return { success: true, data: {} };
+                    if (path.includes('/offboarding')) return { success: true, data: [] };
+                    if (path.includes('/role-assignments')) return { success: true, data: [] };
+                    if (path.includes('/payroll-scheme')) return { success: true, data: { fallback_hourly_rate: 100, fallback_rate_unit: 'hour' } };
+                    if (path.includes('/resource-options')) return { success: true, data: [] };
+                    return { success: true, data: [] };
+                };
+                crmApiFetch = async () => ({ success: true, data: [] });
+
+                return {
+                    setupDom,
+                    open: openStaffEdit,
+                    close: closeHrEditableModal,
+                    activate: activateStaffProfileTab,
+                    loadTab: loadStaffProfileTabData,
+                    modal: () => document.getElementById('staffEditModal'),
+                    history: staffId => historyDefers.get(Number(staffId)),
+                    activeId: activeEditStaffId,
+                    staff: () => teamStaff,
+                    confirmCalls: () => window.__confirmCalls
+                };
+            })();
+        `, dom.getInternalVMContext());
+    } finally {
+        window.document.addEventListener = originalDocumentAddEventListener;
+    }
+
+    vm.runInContext(`
+        window.__confirmCalls = [];
+        window.__confirmResult = false;
+        confirmModal = async (message, options = {}) => {
+            window.__confirmCalls.push({ message, options });
+            return window.__confirmResult;
+        };
+    `, dom.getInternalVMContext());
+    window.__hrStaffProfileTest.setupDom();
+    return { window, api: window.__hrStaffProfileTest };
+}
+
+function createTeamBucketHarness() {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'http://localhost/hr#workers',
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    window.console = console;
+    window.showNotification = () => {};
+    window.AppState = { currentUser: { id: 1, role: 'creator', name: 'Tester' } };
+    window.requestAnimationFrame = callback => callback();
+
+    const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    vm.runInContext(uiCode, dom.getInternalVMContext());
+
+    const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);
+    window.document.addEventListener = (type, listener, options) => {
+        if (type === 'DOMContentLoaded') return;
+        return originalDocumentAddEventListener(type, listener, options);
+    };
+    try {
+        vm.runInContext(`${hrCode}
+            window.__hrTeamBucketTest = (() => {
+                function setupDom() {
+                    document.body.innerHTML = [
+                        '<nav id="hrNav" class="hr-nav hr-nav--people" aria-label="team buckets">',
+                        '<button type="button" class="hr-tab" data-tab="team" data-bucket="workers">Workers <span data-nav-count="workers">0</span></button>',
+                        '<button type="button" class="hr-tab" data-tab="team" data-bucket="interns">Interns <span data-nav-count="interns">0</span></button>',
+                        '<button type="button" class="hr-tab" data-tab="team" data-bucket="blacklist">Blacklist <span data-nav-count="blacklist">0</span></button>',
+                        '<button type="button" class="hr-tab" data-tab="team" data-bucket="reserve">Reserve <span data-nav-count="reserve">0</span></button>',
+                        '<button type="button" class="hr-tab" data-tab="team" data-bucket="dismissed">Dismissed <span data-nav-count="dismissed">0</span></button>',
+                        '</nav>',
+                        '<input id="teamSearch">',
+                        '<label><input type="checkbox" id="teamArchiveSearch"> Шукати в архіві</label>',
+                        '<div id="teamFilterInfo"></div>',
+                        '<div id="teamMissingBanner"></div>',
+                        '<div id="teamGrid"></div>'
+                    ].join('');
+                }
+
+                AppState = window.AppState;
+                canManage = true;
+                activePeopleBucket = 'workers';
+                pendingPeopleBucket = null;
+                hrProfessions = [
+                    { key: 'animator', title: 'Аніматор', is_active: true },
+                    { key: 'intern', title: 'Стажер', is_active: true },
+                    { key: 'technician', title: 'Технік', is_active: true }
+                ];
+                companyStructureNodes = [];
+                teamStaff = [
+                    { id: 1, name: 'Worker Alpha', role_type: 'animator', secondary_professions: [], phone: '111', is_active: true, hr_pool_status: 'core', photo_url: '/uploads/worker.jpg', has_face_descriptor: true, has_account: true, company_structure_node_id: 'animators', training_readiness: { total: 4, completed: 4, percent: 100 }, onboarding_assignment: { responsible_user_id: 7, responsible_name: 'HR Lead', percent: 100, training_status: 'completed' } },
+                    { id: 2, name: 'Reserve Beta', role_type: 'technician', secondary_professions: [], phone: '222', is_active: true, hr_pool_status: 'reserve', photo_url: '/uploads/reserve.jpg', has_face_descriptor: false, has_account: true, company_structure_node_id: 'tech', training_readiness: { total: 3, completed: 0, percent: 0 }, onboarding_assignment: { responsible_user_id: 7, responsible_name: 'HR Lead', percent: 20, training_status: 'in_progress' } },
+                    { id: 3, name: 'Dismissed Gamma', role_type: 'animator', secondary_professions: [], phone: '333', is_active: false, hr_pool_status: 'core', photo_url: '', has_face_descriptor: false, has_account: false, company_structure_node_id: null, training_readiness: { total: 0, completed: 0, percent: 0 } },
+                    { id: 4, name: 'Blacklist Delta', role_type: 'animator', secondary_professions: [], phone: '444', is_active: true, hr_pool_status: 'blacklisted', photo_url: '', has_face_descriptor: true, has_account: false, company_structure_node_id: null, training_readiness: { total: 2, completed: 1, percent: 50 } },
+                    { id: 5, name: 'Intern Epsilon', role_type: 'intern', secondary_professions: [], phone: '555', is_active: true, hr_pool_status: 'core', photo_url: '/uploads/intern.jpg', has_face_descriptor: true, has_account: true, company_structure_node_id: 'interns', training_readiness: { total: 1, completed: 0, percent: 0 } }
+                ];
+
+                return {
+                    setupDom,
+                    render: filterAndRenderTeam,
+                    setBucket: bucket => window.setPeopleBucket(bucket),
+                    setSetupFilter: filter => window.setTeamSetupFilter(filter),
+                    search(value, archive = false) {
+                        document.getElementById('teamSearch').value = value;
+                        document.getElementById('teamArchiveSearch').checked = archive;
+                        filterAndRenderTeam();
+                    },
+                    grid: () => document.getElementById('teamGrid'),
+                    info: () => document.getElementById('teamFilterInfo').textContent,
+                    bannerText: () => document.getElementById('teamMissingBanner')?.textContent || '',
+                    cardIds: () => Array.from(document.querySelectorAll('#teamGrid .hr-team-card')).map(card => card.dataset.staffId),
+                    cardNames: () => Array.from(document.querySelectorAll('#teamGrid .hr-team-name')).map(node => node.textContent.trim()),
+                    toggleMenu: button => toggleTeamCardMenu(null, button),
+                    nav: bucket => document.querySelector(\`.hr-tab[data-bucket="\${bucket}"]\`),
+                    count: bucket => document.querySelector(\`[data-nav-count="\${bucket}"]\`)?.textContent || ''
+                };
+            })();
+        `, dom.getInternalVMContext());
+    } finally {
+        window.document.addEventListener = originalDocumentAddEventListener;
+    }
+
+    window.__hrTeamBucketTest.setupDom();
+    return { window, api: window.__hrTeamBucketTest };
+}
+
 test('HR org/profession editor ignores accidental backdrop clicks', () => {
     const { api } = createHarness();
     api.open('animators');
@@ -113,6 +349,144 @@ test('HR org/profession editor ignores accidental backdrop clicks', () => {
 
     assert.equal(api.overlay(), overlay, 'backdrop click must not close the editor');
     assert.equal(overlay.querySelector('.hr-org-node-modal')?.classList.contains('is-dismiss-attention'), true);
+});
+
+test('HR team bucket navigation renders one bucket and searches globally with archive semantics', () => {
+    const { window, api } = createTeamBucketHarness();
+
+    api.render();
+    assert.deepEqual([...api.cardIds()], ['1']);
+    assert.equal(api.grid().querySelectorAll('.hr-people-bucket').length, 0, 'closed bucket cards must not remain in DOM');
+    assert.equal(api.grid().querySelectorAll('.hr-team-open').length, 1, 'card should expose one primary open action');
+    assert.equal(api.grid().querySelectorAll('.hr-team-profile-trigger, .hr-team-name-button, .hr-team-edit--top').length, 0, 'avatar/name/profile duplicate open triggers should stay removed');
+    assert.equal(api.grid().querySelectorAll('.hr-team-contact-grid').length, 0, 'contact and payroll rows should stay inside the profile, not on cards');
+    const menuTrigger = api.grid().querySelector('.hr-team-overflow-trigger');
+    assert.ok(menuTrigger, 'compact card should expose overflow actions');
+    api.toggleMenu(menuTrigger);
+    const menu = api.grid().querySelector('[data-team-card-menu]');
+    assert.equal(menu.hidden, false);
+    assert.match(menu.textContent, /Документи/);
+    assert.match(menu.textContent, /Перемістити/);
+    assert.match(menu.textContent, /тільки для дубля/);
+    const menuItem = menu.querySelector('button');
+    menuItem?.focus();
+    menuItem?.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(menu.hidden, true, 'Escape should close the overflow menu');
+    assert.equal(window.document.activeElement, menuTrigger, 'Escape should restore focus to the overflow trigger');
+    assert.equal(api.nav('workers').getAttribute('aria-pressed'), 'true');
+    assert.equal(api.nav('reserve').getAttribute('aria-pressed'), 'false');
+    assert.equal(api.count('workers'), '1');
+    assert.equal(api.count('interns'), '1');
+    assert.equal(api.count('blacklist'), '1');
+    assert.equal(api.count('reserve'), '1');
+    assert.equal(api.count('dismissed'), '1');
+    assert.match(api.bannerText(), /Без фото профілю/);
+    assert.match(api.bannerText(), /Без камери/);
+    assert.match(api.bannerText(), /Без CRM/);
+
+    api.setSetupFilter('missing_face');
+    assert.deepEqual([...api.cardNames()], ['Reserve Beta']);
+    assert.equal(api.grid().dataset.peopleMode, 'setup');
+    assert.equal(api.grid().querySelector('[data-card-bucket="reserve"]')?.textContent.includes('Резерв'), true);
+    assert.match(api.info(), /Без камери/);
+
+    api.setSetupFilter('missing_crm');
+    assert.deepEqual([...api.cardNames()], ['Blacklist Delta']);
+    assert.equal(api.grid().querySelector('[data-card-bucket="blacklist"]')?.textContent.includes('Чорний список'), true);
+    assert.match(api.info(), /Без CRM/);
+
+    api.setSetupFilter('all');
+    assert.deepEqual([...api.cardIds()], ['1']);
+
+    api.search('Reserve Beta');
+    assert.deepEqual([...api.cardNames()], ['Reserve Beta']);
+    assert.equal(api.grid().querySelector('[data-card-bucket="reserve"]')?.textContent.includes('Резерв'), true);
+    assert.match(api.info(), /1 .*Резерв/);
+
+    api.search('Dismissed Gamma', false);
+    assert.deepEqual([...api.cardIds()], []);
+    assert.match(api.info(), /0/);
+
+    api.search('Dismissed Gamma', true);
+    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
+    assert.equal(api.grid().querySelector('[data-card-bucket="dismissed"]')?.textContent.includes('Звільнені'), true);
+
+    api.search('', false);
+    api.setBucket('dismissed');
+    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
+    assert.equal(api.nav('dismissed').getAttribute('aria-pressed'), 'true');
+});
+
+test('HR staff profile opens from fresh data and marks clean only after hydration', async () => {
+    const { window, api } = createStaffProfileHarness();
+
+    window.document.getElementById('staffTrigger').focus();
+    await api.open(1);
+    assert.equal(window.document.getElementById('editStaffName').value, 'Fresh 1');
+    assert.equal(api.staff().find(item => item.id === 1).phone, 'fresh-1');
+    assert.equal(api.modal().dataset.staffProfileHydrating, 'true');
+
+    await api.close('staffEditModal');
+    assert.equal(api.confirmCalls().length, 0, 'clean hydrating profile close should not ask to discard');
+    assert.equal(api.modal().style.display, 'none');
+
+    await api.open(1);
+    await settle();
+    await settle();
+    assert.equal(api.modal().dataset.staffProfileHydrating, 'false');
+
+    window.document.getElementById('editSave').focus();
+    api.modal().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(window.document.activeElement.id, 'editCloseTop');
+
+    window.document.getElementById('editStaffName').focus();
+    api.modal().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settle();
+    assert.equal(api.confirmCalls().length, 0, 'clean hydrated Escape close should not ask to discard');
+    assert.equal(api.modal().style.display, 'none');
+
+    await api.open(1);
+    await settle();
+    await settle();
+    const name = window.document.getElementById('editStaffName');
+    name.value = 'Fresh 1 edited';
+    name.dispatchEvent(new window.Event('input', { bubbles: true, cancelable: true }));
+
+    await api.close('staffEditModal');
+    assert.equal(api.confirmCalls().length, 1, 'real field edit should ask to discard');
+    assert.equal(api.modal().style.display, 'flex');
+});
+
+test('HR staff profile ignores stale history responses after rapid profile switches', async () => {
+    const { window, api } = createStaffProfileHarness();
+
+    await api.open(1);
+    const firstHistoryLoad = api.activate('history');
+    const firstHistory = api.history(1);
+    await api.open(2);
+    const secondHistoryLoad = api.activate('history');
+    const secondHistory = api.history(2);
+
+    firstHistory.resolve({
+        success: true,
+        data: [{ id: 1, action: 'staff_update', performed_by: 'first-actor', details: {}, created_at: '2099-01-01T10:00:00Z' }]
+    });
+    await firstHistoryLoad;
+    await settle();
+    assert.equal(window.document.getElementById('editStaffHistory').textContent.includes('first-actor'), false);
+
+    secondHistory.resolve({
+        success: true,
+        data: [{ id: 2, action: 'staff_update', performed_by: 'second-actor', details: {}, created_at: '2099-01-01T10:01:00Z' }]
+    });
+    await secondHistoryLoad;
+    await settle();
+    await settle();
+
+    const historyText = window.document.getElementById('editStaffHistory').textContent;
+    assert.equal(api.activeId(), '2');
+    assert.equal(historyText.includes('second-actor'), true);
+    assert.equal(historyText.includes('first-actor'), false);
 });
 
 test('HR org/profession editor closes through explicit cancel when clean', async () => {
@@ -245,10 +619,12 @@ test('HR staff edit modal uses the shared modal layer and viewport-safe scrollin
     assert.match(overlayCss, /overflow:\s*hidden/);
     assert.match(dialogCss, /max-height:\s*calc\(100dvh - 32px\)/);
     assert.match(dialogCss, /overflow-y:\s*auto/);
-    assert.match(html, /id="staffEditModal"[^>]*class="hr-modal-overlay"[\s\S]*?<div class="hr-modal hr-staff-profile-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
-    assert.match(html, /\.hr-staff-profile-modal\s*\{[\s\S]*?max-width:\s*640px/);
-    assert.match(showModalFn, /modal\.setAttribute\('aria-hidden', 'false'\)/);
-    assert.match(showModalFn, /modal\.scrollTop = 0/);
+    assert.match(html, /id="staffEditModal"[^>]*class="hr-modal-overlay hr-staff-profile-overlay"[\s\S]*?<div class="hr-modal hr-staff-profile-modal"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-describedby="editStaffHeaderMeta"/);
+    assert.match(html, /\.hr-staff-profile-modal\s*\{[\s\S]*?max-width:\s*1040px[\s\S]*?height:\s*100dvh/);
+    assert.match(html, /class="hr-staff-profile-tabs" role="tablist"/);
+    assert.match(html, /data-staff-profile-tab="resources"/);
+    assert.match(showModalFn, /setAttribute\('aria-hidden', 'false'\)/);
+    assert.match(showModalFn, /scrollTop = 0/);
     assert.match(showModalFn, /dialog\.scrollTop = 0/);
 });
 

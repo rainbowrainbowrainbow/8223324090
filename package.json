@@ -52,6 +52,7 @@
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
     "test:browser:customer-child-create": "npx --yes --package playwright node tests/browser/customer-child-create-browser-smoke.js",
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
+    "test:browser:hr-team": "npx --yes --package playwright node tests/browser/hr-team-browser-smoke.js",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:timeline-summary": "npx --yes --package playwright node tests/browser/timeline-room-summary-browser-smoke.js",
     "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",

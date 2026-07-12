@@ -532,16 +532,18 @@ test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
     assert.ok(HR_JS.includes("return { tab: 'today', alias: requested !== 'today' };"));
 });
 
-test('HR people accordion keeps aria, bucket, count, and state contracts', () => {
+test('HR people bucket navigation uses one rendered result surface and global search contracts', () => {
     for (const token of [
-        'data-people-bucket=',
-        'aria-expanded=',
-        'hr-people-bucket-count',
+        'hr-people-results',
+        'hr-people-results-grid',
+        'hr-team-bucket-badge',
+        'aria-pressed',
+        'teamArchiveSearch',
         "id: 'dismissed'",
         "title: 'Звільнені'",
         "if (staff.is_active === false) return 'dismissed';",
         "hrFetch(`/staff/${staffId}/status`",
-        'Для звільнення відкрийте профіль і завершіть співпрацю через offboarding.',
+        'Для звільнення відкрийте профіль і завершіть співпрацю через вкладку завершення співпраці.',
         'hr-team-controls',
         'teamFilterInfo',
         'totalCount',
@@ -549,13 +551,26 @@ test('HR people accordion keeps aria, bucket, count, and state contracts', () =>
         'activePeopleBucket = nextBucket',
         'updatePeopleNavCounts(grouped)',
         'renderPeopleBucketState',
+        'renderTeamBucket',
+        'renderTeamSearchResults',
+        'peopleBucketSearchLabel',
+        'renderTeamCardStatusChips',
+        'renderTeamTrainingCompact',
+        'renderTeamOnboardingCompact',
+        'hr-team-open',
+        'hr-team-overflow-trigger',
+        'hr-team-overflow-menu',
+        'closeTeamCardMenus',
         'hr-people-empty--loading',
         'hr-people-empty--error',
-        'Список порожній за поточними фільтрами',
+        'Шукати в архіві',
+        'знайдено у',
         'window.setPeopleBucket'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
+    assert.equal(HR_HTML.includes('teamRoleFilter'), false);
+    assert.equal(HR_HTML.includes('Показувати звільнених'), false);
     assert.equal(HR_JS.includes('Нікого не знайдено'), false);
 });
 
@@ -613,7 +628,7 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
         'Нарахування зарплати доступне тільки для повного місяця',
         'Період закрито',
         'Журнал періоду',
-        'Payroll active',
+        'Активна зарплата',
         'Finance salary'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
@@ -911,11 +926,12 @@ test('HR staff document service owns private upload, archive, and download metad
     assert.equal(safeStaffDocumentDownloadFilename('bad"name\n.pdf'), 'bad_name_.pdf');
 });
 
-test('HR staff documents are reachable from team card paperclip', () => {
+test('HR staff documents are reachable from the compact team card overflow menu', () => {
     for (const token of [
         'data-ui-contract="hr-staff-document-paperclip"',
-        'class="hr-team-document"',
-        'onclick="openStaffDocuments(${Number(s.id)})"',
+        'hr-team-document',
+        'hr-team-overflow-menu',
+        'onclick="openStaffDocuments(${id})"',
         'function openStaffDocuments',
         'window.openStaffDocuments = openStaffDocuments',
         "await openStaffEdit(Number(staffId), { focus: 'documents' })",
@@ -1219,7 +1235,9 @@ test('HR staff permanent delete is duplicate-only and typed-confirm guarded', ()
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
     }
     for (const token of [
-        'class="hr-team-delete"',
+        'hr-team-delete',
+        'hr-team-menu-section--danger',
+        'тільки для дубля',
         'function deleteStaffProfile',
         "hrFetch(`/staff/${staffId}/delete-readiness`)",
         'Введіть ТАК для підтвердження',
@@ -1290,19 +1308,22 @@ test('HR operational staff scope uses shared scheduleable filters for live route
     }
 });
 
-test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap targets', () => {
+test('HR dark and mobile CSS covers nav counts, people result grid, KPI, and tap targets', () => {
     assert.ok(HR_HTML.includes('body.dark-mode .hr-nav-count'));
     assert.ok(HR_HTML.includes('body.dark-mode .hr-kpi-source'));
     assert.ok(HR_HTML.includes('body.dark-mode .hr-people-empty--error'));
     assert.ok(HR_HTML.includes('@media (max-width: 768px)'));
-    assert.ok(HR_HTML.includes('.hr-people-bucket-grid { grid-template-columns: 1fr; }'));
+    assert.ok(HR_HTML.includes('.hr-people-results-grid { grid-template-columns: 1fr; }'));
     assert.ok(HR_HTML.includes('.hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }'));
     assert.ok(HR_HTML.includes('.hr-nav--pulse .hr-nav-items'));
     assert.ok(HR_HTML.includes('flex-wrap: nowrap;'));
     assert.ok(HR_HTML.includes('overflow-x: auto;'));
     assert.ok(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'));
     assert.ok(HR_HTML.includes('body.dark-mode .hr-nav--pulse .hr-tab.active'));
+    assert.ok(HR_HTML.includes('.hr-team-open'));
+    assert.ok(HR_HTML.includes('.hr-team-overflow-menu'));
+    assert.ok(HR_HTML.includes('.hr-team-training-compact'));
 
-    const bodyRule = HR_HTML.match(/\.hr-people-bucket-body\s*\{([\s\S]*?)\}/)?.[1] || '';
-    assert.equal(/overflow-[xy]\s*:/.test(bodyRule), false, 'people accordion body should not introduce nested scrolling');
+    const resultRule = HR_HTML.match(/\.hr-people-results\s*\{([\s\S]*?)\}/)?.[1] || '';
+    assert.equal(/overflow-[xy]\s*:/.test(resultRule), false, 'people result surface should not introduce nested scrolling');
 });

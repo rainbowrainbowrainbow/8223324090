@@ -211,8 +211,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrHtml, /id="shiftProfession"/);
         assert.match(hrHtml, /id="editStaffHistory"/);
         assert.match(hrHtml, /id="editStaffLifecycleChecklist"/);
-        assert.match(hrHtml, /hr-team-training-readiness/);
-        assert.match(hrPage, /function renderStaffTrainingReadiness/);
+        assert.match(hrHtml, /hr-team-training-compact/);
+        assert.match(hrPage, /function renderTeamTrainingCompact/);
         assert.match(hrPage, /function renderStaffLifecycleChecklist/);
         assert.match(hrPage, /function loadStaffLifecycleChecklist/);
         assert.match(hrPage, /hrFetch\(`\/staff\/\$\{id\}\/lifecycle-checklist`\)/);
@@ -273,6 +273,16 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
 
         assert.match(hrPage, /function teamSearchHaystack/);
         assert.match(hrPage, /function renderStaffReadinessBadges/);
+        assert.match(hrPage, /function staffHasProfilePhoto/);
+        assert.match(hrPage, /function staffHasFaceDescriptor/);
+        assert.match(hrPage, /HR_TEAM_SETUP_FILTERS/);
+        assert.match(hrPage, /missing_profile_photo/);
+        assert.match(hrPage, /missing_face/);
+        assert.match(hrPage, /window\.setTeamSetupFilter/);
+        assert.match(hrPage, /Фото профілю/);
+        assert.match(hrPage, /Камера \/ Face ID/);
+        assert.doesNotMatch(hrPage, /Фото є/);
+        assert.doesNotMatch(hrPage, /Фото не додано/);
         assert.match(hrPage, /function renderStaffProfessionRatesEditor/);
         assert.match(hrPage, /currentInputValues\.has\(key\)/);
         assert.match(hrPage, /function readStaffProfessionRates/);
@@ -292,7 +302,9 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /baseUpdatedAt: companyStructureUpdatedAt/);
 
         assert.match(hrHtml, /id="teamSearch"/);
-        assert.match(hrHtml, /id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true"/);
+        assert.match(hrHtml, /id="teamArchiveSearch"/);
+        assert.match(hrHtml, /Шукати в архіві/);
+        assert.doesNotMatch(hrHtml, /id="teamRoleFilter"/);
         assert.match(hrHtml, /id="editProfessionRates"/);
         assert.match(hrHtml, /id="editStaffShiftPreferences"/);
         assert.match(hrHtml, /id="editShiftPreferencesRefresh"/);

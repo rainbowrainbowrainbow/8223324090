@@ -3182,6 +3182,15 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
 }
 
 /* v0.73.75: dismissed cards and ZRS controls stay out of hr.html inline budget. */
+.page-container .hr-team-card {
+    border-radius: 18px;
+    border-color: color-mix(in srgb, var(--primary) 14%, var(--gray-300));
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, transparent), transparent 46%),
+        color-mix(in srgb, var(--white) 94%, transparent);
+    box-shadow: var(--shadow-sm);
+}
+
 .page-container .hr-team-card.inactive {
     opacity: 1;
     border-style: dashed;
@@ -3206,6 +3215,22 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
 .page-container .hr-team-delete:focus-visible {
     background: rgba(220, 38, 38, 0.14);
     border-color: rgba(220, 38, 38, 0.38);
+}
+
+.page-container .hr-team-open {
+    border-radius: 12px;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 42%, transparent);
+}
+
+.page-container .hr-team-overflow-menu {
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    box-shadow: var(--shadow-lg);
+}
+
+.page-container .hr-team-training-compact,
+.page-container .hr-team-onboarding-compact {
+    border-color: color-mix(in srgb, var(--gray-400) 15%, transparent);
+    background: color-mix(in srgb, var(--white) 58%, transparent);
 }
 
 .page-container .zrs-status-badge {
@@ -3326,6 +3351,22 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     );
 }
 
+.page-container .hr-people-results {
+    min-width: 0;
+}
+
+.page-container .hr-people-results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+.page-container .hr-team-bucket-badge {
+    border-color: color-mix(in srgb, var(--primary) 24%, transparent);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: color-mix(in srgb, var(--primary) 78%, var(--gray-800));
+}
+
 /* v0.73.61: HR Team onboarding owner summary lives in shared CSS, not inline HR debt. */
 .page-container .hr-team-onboarding-assignment {
     width: 100%;
@@ -3426,6 +3467,28 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     background: color-mix(in srgb, var(--gray-400) 6%, transparent);
 }
 
+body.dark-mode .page-container .hr-team-card,
+[data-theme="dark"] .page-container .hr-team-card {
+    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, transparent), transparent 48%),
+        color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-overflow-menu,
+[data-theme="dark"] .page-container .hr-team-overflow-menu {
+    background: var(--surface, #1E1E38);
+    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-training-compact,
+body.dark-mode .page-container .hr-team-onboarding-compact,
+[data-theme="dark"] .page-container .hr-team-training-compact,
+[data-theme="dark"] .page-container .hr-team-onboarding-compact {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+}
+
 body.dark-mode .page-container .hr-team-card.inactive,
 [data-theme="dark"] .page-container .hr-team-card.inactive {
     border-color: rgba(148, 163, 184, 0.28);
@@ -3484,6 +3547,13 @@ body.dark-mode .page-container .hr-team-filter-info,
     background: color-mix(in srgb, var(--white) 5%, transparent);
     border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
     color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-team-bucket-badge,
+[data-theme="dark"] .page-container .hr-team-bucket-badge {
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+    color: var(--primary-light, #5EEAD4);
 }
 
 body.dark-mode .page-container .hr-team-onboarding-assignment,
@@ -3764,6 +3834,10 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .page-container .hr-team-active-toggle,
     .page-container .hr-team-filter-info {
         width: 100%;
+    }
+
+    .page-container .hr-people-results-grid {
+        grid-template-columns: 1fr;
     }
 }
 

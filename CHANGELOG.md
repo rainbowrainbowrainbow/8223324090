@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.96 - HR Команда: фінальний аудит
+
+### HR / Команда / (12.07.2026) [codex]
+- **Історія профілю більше не показує internal keys** — події призначення/зняття підміни та поля зміни відображаються зрозумілою українською.
+- **Live QA підтвердив фінальний workflow** — bucket navigation, cross-bucket/archive search, усі setup filters, responsive layout, drawer tabs, lazy history і scroll-fixed actions перевірено без production mutations.
+- **Regression guard додано** — browser smoke та UI static check блокують повернення raw schedule action/field labels.
+- **Protected areas не змінювалися** — HR API semantics, DB, migrations, auth/roles, Railway, env, secrets, infrastructure і dependencies лишилися без змін.
+
+---
+
 ## v0.78.95 - HR Команда: читабельні профілі
 
 ### HR / Команда / (12.07.2026) [codex]

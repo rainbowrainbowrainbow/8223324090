@@ -3670,6 +3670,9 @@ function renderTimelineDataError(container, error, date) {
 }
 
 async function renderTimeline() {
+    if (typeof window.isAuthenticatedRuntimeReady === 'function' && !window.isAuthenticatedRuntimeReady()) {
+        return false;
+    }
     const thisGen = ++_renderGen;
     updateTimelineViewControls();
     if (typeof normalizeTimelineModeState === 'function') {

@@ -269,7 +269,7 @@ function initializeApp() {
     initializeCostumes();
     loadPreferences();
     if (typeof initTimelineResponsiveResize === 'function') initTimelineResponsiveResize();
-    checkSession();
+    const sessionCheck = checkSession();
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
     if (typeof initCustomerCRM === 'function') initCustomerCRM();
@@ -285,8 +285,12 @@ function initializeApp() {
         if (typeof handleRedo === 'function') handleRedo();
     });
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
-    // v34.0.0: Auto-open panel/modal from URL ?open= parameter
-    _checkAutoOpen();
+    // Protected deep links may open only after the server has accepted the session.
+    Promise.resolve(sessionCheck)
+        .then(authenticated => {
+            if (authenticated) _checkAutoOpen();
+        })
+        .catch(error => console.warn('[app] Session initialization failed', error));
 }
 
 function _checkAutoOpen() {

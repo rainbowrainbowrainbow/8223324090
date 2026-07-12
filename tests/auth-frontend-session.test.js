@@ -8,6 +8,8 @@ const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const AUTH_CODE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 const ALERTS_CODE = fs.readFileSync(path.join(ROOT, 'js', 'alerts.js'), 'utf8');
+const APP_CODE = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+const TIMELINE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
 const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
@@ -429,6 +431,27 @@ test('alerts wait for authenticated runtime readiness before protected loading',
         /document\.addEventListener\('DOMContentLoaded', \(\) => \{\s*startAlertRuntime\(\);\s*\}\);/
     );
     assert.match(ALERTS_CODE, /window\.addEventListener\('crm:authenticated-runtime-ready', startAlertRuntime\)/);
+});
+
+test('timeline and deep-link loaders wait for successful session verification', () => {
+    const initializeAppStart = APP_CODE.indexOf('function initializeApp()');
+    const initializeAppEnd = APP_CODE.indexOf('function _checkAutoOpen()', initializeAppStart);
+    const initializeAppBlock = APP_CODE.slice(initializeAppStart, initializeAppEnd);
+    const renderTimelineStart = TIMELINE_CODE.indexOf('async function renderTimeline()');
+    const renderTimelineEnd = TIMELINE_CODE.indexOf('function updateFilterBanner()', renderTimelineStart + 1);
+    const renderTimelineBlock = TIMELINE_CODE.slice(renderTimelineStart, renderTimelineEnd);
+
+    assert.match(initializeAppBlock, /const sessionCheck = checkSession\(\)/);
+    assert.match(initializeAppBlock, /Promise\.resolve\(sessionCheck\)[\s\S]*if \(authenticated\) _checkAutoOpen\(\)/);
+    assert.doesNotMatch(initializeAppBlock, /AppState\.nowLineInterval[^]*\n\s*_checkAutoOpen\(\);/);
+    assert.match(
+        renderTimelineBlock,
+        /if \(typeof window\.isAuthenticatedRuntimeReady === 'function' && !window\.isAuthenticatedRuntimeReady\(\)\) \{\s*return false;/
+    );
+    assert.ok(
+        renderTimelineBlock.indexOf('isAuthenticatedRuntimeReady') < renderTimelineBlock.indexOf('getBookingsForDate'),
+        'auth guard must run before protected timeline API loaders'
+    );
 });
 
 test('apiFetchWithAuthRetry refreshes before protected task mutations when the legacy token is missing', async () => {

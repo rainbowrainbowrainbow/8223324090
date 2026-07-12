@@ -964,7 +964,10 @@ async function fetchKanbanLeadPages(baseParams) {
 }
 
 async function loadMoreLeads({ stage = '' } = {}) {
-    const loadSeq = ++leadLoadSeq;
+    // Load-more requests from separate Kanban columns may run in parallel.
+    // Capture the active list generation without invalidating sibling columns;
+    // a new filter/view load still increments leadLoadSeq and rejects stale data.
+    const loadSeq = leadLoadSeq;
     const isKanban = currentView === 'kanban';
     const state = isKanban ? leadKanbanPagination[stage] : leadPagination;
     if (!state?.hasMore || state.loadingMore) return;

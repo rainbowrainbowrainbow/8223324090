@@ -25,6 +25,7 @@ const QRCode = require('qrcode');
 const log = createLogger('Certificates');
 const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
 const DUPLICATE_RECIPIENT_CODE = 'CERTIFICATE_RECIPIENT_NOT_UNIQUE';
+const CERTIFICATE_ISSUER_ROLES = ['admin', 'user', 'animator'];
 
 async function assertUniqueCertificateIdentity(db, displayValue, excludeId = null) {
     const normalized = normalizeCertificateIdentity(displayValue);
@@ -194,7 +195,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/certificates — Create new certificate
-router.post('/', requireRole('admin', 'user'), async (req, res) => {
+router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const errors = validateCertificateInput(req.body, { requireIdentity: true });
@@ -286,7 +287,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // POST /api/certificates/batch — Generate placeholder one-time certificates without recipient identity
-router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
+router.post('/batch', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const quantity = parseInt(req.body.quantity);

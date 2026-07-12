@@ -818,6 +818,7 @@ test('HR staff profile write smoke is explicit, QA-only, browser-driven, and res
     assert.match(script, /#editSave/);
     assert.match(script, /exact one-field payload/);
     assert.match(script, /double-click sends one request/);
+    assert.match(script, /T00:00:00/);
     assert.match(script, /assertDrawerPersistence/);
     assert.match(script, /defensive profile restore failed/);
     assert.match(script, /restoreError/);

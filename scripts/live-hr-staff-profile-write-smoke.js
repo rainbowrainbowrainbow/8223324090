@@ -100,7 +100,11 @@ async function loadProfile(base, token) {
 }
 
 function nullable(value) { return value === null || value === undefined || value === '' ? null : String(value); }
-function comparable(value) { return Array.isArray(value) ? JSON.stringify(value.map(String)) : nullable(value); }
+function comparable(value) {
+    if (Array.isArray(value)) return JSON.stringify(value.map(String));
+    const normalized = nullable(value);
+    return /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?Z$/.test(normalized || '') ? normalized.slice(0, 10) : normalized;
+}
 
 function requirePlaywright() {
     try { return require('playwright'); } catch (error) {

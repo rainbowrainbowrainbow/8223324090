@@ -4,6 +4,13 @@
 
 ---
 
+## v0.78.101 - HR write-QA: date normalization
+
+### HR / Live write-QA / (12.07.2026) [codex]
+- **Нормалізація дат** — live smoke однаково порівнює HTML date та PostgreSQL ISO datetime, зберігаючи сувору перевірку payload, persistence і restore.
+
+---
+
 ## v0.78.100 - HR-картка: безпечні дії та write-QA
 
 ### HR / Картка працівника / (12.07.2026) [codex]

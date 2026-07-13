@@ -6890,6 +6890,9 @@ function staffProfileFieldValue(el) {
     if (!el) return '';
     if (el.matches?.('input[type="checkbox"],input[type="radio"]')) return el.checked ? '1' : '0';
     if (el.matches?.('input[type="file"]')) return Array.from(el.files || []).map(file => `${file.name}:${file.size}`).join(',');
+    if (el.matches?.('select[multiple]')) {
+        return Array.from(el.selectedOptions || []).map(option => option.value).sort().join(',');
+    }
     return el.value || '';
 }
 

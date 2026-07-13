@@ -99,4 +99,14 @@ describe('staff shift preferences contract', () => {
         assert.match(staffPage, /applyScheduleShiftPreference\([\s\S]*force: true/);
         assert.doesNotMatch(hrPage, /UPDATE\s+staff_schedule/i);
     });
+
+    it('detects additions and removals of every additional profession before refreshing the schedule', () => {
+        const fieldValueStart = hrPage.indexOf('function staffProfileFieldValue(el)');
+        const fieldValueEnd = hrPage.indexOf('\nfunction staffProfileScopeFieldSnapshot', fieldValueStart);
+        const fieldValueBlock = hrPage.slice(fieldValueStart, fieldValueEnd);
+
+        assert.match(fieldValueBlock, /select\[multiple\]/);
+        assert.match(fieldValueBlock, /Array\.from\(el\.selectedOptions \|\| \[\]\)/);
+        assert.match(fieldValueBlock, /\.map\(option => option\.value\)\.sort\(\)\.join\(','\)/);
+    });
 });

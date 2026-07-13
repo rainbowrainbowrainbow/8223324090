@@ -34,7 +34,7 @@ test('HR shift segments migration is additive and governed', () => {
     assert.match(migration, /-- SAFETY:/);
     assert.match(migration, /-- ROLLBACK:/);
     assert.match(migration, /-- DATA_SCOPE:/);
-    assert.match(migration, /LOCK TABLE staff, hr_shifts, staff_schedule IN SHARE ROW EXCLUSIVE MODE/);
+    assert.match(migration, /LOCK TABLE hr_shifts IN SHARE ROW EXCLUSIVE MODE/);
 
     assert.match(migration, /CREATE TABLE IF NOT EXISTS hr_shift_segments/);
     assert.match(migration, /id BIGSERIAL PRIMARY KEY/);
@@ -81,11 +81,8 @@ test('legacy HR shifts backfill to one equivalent segment without additional rol
     assert.match(migrationSql, /IF missing_profession_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 cannot backfill % hr_shifts rows without profession_key'/);
     assert.match(migrationSql, /IF noncanonical_profession_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 cannot backfill % hr_shifts rows with noncanonical profession_key'/);
     assert.match(migrationSql, /BTRIM\(profession_key\) !~ '\^\[a-z0-9_:-\]\{1,64\}\$'/);
-    assert.match(migrationSql, /WITH eligible_schedule_rows AS \([^]*?LEFT JOIN hr_shifts hs[^]*?ss\.status IN \('working', 'remote'\)[^]*?hs\.id IS NULL/);
-    assert.match(migrationSql, /COALESCE\(\s*NULLIF\(BTRIM\(ss\.profession_key\), ''\),\s*NULLIF\(BTRIM\(s\.role_type\), ''\)\s*\) AS profession_key/);
-    assert.match(migrationSql, /IF noncanonical_schedule_profession_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 found % eligible staff_schedule-only rows with noncanonical profession_key'/);
-    assert.match(migrationSql, /jsonb_array_elements_text\(secondary_professions\) AS secondary\(value\)/);
-    assert.match(migrationSql, /IF unassigned_schedule_profession_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 found % eligible staff_schedule-only rows whose profession is absent from the staff HR card'/);
+    assert.doesNotMatch(migrationSql, /\bstaff_schedule\b/i);
+    assert.doesNotMatch(migrationSql, /eligible_schedule_rows/i);
     assert.match(migrationSql, /IF zero_length_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 cannot backfill % zero-length hr_shifts rows'/);
     assert.match(migrationSql, /IF null_break_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 cannot backfill % hr_shifts rows with NULL break_minutes'/);
     assert.match(migrationSql, /IF negative_break_count > 0 THEN\s+RAISE EXCEPTION\s+'Migration 287 cannot backfill % hr_shifts rows with negative break_minutes'/);

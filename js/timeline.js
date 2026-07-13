@@ -5881,6 +5881,14 @@ function _validateDragDrop(state, timeDelta) {
         return { valid: false, error: 'Модель таймлайну не завантажена' };
     }
 
+    const targetLine = (AppState.lines || []).find(line => String(line?.id) === String(intent.targetLineId));
+    if (intent.lineChanged && (targetLine?.assignmentAllowed === false || targetLine?.isUnavailable === true)) {
+        return {
+            valid: false,
+            error: targetLine.warning || 'Ця лінія недоступна для нових призначень.'
+        };
+    }
+
     const result = model.evaluateTimelineCandidateConflicts(intent, allBookings, {
         dayStartMin: s.dayStartMin,
         dayEndMin: s.dayEndMin,
@@ -7060,14 +7068,6 @@ async function renderDaySectionHtml(date, options = {}) {
         const lineBookings = timelineBookingsForLine(bookings, line);
         lineBookings.forEach(booking => miniMatchedBookingIds.add(String(booking.id)));
         html += renderMiniLineHtml(line, lineBookings, start, end, cellWidth);
-    }
-
-    const targetLine = (AppState.lines || []).find(line => String(line?.id) === String(intent.targetLineId));
-    if (intent.lineChanged && (targetLine?.assignmentAllowed === false || targetLine?.isUnavailable === true)) {
-        return {
-            valid: false,
-            error: targetLine.warning || 'Ця лінія недоступна для нових призначень.'
-        };
     }
     const miniUnmatchedBookings = bookings.filter(booking => !miniMatchedBookingIds.has(String(booking.id)));
     if (miniUnmatchedBookings.length) {

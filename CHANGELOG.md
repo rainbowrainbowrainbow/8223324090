@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.8 - Стабільний тижневий таймлайн
+
+### Timeline / Reliability / (13.07.2026) [codex]
+- **Виправлено week mode** — тижневий renderer більше не звертається до drag-only `intent` і стабільно будує всі 7 денних секцій.
+- **Unavailable orphan guard** — перевірку недоступної лінії повернуто у canonical drag validation, тому нове призначення блокується до server save.
+- **Behavioral regression** — focused tests відтворюють повний week render з unavailable line та drag на недоступний target.
+
+---
+
 ## v0.79.7 - Стабільний URL bootstrap таймлайну
 
 ### Timeline / Reliability / (13.07.2026) [codex]

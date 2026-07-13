@@ -161,7 +161,9 @@ function createHarness(options = {}) {
             initBookingDrag,
             initBookingResize,
             handleResizeEnd: _handleResizeEnd,
+            validateDragDrop: _validateDragDrop,
             renderTimeline,
+            renderDaySectionHtml,
             syncTimelineWebSocketDateSubscriptions,
             changeDate,
             setTimelineView,
@@ -578,6 +580,65 @@ test('timeline WebSocket subscriptions follow day and active week dates', () => 
         '2026-05-31',
         '2026-06-01'
     ]);
+});
+
+test('week mode renders unavailable lines without leaking drag-only intent state', async () => {
+    const { window, api, consoleErrors } = createHarness();
+    window.AppState.multiDayMode = true;
+    window.AppState.daysToShow = 7;
+    window.apiGetLines = async () => [{
+        id: 'orphan-line',
+        name: 'Unavailable orphan',
+        color: '#ef4444',
+        assignmentAllowed: false,
+        isUnavailable: true,
+        warning: 'Unavailable for new assignments'
+    }];
+    window.apiGetBookings = async () => [];
+
+    await api.renderTimeline();
+
+    assert.equal(window.document.querySelectorAll('.day-section').length, 7);
+    assert.match(window.document.getElementById('timelineLines').textContent, /Unavailable orphan/);
+    assert.equal(consoleErrors.some(args => args.some(value => /intent is not defined/.test(String(value)))), false);
+});
+
+test('drag validation rejects an unavailable target line before conflict evaluation', () => {
+    const { window, api } = createHarness();
+    const booking = {
+        id: 'booking-1',
+        date: '2026-05-26',
+        time: '14:00',
+        duration: 60,
+        lineId: 'line-1',
+        status: 'confirmed'
+    };
+    window.AppState.lines = [
+        { id: 'line-1', name: 'Active line', assignmentAllowed: true },
+        {
+            id: 'line-2',
+            name: 'Unavailable orphan',
+            assignmentAllowed: false,
+            isUnavailable: true,
+            warning: 'This animator is unavailable'
+        }
+    ];
+    api.setTimelineCacheEntry(window.AppState.cachedBookings, booking.date, [booking]);
+
+    const result = api.validateDragDrop({
+        booking,
+        draggedBooking: booking,
+        groupBookings: [booking],
+        startMin: 14 * 60,
+        currentMin: 14 * 60,
+        startLineId: 'line-1',
+        newLineId: 'line-2',
+        dayStartMin: 12 * 60,
+        dayEndMin: 20 * 60
+    }, 0);
+
+    assert.equal(result.valid, false);
+    assert.equal(result.error, 'This animator is unavailable');
 });
 
 test('booking tooltip lifecycle creates one accessible singleton without pre-rendered HTML', () => {

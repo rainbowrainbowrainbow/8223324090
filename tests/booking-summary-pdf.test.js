@@ -89,6 +89,29 @@ function qualitySummary() {
                     paymentStatus: 'paid'
                 }
             }
+        },
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-PDF-QUALITY',
+            group: {
+                id: 'BQ-PDF-QUALITY',
+                primaryBookingId: 'BK-PDF-QUALITY',
+                date: '2026-06-23',
+                room: 'Рок',
+                guestArrivalTime: '13:30',
+                source: 'test',
+                updatedAt: '2026-06-22T10:15:00.000Z'
+            },
+            arrival: {
+                bookingId: 'BK-PDF-QUALITY',
+                date: '2026-06-23',
+                time: '13:30',
+                room: 'Рок',
+                source: 'banquet_group',
+                groupSource: 'test',
+                updatedAt: '2026-06-22T10:15:00.000Z'
+            },
+            members: []
         }
     });
 }
@@ -258,7 +281,7 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.doesNotMatch(termsText, /Свій торт - 500грн/);
 
     assert.deepEqual(clientView.schedule.map(item => `${item.time} ${item.title}`), [
-        '13:45 Прихід гостей',
+        '13:30 Прихід гостей',
         '13:45 Паперове неон-шоу',
         '15:00 Винос торта',
         '15:15 Видача меню'

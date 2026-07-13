@@ -103,7 +103,44 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
             duration: 30,
             room: 'Марвел',
             _banquetLink: { relation_type: 'banquet_activity', label: 'додатково' }
-        }]
+        }],
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-SUMMARY',
+            group: {
+                id: 'BQ-SUMMARY',
+                primaryBookingId: 'BK-SUMMARY',
+                date: '2099-06-20',
+                room: 'Марвел',
+                guestArrivalTime: '13:30',
+                source: 'test',
+                updatedAt: '2099-06-01T10:00:00.000Z'
+            },
+            arrival: {
+                bookingId: 'BK-SUMMARY',
+                date: '2099-06-20',
+                time: '13:30',
+                room: 'Марвел',
+                source: 'banquet_group',
+                groupSource: 'test',
+                updatedAt: '2099-06-01T10:00:00.000Z'
+            },
+            members: [{
+                bookingId: 'BK-ACTIVITY',
+                role: 'activity',
+                booking: {
+                    id: 'BK-ACTIVITY',
+                    program_name: 'Аквагрим',
+                    price: 700,
+                    time: '15:00',
+                    category: 'activity',
+                    lineName: 'Максим',
+                    duration: 30,
+                    room: 'Марвел'
+                },
+                technicalChildren: []
+            }]
+        }
     });
 
     assert.equal(summary.success, true);
@@ -159,14 +196,14 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.serviceEvents[0].title, 'Винос торта');
     assert.equal(summary.serviceEvents[0].meta.time, '17:10');
     assert.deepEqual(summary.schedule.map(item => `${item.time} ${item.title}`), [
-        '14:00 Прихід гостей',
+        '13:30 Прихід гостей',
         '14:00 День народження',
         '15:00 Аквагрим',
         '16:30 Видача меню',
         '16:30 Видача: Піца',
         '17:10 Винос торта'
     ]);
-    assert.equal(summary.schedule.filter(item => item.time === '14:00').length, 2);
+    assert.equal(summary.schedule.filter(item => item.time === '14:00').length, 1);
     assert.deepEqual(summary.schedule.find(item => item.title === 'Видача меню')?.modes, ['client']);
     assert.deepEqual(summary.schedule.find(item => item.title === 'Видача: Піца')?.modes, ['kitchen', 'staff']);
     assert.deepEqual(summary.responsible.rows.map(row => `${row.label}:${row.name || '—'}`), [

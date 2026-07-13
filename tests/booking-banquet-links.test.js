@@ -1478,7 +1478,7 @@ test('GET banquet read endpoints prefer persisted group arrival when primary boo
     });
 });
 
-test('GET banquet read endpoint keeps legacy primary-booking fallback with warning', async () => {
+test('GET banquet read endpoint does not infer arrival from primary booking time', async () => {
     await withApp([
         bookingRow({ id: 'BK-LEGACY-ROOT', time: '14:20', customer_id: 101, room: 'Room A' })
     ], [], async ({ baseUrl }) => {
@@ -1486,16 +1486,10 @@ test('GET banquet read endpoint keeps legacy primary-booking fallback with warni
         const data = await res.json();
 
         assert.equal(res.status, 200, JSON.stringify(data));
-        assertBanquetArrival(data, {
-            bookingId: 'BK-LEGACY-ROOT',
-            date: '2099-06-01',
-            time: '14:20',
-            room: 'Room A',
-            source: 'legacy_primary_booking',
-            groupSource: 'manual',
-            updatedAt: '2099-01-01T00:00:00.000Z'
-        });
-        assert.ok(data.warnings.some(warning => warning.code === 'legacy_primary_booking'));
+        assert.equal(data.arrival, null);
+        assert.equal(data.banquetArrival, null);
+        assert.ok(data.warnings.some(warning => warning.code === 'guest_arrival_missing'));
+        assert.equal(data.warnings.some(warning => warning.code === 'legacy_primary_booking'), false);
     }, {
         banquetGroups: [{
             id: 'BQ-LEGACY',
@@ -2927,22 +2921,23 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         const expectedArrival = {
             bookingId: 'BK-ROOT',
             date: '2099-06-01',
-            time: '12:00',
+            time: '11:45',
             room: 'Room A',
-            source: 'legacy_primary_booking',
+            source: 'banquet_group',
             groupSource: 'test',
             updatedAt: '2099-01-01T00:00:00.000Z'
         };
         assert.deepEqual(data.arrival, expectedArrival);
         assert.deepEqual(data.banquetArrival, expectedArrival);
         assert.equal(data.event.date, data.arrival.date);
-        assert.equal(data.event.time, data.arrival.time);
+        assert.equal(data.event.time, '12:00');
+        assert.notEqual(data.event.time, data.arrival.time);
         assert.equal(data.event.room, data.arrival.room);
         assert.deepEqual(data.finance.rows.map(row => row.key), ['total', 'deposit']);
         assert.equal(data.finance.rows.find(row => row.key === 'total')?.amount, 1700);
         assert.equal(data.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
         assert.deepEqual(data.schedule.map(item => `${item.time} ${item.title}`), [
-            '12:00 Прихід гостей',
+            '11:45 Прихід гостей',
             '12:00 Banquet root',
             '13:00 Foam show'
         ]);
@@ -2970,10 +2965,12 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
             customer_id: null,
             date: '2099-06-01',
             room: 'Room A',
+            guest_arrival_time: '11:45',
             group_name: 'Banquet root',
             status: 'active',
             source: 'test',
-            meta: {}
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
         }],
         banquetMemberships: [{
             id: 1,
@@ -3041,10 +3038,12 @@ test('GET banquet summary reads confirmed deposit from canonical banquet_deposit
             customer_id: null,
             date: '2099-06-01',
             room: 'Room A',
+            guest_arrival_time: '11:45',
             group_name: 'Banquet root',
             status: 'active',
             source: 'test',
-            meta: {}
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
         }],
         banquetMemberships: [{
             id: 1,
@@ -3149,6 +3148,28 @@ test('GET banquet summary PDF returns clean application/pdf response', async () 
             instagram: null,
             source: null,
             notes: null
+        }],
+        banquetGroups: [{
+            id: 'BQ-PDF-ROUTE',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-PDF-ROUTE',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            guest_arrival_time: '13:30',
+            group_name: 'Paper neon banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: '2099-01-01T10:15:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-PDF-ROUTE',
+            business_context: 'event_genix',
+            booking_id: 'BK-PDF-ROUTE',
+            role: 'primary',
+            sort_order: 10
         }]
     });
 });
@@ -3215,8 +3236,13 @@ test('banquet summary reads workspace comments and does not borrow booking group
             group: {
                 id: 'BQ-SUMMARY',
                 primaryBookingId: primary.id,
+                date: '2099-06-02',
+                room: 'Room B',
+                guestArrivalTime: '14:10',
                 groupName: 'canonical banquet group',
-                status: 'active'
+                status: 'active',
+                source: 'test_arrival',
+                updatedAt: new Date('2099-01-01T00:00:00.123Z')
             },
             members: [
                 { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary, technicalChildren: [] },
@@ -3228,7 +3254,8 @@ test('banquet summary reads workspace comments and does not borrow booking group
                 date: '2099-06-02',
                 time: '14:10',
                 room: 'Room B',
-                source: 'test_arrival',
+                source: 'banquet_group',
+                groupSource: 'test_arrival',
                 updatedAt: new Date('2099-01-01T00:00:00.123Z')
             }
         }
@@ -3239,8 +3266,8 @@ test('banquet summary reads workspace comments and does not borrow booking group
         date: '2099-06-02',
         time: '14:10',
         room: 'Room B',
-        source: 'test_arrival',
-        groupSource: 'banquet_group',
+        source: 'banquet_group',
+        groupSource: 'test_arrival',
         updatedAt: '2099-01-01T00:00:00.123Z'
     });
     assert.deepEqual(summary.banquetArrival, summary.arrival);

@@ -77,6 +77,24 @@ test('arrival audit separates resolvable groups and unambiguous legacy component
     assert.equal(report.summary.ambiguousOrMissingPrimary, 1);
 });
 
+test('arrival audit reports inactive legacy components without blocking the required-field gate', () => {
+    const report = buildBanquetGuestArrivalAudit({
+        bookingRows: [
+            { id: 'cancelled-a', business_context: 'event_genix', date: '2026-07-20', time: '12:00', category: 'show', status: 'cancelled' },
+            { id: 'cancelled-b', business_context: 'event_genix', date: '2026-07-20', time: '13:00', category: 'quest', status: 'cancelled' }
+        ],
+        legacyLinks: [{ business_context: 'event_genix', booking_a_id: 'cancelled-a', booking_b_id: 'cancelled-b', relation_type: 'banquet_activity' }]
+    });
+
+    assert.equal(report.summary.legacyLinkOnlyGroups, 1);
+    assert.equal(report.summary.inactiveOrUnsupportedLegacyFlows, 1);
+    assert.equal(report.summary.ambiguousOrMissingPrimary, 0);
+    assert.equal(report.summary.unresolvedSupportedLegacyFlows, 0);
+    assert.equal(report.summary.readyForRequiredConstraint, true);
+    assert.equal(report.inactiveOrUnsupportedLegacyFlows[0].reason, 'inactive_component');
+    assert.deepEqual(report.inactiveOrUnsupportedLegacyFlows[0].inactiveBookingIds, ['cancelled-a', 'cancelled-b']);
+});
+
 test('read-only arrival audit queries do not mutate bookings or banquet data', async () => {
     const queries = [];
     const db = {
@@ -117,4 +135,17 @@ test('migration 285 is governed, idempotent, NULL-only, and leaves hardening to 
     assert.match(migration, /\^\(\[01\]\[0-9\]\|2\[0-3\]\):\[0-5\]\[0-9\]\$/);
     assert.doesNotMatch(migration, /ALTER\s+COLUMN\s+guest_arrival_time\s+SET\s+NOT\s+NULL/i);
     assert.doesNotMatch(migration, /UPDATE\s+bookings\b/i);
+});
+
+test('migration 286 refuses incomplete data and only hardens guest arrival nullability', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '286_banquet_guest_arrival_required.sql'), 'utf8');
+    assert.match(migration, /-- MIGRATION_KIND: schema/);
+    assert.match(migration, /-- SAFETY:/);
+    assert.match(migration, /-- ROLLBACK:/);
+    assert.match(migration, /guest_arrival_time IS NULL/i);
+    assert.match(migration, /guest_arrival_time !~ '\^\(\[01\]\[0-9\]\|2\[0-3\]\):\[0-5\]\[0-9\]\$'/i);
+    assert.match(migration, /RAISE EXCEPTION/i);
+    assert.match(migration, /ALTER\s+COLUMN\s+guest_arrival_time\s+SET\s+NOT\s+NULL/i);
+    assert.match(migration, /ALTER\s+COLUMN\s+guest_arrival_time\s+DROP\s+NOT\s+NULL/i);
+    assert.doesNotMatch(migration, /(?:DROP\s+COLUMN|UPDATE\s+bookings|DELETE\s+FROM|TRUNCATE)/i);
 });

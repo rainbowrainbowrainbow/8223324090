@@ -1769,6 +1769,7 @@ function buildBanquetGuestArrivalAudit({
 
     const legacyLinkOnlyGroups = [];
     const singleBanquetAnchors = [];
+    const inactiveOrUnsupportedLegacyFlows = [];
     for (const component of legacyAuditComponents(legacyLinks)) {
         const hasMembership = component.bookingIds.some(bookingId => membershipsByContextAndBooking.has(`${component.businessContext}\u0000${bookingId}`));
         if (hasMembership) continue;
@@ -1781,6 +1782,22 @@ function buildBanquetGuestArrivalAudit({
             date: bookings.map(row => row.date).filter(Boolean).sort()[0] || null
         };
         legacyLinkOnlyGroups.push(record);
+        const knownBookingIds = new Set(bookings.map(row => cleanId(row.id)).filter(Boolean));
+        const missingBookingIds = component.bookingIds.filter(bookingId => !knownBookingIds.has(bookingId));
+        const inactiveBookingIds = bookings.filter(row => !isActiveBookingRow(row)).map(row => cleanId(row.id)).filter(Boolean);
+        const technicalBookingIds = bookings.filter(row => !isRootBooking(row)).map(row => cleanId(row.id)).filter(Boolean);
+        if (missingBookingIds.length || inactiveBookingIds.length || technicalBookingIds.length) {
+            inactiveOrUnsupportedLegacyFlows.push({
+                ...record,
+                reason: missingBookingIds.length
+                    ? 'booking_missing'
+                    : (inactiveBookingIds.length ? 'inactive_component' : 'technical_child_component'),
+                missingBookingIds,
+                inactiveBookingIds,
+                technicalBookingIds
+            });
+            continue;
+        }
         const anchors = bookings.filter(isBanquetAnchor);
         if (anchors.length === 1) {
             const anchor = anchors[0];
@@ -1810,6 +1827,7 @@ function buildBanquetGuestArrivalAudit({
             groupPrimaryCandidates: groupPrimaryCandidates.length,
             legacyLinkOnlyGroups: legacyLinkOnlyGroups.length,
             singleBanquetAnchors: singleBanquetAnchors.length,
+            inactiveOrUnsupportedLegacyFlows: inactiveOrUnsupportedLegacyFlows.length,
             ambiguousOrMissingPrimary: ambiguousOrMissingPrimary.length,
             unresolvedSupportedLegacyFlows: unresolvedSupportedLegacyFlows.length,
             readyForRequiredConstraint: activeGroupsWithNull.length === 0 && unresolvedSupportedLegacyFlows.length === 0
@@ -1819,6 +1837,7 @@ function buildBanquetGuestArrivalAudit({
         groupPrimaryCandidates,
         legacyLinkOnlyGroups,
         singleBanquetAnchors,
+        inactiveOrUnsupportedLegacyFlows,
         ambiguousOrMissingPrimary,
         unresolvedSupportedLegacyFlows
     };
@@ -1876,23 +1895,16 @@ async function auditBanquetGuestArrival({ db = defaultPool, businessContext = nu
 function buildBanquetArrivalProjection(primaryBooking = null, group = null, snapshotSource = null) {
     const bookingId = cleanId(primaryBooking?.id || primaryBooking?.bookingId || group?.primaryBookingId);
     const groupArrivalTime = normalizeGuestArrivalTime(group?.guestArrivalTime || group?.guest_arrival_time);
-    const legacyPrimaryTime = normalizeGuestArrivalTime(primaryBooking?.time);
-    const time = groupArrivalTime || legacyPrimaryTime;
-    if (!bookingId && !time) return null;
-    const usesPersistedGroupArrival = Boolean(groupArrivalTime);
+    if (!groupArrivalTime) return null;
     return {
         bookingId,
-        date: primaryBooking?.date || group?.date || null,
-        time: time || null,
-        room: primaryBooking?.room || group?.room || null,
-        source: usesPersistedGroupArrival
-            ? BANQUET_GROUP_SOURCE.GROUP
-            : (legacyPrimaryTime ? 'legacy_primary_booking' : (group?.source || snapshotSource || null)),
+        date: group?.date || primaryBooking?.date || null,
+        time: groupArrivalTime,
+        room: group?.room || primaryBooking?.room || null,
+        source: BANQUET_GROUP_SOURCE.GROUP,
         groupSource: group?.source || snapshotSource || null,
         updatedAt: group?.updatedAt
             || group?.updated_at
-            || primaryBooking?.updatedAt
-            || primaryBooking?.updated_at
             || null
     };
 }
@@ -1951,9 +1963,9 @@ function buildSnapshot({
     if (!schemaAvailable) warnings.push({ code: 'banquet_group_schema_unavailable', message: 'Banquet group schema is not available; legacy links were used if possible.' });
     if (source === BANQUET_GROUP_SOURCE.LEGACY) warnings.push({ code: 'legacy_banquet_links_fallback', message: 'Loaded from legacy booking_banquet_links because no banquet group exists yet.' });
     if (source === BANQUET_GROUP_SOURCE.SINGLE) warnings.push({ code: 'banquet_group_not_found', message: 'Booking is not attached to a banquet group.' });
-    if (arrival?.source === 'legacy_primary_booking') warnings.push({
-        code: 'legacy_primary_booking',
-        message: 'Guest arrival temporarily falls back to the primary booking time until the banquet group is backfilled.'
+    if (group && !arrival) warnings.push({
+        code: 'guest_arrival_missing',
+        message: 'Banquet group has no valid persisted guest arrival time.'
     });
     if (!roleBuckets.primary) warnings.push({ code: 'primary_booking_missing', message: 'Primary banquet booking could not be determined.' });
     if (!roleBuckets.kitchen.length) warnings.push({ code: 'kitchen_booking_missing', message: 'No kitchen/menu booking was detected for this banquet.' });

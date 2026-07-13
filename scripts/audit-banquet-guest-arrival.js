@@ -39,6 +39,7 @@ function printSummary(report, businessContext = null) {
     console.log(`Group primary candidates: ${summary.groupPrimaryCandidates || 0}`);
     console.log(`Legacy link-only groups: ${summary.legacyLinkOnlyGroups || 0}`);
     console.log(`Single banquet anchors: ${summary.singleBanquetAnchors || 0}`);
+    console.log(`Inactive or unsupported legacy flows: ${summary.inactiveOrUnsupportedLegacyFlows || 0}`);
     console.log(`Ambiguous or missing primary: ${summary.ambiguousOrMissingPrimary || 0}`);
     console.log(`Unresolved supported legacy flows: ${summary.unresolvedSupportedLegacyFlows || 0}`);
     console.log(`Ready for required constraint: ${summary.readyForRequiredConstraint ? 'yes' : 'no'}`);

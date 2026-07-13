@@ -1175,43 +1175,42 @@ function normalizeBanquetArrivalProjection(candidate = null, fallbackBooking = {
     const source = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : {};
     const group = fallbackGroup && typeof fallbackGroup === 'object' && !Array.isArray(fallbackGroup) ? fallbackGroup : {};
     const groupArrivalTime = cleanText(valueOf(group, 'guestArrivalTime', 'guest_arrival_time'), 5);
+    const sourceKind = cleanText(valueOf(source, 'source'), 120);
+    const sourceArrivalTime = sourceKind === 'banquet_group'
+        ? cleanText(valueOf(source, 'time'), 5)
+        : null;
+    const persistedArrivalTime = groupArrivalTime || sourceArrivalTime;
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(persistedArrivalTime || '')) return null;
     const arrival = {
         bookingId: cleanText(valueOf(source, 'bookingId', 'booking_id'), 100) || bookingIdOf(fallbackBooking),
-        date: cleanText(valueOf(source, 'date'), 40)
-            || cleanText(valueOf(fallbackBooking, 'date'), 40)
-            || cleanText(valueOf(group, 'date'), 40),
-        time: cleanText(valueOf(source, 'time'), 20)
-            || groupArrivalTime
-            || cleanText(valueOf(fallbackBooking, 'time'), 20),
-        room: cleanText(valueOf(source, 'room'), 120)
-            || cleanText(valueOf(fallbackBooking, 'room'), 120)
-            || cleanText(valueOf(group, 'room'), 120),
-        source: cleanText(valueOf(source, 'source'), 120)
-            || (groupArrivalTime ? 'banquet_group' : null)
-            || cleanText(fallbackSource, 120)
-            || null,
+        date: cleanText(valueOf(group, 'date'), 40)
+            || cleanText(valueOf(source, 'date'), 40)
+            || cleanText(valueOf(fallbackBooking, 'date'), 40),
+        time: persistedArrivalTime,
+        room: cleanText(valueOf(group, 'room'), 120)
+            || cleanText(valueOf(source, 'room'), 120)
+            || cleanText(valueOf(fallbackBooking, 'room'), 120),
+        source: 'banquet_group',
         groupSource: cleanText(valueOf(source, 'groupSource', 'group_source'), 120)
             || cleanText(valueOf(group, 'source'), 120)
             || cleanText(fallbackSource, 120)
             || null,
         updatedAt: cleanTimestamp(valueOf(source, 'updatedAt', 'updated_at'))
             || cleanTimestamp(valueOf(group, 'updatedAt', 'updated_at'))
-            || cleanTimestamp(valueOf(fallbackBooking, 'updatedAt', 'updated_at'))
             || null
     };
-    return arrival.bookingId || arrival.date || arrival.time || arrival.room ? arrival : null;
+    return arrival;
 }
 
 function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, fallbackLinkedBookings = []) {
     if (!resolvedGroup || typeof resolvedGroup !== 'object') {
-        const arrival = normalizeBanquetArrivalProjection(null, fallbackMainBooking, null, 'current_booking');
         return {
             source: 'current_booking',
             group: null,
             groupId: null,
             warnings: [],
-            arrival,
-            banquetArrival: arrival,
+            arrival: null,
+            banquetArrival: null,
             primaryBooking: fallbackMainBooking,
             kitchenBooking: fallbackMainBooking,
             activityBookings: (Array.isArray(fallbackLinkedBookings) ? fallbackLinkedBookings : []).filter(isRootBooking),
@@ -1650,7 +1649,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     };
     const schedule = buildBanquetSchedule({
         event: eventSummary,
-        arrival,
+        arrival: arrival || {},
         orderRows,
         serviceEvents: serviceEventRows,
         warnings

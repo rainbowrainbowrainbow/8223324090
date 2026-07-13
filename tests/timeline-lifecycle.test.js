@@ -170,6 +170,7 @@ function createHarness(options = {}) {
             getLinesForDate,
             getBookingsForDate,
             timelineCurrentView,
+            completeTimelineViewUrlBootstrap,
             captureTimelineRequestToken,
             timelineRequestTokenIsCurrent,
             timelineCacheScopeKey,
@@ -310,22 +311,28 @@ test('timelineView deep link is bootstrap-only and user switches replace the URL
 });
 
 test('timelineView deep link survives delayed business-context bootstrap', () => {
-    let ready = false;
+    let scope = 'early';
     const context = {
-        current: () => ready ? ({ apiValue: 'event_genix', key: 'event_genix' }) : null,
-        state: () => ready ? ({ activeBusinessContext: 'event_genix' }) : ({}),
+        current: () => ({ apiValue: 'event_genix', key: 'event_genix' }),
+        state: () => ({ activeBusinessContext: 'event_genix' }),
         presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
-        storageKey: name => `${ready ? 'ready' : 'early'}_${name}`
+        storageKey: name => `${scope}_${name}`
     };
     const { api } = createHarness({
         url: 'http://localhost/?timelineView=animators',
         timelineContext: context,
-        initialStorage: { ready_timeline_view: 'rooms' }
+        initialStorage: {
+            hydrated_timeline_view: 'rooms',
+            later_timeline_view: 'rooms'
+        }
     });
 
     assert.equal(api.timelineCurrentView(), 'animators');
-    ready = true;
+    scope = 'hydrated';
     assert.equal(api.timelineCurrentView(), 'animators');
+    api.completeTimelineViewUrlBootstrap();
+    scope = 'later';
+    assert.equal(api.timelineCurrentView(), 'rooms');
 });
 
 test('unknown timelineView behaves like an absent parameter and preserves stored choice', () => {

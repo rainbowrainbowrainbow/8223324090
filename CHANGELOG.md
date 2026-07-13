@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.7 - Стабільний URL bootstrap таймлайну
+
+### Timeline / Reliability / (13.07.2026) [codex]
+- **Стабільний URL bootstrap** — URL view зберігає пріоритет через усі проміжні storage scopes і завершується лише в `initializeTimeline()` після гідрації business profile.
+- **Behavioral regression** — тест відтворює кілька послідовних змін context storage key та перевіряє, що після bootstrap наступний user/context switch знову використовує scoped state.
+
+---
+
 ## v0.79.6 - Надійний deep link таймлайну
 
 ### Timeline / Reliability / (13.07.2026) [codex]

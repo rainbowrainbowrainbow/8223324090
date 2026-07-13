@@ -507,15 +507,13 @@ function defaultTimelineViewMode() {
 
 function timelineCurrentView() {
     const storageKey = timelineViewStorageKey();
-    const contextReady = timelineViewBusinessContextReady();
-    if (_timelineViewRuntime?.storageKey === storageKey && (!_timelineViewUrlBootstrapPending || !contextReady)) {
+    if (_timelineViewRuntime?.storageKey === storageKey) {
         if (_timelineViewRuntime.view === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) {
             _timelineViewRuntime = { storageKey, view: TIMELINE_VIEW_ANIMATORS };
         }
         return _timelineViewRuntime.view;
     }
     const urlView = _timelineViewUrlBootstrapPending ? timelineViewFromUrl() : null;
-    if (contextReady) _timelineViewUrlBootstrapPending = false;
     const storedRaw = localStorage.getItem(timelineViewStorageKey());
     const storedView = storedRaw ? normalizeStoredTimelineViewMode(storedRaw) : null;
     const defaultView = defaultTimelineViewMode();
@@ -530,8 +528,9 @@ function timelineCurrentView() {
     return resolved;
 }
 
-function timelineViewBusinessContextReady() {
-    return Boolean(window.TimelineBusinessContext?.state?.()?.activeBusinessContext);
+function completeTimelineViewUrlBootstrap() {
+    _timelineViewUrlBootstrapPending = false;
+    return timelineCurrentView();
 }
 
 function syncTimelineViewInUrl(view) {
@@ -1705,6 +1704,7 @@ function initializeTimeline() {
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     updateTimelineViewControls();
+    completeTimelineViewUrlBootstrap();
     Promise.resolve(renderTimeline())
         .then(() => maybeAutoOpenLeadConversionBooking())
         .catch(error => console.warn('[Timeline] lead conversion auto-open failed', error));

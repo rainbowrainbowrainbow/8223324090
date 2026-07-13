@@ -111,9 +111,9 @@ Preferred workflow for normal product work:
 
 ## Deploy And Branch Boundaries
 
-- Railway production target branch should be `codex/timeline-leads-hardening`.
-- Historical docs mention a `deployed` production branch, but it is not the active deploy source. Do not push release or rollback commits to `deployed` unless the user explicitly says Railway was reconfigured to that branch.
-- If Railway is temporarily attached to another branch, use that branch explicitly and pass it as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
+- Last verified Railway production source branch (2026-07-13): `codex/performance-hardening`.
+- Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
+- Historical docs mention `codex/timeline-leads-hardening` and `deployed`; neither is the active deploy source unless the user explicitly says Railway was reconfigured.
 - Never upload files through the GitHub UI.
 - If the current user task explicitly asks for deploy, use the active workflow and do not ask for a second deploy confirmation.
 - Stop and ask before changing Railway project settings, environment ownership, deploy owner, production secrets, or production settings.

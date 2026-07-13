@@ -221,14 +221,15 @@ If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone 
 
 ## Deploy And Branch Policy
 
-The production target branch for Railway should be `codex/timeline-leads-hardening`.
-Historical docs mention `deployed`, but that branch is not the active deploy
-source and must not be used for rollback or release pushes unless the owner
-explicitly reconfigures Railway back to it.
+The last verified production source branch for Railway (2026-07-13) is
+`codex/performance-hardening`. Confirm the active Railway source branch before
+every release or rollback because the attachment can change independently of
+the repository.
 
 - Do not deploy unless explicitly asked.
-- Push release/rollback commits to the confirmed Railway branch, normally `codex/timeline-leads-hardening`.
-- If Railway is temporarily attached to another branch, pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release proof notes.
+- Push release/rollback commits only to the confirmed active Railway branch.
+- Always pass the confirmed branch explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release proof notes; do not rely on a script fallback.
+- Treat `codex/timeline-leads-hardening` and `deployed` as historical deploy sources unless the owner explicitly confirms a Railway reconfiguration.
 - Do not change Railway settings or production env vars without explicit confirmation.
 - Do not upload files through GitHub UI.
 - Railway builds must use Node 22.x. If build logs show Node 18 or engine warnings for Node 20+/22+ dependencies, stop and fix the runtime baseline before treating the deployment as valid.

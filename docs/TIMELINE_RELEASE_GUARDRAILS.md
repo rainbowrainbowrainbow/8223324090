@@ -25,12 +25,13 @@
 npm run release:timeline-proof -- https://8223324090-production.up.railway.app
 ```
 
-За замовчуванням rollback-підказка в proof команді використовує production branch
-`codex/timeline-leads-hardening`. Якщо Railway тимчасово дивиться на іншу гілку,
-передай її явно:
+Fallback release-proof скрипта синхронізований з останньою перевіреною
+production-гілкою станом на 13.07.2026 — `codex/performance-hardening`. Перед
+кожним release все одно підтвердь активну Railway source branch read-only
+перевіркою і передай її явно, тому що Railway attachment може змінитися:
 
 ```bash
-RELEASE_DEPLOY_BRANCH=<active-railway-branch> npm run release:timeline-proof -- <live-url>
+RELEASE_DEPLOY_BRANCH=codex/performance-hardening npm run release:timeline-proof -- <live-url>
 ```
 
 Команда перевіряє:
@@ -64,7 +65,7 @@ npm run release:timeline-proof -- <live-url>
 1. Зафіксувати live branch target:
 
 ```bash
-RELEASE_DEPLOY_BRANCH=codex/timeline-leads-hardening
+RELEASE_DEPLOY_BRANCH=codex/performance-hardening
 git ls-remote origin "$RELEASE_DEPLOY_BRANCH"
 ```
 

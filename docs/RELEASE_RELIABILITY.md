@@ -6,11 +6,14 @@
 
 ## Production Branch
 
-Цільова production-гілка для Railway: `codex/timeline-leads-hardening`.
+Остання фактично перевірена production-гілка Railway (13.07.2026):
+`codex/performance-hardening`.
 
-Якщо Railway тимчасово підключений до іншої гілки, це треба явно вказати в
-командах через `RELEASE_DEPLOY_BRANCH=<branch>`. Не використовувати історичну
-гілку `deployed` як активний production source без окремого підтвердження.
+Перед кожним release або rollback треба read-only перевіркою підтвердити активну
+Railway source branch і явно передати її в командах через
+`RELEASE_DEPLOY_BRANCH=<branch>`. Не покладатися на fallback у release-proof
+скрипті. `codex/timeline-leads-hardening` і `deployed` є історичними deploy
+sources, доки власник окремо не підтвердить переналаштування Railway.
 
 ## Перед Деплоєм
 

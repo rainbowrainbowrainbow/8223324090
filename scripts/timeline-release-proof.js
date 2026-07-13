@@ -57,7 +57,7 @@ function configuredDeployBranch() {
     return process.env.RELEASE_DEPLOY_BRANCH
         || process.env.RAILWAY_DEPLOY_BRANCH
         || process.env.DEPLOY_BRANCH
-        || 'codex/timeline-leads-hardening';
+        || 'codex/performance-hardening';
 }
 
 function fail(message) {

@@ -5462,19 +5462,19 @@ check('Booking detail modal renders full banquet group details with controlled m
     && timelineConstructorCss.includes('.booking-banquet-warning')
     && globalModalsCss.includes('.booking-customer-block--priority'));
 check('Timeline booking accepts an existing customer card or a valid new customer draft',
-    htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
+    htmlContains('index.html', 'Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання.')
     && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')
-    && !htmlContains('index.html', 'bookingCreateCustomerBtn')
-    && bookingCode.includes("const nextMode = mode === 'new' ? 'search' : mode;")
+    && htmlContains('index.html', 'bookingCreateCustomerBtn')
+    && bookingCode.includes("const nextMode = mode === 'existing' || mode === 'new' ? mode : 'search';")
     && bookingCode.includes('function bookingCustomerDraftFromForm()')
     && bookingCode.includes('function bookingCustomerPayloadFromDraft')
-    && bookingCode.includes('const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid(customerDraft);')
+    && bookingCode.includes("BookingDrawerState.clientMode === 'new'")
     && bookingCode.includes('const hasClient = hasSelectedCustomer || hasNewCustomer;')
     && bookingCode.includes('customerDraft.search && !customerDraft.name')
     && bookingCode.includes('obj.customerId = parseInt(existingId, 10);')
     && bookingCode.includes('if (customer) obj.customer = customer;')
-    && !bookingCode.includes("setBookingClientMode('new'")
-    && !bookingCode.includes('bookingCreateCustomerBtn')
+    && bookingCode.includes("setBookingClientMode(nextMode, nextMode === 'new'")
+    && bookingCode.includes('bookingCreateCustomerBtn')
     && !bookingCode.includes('isValidNewBookingClient'));
 check('Timeline booking workspace keeps default program-only mode and enables room-first banquet workspace explicitly',
     htmlContains('index.html', 'id="bookingHasEventToggle" checked hidden aria-hidden="true"')

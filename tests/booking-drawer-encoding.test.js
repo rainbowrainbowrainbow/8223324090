@@ -57,7 +57,7 @@ test('booking create payload supports existing and new customer flows', () => {
     const validationBlock = bookingJs.slice(validationStart, validationEnd);
     assert.match(validationBlock, /const hasSelectedCustomer = Boolean\(document\.getElementById\('selectedCustomerId'\)\?\.value\);/);
     assert.match(validationBlock, /const customerDraft = bookingCustomerDraftFromForm\(\);/);
-    assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
+    assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer\s*&& BookingDrawerState\.clientMode === 'new'\s*&& bookingNewCustomerDraftIsValid\(customerDraft\);/);
     assert.match(validationBlock, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
     assert.match(validationBlock, /const hasSearchOnly = Boolean\(customerDraft\.search && !customerDraft\.name\);/);
     assert.ok(
@@ -71,7 +71,7 @@ test('booking create payload supports existing and new customer flows', () => {
     assert.ok(payloadStart >= 0 && payloadEnd > payloadStart, 'booking payload block exists');
     const payloadBlock = bookingJs.slice(payloadStart, payloadEnd);
     assert.match(payloadBlock, /const existingId = document\.getElementById\('selectedCustomerId'\)\?\.value;/);
-    assert.match(payloadBlock, /if \(existingId\) \{[\s\S]*obj\.customerId = parseInt\(existingId, 10\);[\s\S]*\} else \{[\s\S]*const customer = bookingCustomerPayloadFromDraft\(\);[\s\S]*if \(customer\) obj\.customer = customer;[\s\S]*\}/);
+    assert.match(payloadBlock, /if \(existingId\) \{[\s\S]*obj\.customerId = parseInt\(existingId, 10\);[\s\S]*\} else if \(BookingDrawerState\.clientMode === 'new'\) \{[\s\S]*const customer = bookingCustomerPayloadFromDraft\(\);[\s\S]*if \(customer\) obj\.customer = customer;[\s\S]*\}/);
 });
 
 test('booking customer validation and payload distinguish existing, new, search-only, and empty states', () => {
@@ -106,6 +106,7 @@ test('booking customer validation and payload distinguish existing, new, search-
             }
         },
         AppState: { selectedDate: '2099-02-10' },
+        BookingDrawerState: { clientMode: 'search' },
         getBookingFormData: () => ({ time: '12:00', room: 'Room A', programId: 'bubble' }),
         bookingBoundaryWarningsForFormData: () => [],
         isOptionalTimelineRoomBookingMode: () => false,
@@ -127,6 +128,7 @@ test('booking customer validation and payload distinguish existing, new, search-
     const hooks = context.__bookingCustomerHooks;
 
     setFields({ selectedCustomerId: '42' });
+    context.BookingDrawerState.clientMode = 'existing';
     assert.equal(hooks.getSmartBookingValidationState().canSubmit, true, 'selected existing customer is valid');
     assert.equal(hooks.bookingCustomerPayloadFromDraft(), null, 'empty draft does not create a customer payload');
 
@@ -139,6 +141,7 @@ test('booking customer validation and payload distinguish existing, new, search-
         customerChildBirthday: '2099-01-02',
         customerSource: 'instagram'
     });
+    context.BookingDrawerState.clientMode = 'new';
     assert.equal(hooks.getSmartBookingValidationState().canSubmit, true, 'new customer with a name is valid');
     assert.deepEqual(plain(hooks.bookingCustomerPayloadFromDraft()), {
         name: 'Test Customer',
@@ -150,12 +153,14 @@ test('booking customer validation and payload distinguish existing, new, search-
     });
 
     setFields({ customerSearch: 'Typed search text' });
+    context.BookingDrawerState.clientMode = 'search';
     const searchOnly = hooks.getSmartBookingValidationState();
     assert.equal(searchOnly.canSubmit, false, 'search-only text is not enough to create a customer');
     assert.deepEqual(plain(searchOnly.invalidFields), ['customerName']);
     assert.equal(hooks.bookingCustomerPayloadFromDraft(), null);
 
     setFields({});
+    context.BookingDrawerState.clientMode = 'search';
     const empty = hooks.getSmartBookingValidationState();
     assert.equal(empty.canSubmit, false, 'empty customer state is invalid');
     assert.deepEqual(plain(empty.invalidFields), ['customerSearch']);
@@ -720,8 +725,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(html, /id="bookingLeadDetailsToggle" hidden aria-hidden="true"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingModeSelector/);
     assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
-    assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
-    assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
+    assert.match(html, /bookingCreateCustomerBtn/);
+    assert.match(html, /Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання/);
     assert.match(bookingPanelHtml, /id="bookingCustomerContextPanel" class="booking-customer-context-panel"/);
     assert.match(bookingPanelHtml, /id="bookingSelectedCustomerCard" class="booking-selected-customer hidden"/);
     assert.ok(

@@ -1558,33 +1558,48 @@ function resetBookingLeadDetails() {
 }
 
 function setBookingClientMode(mode = 'search', options = {}) {
-    const nextMode = mode === 'new' ? 'search' : mode;
+    const nextMode = mode === 'existing' || mode === 'new' ? mode : 'search';
     BookingDrawerState.clientMode = nextMode;
     const selectedCard = document.getElementById('bookingSelectedCustomerCard');
     const newCustomerForm = document.getElementById('bookingNewCustomerForm');
     const searchState = document.getElementById('bookingCustomerSearchState');
+    const searchResults = document.getElementById('customerSearchResults');
+    const createBtn = document.getElementById('bookingCreateCustomerBtn');
     const changeBtn = document.getElementById('bookingChangeCustomerBtn');
     const modeLabel = document.getElementById('bookingCustomerModeLabel');
     const customerSearch = document.getElementById('customerSearch');
+    const customerName = document.getElementById('customerName');
     const hasSelected = Boolean(document.getElementById('selectedCustomerId')?.value);
+    const isNew = nextMode === 'new';
 
     if (selectedCard) selectedCard.classList.toggle('hidden', nextMode !== 'existing');
     if (newCustomerForm) {
-        newCustomerForm.classList.add('hidden');
-        newCustomerForm.hidden = true;
-        newCustomerForm.setAttribute('aria-hidden', 'true');
+        newCustomerForm.classList.toggle('hidden', !isNew);
+        newCustomerForm.hidden = !isNew;
+        newCustomerForm.setAttribute('aria-hidden', String(!isNew));
     }
     if (searchState && nextMode !== 'search') {
         searchState.classList.add('hidden');
         searchState.innerHTML = '';
     }
-    if (changeBtn) changeBtn.classList.toggle('hidden', !hasSelected);
+    if (searchResults && nextMode !== 'search') searchResults.classList.add('hidden');
+    if (createBtn) {
+        createBtn.classList.toggle('hidden', nextMode === 'existing');
+        createBtn.textContent = isNew ? 'До пошуку' : 'Новий клієнт';
+        createBtn.setAttribute('aria-expanded', String(isNew));
+    }
+    if (changeBtn) changeBtn.classList.toggle('hidden', nextMode !== 'existing' || !hasSelected);
     if (modeLabel) {
         if (nextMode === 'existing') modeLabel.textContent = 'Прикріплено існуючу картку клієнта.';
+        else if (isNew) modeLabel.textContent = 'Введіть дані нового клієнта.';
         else modeLabel.textContent = 'Знайдіть і виберіть існуючу картку клієнта.';
     }
     if (customerSearch) customerSearch.setAttribute('aria-expanded', nextMode === 'search' ? 'true' : 'false');
+    if (isNew && customerName && !customerName.value.trim()) {
+        customerName.value = customerSearch?.value?.trim() || '';
+    }
     if (options.focusSearch) customerSearch?.focus();
+    if (options.focusNew) customerName?.focus();
 }
 
 function bookingCustomerCleanText(value) {
@@ -2201,7 +2216,9 @@ function getSmartBookingValidationState() {
     const hasRoom = Boolean(formData?.room);
     const hasSelectedCustomer = Boolean(document.getElementById('selectedCustomerId')?.value);
     const customerDraft = bookingCustomerDraftFromForm();
-    const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid(customerDraft);
+    const hasNewCustomer = !hasSelectedCustomer
+        && BookingDrawerState.clientMode === 'new'
+        && bookingNewCustomerDraftIsValid(customerDraft);
     const hasClient = hasSelectedCustomer || hasNewCustomer;
     const isEducation = presentation.mode === 'education';
     const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
@@ -7465,7 +7482,7 @@ function renderCustomerSearchResults(customers, options = {}) {
 
     if (list.length === 0) {
         if (options.query) {
-            container.innerHTML = '<div class="customer-search-state">Клієнтів не знайдено. Можна створити нову картку нижче.</div>';
+            container.innerHTML = '<div class="customer-search-state">Клієнтів не знайдено. Натисніть «Новий клієнт», щоб створити картку.</div>';
             container.classList.remove('hidden');
             renderBookingCustomerSearchState('Клієнта не знайдено. Можна створити нового.');
         } else {
@@ -7559,6 +7576,11 @@ const debouncedBookingDuplicateCheck = debounce(async () => {
 
 // Toggle + autocomplete listeners (called once on page load)
 function initCustomerCRM() {
+    document.getElementById('bookingCreateCustomerBtn')?.addEventListener('click', () => {
+        const nextMode = BookingDrawerState.clientMode === 'new' ? 'search' : 'new';
+        setBookingClientMode(nextMode, nextMode === 'new' ? { focusNew: true } : { focusSearch: true });
+        renderBookingPackageSummary();
+    });
     document.getElementById('bookingChangeCustomerBtn')?.addEventListener('click', () => {
         clearSelectedCustomerLink();
         document.getElementById('customerSearch')?.focus();
@@ -10316,7 +10338,7 @@ function buildBookingObject(formData, program) {
     const existingId = document.getElementById('selectedCustomerId')?.value;
     if (existingId) {
         obj.customerId = parseInt(existingId, 10);
-    } else {
+    } else if (BookingDrawerState.clientMode === 'new') {
         const customer = bookingCustomerPayloadFromDraft();
         if (customer) obj.customer = customer;
     }

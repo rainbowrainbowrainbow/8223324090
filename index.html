@@ -419,7 +419,7 @@
                 <div class="booking-section-heading booking-section-heading--compact">
                     <div>
                         <strong>Клієнт</strong>
-                        <small>Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.</small>
+                        <small>Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання.</small>
                     </div>
                 </div>
                 <input type="checkbox" id="customerDataToggle" checked hidden aria-hidden="true">
@@ -438,6 +438,7 @@
                             <div class="booking-client-actions">
                                 <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Знайдіть і виберіть існуючу картку клієнта.</span>
                                 <div class="booking-client-actions__buttons">
+                                    <button type="button" id="bookingCreateCustomerBtn" class="booking-mini-action" aria-controls="bookingNewCustomerForm" aria-expanded="false">Новий клієнт</button>
                                     <button type="button" id="bookingChangeCustomerBtn" class="booking-mini-action hidden">Змінити</button>
                                 </div>
                             </div>

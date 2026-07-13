@@ -3099,6 +3099,56 @@ test('booking activity image fallback swaps broken image for emoji media slot', 
     assert.equal(media.querySelector('.icon')?.textContent, '🎪');
 });
 
+test('booking client mode exposes and restores the new customer form', () => {
+    const bookingJs = read('js', 'booking.js');
+    const dom = new JSDOM(`
+        <div id="bookingSelectedCustomerCard" class="hidden"></div>
+        <div id="bookingNewCustomerForm" class="hidden" hidden aria-hidden="true"></div>
+        <div id="bookingCustomerSearchState"></div>
+        <div id="customerSearchResults"></div>
+        <button id="bookingCreateCustomerBtn" aria-expanded="false">Новий клієнт</button>
+        <button id="bookingChangeCustomerBtn" class="hidden">Змінити</button>
+        <span id="bookingCustomerModeLabel"></span>
+        <input id="customerSearch" value="Олена">
+        <input id="customerName" value="">
+        <input id="selectedCustomerId" value="">
+    `);
+    const sandbox = {
+        document: dom.window.document,
+        BookingDrawerState: { clientMode: 'search' }
+    };
+    const functionStart = bookingJs.indexOf('function setBookingClientMode');
+    const functionEnd = bookingJs.indexOf('function bookingCustomerCleanText', functionStart);
+    assert.notEqual(functionStart, -1);
+    assert.notEqual(functionEnd, -1);
+    const source = `${bookingJs.slice(functionStart, functionEnd)}\nthis.__setBookingClientMode = setBookingClientMode;`;
+
+    vm.runInNewContext(source, sandbox);
+    sandbox.__setBookingClientMode('new', { focusNew: true });
+
+    const newCustomerForm = dom.window.document.getElementById('bookingNewCustomerForm');
+    const createButton = dom.window.document.getElementById('bookingCreateCustomerBtn');
+    assert.equal(sandbox.BookingDrawerState.clientMode, 'new');
+    assert.equal(newCustomerForm.hidden, false);
+    assert.equal(newCustomerForm.classList.contains('hidden'), false);
+    assert.equal(newCustomerForm.getAttribute('aria-hidden'), 'false');
+    assert.equal(createButton.textContent, 'До пошуку');
+    assert.equal(createButton.getAttribute('aria-expanded'), 'true');
+    assert.equal(dom.window.document.getElementById('customerName').value, 'Олена');
+    assert.equal(dom.window.document.activeElement.id, 'customerName');
+    assert.equal(dom.window.document.getElementById('customerSearchResults').classList.contains('hidden'), true);
+
+    sandbox.__setBookingClientMode('search', { focusSearch: true });
+
+    assert.equal(sandbox.BookingDrawerState.clientMode, 'search');
+    assert.equal(newCustomerForm.hidden, true);
+    assert.equal(newCustomerForm.classList.contains('hidden'), true);
+    assert.equal(newCustomerForm.getAttribute('aria-hidden'), 'true');
+    assert.equal(createButton.textContent, 'Новий клієнт');
+    assert.equal(createButton.getAttribute('aria-expanded'), 'false');
+    assert.equal(dom.window.document.activeElement.id, 'customerSearch');
+});
+
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
@@ -3154,8 +3204,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /bookingStickyFooter/);
     assert.match(html, /id="bookingForm" class="booking-form" novalidate/);
-    assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
-    assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
+    assert.match(html, /bookingCreateCustomerBtn/);
+    assert.match(html, /Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання/);
     assert.match(html, /bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"/);
     assert.match(html, /bookingChangeCustomerBtn/);
     assert.match(html, /programCategoryChips/);
@@ -3349,11 +3399,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
     assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);
     assert.match(bookingJs, /customer-search-state/);
-    assert.match(bookingJs, /const nextMode = mode === 'new' \? 'search' : mode;/);
+    assert.match(bookingJs, /const nextMode = mode === 'existing' \|\| mode === 'new' \? mode : 'search';/);
     assert.match(bookingJs, /function bookingCustomerDraftFromForm\(\)/);
     assert.match(bookingJs, /function bookingNewCustomerDraftIsValid/);
     assert.match(bookingJs, /function bookingCustomerPayloadFromDraft/);
-    assert.match(bookingJs, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
+    assert.match(bookingJs, /BookingDrawerState\.clientMode === 'new'/);
     assert.match(bookingJs, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
     assert.match(bookingJs, /customerDraft\.search && !customerDraft\.name/);
     assert.match(bookingJs, /function addBookingValidationIssue/);
@@ -3372,8 +3422,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /Оберіть існуючого клієнта з пошуку/);
     assert.match(bookingJs, /obj\.customerId = parseInt\(existingId, 10\)/);
     assert.match(bookingJs, /if \(customer\) obj\.customer = customer;/);
-    assert.doesNotMatch(bookingJs, /bookingCreateCustomerBtn/);
-    assert.doesNotMatch(bookingJs, /setBookingClientMode\('new'/);
+    assert.match(bookingJs, /bookingCreateCustomerBtn/);
+    assert.match(bookingJs, /setBookingClientMode\(nextMode, nextMode === 'new'/);
     assert.match(bookingJs, /role="button" tabindex="0"/);
 
     assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));

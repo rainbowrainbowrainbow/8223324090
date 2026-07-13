@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.15 - Кілька ролей і часових блоків у зміні
+
+### Release / Versioning / (14.07.2026) [codex]
+- **Кілька ролей і часових блоків у зміні** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.14 - Кілька ролей і часових блоків у зміні
 
 ### Release / Versioning / (14.07.2026) [codex]

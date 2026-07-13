@@ -1,4 +1,4 @@
-# Rollback note: v0.79.14 - HR shift segments
+# Rollback note: v0.79.15 - HR shift segments
 
 Production impact: yes.
 
@@ -6,15 +6,16 @@ This is an operator plan only. Run it only after an explicit production rollback
 
 ## Release scope
 
-- Release version: `0.79.14`.
+- Release version: `0.79.15`.
 - Release label: `Кілька ролей і часових блоків у зміні`.
 - Product commit: `33925140e` (`feat: add multi-segment HR shifts`).
 - Deploy branch: `codex/performance-hardening`.
+- Previous production release: `0.79.14` (`Чисті зв’язки таймлайна`).
 - Database migration: `287_hr_shift_segments.sql`.
 
 ## Safe rollback boundary
 
-The application UI and API may be returned to the previous single-shift behavior. The additive tables `hr_shift_segments` and `hr_shift_segment_roles` must remain in production, including all segment rows already written by v0.79.14.
+The application UI and API may be returned to the previous single-shift behavior. The additive tables `hr_shift_segments` and `hr_shift_segment_roles` must remain in production, including all segment rows already written by v0.79.15.
 
 Do not:
 
@@ -50,7 +51,7 @@ If the product commit was cherry-picked and has a different hash on the deploy b
 ## Required post-deploy checks
 
 - `/api/version` and the login release badge show the rollback release.
-- Existing legacy and v0.79.14-created days open through the compatibility envelope.
+- Existing legacy and v0.79.15-created days open through the compatibility envelope.
 - Creating and editing a single shift still writes one `hr_shifts`, one `staff_schedule`, and at most one `hr_time_records` row per staff/date.
 - Attendance and payroll preview totals for existing single-role QA records match the pre-release baseline.
 - Segment tables and their production rows still exist and are not modified by the rollback.

@@ -13,6 +13,7 @@ describe('backoffice foundation v1 contracts', () => {
     const migration = readRepoFile('db', 'migrations', '177_backoffice_foundation_v1.sql');
     const hrRoute = readRepoFile('routes', 'hr.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
+    const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = readRepoFile('hr.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
@@ -54,8 +55,10 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(staffRoute, /function replacementNote/);
         assert.match(staffRoute, /async function loadEnrichedScheduleEntry/);
         assert.match(staffRoute, /function syncHrShiftFromScheduleEntry/);
-        assert.match(staffRoute, /INSERT INTO hr_shifts/);
-        assert.match(staffRoute, /ON CONFLICT \(staff_id, shift_date\) DO UPDATE/);
+        assert.match(staffRoute, /saveHrShiftDayPlan\(client/);
+        assert.doesNotMatch(staffRoute, /INSERT INTO hr_shifts/);
+        assert.match(shiftSegmentsService, /INSERT INTO hr_shifts/);
+        assert.match(shiftSegmentsService, /ON CONFLICT \(staff_id, shift_date\) DO UPDATE/);
         assert.match(staffRoute, /function backfillStaffScheduleFromHrShifts/);
         assert.doesNotMatch(staffRoute, /router\.get\('\/schedule'[\s\S]*await backfillStaffScheduleFromHrShifts\(from, to\)/);
         assert.match(staffRoute, /hs\.shift_date::text = LEFT\(ss\.date::text, 10\)/);

@@ -109,6 +109,13 @@ function cleanText(value, max = 500) {
     return text ? text.slice(0, max) : null;
 }
 
+function cleanTimestamp(value) {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    }
+    return cleanText(value, 80);
+}
+
 function nullableNumber(value) {
     if (value === undefined || value === null || value === '') return null;
     const n = Number(value);
@@ -1187,9 +1194,9 @@ function normalizeBanquetArrivalProjection(candidate = null, fallbackBooking = {
             || cleanText(valueOf(group, 'source'), 120)
             || cleanText(fallbackSource, 120)
             || null,
-        updatedAt: cleanText(valueOf(source, 'updatedAt', 'updated_at'), 80)
-            || cleanText(valueOf(group, 'updatedAt', 'updated_at'), 80)
-            || cleanText(valueOf(fallbackBooking, 'updatedAt', 'updated_at'), 80)
+        updatedAt: cleanTimestamp(valueOf(source, 'updatedAt', 'updated_at'))
+            || cleanTimestamp(valueOf(group, 'updatedAt', 'updated_at'))
+            || cleanTimestamp(valueOf(fallbackBooking, 'updatedAt', 'updated_at'))
             || null
     };
     return arrival.bookingId || arrival.date || arrival.time || arrival.room ? arrival : null;

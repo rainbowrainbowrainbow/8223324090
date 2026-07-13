@@ -3228,7 +3228,8 @@ test('banquet summary reads workspace comments and does not borrow booking group
                 date: '2099-06-02',
                 time: '14:10',
                 room: 'Room B',
-                source: 'test_arrival'
+                source: 'test_arrival',
+                updatedAt: new Date('2099-01-01T00:00:00.123Z')
             }
         }
     });
@@ -3240,7 +3241,7 @@ test('banquet summary reads workspace comments and does not borrow booking group
         room: 'Room B',
         source: 'test_arrival',
         groupSource: 'banquet_group',
-        updatedAt: '2099-01-01T00:00:00.000Z'
+        updatedAt: '2099-01-01T00:00:00.123Z'
     });
     assert.deepEqual(summary.banquetArrival, summary.arrival);
     assert.equal(summary.event.date, '2099-06-01');

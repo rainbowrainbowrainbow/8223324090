@@ -446,7 +446,7 @@ test('timeline and deep-link loaders wait for successful session verification', 
     assert.doesNotMatch(initializeAppBlock, /AppState\.nowLineInterval[^]*\n\s*_checkAutoOpen\(\);/);
     assert.match(
         renderTimelineBlock,
-        /if \(typeof window\.isAuthenticatedRuntimeReady === 'function' && !window\.isAuthenticatedRuntimeReady\(\)\) \{\s*return false;/
+        /if \(typeof window\.isAuthenticatedRuntimeReady === 'function' && !window\.isAuthenticatedRuntimeReady\(\)\) \{\s*queueTimelineRenderAfterAuthenticatedRuntimeReady\(\);\s*return false;/
     );
     assert.ok(
         renderTimelineBlock.indexOf('isAuthenticatedRuntimeReady') < renderTimelineBlock.indexOf('getBookingsForDate'),

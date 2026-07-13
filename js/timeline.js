@@ -20,6 +20,8 @@ const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
 let _timelineViewRuntime = null;
 let _timelineViewUrlBootstrapPending = true;
 let _timelineRenderAbortController = null;
+let _timelineAuthReadyRenderQueued = false;
+let _timelineAuthReadyRenderPromise = null;
 const TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set(['primary', 'root', 'banquet']);
 const TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual']);
 const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES = new Set([
@@ -3750,8 +3752,26 @@ function renderTimelineDataError(container, error, date) {
     });
 }
 
+function queueTimelineRenderAfterAuthenticatedRuntimeReady() {
+    if (_timelineAuthReadyRenderQueued || typeof window.addEventListener !== 'function') return;
+    _timelineAuthReadyRenderQueued = true;
+    window.addEventListener('crm:authenticated-runtime-ready', () => {
+        _timelineAuthReadyRenderQueued = false;
+        const deferredRender = Promise.resolve(renderTimeline()).catch(error => {
+            console.error('[Timeline] Deferred authenticated render failed:', error);
+        });
+        _timelineAuthReadyRenderPromise = deferredRender;
+        void deferredRender.finally(() => {
+            if (_timelineAuthReadyRenderPromise === deferredRender) {
+                _timelineAuthReadyRenderPromise = null;
+            }
+        });
+    }, { once: true });
+}
+
 async function renderTimeline() {
     if (typeof window.isAuthenticatedRuntimeReady === 'function' && !window.isAuthenticatedRuntimeReady()) {
+        queueTimelineRenderAfterAuthenticatedRuntimeReady();
         return false;
     }
     const thisGen = ++_renderGen;

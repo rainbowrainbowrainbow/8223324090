@@ -150,6 +150,13 @@ function createHarness(options = {}) {
     window.ParkWS = {
         setSubscribedDates: dates => window.__wsDateSubscriptions.push([...dates])
     };
+    if (Object.prototype.hasOwnProperty.call(options, 'authenticatedRuntimeReady')) {
+        let authenticatedRuntimeReady = options.authenticatedRuntimeReady === true;
+        window.isAuthenticatedRuntimeReady = () => authenticatedRuntimeReady;
+        window.__setAuthenticatedRuntimeReady = value => {
+            authenticatedRuntimeReady = value === true;
+        };
+    }
     window.setInterval = () => 1;
     window.clearInterval = () => {};
 
@@ -163,6 +170,7 @@ function createHarness(options = {}) {
             handleResizeEnd: _handleResizeEnd,
             validateDragDrop: _validateDragDrop,
             renderTimeline,
+            getDeferredAuthReadyRenderPromise() { return _timelineAuthReadyRenderPromise; },
             renderDaySectionHtml,
             syncTimelineWebSocketDateSubscriptions,
             changeDate,
@@ -360,6 +368,71 @@ test('timeline request token freezes context, view, date, generation and cache s
     assert.equal(typeof token.renderGeneration, 'number');
     assert.match(token.cacheScope, /^event_genix\|park\|room\|animators$/);
     assert.equal(api.timelineRequestTokenIsCurrent(token), true);
+});
+
+test('cold authenticated bootstrap renders once after runtime readiness in every business context', { timeout: 5000 }, async (t) => {
+    const contexts = [
+        {
+            name: 'park',
+            context: parkTimelineContext('auth-park'),
+            line: { id: 'park-line', name: 'Park line', color: '#14b8a6', resourceType: 'animator' }
+        },
+        {
+            name: 'maysternya doli',
+            context: {
+                current: () => ({ apiValue: 'maysternya_doli', key: 'maysternya_doli' }),
+                state: () => ({ activeBusinessContext: 'maysternya_doli' }),
+                presentation: () => ({ mode: 'specialist', resourceType: 'specialist', roomTimelineEnabled: false }),
+                storageKey: name => `auth-md_${name}`
+            },
+            line: { id: 'md-consult-room', name: 'Майстерня долі', color: '#14b8a6' }
+        }
+    ];
+
+    for (const row of contexts) {
+        await t.test(row.name, async () => {
+            const { window, api, consoleErrors } = createHarness({
+                authenticatedRuntimeReady: false,
+                timelineContext: row.context
+            });
+            try {
+                let lineRequests = 0;
+                let bookingRequests = 0;
+                window.apiGetLines = async () => {
+                    lineRequests += 1;
+                    return [row.line];
+                };
+                window.apiGetBookings = async () => {
+                    bookingRequests += 1;
+                    return [];
+                };
+
+                assert.equal(await api.renderTimeline(), false);
+                assert.equal(await api.renderTimeline(), false);
+                assert.equal(lineRequests, 0);
+                assert.equal(bookingRequests, 0);
+                assert.equal(window.document.querySelectorAll('#timeScale [data-mark-kind]').length, 0);
+
+                window.__setAuthenticatedRuntimeReady(true);
+                window.dispatchEvent(new window.CustomEvent('crm:authenticated-runtime-ready'));
+                const deferredRender = api.getDeferredAuthReadyRenderPromise();
+                assert.ok(deferredRender, 'auth-ready event should start the queued timeline render');
+                await deferredRender;
+
+                assert.equal(lineRequests, 1);
+                assert.equal(bookingRequests, 1);
+                assert.ok(window.document.querySelectorAll('#timeScale [data-mark-kind]').length > 0);
+                assert.ok(window.document.querySelectorAll('#timelineLines .timeline-line').length >= 1);
+                assert.match(
+                    window.document.getElementById('timelineLines').textContent,
+                    row.name === 'maysternya doli' ? /Олександр/ : /Park line/
+                );
+                assert.equal(consoleErrors.some(args => args.some(value => /Deferred authenticated render failed/.test(String(value)))), false);
+            } finally {
+                window.close();
+            }
+        });
+    }
 });
 
 test('late old-view responses cannot populate the new-view cache or DOM', async () => {

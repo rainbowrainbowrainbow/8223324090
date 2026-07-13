@@ -110,6 +110,7 @@ test('migration 285 is governed, idempotent, NULL-only, and leaves hardening to 
     assert.match(migration, /-- DATA_SCOPE:/);
     assert.match(migration, /WITH RECURSIVE/i);
     assert.match(migration, /LOCK TABLE banquet_groups, banquet_group_bookings IN SHARE ROW EXCLUSIVE MODE/i);
+    assert.doesNotMatch(migration, /nc\.business_context,\s*nc\.component_key,\s*b\.\*/i);
     assert.match(migration, /anchor_count[\s\S]*= 1/i);
     assert.match(migration, /guest_arrival_time IS NULL/i);
     assert.match(migration, /ON CONFLICT(?: \([^)]*\))? DO NOTHING/i);

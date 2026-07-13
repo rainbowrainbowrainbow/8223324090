@@ -53,7 +53,26 @@ component_bookings AS (
     SELECT
         nc.business_context,
         nc.component_key,
-        b.*,
+        b.id,
+        b.date,
+        b.time,
+        b.line_id,
+        b.program_id,
+        b.program_code,
+        b.label,
+        b.program_name,
+        b.category,
+        b.price,
+        b.room,
+        b.linked_to,
+        b.status,
+        b.group_name,
+        b.extra_data,
+        b.customer_id,
+        b.banquet_guests,
+        b.banquet_adults,
+        b.banquet_tables,
+        b.banquet_menu,
         CASE
             WHEN b.linked_to IS NULL OR BTRIM(b.linked_to) = '' THEN true
             ELSE false

@@ -15,6 +15,7 @@ const staffHtml = fs.readFileSync('staff.html', 'utf8');
 const staffScheduleShell = fs.readFileSync('js/staff-schedule-shell.js', 'utf8');
 const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
 const staffScheduleBrowserSmoke = fs.readFileSync('tests/browser/staff-schedule-custom-range-browser-smoke.js', 'utf8');
+const liveStaffScheduleSmoke = fs.readFileSync('scripts/live-staff-schedule-smoke.js', 'utf8');
 
 function namedFunctionBlock(source, functionName) {
     const markerPattern = new RegExp(`(?:async\\s+)?function\\s+${functionName}\\s*\\(`);
@@ -47,6 +48,13 @@ function routePostBlock(path) {
     return staffRoute.slice(start, nextRoute === -1 ? staffRoute.length : nextRoute);
 }
 
+function routePutBlock(path) {
+    const start = staffRoute.indexOf(`router.put('${path}'`);
+    assert.notEqual(start, -1, `Missing PUT ${path}`);
+    const nextRoute = staffRoute.indexOf('\nrouter.', start + 1);
+    return staffRoute.slice(start, nextRoute === -1 ? staffRoute.length : nextRoute);
+}
+
 function loadStaffScheduleBehaviorApi() {
     const marker = 'window.StaffSchedulePage = {';
     assert.ok(staffPage.includes(marker), 'Missing StaffSchedulePage export marker');
@@ -56,6 +64,7 @@ window.__staffScheduleBehaviorApi = {
     buildScheduleHealth,
     resolveScheduleSubGroup,
     partitionScheduleStaffBySubGroup,
+    scheduleProfessionKeyForDepartment,
     scheduleDepartmentCounts(staffList = StaffState.staff) {
         return Object.fromEntries(scheduleDepartmentCountMap(staffList));
     },
@@ -787,7 +796,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /openScheduleCell\(cell\)/);
         assert.doesNotMatch(renderSchedulePrimaryBlock, /renderScheduleHealthPanel\(health\)/);
         assert.match(staffPage, /renderSummary\(filtered, dates\)/);
-        assert.match(staffPage, /renderEmpRow\(emp, dates, today, health, \{ subGroup: sg \}\)/);
+        assert.match(staffPage, /renderEmpRow\(emp, dates, today, health, \{ subGroup: sg, department: dept \}\)/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\}"/);
         assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|attendanceIndicator|renderScheduleAttendanceIndicator\(emp\.id|has-attendance-/);
         assert.match(staffPage, /bindScheduleHealthDetailButtons\(tbody\)/);
@@ -1248,8 +1257,8 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function renderLoadView\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
         assert.match(staffPage, /function scheduleExportVisibleStaff\(\) \{[\s\S]*scheduleFinalVisibleStaffSnapshot\(/);
         assert.match(staffPage, /const visibleSnapshot = scheduleFinalVisibleStaffSnapshot\(StaffState\.staff, dates\)/);
-        assert.match(staffPage, /const grouped = groupStaffByScheduleDepartment\(filtered, \{ department: StaffState\.activeDept \}\)/);
-        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{ department: StaffState\.activeDept \}\)/);
+        assert.match(staffPage, /const grouped = groupStaffByScheduleDepartment\(filtered, \{[\s\S]*department: StaffState\.activeDept,[\s\S]*grouping: 'membership'/);
+        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{[\s\S]*department: StaffState\.activeDept,[\s\S]*grouping: 'membership'/);
         assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set\(\['animators', 'trampoline', 'cafe', 'cleaning'\]\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set\(\['reception', 'tech', 'admin'\]\)/);
@@ -1265,7 +1274,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /visible staffIds\[\]/);
     });
 
-    it('keeps multi-profession staff canonical and unique across table, export, and print', () => {
+    it('renders multi-profession membership across table, export, and print without duplicating operations', () => {
         const normalizeIdBlock = namedFunctionBlock(staffPage, 'normalizeScheduleStaffId');
         const uniqueStaffBlock = namedFunctionBlock(staffPage, 'uniqueScheduleStaffById');
         const canonicalGroupBlock = namedFunctionBlock(staffPage, 'scheduleCanonicalDisplayGroupKey');
@@ -1282,7 +1291,10 @@ describe('staff schedule safety guards', () => {
         const exportVisibleBlock = namedFunctionBlock(staffPage, 'scheduleExportVisibleStaff');
         const workbookBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookHtml');
         const displayNameBlock = namedFunctionBlock(staffPage, 'scheduleStaffDisplayName');
-        const browserFlow = namedFunctionBlock(staffScheduleBrowserSmoke, 'runCanonicalGroupingFlow');
+        const professionContextBlock = namedFunctionBlock(staffPage, 'scheduleProfessionKeyForDepartment');
+        const openCellBlock = namedFunctionBlock(staffPage, 'openScheduleCell');
+        const openEditBlock = namedFunctionBlock(staffPage, 'openEditModal');
+        const browserFlow = namedFunctionBlock(staffScheduleBrowserSmoke, 'runMembershipGroupingFlow');
 
         assert.match(normalizeIdBlock, /Number\(/);
         assert.match(normalizeIdBlock, /Number\.isSafeInteger|Number\.isInteger|Number\.isFinite/);
@@ -1300,6 +1312,11 @@ describe('staff schedule safety guards', () => {
         assert.match(groupingKeysBlock, /staffMatchesScheduleDepartment\(staff, activeDepartment\) \? \[activeDepartment\] : \[\]/);
         assert.match(groupingKeysBlock, /return \[scheduleCanonicalDisplayGroupKey\(staff\)\]/);
         assert.match(groupingKeysBlock, /options\.grouping === 'membership'/);
+        assert.match(renderBlock, /grouping: 'membership'/);
+        assert.match(renderBlock, /department: dept/);
+        assert.match(professionContextBlock, /scheduleSubGroupProfessionCandidates\(staff, normalizedDepartment\)/);
+        assert.match(openCellBlock, /professionKey: cell\.dataset\.scheduleProfession/);
+        assert.match(openEditBlock, /entry\?\.profession_key \|\| sectionProfessionKey \|\| emp\.role_type/);
 
         [departmentCountBlock, visibleWithoutSearchBlock, groupStaffBlock].forEach(block => {
             assert.match(block, /uniqueScheduleStaffById\(/);
@@ -1317,9 +1334,12 @@ describe('staff schedule safety guards', () => {
 
         assert.match(displayNameBlock, /staff\.display_name \|\| staff\.displayName \|\| staff\.name/);
         assert.match(workbookBlock, /data-schedule-export-staff-id=/);
+        assert.match(workbookBlock, /data-schedule-export-department=/);
+        assert.match(workbookBlock, /grouping: 'membership'/);
         assert.match(workbookBlock, /scheduleStaffDisplayName\(emp\)/);
 
         assert.match(staffScheduleBrowserSmoke, /const STAFF_API_ROWS\s*=/);
+        assert.match(staffScheduleBrowserSmoke, /role_type:\s*'senior_manager'/);
         assert.match(staffScheduleBrowserSmoke, /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/);
         assert.match(staffScheduleBrowserSmoke, /secondary_professions:\s*\['manager',\s*'barista'\]/);
         assert.match(staffScheduleBrowserSmoke, /secondary_professions:\s*\['trampoline_instructor'\]/);
@@ -1330,14 +1350,22 @@ describe('staff schedule safety guards', () => {
         assert.match(staffScheduleBrowserSmoke, /function scheduleExportStaffIdsFromHtml/);
         assert.match(staffScheduleBrowserSmoke, /function assertUniqueScheduleStaffIds/);
         assert.match(staffScheduleBrowserSmoke, /function assertScheduleExportParity/);
-        assert.match(staffScheduleBrowserSmoke, /async function runCanonicalGroupingFlow/);
-        assert.match(staffScheduleBrowserSmoke, /runCanonicalGroupingFlow\(/);
+        assert.match(staffScheduleBrowserSmoke, /async function runMembershipGroupingFlow/);
+        assert.match(staffScheduleBrowserSmoke, /runMembershipGroupingFlow\(/);
         assert.match(browserFlow, /Батутисти/);
         assert.match(browserFlow, /reception/);
         assert.match(browserFlow, /animators/);
+        assert.match(browserFlow, /StaffSchedulePage\.refresh/);
+        assert.match(browserFlow, /scheduleBodies/);
+        assert.match(browserFlow, /queueScheduleSaveResponseScenario/);
+        assert.match(browserFlow, /page\.mouse\.click/);
+        assert.doesNotMatch(browserFlow, /receptionSession|receptionPage/);
+        assert.match(liveStaffScheduleSmoke, /findAnimatorReceptionMembershipStaffId/);
+        assert.match(liveStaffScheduleSmoke, /assertWorkbookStaffPlacementParity/);
+        assert.doesNotMatch(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
     });
 
-    it('enforces unique multi-profession membership counts and exact table/export staff parity', () => {
+    it('enforces unique membership within each section and exact table/export placement parity', () => {
         const api = loadStaffScheduleBehaviorApi();
         const common = {
             is_active: true,
@@ -1350,11 +1378,11 @@ describe('staff schedule safety guards', () => {
             {
                 ...common,
                 id: 101,
-                name: 'Shared Animator',
-                display_name: 'Shared Animator',
-                department: 'animators',
-                display_group: 'animators',
-                role_type: 'animator',
+                name: 'Синіпол Віталіна',
+                display_name: 'Віталіна Синіпол',
+                department: 'reception',
+                display_group: 'reception',
+                role_type: 'senior_manager',
                 secondary_professions: ['reception', 'reception', 'animator']
             },
             {
@@ -1414,6 +1442,7 @@ describe('staff schedule safety guards', () => {
             rangeEnd: new Date('2026-07-15T00:00:00'),
             weekStart: new Date('2026-07-01T00:00:00'),
             professions: [
+                { key: 'senior_manager', title: 'Senior manager', department: 'reception' },
                 { key: 'animator', title: 'Animator', department: 'animators' },
                 { key: 'reception', title: 'Reception', department: 'reception' },
                 { key: 'manager', title: 'Manager', department: 'reception' },
@@ -1441,37 +1470,62 @@ describe('staff schedule safety guards', () => {
 
         const allVisibleIds = Array.from(api.visibleStaffIds());
         assert.equal(allVisibleIds.join(','), '101,102,103,104,105', 'All count is the unique staff ID set');
-        const allGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds()));
+        assert.equal(allVisibleIds.length, 5, 'All totals count Vitalina once even though she belongs to two sections');
+        const allGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds(staff, { grouping: 'membership' })));
         assert.deepEqual(allGrouped, {
             animators: [101],
-            cafe: [102, 105],
-            reception: [103],
+            reception: [101, 103],
+            cafe: [102, 103, 105],
+            trampoline: [102],
             admin: [104]
         });
-        assert.equal(
-            Object.values(allGrouped).flat().length,
-            new Set(Object.values(allGrouped).flat()).size,
-            'canonical All grouping owns every staff ID exactly once'
+        assert.ok(
+            Object.values(allGrouped).reduce((total, ids) => total + ids.length, 0) > allVisibleIds.length,
+            'membership placements can exceed the unique people total'
         );
+        Object.entries(allGrouped).forEach(([department, ids]) => {
+            assert.equal(ids.length, new Set(ids).size, `${department} renders every staff ID at most once`);
+        });
+        assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'animators'), 'animator');
+        assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'reception'), 'senior_manager');
 
         const exportedIds = html => Array.from(
             html.matchAll(/data-schedule-export-staff-id="(\d+)"/g),
             match => Number(match[1])
         );
+        const exportedPlacements = html => Array.from(
+            html.matchAll(/data-schedule-export-staff-id="(\d+)" data-schedule-export-department="([^"]+)"/g),
+            match => `${match[2]}:${Number(match[1])}`
+        ).sort();
         const workbookIds = exportedIds(api.buildScheduleWorkbookHtml());
         const printIds = exportedIds(api.buildScheduleWorkbookHtml({ print: true }));
-        const normalizedIdSet = ids => [...ids].sort((left, right) => left - right).join(',');
-        assert.equal(normalizedIdSet(workbookIds), normalizedIdSet(allVisibleIds));
-        assert.equal(normalizedIdSet(printIds), normalizedIdSet(allVisibleIds));
-        assert.equal(workbookIds.length, new Set(workbookIds).size, 'workbook has no duplicate employee rows');
+        const expectedPlacements = Object.entries(allGrouped)
+            .flatMap(([department, ids]) => ids.map(id => `${department}:${id}`))
+            .sort();
+        assert.deepEqual(exportedPlacements(api.buildScheduleWorkbookHtml()), expectedPlacements);
+        assert.deepEqual(exportedPlacements(api.buildScheduleWorkbookHtml({ print: true })), expectedPlacements);
+        assert.equal(new Set(workbookIds).size, allVisibleIds.length, 'workbook still contains the unique visible staff set');
+        assert.equal(new Set(printIds).size, allVisibleIds.length, 'print still contains the unique visible staff set');
 
-        api.setState({ activeDept: 'reception', searchQuery: 'animator' });
+        api.setState({ activeDept: 'reception', searchQuery: 'віталіна' });
         const receptionVisibleIds = Array.from(api.visibleStaffIds());
         const receptionGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds(staff, { department: 'reception' })));
         assert.equal(receptionVisibleIds.join(','), '101', 'secondary reception membership survives active filter and search');
         assert.deepEqual(receptionGrouped, { reception: [101, 103] });
         assert.equal(exportedIds(api.buildScheduleWorkbookHtml()).join(','), '101');
         assert.equal(exportedIds(api.buildScheduleWorkbookHtml({ print: true })).join(','), '101');
+    });
+
+    it('keeps one persisted schedule row per staff member and date', () => {
+        const putScheduleRoute = routePutBlock('/schedule');
+        const bulkScheduleRoute = routePostBlock('/schedule/bulk');
+
+        assert.match(putScheduleRoute, /ON CONFLICT \(staff_id, date\)/);
+        assert.match(putScheduleRoute, /DO UPDATE SET shift_start=\$3, shift_end=\$4, status=\$5, note=\$6, profession_key=\$7/);
+        assert.match(putScheduleRoute, /RETURNING \*/);
+        assert.match(bulkScheduleRoute, /ON CONFLICT \(staff_id, date\)/);
+        assert.match(bulkScheduleRoute, /profession_key=\$7/);
+        assert.match(staffScheduleBrowserSmoke, /assertSingleScheduleEntryPerStaffDate\(SCHEDULE_FIXTURE_ENTRIES/);
     });
 
     it('supports full copy-week for virtual categories through explicit staffIds and dry-run preview', () => {
@@ -1729,6 +1783,7 @@ describe('staff schedule safety guards', () => {
 
     it('binds schedule mutations and close requests to one current modal session', async () => {
         const sessionCurrentBlock = namedFunctionBlock(staffPage, 'scheduleModalSessionIsCurrent');
+        const mutationControlsBlock = namedFunctionBlock(staffPage, 'setScheduleModalMutationControlsDisabled');
         const beginMutationBlock = namedFunctionBlock(staffPage, 'beginScheduleModalMutation');
         const finishMutationBlock = namedFunctionBlock(staffPage, 'finishScheduleModalMutation');
         const openBlock = namedFunctionBlock(staffPage, 'openEditModal');
@@ -1744,15 +1799,17 @@ describe('staff schedule safety guards', () => {
         assert.match(openBlock, /if \(_staffScheduleClosePromise \|\| StaffState\.editingCell\?\.mutationPending\) return/);
         assert.match(openBlock, /sessionId:\s*\+\+StaffState\.scheduleModalSessionSeq/);
         assert.match(openBlock, /mutationPending:\s*false/);
+        ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
+            assert.match(mutationControlsBlock, new RegExp(id));
+        });
+        assert.match(mutationControlsBlock, /button\.disabled = disabled/);
         assert.match(beginMutationBlock, /!scheduleModalSessionIsCurrent\(session\) \|\| session\.mutationPending/);
         assert.match(beginMutationBlock, /session\.mutationPending = true/);
-        ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
-            assert.match(beginMutationBlock, new RegExp(id));
-        });
-        assert.match(beginMutationBlock, /button\.disabled = true/);
-        assert.match(finishMutationBlock, /if \(!scheduleModalSessionIsCurrent\(session\)\) return/);
+        assert.match(beginMutationBlock, /setScheduleModalMutationControlsDisabled\(true\)/);
+        assert.match(finishMutationBlock, /if \(!session\) return/);
         assert.match(finishMutationBlock, /session\.mutationPending = false/);
-        assert.match(finishMutationBlock, /button\.disabled = false/);
+        assert.match(finishMutationBlock, /!scheduleModalSessionIsCurrent\(session\) && StaffState\.editingCell/);
+        assert.match(finishMutationBlock, /setScheduleModalMutationControlsDisabled\(false\)/);
         assert.match(closeBlock, /expectedSession = null/);
         assert.match(closeBlock, /expectedSession && !scheduleModalSessionIsCurrent\(expectedSession\)/);
         assert.match(closeBlock, /closingSession\?\.mutationPending/);
@@ -1780,7 +1837,23 @@ describe('staff schedule safety guards', () => {
         assert.equal(elements.schSaveBtn.disabled, false);
         assert.equal(elements.schModalOverlay.getAttribute('aria-busy'), 'false');
 
+        api.setEditingCell(sessionA);
+        assert.equal(api.beginScheduleModalMutation(sessionA), true);
+        assert.equal(elements.schSaveBtn.disabled, true);
+        await api.closeEditModal(true, sessionA);
+        assert.equal(JSON.parse(api.snapshot()).editingCell, null, 'successful close clears the finished modal session');
+        api.finishScheduleModalMutation(sessionA);
+        assert.equal(sessionA.mutationPending, false, 'closed session is no longer mutation-pending');
+        assert.equal(elements.schSaveBtn.disabled, false, 'finished closed session re-enables the next modal save button');
+        assert.equal(elements.schModalOverlay.getAttribute('aria-busy'), 'false');
+
+        api.setEditingCell(sessionA);
+        assert.equal(api.beginScheduleModalMutation(sessionA), true);
+        elements.schModalOverlay.classList.add('visible');
         api.setEditingCell(sessionB);
+        api.finishScheduleModalMutation(sessionA);
+        assert.equal(sessionA.mutationPending, false, 'stale session completes internally');
+        assert.equal(elements.schSaveBtn.disabled, true, 'stale session cannot re-enable controls for the active modal');
         assert.equal(await api.closeEditModal(true, sessionA), false, 'stale A cannot close current B');
         assert.equal(JSON.parse(api.snapshot()).editingCell.sessionId, 2);
         assert.equal(elements.schModalOverlay.classList.contains('visible'), true);
@@ -1889,7 +1962,7 @@ describe('staff schedule safety guards', () => {
 
         assert.match(openBlock, /openModal\(overlay, trigger, \{/);
         assert.match(openBlock, /onRequestClose:\s*\(\) => closeEditModal\(false\)/);
-        assert.match(openBlock, /restoreFocus:\s*\(\) => scheduleCellFocusTarget\(staffId, date, trigger\)/);
+        assert.match(openBlock, /restoreFocus:\s*\(\) => scheduleCellFocusTarget\(staffId, date, trigger, sectionDepartment\)/);
         assert.ok(
             openBlock.indexOf('openModal(overlay, trigger') < openBlock.indexOf('loadScheduleCellHistory(staffId, date)'),
             'the modal is registered and shown before its async panels start loading'

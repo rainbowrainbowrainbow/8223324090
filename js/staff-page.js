@@ -25,6 +25,7 @@ function renderStaffPulseSwitcher() {
 
 let staffScheduleInitPromise = null;
 let staffScheduleInitialized = false;
+let staffScheduleRefreshQueue = Promise.resolve();
 let staffScheduleRangeLoadSeq = 0;
 let staffScheduleRangeAbortController = null;
 let scheduleCellHistoryAbortController = null;
@@ -1958,6 +1959,15 @@ function scheduleSubGroupProfessionCandidates(staff = {}, activeDepartment = '')
     return candidates;
 }
 
+function scheduleProfessionKeyForDepartment(staff = {}, departmentKey = '') {
+    const normalizedDepartment = normalizeScheduleDisplayGroupKey(departmentKey);
+    const matchingProfessions = scheduleSubGroupProfessionCandidates(staff, normalizedDepartment);
+    return matchingProfessions[0]
+        || normalizeProfessionKey(staff.role_type || staff.roleType)
+        || staffProfessionKeys(staff)[0]
+        || '';
+}
+
 function resolveScheduleSubGroup(staff = {}, departmentKey = '', context = {}) {
     const subGroups = Array.isArray(context.subGroups)
         ? context.subGroups
@@ -3440,8 +3450,10 @@ function renderDeptFilter() {
     }
     container.innerHTML = html;
 
-    container.querySelectorAll('.dept-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
+    if (container.dataset.scheduleDeptFilterBound !== 'true') {
+        container.addEventListener('click', event => {
+            const chip = event.target.closest('.dept-chip[data-dept]');
+            if (!chip || !container.contains(chip)) return;
             StaffState.activeDept = chip.dataset.dept;
             container.querySelectorAll('.dept-chip').forEach(c => c.classList.remove('active'));
             container.querySelectorAll('.dept-chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
@@ -3450,7 +3462,8 @@ function renderDeptFilter() {
             renderSchedule();
             if (StaffState.showLoadView) renderLoadView();
         });
-    });
+        container.dataset.scheduleDeptFilterBound = 'true';
+    }
     updateScheduleHeaderMetrics();
 }
 
@@ -3658,12 +3671,20 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
     const focusClass = Number(StaffState.focusedStaffId) === Number(emp.id) ? 'is-schedule-focus' : '';
+    const departmentKey = normalizeScheduleDisplayGroupKey(options.department || '');
+    const scheduleProfessionKey = scheduleProfessionKeyForDepartment(emp, departmentKey);
+    const departmentAttributes = departmentKey
+        ? ` data-schedule-department="${escapeHtml(departmentKey)}"`
+        : '';
+    const professionAttributes = scheduleProfessionKey
+        ? ` data-schedule-profession="${escapeHtml(scheduleProfessionKey)}"`
+        : '';
     const subGroup = options.subGroup || null;
     const subGroupIdentity = scheduleSubGroupIdentity(subGroup || {});
     const subGroupAttributes = subGroupIdentity
         ? ` data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(subGroup.label || '')}"`
         : '';
-    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}"${subGroupAttributes}>`;
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}"${departmentAttributes}${professionAttributes}${subGroupAttributes}>`;
     html += `<td>
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
              title="Відкрити HR профіль: ${escapeHtml(employeeName)}"
@@ -3727,7 +3748,7 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         html += `<td>
             <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}"
                  role="button" tabindex="0" aria-label="${escapeHtml(cellAriaLabel)}"
-                 data-staff="${emp.id}" data-date="${ds}"
+                 data-staff="${emp.id}" data-date="${ds}"${departmentAttributes}${professionAttributes}
                  data-shift-load="${loadMeta.bucket || ''}" data-shift-ratio="${loadMeta.label || ''}"
                  data-schedule-id="${entry?.id || ''}" data-hr-shift="${entry?.hr_shift_id || ''}"
                  title="${escapeHtml(cellTitle)}">
@@ -3756,7 +3777,11 @@ function openScheduleCell(cell) {
     }
     const staffId = parseInt(cell.dataset.staff, 10);
     if (!Number.isFinite(staffId) || !cell.dataset.date) return;
-    openEditModal(staffId, cell.dataset.date, { trigger: cell });
+    openEditModal(staffId, cell.dataset.date, {
+        trigger: cell,
+        department: cell.dataset.scheduleDepartment || '',
+        professionKey: cell.dataset.scheduleProfession || ''
+    });
 }
 
 function bindScheduleCellActivation(tbody) {
@@ -3816,7 +3841,10 @@ function renderSchedule() {
     const filtered = visibleSnapshot.visible;
 
     // Group staff by department
-    const grouped = groupStaffByScheduleDepartment(filtered, { department: StaffState.activeDept });
+    const grouped = groupStaffByScheduleDepartment(filtered, {
+        department: StaffState.activeDept,
+        grouping: 'membership'
+    });
 
     let bodyHtml = '';
 
@@ -3834,7 +3862,7 @@ function renderSchedule() {
         const deptStaff = grouped[dept];
         const subGroups = DEPT_SUB_GROUPS[dept];
         const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
-            activeDepartment: StaffState.activeDept
+            activeDepartment: dept
         });
         const renderableSubGroups = subGroupPartition.groups
             .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
@@ -3871,14 +3899,15 @@ function renderSchedule() {
             for (const emp of sgStaff) {
                 const staffId = normalizeScheduleStaffId(emp.id);
                 renderedStaffIds.add(staffId);
-                bodyHtml += renderEmpRow(emp, dates, today, health, { subGroup: sg });
+                bodyHtml += renderEmpRow(emp, dates, today, health, { subGroup: sg, department: dept });
             }
         }
         // Duplicate-label and ungrouped rows stay under the top-level header without a redundant subgroup header.
         for (const emp of uniqueScheduleStaffById(deptStaff).filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
             const staffId = normalizeScheduleStaffId(emp.id);
             bodyHtml += renderEmpRow(emp, dates, today, health, {
-                subGroup: subGroupPartition.ownershipByStaffId.get(staffId) || null
+                subGroup: subGroupPartition.ownershipByStaffId.get(staffId) || null,
+                department: dept
             });
         }
     }
@@ -3969,31 +3998,39 @@ function scheduleModalSessionIsCurrent(session) {
     return Boolean(session && StaffState.editingCell === session);
 }
 
+function setScheduleModalMutationControlsDisabled(disabled) {
+    ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = disabled;
+    });
+}
+
 function beginScheduleModalMutation(session) {
     if (!scheduleModalSessionIsCurrent(session) || session.mutationPending) return false;
     session.mutationPending = true;
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'true');
-    ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
-        const button = document.getElementById(id);
-        if (button) button.disabled = true;
-    });
+    setScheduleModalMutationControlsDisabled(true);
     return true;
 }
 
 function finishScheduleModalMutation(session) {
-    if (!scheduleModalSessionIsCurrent(session)) return;
+    if (!session) return;
     session.mutationPending = false;
+    if (!scheduleModalSessionIsCurrent(session) && StaffState.editingCell) return;
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'false');
-    ['schSaveBtn', 'schReplaceBtn', 'schClearReplacementBtn'].forEach(id => {
-        const button = document.getElementById(id);
-        if (button) button.disabled = false;
-    });
+    setScheduleModalMutationControlsDisabled(false);
 }
 
-function scheduleCellFocusTarget(staffId, date, fallback = null) {
-    const selector = `.sch-cell[data-staff="${Number(staffId)}"][data-date="${String(date || '')}"]`;
+function scheduleCellFocusTarget(staffId, date, fallback = null, departmentKey = '') {
+    const normalizedDepartment = normalizeScheduleDisplayGroupKey(
+        departmentKey || fallback?.dataset?.scheduleDepartment || ''
+    );
+    const departmentSelector = normalizedDepartment
+        ? `[data-schedule-department="${normalizedDepartment}"]`
+        : '';
+    const selector = `.sch-cell[data-staff="${Number(staffId)}"][data-date="${String(date || '')}"]${departmentSelector}`;
     return document.querySelector(selector)
         || (fallback?.isConnected ? fallback : null)
         || document.getElementById('scheduleStaffSearch')
@@ -4004,6 +4041,29 @@ const SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS = {
     weekday: 'ПН-ПТ',
     weekend: 'СБ-НД'
 };
+const SCHEDULE_SHIFT_PREFERENCE_DAY_TYPES = ['weekday', 'weekend'];
+const SCHEDULE_SHIFT_PREFERENCE_DEFAULTS = Object.freeze({
+    default: Object.freeze({
+        weekday: Object.freeze({ startTime: '10:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '10:00', endTime: '20:00' })
+    }),
+    animator: Object.freeze({
+        weekday: Object.freeze({ startTime: '12:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '10:00', endTime: '20:00' })
+    }),
+    instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    }),
+    trampoline_instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    }),
+    senior_instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    })
+});
 
 function scheduleShiftPreferenceDayType(date) {
     const parsed = new Date(`${date}T00:00:00`);
@@ -4031,19 +4091,42 @@ function normalizeScheduleShiftPreference(row = {}) {
     const endTime = normalizeScheduleShiftPreferenceTime(row.end_time || row.endTime);
     if (!professionKey || !SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[dayType] || !startTime || !endTime) return null;
     if (row.is_active === false || row.isActive === false) return null;
-    return { professionKey, dayType, startTime, endTime };
+    return {
+        professionKey,
+        dayType,
+        startTime,
+        endTime,
+        source: row.source === 'fallback' ? 'fallback' : 'saved'
+    };
+}
+
+function fallbackScheduleShiftPreference(professionKey, dayType) {
+    const normalizedProfession = normalizeProfessionKey(professionKey);
+    const normalizedDayType = SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[dayType] ? dayType : 'weekday';
+    const professionDefaults = SCHEDULE_SHIFT_PREFERENCE_DEFAULTS[normalizedProfession]
+        || SCHEDULE_SHIFT_PREFERENCE_DEFAULTS.default;
+    const times = professionDefaults[normalizedDayType]
+        || SCHEDULE_SHIFT_PREFERENCE_DEFAULTS.default[normalizedDayType]
+        || SCHEDULE_SHIFT_PREFERENCE_DEFAULTS.default.weekday;
+    return {
+        professionKey: normalizedProfession,
+        dayType: normalizedDayType,
+        startTime: times.startTime,
+        endTime: times.endTime,
+        source: 'fallback'
+    };
 }
 
 function scheduleShiftPreferencesForCurrentProfession(preferences = []) {
     const professionKey = normalizeProfessionKey(document.getElementById('schProfession')?.value);
     if (!professionKey) return [];
-    return (Array.isArray(preferences) ? preferences : [])
+    const savedByDayType = new Map((Array.isArray(preferences) ? preferences : [])
         .map(normalizeScheduleShiftPreference)
         .filter(row => row && row.professionKey === professionKey)
-        .sort((a, b) => {
-            const rank = { weekday: 1, weekend: 2 };
-            return (rank[a.dayType] || 9) - (rank[b.dayType] || 9);
-        });
+        .map(row => [row.dayType, row]));
+    return SCHEDULE_SHIFT_PREFERENCE_DAY_TYPES.map(dayType => (
+        savedByDayType.get(dayType) || fallbackScheduleShiftPreference(professionKey, dayType)
+    ));
 }
 
 async function fetchScheduleShiftPreferences(staffId, options = {}) {
@@ -4126,6 +4209,7 @@ function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
     }
     const current = scheduleShiftPreferencesForCurrentProfession(preferences);
     const activeDayType = scheduleShiftPreferenceDayType(editing.date);
+    const usesFallback = current.some(row => row.source === 'fallback');
     panel.hidden = false;
     if (!current.length) {
         panel.innerHTML = `
@@ -4140,13 +4224,14 @@ function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
     panel.innerHTML = `
         <div class="sch-shift-preferences-head">
             <strong>Типові зміни з картки</strong>
-            <span>${escapeHtml(professionLabel(professionKey))}</span>
+            <span>${escapeHtml(professionLabel(professionKey))} · ${usesFallback ? 'є fallback' : 'збережено'}</span>
         </div>
         <div class="sch-shift-preference-options">
             ${current.map(row => `
-                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" aria-pressed="${row.dayType === activeDayType ? 'true' : 'false'}" ${StaffState.canManage ? '' : 'disabled'}>
+                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" data-shift-pref-source="${escapeHtml(row.source)}" aria-pressed="${row.dayType === activeDayType ? 'true' : 'false'}" ${StaffState.canManage ? '' : 'disabled'}>
                     <strong>${escapeHtml(SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[row.dayType] || row.dayType)}</strong>
                     <span>${escapeHtml(row.startTime)}-${escapeHtml(row.endTime)}</span>
+                    <small>${row.source === 'fallback' ? 'Fallback' : 'Збережено'}</small>
                 </button>
             `).join('')}
         </div>
@@ -4177,17 +4262,11 @@ async function loadScheduleShiftPreferences(staffId, options = {}) {
     if (seq !== StaffState.shiftPreferencesLoadSeq
         || !scheduleEditingCellMatches(numericStaffId, requestedDate, requestedRangeKey)) return result;
     if (!result?.success) {
-        const panel = document.getElementById('schShiftPreferencePanel');
-        if (panel) {
-            panel.hidden = false;
-            panel.innerHTML = `
-                <div class="sch-shift-preferences-head">
-                    <strong>Типові зміни з картки</strong>
-                    <span>Помилка</span>
-                </div>
-                <div class="sch-shift-preferences-empty">Не вдалося завантажити типові зміни.</div>
-            `;
-        }
+        renderScheduleShiftPreferencePanel([], {
+            autoApply: options.autoApply,
+            onlyIfState: options.onlyIfState,
+            resetInitialState: options.resetInitialState
+        });
         return result;
     }
     StaffState.shiftPreferences[numericStaffId] = result.data;
@@ -4225,10 +4304,14 @@ function openEditModal(staffId, date, options = {}) {
     }
 
     const entry = StaffState.schedule[`${staffId}_${date}`];
+    const sectionDepartment = normalizeScheduleDisplayGroupKey(options.department || '');
+    const sectionProfessionKey = normalizeProfessionKey(options.professionKey);
     StaffState.editingCell = {
         staffId,
         date,
         entry,
+        sectionDepartment,
+        sectionProfessionKey,
         rangeKey: scheduleCommittedRangeKey(),
         sessionId: ++StaffState.scheduleModalSessionSeq,
         mutationPending: false
@@ -4241,11 +4324,12 @@ function openEditModal(staffId, date, options = {}) {
     document.getElementById('schNote').value = entry?.note || '';
     const professionSelect = document.getElementById('schProfession');
     if (professionSelect) {
-        const options = staffProfessionOptions(emp, entry?.profession_key || emp.role_type);
-        professionSelect.innerHTML = options.length
-            ? options.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
+        const selectedProfessionKey = entry?.profession_key || sectionProfessionKey || emp.role_type;
+        const professionOptions = staffProfessionOptions(emp, selectedProfessionKey);
+        professionSelect.innerHTML = professionOptions.length
+            ? professionOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
             : '<option value="">Професія не задана</option>';
-        professionSelect.disabled = !options.length;
+        professionSelect.disabled = !professionOptions.length;
     }
 
     const isReplacement = isReplacementEntry(entry);
@@ -4299,7 +4383,7 @@ function openEditModal(staffId, date, options = {}) {
                 ? document.getElementById('schStatus')
                 : document.getElementById('schCancelBtn'),
             onRequestClose: () => closeEditModal(false),
-            restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger)
+            restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment)
         });
     } else {
         overlay?.classList.remove('hidden');
@@ -5621,7 +5705,10 @@ function scheduleExportCell(entry) {
 function buildScheduleWorkbookHtml(options = {}) {
     const dates = getScheduleDates();
     const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
-    const grouped = groupStaffByScheduleDepartment(exportStaff, { department: StaffState.activeDept });
+    const grouped = groupStaffByScheduleDepartment(exportStaff, {
+        department: StaffState.activeDept,
+        grouping: 'membership'
+    });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
     const periodLabel = formatScheduleRangeLabel(from, to);
@@ -5640,7 +5727,7 @@ function buildScheduleWorkbookHtml(options = {}) {
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const subGroups = DEPT_SUB_GROUPS[dept];
         const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
-            activeDepartment: StaffState.activeDept
+            activeDepartment: dept
         });
         const renderableSubGroups = subGroupPartition.groups
             .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
@@ -5665,7 +5752,7 @@ function buildScheduleWorkbookHtml(options = {}) {
                 cells.push(`<td class="shift-cell status-${escapeHtml(cell.status)}">${cell.html || '&nbsp;'}</td>`);
             }
             bodyRows += `
-        <tr data-schedule-export-staff-id="${staffId}"${subGroupAttributes}>
+        <tr data-schedule-export-staff-id="${staffId}" data-schedule-export-department="${escapeHtml(dept)}"${subGroupAttributes}>
             <td class="dept-cell">${escapeHtml(deptLabel)}</td>
             <td class="subgroup-cell">${escapeHtml(subGroupLabel)}</td>
             <td class="employee-cell">${escapeHtml(scheduleStaffDisplayName(emp))}</td>
@@ -5867,6 +5954,89 @@ async function openAddStaffModal() {
 // INIT
 // ==========================================
 
+function captureStaffScheduleRefreshState() {
+    return {
+        weekStart: StaffState.weekStart ? cloneScheduleDate(StaffState.weekStart) : null,
+        rangeStart: StaffState.rangeStart ? cloneScheduleDate(StaffState.rangeStart) : null,
+        rangeEnd: StaffState.rangeEnd ? cloneScheduleDate(StaffState.rangeEnd) : null,
+        rangeMode: StaffState.rangeMode,
+        activeDept: StaffState.activeDept,
+        searchQuery: StaffState.searchQuery,
+        healthFilter: StaffState.healthFilter,
+        expandedScheduleGroups: new Set(
+            StaffState.expandedScheduleGroups instanceof Set ? StaffState.expandedScheduleGroups : []
+        )
+    };
+}
+
+function restoreStaffScheduleRefreshState(snapshot = {}) {
+    StaffState.weekStart = snapshot.weekStart ? cloneScheduleDate(snapshot.weekStart) : null;
+    StaffState.rangeStart = snapshot.rangeStart ? cloneScheduleDate(snapshot.rangeStart) : null;
+    StaffState.rangeEnd = snapshot.rangeEnd ? cloneScheduleDate(snapshot.rangeEnd) : null;
+    StaffState.rangeMode = snapshot.rangeMode || StaffState.rangeMode;
+    StaffState.activeDept = snapshot.activeDept || 'all';
+    StaffState.searchQuery = String(snapshot.searchQuery || '');
+    StaffState.healthFilter = snapshot.healthFilter || 'all';
+    StaffState.expandedScheduleGroups = new Set(
+        snapshot.expandedScheduleGroups instanceof Set ? snapshot.expandedScheduleGroups : []
+    );
+}
+
+async function performStaffScheduleRefresh(options = {}) {
+    if (!staffScheduleInitialized && staffScheduleInitPromise) {
+        await staffScheduleInitPromise;
+    }
+    if (!staffScheduleInitialized) {
+        return { success: false, skipped: true, reason: 'not_initialized' };
+    }
+
+    const changedStaffId = normalizeScheduleFocusStaffId(options.staffId || options.changedStaffId);
+    const preservedState = captureStaffScheduleRefreshState();
+    const previousData = {
+        professions: StaffState.professions,
+        staff: StaffState.staff,
+        departments: StaffState.departments,
+        displayGroups: StaffState.displayGroups
+    };
+
+    const [professionsResult, staffResult] = await Promise.all([
+        fetchHrProfessions(),
+        fetchStaff()
+    ]);
+
+    if (!professionsResult?.success) StaffState.professions = previousData.professions;
+    if (!staffResult?.success) {
+        StaffState.staff = previousData.staff;
+        StaffState.departments = previousData.departments;
+        StaffState.displayGroups = previousData.displayGroups;
+    }
+    if (changedStaffId) delete StaffState.shiftPreferences[changedStaffId];
+    restoreStaffScheduleRefreshState(preservedState);
+    renderDeptFilter();
+    renderSchedule();
+    if (StaffState.showLoadView) renderLoadView();
+
+    return {
+        success: Boolean(professionsResult?.success && staffResult?.success),
+        professions: professionsResult,
+        staff: staffResult
+    };
+}
+
+function refreshStaffSchedulePage(options = {}) {
+    const changedStaffId = normalizeScheduleFocusStaffId(options.staffId || options.changedStaffId);
+    if (changedStaffId) {
+        StaffState.shiftPreferencesLoadSeq += 1;
+        delete StaffState.shiftPreferences[changedStaffId];
+    }
+    const refreshOptions = { ...options, changedStaffId };
+    const refreshTask = staffScheduleRefreshQueue
+        .catch(() => {})
+        .then(() => performStaffScheduleRefresh(refreshOptions));
+    staffScheduleRefreshQueue = refreshTask;
+    return refreshTask;
+}
+
 async function initStaffSchedulePage(options = {}) {
     if (staffScheduleInitPromise) return staffScheduleInitPromise;
     staffScheduleInitPromise = (async () => {
@@ -5943,8 +6113,13 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
         document.getElementById('schProfession')?.addEventListener('change', () => {
             const editing = StaffState.editingCell;
-            const preferences = editing ? StaffState.shiftPreferences[Number(editing.staffId)] : null;
-            if (Array.isArray(preferences)) renderScheduleShiftPreferencePanel(preferences, { autoApply: 'force' });
+            if (!editing) return;
+            const cachedPreferences = StaffState.shiftPreferences[Number(editing.staffId)];
+            const preferences = Array.isArray(cachedPreferences) ? cachedPreferences : [];
+            renderScheduleShiftPreferencePanel(preferences, { autoApply: 'force' });
+            if (!Array.isArray(cachedPreferences)) {
+                loadScheduleShiftPreferences(editing.staffId, { force: true, autoApply: 'force' });
+            }
         });
         document.getElementById('schShiftPreferencePanel')?.addEventListener('click', event => {
             const button = event.target.closest('[data-shift-pref-start][data-shift-pref-end]');
@@ -6027,6 +6202,7 @@ async function initStaffSchedulePage(options = {}) {
 
 window.StaffSchedulePage = {
     init: initStaffSchedulePage,
+    refresh: refreshStaffSchedulePage,
     isInitialized: () => staffScheduleInitialized,
     focusStaff: focusScheduleStaff,
     renderSchedule

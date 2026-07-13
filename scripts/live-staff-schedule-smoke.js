@@ -415,15 +415,45 @@ function staffIdSetsMatch(left, right) {
     return right.every(id => expected.has(id));
 }
 
+function staffPlacementsAreUnique(placements) {
+    const keys = placements.map(item => `${item.department}:${item.id}`);
+    return placements.every(item => Number.isSafeInteger(item.id) && item.id > 0 && item.department)
+        && new Set(keys).size === keys.length;
+}
+
+function staffPlacementSetsMatch(left, right) {
+    if (left.length !== right.length) return false;
+    const expected = new Set(left.map(item => `${item.department}:${item.id}`));
+    return right.every(item => expected.has(`${item.department}:${item.id}`));
+}
+
+function findAnimatorReceptionMembershipStaffId(state) {
+    const departmentsByStaffId = new Map();
+    for (const placement of state.placements || []) {
+        if (!departmentsByStaffId.has(placement.id)) departmentsByStaffId.set(placement.id, new Set());
+        departmentsByStaffId.get(placement.id).add(placement.department);
+    }
+    for (const [staffId, departments] of departmentsByStaffId) {
+        if (departments.has('animators') && departments.has('reception')) return staffId;
+    }
+    return null;
+}
+
 async function readScheduleStaffSetState(page) {
     return page.locator('#scheduleBody').evaluate(tbody => {
-        const ids = Array.from(tbody.querySelectorAll('[data-schedule-staff-row]'))
-            .map(row => Number(row.getAttribute('data-schedule-staff-row')));
+        const placements = Array.from(tbody.querySelectorAll('[data-schedule-staff-row]'))
+            .map(row => ({
+                id: Number(row.getAttribute('data-schedule-staff-row')),
+                department: row.getAttribute('data-schedule-department') || ''
+            }));
+        const ids = placements.map(item => item.id);
         const departments = Array.from(tbody.querySelectorAll('tr.dept-row'))
             .map(row => row.getAttribute('data-dept') || '')
             .filter(Boolean);
         return {
             ids,
+            uniqueIds: Array.from(new Set(ids)),
+            placements,
             rowCount: ids.length,
             departments,
             hasEmptyState: Boolean(tbody.querySelector('.schedule-health-empty-row')),
@@ -460,6 +490,13 @@ function scheduleExportStaffIdsFromHtml(html) {
     );
 }
 
+function scheduleExportStaffPlacementsFromHtml(html) {
+    return Array.from(
+        String(html || '').matchAll(/\bdata-schedule-export-staff-id="(\d+)"\s+data-schedule-export-department="([^"]+)"/g),
+        match => ({ id: Number(match[1]), department: match[2] })
+    );
+}
+
 async function captureScheduleWorkbookHtml(page) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
@@ -484,6 +521,19 @@ async function assertWorkbookStaffSetParity(page, expectedIds, label) {
     assert.equal(staffIdSetsMatch(expectedIds, exportedIds), true, `${label}: workbook staff set exactly matches the visible table`);
 }
 
+async function assertWorkbookStaffPlacementParity(page, expectedPlacements, label) {
+    const html = await captureScheduleWorkbookHtml(page);
+    const exportedPlacements = scheduleExportStaffPlacementsFromHtml(html);
+
+    assert.equal(html.includes('schedule-export-table'), true, `${label}: generated workbook contains the schedule table`);
+    assert.equal(staffPlacementsAreUnique(exportedPlacements), true, `${label}: workbook placements are unique within each professional section`);
+    assert.equal(
+        staffPlacementSetsMatch(expectedPlacements, exportedPlacements),
+        true,
+        `${label}: workbook placements exactly match the visible table`
+    );
+}
+
 async function assertCommercialStaffSetContracts(page) {
     await page.locator('#scheduleStaffSearch').fill('');
     await activateDepartmentFilter(page, 'all');
@@ -492,9 +542,53 @@ async function assertCommercialStaffSetContracts(page) {
     const allChipCount = Number(await page.locator('#deptFilter .dept-chip[data-dept="all"] .dept-chip-count').textContent());
     const allState = await readScheduleStaffSetState(page);
     assert.equal(allState.hasEmptyState, false, 'all filter has schedule staff rows');
-    assert.equal(staffIdsAreUnique(allState.ids), true, 'all filter renders every numeric staff ID once');
-    assert.equal(allState.rowCount, allChipCount, 'all chip count matches the table staff count');
+    assert.equal(staffPlacementsAreUnique(allState.placements), true, 'all filter renders each numeric staff ID once per professional section');
+    assert.equal(allState.uniqueIds.length, allChipCount, 'all chip count matches the unique people total');
+    assert.equal(allState.rowCount >= allState.uniqueIds.length, true, 'membership placements never reduce the unique people set');
     assert.equal(allState.groupStaffCount, allState.rowCount, 'all top-level group counts match the table');
+    const sharedStaffId = findAnimatorReceptionMembershipStaffId(allState);
+    assert.equal(Number.isSafeInteger(sharedStaffId), true, 'all filter includes a staff member in both animators and reception');
+    await assertWorkbookStaffPlacementParity(page, allState.placements, 'all membership export');
+
+    const refreshSnapshot = await page.evaluate(() => ({
+        from: document.getElementById('scheduleDateFrom')?.value || '',
+        to: document.getElementById('scheduleDateTo')?.value || '',
+        search: document.getElementById('scheduleStaffSearch')?.value || '',
+        activeDept: document.querySelector('#deptFilter .dept-chip[aria-pressed="true"]')?.dataset.dept || '',
+        navigationCount: performance.getEntriesByType('navigation').length
+    }));
+    await page.evaluate(async () => {
+        if (typeof window.StaffSchedulePage?.refresh !== 'function') throw new Error('StaffSchedulePage.refresh is unavailable');
+        await window.StaffSchedulePage.refresh();
+    });
+    await page.waitForFunction(() => (
+        document.querySelectorAll('[data-schedule-group-toggle]').length > 0
+        && Array.from(document.querySelectorAll('[data-schedule-group-toggle]'))
+            .every(button => button.getAttribute('aria-expanded') === 'true')
+    ));
+    const refreshedAllState = await readScheduleStaffSetState(page);
+    assert.equal(staffPlacementSetsMatch(allState.placements, refreshedAllState.placements), true, 'read-only refresh preserves all membership placements');
+    assert.equal(refreshedAllState.uniqueIds.length, allChipCount, 'read-only refresh preserves the unique people total');
+    assert.deepEqual(await page.evaluate(() => ({
+        from: document.getElementById('scheduleDateFrom')?.value || '',
+        to: document.getElementById('scheduleDateTo')?.value || '',
+        search: document.getElementById('scheduleStaffSearch')?.value || '',
+        activeDept: document.querySelector('#deptFilter .dept-chip[aria-pressed="true"]')?.dataset.dept || '',
+        navigationCount: performance.getEntriesByType('navigation').length
+    })), refreshSnapshot, 'read-only refresh preserves range, filter, search, and navigation state');
+
+    for (const department of ['animators', 'reception']) {
+        await activateDepartmentFilter(page, department);
+        await expandAllScheduleGroups(page);
+        const state = await readScheduleStaffSetState(page);
+        assert.equal(
+            state.placements.filter(item => item.id === sharedStaffId && item.department === department).length,
+            1,
+            'shared multi-profession staff member appears once in the active professional section'
+        );
+    }
+    await activateDepartmentFilter(page, 'all');
+    await expandAllScheduleGroups(page);
 
     const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(buttons => buttons
         .map(button => ({
@@ -541,9 +635,11 @@ async function assertCommercialStaffSetContracts(page) {
     await activateDepartmentFilter(page, 'all');
 
     return {
-        allCount: allState.rowCount,
+        allCount: allState.uniqueIds.length,
+        placementCount: allState.rowCount,
         departmentCount: filters.length,
-        searchedCount: searchState.rowCount
+        searchedCount: searchState.rowCount,
+        sharedMembership: 'animators+reception'
     };
 }
 
@@ -1138,7 +1234,7 @@ async function run() {
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK filters: ${desktop.filteredGroups}`);
-        console.log(`  OK staff-set contracts: all=${desktop.commercialContracts.allCount}, departments=${desktop.commercialContracts.departmentCount}, searched=${desktop.commercialContracts.searchedCount}`);
+        console.log(`  OK staff-set contracts: people=${desktop.commercialContracts.allCount}, placements=${desktop.commercialContracts.placementCount}, shared=${desktop.commercialContracts.sharedMembership}, departments=${desktop.commercialContracts.departmentCount}, searched=${desktop.commercialContracts.searchedCount}`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: Excel schedule table`);
         console.log(`  OK dark theme: 1440/390/360`);

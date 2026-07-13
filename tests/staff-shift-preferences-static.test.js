@@ -9,6 +9,8 @@ const migrationSql = migration
     .join('\n');
 const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
 const dbIndex = fs.readFileSync('db/index.js', 'utf8');
+const hrPage = fs.readFileSync('js/hr-page.js', 'utf8');
+const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 
 function routeBlock(method, path) {
     const start = staffRoute.indexOf(`router.${method}('${path}'`);
@@ -70,5 +72,31 @@ describe('staff shift preferences contract', () => {
         assert.doesNotMatch(putBlock, /staff_schedule/);
         assert.doesNotMatch(putBlock, /hr_shifts/);
         assert.doesNotMatch(putBlock, /syncHrShiftFromScheduleEntry/);
+    });
+
+    it('completes missing profession defaults without overwriting configured times', () => {
+        const putBlock = routeBlock('put', '/:id/shift-preferences');
+        const fallbackInsertIndex = putBlock.indexOf('for (const preference of fallbackPreferences)');
+        const explicitUpsertIndex = putBlock.indexOf('for (const preference of validation.preferences)');
+
+        assert.match(staffRoute, /function missingStaffShiftPreferenceDefaults/);
+        assert.match(staffRoute, /for \(const professionKey of allowedProfessions\)/);
+        assert.match(staffRoute, /for \(const dayType of STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS\)/);
+        assert.match(putBlock, /missingStaffShiftPreferenceDefaults\([\s\S]*validation\.allowedProfessions,[\s\S]*validation\.preferences/);
+        assert.match(putBlock, /ON CONFLICT \(staff_id, profession_key, day_type\) DO NOTHING/);
+        assert.match(putBlock, /ensuredFallbackCount: createdFallbacks\.length/);
+        assert.ok(fallbackInsertIndex >= 0 && fallbackInsertIndex < explicitUpsertIndex, 'fallback rows are inserted before explicit values are upserted');
+        assert.match(staffRoute, /animator:\s*Object\.freeze\(\{[\s\S]*weekday:[\s\S]*12:00[\s\S]*weekend:[\s\S]*10:00/);
+    });
+
+    it('saves card times, refreshes the schedule, and exposes saved-versus-fallback sources', () => {
+        assert.match(hrPage, /const shouldSaveShiftPreferences = scope === 'work'/);
+        assert.match(hrPage, /await saveStaffShiftPreferences\(staffId\)/);
+        assert.match(hrPage, /await refreshHrStaffScheduleAfterWorkSave\(staffId\)/);
+        assert.match(staffPage, /function fallbackScheduleShiftPreference/);
+        assert.match(staffPage, /data-shift-pref-source=/);
+        assert.match(staffPage, /row\.source === 'fallback' \? 'Fallback' : 'Збережено'/);
+        assert.match(staffPage, /applyScheduleShiftPreference\([\s\S]*force: true/);
+        assert.doesNotMatch(hrPage, /UPDATE\s+staff_schedule/i);
     });
 });

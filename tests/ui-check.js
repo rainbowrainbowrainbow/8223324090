@@ -1823,7 +1823,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleCloseModalBlock.includes('StaffState.shiftPreferencesLoadSeq += 1')
         && staffScheduleCloseModalBlock.includes('scheduleCellHistoryAbortController.abort()'));
     check('Staff schedule shift modal uses shared focus lifecycle and isolates Escape from legacy overlays',
-        staffScheduleOpenCellBlock.includes("openEditModal(staffId, cell.dataset.date, { trigger: cell })")
+        staffScheduleOpenCellBlock.includes("department: cell.dataset.scheduleDepartment || ''")
+        && staffScheduleOpenCellBlock.includes("professionKey: cell.dataset.scheduleProfession || ''")
         && staffScheduleOpenModalBlock.includes('openModal(overlay, trigger, {')
         && staffScheduleOpenModalBlock.includes('show: modal =>')
         && staffScheduleOpenModalBlock.includes('hide: modal =>')
@@ -1831,7 +1832,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleOpenModalBlock.includes("document.getElementById('schStatus')")
         && staffScheduleOpenModalBlock.includes("document.getElementById('schCancelBtn')")
         && staffScheduleOpenModalBlock.includes('onRequestClose: () => closeEditModal(false)')
-        && staffScheduleOpenModalBlock.includes('restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger)')
+        && staffScheduleOpenModalBlock.includes('restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment)')
         && staffScheduleCellFocusTargetBlock.includes('document.querySelector(selector)')
         && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleStaffSearch')")
         && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleWrapper')")
@@ -2045,7 +2046,7 @@ checkPage('staff.html', (doc, html) => {
         && staffFunctionBlock('scheduleVisibleStaff').includes('visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query))')
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
-        && staffCode.includes('const grouped = groupStaffByScheduleDepartment(filtered, { department: StaffState.activeDept })'));
+        && staffScheduleRenderBlock.includes("grouping: 'membership'"));
     check('Staff schedule subgroup ownership is deterministic while duplicate-label headers stay suppressed',
         staffCode.includes('function staffProfessionKeys(staff = {})')
         && staffCode.includes('function staffScheduleDepartmentKeys(staff = {})')
@@ -2195,7 +2196,7 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-schedule-range-state')
         && staffPagesCss.includes('[data-schedule-state="loading"]')
         && staffPagesCss.includes('[data-schedule-state="error"]'));
-    check('Staff schedule keeps multi-profession staff canonical and unique across table, export, and print',
+    check('Staff schedule renders multi-profession membership per section while keeping operations unique',
         staffScheduleNormalizeStaffIdBlock.includes('Number(')
         && /Number\.is(?:SafeInteger|Integer|Finite)/.test(staffScheduleNormalizeStaffIdBlock)
         && staffScheduleUniqueStaffBlock.includes('normalizeScheduleStaffId')
@@ -2210,6 +2211,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleGroupingKeysBlock.includes('staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : []')
         && staffScheduleGroupingKeysBlock.includes('return [scheduleCanonicalDisplayGroupKey(staff)]')
         && staffScheduleGroupingKeysBlock.includes("options.grouping === 'membership'")
+        && staffScheduleRenderBlock.includes("grouping: 'membership'")
         && staffScheduleDepartmentCountBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleVisibleWithoutSearchBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleGroupStaffBlock.includes('uniqueScheduleStaffById(')
@@ -2225,6 +2227,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleCopyVisibleIdsBlock.includes('normalizeScheduleStaffId')
         && staffScheduleDisplayNameBlock.includes('staff.display_name || staff.displayName || staff.name')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-staff-id=')
+        && staffScheduleWorkbookBlock.includes('data-schedule-export-department=')
+        && staffScheduleWorkbookBlock.includes("grouping: 'membership'")
         && staffScheduleWorkbookBlock.includes('scheduleStaffDisplayName(emp)')
         && staffScheduleBrowserSmokeCode.includes('const STAFF_API_ROWS =')
         && /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/.test(staffScheduleBrowserSmokeCode)
@@ -2237,8 +2241,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleBrowserSmokeCode.includes('function scheduleExportStaffIdsFromHtml')
         && staffScheduleBrowserSmokeCode.includes('function assertUniqueScheduleStaffIds')
         && staffScheduleBrowserSmokeCode.includes('function assertScheduleExportParity')
-        && staffScheduleBrowserSmokeCode.includes('async function runCanonicalGroupingFlow')
-        && staffScheduleBrowserSmokeCode.includes('runCanonicalGroupingFlow('));
+        && staffScheduleBrowserSmokeCode.includes('async function runMembershipGroupingFlow')
+        && staffScheduleBrowserSmokeCode.includes('runMembershipGroupingFlow('));
     check('Staff schedule read-only surfaces use the selected visible period',
         staffSchedulePrimaryRenderBlock.includes('const dates = getScheduleDates()')
         && staffSchedulePrimaryRenderBlock.includes("syncScheduleRangeLayout('scheduleWrapper', dates, 'schedule')")

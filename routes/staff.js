@@ -238,8 +238,31 @@ async function resolveScheduleProfession(staffId, status, payload = {}, db = poo
     return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
 }
 
-const STAFF_SHIFT_PREFERENCE_DAY_TYPES = new Set(['weekday', 'weekend']);
+const STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS = ['weekday', 'weekend'];
+const STAFF_SHIFT_PREFERENCE_DAY_TYPES = new Set(STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS);
 const STAFF_SHIFT_PREFERENCE_MAX_ITEMS = 100;
+const STAFF_SHIFT_PREFERENCE_DEFAULTS = Object.freeze({
+    default: Object.freeze({
+        weekday: Object.freeze({ startTime: '10:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '10:00', endTime: '20:00' })
+    }),
+    animator: Object.freeze({
+        weekday: Object.freeze({ startTime: '12:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '10:00', endTime: '20:00' })
+    }),
+    instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    }),
+    trampoline_instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    }),
+    senior_instructor: Object.freeze({
+        weekday: Object.freeze({ startTime: '11:00', endTime: '20:00' }),
+        weekend: Object.freeze({ startTime: '09:00', endTime: '20:00' })
+    })
+});
 
 function normalizeShiftPreferenceDayType(value) {
     const raw = String(value || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
@@ -260,6 +283,37 @@ function normalizeShiftPreferenceTime(value) {
 function formatShiftPreferenceTime(value) {
     if (!value) return null;
     return String(value).slice(0, 5);
+}
+
+function defaultStaffShiftPreference(professionKey, dayType) {
+    const normalizedProfession = normalizeProfessionKey(professionKey);
+    const normalizedDayType = normalizeShiftPreferenceDayType(dayType) || 'weekday';
+    const professionDefaults = STAFF_SHIFT_PREFERENCE_DEFAULTS[normalizedProfession]
+        || STAFF_SHIFT_PREFERENCE_DEFAULTS.default;
+    const times = professionDefaults[normalizedDayType]
+        || STAFF_SHIFT_PREFERENCE_DEFAULTS.default[normalizedDayType]
+        || STAFF_SHIFT_PREFERENCE_DEFAULTS.default.weekday;
+    return {
+        professionKey: normalizedProfession,
+        dayType: normalizedDayType,
+        startTime: times.startTime,
+        endTime: times.endTime,
+        isActive: true
+    };
+}
+
+function missingStaffShiftPreferenceDefaults(allowedProfessions = [], preferences = []) {
+    const supplied = new Set((Array.isArray(preferences) ? preferences : []).map(preference => (
+        `${preference.professionKey}:${preference.dayType}`
+    )));
+    const defaults = [];
+    for (const professionKey of allowedProfessions) {
+        for (const dayType of STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS) {
+            if (supplied.has(`${professionKey}:${dayType}`)) continue;
+            defaults.push(defaultStaffShiftPreference(professionKey, dayType));
+        }
+    }
+    return defaults;
 }
 
 function mapStaffShiftPreferenceRow(row = {}) {
@@ -1736,6 +1790,31 @@ router.put('/:id/shift-preferences', requireAction('manage_staff'), async (req, 
             });
         }
 
+        const actor = req.user?.username || null;
+        const fallbackPreferences = missingStaffShiftPreferenceDefaults(
+            validation.allowedProfessions,
+            validation.preferences
+        );
+        const createdFallbacks = [];
+        for (const preference of fallbackPreferences) {
+            const inserted = await client.query(
+                `INSERT INTO staff_shift_preferences
+                    (staff_id, profession_key, day_type, start_time, end_time, is_active, created_by, updated_by)
+                 VALUES ($1, $2, $3, $4::time, $5::time, true, $6, $6)
+                 ON CONFLICT (staff_id, profession_key, day_type) DO NOTHING
+                 RETURNING id`,
+                [
+                    staffId,
+                    preference.professionKey,
+                    preference.dayType,
+                    preference.startTime,
+                    preference.endTime,
+                    actor
+                ]
+            );
+            if (inserted.rowCount) createdFallbacks.push(preference);
+        }
+
         for (const preference of validation.preferences) {
             await client.query(
                 `INSERT INTO staff_shift_preferences
@@ -1755,21 +1834,28 @@ router.put('/:id/shift-preferences', requireAction('manage_staff'), async (req, 
                     preference.startTime,
                     preference.endTime,
                     preference.isActive,
-                    req.user?.username || null
+                    actor
                 ]
             );
         }
 
-        if (validation.preferences.length) {
-            await insertHrAuditLog(client, 'staff_shift_preferences_update', staffId, req.user?.username || null, {
+        if (validation.preferences.length || createdFallbacks.length) {
+            await insertHrAuditLog(client, 'staff_shift_preferences_update', staffId, actor, {
                 source: 'staff.shift_preferences.put',
                 count: validation.preferences.length,
+                ensuredFallbackCount: createdFallbacks.length,
                 preferences: validation.preferences.map(item => ({
                     professionKey: item.professionKey,
                     dayType: item.dayType,
                     startTime: item.startTime,
                     endTime: item.endTime,
                     isActive: item.isActive
+                })),
+                ensuredFallbacks: createdFallbacks.map(item => ({
+                    professionKey: item.professionKey,
+                    dayType: item.dayType,
+                    startTime: item.startTime,
+                    endTime: item.endTime
                 }))
             }, req.ip || null);
         }
@@ -1781,6 +1867,7 @@ router.put('/:id/shift-preferences', requireAction('manage_staff'), async (req, 
             staffId,
             allowedProfessions: validation.allowedProfessions,
             count: validation.preferences.length,
+            ensuredFallbackCount: createdFallbacks.length,
             data
         });
     } catch (err) {

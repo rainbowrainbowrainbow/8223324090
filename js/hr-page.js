@@ -2344,6 +2344,23 @@ async function loadHrScheduleModule() {
     });
 }
 
+async function refreshHrStaffScheduleAfterWorkSave(staffId) {
+    const schedulePage = window.StaffSchedulePage;
+    if (!schedulePage || typeof schedulePage.refresh !== 'function') {
+        return { success: false, skipped: true, reason: 'refresh_unavailable' };
+    }
+    try {
+        const result = await schedulePage.refresh({ staffId });
+        if (result?.success === false && !result?.skipped) {
+            console.warn('Staff schedule refresh after work save was incomplete', result);
+        }
+        return result;
+    } catch (err) {
+        console.warn('Staff schedule refresh after work save failed', err);
+        return { success: false, error: err?.message || 'refresh_failed' };
+    }
+}
+
 function initScheduleControls() {
     if (hasHrStaffScheduleModule()) return;
     scheduleWeekStart = getMonday(new Date());
@@ -7559,8 +7576,16 @@ async function saveStaffEdit(options = {}) {
     const labels = scope === 'work'
         ? { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' }
         : { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' };
+    const shouldSaveShiftPreferences = scope === 'work'
+        && (Object.prototype.hasOwnProperty.call(body, 'role_type')
+            || Object.prototype.hasOwnProperty.call(body, 'secondary_professions'));
+    const pendingShiftPreferences = shouldSaveShiftPreferences ? readStaffShiftPreferences() : null;
 
     return runStaffProfileAction(button || (scope === 'work' ? 'editSaveWork' : 'editSave'), labels, async () => {
+        if (pendingShiftPreferences && !pendingShiftPreferences.ok) {
+            showNotification(pendingShiftPreferences.error || 'Перевірте типові години для професій', 'error');
+            return { success: false, error: pendingShiftPreferences.error || 'invalid_shift_preferences' };
+        }
         const data = await updateStaffProfileFields(staffId, body);
         if (!data?.success) {
             showNotification(data?.error || 'Не вдалося зберегти дані профілю', 'error');
@@ -7569,10 +7594,38 @@ async function saveStaffEdit(options = {}) {
         const fresh = mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
         if (scope === 'main') syncStaffProfileHeaderName(body.name || '', fresh || body);
         markStaffProfileScopeFieldsClean(scope, submittedFields);
-        showNotification(scope === 'work' ? 'Робочі дані збережено' : 'Основні дані збережено', 'success');
-        if (options?.closeAfterSave) await closeHrEditableModal('staffEditModal', true);
+        const shiftPreferencesSave = shouldSaveShiftPreferences
+            ? await saveStaffShiftPreferences(staffId)
+            : null;
+        const shiftPreferencesSaveFailed = shouldSaveShiftPreferences && shiftPreferencesSave?.success !== true;
+        if (shouldSaveShiftPreferences && !shiftPreferencesSaveFailed) {
+            markStaffProfileScopesClean(['shift']);
+        }
+        const scheduleRefresh = scope === 'work'
+            ? await refreshHrStaffScheduleAfterWorkSave(staffId)
+            : null;
+        const scheduleRefreshFailed = scope === 'work' && scheduleRefresh?.success === false && !scheduleRefresh?.skipped;
+        showNotification(
+            shiftPreferencesSaveFailed
+                ? 'Професії збережено, але типові години не вдалося зберегти'
+                : (scheduleRefreshFailed
+                    ? 'Робочі дані збережено, але графік не вдалося оновити автоматично'
+                    : (scope === 'work'
+                        ? (shouldSaveShiftPreferences ? 'Робочі дані та типові години збережено' : 'Робочі дані збережено')
+                        : 'Основні дані збережено')),
+            shiftPreferencesSaveFailed || scheduleRefreshFailed ? 'warning' : 'success'
+        );
+        if (options?.closeAfterSave && !shiftPreferencesSaveFailed) await closeHrEditableModal('staffEditModal', true);
         await loadTeam();
         await refreshHrOperationalViews();
+        if (shiftPreferencesSaveFailed) {
+            return {
+                success: false,
+                partial: true,
+                data: data.data,
+                error: shiftPreferencesSave?.error || 'shift_preferences_save_failed'
+            };
+        }
         return data;
     });
 }

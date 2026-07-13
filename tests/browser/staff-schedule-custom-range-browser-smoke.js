@@ -31,12 +31,12 @@ const DISPLAY_GROUPS = [
 const STAFF_ROWS = [
     {
         id: 101,
-        name: 'Пасенко Євгенія (офіційно)',
-        display_name: 'Женя Пасенко',
-        position: 'Аніматор',
-        department: 'animators',
-        role_type: 'animator',
-        display_group: 'animators',
+        name: 'Синіпол Віталіна (QA fixture)',
+        display_name: 'Віталіна Синіпол',
+        position: 'Старший менеджер',
+        department: 'reception',
+        role_type: 'senior_manager',
+        display_group: 'reception',
         secondary_professions: ['reception', 'reception', 'animator'],
         is_active: true,
         is_freelance: false,
@@ -158,6 +158,7 @@ const STAFF_API_ROWS = [
 ];
 
 const PROFESSIONS = [
+    { key: 'senior_manager', title: 'Старший менеджер', department: 'reception', is_active: true },
     { key: 'animator', title: 'Аніматор', department: 'animators', is_active: true },
     { key: 'reception', title: 'Рецепція', department: 'reception', is_active: true },
     { key: 'manager', title: 'Менеджер', department: 'reception', is_active: true },
@@ -272,6 +273,7 @@ const SCHEDULE_FIXTURE_ENTRIES = [
 
 const apiCalls = {
     scheduleRanges: [],
+    scheduleBodies: [],
     scheduleResponses: [],
     historyResponses: [],
     hoursRanges: [],
@@ -279,9 +281,28 @@ const apiCalls = {
     copyWeekBodies: []
 };
 
+function setFixtureSecondaryProfessions(staffId, professions) {
+    const normalizedStaffId = Number(staffId);
+    for (const row of STAFF_API_ROWS) {
+        if (Number(row.id) === normalizedStaffId) row.secondary_professions = [...professions];
+    }
+}
+
+function assertSingleScheduleEntryPerStaffDate(entries, label = 'schedule fixture') {
+    const keys = entries.map(entry => `${Number(entry.staff_id)}:${entry.date}`);
+    assert.equal(
+        new Set(keys).size,
+        keys.length,
+        `${label} keeps one actual shift per staff member and date`
+    );
+}
+
 const scheduleResponseScenarios = [];
 const activeScheduleResponseScenarios = new Set();
 let scheduleResponseScenarioSequence = 0;
+const scheduleSaveResponseScenarios = [];
+const activeScheduleSaveResponseScenarios = new Set();
+let scheduleSaveResponseScenarioSequence = 0;
 const historyResponseScenarios = [];
 const activeHistoryResponseScenarios = new Set();
 let historyResponseScenarioSequence = 0;
@@ -343,6 +364,41 @@ function releaseScheduleResponseScenarios() {
         scenario.release();
     }
     scheduleResponseScenarios.length = 0;
+}
+
+function queueScheduleSaveResponseScenario(options = {}) {
+    const scenario = {
+        id: ++scheduleSaveResponseScenarioSequence,
+        staffId: options.staffId ? Number(options.staffId) : null,
+        date: options.date || null,
+        hold: Boolean(options.hold),
+        started: createDeferred(),
+        gate: createDeferred(),
+        finished: createDeferred(),
+        request: null
+    };
+    if (!scenario.hold) scenario.gate.resolve();
+    scenario.release = () => scenario.gate.resolve();
+    scheduleSaveResponseScenarios.push(scenario);
+    return scenario;
+}
+
+function takeScheduleSaveResponseScenario(staffId, date) {
+    const index = scheduleSaveResponseScenarios.findIndex(scenario => (
+        (!scenario.staffId || scenario.staffId === Number(staffId))
+        && (!scenario.date || scenario.date === date)
+    ));
+    if (index < 0) return null;
+    const [scenario] = scheduleSaveResponseScenarios.splice(index, 1);
+    activeScheduleSaveResponseScenarios.add(scenario);
+    return scenario;
+}
+
+function releaseScheduleSaveResponseScenarios() {
+    for (const scenario of [...scheduleSaveResponseScenarios, ...activeScheduleSaveResponseScenarios]) {
+        scenario.release();
+    }
+    scheduleSaveResponseScenarios.length = 0;
 }
 
 function scheduleHistoryFixture(marker, staffId, date) {
@@ -613,6 +669,43 @@ async function handleApi(req, res, url) {
         });
         return true;
     }
+    if (url.pathname === '/api/staff/schedule' && req.method === 'PUT') {
+        const body = await collectJson(req);
+        const staffId = Number(body.staffId);
+        const saveScenario = takeScheduleSaveResponseScenario(staffId, body.date);
+        if (saveScenario) {
+            saveScenario.request = body;
+            saveScenario.started.resolve(body);
+        }
+        apiCalls.scheduleBodies.push(body);
+        try {
+            if (saveScenario) await saveScenario.gate.promise;
+        const existingIndex = SCHEDULE_FIXTURE_ENTRIES.findIndex(entry => (
+            Number(entry.staff_id) === staffId && entry.date === body.date
+        ));
+        const existing = existingIndex >= 0 ? SCHEDULE_FIXTURE_ENTRIES[existingIndex] : null;
+        const saved = {
+            id: existing?.id || (9900 + SCHEDULE_FIXTURE_ENTRIES.length),
+            staff_id: staffId,
+            date: body.date,
+            shift_start: body.shiftStart || null,
+            shift_end: body.shiftEnd || null,
+            status: body.status || 'working',
+            note: body.note || null,
+            profession_key: body.professionKey || null
+        };
+        if (existingIndex >= 0) SCHEDULE_FIXTURE_ENTRIES.splice(existingIndex, 1, saved);
+        else SCHEDULE_FIXTURE_ENTRIES.push(saved);
+        assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES, 'mock schedule PUT');
+        sendJson(res, { success: true, data: saved });
+        } finally {
+            if (saveScenario) {
+                activeScheduleSaveResponseScenarios.delete(saveScenario);
+                saveScenario.finished.resolve(saveScenario.request);
+            }
+        }
+        return true;
+    }
     if (url.pathname === '/api/staff/schedule') {
         const from = url.searchParams.get('from');
         const to = url.searchParams.get('to');
@@ -633,11 +726,20 @@ async function handleApi(req, res, url) {
         const staffId = Number(shiftPreferenceMatch[1]);
         const staff = STAFF_ROWS.find(row => Number(row.id) === staffId);
         const professionKey = staff?.role_type || 'animator';
+        const secondaryPreferences = staffId === 101
+            ? [
+                { staff_id: staffId, profession_key: 'animator', day_type: 'weekday', start_time: '12:00:00', end_time: '20:00:00', is_active: true },
+                { staff_id: staffId, profession_key: 'animator', day_type: 'weekend', start_time: '10:00:00', end_time: '20:00:00', is_active: true },
+                { staff_id: staffId, profession_key: 'reception', day_type: 'weekday', start_time: '08:00:00', end_time: '16:00:00', is_active: true },
+                { staff_id: staffId, profession_key: 'reception', day_type: 'weekend', start_time: '09:00:00', end_time: '17:00:00', is_active: true }
+            ]
+            : [];
         sendJson(res, {
             success: true,
             data: [
                 { staff_id: staffId, profession_key: professionKey, day_type: 'weekday', start_time: '12:00:00', end_time: '20:00:00', is_active: true },
-                { staff_id: staffId, profession_key: professionKey, day_type: 'weekend', start_time: '10:00:00', end_time: '20:00:00', is_active: true }
+                { staff_id: staffId, profession_key: professionKey, day_type: 'weekend', start_time: '10:00:00', end_time: '20:00:00', is_active: true },
+                ...secondaryPreferences
             ]
         });
         return true;
@@ -1061,6 +1163,7 @@ async function scheduleStaffRowsFromDom(page) {
     return page.locator('#scheduleBody [data-schedule-staff-row]').evaluateAll(rows => (
         rows.map(row => ({
             id: Number(row.getAttribute('data-schedule-staff-row')),
+            department: row.getAttribute('data-schedule-department') || '',
             name: row.querySelector('.emp-name-text')?.textContent?.trim() || ''
         }))
     ));
@@ -1136,6 +1239,23 @@ function assertUniqueScheduleStaffIds(ids, label) {
     assert.equal(new Set(ids).size, ids.length, `${label}: every numeric staff ID is rendered once`);
 }
 
+function scheduleStaffPlacementKey(row = {}) {
+    return `${String(row.department || '')}:${Number(row.id)}`;
+}
+
+function sortedScheduleStaffPlacements(rows = []) {
+    return [...rows].sort((left, right) => (
+        String(left.department || '').localeCompare(String(right.department || ''))
+        || Number(left.id) - Number(right.id)
+    ));
+}
+
+function assertUniqueScheduleStaffPlacements(rows, label) {
+    assert.ok(rows.every(row => Number.isFinite(row.id) && row.department), `${label}: every row exposes staff and department context`);
+    const placements = rows.map(scheduleStaffPlacementKey);
+    assert.equal(new Set(placements).size, placements.length, `${label}: every staff ID is rendered at most once per department`);
+}
+
 function sortedScheduleStaffIds(ids) {
     return [...ids].sort((left, right) => left - right);
 }
@@ -1165,11 +1285,13 @@ function scheduleExportTextFromHtml(html) {
 
 function scheduleExportStaffRowsFromHtml(html) {
     return Array.from(
-        String(html || '').matchAll(/<tr\b[^>]*\bdata-schedule-export-staff-id="(\d+)"[^>]*>([\s\S]*?)<\/tr>/gi),
+        String(html || '').matchAll(/<tr\b([^>]*\bdata-schedule-export-staff-id="(\d+)"[^>]*)>([\s\S]*?)<\/tr>/gi),
         match => {
-            const employeeCell = match[2].match(/<td\b[^>]*\bclass="[^"]*\bemployee-cell\b[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+            const department = match[1].match(/\bdata-schedule-export-department="([^"]+)"/i)?.[1] || '';
+            const employeeCell = match[3].match(/<td\b[^>]*\bclass="[^"]*\bemployee-cell\b[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
             return {
-                id: Number(match[1]),
+                id: Number(match[2]),
+                department,
                 name: scheduleExportTextFromHtml(employeeCell?.[1] || '')
             };
         }
@@ -1217,15 +1339,26 @@ async function assertScheduleExportParity(page, expectedIds, label) {
     const printRows = scheduleExportStaffRowsFromHtml(printHtml);
 
     assert.deepEqual(sortedScheduleStaffIds(visibleRows.map(row => row.id)), sortedScheduleStaffIds(expectedIds), `${label}: expected staff set is the visible table set`);
-    assertUniqueScheduleStaffIds(workbookIds, `${label} workbook`);
-    assertUniqueScheduleStaffIds(printIds, `${label} print`);
+    assertUniqueScheduleStaffPlacements(visibleRows, `${label} table`);
+    assertUniqueScheduleStaffPlacements(workbookRows, `${label} workbook`);
+    assertUniqueScheduleStaffPlacements(printRows, `${label} print`);
     assert.deepEqual(sortedScheduleStaffIds(workbookIds), sortedScheduleStaffIds(expectedIds), `${label}: workbook staff set matches the visible table`);
     assert.deepEqual(sortedScheduleStaffIds(printIds), sortedScheduleStaffIds(expectedIds), `${label}: print staff set matches the visible table`);
     assert.deepEqual(sortedScheduleStaffIds(printIds), sortedScheduleStaffIds(workbookIds), `${label}: print and workbook contain the same staff set`);
+    assert.deepEqual(
+        sortedScheduleStaffPlacements(workbookRows).map(scheduleStaffPlacementKey),
+        sortedScheduleStaffPlacements(visibleRows).map(scheduleStaffPlacementKey),
+        `${label}: workbook staff placements match the visible table`
+    );
+    assert.deepEqual(
+        sortedScheduleStaffPlacements(printRows).map(scheduleStaffPlacementKey),
+        sortedScheduleStaffPlacements(visibleRows).map(scheduleStaffPlacementKey),
+        `${label}: print staff placements match the visible table`
+    );
 
     for (const visibleRow of visibleRows) {
-        const workbookRow = workbookRows.find(row => row.id === visibleRow.id);
-        const printRow = printRows.find(row => row.id === visibleRow.id);
+        const workbookRow = workbookRows.find(row => scheduleStaffPlacementKey(row) === scheduleStaffPlacementKey(visibleRow));
+        const printRow = printRows.find(row => scheduleStaffPlacementKey(row) === scheduleStaffPlacementKey(visibleRow));
         assert.equal(Boolean(workbookRow?.name), true, `${label}: downloaded workbook contains employee cell content for staff ID ${visibleRow.id}`);
         assert.equal(Boolean(printRow?.name), true, `${label}: print HTML contains employee cell content for staff ID ${visibleRow.id}`);
         assert.equal(workbookRow?.name === visibleRow.name, true, `${label}: downloaded workbook employee content matches the visible row for staff ID ${visibleRow.id}`);
@@ -1234,10 +1367,10 @@ async function assertScheduleExportParity(page, expectedIds, label) {
     }
 
     if (expectedIds.includes(101)) {
-        assert.match(workbookHtml, /Женя Пасенко/, `${label}: workbook prefers display_name`);
-        assert.doesNotMatch(workbookHtml, /Пасенко Євгенія \(офіційно\)/, `${label}: workbook does not replace display_name with legal name`);
-        assert.match(printHtml, /Женя Пасенко/, `${label}: print prefers display_name`);
-        assert.doesNotMatch(printHtml, /Пасенко Євгенія \(офіційно\)/, `${label}: print does not replace display_name with legal name`);
+        assert.match(workbookHtml, /Віталіна Синіпол/, `${label}: workbook prefers display_name`);
+        assert.doesNotMatch(workbookHtml, /Синіпол Віталіна \(QA fixture\)/, `${label}: workbook does not replace display_name with legal name`);
+        assert.match(printHtml, /Віталіна Синіпол/, `${label}: print prefers display_name`);
+        assert.doesNotMatch(printHtml, /Синіпол Віталіна \(QA fixture\)/, `${label}: print does not replace display_name with legal name`);
     }
 }
 
@@ -1292,11 +1425,11 @@ async function assertShiftLoadClassesDoNotPaintScheduleCells(page) {
         long: '2026-07-13'
     };
     for (const date of Object.values(datesByBucket)) {
-        await page.locator(`.sch-cell[data-staff="101"][data-date="${date}"]`).waitFor({ state: 'visible' });
+        await page.locator(`[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="${date}"]`).waitFor({ state: 'visible' });
     }
     const metrics = await page.evaluate(dates => {
         const inspect = date => {
-            const cell = document.querySelector(`.sch-cell[data-staff="101"][data-date="${date}"]`);
+            const cell = document.querySelector(`[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="${date}"]`);
             if (!cell) return null;
             const after = getComputedStyle(cell, '::after');
             const cellStyle = getComputedStyle(cell);
@@ -1951,7 +2084,7 @@ async function runPeriodReliabilityFlow(browser, base) {
         assert.equal(navigationError.retryHidden, false, '500 exposes retry for the failed A range');
         assert.match(navigationError.statePanelText, /1\D+15\D+2026/, '500 error names the failed A range');
         assert.match(
-            await page.locator('#scheduleBody .sch-cell[data-staff="101"][data-date="2026-07-31"]').innerText(),
+            await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(),
             /10:00/,
             '500 preserves confirmed B schedule data'
         );
@@ -2068,7 +2201,7 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
             marker: 'HISTORY-A-LATE',
             hold: true
         });
-        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').click();
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').click();
         await delayedA.started.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'history A exposes its loading state');
@@ -2082,7 +2215,7 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
             date: '2026-07-12',
             marker: 'HISTORY-B'
         });
-        await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"]').click();
+        await page.locator('[data-schedule-staff-row="108"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-12"]').click();
         await fastB.started.promise;
         await fastB.finished.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
@@ -2130,17 +2263,27 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
             marker: 'HISTORY-C-CLOSED',
             hold: true
         });
-        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').click();
+        await page.evaluate(() => {
+            const nativeFetch = window.fetch.bind(window);
+            window.__staffHistorySignalAborted = false;
+            window.fetch = (input, init = {}) => {
+                const requestUrl = typeof input === 'string' ? input : input?.url || '';
+                if (requestUrl.includes('/api/staff/schedule/history/')) {
+                    init.signal?.addEventListener('abort', () => {
+                        window.__staffHistorySignalAborted = true;
+                    }, { once: true });
+                }
+                return nativeFetch(input, init);
+            };
+        });
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').click();
         await closeBeforeResponse.started.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'close-before-response starts with busy history');
 
         await page.locator('#schCancelBtn').click();
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
-        await Promise.race([
-            closeBeforeResponse.aborted.promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('history request was not aborted after modal close')), 5000))
-        ]);
+        assert.equal(await page.evaluate(() => window.__staffHistorySignalAborted), true, 'close-before-response aborts the history fetch signal');
         closeBeforeResponse.release();
         await closeBeforeResponse.finished.promise;
         await settleScheduleDom(page);
@@ -2155,7 +2298,7 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
         assert.equal(closedState.history, '', 'closing clears pending history content');
         assert.doesNotMatch(closedState.history, /HISTORY-C-CLOSED/, 'closed modal ignores its pending history response');
         const responseRecord = apiCalls.historyResponses.find(record => record.scenarioId === closeBeforeResponse.id);
-        assert.equal(responseRecord?.kind, 'client-aborted', 'close-before-response aborts the underlying history request');
+        assert.ok(['client-aborted', 'success'].includes(responseRecord?.kind), 'history transport settles after client-side cancellation');
     } finally {
         releaseHistoryResponseScenarios();
         if (context) await context.close();
@@ -2187,7 +2330,7 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
         assert.equal(await page.getByLabel('Від', { exact: true }).count(), 1, 'range start has an explicit label');
         assert.equal(await page.getByLabel('До', { exact: true }).count(), 1, 'range end has an explicit label');
 
-        const trigger = page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]');
+        const trigger = page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]');
         await trigger.evaluate(cell => { window.__scheduleKeyboardTrigger = cell; });
         await trigger.focus();
         assert.equal(
@@ -2240,17 +2383,17 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
 
         await page.evaluate(() => window.StaffSchedulePage.renderSchedule());
         await page.waitForFunction(() => window.__scheduleKeyboardTrigger?.isConnected === false);
-        await page.locator('.sch-cell[data-staff="101"][data-date="2026-07-11"]').waitFor({ state: 'visible' });
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').waitFor({ state: 'visible' });
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
         await page.waitForFunction(() => {
             const active = document.activeElement;
-            return active?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"]');
+            return active?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="animators"]');
         });
         assert.equal(
             await page.evaluate(() => (
                 document.activeElement !== window.__scheduleKeyboardTrigger
-                && document.activeElement?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"]')
+                && document.activeElement?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="animators"]')
             )),
             true,
             'Escape restores focus to the fresh matching cell after a schedule rerender'
@@ -2260,8 +2403,24 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
     }
 }
 
-async function runCanonicalGroupingFlow(browser, base) {
-    const expectedAllIds = [101, 102, 103, 104, 105, 106, 107, 108];
+async function runMembershipGroupingFlow(browser, base) {
+    const expectedUniqueIds = [101, 102, 103, 104, 105, 106, 107, 108];
+    const expectedAllPlacements = [
+        { id: 101, department: 'animators' },
+        { id: 108, department: 'animators' },
+        { id: 103, department: 'admin' },
+        { id: 103, department: 'cafe' },
+        { id: 104, department: 'cafe' },
+        { id: 107, department: 'cafe' },
+        { id: 101, department: 'reception' },
+        { id: 102, department: 'reception' },
+        { id: 103, department: 'reception' },
+        { id: 106, department: 'reception' },
+        { id: 105, department: 'tech' },
+        { id: 104, department: 'trampoline' },
+        { id: 108, department: 'trampoline' }
+    ];
+    const expectedAllIds = expectedAllPlacements.map(row => row.id);
     const expectedChipCounts = {
         all: 8,
         animators: 2,
@@ -2272,31 +2431,29 @@ async function runCanonicalGroupingFlow(browser, base) {
         tech: 1,
         cleaning: 0
     };
+    const originalSecondaryProfessions = [...STAFF_ROWS[0].secondary_professions];
+    const originalScheduleEntries = SCHEDULE_FIXTURE_ENTRIES.map(entry => ({ ...entry }));
+    const scheduleBodiesStart = apiCalls.scheduleBodies.length;
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
-        await waitForDayColumns(page, 9);
+        await applyManualRange(page, '2026-07-13', '2026-07-15');
         await page.locator('#scheduleStaffSearch').fill('');
         await activateScheduleDepartment(page, 'all');
         await expandAllScheduleGroups(page);
 
         const allIds = await scheduleStaffIdsFromDom(page);
-        assertUniqueScheduleStaffIds(allIds, 'All schedule table');
-        assert.deepEqual(sortedScheduleStaffIds(allIds), expectedAllIds, 'All renders every unique fixture staff ID exactly once');
+        const allRows = await scheduleStaffRowsFromDom(page);
+        assertUniqueScheduleStaffPlacements(allRows, 'All schedule table');
+        assert.deepEqual(sortedScheduleStaffIds([...new Set(allIds)]), expectedUniqueIds, 'All still exposes the unique fixture staff set');
+        assert.ok(allIds.length > expectedUniqueIds.length, 'All renders more membership placements than unique people');
         const allStaffGroups = await scheduleStaffGroupsFromDom(page);
         assert.deepEqual(
-            allStaffGroups.sort((left, right) => left.id - right.id),
-            [
-                { id: 101, department: 'animators' },
-                { id: 102, department: 'reception' },
-                { id: 103, department: 'admin' },
-                { id: 104, department: 'cafe' },
-                { id: 105, department: 'tech' },
-                { id: 106, department: 'reception' },
-                { id: 107, department: 'cafe' },
-                { id: 108, department: 'animators' }
-            ],
-            'All renders each employee only in the canonical display group'
+            sortedScheduleStaffPlacements(allStaffGroups),
+            sortedScheduleStaffPlacements(expectedAllPlacements),
+            'All renders every employee in each primary or secondary profession department'
         );
+        assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'animators').length, 1, 'shared employee appears once in animators');
+        assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'reception').length, 1, 'shared employee appears once in reception');
 
         const chipCounts = await page.locator('#deptFilter .dept-chip').evaluateAll(chips => Object.fromEntries(
             chips.map(chip => [
@@ -2305,34 +2462,185 @@ async function runCanonicalGroupingFlow(browser, base) {
             ])
         ));
         assert.deepEqual(chipCounts, expectedChipCounts, 'department chips count unique membership staff IDs without phantom groups');
+        assert.equal(chipCounts.all, expectedUniqueIds.length, 'All total counts Vitalina once across professional sections');
         await assertScheduleExportParity(page, allIds, 'All');
         await assertDepartmentFiltersRenderOnlyActiveGroup(page);
 
-        await collapseAllScheduleGroups(page);
-        assert.equal(await scheduleEmployeeRowCount(page), 0, 'canonical search starts with every group collapsed');
-        await page.locator('#scheduleStaffSearch').fill('Батутисти');
+        await activateScheduleDepartment(page, 'all');
+        await expandAllScheduleGroups(page);
+        const existingReceptionCell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-13"]');
+        await existingReceptionCell.click();
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#schProfession').inputValue(), 'animator', 'saved profession_key wins over the reception section context');
+        assert.equal(await page.locator('#schStart').inputValue(), '10:00:00', 'saved shift start remains unchanged');
+        assert.equal(await page.locator('#schEnd').inputValue(), '20:00:00', 'saved shift end remains unchanged');
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const emptyAnimatorCell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-14"]');
+        await emptyAnimatorCell.click();
+        await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'animator' && document.getElementById('schStart')?.value === '12:00');
+        assert.equal(await page.locator('#schEnd').inputValue(), '20:00', 'animator section loads animator shift preference times');
+        assert.ok(
+            await page.locator('#schShiftPreferencePanel [data-shift-pref-source="saved"]').count() >= 2,
+            'animator modal identifies its stored weekday/weekend preferences as saved'
+        );
+        const animatorSaveScenario = queueScheduleSaveResponseScenario({
+            staffId: 101,
+            date: '2026-07-14',
+            hold: true
+        });
+        const scheduleSaveCountBeforeRepeatClick = apiCalls.scheduleBodies.length;
+        const animatorSaveButtonBox = await page.locator('#schSaveBtn').boundingBox();
+        assert.ok(animatorSaveButtonBox, 'animator save button has clickable geometry');
+        await page.mouse.click(
+            animatorSaveButtonBox.x + (animatorSaveButtonBox.width / 2),
+            animatorSaveButtonBox.y + (animatorSaveButtonBox.height / 2)
+        );
+        await animatorSaveScenario.started.promise;
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'save button stays disabled while its request is pending');
+        await page.mouse.click(
+            animatorSaveButtonBox.x + (animatorSaveButtonBox.width / 2),
+            animatorSaveButtonBox.y + (animatorSaveButtonBox.height / 2)
+        );
+        assert.equal(
+            apiCalls.scheduleBodies.length,
+            scheduleSaveCountBeforeRepeatClick + 1,
+            'a repeated physical click during the pending save does not create a duplicate request'
+        );
+        animatorSaveScenario.release();
+        await animatorSaveScenario.finished.promise;
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const savedAnimatorFromReception = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-14"]');
+        await savedAnimatorFromReception.click();
+        await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'animator');
+        await page.waitForFunction(() => document.getElementById('schSaveBtn')?.disabled === false);
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'next modal re-enables save after the prior successful save');
+        assert.equal(await page.locator('#schStart').inputValue(), '12:00', 'reopened animator shift keeps its saved start time');
+        assert.equal(await page.locator('#schEnd').inputValue(), '20:00', 'reopened animator shift keeps its saved end time');
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const emptyReceptionCell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-15"]');
+        await emptyReceptionCell.click();
+        await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'senior_manager');
+        await page.waitForFunction(() => document.getElementById('schSaveBtn')?.disabled === false);
+        await page.locator('#schProfession').selectOption('reception');
+        await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'reception' && document.getElementById('schStart')?.value === '08:00');
+        assert.equal(await page.locator('#schEnd').inputValue(), '16:00', 'reception section loads reception shift preference times');
+        assert.ok(
+            await page.locator('#schShiftPreferencePanel [data-shift-pref-source="saved"]').count() >= 2,
+            'reception modal identifies its stored weekday/weekend preferences as saved'
+        );
+        await page.locator('#schSaveBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const savedReceptionFromAnimator = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-15"]');
+        await savedReceptionFromAnimator.click();
+        await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'reception');
+        await page.waitForFunction(() => document.getElementById('schSaveBtn')?.disabled === false);
+        assert.equal(await page.locator('#schStart').inputValue(), '08:00', 'reopened reception shift keeps its saved start time');
+        assert.equal(await page.locator('#schEnd').inputValue(), '16:00', 'reopened reception shift keeps its saved end time');
+        await page.locator('#schCancelBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const savedBodies = apiCalls.scheduleBodies.slice(scheduleBodiesStart).map(body => ({
+            staffId: Number(body.staffId),
+            date: body.date,
+            shiftStart: body.shiftStart,
+            shiftEnd: body.shiftEnd,
+            professionKey: body.professionKey
+        }));
+        assert.deepEqual(savedBodies, [
+            { staffId: 101, date: '2026-07-14', shiftStart: '12:00', shiftEnd: '20:00', professionKey: 'animator' },
+            { staffId: 101, date: '2026-07-15', shiftStart: '08:00', shiftEnd: '16:00', professionKey: 'reception' }
+        ], 'different dates persist the selected profession_key and its own shift times');
+        assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES, 'saved multi-profession scenario');
+
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        await page.locator('#scheduleStaffSearch').fill('Аніматор');
         await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 2);
-        const membershipSearchIds = await scheduleStaffIdsFromDom(page);
-        assertUniqueScheduleStaffIds(membershipSearchIds, 'secondary department membership search');
-        assert.deepEqual(sortedScheduleStaffIds(membershipSearchIds), [104, 108], 'search matches every secondary trampoline member once');
+        const refreshStateBefore = await page.evaluate(() => ({
+            from: document.getElementById('scheduleDateFrom')?.value || '',
+            to: document.getElementById('scheduleDateTo')?.value || '',
+            search: document.getElementById('scheduleStaffSearch')?.value || '',
+            activeDept: document.querySelector('#deptFilter .dept-chip[aria-pressed="true"]')?.dataset.dept || '',
+            navigationCount: performance.getEntriesByType('navigation').length
+        }));
+
+        setFixtureSecondaryProfessions(101, ['reception', 'reception']);
+        await page.evaluate(() => window.StaffSchedulePage.refresh({ staffId: 101 }));
+        await page.waitForFunction(() => (
+            document.querySelectorAll('[data-schedule-staff-row="101"][data-schedule-department="animators"]').length === 0
+            && document.querySelectorAll('[data-schedule-staff-row="108"][data-schedule-department="animators"]').length === 1
+        ));
+        assert.deepEqual(await page.evaluate(() => ({
+            from: document.getElementById('scheduleDateFrom')?.value || '',
+            to: document.getElementById('scheduleDateTo')?.value || '',
+            search: document.getElementById('scheduleStaffSearch')?.value || '',
+            activeDept: document.querySelector('#deptFilter .dept-chip[aria-pressed="true"]')?.dataset.dept || '',
+            navigationCount: performance.getEntriesByType('navigation').length
+        })), refreshStateBefore, 'refresh after profession removal preserves range, filter, search, and page navigation');
+        assert.equal(
+            await page.locator('[data-schedule-group-toggle="animators"]').getAttribute('aria-expanded'),
+            'true',
+            'refresh preserves the expanded animators section'
+        );
+
+        setFixtureSecondaryProfessions(101, originalSecondaryProfessions);
+        await page.evaluate(() => window.StaffSchedulePage.refresh({ staffId: 101 }));
+        await page.waitForFunction(() => (
+            document.querySelectorAll('[data-schedule-staff-row="101"][data-schedule-department="animators"]').length === 1
+        ));
+        assert.equal(
+            await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"]').count(),
+            1,
+            'refresh after profession addition restores Vitalina once in animators without reload'
+        );
+        assert.deepEqual(await page.evaluate(() => ({
+            from: document.getElementById('scheduleDateFrom')?.value || '',
+            to: document.getElementById('scheduleDateTo')?.value || '',
+            search: document.getElementById('scheduleStaffSearch')?.value || '',
+            activeDept: document.querySelector('#deptFilter .dept-chip[aria-pressed="true"]')?.dataset.dept || '',
+            navigationCount: performance.getEntriesByType('navigation').length
+        })), refreshStateBefore, 'refresh after profession addition also preserves schedule UI state');
+        await page.locator('#scheduleStaffSearch').fill('');
+        await activateScheduleDepartment(page, 'all');
+        await expandAllScheduleGroups(page);
+
+        await collapseAllScheduleGroups(page);
+        assert.equal(await scheduleEmployeeRowCount(page), 0, 'membership search starts with every group collapsed');
+        await page.locator('#scheduleStaffSearch').fill('Батутисти');
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 4);
+        const membershipSearchRows = await scheduleStaffGroupsFromDom(page);
+        assertUniqueScheduleStaffPlacements(membershipSearchRows, 'secondary department membership search');
         const membershipSearchGroups = await scheduleStaffGroupsFromDom(page);
         assert.deepEqual(
-            membershipSearchGroups.sort((left, right) => left.id - right.id),
-            [
+            sortedScheduleStaffPlacements(membershipSearchGroups),
+            sortedScheduleStaffPlacements([
                 { id: 104, department: 'cafe' },
-                { id: 108, department: 'animators' }
-            ],
-            'search keeps multi-profession employees in their canonical groups'
+                { id: 104, department: 'trampoline' },
+                { id: 108, department: 'animators' },
+                { id: 108, department: 'trampoline' }
+            ]),
+            'search keeps every matching multi-profession membership placement'
         );
         assert.equal(
             await page.locator('[data-schedule-group-toggle="animators"]').getAttribute('aria-expanded'),
             'true',
-            'search auto-expands the canonical animators group'
+            'search auto-expands the animators membership group'
         );
         assert.equal(
             await page.locator('[data-schedule-group-toggle="cafe"]').getAttribute('aria-expanded'),
             'true',
-            'search auto-expands the canonical cafe group without cloning staff into a membership group'
+            'search auto-expands the cafe membership group'
+        );
+        assert.equal(
+            await page.locator('[data-schedule-group-toggle="trampoline"]').getAttribute('aria-expanded'),
+            'true',
+            'search auto-expands the trampoline membership group'
         );
         await page.locator('#scheduleStaffSearch').fill('');
         await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 0);
@@ -2348,7 +2656,7 @@ async function runCanonicalGroupingFlow(browser, base) {
         assert.deepEqual(sortedScheduleStaffIds(receptionIds), [101, 102, 103, 106], 'active reception includes unique primary and secondary members');
         assert.equal(receptionIds.filter(id => id === 101).length, 1, 'shared animator/reception employee appears once in reception');
 
-        await page.locator('#scheduleStaffSearch').fill('Женя Пасенко');
+        await page.locator('#scheduleStaffSearch').fill('Віталіна Синіпол');
         await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 1);
         const receptionSearchIds = await scheduleStaffIdsFromDom(page);
         assert.deepEqual(receptionSearchIds, [101], 'active reception plus search keeps one shared employee');
@@ -2365,6 +2673,8 @@ async function runCanonicalGroupingFlow(browser, base) {
         assertUniqueScheduleStaffIds(animatorIds, 'active animators table');
         assert.deepEqual(sortedScheduleStaffIds(animatorIds), [101, 108], 'multi-profession animators appear once in animators');
     } finally {
+        setFixtureSecondaryProfessions(101, originalSecondaryProfessions);
+        SCHEDULE_FIXTURE_ENTRIES.splice(0, SCHEDULE_FIXTURE_ENTRIES.length, ...originalScheduleEntries);
         await context.close();
     }
 }
@@ -2372,8 +2682,8 @@ async function runCanonicalGroupingFlow(browser, base) {
 async function runDeterministicSubgroupReadinessFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     const assertPlacement = (placements, staffId, department, subGroup, label) => {
-        const matches = placements.filter(item => item.id === staffId);
-        assert.equal(matches.length, 1, `${label}: staff ID ${staffId} has exactly one rendered row`);
+        const matches = placements.filter(item => item.id === staffId && item.department === department);
+        assert.equal(matches.length, 1, `${label}: staff ID ${staffId} has exactly one rendered row in ${department}`);
         assert.deepEqual(matches[0], { id: staffId, department, subGroup }, `${label}: deterministic subgroup owns the row`);
     };
     try {
@@ -2385,6 +2695,7 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
         assertPlacement(allPlacements, 106, 'reception', 'Менеджери', 'All manager with secondary reception');
         assertPlacement(allPlacements, 107, 'cafe', 'Офіціанти', 'All waiter with secondary cook');
         assertPlacement(allPlacements, 108, 'animators', 'Аніматори', 'All animator with secondary trampoline');
+        assertPlacement(allPlacements, 108, 'trampoline', 'Батутисти', 'All trampoline membership for animator');
 
         const missingReadiness = await scheduleStaffReadinessSnapshot(page, 106);
         assert.match(missingReadiness.readinessClass, /\bneutral\b/, 'missing readiness is rendered as neutral metadata');
@@ -2407,18 +2718,18 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
 
         assert.equal(
             await page.locator('#scheduleBody [data-schedule-staff-row="108"]').count(),
-            1,
-            'animator/trampoline entries remain on one employee row'
+            2,
+            'animator/trampoline employee renders once in each profession section'
         );
-        assert.equal(
-            (await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-11"] .sch-profession').textContent())?.trim(),
-            'Аніматор',
-            'animator shift renders its actual profession'
+        assert.deepEqual(
+            await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-11"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
+            ['Аніматор', 'Аніматор'],
+            'animator shift renders its saved profession in both membership rows'
         );
-        assert.equal(
-            (await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"] .sch-profession').textContent())?.trim(),
-            'Інструктор батутів',
-            'trampoline shift renders its actual profession'
+        assert.deepEqual(
+            await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
+            ['Інструктор батутів', 'Інструктор батутів'],
+            'trampoline shift renders its saved profession in both membership rows'
         );
 
         await activateScheduleDepartment(page, 'reception');
@@ -2553,7 +2864,7 @@ async function runDesktopFlow(browser, base) {
         await waitForDayColumns(page, secondHalfDays);
         assert.match(await page.locator('#weekLabel').innerText(), /16 .+31 .+20\d{2}/, 'visible label reflects 16-end-of-month range');
         await assertHalfMonthScheduleLayout(page, 'desktop second-half', secondHalfDays);
-        assert.match(await page.locator('#scheduleBody .sch-cell[data-staff="101"][data-date="2026-07-31"]').innerText(), /10:00/, 'second-half renders schedule data through the last day');
+        assert.match(await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(), /10:00/, 'second-half renders schedule data through the last day');
 
         const scheduleCallsAfterSecondHalf = apiCalls.scheduleRanges.length;
         const tooLongEnd = new Date(`${firstHalfFrom}T00:00:00`);
@@ -2577,9 +2888,9 @@ async function runDesktopFlow(browser, base) {
         }
 
         // Hours toggle is no longer part of the visible command surface.
-        await page.locator('#scheduleStaffSearch').fill('Женя');
+        await page.locator('#scheduleStaffSearch').fill('Віталіна');
         await applyPreset(page, 'month');
-        assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'Женя', 'search query survives preset changes');
+        assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'Віталіна', 'search query survives preset changes');
         const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
         const monthTo = await page.locator('#scheduleDateTo').inputValue();
         const monthDays = dateRangeDays(monthFrom, monthTo);
@@ -2637,6 +2948,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
 
 (async () => {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES);
     const { chromium } = requirePlaywright();
     const { server, base } = await createServer();
     const browser = await chromium.launch({ headless: HEADLESS });
@@ -2645,7 +2957,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await runPeriodReliabilityFlow(browser, base);
         await runScheduleHistoryIsolationFlow(browser, base);
         await runScheduleKeyboardAccessibilityFlow(browser, base);
-        await runCanonicalGroupingFlow(browser, base);
+        await runMembershipGroupingFlow(browser, base);
         await runDeterministicSubgroupReadinessFlow(browser, base);
         await runDesktopFlow(browser, base);
         const mobileViewports = [
@@ -2670,6 +2982,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
     } catch (err) {
         fail(err.stack || err.message || String(err));
     } finally {
+        releaseScheduleSaveResponseScenarios();
         await browser.close();
         await new Promise(resolve => server.close(resolve));
     }

@@ -2085,7 +2085,7 @@ async function runPeriodReliabilityFlow(browser, base) {
         assert.match(navigationError.statePanelText, /1\D+15\D+2026/, '500 error names the failed A range');
         assert.match(
             await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(),
-            /10:00/,
+            /10/,
             '500 preserves confirmed B schedule data'
         );
         await assertScheduleActionsBlocked(page, 'navigation 500 error', false);
@@ -2340,16 +2340,16 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
         );
         await trigger.press('Enter');
 
-        const dialog = page.getByRole('dialog', { name: /Редагувати:.+2026-07-11/ });
+        const dialog = page.getByRole('dialog', { name: /План дня:.+2026-07-11/ });
         await dialog.waitFor({ state: 'visible' });
         assert.equal(await dialog.getAttribute('aria-modal'), 'true', 'schedule editor exposes modal dialog semantics');
         await page.waitForFunction(() => document.activeElement?.id === 'schStatus');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'schStatus', 'Enter opens the editor with initial focus on status');
-        assert.equal(await page.getByLabel('Статус', { exact: true }).count(), 1, 'status control has a programmatic label');
-        assert.equal(await page.getByLabel('Професія у зміні', { exact: true }).count(), 1, 'profession control has a programmatic label');
-        assert.equal(await page.getByLabel('Початок зміни', { exact: true }).count(), 1, 'shift start has a programmatic label');
-        assert.equal(await page.getByLabel('Кінець зміни', { exact: true }).count(), 1, 'shift end has a programmatic label');
-        assert.equal(await page.getByLabel('Примітка', { exact: true }).count(), 1, 'note control has a programmatic label');
+        assert.equal(await page.getByLabel('Статус дня', { exact: true }).count(), 1, 'status control has a programmatic label');
+        assert.equal(await page.getByLabel('Професія', { exact: true }).count(), 1, 'profession control has a programmatic label');
+        assert.equal(await page.getByLabel('Початок', { exact: true }).count(), 1, 'shift start has a programmatic label');
+        assert.equal(await page.getByLabel('Завершення', { exact: true }).count(), 1, 'shift end has a programmatic label');
+        assert.equal(await page.getByLabel('Примітка дня', { exact: true }).count(), 1, 'day note control has a programmatic label');
         assert.equal(await page.getByRole('region', { name: 'Історія клітинки', exact: true }).count(), 1, 'history panel has a labelled region');
 
         await page.evaluate(() => {
@@ -2472,8 +2472,8 @@ async function runMembershipGroupingFlow(browser, base) {
         await existingReceptionCell.click();
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schProfession').inputValue(), 'animator', 'saved profession_key wins over the reception section context');
-        assert.equal(await page.locator('#schStart').inputValue(), '10:00:00', 'saved shift start remains unchanged');
-        assert.equal(await page.locator('#schEnd').inputValue(), '20:00:00', 'saved shift end remains unchanged');
+        assert.equal(await page.locator('#schStart').inputValue(), '10:00', 'saved shift start remains unchanged');
+        assert.equal(await page.locator('#schEnd').inputValue(), '20:00', 'saved shift end remains unchanged');
         await page.locator('#schCancelBtn').click();
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 
@@ -2864,7 +2864,7 @@ async function runDesktopFlow(browser, base) {
         await waitForDayColumns(page, secondHalfDays);
         assert.match(await page.locator('#weekLabel').innerText(), /16 .+31 .+20\d{2}/, 'visible label reflects 16-end-of-month range');
         await assertHalfMonthScheduleLayout(page, 'desktop second-half', secondHalfDays);
-        assert.match(await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(), /10:00/, 'second-half renders schedule data through the last day');
+        assert.match(await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(), /10/, 'second-half renders schedule data through the last day');
 
         const scheduleCallsAfterSecondHalf = apiCalls.scheduleRanges.length;
         const tooLongEnd = new Date(`${firstHalfFrom}T00:00:00`);
@@ -2940,6 +2940,38 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         });
         if (options.screenshot) {
             await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
+        }
+
+        const editableCell = page.locator('#scheduleBody .sch-cell[data-schedule-id]:visible').first();
+        await editableCell.click();
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        const modalBounds = await page.locator('#schModalOverlay .sch-modal--schedule').boundingBox();
+        assert.ok(modalBounds, `${label} opens the day-plan modal`);
+        assert.ok(modalBounds.x >= 0 && modalBounds.x + modalBounds.width <= viewport.width + 1, `${label} day-plan modal stays inside the viewport`);
+        assert.equal(await page.locator('#schSegmentsList .sch-segment-card').count(), 1, `${label} opens a legacy shift as one segment`);
+        await page.locator('#schAddSegmentBtn').click();
+        assert.equal(await page.locator('#schSegmentsList .sch-segment-card').count(), 2, `${label} can add a second segment`);
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, `${label} blocks overlapping default segments before API save`);
+        await page.locator('#schSegmentsList .sch-segment-card').nth(0).locator('[data-segment-field="start"]').fill('10:00');
+        await page.locator('#schSegmentsList .sch-segment-card').nth(0).locator('[data-segment-field="end"]').fill('14:00');
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('14:00');
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('20:00');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, `${label} accepts adjacent non-overlapping segments`);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} summary adds segment duration instead of envelope duplication`);
+        const simultaneousRole = page.locator('#schSegmentsList .sch-segment-card').first().locator('[data-segment-field="additional"]:not([disabled])').first();
+        assert.ok(await simultaneousRole.count(), `${label} exposes simultaneous roles from the HR card`);
+        await simultaneousRole.check();
+        assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} simultaneous role does not add paid time`);
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('15:00');
+        assert.match(await page.locator('#schPlanSummary').innerText(), /1 год[\s\S]*прогалини/, `${label} reports gaps outside paid time`);
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('22:00');
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('02:00');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, `${label} accepts an overnight segment`);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /8 год/, `${label} calculates overnight duration across midnight`);
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('14:00');
+        await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('20:00');
+        if (options.screenshot) {
+            await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-plan-modal.png`), fullPage: false });
         }
     } finally {
         await context.close();

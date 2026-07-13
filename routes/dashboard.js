@@ -1031,7 +1031,25 @@ router.get('/widgets/:type', async (req, res) => {
             case 'my_schedule': {
                 const today = getKyivDateStr();
                 const result = await pool.query(`
-                    SELECT ss.date, ss.status, ss.shift_start as start_time, ss.shift_end as end_time, ss.note
+                    SELECT ss.date, ss.status, ss.shift_start as start_time, ss.shift_end as end_time, ss.note,
+                           COALESCE((
+                               SELECT jsonb_agg(jsonb_build_object(
+                                   'id', hss.id,
+                                   'segmentId', hss.id,
+                                   'professionKey', hss.profession_key,
+                                   'start', LEFT(hss.planned_start::text, 5),
+                                   'end', LEFT(hss.planned_end::text, 5),
+                                   'breakMinutes', hss.break_minutes,
+                                   'additionalProfessionKeys', COALESCE((
+                                       SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                                       FROM hr_shift_segment_roles hssr
+                                       WHERE hssr.segment_id = hss.id
+                                   ), '[]'::jsonb)
+                               ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                               FROM hr_shifts hs
+                               JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                               WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                           ), '[]'::jsonb) AS segments
                     FROM staff_schedule ss
                     JOIN employee_profiles ep ON ep.staff_id = ss.staff_id
                     WHERE ep.user_id = $1 AND ss.date::date >= $2::date
@@ -1537,17 +1555,53 @@ router.get('/widgets/:type', async (req, res) => {
             // v39.10: Staff on shift today
             case 'staff_today': {
                 const today = getKyivDateStr();
+                const yesterdayDate = new Date(`${today}T12:00:00Z`);
+                yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+                const yesterday = yesterdayDate.toISOString().slice(0, 10);
                 const result = await pool.query(`
-                    SELECT s.id, s.name, s.department, s.position, s.color,
+                    SELECT DISTINCT ON (s.id) s.id, s.name, s.department, s.position, s.color,
                            ss.shift_start, ss.shift_end, ss.status,
+                           COALESCE((
+                               SELECT jsonb_agg(jsonb_build_object(
+                                   'id', hss.id,
+                                   'segmentId', hss.id,
+                                   'professionKey', hss.profession_key,
+                                   'start', LEFT(hss.planned_start::text, 5),
+                                   'end', LEFT(hss.planned_end::text, 5)
+                               ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                               FROM hr_shifts hs_all
+                               JOIN hr_shift_segments hss ON hss.hr_shift_id = hs_all.id
+                               WHERE hs_all.staff_id = ss.staff_id AND hs_all.shift_date = ss.date::date
+                           ), '[]'::jsonb) AS segments,
                            CASE WHEN u.last_seen_at > NOW() - INTERVAL '5 minutes' THEN true ELSE false END AS is_online
                     FROM staff_schedule ss
                     JOIN staff s ON s.id = ss.staff_id
                     LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
                     LEFT JOIN users u ON u.id = ep.user_id
-                    WHERE ss.date = $1 AND s.is_active = true AND ss.status = 'working'
-                    ORDER BY ss.shift_start, s.department, s.name
-                `, [today]);
+                    WHERE ss.date IN ($1::date, $2::date) AND s.is_active = true AND ss.status IN ('working', 'remote')
+                      AND EXISTS (
+                          SELECT 1
+                          FROM hr_shifts hs_now
+                          JOIN hr_shift_segments hss_now ON hss_now.hr_shift_id = hs_now.id
+                          WHERE hs_now.staff_id = ss.staff_id
+                            AND hs_now.shift_date = ss.date::date
+                            AND (
+                                (ss.date = $1::date
+                                 AND hss_now.planned_end > hss_now.planned_start
+                                 AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss_now.planned_start
+                                 AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss_now.planned_end)
+                                OR
+                                (ss.date = $1::date
+                                 AND hss_now.planned_end <= hss_now.planned_start
+                                 AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss_now.planned_start)
+                                OR
+                                (ss.date = $2::date
+                                 AND hss_now.planned_end <= hss_now.planned_start
+                                 AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss_now.planned_end)
+                            )
+                      )
+                    ORDER BY s.id, ss.shift_start, s.department, s.name
+                `, [today, yesterday]);
                 const absent = await pool.query(`
                     SELECT s.name, ss.status FROM staff_schedule ss
                     JOIN staff s ON s.id = ss.staff_id

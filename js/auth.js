@@ -2042,9 +2042,13 @@ function _profileTabToday(data) {
         const s = data.todayShift;
         const statusMap = { working: 'На зміні', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний' };
         const statusCls = s.status === 'working' ? 'active' : 'off';
+        const segments = Array.isArray(s.segments) ? s.segments : (Array.isArray(s.blocks) ? s.blocks : []);
+        const shiftBlocks = segments.length
+            ? segments.map(segment => `${escapeHtml(segment.start || '')}–${escapeHtml(segment.end || '')}${segment.professionKey ? ` · ${escapeHtml(segment.professionKey)}` : ''}`).join('<br>')
+            : (s.start ? `${s.start} — ${s.end}` : '');
         shiftHTML = `<div class="prof-shift ${statusCls}">
             <div class="prof-shift-status">${statusMap[s.status] || s.status}</div>
-            ${s.start ? `<div class="prof-shift-time">${s.start} — ${s.end}</div>` : ''}
+            ${shiftBlocks ? `<div class="prof-shift-time">${shiftBlocks}</div>` : ''}
             ${s.note ? `<div class="prof-shift-note">${s.note}</div>` : ''}
         </div>`;
     }

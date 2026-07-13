@@ -195,6 +195,16 @@ function formatTime(timeValue) {
     return str.substring(0, 5);
 }
 
+function lineConflictDetails(conflict, prefix = 'Line conflict') {
+    if (conflict?.unavailable) {
+        const windows = (conflict.availabilityWindows || [])
+            .map(window => `${window.start}–${window.end}`)
+            .join(', ') || 'none';
+        return `${prefix}: outside animator availability; windows: ${windows}`;
+    }
+    return `${prefix}: ${conflict?.conflictWith?.label || conflict?.conflictWith?.program_code || '?'} at ${conflict?.conflictWith?.time || '?'}`;
+}
+
 /**
  * Generate booking instances for a single template across a date range.
  *
@@ -265,7 +275,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                      WHERE s.name = $1 AND ss.date = $2`,
                     [template.preferred_line_name, dateStr]
                 );
-                if (staffCheck.rows.length > 0 && !['working'].includes(staffCheck.rows[0].status)) {
+                if (staffCheck.rows.length > 0 && !['working', 'remote'].includes(staffCheck.rows[0].status)) {
                     await logSkip(template.id, dateStr, 'animator_unavailable',
                         `${template.preferred_line_name}: ${staffCheck.rows[0].status}`);
                     result.skipped++;
@@ -292,7 +302,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             if (lineConflict.overlap) {
                 await client.query('ROLLBACK');
                 client.release();
-                const details = `Line conflict: ${lineConflict.conflictWith?.label || lineConflict.conflictWith?.program_code || '?'} at ${lineConflict.conflictWith?.time || '?'}`;
+                const details = lineConflictDetails(lineConflict);
                 await logSkip(template.id, dateStr, 'line_conflict', details);
                 result.skipped++;
                 result.conflicts.push({ date: dateStr, reason: 'line_conflict', details });
@@ -346,7 +356,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                     if (secondConflict.overlap) {
                         await client.query('ROLLBACK');
                         client.release();
-                        const details = `Second animator conflict: ${secondConflict.conflictWith?.label || '?'} at ${secondConflict.conflictWith?.time || '?'}`;
+                        const details = lineConflictDetails(secondConflict, 'Second animator conflict');
                         await logSkip(template.id, dateStr, 'second_animator_conflict', details);
                         result.skipped++;
                         result.conflicts.push({ date: dateStr, reason: 'second_animator_conflict', details });

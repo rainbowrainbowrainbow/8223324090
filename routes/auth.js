@@ -501,7 +501,24 @@ router.get('/profile', authenticateToken, async (req, res) => {
             ),
             // 15: Today's shift (match user to staff by name)
             pool.query(
-                `SELECT ss.shift_start, ss.shift_end, ss.status, ss.note, s.name, s.department, s.position
+                `SELECT ss.shift_start, ss.shift_end, ss.status, ss.note, s.name, s.department, s.position,
+                        COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'id', hss.id,
+                                'professionKey', hss.profession_key,
+                                'start', LEFT(hss.planned_start::text, 5),
+                                'end', LEFT(hss.planned_end::text, 5),
+                                'segmentId', hss.id,
+                                'additionalProfessionKeys', COALESCE((
+                                    SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                                    FROM hr_shift_segment_roles hssr
+                                    WHERE hssr.segment_id = hss.id
+                                ), '[]'::jsonb)
+                            ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                            FROM hr_shifts hs
+                            JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                            WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                        ), '[]'::jsonb) AS segments
                  FROM staff_schedule ss JOIN staff s ON ss.staff_id = s.id
                  WHERE s.name = $1 AND ss.date = $2`,
                 [user.name, today]
@@ -577,7 +594,24 @@ router.get('/profile', authenticateToken, async (req, res) => {
             ),
             // 23: Next scheduled working shift for this employee
             pool.query(
-                `SELECT ss.date, ss.shift_start, ss.shift_end, ss.status, ss.note, s.name, s.department, s.position
+                `SELECT ss.date, ss.shift_start, ss.shift_end, ss.status, ss.note, s.name, s.department, s.position,
+                        COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'id', hss.id,
+                                'professionKey', hss.profession_key,
+                                'start', LEFT(hss.planned_start::text, 5),
+                                'end', LEFT(hss.planned_end::text, 5),
+                                'segmentId', hss.id,
+                                'additionalProfessionKeys', COALESCE((
+                                    SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                                    FROM hr_shift_segment_roles hssr
+                                    WHERE hssr.segment_id = hss.id
+                                ), '[]'::jsonb)
+                            ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                            FROM hr_shifts hs
+                            JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                            WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                        ), '[]'::jsonb) AS segments
                  FROM staff_schedule ss JOIN staff s ON ss.staff_id = s.id
                  WHERE s.name = $1
                    AND ss.date::date >= $2::date
@@ -826,7 +860,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
             status: shiftR.rows[0].status,
             note: shiftR.rows[0].note,
             department: shiftR.rows[0].department,
-            position: shiftR.rows[0].position
+            position: shiftR.rows[0].position,
+            segments: shiftR.rows[0].segments || [],
+            blocks: shiftR.rows[0].segments || []
         } : null;
 
         const nextShiftR = get(23);
@@ -837,7 +873,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
             status: nextShiftR.rows[0].status,
             note: nextShiftR.rows[0].note,
             department: nextShiftR.rows[0].department,
-            position: nextShiftR.rows[0].position
+            position: nextShiftR.rows[0].position,
+            segments: nextShiftR.rows[0].segments || [],
+            blocks: nextShiftR.rows[0].segments || []
         } : null;
 
         // Achievements

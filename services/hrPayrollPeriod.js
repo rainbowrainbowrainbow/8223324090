@@ -49,6 +49,60 @@ function payrollPeriodRange(month, fromValue, toValue) {
     };
 }
 
+function buildPayrollSourceReconciliation(sourceDays = []) {
+    const byDate = new Map();
+    const warnings = [];
+    for (const source of Array.isArray(sourceDays) ? sourceDays : []) {
+        const date = normalizePayrollDate(source?.date || source?.record_date);
+        if (!date) continue;
+        if (!byDate.has(date)) {
+            byDate.set(date, {
+                date,
+                planned_shift_ref: source.plannedShiftRef ?? source.planned_shift_ref ?? null,
+                segment_refs: [],
+                planned_minutes: Math.max(0, Number(source.plannedMinutes ?? source.planned_minutes ?? 0) || 0),
+                planned_hours: 0,
+                attendance_ref: source.attendanceRef ?? source.attendance_ref ?? null,
+                allocation_source: source.allocationSource || source.allocation_source || 'none'
+            });
+        }
+        const target = byDate.get(date);
+        const plannedShiftRef = source.plannedShiftRef ?? source.planned_shift_ref ?? null;
+        const attendanceRef = source.attendanceRef ?? source.attendance_ref ?? null;
+        if (target.planned_shift_ref !== null && plannedShiftRef !== null && String(target.planned_shift_ref) !== String(plannedShiftRef)) {
+            warnings.push({
+                code: 'MULTIPLE_PLANNED_SHIFT_REFS',
+                date,
+                message: 'Для одного payroll-дня знайдено більше одного planned shift reference'
+            });
+        } else if (target.planned_shift_ref === null && plannedShiftRef !== null) {
+            target.planned_shift_ref = plannedShiftRef;
+        }
+        if (target.attendance_ref !== null && attendanceRef !== null && String(target.attendance_ref) !== String(attendanceRef)) {
+            warnings.push({
+                code: 'MULTIPLE_ATTENDANCE_REFS',
+                date,
+                message: 'Для одного payroll-дня знайдено більше одного attendance reference'
+            });
+        } else if (target.attendance_ref === null && attendanceRef !== null) {
+            target.attendance_ref = attendanceRef;
+        }
+        const refs = source.segmentRefs || source.segment_refs || [];
+        target.segment_refs = [...new Set([...target.segment_refs, ...refs]
+            .filter(ref => ref !== null && ref !== undefined)
+            .map(ref => Number(ref))
+            .filter(Number.isFinite))];
+        target.planned_minutes = Math.max(
+            target.planned_minutes,
+            Math.max(0, Number(source.plannedMinutes ?? source.planned_minutes ?? 0) || 0)
+        );
+    }
+    const days = [...byDate.values()]
+        .sort((left, right) => left.date.localeCompare(right.date))
+        .map(day => ({ ...day, planned_hours: Math.round((day.planned_minutes / 60) * 100) / 100 }));
+    return { days, warnings };
+}
+
 function payrollDefaultLock(month) {
     return {
         period_month: month,
@@ -176,7 +230,7 @@ async function loadPayrollReconciliation(month, db = pool) {
     const range = payrollMonthRange(month);
     const result = await db.query(
         `WITH active_reports AS (
-            SELECT id, staff_id, net_amount, finance_transaction_id
+            SELECT id, staff_id, net_amount, finance_transaction_id, breakdown_json
             FROM payroll_reports
             WHERE period_month = $1
               AND status = 'paid'
@@ -213,6 +267,16 @@ async function loadPayrollReconciliation(month, db = pool) {
             FROM salary_finance sf
             LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = sf.id AND pr.period_month = $1
             WHERE pr.id IS NULL
+        ),
+        source_warnings AS (
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN jsonb_typeof(breakdown_json->'reconciliation'->'warnings') = 'array'
+                    THEN jsonb_array_length(breakdown_json->'reconciliation'->'warnings')
+                    ELSE 0
+                END
+            ), 0)::int AS warning_count
+            FROM active_reports
         )
         SELECT
             COALESCE((SELECT COUNT(*) FROM active_reports), 0)::int AS payroll_count,
@@ -223,7 +287,8 @@ async function loadPayrollReconciliation(month, db = pool) {
             COALESCE((SELECT COUNT(*) FROM reversal_finance), 0)::int AS finance_reversal_count,
             COALESCE((SELECT SUM(amount) FROM reversal_finance), 0)::numeric AS finance_reversal_total,
             COALESCE((SELECT COUNT(*) FROM missing_finance), 0)::int AS missing_finance_count,
-            COALESCE((SELECT COUNT(*) FROM orphan_salary), 0)::int AS orphan_salary_count`,
+            COALESCE((SELECT COUNT(*) FROM orphan_salary), 0)::int AS orphan_salary_count,
+            COALESCE((SELECT warning_count FROM source_warnings), 0)::int AS source_warning_count`,
         [month, range.from, range.to]
     );
     const row = result.rows[0] || {};
@@ -234,6 +299,7 @@ async function loadPayrollReconciliation(month, db = pool) {
     const variance = payrollTotal - financeNetTotal;
     const missingFinanceCount = Number(row.missing_finance_count || 0);
     const orphanSalaryCount = Number(row.orphan_salary_count || 0);
+    const sourceWarningCount = Number(row.source_warning_count || 0);
     return {
         month,
         payroll_count: Number(row.payroll_count || 0),
@@ -246,8 +312,11 @@ async function loadPayrollReconciliation(month, db = pool) {
         finance_net_total: financeNetTotal,
         missing_finance_count: missingFinanceCount,
         orphan_salary_count: orphanSalaryCount,
+        source_warning_count: sourceWarningCount,
         variance,
-        status: variance === 0 && missingFinanceCount === 0 && orphanSalaryCount === 0 ? 'ok' : 'attention'
+        status: variance === 0 && missingFinanceCount === 0 && orphanSalaryCount === 0 && sourceWarningCount === 0
+            ? 'ok'
+            : 'attention'
     };
 }
 
@@ -255,6 +324,7 @@ module.exports = {
     PAYROLL_EVENT_LABELS,
     PAYROLL_EVENT_TYPES,
     assertPayrollPeriodOpen,
+    buildPayrollSourceReconciliation,
     loadPayrollPeriodEvents,
     loadPayrollPeriodLock,
     loadPayrollReconciliation,

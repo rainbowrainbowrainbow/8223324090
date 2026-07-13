@@ -1,12 +1,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { hydrateAttendanceRecords } = require('./hrAttendance');
-const { buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
-const { normalizeProfessionKey } = require('./professions');
 
 const log = createLogger('Payroll');
-const OVERTIME_MULTIPLIER = 1.5;
-const WORKED_ATTENDANCE_STATUSES = new Set(['present', 'late', 'early_leave', 'auto_closed', 'unscheduled', 'clocked_in']);
 
 const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
@@ -325,16 +320,13 @@ function buildEntryLines(entries) {
 
 function calcPayrollPreview(lines) {
     const gross = lines
-        .filter(item => ['base', 'overtime', 'bonus', 'percent', 'manual'].includes(item.group))
+        .filter(item => ['base', 'bonus', 'percent', 'manual'].includes(item.group))
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const base = lines
         .filter(item => item.group === 'base')
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const bonuses = lines
         .filter(item => item.group === 'bonus')
-        .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
-    const overtime = lines
-        .filter(item => item.group === 'overtime')
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const percent = lines
         .filter(item => item.group === 'percent')
@@ -351,7 +343,6 @@ function calcPayrollPreview(lines) {
 
     return {
         base: roundMoney(base),
-        overtime: roundMoney(overtime),
         bonuses: roundMoney(bonuses),
         percent: roundMoney(percent),
         manual: roundMoney(manual),
@@ -362,18 +353,15 @@ function calcPayrollPreview(lines) {
     };
 }
 
-function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
+function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = []) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
-    const baseLines = professionPay?.applies
-        ? [...professionPay.baseLines, ...professionPay.overtimeLines]
-        : buildSchemeLines(staff, activeScheme, metrics);
     const lines = [
-        ...baseLines,
+        ...buildSchemeLines(staff, activeScheme, metrics),
         ...buildAdjustmentLines(adjustments),
         ...buildEntryLines(entries)
     ].filter(item => item.amount !== 0 || ['base', 'manual'].includes(item.group));
     const summary = calcPayrollPreview(lines);
-    return { scheme: activeScheme, lines, summary, professionPay };
+    return { scheme: activeScheme, lines, summary };
 }
 
 async function fetchStaffList(month) {
@@ -439,365 +427,28 @@ async function fetchStaffList(month) {
     }
 }
 
-function payrollMetricBucket(staffId) {
-    return {
-        staffId: Number(staffId),
-        totalMinutes: 0,
-        allocatedMinutes: 0,
-        plannedMinutes: 0,
-        overtimeMinutes: 0,
-        daysWorked: 0,
-        hoursWorked: 0,
-        overtimeHours: 0,
-        professionAllocations: [],
-        overtimeAllocations: [],
-        primaryDays: [],
-        attendanceDays: [],
-        allocationIssues: [],
-        reconciliation: { days: [], warnings: [] }
-    };
-}
-
-function compactAllocationIssues(issues = []) {
-    const seen = new Set();
-    return issues.filter(issue => {
-        const key = `${issue.date || ''}:${issue.code || ''}:${issue.professionKey || ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-
-async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
-    const from = String(options.from || '').slice(0, 10);
-    const to = String(options.to || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
-        const err = new Error('valid payroll attendance range is required');
-        err.status = 400;
-        throw err;
-    }
-    const staffIds = [...new Set((options.staffIds || []).map(Number).filter(Number.isInteger))];
-    const params = [from, to];
-    const staffFilter = staffIds.length ? `AND tr.staff_id = ANY($${params.push(staffIds)}::int[])` : '';
-    const result = await db.query(`
-        SELECT tr.*,
-               tr.record_date::text AS date,
-               tr.id AS attendance_ref,
-               hs.id AS planned_shift_ref,
-               hs.profession_key AS primary_profession_key
-        FROM hr_time_records tr
-        LEFT JOIN hr_shifts hs
-          ON hs.staff_id = tr.staff_id
-         AND hs.shift_date = tr.record_date
-        WHERE tr.record_date >= $1::date
-          AND tr.record_date <= $2::date
-          ${staffFilter}
-        ORDER BY tr.staff_id, tr.record_date, tr.id
-    `, params);
-    const attendanceRows = await hydrateAttendanceRecords(db, result.rows);
-    const buckets = new Map();
-    const professionMaps = new Map();
-    const overtimeMaps = new Map();
-    const workedDates = new Map();
-
-    for (const row of attendanceRows) {
-        const staffId = Number(row.staff_id);
-        if (!Number.isInteger(staffId)) continue;
-        if (!buckets.has(staffId)) {
-            buckets.set(staffId, payrollMetricBucket(staffId));
-            professionMaps.set(staffId, new Map());
-            overtimeMaps.set(staffId, new Map());
-            workedDates.set(staffId, new Set());
-        }
-        const bucket = buckets.get(staffId);
-        const professionMap = professionMaps.get(staffId);
-        const overtimeMap = overtimeMaps.get(staffId);
-        const date = String(row.date || row.record_date || '').slice(0, 10);
-        const source = row.allocation_source || row.allocationSource || 'none';
-        const segmentAllocations = Array.isArray(row.segment_allocations)
-            ? row.segment_allocations
-            : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
-        const actualMinutes = Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes ?? row.total_worked_minutes, 0));
-        const allocatedMinutes = Math.max(0, toNumber(row.allocatedMinutes ?? row.allocated_minutes, 0));
-        const overtimeMinutes = Math.max(0, toNumber(row.overtimeMinutes ?? row.overtime_minutes, 0));
-        const plannedMinutes = Math.max(0, toNumber(row.plannedMinutes ?? row.planned_minutes, 0));
-        const status = String(row.status || row.time_status || '').trim();
-        const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
-        if (worked && date) workedDates.get(staffId).add(date);
-
-        bucket.totalMinutes += actualMinutes;
-        bucket.allocatedMinutes += allocatedMinutes;
-        bucket.overtimeMinutes += overtimeMinutes;
-        bucket.plannedMinutes += plannedMinutes;
-
-        for (const allocation of segmentAllocations) {
-            const professionKey = normalizeProfessionKey(allocation.professionKey || allocation.profession_key);
-            const minutes = Math.max(0, toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0));
-            if (!professionKey || minutes <= 0) continue;
-            if (!professionMap.has(professionKey)) professionMap.set(professionKey, { minutes: 0, sources: new Set() });
-            const entry = professionMap.get(professionKey);
-            entry.minutes += minutes;
-            entry.sources.add(source);
-        }
-
-        const overtimeAllocation = row.overtime_allocation || row.overtimeAllocation || null;
-        const firstSegmentProfession = normalizeProfessionKey(
-            segmentAllocations.find(allocation => toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0) > 0)?.professionKey
-            || segmentAllocations[0]?.professionKey
-            || segmentAllocations[0]?.profession_key
-        );
-        const primaryProfessionKey = normalizeProfessionKey(
-            overtimeAllocation?.professionKey
-            || overtimeAllocation?.profession_key
-            || row.primary_profession_key
-            || firstSegmentProfession
-        );
-        if (worked && date) bucket.primaryDays.push({ date, professionKey: primaryProfessionKey });
-        if (overtimeMinutes > 0) {
-            const overtimeKey = primaryProfessionKey || '';
-            if (!overtimeMap.has(overtimeKey)) overtimeMap.set(overtimeKey, { minutes: 0, sources: new Set() });
-            const entry = overtimeMap.get(overtimeKey);
-            entry.minutes += overtimeMinutes;
-            entry.sources.add(source);
-            bucket.allocationIssues.push({
-                code: 'PAYROLL_OVERTIME_RECONCILIATION_REQUIRED',
-                date,
-                professionKey: primaryProfessionKey || null,
-                overtimeMinutes,
-                message: 'Overtime застосовано один раз до основної професії дня; потрібна звірка'
-            });
-        }
-        for (const issue of row.allocation_issues || row.allocationIssues || []) {
-            bucket.allocationIssues.push({ date, ...issue });
-        }
-        bucket.attendanceDays.push({
-            date,
-            attendanceRef: row.attendance_ref || row.id || null,
-            plannedShiftRef: row.planned_shift_ref || null,
-            segmentRefs: segmentAllocations.map(allocation => allocation.segmentId ?? allocation.segment_id)
-                .filter(ref => ref !== null && ref !== undefined),
-            plannedMinutes,
-            actualMinutes,
-            overtimeMinutes,
-            allocationSource: source,
-            primaryProfessionKey,
-            segmentAllocations
-        });
-    }
-
-    for (const [staffId, bucket] of buckets) {
-        bucket.daysWorked = workedDates.get(staffId).size;
-        bucket.hoursWorked = Math.round((bucket.totalMinutes / 60) * 10) / 10;
-        bucket.overtimeHours = Math.round((bucket.overtimeMinutes / 60) * 10) / 10;
-        bucket.professionAllocations = [...professionMaps.get(staffId).entries()]
-            .map(([professionKey, value]) => ({
-                professionKey,
-                minutes: value.minutes,
-                allocationSources: [...value.sources].sort()
-            }))
-            .sort((left, right) => left.professionKey.localeCompare(right.professionKey));
-        bucket.overtimeAllocations = [...overtimeMaps.get(staffId).entries()]
-            .map(([professionKey, value]) => ({
-                professionKey: professionKey || null,
-                minutes: value.minutes,
-                allocationSources: [...value.sources].sort()
-            }))
-            .sort((left, right) => String(left.professionKey || '').localeCompare(String(right.professionKey || '')));
-        bucket.primaryDays = [...new Map(bucket.primaryDays.map(day => [day.date, day])).values()]
-            .sort((left, right) => left.date.localeCompare(right.date));
-        bucket.allocationIssues = compactAllocationIssues(bucket.allocationIssues);
-        bucket.reconciliation = buildPayrollSourceReconciliation(bucket.attendanceDays);
-        bucket.reconciliation.warnings.push(...bucket.allocationIssues);
-    }
-    return buckets;
-}
-
-async function loadProfessionRateMap(staffIds = [], db = pool) {
-    const ids = [...new Set(staffIds.map(Number).filter(Number.isInteger))];
-    if (!ids.length) return new Map();
-    const result = await db.query(
-        `SELECT staff_id, profession_key, hourly_rate
-         FROM staff_profession_rates
-         WHERE staff_id = ANY($1::int[])`,
-        [ids]
-    );
-    return new Map(result.rows.map(row => [
-        `${Number(row.staff_id)}:${normalizeProfessionKey(row.profession_key)}`,
-        toNumber(row.hourly_rate, 0)
-    ]));
-}
-
-function schemeRateFallback(scheme, rateUnit) {
-    const config = parseConfig(scheme?.config || scheme?.config_json);
-    if (rateUnit === 'month') return toNumber(config.monthlyAmount ?? config.fixedAmount ?? config.amount, 0);
-    if (rateUnit === 'day') return toNumber(config.perShiftRate ?? config.rate ?? config.amount, 0);
-    return toNumber(config.hourlyRate ?? config.rate, 0);
-}
-
-function resolveProfessionPayRate(staff, professionKey, scheme, professionRateMap, rateUnit) {
-    const staffId = Number(staff.id ?? staff.staff_id);
-    const normalizedKey = normalizeProfessionKey(professionKey || staff.roleType || staff.role_type);
-    const professionRate = professionRateMap.get(`${staffId}:${normalizedKey}`);
-    if (professionRate > 0) return { rate: professionRate, source: 'staff_profession_rates' };
-    const schemeRate = schemeRateFallback(scheme, rateUnit);
-    if (schemeRate > 0) return { rate: schemeRate, source: 'payroll_scheme' };
-    return {
-        rate: toNumber(staff.hourlyRate ?? staff.hourly_rate, 0),
-        source: 'staff.hourly_rate'
-    };
-}
-
-function professionSummaryRow({ professionKey, minutes, days = 0, rate, amount, rateUnit, sources, rateSource, kind = 'base' }) {
-    const allocationSources = [...new Set((sources || []).filter(Boolean))].sort();
-    return {
-        profession_key: professionKey || null,
-        professionKey: professionKey || null,
-        actual_minutes: Math.max(0, Math.round(minutes || 0)),
-        actual_hours: Math.round((Math.max(0, minutes || 0) / 60) * 100) / 100,
-        hours: Math.round((Math.max(0, minutes || 0) / 60) * 10) / 10,
-        days,
-        rate,
-        rate_unit: rateUnit,
-        amount,
-        allocation_source: allocationSources.length === 1 ? allocationSources[0] : allocationSources.join(','),
-        allocation_sources: allocationSources,
-        rate_source: rateSource,
-        kind
-    };
-}
-
-function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(staff?.id), professionRateMap = new Map()) {
-    const activeScheme = scheme || fallbackSchemeForStaff(staff);
-    const schemeType = activeScheme?.schemeType || activeScheme?.scheme_type || 'hourly';
-    const standardType = ['hourly', 'per_shift', 'monthly_fixed'].includes(schemeType);
-    if (!standardType) return { applies: false, baseLines: [], overtimeLines: [], professionRateSummary: [] };
-    const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
-    const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
-    const baseLines = [];
-    const overtimeLines = [];
-    const professionRateSummary = [];
-
-    if (rateUnit === 'hour') {
-        const allocations = metrics.professionAllocations.length
-            ? metrics.professionAllocations
-            : (metrics.allocatedMinutes > 0 ? [{
-                professionKey: fallbackProfessionKey,
-                minutes: metrics.allocatedMinutes,
-                allocationSources: ['legacy_single_role']
-            }] : []);
-        for (const allocation of allocations) {
-            const professionKey = normalizeProfessionKey(allocation.professionKey || fallbackProfessionKey);
-            const resolved = resolveProfessionPayRate(staff, professionKey, activeScheme, professionRateMap, rateUnit);
-            const amount = roundMoney((allocation.minutes / 60) * resolved.rate);
-            baseLines.push(line('base', 'profession_hourly', `Погодинно: ${professionKey}`, amount, {
-                quantity: allocation.minutes / 60,
-                rate: resolved.rate,
-                source: resolved.source,
-                meta: { professionKey, allocationSources: allocation.allocationSources }
-            }));
-            professionRateSummary.push(professionSummaryRow({
-                professionKey,
-                minutes: allocation.minutes,
-                rate: resolved.rate,
-                amount,
-                rateUnit,
-                sources: allocation.allocationSources,
-                rateSource: resolved.source
-            }));
-        }
-        for (const overtime of metrics.overtimeAllocations) {
-            const professionKey = normalizeProfessionKey(overtime.professionKey || fallbackProfessionKey);
-            const resolved = resolveProfessionPayRate(staff, professionKey, activeScheme, professionRateMap, rateUnit);
-            const amount = roundMoney((overtime.minutes / 60) * resolved.rate * OVERTIME_MULTIPLIER);
-            overtimeLines.push(line('overtime', 'overtime', `Overtime: ${professionKey}`, amount, {
-                quantity: overtime.minutes / 60,
-                rate: resolved.rate * OVERTIME_MULTIPLIER,
-                source: resolved.source,
-                meta: { professionKey, baseRate: resolved.rate, multiplier: OVERTIME_MULTIPLIER, allocationSources: overtime.allocationSources }
-            }));
-            professionRateSummary.push(professionSummaryRow({
-                professionKey,
-                minutes: overtime.minutes,
-                rate: resolved.rate * OVERTIME_MULTIPLIER,
-                amount,
-                rateUnit,
-                sources: overtime.allocationSources,
-                rateSource: resolved.source,
-                kind: 'overtime'
-            }));
-        }
-    } else if (rateUnit === 'day') {
-        const dayMap = new Map();
-        for (const day of metrics.primaryDays) {
-            const professionKey = normalizeProfessionKey(day.professionKey || fallbackProfessionKey);
-            if (!dayMap.has(professionKey)) dayMap.set(professionKey, { days: 0, dates: [] });
-            dayMap.get(professionKey).days += 1;
-            dayMap.get(professionKey).dates.push(day.date);
-        }
-        for (const [professionKey, dayData] of dayMap) {
-            const resolved = resolveProfessionPayRate(staff, professionKey, activeScheme, professionRateMap, rateUnit);
-            const amount = roundMoney(dayData.days * resolved.rate);
-            const professionMinutes = metrics.professionAllocations
-                .filter(allocation => allocation.professionKey === professionKey)
-                .reduce((sum, allocation) => sum + allocation.minutes, 0);
-            baseLines.push(line('base', 'profession_day', `Денна ставка: ${professionKey}`, amount, {
-                quantity: dayData.days,
-                rate: resolved.rate,
-                source: resolved.source,
-                meta: { professionKey, dates: dayData.dates }
-            }));
-            professionRateSummary.push(professionSummaryRow({
-                professionKey,
-                minutes: professionMinutes,
-                days: dayData.days,
-                rate: resolved.rate,
-                amount,
-                rateUnit,
-                sources: metrics.attendanceDays.filter(day => dayData.dates.includes(day.date)).map(day => day.allocationSource),
-                rateSource: resolved.source
-            }));
-        }
-    } else {
-        const monthlyRate = schemeRateFallback(activeScheme, 'month') || toNumber(staff.hourlyRate ?? staff.hourly_rate, 0);
-        const amount = roundMoney(monthlyRate);
-        baseLines.push(line('base', 'profession_month', 'Місячний оклад', amount, {
-            quantity: 1,
-            rate: monthlyRate,
-            source: activeScheme?.isFallback ? 'staff.hourly_rate' : 'payroll_scheme',
-            meta: { professionKey: fallbackProfessionKey }
-        }));
-        professionRateSummary.push(professionSummaryRow({
-            professionKey: fallbackProfessionKey,
-            minutes: metrics.allocatedMinutes,
-            days: metrics.daysWorked,
-            rate: monthlyRate,
-            amount,
-            rateUnit,
-            sources: metrics.attendanceDays.map(day => day.allocationSource),
-            rateSource: activeScheme?.isFallback ? 'staff.hourly_rate' : 'payroll_scheme'
-        }));
-    }
-
-    const baseAmount = baseLines.reduce((sum, item) => sum + item.amount, 0);
-    const overtimeAmount = overtimeLines.reduce((sum, item) => sum + item.amount, 0);
-    return {
-        applies: true,
-        rateUnit,
-        baseLines,
-        overtimeLines,
-        baseAmount,
-        overtimeAmount,
-        totalAmount: baseAmount + overtimeAmount,
-        professionRateSummary,
-        allocationIssues: metrics.allocationIssues,
-        reconciliation: metrics.reconciliation
-    };
-}
-
 async function fetchTimeMetrics(month) {
     const bounds = getMonthBounds(month);
     try {
-        return await loadPayrollAttendanceMetrics(bounds);
+        const result = await pool.query(`
+            SELECT staff_id,
+                   COALESCE(SUM(total_worked_minutes), 0)::int AS total_minutes,
+                   COALESCE(SUM(overtime_minutes), 0)::int AS overtime_minutes,
+                   COUNT(*) FILTER (
+                       WHERE COALESCE(total_worked_minutes, 0) > 0
+                          OR status IN ('present', 'late', 'early_leave', 'auto_closed')
+                   )::int AS days_worked
+            FROM hr_time_records
+            WHERE record_date >= $1 AND record_date <= $2
+            GROUP BY staff_id
+        `, [bounds.from, bounds.to]);
+        return new Map(result.rows.map(row => [row.staff_id, {
+            totalMinutes: toNumber(row.total_minutes, 0),
+            overtimeMinutes: toNumber(row.overtime_minutes, 0),
+            hoursWorked: Math.round(toNumber(row.total_minutes, 0) / 60 * 10) / 10,
+            overtimeHours: Math.round(toNumber(row.overtime_minutes, 0) / 60 * 10) / 10,
+            daysWorked: toNumber(row.days_worked, 0)
+        }]));
     } catch (err) {
         if (!isMissingTableError(err)) log.warn('time metrics query failed:', err.message);
         return new Map();
@@ -939,17 +590,7 @@ function applyReportSnapshot(row, report) {
         netAmount: roundMoney(report.net_amount),
         estimatedSalary: roundMoney(report.net_amount),
         totalSalary: roundMoney(report.net_amount),
-        lines: Array.isArray(breakdown.lines) ? breakdown.lines : row.lines,
-        professionRateSummary: Array.isArray(breakdown.professionRateSummary)
-            ? breakdown.professionRateSummary
-            : row.professionRateSummary,
-        profession_rate_summary: Array.isArray(breakdown.professionRateSummary)
-            ? breakdown.professionRateSummary
-            : row.profession_rate_summary,
-        reconciliation: breakdown.reconciliation || row.reconciliation,
-        allocationIssues: Array.isArray(breakdown.allocationIssues)
-            ? breakdown.allocationIssues
-            : row.allocationIssues
+        lines: Array.isArray(breakdown.lines) ? breakdown.lines : row.lines
     };
 }
 
@@ -957,18 +598,17 @@ async function buildPayrollContext(month) {
     const normalizedMonth = assertPayrollMonth(normalizePayrollMonth(month));
     const staff = await fetchStaffList(normalizedMonth);
     const staffIds = staff.map(item => item.id);
-    const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap] = await Promise.all([
+    const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes] = await Promise.all([
         fetchTimeMetrics(normalizedMonth),
         fetchAdjustments(normalizedMonth),
         fetchPayrollEntries(normalizedMonth),
         fetchActiveSchemes(staffIds, normalizedMonth),
         fetchReportsByMonth(normalizedMonth),
         fetchPeriodIncome(normalizedMonth),
-        fetchAllSchemes(),
-        loadProfessionRateMap(staffIds)
+        fetchAllSchemes()
     ]);
 
-    return { month: normalizedMonth, staff, timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap };
+    return { month: normalizedMonth, staff, timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes };
 }
 
 function rowFromCalculation(staff, calculation, metrics, report) {
@@ -992,11 +632,7 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         hoursWorked: metrics.hoursWorked || 0,
         shifts: metrics.daysWorked || 0,
         daysWorked: metrics.daysWorked || 0,
-        plannedMinutes: metrics.plannedMinutes || 0,
-        allocatedMinutes: metrics.allocatedMinutes || 0,
-        overtimeMinutes: metrics.overtimeMinutes || 0,
         baseAmount: summary.base,
-        overtimeAmount: summary.overtime || 0,
         bonusesAmount: summary.bonuses + summary.percent + summary.manual,
         percentAmount: summary.percent,
         deductionsAmount: summary.deductions,
@@ -1009,12 +645,6 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         reportId: report?.id || null,
         reportGeneratedAt: report?.generated_at || null,
         lines: calculation.lines,
-        professionRateSummary: calculation.professionPay?.professionRateSummary || [],
-        profession_rate_summary: calculation.professionPay?.professionRateSummary || [],
-        allocationIssues: calculation.professionPay?.allocationIssues || [],
-        allocation_issues: calculation.professionPay?.allocationIssues || [],
-        reconciliation: calculation.professionPay?.reconciliation || metrics.reconciliation || { days: [], warnings: [] },
-        attendanceDays: metrics.attendanceDays || [],
         summary
     };
     return applyReportSnapshot(row, report);
@@ -1028,14 +658,12 @@ async function getSalaryReport(month) {
             periodIncome: context.periodIncome
         };
         const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-        const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap);
         const calculation = calculatePayroll(
             staff,
             scheme,
             metrics,
             context.adjustmentMap.get(staff.id),
-            context.entryMap.get(staff.id) || [],
-            professionPay
+            context.entryMap.get(staff.id) || []
         );
         return rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
     });
@@ -1084,14 +712,12 @@ async function getPayrollPreview(staffId, month) {
         periodIncome: context.periodIncome
     };
     const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-    const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap);
     const calculation = calculatePayroll(
         staff,
         scheme,
         metrics,
         context.adjustmentMap.get(staff.id),
-        context.entryMap.get(staff.id) || [],
-        professionPay
+        context.entryMap.get(staff.id) || []
     );
     return rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
 }
@@ -1244,14 +870,8 @@ async function generatePayrollReports(month, user) {
                 metrics: {
                     hoursWorked: row.hoursWorked,
                     daysWorked: row.daysWorked,
-                    totalMinutes: row.totalMinutes,
-                    allocatedMinutes: row.allocatedMinutes,
-                    overtimeMinutes: row.overtimeMinutes,
-                    plannedMinutes: row.plannedMinutes
+                    totalMinutes: row.totalMinutes
                 },
-                professionRateSummary: row.professionRateSummary,
-                reconciliation: row.reconciliation,
-                allocationIssues: row.allocationIssues,
                 lines: row.lines,
                 summary: row.summary
             };
@@ -1325,13 +945,8 @@ async function updatePayrollReportStatus(id, status, user) {
 }
 
 module.exports = {
-    OVERTIME_MULTIPLIER,
     SCHEME_TYPES,
     REPORT_STATUSES,
-    calculateProfessionPay,
-    calculatePayroll,
-    loadPayrollAttendanceMetrics,
-    loadProfessionRateMap,
     normalizePayrollMonth,
     getSalaryReport,
     getPayrollWorkspace,

@@ -6,7 +6,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireMinRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
-const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { getKyivDateStr } = require('../services/booking');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const {
     resolveBusinessScope,
@@ -22,9 +22,6 @@ router.get('/stats', async (req, res) => {
         const businessScope = resolveBusinessScope(req);
         if (!requireBusinessScope(req, res, businessScope)) return;
         const today = getKyivDateStr();
-        const yesterdayDate = getKyivDate();
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
         const role = req.user.role;
         const REVENUE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
         const bookingParams = [today];
@@ -33,8 +30,8 @@ router.get('/stats', async (req, res) => {
         const revenueParams = [today];
         const revenueBusinessCondition = pushBusinessScopeCondition(revenueParams, businessScope, 'b');
         const revenueScope = getVisibleBookingScope(req.user, revenueParams, 'b');
-        const staffParams = [today, yesterday];
-        const staffBusinessCondition = pushBusinessScopeCondition(staffParams, businessScope, 'ss');
+        const staffParams = [today];
+        const staffBusinessCondition = pushBusinessScopeCondition(staffParams, businessScope, '');
         const taskParams = [today];
         const taskBusinessCondition = pushBusinessScopeCondition(taskParams, businessScope, 't');
 
@@ -50,31 +47,9 @@ router.get('/stats', async (req, res) => {
             ),
             // 1: Staff on shift today
             pool.query(
-                `SELECT COUNT(DISTINCT ss.staff_id)::int as count
-                 FROM staff_schedule ss
-                 WHERE ss.date IN ($1::date, $2::date) AND ss.status IN ('working', 'remote')
-                   AND ${staffBusinessCondition}
-                   AND EXISTS (
-                       SELECT 1
-                       FROM hr_shifts hs
-                       JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
-                       WHERE hs.staff_id = ss.staff_id
-                         AND hs.shift_date = ss.date::date
-                         AND (
-                             (ss.date = $1::date
-                              AND hss.planned_end > hss.planned_start
-                              AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss.planned_start
-                              AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss.planned_end)
-                             OR
-                             (ss.date = $1::date
-                              AND hss.planned_end <= hss.planned_start
-                              AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss.planned_start)
-                             OR
-                             (ss.date = $2::date
-                              AND hss.planned_end <= hss.planned_start
-                              AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss.planned_end)
-                         )
-                   )`, staffParams
+                `SELECT COUNT(DISTINCT staff_id)::int as count FROM staff_schedule
+                 WHERE date = $1 AND status = 'working'
+                   AND ${staffBusinessCondition}`, staffParams
             ),
             // 2: Tasks progress
             pool.query(

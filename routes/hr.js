@@ -19,10 +19,7 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest
 } = require('../services/businessContext');
-const {
-    calculateHrClockOutPayroll,
-    decorateAttendanceRecord
-} = require('../services/hrAttendance');
+const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
     ONBOARDING_TASK_SOURCE_TYPE,
@@ -78,23 +75,9 @@ const {
     setPayrollPeriodLock
 } = require('../services/hrPayrollPeriod');
 const {
-    calculateProfessionPay,
-    loadPayrollAttendanceMetrics,
-    loadProfessionRateMap
-} = require('../services/payroll');
-const {
     createStaffPayrollScheme,
     loadStaffPayrollSchemeWorkspace
 } = require('../services/hrPayrollSchemes');
-const {
-    hrShiftPlanErrorPayload,
-    hydrateHrShiftDayPlans,
-    isHrShiftPlanError,
-    loadHrShiftDayPlan,
-    normalizeHrShiftDayPlan,
-    saveHrShiftDayPlan,
-    validateHrShiftDayPlanProfessions
-} = require('../services/hrShiftSegments');
 const {
     archiveStaffDocument,
     createStaffDocument,
@@ -1304,21 +1287,6 @@ async function validateShiftWriteStaff(client, staffId, date, options = {}) {
     });
 }
 
-async function lockHrShiftStaffRows(client, staffIds = []) {
-    const ids = [...new Set(staffIds
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))]
-        .sort((a, b) => a - b);
-    if (!ids.length) return;
-    await client.query(
-        `SELECT id FROM staff
-         WHERE id = ANY($1::int[])
-         ORDER BY id
-         FOR UPDATE`,
-        [ids]
-    );
-}
-
 // Helper: get current Kyiv time as Date object
 function nowKyiv() {
     return getKyivDate();
@@ -1537,13 +1505,7 @@ async function attachTrainingReadiness(staffRows = []) {
 
 function toDateOnly(value) {
     if (!value) return null;
-    if (value instanceof Date) {
-        if (Number.isNaN(value.getTime())) return null;
-        const year = value.getFullYear();
-        const month = String(value.getMonth() + 1).padStart(2, '0');
-        const day = String(value.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
     return String(value).slice(0, 10);
 }
 
@@ -1555,6 +1517,14 @@ function buildReplacementNote(shift) {
     if (!shift?.original_staff_id) return shift?.notes || null;
     const reason = shift.replacement_reason ? `: ${shift.replacement_reason}` : '';
     return `Підміна за співробітника #${shift.original_staff_id}${reason}`;
+}
+
+function scheduleProfessionFromPayload(payload = {}) {
+    return normalizeProfessionKey(payload.profession_key ?? payload.professionKey ?? payload.role_type ?? payload.roleType);
+}
+
+async function resolveHrShiftProfession(staffId, payload = {}, db = pool) {
+    return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
 }
 
 function normalizeCompanyStructureNodeRef(value) {
@@ -1823,75 +1793,28 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         LEFT JOIN report_snapshots rs ON rs.staff_id = s.id
         ORDER BY s.name
     `, [month, period.from, period.to, period.month_from, period.month_to]);
-    const staffIds = result.rows.map(row => Number(row.staff_id)).filter(Number.isInteger);
-    const [attendanceMetrics, professionRateMap] = await Promise.all([
-        loadPayrollAttendanceMetrics({ from: period.from, to: period.to, staffIds }, db),
-        loadProfessionRateMap(staffIds, db)
-    ]);
-    const emptyMetrics = () => ({
-        totalMinutes: 0,
-        allocatedMinutes: 0,
-        plannedMinutes: 0,
-        overtimeMinutes: 0,
-        hoursWorked: 0,
-        overtimeHours: 0,
-        daysWorked: 0,
-        professionAllocations: [],
-        overtimeAllocations: [],
-        primaryDays: [],
-        attendanceDays: [],
-        allocationIssues: [],
-        reconciliation: { days: [], warnings: [] }
-    });
-    const data = result.rows.map(row => {
-        const staffId = Number(row.staff_id);
-        const rateUnit = staffRateUnit(row);
-        const staff = {
-            id: staffId,
-            roleType: row.role_type,
-            hourlyRate: Number(row.hourly_rate || 0),
-            rateUnit
-        };
-        const scheme = {
-            schemeType: rateUnit === 'month' ? 'monthly_fixed' : (rateUnit === 'day' ? 'per_shift' : 'hourly'),
-            config: {},
-            isFallback: true
-        };
-        const metrics = attendanceMetrics.get(staffId) || emptyMetrics();
-        const professionPay = calculateProfessionPay(staff, scheme, metrics, professionRateMap);
-        const baseSalary = Number(professionPay.baseAmount || 0);
-        const overtimePay = Number(professionPay.overtimeAmount || 0);
-        const bonuses = Number(row.bonuses || 0);
-        const tips = Number(row.tips || 0);
-        const deductions = Number(row.deductions || 0);
-        const penalties = Number(row.penalties || 0);
-        const advances = Number(row.advances || 0);
-        return {
-            staff_id: staffId,
-            staff_name: row.staff_name,
-            role_type: row.role_type,
-            department: row.department,
-            hourly_rate: Number(row.hourly_rate || 0),
-            rate_unit: rateUnit,
-            profession_rate_summary: professionPay.professionRateSummary,
-            days_worked: Number(metrics.daysWorked || 0),
-            hours_worked: Math.round((Number(metrics.totalMinutes || 0) / 60) * 10) / 10,
-            planned_hours: Math.round((Number(metrics.plannedMinutes || 0) / 60) * 10) / 10,
-            overtime_hours: Math.round((Number(metrics.overtimeMinutes || 0) / 60) * 10) / 10,
-            base_salary: baseSalary,
-            overtime_pay: overtimePay,
-            bonuses,
-            tips,
-            deductions,
-            penalties,
-            advances,
-            total_salary: Math.round(baseSalary + overtimePay + bonuses + tips - deductions - penalties - advances),
-            allocation_issues: professionPay.allocationIssues,
-            reconciliation: professionPay.reconciliation,
-            payroll_status: row.payroll_status || null,
-            payroll_report_id: row.payroll_report_id || null
-        };
-    });
+    const data = result.rows.map(row => ({
+        staff_id: Number(row.staff_id),
+        staff_name: row.staff_name,
+        role_type: row.role_type,
+        department: row.department,
+        hourly_rate: Number(row.hourly_rate || 0),
+        rate_unit: staffRateUnit(row),
+        profession_rate_summary: Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [],
+        days_worked: Number(row.days_worked || 0),
+        hours_worked: Number(row.hours_worked || 0),
+        overtime_hours: Number(row.overtime_hours || 0),
+        base_salary: Number(row.base_salary || 0),
+        overtime_pay: Number(row.overtime_pay || 0),
+        bonuses: Number(row.bonuses || 0),
+        tips: Number(row.tips || 0),
+        deductions: Number(row.deductions || 0),
+        penalties: Number(row.penalties || 0),
+        advances: Number(row.advances || 0),
+        total_salary: Number(row.total_salary || 0),
+        payroll_status: row.payroll_status || null,
+        payroll_report_id: row.payroll_report_id || null
+    }));
     return { month, period, data, totals: payrollTotals(data) };
 }
 
@@ -2150,207 +2073,39 @@ async function removeMirroredStaffSchedule(staffId, shiftDate, db = pool) {
     );
 }
 
-async function mirrorHrDayPlanToStaffSchedule(saved, staffId, shiftDate, note = null, db = pool) {
-    if (saved?.shift) {
-        await mirrorHrShiftToStaffSchedule(saved.shift, db);
-        return;
-    }
-    const date = toDateOnly(shiftDate);
-    const status = saved?.plan?.status;
-    if (!staffId || !date || !['dayoff', 'vacation', 'sick'].includes(status)) {
-        await removeMirroredStaffSchedule(staffId, shiftDate, db);
-        return;
-    }
-    await db.query(
-        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
-         VALUES ($1, $2, NULL, NULL, $3, $4, NULL)
-         ON CONFLICT (staff_id, date)
-         DO UPDATE SET shift_start = NULL,
-                       shift_end = NULL,
-                       status = EXCLUDED.status,
-                       note = EXCLUDED.note,
-                       profession_key = NULL`,
-        [staffId, date, status, note ?? null]
-    );
-}
-
-function publicHrShiftSegment(segment = {}) {
-    const shiftStart = segment.shiftStart ?? segment.planned_start ?? null;
-    const shiftEnd = segment.shiftEnd ?? segment.planned_end ?? null;
-    return {
-        id: segment.id ?? null,
-        professionKey: segment.professionKey ?? segment.profession_key ?? null,
-        shiftStart: shiftStart === null ? null : String(shiftStart).slice(0, 5),
-        shiftEnd: shiftEnd === null ? null : String(shiftEnd).slice(0, 5),
-        breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
-        note: segment.note ?? segment.notes ?? null,
-        additionalProfessionKeys: segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? []
-    };
-}
-
-function hrShiftWithDayPlan(shift, plan) {
-    if (!shift) return null;
-    let effectivePlan = plan;
-    if (!effectivePlan) {
-        try {
-            effectivePlan = normalizeHrShiftDayPlan({
-                professionKey: shift.profession_key,
-                shiftStart: shift.planned_start,
-                shiftEnd: shift.planned_end,
-                breakMinutes: shift.break_minutes
-            }, {
-                status: shift.shift_type === 'remote' ? 'remote' : 'working',
-                strictProfessionKeys: false
-            });
-        } catch {
-            effectivePlan = null;
-        }
-    }
-    if (!effectivePlan) {
-        return {
-            ...shift,
-            primaryProfessionKey: shift.profession_key || null,
-            primary_profession_key: shift.profession_key || null,
-            professionKeys: shift.profession_key ? [shift.profession_key] : [],
-            profession_keys: shift.profession_key ? [shift.profession_key] : [],
-            segments: []
-        };
-    }
-    return {
-        ...shift,
-        primaryProfessionKey: effectivePlan.primaryProfessionKey,
-        primary_profession_key: effectivePlan.primaryProfessionKey,
-        segments: effectivePlan.segments.map(publicHrShiftSegment),
-        professionKeys: effectivePlan.professionKeys,
-        profession_keys: effectivePlan.professionKeys,
-        plannedMinutes: effectivePlan.plannedMinutes,
-        planned_minutes: effectivePlan.plannedMinutes,
-        gapMinutes: effectivePlan.gapMinutes
-    };
-}
-
-function dayPlanPayload(plan, extra = {}) {
-    return {
-        ...extra,
-        primaryProfessionKey: plan.primaryProfessionKey,
-        segments: plan.segments.map(publicHrShiftSegment)
-    };
-}
-
-function auditHrDayPlan(plan) {
-    if (!plan) return null;
-    return {
-        primaryProfessionKey: plan.primaryProfessionKey || null,
-        plannedMinutes: Number(plan.plannedMinutes || 0),
-        segments: plan.segments.map(publicHrShiftSegment)
-    };
-}
-
-async function attachHrShiftSegments(rows = [], db = pool) {
-    if (!rows.length) return rows;
-    const hydrated = await hydrateHrShiftDayPlans(db, rows);
-    return hydrated.map(({ shift, plan }) => hrShiftWithDayPlan(shift, plan));
-}
-
-function sendHrShiftPlanError(res, error, extra = {}) {
-    const status = Number(error?.statusCode || error?.status || 400);
-    return res.status(status >= 400 && status < 500 ? status : 400)
-        .json(hrShiftPlanErrorPayload(error, extra));
-}
-
 async function backfillHrShiftsFromStaffSchedule(dateFrom, dateTo, db = pool) {
     if (!dateFrom || !dateTo) return;
-    const client = typeof db.connect === 'function' ? await db.connect() : db;
-    const shouldRelease = client !== db && typeof client.release === 'function';
-    try {
-        await client.query('BEGIN');
-        const source = await client.query(
-            `SELECT ss.staff_id,
-                    LEFT(ss.date::text, 10) AS shift_date,
-                    LEFT(ss.shift_start::text, 5) AS planned_start,
-                    LEFT(ss.shift_end::text, 5) AS planned_end,
-                    CASE WHEN ss.status = 'remote' THEN 'remote' ELSE 'regular' END AS shift_type,
-                    ss.note AS notes,
-                    COALESCE(NULLIF(BTRIM(ss.profession_key), ''), NULLIF(BTRIM(s.role_type), '')) AS profession_key
-             FROM staff_schedule ss
-             JOIN staff s ON s.id = ss.staff_id
-             LEFT JOIN hr_shifts hs
-               ON hs.staff_id = ss.staff_id
-              AND hs.shift_date::text = LEFT(ss.date::text, 10)
-             WHERE LEFT(ss.date::text, 10) >= $1
-               AND LEFT(ss.date::text, 10) <= $2
-               AND ss.status IN ('working', 'remote')
-               AND LEFT(ss.date::text, 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
-               AND LEFT(ss.shift_start::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-               AND LEFT(ss.shift_end::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-               AND LEFT(ss.shift_start::text, 5) <> LEFT(ss.shift_end::text, 5)
-               AND COALESCE(NULLIF(BTRIM(ss.profession_key), ''), NULLIF(BTRIM(s.role_type), '')) IS NOT NULL
-               AND ${scheduleableStaffWhere('s', { dateExpression: "LEFT(ss.date::text, 10)" })}
-               AND hs.id IS NULL
-             ORDER BY ss.staff_id, LEFT(ss.date::text, 10)`,
-            [dateFrom, dateTo]
-        );
-        const candidateStaffIds = [...new Set(source.rows.map(row => Number(row.staff_id)).filter(Number.isFinite))]
-            .sort((left, right) => left - right);
-        await lockHrShiftStaffRows(client, candidateStaffIds);
-        if (!candidateStaffIds.length) {
-            await client.query('COMMIT');
-            return;
-        }
-        const freshSource = await client.query(
-            `SELECT ss.staff_id,
-                    LEFT(ss.date::text, 10) AS shift_date,
-                    LEFT(ss.shift_start::text, 5) AS planned_start,
-                    LEFT(ss.shift_end::text, 5) AS planned_end,
-                    CASE WHEN ss.status = 'remote' THEN 'remote' ELSE 'regular' END AS shift_type,
-                    ss.note AS notes,
-                    COALESCE(NULLIF(BTRIM(ss.profession_key), ''), NULLIF(BTRIM(s.role_type), '')) AS profession_key
-             FROM staff_schedule ss
-             JOIN staff s ON s.id = ss.staff_id
-             LEFT JOIN hr_shifts hs
-               ON hs.staff_id = ss.staff_id
-              AND hs.shift_date::text = LEFT(ss.date::text, 10)
-             WHERE LEFT(ss.date::text, 10) >= $1
-               AND LEFT(ss.date::text, 10) <= $2
-               AND ss.staff_id = ANY($3::int[])
-               AND ss.status IN ('working', 'remote')
-               AND LEFT(ss.date::text, 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
-               AND LEFT(ss.shift_start::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-               AND LEFT(ss.shift_end::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-               AND LEFT(ss.shift_start::text, 5) <> LEFT(ss.shift_end::text, 5)
-               AND COALESCE(NULLIF(BTRIM(ss.profession_key), ''), NULLIF(BTRIM(s.role_type), '')) IS NOT NULL
-               AND ${scheduleableStaffWhere('s', { dateExpression: "LEFT(ss.date::text, 10)" })}
-               AND hs.id IS NULL
-             ORDER BY ss.staff_id, LEFT(ss.date::text, 10)`,
-            [dateFrom, dateTo, candidateStaffIds]
-        );
-        for (const row of freshSource.rows) {
-            const alreadyCreated = await client.query(
-                'SELECT id FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
-                [row.staff_id, row.shift_date]
-            );
-            if (alreadyCreated.rows.length) continue;
-            await saveHrShiftDayPlan(client, {
-                staffId: row.staff_id,
-                shiftDate: row.shift_date,
-                shiftType: row.shift_type,
-                payload: {
-                    professionKey: row.profession_key,
-                    shiftStart: row.planned_start,
-                    shiftEnd: row.planned_end,
-                    breakMinutes: 0,
-                    shiftType: row.shift_type,
-                    notes: row.notes
-                }
-            }, { actor: 'staff_schedule_backfill' });
-        }
-        await client.query('COMMIT');
-    } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw error;
-    } finally {
-        if (shouldRelease) client.release();
-    }
+    await db.query(
+        `INSERT INTO hr_shifts (
+            staff_id, shift_date, planned_start, planned_end, shift_type,
+            break_minutes, notes, created_by, profession_key
+         )
+         SELECT
+            ss.staff_id,
+            LEFT(ss.date::text, 10)::date,
+            LEFT(ss.shift_start::text, 5)::time,
+            LEFT(ss.shift_end::text, 5)::time,
+            CASE WHEN ss.status = 'remote' THEN 'remote' ELSE 'regular' END,
+            0,
+            ss.note,
+            'staff_schedule_backfill',
+            COALESCE(NULLIF(ss.profession_key, ''), NULLIF(s.role_type, ''))
+         FROM staff_schedule ss
+         JOIN staff s ON s.id = ss.staff_id
+         LEFT JOIN hr_shifts hs
+           ON hs.staff_id = ss.staff_id
+          AND hs.shift_date::text = LEFT(ss.date::text, 10)
+         WHERE LEFT(ss.date::text, 10) >= $1
+           AND LEFT(ss.date::text, 10) <= $2
+           AND ss.status IN ('working', 'remote')
+           AND LEFT(ss.date::text, 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
+           AND LEFT(ss.shift_start::text, 5) ~ '^\\d{2}:\\d{2}$'
+           AND LEFT(ss.shift_end::text, 5) ~ '^\\d{2}:\\d{2}$'
+           AND ${scheduleableStaffWhere('s', { dateExpression: "LEFT(ss.date::text, 10)" })}
+           AND hs.id IS NULL
+         ON CONFLICT (staff_id, shift_date) DO NOTHING`,
+        [dateFrom, dateTo]
+    );
 }
 
 // ==========================================
@@ -3789,10 +3544,8 @@ router.get('/shifts', async (req, res) => {
 
         sql += ' ORDER BY s.name, hs.shift_date';
         const result = await pool.query(sql, params);
-        const data = await attachHrShiftSegments(result.rows);
-        res.json({ success: true, data, dateFrom, dateTo });
+        res.json({ success: true, data: result.rows, dateFrom, dateTo });
     } catch (err) {
-        if (isHrShiftPlanError(err)) return sendHrShiftPlanError(res, err);
         log.error('GET /hr/shifts error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -3802,51 +3555,40 @@ router.get('/shifts', async (req, res) => {
 router.post('/shifts', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
-        const staffId = req.body.staff_id ?? req.body.staffId;
-        const shiftDate = req.body.shift_date ?? req.body.shiftDate ?? req.body.date;
-        if (!staffId || !shiftDate) {
-            return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, shift_date' });
+        const { staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes } = req.body;
+        if (!staff_id || !shift_date || !planned_start || !planned_end) {
+            return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, shift_date, planned_start, planned_end' });
         }
         await client.query('BEGIN');
-        const shiftValidation = await validateShiftWriteStaff(client, staffId, shiftDate);
+        const shiftValidation = await validateShiftWriteStaff(client, staff_id, shift_date);
         if (!shiftValidation.ok) {
-            return await rejectUnscheduleableStaff(res, client, shiftValidation, {
-                entry: { staff_id: staffId, shift_date: shiftDate }
+            return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                entry: { staff_id, shift_date }
             });
         }
-        const saved = await saveHrShiftDayPlan(client, {
-            staffId,
-            shiftDate,
-            shiftType: req.body.shift_type ?? req.body.shiftType,
-            payload: req.body
-        }, { actor: req.user?.username || null });
-        await mirrorHrDayPlanToStaffSchedule(
-            saved,
-            staffId,
-            shiftDate,
-            req.body.note ?? req.body.notes ?? null,
-            client
+        const profession = await resolveHrShiftProfession(staff_id, req.body, client);
+        if (!profession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(profession.status || 400).json({ success: false, error: profession.error });
+        }
+        const result = await client.query(
+            `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by, profession_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                shift_type = EXCLUDED.shift_type, break_minutes = EXCLUDED.break_minutes,
+                notes = EXCLUDED.notes, profession_key = EXCLUDED.profession_key, updated_at = NOW()
+             RETURNING *`,
+            [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username, profession.professionKey]
         );
-        await reconcileRosterDates(client, [shiftDate]);
+        await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+        await reconcileRosterDates(client, [shift_date]);
         await client.query('COMMIT');
-        broadcastRosterDates([shiftDate], req.user?.id);
-        await auditLog('shift_create', staffId, req.user?.username, {
-            shift_date: shiftDate,
-            planned_start: saved.plan.plannedStart,
-            planned_end: saved.plan.plannedEnd,
-            segments_count: saved.plan.segments.length,
-            before_plan: null,
-            after_plan: auditHrDayPlan(saved.plan)
-        }, req.ip);
-        res.json({ success: true, data: hrShiftWithDayPlan(saved.shift, saved.plan) });
+        broadcastRosterDates([shift_date], req.user?.id);
+        await auditLog('shift_create', staff_id, req.user?.username, { shift_date, planned_start, planned_end }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) {
-            return sendHrShiftPlanError(res, err, {
-                staff_id: Number(req.body.staff_id ?? req.body.staffId) || null,
-                shift_date: req.body.shift_date ?? req.body.shiftDate ?? req.body.date ?? null
-            });
-        }
         log.error('POST /hr/shifts error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -3858,59 +3600,51 @@ router.post('/shifts', requireHrManage, async (req, res) => {
 router.put('/shifts/:id', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
+        const { planned_start, planned_end, shift_type, break_minutes, notes } = req.body;
         await client.query('BEGIN');
-        const loadedCurrent = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id });
-        if (!loadedCurrent) {
+        const current = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (current.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
-        const observedShift = loadedCurrent.shift;
-        const shiftValidation = await validateShiftWriteStaff(client, observedShift.staff_id, observedShift.shift_date);
+        const currentShift = current.rows[0];
+        const shiftValidation = await validateShiftWriteStaff(client, currentShift.staff_id, currentShift.shift_date);
         if (!shiftValidation.ok) {
-            return await rejectUnscheduleableStaff(res, client, shiftValidation, {
-                entry: { staff_id: observedShift.staff_id, shift_date: toDateOnly(observedShift.shift_date), shift_id: req.params.id }
+            return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                entry: { staff_id: currentShift.staff_id, shift_date: toDateOnly(currentShift.shift_date), shift_id: req.params.id }
             });
         }
-        const lockedCurrent = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id }, { forUpdate: true });
-        if (!lockedCurrent
-            || Number(lockedCurrent.shift.staff_id) !== Number(observedShift.staff_id)
-            || toDateOnly(lockedCurrent.shift.shift_date) !== toDateOnly(observedShift.shift_date)) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Зміна була оновлена паралельно; повторіть запит'
-            });
+        const hasProfessionField = Object.prototype.hasOwnProperty.call(req.body || {}, 'profession_key')
+            || Object.prototype.hasOwnProperty.call(req.body || {}, 'professionKey');
+        let professionKey = null;
+        if (hasProfessionField || !current.rows[0].profession_key) {
+            const profession = await resolveHrShiftProfession(currentShift.staff_id, hasProfessionField ? req.body : {}, client);
+            if (!profession.ok) {
+                await client.query('ROLLBACK');
+                return res.status(profession.status || 400).json({ success: false, error: profession.error });
+            }
+            professionKey = profession.professionKey;
         }
-        const currentShift = lockedCurrent.shift;
-        const saved = await saveHrShiftDayPlan(client, {
-            hrShiftId: req.params.id,
-            staffId: currentShift.staff_id,
-            shiftDate: currentShift.shift_date,
-            shiftType: req.body.shift_type ?? req.body.shiftType ?? currentShift.shift_type,
-            payload: req.body
-        }, { actor: req.user?.username || null });
-        await mirrorHrDayPlanToStaffSchedule(
-            saved,
-            currentShift.staff_id,
-            currentShift.shift_date,
-            req.body.note ?? req.body.notes ?? null,
-            client
+        const result = await client.query(
+            `UPDATE hr_shifts SET
+                planned_start = COALESCE($1, planned_start),
+                planned_end = COALESCE($2, planned_end),
+                shift_type = COALESCE($3, shift_type),
+                break_minutes = COALESCE($4, break_minutes),
+                notes = COALESCE($5, notes),
+                profession_key = COALESCE($6, profession_key),
+                updated_at = NOW()
+             WHERE id = $7 RETURNING *`,
+            [planned_start, planned_end, shift_type, break_minutes, notes, professionKey, req.params.id]
         );
+        await mirrorHrShiftToStaffSchedule(result.rows[0], client);
         await reconcileRosterDates(client, [currentShift.shift_date]);
         await client.query('COMMIT');
         broadcastRosterDates([currentShift.shift_date], req.user?.id);
-        await auditLog('shift_update', currentShift.staff_id, req.user?.username, {
-            ...req.body,
-            segments_count: saved.plan.segments.length,
-            planned_start: saved.plan.plannedStart,
-            planned_end: saved.plan.plannedEnd,
-            before_plan: auditHrDayPlan(lockedCurrent.plan),
-            after_plan: auditHrDayPlan(saved.plan)
-        }, req.ip);
-        res.json({ success: true, data: hrShiftWithDayPlan(saved.shift, saved.plan) });
+        await auditLog('shift_update', result.rows[0].staff_id, req.user?.username, req.body, req.ip);
+        res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) return sendHrShiftPlanError(res, err, { shift_id: Number(req.params.id) });
         log.error('PUT /hr/shifts/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -3923,23 +3657,10 @@ router.delete('/shifts/:id', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const observed = await client.query('SELECT * FROM hr_shifts WHERE id = $1', [req.params.id]);
-        if (observed.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, error: 'Не знайдено' });
-        }
-        await lockHrShiftStaffRows(client, [observed.rows[0].staff_id]);
         const existing = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
         if (existing.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
-        }
-        if (Number(existing.rows[0].staff_id) !== Number(observed.rows[0].staff_id)) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Зміна була оновлена паралельно; повторіть запит'
-            });
         }
         await client.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
         await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date, client);
@@ -3969,29 +3690,20 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
         }
 
         await client.query('BEGIN');
-        const observedPlan = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id });
-        if (!observedPlan) {
+        const existing = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (!existing.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Зміну не знайдено' });
         }
-        const observedShift = observedPlan.shift;
-        if (Number(observedShift.staff_id) === replacementStaffId) {
+        const oldShift = existing.rows[0];
+        if (Number(oldShift.staff_id) === replacementStaffId) {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'Підміна на того самого співробітника не потрібна' });
         }
 
-        await lockHrShiftStaffRows(client, [observedShift.staff_id, replacementStaffId]);
-        const loaded = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id }, { forUpdate: true });
-        if (!loaded || Number(loaded.shift.staff_id) !== Number(observedShift.staff_id)) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Зміна була оновлена паралельно; повторіть запит' });
-        }
-        const oldShift = loaded.shift;
-        const replacementValidation = await validateShiftWriteStaff(client, replacementStaffId, oldShift.shift_date, {
-            forUpdate: false
-        });
+        const replacementValidation = await validateShiftWriteStaff(client, replacementStaffId, oldShift.shift_date);
         if (!replacementValidation.ok) {
-            return await rejectUnscheduleableStaff(res, client, replacementValidation, {
+            return rejectUnscheduleableStaff(res, client, replacementValidation, {
                 entry: { staff_id: replacementStaffId, shift_date: toDateOnly(oldShift.shift_date), shift_id: req.params.id }
             });
         }
@@ -4000,7 +3712,18 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Підмінний співробітник неактивний або не існує' });
         }
-        await validateHrShiftDayPlanProfessions(client, replacementStaffId, loaded.plan);
+
+        let replacementProfessionKey = oldShift.profession_key || null;
+        if (!replacementProfessionKey) {
+            const oldStaff = await client.query('SELECT role_type FROM staff WHERE id = $1', [oldShift.staff_id]);
+            replacementProfessionKey = oldStaff.rows[0]?.role_type || null;
+        }
+        const replacementProfession = await resolveStaffProfessionAssignment(client, replacementStaffId, replacementProfessionKey);
+        if (!replacementProfession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(replacementProfession.status || 400).json({ success: false, error: replacementProfession.error });
+        }
+        replacementProfessionKey = replacementProfession.professionKey;
 
         const conflict = await client.query(
             `SELECT id FROM hr_shifts
@@ -4020,10 +3743,11 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
                 replacement_reason = $2,
                 replaced_by = $3,
                 replaced_at = NOW(),
+                profession_key = $5,
                 updated_at = NOW()
              WHERE id = $4
              RETURNING *`,
-            [replacementStaffId, reason, req.user?.username || null, req.params.id]
+            [replacementStaffId, reason, req.user?.username || null, req.params.id, replacementProfessionKey]
         );
 
         await removeMirroredStaffSchedule(oldShift.staff_id, oldShift.shift_date, client);
@@ -4035,24 +3759,12 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
         await auditLog('shift_replace', oldShift.staff_id, req.user?.username, {
             shift_id: parseInt(req.params.id),
             replacement_staff_id: replacementStaffId,
-            reason,
-            before_plan: auditHrDayPlan(loaded.plan),
-            after_plan: auditHrDayPlan(loaded.plan)
+            reason
         }, req.ip);
 
-        res.json({
-            success: true,
-            data: hrShiftWithDayPlan(updated.rows[0], loaded.plan),
-            replacement: replacement.rows[0]
-        });
+        res.json({ success: true, data: updated.rows[0], replacement: replacement.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) {
-            return sendHrShiftPlanError(res, err, {
-                shift_id: Number(req.params.id),
-                replacement_staff_id: Number(req.body.replacement_staff_id) || null
-            });
-        }
         log.error('POST /hr/shifts/:id/replace error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -4062,20 +3774,13 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
 
 // POST /api/hr/shifts/bulk — mass create from template
 router.post('/shifts/bulk', requireHrManage, async (req, res) => {
-    let failedEntry = null;
     try {
         const { staff_ids, dates, template_id, planned_start, planned_end, break_minutes, shift_type } = req.body;
-        const hasSegments = Object.prototype.hasOwnProperty.call(req.body || {}, 'segments');
-        const hasLegacyStart = planned_start || req.body.plannedStart || req.body.shiftStart || req.body.shift_start;
-        if (!Array.isArray(staff_ids) || !staff_ids.length || !Array.isArray(dates) || !dates.length
-            || (!template_id && !hasSegments && !hasLegacyStart)) {
+        if (!staff_ids || !dates || (!template_id && !planned_start)) {
             return res.status(400).json({ success: false, error: 'Потрібні staff_ids, dates та template_id або planned_start/planned_end' });
         }
 
-        let start = planned_start ?? req.body.plannedStart ?? req.body.shiftStart ?? req.body.shift_start;
-        let end = planned_end ?? req.body.plannedEnd ?? req.body.shiftEnd ?? req.body.shift_end;
-        let brk = break_minutes ?? req.body.breakMinutes ?? 0;
-        let stype = shift_type ?? req.body.shiftType ?? 'regular';
+        let start = planned_start, end = planned_end, brk = break_minutes || 0, stype = shift_type || 'regular';
         if (template_id) {
             const tpl = await pool.query('SELECT * FROM hr_shift_templates WHERE id = $1', [template_id]);
             if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
@@ -4086,53 +3791,34 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
         }
 
         let count = 0;
-        const auditEntries = [];
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const orderedStaffIds = [...staff_ids].sort((a, b) => Number(a) - Number(b));
-            const orderedDates = [...dates].sort((a, b) => String(a).localeCompare(String(b)));
-            await lockHrShiftStaffRows(client, orderedStaffIds);
-            for (const sid of orderedStaffIds) {
-                for (const d of orderedDates) {
-                    failedEntry = { staff_id: sid, shift_date: d };
-                    const shiftValidation = await validateShiftWriteStaff(client, sid, d, {
-                        forUpdate: false
-                    });
+            for (const sid of staff_ids) {
+                for (const d of dates) {
+                    const shiftValidation = await validateShiftWriteStaff(client, sid, d);
                     if (!shiftValidation.ok) {
-                        return await rejectUnscheduleableStaff(res, client, shiftValidation, {
+                        return rejectUnscheduleableStaff(res, client, shiftValidation, {
                             entry: { staff_id: sid, shift_date: d }
                         });
                     }
-                    const payload = {
-                        ...req.body,
-                        planned_start: start,
-                        planned_end: end,
-                        break_minutes: brk,
-                        shift_type: stype
-                    };
-                    const beforePlan = await loadHrShiftDayPlan(client, { staffId: sid, shiftDate: d });
-                    const saved = await saveHrShiftDayPlan(client, {
-                        staffId: sid,
-                        shiftDate: d,
-                        shiftType: stype,
-                        payload
-                    }, { actor: req.user?.username || null });
-                    await mirrorHrDayPlanToStaffSchedule(
-                        saved,
-                        sid,
-                        d,
-                        payload.note ?? payload.notes ?? null,
-                        client
+                    const profession = await resolveHrShiftProfession(sid, req.body, client);
+                    if (!profession.ok) {
+                        await client.query('ROLLBACK');
+                        return res.status(profession.status || 400).json({ success: false, error: profession.error, staff_id: sid, shift_date: d });
+                    }
+                    const result = await client.query(
+                        `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by, profession_key)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                         ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                            planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                            break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type,
+                            profession_key = EXCLUDED.profession_key, updated_at = NOW()
+                         RETURNING *`,
+                        [sid, d, start, end, brk, stype, req.user?.username, profession.professionKey]
                     );
-                    auditEntries.push({
-                        staff_id: Number(sid),
-                        shift_date: d,
-                        before_plan: auditHrDayPlan(beforePlan?.plan || null),
-                        after_plan: auditHrDayPlan(saved.plan)
-                    });
+                    await mirrorHrShiftToStaffSchedule(result.rows[0], client);
                     count++;
-                    failedEntry = null;
                 }
             }
             await reconcileRosterDates(client, dates);
@@ -4143,11 +3829,10 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
         } finally {
             client.release();
         }
-        await auditLog('shift_bulk', null, req.user?.username, { staff_ids, dates, count, entries: auditEntries }, req.ip);
+        await auditLog('shift_bulk', null, req.user?.username, { staff_ids, dates, count }, req.ip);
         broadcastRosterDates(dates, req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
-        if (isHrShiftPlanError(err)) return sendHrShiftPlanError(res, err, { entry: failedEntry });
         log.error('POST /hr/shifts/bulk error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -4155,7 +3840,6 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
 
 // POST /api/hr/shifts/copy-week
 router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
-    let failedEntry = null;
     try {
         const { source_week, target_week } = req.body;
         if (!source_week || !target_week) {
@@ -4182,76 +3866,41 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
         );
 
         let count = 0;
-        const auditEntries = [];
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const orderedSourceRows = [...source.rows].sort((left, right) =>
-                Number(left.staff_id) - Number(right.staff_id)
-                || String(left.shift_date).localeCompare(String(right.shift_date)));
-            const sourceStaffIds = [...new Set(orderedSourceRows.map(row => Number(row.staff_id)).filter(Number.isFinite))]
-                .sort((left, right) => left - right);
-            await lockHrShiftStaffRows(client, sourceStaffIds);
-            const freshSource = await client.query(
-                `SELECT hs.* FROM hr_shifts hs
-                 JOIN staff s ON s.id = hs.staff_id
-                 WHERE hs.shift_date >= $1 AND hs.shift_date <= $2
-                   AND ${scheduleableStaffWhere('s', { dateExpression: 'hs.shift_date' })}
-                 ORDER BY hs.staff_id, hs.shift_date, hs.id`,
-                [srcDates[0], srcDates[6]]
-            );
-            const lockedStaffIds = new Set(sourceStaffIds);
-            if (freshSource.rows.some(row => !lockedStaffIds.has(Number(row.staff_id)))) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    error: 'Тиждень-джерело змінився паралельно; повторіть копіювання'
-                });
-            }
-            const freshSourceRows = freshSource.rows;
-            const sourcePlans = [];
-            for (const row of freshSourceRows) {
-                const loaded = await loadHrShiftDayPlan(client, { hrShiftId: row.id });
-                if (loaded) sourcePlans.push(loaded);
-            }
-            for (const loaded of sourcePlans) {
-                const row = loaded.shift;
-                const sourceDate = toDateOnly(row.shift_date);
+            for (const row of source.rows) {
+                const sourceDate = row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date;
                 const dayIndex = srcDates.indexOf(sourceDate);
                 if (dayIndex === -1) continue;
                 const targetDate = tgtDates[dayIndex];
-                failedEntry = { staff_id: row.staff_id, shift_date: targetDate, sourceDate };
-                const shiftValidation = await validateShiftWriteStaff(client, row.staff_id, targetDate, {
-                    forUpdate: false
-                });
+                const shiftValidation = await validateShiftWriteStaff(client, row.staff_id, targetDate);
                 if (!shiftValidation.ok) {
-                    return await rejectUnscheduleableStaff(res, client, shiftValidation, {
+                    return rejectUnscheduleableStaff(res, client, shiftValidation, {
                         entry: { staff_id: row.staff_id, shift_date: targetDate, sourceDate }
                     });
                 }
-                const beforePlan = await loadHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: targetDate
-                });
-                const saved = await saveHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: targetDate,
-                    shiftType: row.shift_type,
-                    payload: dayPlanPayload(loaded.plan, {
-                        shiftType: row.shift_type,
-                        notes: row.notes
-                    })
-                }, { actor: req.user?.username || null });
-                await mirrorHrShiftToStaffSchedule(saved.shift, client);
-                auditEntries.push({
-                    staff_id: Number(row.staff_id),
-                    source_date: sourceDate,
-                    target_date: targetDate,
-                    before_plan: auditHrDayPlan(beforePlan?.plan || null),
-                    after_plan: auditHrDayPlan(saved.plan)
-                });
+                const profession = await resolveHrShiftProfession(row.staff_id, { profession_key: row.profession_key }, client);
+                if (!profession.ok) {
+                    await client.query('ROLLBACK');
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
+                        staff_id: row.staff_id
+                    });
+                }
+                const copied = await client.query(
+                    `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, notes, created_by, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                        planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type,
+                        profession_key = EXCLUDED.profession_key, updated_at = NOW()
+                     RETURNING *`,
+                    [row.staff_id, targetDate, row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username, profession.professionKey]
+                );
+                await mirrorHrShiftToStaffSchedule(copied.rows[0], client);
                 count++;
-                failedEntry = null;
             }
             await reconcileRosterDates(client, tgtDates);
             await client.query('COMMIT');
@@ -4261,16 +3910,10 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
         } finally {
             client.release();
         }
-        await auditLog('shift_copy_week', null, req.user?.username, {
-            source_week,
-            target_week,
-            count,
-            entries: auditEntries
-        }, req.ip);
+        await auditLog('shift_copy_week', null, req.user?.username, { source_week, target_week, count }, req.ip);
         broadcastRosterDates(tgtDates, req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
-        if (isHrShiftPlanError(err)) return sendHrShiftPlanError(res, err, { entry: failedEntry });
         log.error('POST /hr/shifts/copy-week error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -4300,9 +3943,8 @@ router.get('/today', async (req, res) => {
         const shifts = await pool.query(
             'SELECT * FROM hr_shifts WHERE shift_date = $1', [today]
         );
-        const hydratedShifts = await hydrateHrShiftDayPlans(pool, shifts.rows);
         const shiftMap = {};
-        for (const snapshot of hydratedShifts) shiftMap[snapshot.shift.staff_id] = snapshot;
+        for (const s of shifts.rows) shiftMap[s.staff_id] = s;
 
         const records = await pool.query(
             'SELECT * FROM hr_time_records WHERE record_date = $1', [today]
@@ -4314,11 +3956,8 @@ router.get('/today', async (req, res) => {
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         const data = staff.rows.map(s => {
             const displayStaff = decorateStaffWithDisplayGroup(s, { displayGroupContext });
-            const shiftSnapshot = shiftMap[s.id] || null;
-            const shift = shiftSnapshot?.shift || null;
-            const record = recordMap[s.id]
-                ? decorateAttendanceRecord(recordMap[s.id], shiftSnapshot)
-                : null;
+            const shift = shiftMap[s.id] || null;
+            const record = recordMap[s.id] || null;
 
             if (record) {
                 if (record.status === 'late' || record.status === 'present' || record.status === 'clocked_in' || record.status === 'unscheduled') present++;
@@ -4346,14 +3985,7 @@ router.get('/today', async (req, res) => {
                 birth_date: s.birth_date,
                 has_photo: Boolean(String(s.photo_url || '').trim()),
                 is_birthday_today: Boolean(s.is_birthday_today),
-                shift: shift ? {
-                    planned_start: shift.planned_start,
-                    planned_end: shift.planned_end,
-                    shift_type: shift.shift_type,
-                    primary_profession_key: shiftSnapshot.plan.primaryProfessionKey,
-                    planned_minutes: shiftSnapshot.plan.plannedMinutes,
-                    segments: shiftSnapshot.plan.segments
-                } : null,
+                shift: shift ? { planned_start: shift.planned_start, planned_end: shift.planned_end, shift_type: shift.shift_type } : null,
                 record: record ? {
                     id: record.id,
                     clock_in: record.clock_in,
@@ -4363,14 +3995,7 @@ router.get('/today', async (req, res) => {
                     early_leave_minutes: record.early_leave_minutes,
                     overtime_minutes: record.overtime_minutes,
                     total_worked_minutes: record.total_worked_minutes,
-                    auto_closed: record.auto_closed,
-                    segment_allocations: record.segment_allocations,
-                    plannedMinutes: record.plannedMinutes,
-                    actualMinutes: record.actualMinutes,
-                    overtimeMinutes: record.overtimeMinutes,
-                    allocation_source: record.allocation_source,
-                    allocation_issues: record.allocation_issues,
-                    overtime_allocation: record.overtime_allocation
+                    auto_closed: record.auto_closed
                 } : null
             };
         });
@@ -4407,14 +4032,15 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         }
 
         // Find planned shift
-        const loadedShift = await loadHrShiftDayPlan(pool, { staffId: staff_id, shiftDate: today });
-        const shift = loadedShift?.shift || null;
-        const hasShift = Boolean(shift);
+        const shift = await pool.query(
+            'SELECT * FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2', [staff_id, today]
+        );
+        const hasShift = shift.rows.length > 0;
         let plannedStart = null, plannedEnd = null, lateMin = 0, status = 'unscheduled';
 
         if (hasShift) {
-            plannedStart = shift.planned_start;
-            plannedEnd = shift.planned_end;
+            plannedStart = shift.rows[0].planned_start;
+            plannedEnd = shift.rows[0].planned_end;
             const diff = minutesSincePlannedStart(plannedStart);
             lateMin = Math.max(0, diff);
             status = lateMin > 5 ? 'late' : 'present';
@@ -4442,7 +4068,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         }
 
         await auditLog('clock_in', staff_id, req.user?.username, { clock_in: clockIn, late_minutes: lateMin, status }, req.ip);
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('POST /hr/clock-in error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4469,17 +4095,16 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const rec = record.rows[0];
         const clockOut = new Date().toISOString();
 
-        const loadedShift = await loadHrShiftDayPlan(pool, { staffId: staff_id, shiftDate: today });
-        const shiftRow = loadedShift?.shift || {};
+        const shift = await pool.query(
+            'SELECT planned_start, planned_end, break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+            [staff_id, today]
+        );
+        const shiftRow = shift.rows[0] || {};
         const payroll = calculateHrClockOutPayroll(rec, {
             clockOut,
             breakMinutes: shiftRow.break_minutes || 0,
             plannedStart: rec.planned_start || shiftRow.planned_start,
             plannedEnd: rec.planned_end || shiftRow.planned_end,
-            scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
-            plan: loadedShift?.plan,
-            primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
-            recordDate: today,
             settlementMode: settlement_mode || settlementMode,
             kyivNow: nowKyiv()
         });
@@ -4507,12 +4132,9 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
                 scheduled_worked_minutes: payroll.scheduledWorkedMinutes,
                 settlement_mode: payroll.settlementMode,
                 requested_settlement_mode: payroll.requestedSettlementMode,
-                allocation_source: payroll.allocation.allocationSource,
-                segment_allocations: payroll.allocation.segmentAllocations,
-                allocation_issues: payroll.allocation.allocationIssues,
                 status: payroll.status
             }, req.ip);
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('POST /hr/clock-out error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4562,32 +4184,30 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         const newClockIn = clock_in ? new Date(clock_in).toISOString() : original.clock_in;
         const newClockOut = clock_out ? new Date(clock_out).toISOString() : original.clock_out;
 
-        const loadedShift = await loadHrShiftDayPlan(pool, {
-            staffId: original.staff_id,
-            shiftDate: original.record_date
-        });
-        const shiftRow = loadedShift?.shift || {};
-
-        // Recalculate from the corrected day interval and normalized shift segments.
+        // Recalculate
         let totalWorked = 0, lateMin = 0, earlyLeave = 0, overtime = 0;
         if (newClockIn && newClockOut) {
-            const payroll = calculateHrClockOutPayroll(original, {
-                clockIn: newClockIn,
-                clockOut: newClockOut,
-                breakMinutes: shiftRow.break_minutes || 0,
-                plannedStart: original.planned_start || shiftRow.planned_start,
-                plannedEnd: original.planned_end || shiftRow.planned_end,
-                scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
-                plan: loadedShift?.plan,
-                primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
-                recordDate: original.record_date,
-                settlementMode: 'actual_time',
-                kyivNow: nowKyiv()
-            });
-            totalWorked = payroll.actualWorkedMinutes;
-            lateMin = payroll.allocation.lateMinutes;
-            earlyLeave = payroll.earlyLeaveMinutes;
-            overtime = payroll.overtimeMinutes;
+            let breakMin = 0;
+            const shift = await pool.query(
+                'SELECT break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+                [original.staff_id, original.record_date]
+            );
+            if (shift.rows.length > 0) breakMin = shift.rows[0].break_minutes || 0;
+            totalWorked = Math.max(0, Math.round((new Date(newClockOut) - new Date(newClockIn)) / 60000) - breakMin);
+        }
+
+        if (original.planned_start && newClockIn) {
+            const ciDate = new Date(newClockIn);
+            const ciMin = ciDate.getHours() * 60 + ciDate.getMinutes();
+            lateMin = Math.max(0, ciMin - timeToMin(original.planned_start));
+        }
+
+        if (original.planned_end && newClockOut) {
+            const coDate = new Date(newClockOut);
+            const coMin = coDate.getHours() * 60 + coDate.getMinutes();
+            const plannedEndMin = timeToMin(original.planned_end);
+            if (plannedEndMin - coMin > 15) earlyLeave = plannedEndMin - coMin;
+            if (coMin - plannedEndMin > 15) overtime = coMin - plannedEndMin;
         }
 
         let status = lateMin > 5 ? 'late' : 'present';
@@ -4609,7 +4229,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
 
         await auditLog('correction', original.staff_id, req.user?.username,
             { old_clock_in: original.clock_in, old_clock_out: original.clock_out, new_clock_in: newClockIn, new_clock_out: newClockOut, notes }, req.ip);
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /hr/records/:id/correct error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4653,6 +4273,7 @@ router.get('/report/monthly', async (req, res) => {
              ORDER BY name`
         );
         const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
+        const staffById = new Map(staffList.rows.map(st => [Number(st.id), st]));
 
         const shifts = await pool.query(
             'SELECT staff_id, COUNT(*) AS cnt FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2 GROUP BY staff_id',
@@ -4671,11 +4292,6 @@ router.get('/report/monthly', async (req, res) => {
              WHERE tr.record_date >= $1 AND tr.record_date <= $2`,
             [dateFrom, dateTo]
         );
-        const payrollAttendanceMetrics = await loadPayrollAttendanceMetrics({
-            from: dateFrom,
-            to: dateTo,
-            staffIds: staffList.rows.map(staff => staff.id)
-        });
 
         const taskKpiRows = await pool.query(
             `SELECT ep.staff_id,
@@ -4724,6 +4340,11 @@ router.get('/report/monthly', async (req, res) => {
                 s.days_worked++;
                 s.total_worked_minutes += r.total_worked_minutes || 0;
                 s.total_overtime_minutes += r.overtime_minutes || 0;
+                const staff = staffById.get(Number(r.staff_id)) || { id: r.staff_id };
+                const rate = rateForStaffProfession(staff, r.profession_key, professionRateMap);
+                if (staffRateUnit(staff) !== 'month') {
+                    s.estimated_salary = (s.estimated_salary || 0) + payrollAmountForRate(rate, staffRateUnit(staff), r.total_worked_minutes, 1);
+                }
             }
             if (r.status === 'late') { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
             if (r.status === 'early_leave') s.days_early_leave++;
@@ -4744,32 +4365,9 @@ router.get('/report/monthly', async (req, res) => {
             const rate = parseFloat(st.hourly_rate) || 0;
             const rateUnit = staffRateUnit(st);
             const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
-            const payrollMetrics = payrollAttendanceMetrics.get(Number(st.id)) || {
-                totalMinutes: 0,
-                allocatedMinutes: 0,
-                plannedMinutes: 0,
-                overtimeMinutes: 0,
-                hoursWorked: 0,
-                overtimeHours: 0,
-                daysWorked: 0,
-                professionAllocations: [],
-                overtimeAllocations: [],
-                primaryDays: [],
-                attendanceDays: [],
-                allocationIssues: [],
-                reconciliation: { days: [], warnings: [] }
-            };
-            const professionPay = calculateProfessionPay({
-                id: Number(st.id),
-                roleType: st.role_type,
-                hourlyRate: rate,
-                rateUnit
-            }, {
-                schemeType: rateUnit === 'month' ? 'monthly_fixed' : (rateUnit === 'day' ? 'per_shift' : 'hourly'),
-                config: {},
-                isFallback: true
-            }, payrollMetrics, professionRateMap);
-            const estimatedSalary = professionPay.totalAmount;
+            const estimatedSalary = rateUnit === 'month'
+                ? payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked)
+                : (s.estimated_salary || payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked));
 
             return {
                 staff_id: st.id,
@@ -4787,9 +4385,6 @@ router.get('/report/monthly', async (req, res) => {
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
                 estimated_salary: Math.round(estimatedSalary),
-                profession_rate_summary: professionPay.professionRateSummary,
-                allocation_issues: professionPay.allocationIssues,
-                reconciliation: professionPay.reconciliation,
                 late_count: s.late_count,
                 avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
                 attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
@@ -5952,12 +5547,8 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 penalties: row.penalties,
                 advances: row.advances,
                 hours_worked: row.hours_worked,
-                planned_hours: row.planned_hours,
                 overtime_hours: row.overtime_hours,
-                profession_rates: row.profession_rate_summary,
-                professionRateSummary: row.profession_rate_summary,
-                reconciliation: row.reconciliation,
-                allocationIssues: row.allocation_issues
+                profession_rates: row.profession_rate_summary
             };
 
             const reportResult = await client.query(

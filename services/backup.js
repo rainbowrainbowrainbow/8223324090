@@ -12,7 +12,7 @@ const log = createLogger('Backup');
 // Order matters for restore: parents before children (FK dependencies).
 // DELETE runs in reverse order (children first), INSERT in forward order (parents first).
 // Excluded: scheduled_deletions (transient), schema_migrations (deploy state only).
-// Full backup inventory. Keep parents before children for FK-safe restore order.
+// v17.10: Full backup — 51 tables (added worker_roles for Digital Worker Forge).
 const BACKUP_TABLES = [
     // === Independent tables (no FK dependencies) ===
     'users',
@@ -52,8 +52,6 @@ const BACKUP_TABLES = [
     'tasks',
     'kleshnya_chat',
     'hr_shifts',
-    'hr_shift_segments',
-    'hr_shift_segment_roles',
     'hr_time_records',
     'hr_audit_log',
     'recurring_booking_skips',
@@ -77,31 +75,16 @@ async function generateBackupSQL() {
     lines.push(`-- Date: ${new Date().toISOString()}`);
     lines.push(`-- Tables: ${BACKUP_TABLES.join(', ')}\n`);
 
-    // Fetch all data from one MVCC snapshot so parent/child rows cannot come
-    // from different full-replacement commits.
+    // Fetch all data first
     const tableData = {};
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-        for (const table of BACKUP_TABLES) {
-            await client.query('SAVEPOINT backup_table_read');
-            try {
-                const result = await client.query(`SELECT * FROM ${table}`);
-                tableData[table] = result.rows;
-                await client.query('RELEASE SAVEPOINT backup_table_read');
-            } catch (err) {
-                await client.query('ROLLBACK TO SAVEPOINT backup_table_read');
-                await client.query('RELEASE SAVEPOINT backup_table_read');
-                lines.push(`-- ERROR reading ${table}: ${String(err.message || err).replace(/[\r\n]+/g, ' ')}`);
-                tableData[table] = null;
-            }
+    for (const table of BACKUP_TABLES) {
+        try {
+            const result = await pool.query(`SELECT * FROM ${table}`);
+            tableData[table] = result.rows;
+        } catch (err) {
+            lines.push(`-- ERROR reading ${table}: ${err.message}`);
+            tableData[table] = null;
         }
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw err;
-    } finally {
-        client.release();
     }
 
     // Phase 1: DELETE in reverse order (children before parents)
@@ -133,17 +116,6 @@ async function generateBackupSQL() {
         }
         lines.push('');
     }
-
-    lines.push('-- === PHASE 3: SEQUENCE SYNC FOR HR SHIFT SEGMENTS ===');
-    for (const table of ['hr_shift_segments', 'hr_shift_segment_roles']) {
-        if (tableData[table] === null) continue;
-        lines.push(
-            `SELECT setval(pg_get_serial_sequence('${table}', 'id'), `
-            + `COALESCE((SELECT MAX(id) FROM ${table}), 1), `
-            + `EXISTS (SELECT 1 FROM ${table}));`
-        );
-    }
-    lines.push('');
 
     return lines.join('\n');
 }

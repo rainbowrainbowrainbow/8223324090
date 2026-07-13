@@ -18,7 +18,6 @@ function readRepoFile(...parts) {
 describe('profile, HR professions, and timeline compatibility foundation', () => {
     const migration = readRepoFile('db', 'migrations', '223_profile_hr_professions_foundation.sql');
     const hrRoute = readRepoFile('routes', 'hr.js');
-    const professionsService = readRepoFile('services', 'professions.js');
     const authRoute = readRepoFile('routes', 'auth.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const profilePage = readRepoFile('js', 'profile-page.js');
@@ -69,7 +68,7 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(hrRoute, /COALESCE\(secondary_professions, '\[\]'::jsonb\) AS secondary_professions/);
         assert.match(hrRoute, /role_type = \$\$\{params\.length\} OR COALESCE\(secondary_professions, '\[\]'::jsonb\) \? \$\$\{params\.length\}/);
         assert.match(hrRoute, /validateStaffProfessionInput/);
-        assert.match(professionsService, /SELECT id, name, role_type, COALESCE\(secondary_professions, '\[\]'::jsonb\) AS secondary_professions, is_active/);
+        assert.match(hrRoute, /SELECT role_type FROM staff WHERE id = \$1/);
         assert.match(hrRoute, /hasSecondaryProfessions/);
         assert.match(hrRoute, /queueStaffUpdate\('secondary_professions'[\s\S]*'::jsonb'\)/);
 
@@ -160,9 +159,7 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(staffPage, /function staffScheduleDepartmentKeys\(staff = \{\}\)/);
         assert.match(staffPage, /function scheduleDepartmentCountMap\(staffList = StaffState\.staff\)/);
         assert.match(staffPage, /secondary_professions: String\(result\.secondary_professions/);
-        assert.match(bookingService, /hss\.profession_key = 'animator'/);
-        assert.match(bookingService, /hssr\.profession_key = 'animator'/);
-        assert.match(bookingService, /availability_windows/);
+        assert.match(bookingService, /s\.role_type = 'animator'/);
         assert.doesNotMatch(bookingService, /secondary_professions/);
     });
 });

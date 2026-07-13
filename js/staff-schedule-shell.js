@@ -103,11 +103,12 @@
         return `
             <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="schModalTitle" aria-busy="false">
                 <div class="sch-modal sch-modal--schedule">
-                    <h3 id="schModalTitle">План дня</h3>
+                    <h3 id="schModalTitle">Редагувати зміну</h3>
                     <div class="sch-modal-scroll">
                         <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
+                        <div id="schShiftPreferencePanel" class="sch-shift-preferences" hidden></div>
                         <div class="form-group">
-                            <label for="schStatus">Статус дня</label>
+                            <label for="schStatus">Статус</label>
                             <select id="schStatus">
                                 <option value="working">Робочий день</option>
                                 <option value="remote">Віддалено</option>
@@ -116,28 +117,23 @@
                                 <option value="sick">Лікарняний</option>
                             </select>
                         </div>
-                        <div id="schNonWorkingWarning" class="sch-nonworking-warning" hidden>
-                            Цей статус видалить усі робочі часові блоки дня.
+                        <div id="schProfessionGroup" class="form-group">
+                            <label for="schProfession">Професія у зміні</label>
+                            <select id="schProfession" aria-describedby="schProfessionHint"></select>
+                            <div id="schProfessionHint" class="form-hint">Доступні тільки професії з картки співробітника.</div>
                         </div>
-                        <section id="schDayPlanEditor" class="sch-day-plan-editor" aria-labelledby="schDayPlanTitle">
-                            <div class="sch-day-plan-head">
-                                <div>
-                                    <strong id="schDayPlanTitle">Часові блоки</strong>
-                                    <span>Основна й додаткові ролі беруться лише з HR-картки.</span>
-                                </div>
-                                <button type="button" id="schAddSegmentBtn" class="btn-page-secondary sch-add-segment-btn">+ Додати часовий блок</button>
+                        <div id="schTimeFields">
+                            <div class="form-group">
+                                <label for="schStart">Початок зміни</label>
+                                <input type="time" id="schStart" value="10:00">
                             </div>
-                            <div id="schSegmentsList" class="sch-segments-list" aria-live="polite"></div>
-                            <div id="schShiftPreferencePanel" class="sch-shift-preferences" hidden></div>
-                            <div class="form-group sch-primary-profession-group">
-                                <label for="schPrimaryProfession">Основна роль дня</label>
-                                <select id="schPrimaryProfession"></select>
-                                <div class="form-hint">Використовується старими звітами; має бути основною роллю одного з блоків.</div>
+                            <div class="form-group">
+                                <label for="schEnd">Кінець зміни</label>
+                                <input type="time" id="schEnd" value="20:00">
                             </div>
-                            <div id="schPlanSummary" class="sch-plan-summary" role="status" aria-live="polite"></div>
-                        </section>
+                        </div>
                         <div class="form-group">
-                            <label for="schNote">Примітка дня</label>
+                            <label for="schNote">Примітка</label>
                             <input type="text" id="schNote" placeholder="Необов'язково">
                         </div>
                         <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
@@ -163,7 +159,7 @@
             </div>
 
             <div id="fillWeekOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Заповнити тиждень">
-                <div class="sch-modal sch-modal--fill-week">
+                <div class="sch-modal">
                     <h3 id="fillWeekTitle">Заповнити тиждень</h3>
                     <p id="fillWeekPeriodHint" class="fill-period-hint"></p>
                     <div class="form-group">
@@ -192,24 +188,16 @@
                             <option value="sick">Лікарняний</option>
                         </select>
                     </div>
-                    <div id="fillNonWorkingWarning" class="sch-nonworking-warning" hidden>
-                        Неробочий статус очистить робочий план на вибраних датах.
+                    <div id="fillTimeFields">
+                        <div class="form-group">
+                            <label>Початок зміни</label>
+                            <input type="time" id="fillStart" value="10:00">
+                        </div>
+                        <div class="form-group">
+                            <label>Кінець зміни</label>
+                            <input type="time" id="fillEnd" value="20:00">
+                        </div>
                     </div>
-                    <section id="fillDayPlanEditor" class="sch-day-plan-editor" aria-labelledby="fillDayPlanTitle">
-                        <div class="sch-day-plan-head">
-                            <div>
-                                <strong id="fillDayPlanTitle">Шаблон часових блоків</strong>
-                                <span>Повний шаблон застосовується до кожної вибраної дати.</span>
-                            </div>
-                            <button type="button" id="fillAddSegmentBtn" class="btn-page-secondary sch-add-segment-btn">+ Додати часовий блок</button>
-                        </div>
-                        <div id="fillSegmentsList" class="sch-segments-list" aria-live="polite"></div>
-                        <div class="form-group sch-primary-profession-group">
-                            <label for="fillPrimaryProfession">Основна роль дня</label>
-                            <select id="fillPrimaryProfession"></select>
-                        </div>
-                        <div id="fillPlanSummary" class="sch-plan-summary" role="status" aria-live="polite"></div>
-                    </section>
                     <div class="form-group">
                         <label>Примітка</label>
                         <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">

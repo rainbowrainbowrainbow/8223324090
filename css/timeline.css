@@ -490,21 +490,6 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     opacity: 0;
 }
 
-.grid-cell.grid-cell--outside-availability {
-    cursor: not-allowed;
-    background-image: repeating-linear-gradient(
-        -45deg,
-        transparent 0,
-        transparent 6px,
-        rgba(148, 163, 184, 0.16) 6px,
-        rgba(148, 163, 184, 0.16) 8px
-    );
-}
-
-.grid-cell.grid-cell--outside-availability:hover::after {
-    display: none;
-}
-
 .grid-cell.hour {
     border-right: 1px solid var(--timeline-grid-hour-line, var(--gray-200));
     box-shadow: inset -1px 0 0 var(--timeline-grid-hour-shadow, rgba(15, 23, 42, 0.06));

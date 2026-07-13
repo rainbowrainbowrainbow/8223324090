@@ -29,15 +29,6 @@ function normalizeProfessionKey(value) {
         .slice(0, 64);
 }
 
-function normalizeRequestedProfessionKey(value) {
-    const canonicalInput = String(value ?? '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '_');
-    const normalized = normalizeProfessionKey(value);
-    return normalized && normalized === canonicalInput ? normalized : '';
-}
-
 function normalizeProfessionKeyArray(value, options = {}) {
     const exclude = new Set((options.exclude || []).map(normalizeProfessionKey).filter(Boolean));
     const seen = new Set();
@@ -111,35 +102,7 @@ function staffHasProfession(staff = {}, professionKey = '') {
     return staffProfessionKeys(staff).includes(key);
 }
 
-function validateStaffProfessionAssignments(staff = {}, requestedProfessionKeys = []) {
-    const allowedProfessionKeys = staffProfessionKeys(staff);
-    const allowedSet = new Set(allowedProfessionKeys);
-    const professionKeys = [];
-    const malformedProfessionKeys = [];
-    const seen = new Set();
-    for (const rawKey of parseJsonArray(requestedProfessionKeys, [])) {
-        const key = normalizeRequestedProfessionKey(rawKey);
-        if (!key) {
-            malformedProfessionKeys.push(String(rawKey ?? ''));
-        } else if (!seen.has(key)) {
-            seen.add(key);
-            professionKeys.push(key);
-        }
-    }
-    const invalidProfessionKeys = [
-        ...professionKeys.filter(key => !allowedSet.has(key)),
-        ...malformedProfessionKeys
-    ];
-    return {
-        ok: invalidProfessionKeys.length === 0,
-        professionKeys,
-        allowedProfessionKeys,
-        invalidProfessionKeys,
-        malformedProfessionKeys
-    };
-}
-
-async function loadStaffProfessionCard(db, staffId, options = {}) {
+async function resolveStaffProfessionAssignment(db, staffId, requestedProfessionKey = '', options = {}) {
     const id = Number(staffId);
     if (!Number.isFinite(id) || id <= 0) {
         return { ok: false, status: 400, error: 'Потрібен коректний staffId' };
@@ -147,39 +110,11 @@ async function loadStaffProfessionCard(db, staffId, options = {}) {
     const result = await db.query(
         `SELECT id, name, role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions, is_active
          FROM staff
-         WHERE id = $1
-         ${options.forShare === true ? 'FOR SHARE' : ''}`,
+         WHERE id = $1`,
         [id]
     );
     const staff = result.rows[0];
     if (!staff) return { ok: false, status: 404, error: 'Співробітника не знайдено' };
-    return { ok: true, staff };
-}
-
-async function resolveStaffProfessionAssignments(db, staffId, requestedProfessionKeys = [], options = {}) {
-    const card = await loadStaffProfessionCard(db, staffId, options);
-    if (!card.ok) return card;
-    const { staff } = card;
-    if (options.requireActive !== false && staff.is_active === false) {
-        return { ok: false, status: 400, error: 'Співробітник неактивний', staff };
-    }
-    const validation = validateStaffProfessionAssignments(staff, requestedProfessionKeys);
-    if (!validation.ok) {
-        return {
-            ok: false,
-            status: 400,
-            error: `Не можна поставити ${staff.name || 'співробітника'} на професії, яких немає в HR-картці: ${validation.invalidProfessionKeys.join(', ')}`,
-            staff,
-            ...validation
-        };
-    }
-    return { ok: true, staff, ...validation };
-}
-
-async function resolveStaffProfessionAssignment(db, staffId, requestedProfessionKey = '', options = {}) {
-    const card = await loadStaffProfessionCard(db, staffId, options);
-    if (!card.ok) return card;
-    const { staff } = card;
     if (options.requireActive !== false && staff.is_active === false) {
         return { ok: false, status: 400, error: 'Співробітник неактивний' };
     }
@@ -281,14 +216,11 @@ module.exports = {
     parseJsonArray,
     parseTextList,
     normalizeProfessionKey,
-    normalizeRequestedProfessionKey,
     normalizeProfessionKeyArray,
     normalizeSecondaryProfessions,
     isHiddenProfessionKey,
     staffProfessionKeys,
     staffHasProfession,
-    validateStaffProfessionAssignments,
-    resolveStaffProfessionAssignments,
     resolveStaffProfessionAssignment,
     normalizeProfessionCatalogRow,
     curateProfessionCatalogRows,

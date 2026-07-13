@@ -1316,49 +1316,6 @@ function timelineWorkdayBoundaryForLine(date, line = {}) {
     };
 }
 
-function timelineLineAvailabilityWindows(line = {}) {
-    const raw = line?.availabilityWindows ?? line?.availability_windows;
-    if (!Array.isArray(raw)) return null;
-
-    return raw.map(window => {
-        const start = window?.start || window?.shiftStart || window?.shift_start;
-        const end = window?.end || window?.shiftEnd || window?.shift_end;
-        if (!start || !end) return null;
-        const startMin = timelineRangeBoundMinutes(start);
-        let endMin = timelineRangeBoundMinutes(end);
-        if (endMin <= startMin) endMin += 24 * 60;
-        return {
-            start,
-            end,
-            startMin,
-            endMin,
-            segmentId: window?.segmentId ?? window?.segment_id ?? null
-        };
-    }).filter(Boolean).sort((left, right) => left.startMin - right.startMin);
-}
-
-function timelineCandidateFitsAvailability(line = {}, time, duration = 0) {
-    const windows = timelineLineAvailabilityWindows(line);
-    if (windows === null) return true;
-    if (!windows.length || !time) return false;
-
-    let startMin = timelineRangeBoundMinutes(time);
-    const durationMin = Math.max(0, Number.parseInt(duration, 10) || 0);
-    return windows.some(window => {
-        let candidateStart = startMin;
-        if (window.endMin > 24 * 60 && candidateStart < window.startMin) candidateStart += 24 * 60;
-        return candidateStart >= window.startMin && candidateStart + durationMin <= window.endMin;
-    });
-}
-
-function timelineAvailabilityWarning(line = {}) {
-    const windows = timelineLineAvailabilityWindows(line) || [];
-    const label = windows.map(window => `${window.start}–${window.end}`).join(', ');
-    return label
-        ? `Аніматор доступний лише у вікнах: ${label}.`
-        : (line.warning || 'Ця лінія недоступна для нових призначень.');
-}
-
 function timelineBookingBoundaryStatus(booking = {}, line = {}, date = null) {
     const duration = parseInt(booking?.duration, 10) || 0;
     const time = booking?.time || '';
@@ -4240,15 +4197,12 @@ function updateTodayButton() {
 function renderGridCells(lineId, date) {
     let html = '';
     const { start, end } = getTimeRange(date);
-    const line = (AppState.lines || []).find(item => String(item?.id) === String(lineId));
 
     for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
             const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             const markKind = timelineGridMarkKind((h * 60) + m);
-            const available = timelineCandidateFitsAvailability(line, time, CONFIG.TIMELINE.CELL_MINUTES);
-            const availabilityClass = available ? '' : ' grid-cell--outside-availability';
-            html += `<div class="grid-cell ${markKind}${availabilityClass}" data-grid-mark="${markKind}" data-time="${time}" data-line="${lineId}"${available ? '' : ' data-availability="unavailable"'}></div>`;
+            html += `<div class="grid-cell ${markKind}" data-grid-mark="${markKind}" data-time="${time}" data-line="${lineId}"></div>`;
         }
     }
     return html;
@@ -4417,10 +4371,6 @@ async function selectCell(cell) {
     const line = (AppState.lines || []).find(item => String(item?.id) === String(cell?.dataset?.line));
     if (line?.assignmentAllowed === false || line?.isUnavailable === true) {
         showNotification(line.warning || 'Ця лінія недоступна для нових бронювань.', 'warning');
-        return false;
-    }
-    if (!timelineCandidateFitsAvailability(line, cell?.dataset?.time, CONFIG.TIMELINE.CELL_MINUTES)) {
-        showNotification(timelineAvailabilityWarning(line), 'warning');
         return false;
     }
     const banquetContext = getTimelineActiveBanquetContextForCell(cell);
@@ -5984,15 +5934,6 @@ function _validateDragDrop(state, timeDelta) {
             valid: false,
             error: targetLine.warning || 'Ця лінія недоступна для нових призначень.'
         };
-    }
-
-    const targetCandidate = intent.mainCandidate?.next || intent.candidate?.next || intent.mainBooking || {};
-    if (!timelineCandidateFitsAvailability(
-        targetLine,
-        targetCandidate.time || intent.targetTime,
-        targetCandidate.duration || intent.duration || s.booking?.duration
-    )) {
-        return { valid: false, error: timelineAvailabilityWarning(targetLine) };
     }
 
     const result = model.evaluateTimelineCandidateConflicts(intent, allBookings, {

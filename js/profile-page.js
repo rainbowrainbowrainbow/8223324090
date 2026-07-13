@@ -1412,10 +1412,7 @@ function profileFormatShortDate(value) {
 function profileShiftValue(shift) {
     if (!shift) return 'Зміна не призначена';
     const day = shift.date ? profileFormatShortDate(shift.date) : 'сьогодні';
-    const segments = Array.isArray(shift.segments) ? shift.segments : (Array.isArray(shift.blocks) ? shift.blocks : []);
-    const time = segments.length
-        ? segments.map(segment => `${segment.start || ''}–${segment.end || ''}${segment.professionKey ? ` ${segment.professionKey}` : ''}`).join('; ')
-        : `${shift.start || ''}${shift.end ? ' - ' + shift.end : ''}`.trim();
+    const time = `${shift.start || ''}${shift.end ? ' - ' + shift.end : ''}`.trim();
     return `${day}${time ? ' · ' + time : ''}`;
 }
 

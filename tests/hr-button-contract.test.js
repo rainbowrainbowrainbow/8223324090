@@ -574,25 +574,6 @@ test('HR people bucket navigation uses one rendered result surface and global se
     assert.equal(HR_JS.includes('Нікого не знайдено'), false);
 });
 
-test('HR scheduled clock-out excludes gaps between normalized shift segments', () => {
-    const payroll = calculateHrClockOutPayroll({
-        clock_in: '2026-06-06T06:00:00.000Z',
-        status: 'present',
-        planned_start: '09:00',
-        planned_end: '20:00'
-    }, {
-        clockOut: '2026-06-06T17:00:00.000Z',
-        breakMinutes: 0,
-        scheduledWorkedMinutes: 540,
-        settlementMode: 'scheduled_shift',
-        kyivNow: new Date(2026, 5, 6, 20, 0)
-    });
-
-    assert.equal(payroll.scheduledWorkedMinutes, 540);
-    assert.equal(payroll.totalWorkedMinutes, 540);
-    assert.equal(payroll.settlementMode, 'scheduled_shift');
-});
-
 test('HR KPI surface labels backend snapshot sources explicitly', () => {
     for (const token of [
         'id="kpiSources"',

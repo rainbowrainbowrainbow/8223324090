@@ -206,10 +206,8 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /function getScheduledAnimatorLines/);
         assert.match(bookingService, /FROM staff_schedule ss[\s\S]*JOIN staff s ON s\.id = ss\.staff_id/);
         assert.match(bookingService, /ss\.status IN \('working', 'remote'\)/);
-        assert.match(bookingService, /JOIN hr_shift_segments hss ON hss\.hr_shift_id = hs\.id/);
-        assert.match(bookingService, /hss\.profession_key = 'animator'/);
-        assert.match(bookingService, /hssr\.profession_key = 'animator'/);
-        assert.match(bookingService, /availabilityWindows/);
+        assert.match(bookingService, /s\.department = 'animators'/);
+        assert.match(bookingService, /s\.role_type = 'animator'/);
         assert.match(bookingService, /scheduleableStaffWhere\('s', \{ dateExpression: 'ss\.date' \}\)/);
         assert.doesNotMatch(bookingService, /COALESCE\(s\.is_freelance, false\) = true/);
         assert.doesNotMatch(bookingService, /s\.department = 'animators'\s+OR\s+s\.role_type = 'animator'/);

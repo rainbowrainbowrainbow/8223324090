@@ -39,32 +39,16 @@ const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { broadcast, broadcastLineEvent } = require('../services/websocket');
-const {
-    getKyivDate,
-    getKyivDateStr,
-    getScheduledAnimatorLines,
-    reconcileScheduledAnimatorLines
-} = require('../services/booking');
+const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { reconcileScheduledAnimatorLines } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
-const {
-    calculateHrClockOutPayroll,
-    decorateAttendanceRecord,
-    hydrateAttendanceRecords
-} = require('../services/hrAttendance');
+const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
-    staffProfessionKeys
+    staffProfessionKeys,
+    resolveStaffProfessionAssignment
 } = require('../services/professions');
-const {
-    saveHrShiftDayPlan,
-    loadHrShiftDayPlan,
-    hydrateHrShiftDayPlans,
-    normalizeHrShiftDayPlan,
-    validateHrShiftDayPlanProfessions,
-    isHrShiftPlanError,
-    hrShiftPlanErrorPayload
-} = require('../services/hrShiftSegments');
 const {
     activeStaffWhere,
     scheduleableStaffErrorPayload,
@@ -257,21 +241,6 @@ async function validateScheduleWriteStaff(client, staffId, date, options = {}) {
     });
 }
 
-async function lockScheduleStaffRows(client, staffIds = []) {
-    const ids = [...new Set(staffIds
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))]
-        .sort((a, b) => a - b);
-    if (!ids.length) return;
-    await client.query(
-        `SELECT id FROM staff
-         WHERE id = ANY($1::int[])
-         ORDER BY id
-         FOR UPDATE`,
-        [ids]
-    );
-}
-
 function normalizeScheduleStatus(status, fallback = 'working') {
     const raw = String(status ?? fallback ?? '').trim().toLowerCase();
     if (!raw) return fallback;
@@ -281,6 +250,15 @@ function normalizeScheduleStatus(status, fallback = 'working') {
 
 function scheduleStatusNeedsProfession(status) {
     return ['working', 'remote'].includes(normalizeScheduleStatus(status, 'working'));
+}
+
+function scheduleProfessionFromPayload(payload = {}) {
+    return normalizeProfessionKey(payload.profession_key ?? payload.professionKey ?? payload.role_type ?? payload.roleType);
+}
+
+async function resolveScheduleProfession(staffId, status, payload = {}, db = pool) {
+    if (!scheduleStatusNeedsProfession(status)) return { ok: true, professionKey: null };
+    return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
 }
 
 const STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS = ['weekday', 'weekend'];
@@ -523,54 +501,6 @@ function scheduleAuditChanges(beforeEntry, afterEntry) {
     }, {});
 }
 
-function normalizeScheduleAuditPlan(plan = null) {
-    if (!plan) return null;
-    return {
-        primaryProfessionKey: plan.primaryProfessionKey || null,
-        segments: (plan.segments || []).map(segment => ({
-            professionKey: segment.professionKey || null,
-            shiftStart: segment.shiftStart || null,
-            shiftEnd: segment.shiftEnd || null,
-            breakMinutes: Number(segment.breakMinutes || 0),
-            note: segment.note || null,
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])].sort()
-        }))
-    };
-}
-
-function schedulePlanAuditChanges(beforePlan, afterPlan) {
-    const changes = {};
-    const before = beforePlan || { primaryProfessionKey: null, segments: [] };
-    const after = afterPlan || { primaryProfessionKey: null, segments: [] };
-    const addChange = (key, from, to) => {
-        if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
-    };
-
-    addChange('primaryProfessionKey', before.primaryProfessionKey || null, after.primaryProfessionKey || null);
-    addChange('segments', before.segments || [], after.segments || []);
-    addChange(
-        'segmentTimes',
-        (before.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd })),
-        (after.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd }))
-    );
-    addChange(
-        'segmentProfessions',
-        (before.segments || []).map(segment => segment.professionKey || null),
-        (after.segments || []).map(segment => segment.professionKey || null)
-    );
-    addChange(
-        'segmentAdditionalRoles',
-        (before.segments || []).map(segment => segment.additionalProfessionKeys || []),
-        (after.segments || []).map(segment => segment.additionalProfessionKeys || [])
-    );
-    addChange(
-        'segmentBreaks',
-        (before.segments || []).map(segment => Number(segment.breakMinutes || 0)),
-        (after.segments || []).map(segment => Number(segment.breakMinutes || 0))
-    );
-    return changes;
-}
-
 async function insertHrAuditLog(client, action, staffId, performedBy, details, ipAddress) {
     await client.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
@@ -583,23 +513,12 @@ async function recordScheduleAudit(client, action, staffId, date, beforeEntry, a
     const before = normalizeScheduleAuditEntry(beforeEntry);
     const after = normalizeScheduleAuditEntry(afterEntry);
     const changes = scheduleAuditChanges(before, after);
-    const {
-        beforePlan: rawBeforePlan,
-        afterPlan: rawAfterPlan,
-        ...auditExtraDetails
-    } = extraDetails;
-    const beforePlan = normalizeScheduleAuditPlan(rawBeforePlan);
-    const afterPlan = normalizeScheduleAuditPlan(rawAfterPlan);
-    if (JSON.stringify(beforePlan) !== JSON.stringify(afterPlan)) {
-        changes.dayPlan = { from: beforePlan, to: afterPlan };
-        Object.assign(changes, schedulePlanAuditChanges(beforePlan, afterPlan));
-    }
-    const force = Boolean(auditExtraDetails.force);
+    const force = Boolean(extraDetails.force);
     if (!force && Object.keys(changes).length === 0) return false;
     const details = {
-        ...auditExtraDetails,
+        ...extraDetails,
         force: undefined,
-        source: auditExtraDetails.source || 'staff.schedule',
+        source: extraDetails.source || 'staff.schedule',
         date: normalizeScheduleDate(date),
         staffId: Number(staffId) || null,
         before,
@@ -641,8 +560,11 @@ async function syncHrClockInFromStaffCheckin(db, staffId, options = {}) {
     );
     if (existing.rows[0]?.clock_in) return existing.rows[0];
 
-    const loadedShift = await loadHrShiftDayPlan(db, { staffId, shiftDate: today });
-    const currentShift = loadedShift?.shift || null;
+    const shift = await db.query(
+        'SELECT * FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+        [staffId, today]
+    );
+    const currentShift = shift.rows[0] || null;
     const plannedStart = currentShift?.planned_start || null;
     const plannedEnd = currentShift?.planned_end || null;
     const lateMinutes = currentShift ? Math.max(0, minutesSinceKyivPlannedStart(plannedStart)) : 0;
@@ -673,7 +595,7 @@ async function syncHrClockInFromStaffCheckin(db, staffId, options = {}) {
         [staffId, options.performedBy || method, JSON.stringify({ clock_in: clockIn, late_minutes: lateMinutes, status, method, source: 'staff_checkin' }), options.ip || null]
     );
 
-    return result.rows[0] ? decorateAttendanceRecord(result.rows[0], loadedShift) : null;
+    return result.rows[0] || null;
 }
 
 async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
@@ -685,18 +607,17 @@ async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
     const rec = record.rows[0];
     if (!rec?.clock_in || rec.clock_out) return rec || null;
 
-    const loadedShift = await loadHrShiftDayPlan(db, { staffId, shiftDate: today });
-    const shiftRow = loadedShift?.shift || {};
+    const shift = await db.query(
+        'SELECT planned_start, planned_end, break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+        [staffId, today]
+    );
+    const shiftRow = shift.rows[0] || {};
     const clockOut = new Date().toISOString();
     const payroll = calculateHrClockOutPayroll(rec, {
         clockOut,
         breakMinutes: shiftRow.break_minutes || 0,
         plannedStart: rec.planned_start || shiftRow.planned_start,
         plannedEnd: rec.planned_end || shiftRow.planned_end,
-        scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
-        plan: loadedShift?.plan,
-        primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
-        recordDate: today,
         settlementMode: options.settlementMode,
         kyivNow: getKyivDate()
     });
@@ -729,9 +650,6 @@ async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
                 scheduled_worked_minutes: payroll.scheduledWorkedMinutes,
                 settlement_mode: payroll.settlementMode,
                 requested_settlement_mode: payroll.requestedSettlementMode,
-                allocation_source: payroll.allocation.allocationSource,
-                segment_allocations: payroll.allocation.segmentAllocations,
-                allocation_issues: payroll.allocation.allocationIssues,
                 status: payroll.status,
                 method: options.method || 'face',
                 source: 'staff_checkin'
@@ -740,11 +658,15 @@ async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
         ]
     );
 
-    return result.rows[0] ? decorateAttendanceRecord(result.rows[0], loadedShift) : null;
+    return result.rows[0] || null;
 }
 
 function staffScheduleStatusForShift(shiftType) {
     return shiftType === 'remote' ? 'remote' : 'working';
+}
+
+function shiftTypeForScheduleStatus(status) {
+    return status === 'remote' ? 'remote' : 'regular';
 }
 
 function replacementNote(originalName, reason) {
@@ -812,164 +734,6 @@ async function upsertScheduleMirror(client, shift, note = null) {
     return result.rows[0]?.id || null;
 }
 
-async function upsertScheduleMirrorFromPlan(client, entry, plan) {
-    const staffId = Number(entry?.staffId ?? entry?.staff_id);
-    const date = normalizeScheduleDate(entry?.date);
-    if (!staffId || !date || !plan) return null;
-    const isWorkingDay = scheduleStatusNeedsProfession(plan.status);
-    const result = await client.query(
-        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (staff_id, date)
-         DO UPDATE SET shift_start = EXCLUDED.shift_start,
-                       shift_end = EXCLUDED.shift_end,
-                       status = EXCLUDED.status,
-                       note = EXCLUDED.note,
-                       profession_key = EXCLUDED.profession_key
-         RETURNING *`,
-        [
-            staffId,
-            date,
-            isWorkingDay ? plan.plannedStart : null,
-            isWorkingDay ? plan.plannedEnd : null,
-            plan.status,
-            entry?.note ?? entry?.notes ?? null,
-            isWorkingDay ? plan.primaryProfessionKey : null
-        ]
-    );
-    return result.rows[0] || null;
-}
-
-function sendHrShiftSyncError(res, result, extra = {}) {
-    if (result?.validation) {
-        return res.status(result.status || 400).json(scheduleableStaffErrorPayload(result.validation, extra));
-    }
-    return res.status(result?.status || 400).json({
-        success: false,
-        code: result?.code || 'HR_SHIFT_PLAN_INVALID',
-        error: result?.error || 'Некоректний денний план зміни',
-        details: result?.details,
-        ...extra
-    });
-}
-
-function copyableDayPlanPayload(loadedPlan) {
-    if (!loadedPlan?.plan) return null;
-    return {
-        primaryProfessionKey: loadedPlan.plan.primaryProfessionKey,
-        segments: loadedPlan.plan.segments.map(segment => ({
-            professionKey: segment.professionKey,
-            shiftStart: segment.shiftStart,
-            shiftEnd: segment.shiftEnd,
-            breakMinutes: segment.breakMinutes,
-            note: segment.note,
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
-        }))
-    };
-}
-
-function scheduleEntryWithDayPlan(entry, plan = null) {
-    const publicEntry = { ...(entry || {}) };
-    delete publicEntry.hr_profession_key;
-    delete publicEntry.hr_planned_start;
-    delete publicEntry.hr_planned_end;
-    delete publicEntry.hr_break_minutes;
-    delete publicEntry.hr_shift_type;
-    delete publicEntry.hr_segments;
-    const primaryProfessionKey = plan?.primaryProfessionKey || null;
-    const professionKeys = plan?.professionKeys || [];
-    const plannedMinutes = plan?.plannedMinutes || 0;
-    const plannedStart = plan?.plannedStart || publicEntry.shift_start || null;
-    const plannedEnd = plan?.plannedEnd || publicEntry.shift_end || null;
-    return {
-        ...publicEntry,
-        shift_start: plannedStart,
-        shift_end: plannedEnd,
-        primaryProfessionKey,
-        primary_profession_key: primaryProfessionKey,
-        segments: plan?.segments?.map(segment => ({
-            id: segment.id ?? null,
-            professionKey: segment.professionKey,
-            shiftStart: segment.shiftStart,
-            shiftEnd: segment.shiftEnd,
-            breakMinutes: segment.breakMinutes,
-            note: segment.note,
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
-        })) || [],
-        professionKeys,
-        profession_keys: professionKeys,
-        plannedMinutes,
-        planned_minutes: plannedMinutes,
-        gapMinutes: plan?.gapMinutes || 0
-    };
-}
-
-function parseScheduleAggregatedSegments(value) {
-    if (Array.isArray(value)) return value;
-    if (typeof value !== 'string' || !value.trim()) return [];
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
-function planFromAggregatedScheduleRow(row = {}) {
-    if (!Object.prototype.hasOwnProperty.call(row, 'hr_segments') || !row.hr_shift_id) return null;
-    const segments = parseScheduleAggregatedSegments(row.hr_segments);
-    const status = normalizeScheduleStatus(row.status, 'working') || 'working';
-    const payload = segments.length
-        ? {
-            primaryProfessionKey: row.hr_profession_key || row.profession_key,
-            segments
-        }
-        : {
-            professionKey: row.hr_profession_key || row.profession_key,
-            shiftStart: row.hr_planned_start || row.shift_start,
-            shiftEnd: row.hr_planned_end || row.shift_end,
-            breakMinutes: row.hr_break_minutes ?? 0
-        };
-    return normalizeHrShiftDayPlan(payload, { status, strictProfessionKeys: false });
-}
-
-async function attachScheduleDayPlans(rows = [], db = pool) {
-    const parentRows = rows
-        .filter(row => row.hr_shift_id && !Object.prototype.hasOwnProperty.call(row, 'hr_segments'))
-        .map(row => ({
-            id: row.hr_shift_id,
-            staff_id: row.staff_id,
-            shift_date: row.date,
-            profession_key: row.hr_profession_key || row.profession_key,
-            planned_start: row.hr_planned_start || row.shift_start,
-            planned_end: row.hr_planned_end || row.shift_end,
-            break_minutes: row.hr_break_minutes ?? 0,
-            shift_type: row.hr_shift_type || (row.status === 'remote' ? 'remote' : 'regular')
-        }));
-    const hydrated = await hydrateHrShiftDayPlans(db, parentRows);
-    const planByShiftId = new Map(hydrated.map(item => [Number(item.shift.id), item.plan]));
-
-    return rows.map(row => {
-        let plan = planFromAggregatedScheduleRow(row)
-            || planByShiftId.get(Number(row.hr_shift_id))
-            || null;
-        if (!plan && scheduleStatusNeedsProfession(row.status)
-            && row.profession_key && row.shift_start && row.shift_end) {
-            try {
-                plan = normalizeHrShiftDayPlan({
-                    professionKey: row.profession_key,
-                    shiftStart: row.shift_start,
-                    shiftEnd: row.shift_end,
-                    breakMinutes: 0
-                }, { status: row.status });
-            } catch (error) {
-                if (!isHrShiftPlanError(error)) throw error;
-            }
-        }
-        return scheduleEntryWithDayPlan(row, plan);
-    });
-}
-
 async function syncHrShiftFromScheduleEntry(client, entry, actor = null) {
     const staffId = Number(entry?.staffId ?? entry?.staff_id);
     const date = normalizeScheduleDate(entry?.date);
@@ -985,28 +749,48 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null) {
             validation
         };
     }
-    try {
-        const saved = await saveHrShiftDayPlan(client, {
-            staffId,
-            shiftDate: date,
-            status,
-            payload: {
-                ...entry,
-                status
-            }
-        }, { actor: actor || null });
-        return { ok: true, shift: saved.shift || null, plan: saved.plan };
-    } catch (error) {
-        if (!isHrShiftPlanError(error)) throw error;
-        const payload = hrShiftPlanErrorPayload(error);
-        return {
-            ok: false,
-            status: error.statusCode || error.status || 400,
-            code: payload.code,
-            error: payload.error,
-            details: payload.details
-        };
+    if (!scheduleStatusNeedsProfession(status)) {
+        await client.query(
+            'DELETE FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+            [staffId, date]
+        );
+        return { ok: true, shift: null };
     }
+    const shiftStart = entry?.shiftStart ?? entry?.shift_start ?? null;
+    const shiftEnd = entry?.shiftEnd ?? entry?.shift_end ?? null;
+    if (!shiftStart || !shiftEnd) {
+        return { ok: false, status: 400, error: 'Для робочої зміни потрібен час початку та завершення' };
+    }
+    const professionKey = entry?.professionKey ?? entry?.profession_key ?? null;
+    const result = await client.query(
+        `INSERT INTO hr_shifts (
+            staff_id, shift_date, planned_start, planned_end, shift_type,
+            break_minutes, notes, created_by, profession_key
+         )
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+         ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+            planned_start = EXCLUDED.planned_start,
+            planned_end = EXCLUDED.planned_end,
+            shift_type = EXCLUDED.shift_type,
+            notes = CASE
+                WHEN hr_shifts.original_staff_id IS NULL THEN EXCLUDED.notes
+                ELSE hr_shifts.notes
+            END,
+            profession_key = EXCLUDED.profession_key,
+            updated_at = NOW()
+         RETURNING *`,
+        [
+            staffId,
+            date,
+            shiftStart,
+            shiftEnd,
+            shiftTypeForScheduleStatus(status),
+            entry?.note || null,
+            actor || null,
+            professionKey || null
+        ]
+    );
+    return { ok: true, shift: result.rows[0] || null };
 }
 
 async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
@@ -1034,26 +818,7 @@ async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
  * Mentions employee by @telegram_username if set.
  * Fire-and-forget — does not block API response.
  */
-function scheduleNotificationBlocks(plan, status, shiftStart, shiftEnd) {
-    const segments = Array.isArray(plan?.segments) ? plan.segments : [];
-    if (segments.length) {
-        return segments.map(segment => {
-            const additional = (segment.additionalProfessionKeys || []).length
-                ? ` + ${segment.additionalProfessionKeys.join(', ')}`
-                : '';
-            const breakInfo = Number(segment.breakMinutes || 0) > 0
-                ? `, перерва ${Number(segment.breakMinutes)} хв`
-                : '';
-            return `${segment.shiftStart}–${segment.shiftEnd} · ${segment.professionKey}${additional}${breakInfo}`;
-        });
-    }
-    if (['working', 'remote'].includes(status) && shiftStart && shiftEnd) {
-        return [`${String(shiftStart).slice(0, 5)}–${String(shiftEnd).slice(0, 5)}`];
-    }
-    return [];
-}
-
-async function notifyScheduleChange(staffId, date, status, shiftStart, shiftEnd, plan = null) {
+async function notifyScheduleChange(staffId, date, status, shiftStart, shiftEnd) {
     try {
         const staff = await pool.query('SELECT name, telegram_username FROM staff WHERE id = $1', [staffId]);
         if (staff.rows.length === 0) return;
@@ -1061,8 +826,10 @@ async function notifyScheduleChange(staffId, date, status, shiftStart, shiftEnd,
 
         const mention = telegram_username ? `@${telegram_username}` : `<b>${name}</b>`;
         const statusLabel = STATUS_UK[status] || status;
-        const blocks = scheduleNotificationBlocks(plan, status, shiftStart, shiftEnd);
-        const timeInfo = blocks.length ? `\n⏱ ${blocks.join('\n⏱ ')}` : '';
+        let timeInfo = '';
+        if (status === 'working' && shiftStart && shiftEnd) {
+            timeInfo = ` (${shiftStart}–${shiftEnd})`;
+        }
 
         const text = `📅 Графік: ${mention} — ${date} → ${statusLabel}${timeInfo}`;
         const chatId = await getConfiguredChatId();
@@ -1078,7 +845,7 @@ async function notifyScheduleChange(staffId, date, status, shiftStart, shiftEnd,
  * Send summary notification for bulk schedule changes.
  * Lists @-mentions of all affected employees.
  */
-async function notifyBulkScheduleChange(staffIdSet, count, changes = []) {
+async function notifyBulkScheduleChange(staffIdSet, count) {
     try {
         if (staffIdSet.size === 0) return;
         const ids = Array.from(staffIdSet);
@@ -1086,32 +853,13 @@ async function notifyBulkScheduleChange(staffIdSet, count, changes = []) {
             'SELECT id, name, telegram_username FROM staff WHERE id = ANY($1)',
             [ids]
         );
-        const allMentions = result.rows.map(r =>
+        const mentions = result.rows.map(r =>
             r.telegram_username ? `@${r.telegram_username}` : r.name
         );
-        const mentionLimit = 30;
-        const mentions = allMentions.slice(0, mentionLimit);
-        if (allMentions.length > mentionLimit) mentions.push(`… +${allMentions.length - mentionLimit}`);
-        const staffById = new Map(result.rows.map(row => [Number(row.id), row]));
-        const detailLimit = 20;
-        const details = changes.slice(0, detailLimit).map(change => {
-            const staffRow = staffById.get(Number(change.staffId));
-            const staffLabel = staffRow?.telegram_username ? `@${staffRow.telegram_username}` : (staffRow?.name || `#${change.staffId}`);
-            const blocks = scheduleNotificationBlocks(
-                change.plan,
-                change.plan?.status,
-                change.plan?.plannedStart,
-                change.plan?.plannedEnd
-            );
-            return `• ${change.date} · ${staffLabel}${blocks.length ? ` · ${blocks.join('; ')}` : ''}`;
-        });
-        if (changes.length > detailLimit) details.push(`… ще ${changes.length - detailLimit} записів`);
-        const text = `📅 Графік оновлено (${count} записів)\n👥 ${mentions.join(', ')}`
-            + (details.length ? `\n${details.join('\n')}` : '');
-        const telegramText = text.length > 3900 ? `${text.slice(0, 3870)}\n…` : text;
+        const text = `📅 Графік оновлено (${count} записів)\n👥 ${mentions.join(', ')}`;
         const chatId = await getConfiguredChatId();
         if (chatId) {
-            sendTelegramMessage(chatId, telegramText).catch(err => log.error('Bulk schedule notify error', err));
+            sendTelegramMessage(chatId, text).catch(err => log.error('Bulk schedule notify error', err));
         }
     } catch (err) {
         log.error('notifyBulkScheduleChange error', err);
@@ -1156,36 +904,11 @@ router.get('/schedule', async (req, res) => {
                     s.role_type, s.company_structure_node_id,
                     COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hs.id AS hr_shift_id,
-                    hs.profession_key AS hr_profession_key,
-                    hs.planned_start AS hr_planned_start,
-                    hs.planned_end AS hr_planned_end,
-                    hs.break_minutes AS hr_break_minutes,
-                    hs.shift_type AS hr_shift_type,
                     hs.original_staff_id,
                     original_staff.name AS original_staff_name,
                     hs.replacement_reason,
                     hs.replaced_by,
-                    hs.replaced_at,
-                    COALESCE((
-                        SELECT jsonb_agg(
-                            jsonb_build_object(
-                                'id', hss.id,
-                                'professionKey', hss.profession_key,
-                                'shiftStart', LEFT(hss.planned_start::text, 5),
-                                'shiftEnd', LEFT(hss.planned_end::text, 5),
-                                'breakMinutes', hss.break_minutes,
-                                'note', hss.notes,
-                                'additionalProfessionKeys', COALESCE((
-                                    SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
-                                    FROM hr_shift_segment_roles hssr
-                                    WHERE hssr.segment_id = hss.id
-                                ), '[]'::jsonb)
-                            )
-                            ORDER BY hss.sort_order, hss.id
-                        )
-                        FROM hr_shift_segments hss
-                        WHERE hss.hr_shift_id = hs.id
-                    ), '[]'::jsonb) AS hr_segments
+                    hs.replaced_at
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
@@ -1196,8 +919,7 @@ router.get('/schedule', async (req, res) => {
             [from, to]
         );
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
-        const rowsWithPlans = await attachScheduleDayPlans(result.rows);
-        const rows = decorateStaffRowsWithDisplayGroups(rowsWithPlans, { displayGroupContext });
+        const rows = decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext });
         res.json({ success: true, data: rows, displayGroups: listStaffDisplayGroups() });
     } catch (err) {
         log.error('GET /staff/schedule error', err);
@@ -1209,13 +931,16 @@ router.get('/schedule', async (req, res) => {
 router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { staffId, date, status, note } = req.body;
+        const { staffId, date, shiftStart, shiftEnd, status, note } = req.body;
         if (!staffId || !date) {
             return res.status(400).json({ success: false, error: 'Потрібні staffId та date' });
         }
         const scheduleStatus = normalizeScheduleStatus(status, 'working');
         if (!scheduleStatus) {
             return res.status(400).json({ success: false, error: 'Невідомий статус графіка' });
+        }
+        if (scheduleStatusNeedsProfession(scheduleStatus) && (!shiftStart || !shiftEnd)) {
+            return res.status(400).json({ success: false, error: 'Для робочої зміни потрібен час початку та завершення' });
         }
         await client.query('BEGIN');
         const scheduleValidation = await validateScheduleWriteStaff(client, staffId, date);
@@ -1224,37 +949,50 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
                 entry: { staffId, date }
             });
         }
-        const previousPlan = await loadHrShiftDayPlan(client, { staffId, shiftDate: date });
+        const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body, client);
+        if (!profession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(profession.status || 400).json({ success: false, error: profession.error });
+        }
+        const previous = await loadScheduleEntryForUpdate(client, staffId, date);
+        const result = await client.query(
+            `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (staff_id, date)
+             DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7
+            RETURNING *`,
+            [staffId, date, shiftStart || null, shiftEnd || null, scheduleStatus, note || null, profession.professionKey]
+        );
         const hrSync = await syncHrShiftFromScheduleEntry(client, {
-            ...req.body,
             staffId,
             date,
+            shiftStart,
+            shiftEnd,
             status: scheduleStatus,
-            note
+            note,
+            professionKey: profession.professionKey
         }, req.user?.username || null);
         if (hrSync?.ok === false) {
             await client.query('ROLLBACK');
-            return sendHrShiftSyncError(res, hrSync, { entry: { staffId, date } });
+            if (hrSync.validation) {
+                return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                    entry: { staffId, date }
+                }));
+            }
+            return res.status(hrSync.status || 400).json({ success: false, code: hrSync.code, error: hrSync.error });
         }
-        const previous = await loadScheduleEntryForUpdate(client, staffId, date);
-        const result = await upsertScheduleMirrorFromPlan(client, { staffId, date, note }, hrSync.plan);
-        const enriched = result?.id ? await loadEnrichedScheduleEntry(client, result.id) : null;
-        await recordScheduleAudit(client, 'staff_schedule_update', staffId, date, previous, enriched || result, req, {
-            source: 'staff.schedule.put',
-            beforePlan: previousPlan?.plan || null,
-            afterPlan: hrSync.plan
+        const enriched = await loadEnrichedScheduleEntry(client, result.rows[0].id);
+        await recordScheduleAudit(client, 'staff_schedule_update', staffId, date, previous, enriched || result.rows[0], req, {
+            source: 'staff.schedule.put'
         });
         await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
         // Fire-and-forget Telegram notification
-        notifyScheduleChange(staffId, date, hrSync.plan.status, hrSync.plan.plannedStart, hrSync.plan.plannedEnd, hrSync.plan);
+        notifyScheduleChange(staffId, date, scheduleStatus, shiftStart, shiftEnd);
         broadcastAnimatorRosterDates([date], req.user?.id);
-        res.json({ success: true, data: scheduleEntryWithDayPlan(enriched || result, hrSync.plan) });
+        res.json({ success: true, data: enriched || result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
-        }
         log.error('PUT /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -1314,16 +1052,17 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             `SELECT ss.*, ss.date::text AS date, s.name AS staff_name, s.role_type
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
-             WHERE ss.id = $1`,
+             WHERE ss.id = $1
+             FOR UPDATE OF ss`,
             [scheduleId]
         );
         if (!scheduleResult.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Слот графіка не знайдено' });
         }
-        let schedule = scheduleResult.rows[0];
-        let date = normalizeScheduleDate(schedule.date);
-        let status = schedule.status || 'working';
+        const schedule = scheduleResult.rows[0];
+        const date = normalizeScheduleDate(schedule.date);
+        const status = schedule.status || 'working';
         if (!['working', 'remote'].includes(status) || !schedule.shift_start || !schedule.shift_end) {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'Підміну можна виставити тільки для робочого слота з часом' });
@@ -1333,37 +1072,7 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             return res.status(409).json({ success: false, error: 'Підміна на того самого працівника не потрібна' });
         }
 
-        await lockScheduleStaffRows(client, [schedule.staff_id, replacementStaffId]);
-        const freshScheduleResult = await client.query(
-            `SELECT ss.*, ss.date::text AS date, s.name AS staff_name, s.role_type
-             FROM staff_schedule ss
-             JOIN staff s ON s.id = ss.staff_id
-             WHERE ss.id = $1`,
-            [scheduleId]
-        );
-        if (!freshScheduleResult.rows.length
-            || Number(freshScheduleResult.rows[0].staff_id) !== Number(schedule.staff_id)
-            || normalizeScheduleDate(freshScheduleResult.rows[0].date) !== date) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Слот графіка був оновлений паралельно; повторіть запит'
-            });
-        }
-        schedule = freshScheduleResult.rows[0];
-        date = normalizeScheduleDate(schedule.date);
-        status = schedule.status || 'working';
-        if (!['working', 'remote'].includes(status) || !schedule.shift_start || !schedule.shift_end) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Підміну можна виставити тільки для робочого слота з часом' });
-        }
-        if (Number(schedule.staff_id) === replacementStaffId) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Підміна на того самого працівника не потрібна' });
-        }
-        const replacementValidation = await validateScheduleWriteStaff(client, replacementStaffId, date, {
-            forUpdate: false
-        });
+        const replacementValidation = await validateScheduleWriteStaff(client, replacementStaffId, date);
         if (!replacementValidation.ok) {
             return rejectUnscheduleableStaff(res, client, replacementValidation, {
                 entry: { staffId: replacementStaffId, date, scheduleId }
@@ -1375,46 +1084,45 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             return res.status(400).json({ success: false, error: 'Працівник для заміни неактивний або не існує' });
         }
 
-        let sourcePlan = await loadHrShiftDayPlan(client, {
-            staffId: schedule.staff_id,
-            shiftDate: date
-        }, { forUpdate: true });
-        if (!sourcePlan) {
-            const legacySync = await syncHrShiftFromScheduleEntry(client, {
-                staffId: schedule.staff_id,
-                date,
-                shiftStart: schedule.shift_start,
-                shiftEnd: schedule.shift_end,
-                status,
-                note: schedule.note || null,
-                professionKey: schedule.profession_key || schedule.role_type
-            }, req.user?.username || null);
-            if (legacySync?.ok === false) {
-                await client.query('ROLLBACK');
-                return sendHrShiftSyncError(res, legacySync, {
-                    entry: { staffId: schedule.staff_id, date, scheduleId }
-                });
-            }
-            sourcePlan = { shift: legacySync.shift, plan: legacySync.plan };
-        }
-        const lockedScheduleResult = await client.query(
-            `SELECT id, staff_id, date::text AS date
-             FROM staff_schedule
-             WHERE id = $1
-             FOR UPDATE`,
-            [scheduleId]
-        );
-        if (!lockedScheduleResult.rows.length
-            || Number(lockedScheduleResult.rows[0].staff_id) !== Number(schedule.staff_id)
-            || normalizeScheduleDate(lockedScheduleResult.rows[0].date) !== date) {
+        const sourceProfession = await resolveScheduleProfession(schedule.staff_id, status, {
+            profession_key: schedule.profession_key || schedule.role_type
+        }, client);
+        if (!sourceProfession.ok) {
             await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Слот графіка був оновлений паралельно; повторіть запит'
-            });
+            return res.status(sourceProfession.status || 400).json({ success: false, error: sourceProfession.error });
         }
-        await validateHrShiftDayPlanProfessions(client, replacementStaffId, sourcePlan.plan);
-        const currentShift = sourcePlan.shift;
+        const replacementProfession = await resolveStaffProfessionAssignment(client, replacementStaffId, sourceProfession.professionKey);
+        if (!replacementProfession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(replacementProfession.status || 400).json({ success: false, error: replacementProfession.error });
+        }
+
+        const hrShift = await client.query(
+            `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by, profession_key)
+             VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+             ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                planned_start = EXCLUDED.planned_start,
+                planned_end = EXCLUDED.planned_end,
+                shift_type = EXCLUDED.shift_type,
+                notes = CASE
+                    WHEN hr_shifts.original_staff_id IS NULL THEN EXCLUDED.notes
+                    ELSE hr_shifts.notes
+                END,
+                profession_key = EXCLUDED.profession_key,
+                updated_at = NOW()
+             RETURNING *`,
+            [
+                schedule.staff_id,
+                date,
+                schedule.shift_start,
+                schedule.shift_end,
+                shiftTypeForScheduleStatus(status),
+                schedule.note || null,
+                req.user?.username || null,
+                sourceProfession.professionKey
+            ]
+        );
+        const currentShift = hrShift.rows[0];
 
         const shiftConflict = await client.query(
             `SELECT id FROM hr_shifts
@@ -1448,13 +1156,21 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
                 replacement_reason = $2,
                 replaced_by = $3,
                 replaced_at = NOW(),
+                planned_start = $4,
+                planned_end = $5,
+                shift_type = $6,
+                profession_key = $7,
                 updated_at = NOW()
-             WHERE id = $4
+             WHERE id = $8
              RETURNING *`,
             [
                 replacementStaffId,
                 reason,
                 req.user?.username || null,
+                schedule.shift_start,
+                schedule.shift_end,
+                shiftTypeForScheduleStatus(status),
+                replacementProfession.professionKey,
                 currentShift.id
             ]
         );
@@ -1471,40 +1187,22 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             source: 'staff.schedule.replace',
             replacementStaffId,
             reason,
-            beforePlan: sourcePlan.plan,
-            afterPlan: null,
             force: true
         });
         await recordScheduleAudit(client, 'staff_schedule_replacement_set', replacementStaffId, date, replacementPrevious, enriched, req, {
             source: 'staff.schedule.replace',
             originalStaffId,
             reason,
-            beforePlan: null,
-            afterPlan: sourcePlan.plan,
             force: true
         });
         await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
 
-        notifyScheduleChange(
-            replacementStaffId,
-            date,
-            staffScheduleStatusForShift(updatedShift.rows[0].shift_type),
-            updatedShift.rows[0].planned_start,
-            updatedShift.rows[0].planned_end,
-            sourcePlan.plan
-        );
+        notifyScheduleChange(replacementStaffId, date, status, schedule.shift_start, schedule.shift_end);
         broadcastAnimatorRosterDates([date], req.user?.id);
-        res.json({
-            success: true,
-            data: scheduleEntryWithDayPlan(enriched, sourcePlan.plan),
-            replacement: replacement.rows[0]
-        });
+        res.json({ success: true, data: enriched, replacement: replacement.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
-        }
         log.error('POST /staff/schedule/:id/replace error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -1527,45 +1225,19 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
                     hs.planned_start, hs.planned_end, hs.shift_type, hs.notes, hs.profession_key
              FROM staff_schedule ss
              JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
-             WHERE ss.id = $1`,
+             WHERE ss.id = $1
+             FOR UPDATE OF ss, hs`,
             [scheduleId]
         );
         if (!scheduleResult.rows.length || !scheduleResult.rows[0].original_staff_id) {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'У цьому слоті немає активної підміни' });
         }
-        let schedule = scheduleResult.rows[0];
-        let date = normalizeScheduleDate(schedule.date);
-        let originalStaffId = Number(schedule.original_staff_id);
+        const schedule = scheduleResult.rows[0];
+        const date = normalizeScheduleDate(schedule.date);
+        const originalStaffId = Number(schedule.original_staff_id);
 
-        await lockScheduleStaffRows(client, [schedule.staff_id, originalStaffId]);
-        const freshScheduleResult = await client.query(
-            `SELECT ss.*, ss.date::text AS date, hs.id AS hr_shift_id, hs.original_staff_id,
-                    hs.planned_start, hs.planned_end, hs.shift_type, hs.notes, hs.profession_key
-             FROM staff_schedule ss
-             JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
-             WHERE ss.id = $1`,
-            [scheduleId]
-        );
-        const freshSchedule = freshScheduleResult.rows[0];
-        if (!freshSchedule
-            || !freshSchedule.original_staff_id
-            || Number(freshSchedule.staff_id) !== Number(schedule.staff_id)
-            || normalizeScheduleDate(freshSchedule.date) !== date
-            || Number(freshSchedule.hr_shift_id) !== Number(schedule.hr_shift_id)
-            || Number(freshSchedule.original_staff_id) !== originalStaffId) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Підміна була оновлена паралельно; повторіть запит'
-            });
-        }
-        schedule = freshSchedule;
-        date = normalizeScheduleDate(schedule.date);
-        originalStaffId = Number(schedule.original_staff_id);
-        const originalValidation = await validateScheduleWriteStaff(client, originalStaffId, date, {
-            forUpdate: false
-        });
+        const originalValidation = await validateScheduleWriteStaff(client, originalStaffId, date);
         if (!originalValidation.ok) {
             return rejectUnscheduleableStaff(res, client, originalValidation, {
                 entry: { staffId: originalStaffId, date, scheduleId }
@@ -1576,39 +1248,6 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Оригінальний працівник неактивний або не існує' });
         }
-        const currentPlan = await loadHrShiftDayPlan(client, {
-            hrShiftId: schedule.hr_shift_id
-        }, { forUpdate: true });
-        if (!currentPlan) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, error: 'HR-зміну для підміни не знайдено' });
-        }
-        if (Number(currentPlan.shift.staff_id) !== Number(schedule.staff_id)
-            || Number(currentPlan.shift.original_staff_id) !== originalStaffId
-            || normalizeScheduleDate(currentPlan.shift.shift_date) !== date) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Підміна була оновлена паралельно; повторіть запит'
-            });
-        }
-        const lockedScheduleResult = await client.query(
-            `SELECT id, staff_id, date::text AS date
-             FROM staff_schedule
-             WHERE id = $1
-             FOR UPDATE`,
-            [scheduleId]
-        );
-        if (!lockedScheduleResult.rows.length
-            || Number(lockedScheduleResult.rows[0].staff_id) !== Number(schedule.staff_id)
-            || normalizeScheduleDate(lockedScheduleResult.rows[0].date) !== date) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: 'Підміна була оновлена паралельно; повторіть запит'
-            });
-        }
-        await validateHrShiftDayPlanProfessions(client, originalStaffId, currentPlan.plan);
 
         const shiftConflict = await client.query(
             `SELECT id FROM hr_shifts
@@ -1653,39 +1292,21 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
         await recordScheduleAudit(client, 'staff_schedule_replacement_clear_removed', schedule.staff_id, date, schedule, null, req, {
             source: 'staff.schedule.replacement_clear',
             originalStaffId,
-            beforePlan: currentPlan.plan,
-            afterPlan: null,
             force: true
         });
         await recordScheduleAudit(client, 'staff_schedule_replacement_restored', originalStaffId, date, originalPrevious, enriched, req, {
             source: 'staff.schedule.replacement_clear',
             replacementStaffId: schedule.staff_id,
-            beforePlan: null,
-            afterPlan: currentPlan.plan,
             force: true
         });
         await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
 
-        notifyScheduleChange(
-            originalStaffId,
-            date,
-            staffScheduleStatusForShift(restoredShift.rows[0].shift_type),
-            restoredShift.rows[0].planned_start,
-            restoredShift.rows[0].planned_end,
-            currentPlan.plan
-        );
+        notifyScheduleChange(originalStaffId, date, staffScheduleStatusForShift(restoredShift.rows[0].shift_type), restoredShift.rows[0].planned_start, restoredShift.rows[0].planned_end);
         broadcastAnimatorRosterDates([date], req.user?.id);
-        res.json({
-            success: true,
-            data: scheduleEntryWithDayPlan(enriched, currentPlan.plan),
-            original: original.rows[0]
-        });
+        res.json({ success: true, data: enriched, original: original.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
-        }
         log.error('POST /staff/schedule/:id/replacement-clear error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -1705,15 +1326,10 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
         let count = 0;
         const affectedStaff = new Set();
         const affectedDates = new Set();
-        const notificationChanges = [];
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const orderedEntries = [...entries].sort((left, right) =>
-                Number(left.staffId) - Number(right.staffId)
-                || String(left.date || '').localeCompare(String(right.date || '')));
-            await lockScheduleStaffRows(client, orderedEntries.map(entry => entry.staffId));
-            for (const e of orderedEntries) {
+            for (const e of entries) {
                 if (!e.staffId || !e.date) continue;
                 const entryStatus = normalizeScheduleStatus(e.status, 'working');
                 if (!entryStatus) {
@@ -1724,46 +1340,59 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                         entry: { staffId: e.staffId, date: e.date }
                     });
                 }
-                const scheduleValidation = await validateScheduleWriteStaff(client, e.staffId, e.date, {
-                    forUpdate: false
-                });
+                const scheduleValidation = await validateScheduleWriteStaff(client, e.staffId, e.date);
                 if (!scheduleValidation.ok) {
                     return rejectUnscheduleableStaff(res, client, scheduleValidation, {
                         entry: { staffId: e.staffId, date: e.date }
                     });
                 }
-                const previousPlan = await loadHrShiftDayPlan(client, {
-                    staffId: e.staffId,
-                    shiftDate: e.date
-                });
-                const hrSync = await syncHrShiftFromScheduleEntry(client, {
-                    ...e,
-                    staffId: e.staffId,
-                    date: e.date,
-                    status: entryStatus,
-                    note: e.note || null
-                }, req.user?.username || null);
-                if (hrSync?.ok === false) {
+                const profession = await resolveScheduleProfession(e.staffId, entryStatus, e, client);
+                if (!profession.ok) {
                     await client.query('ROLLBACK');
-                    return sendHrShiftSyncError(res, hrSync, {
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
                         entry: { staffId: e.staffId, date: e.date }
                     });
                 }
                 const previous = await loadScheduleEntryForUpdate(client, e.staffId, e.date);
-                const upserted = await upsertScheduleMirrorFromPlan(client, e, hrSync.plan);
-                await recordScheduleAudit(client, 'staff_schedule_bulk_update', e.staffId, e.date, previous, upserted, req, {
+                const upserted = await client.query(
+                    `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     ON CONFLICT (staff_id, date)
+                     DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7
+                     RETURNING *`,
+                    [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, entryStatus, e.note || null, profession.professionKey]
+                );
+                const hrSync = await syncHrShiftFromScheduleEntry(client, {
+                    staffId: e.staffId,
+                    date: e.date,
+                    shiftStart: e.shiftStart || null,
+                    shiftEnd: e.shiftEnd || null,
+                    status: entryStatus,
+                    note: e.note || null,
+                    professionKey: profession.professionKey
+                }, req.user?.username || null);
+                if (hrSync?.ok === false) {
+                    await client.query('ROLLBACK');
+                    if (hrSync.validation) {
+                        return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                            entry: { staffId: e.staffId, date: e.date }
+                        }));
+                    }
+                    return res.status(hrSync.status || 400).json({
+                        success: false,
+                        code: hrSync.code,
+                        error: hrSync.error,
+                        entry: { staffId: e.staffId, date: e.date }
+                    });
+                }
+                await recordScheduleAudit(client, 'staff_schedule_bulk_update', e.staffId, e.date, previous, upserted.rows[0], req, {
                     source: 'staff.schedule.bulk',
-                    batchSize: entries.length,
-                    beforePlan: previousPlan?.plan || null,
-                    afterPlan: hrSync.plan
+                    batchSize: entries.length
                 });
                 affectedStaff.add(e.staffId);
                 affectedDates.add(normalizeScheduleDate(e.date));
-                notificationChanges.push({
-                    staffId: e.staffId,
-                    date: normalizeScheduleDate(e.date),
-                    plan: hrSync.plan
-                });
                 count++;
             }
             await reconcileAnimatorRosterDates(client, [...affectedDates]);
@@ -1775,13 +1404,10 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
             client.release();
         }
         // Fire-and-forget: bulk notification summary
-        notifyBulkScheduleChange(affectedStaff, count, notificationChanges);
+        notifyBulkScheduleChange(affectedStaff, count);
         broadcastAnimatorRosterDates([...affectedDates], req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
-        if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
-        }
         log.error('POST /staff/schedule/bulk error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -1849,11 +1475,8 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         const sourceRows = source.rows.filter(row => {
             const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
             return fromDates.includes(sourceDate);
-        }).sort((left, right) =>
-            Number(left.staff_id) - Number(right.staff_id)
-            || normalizeScheduleDate(left.date).localeCompare(normalizeScheduleDate(right.date)));
-        const sourceStaffIds = [...new Set(sourceRows.map(row => Number(row.staff_id)).filter(Number.isFinite))]
-            .sort((a, b) => a - b);
+        });
+        const sourceStaffIds = [...new Set(sourceRows.map(row => Number(row.staff_id)).filter(Number.isFinite))];
         let conflicts = 0;
         if (sourceStaffIds.length) {
             const conflictResult = await pool.query(
@@ -1882,50 +1505,10 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         let count = 0;
         const affectedStaff = new Set();
         const affectedDates = new Set();
-        const notificationChanges = [];
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await lockScheduleStaffRows(client, sourceStaffIds);
-            const freshSource = await client.query(
-                `${sql}
-                 ORDER BY ss.staff_id, ss.date, ss.id`,
-                params
-            );
-            const lockedStaffIds = new Set(sourceStaffIds);
-            if (freshSource.rows.some(row => !lockedStaffIds.has(Number(row.staff_id)))) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    error: 'Тиждень-джерело змінився паралельно; повторіть копіювання'
-                });
-            }
-            const freshSourceRows = freshSource.rows.filter(row => {
-                const sourceDate = normalizeScheduleDate(row.date);
-                return fromDates.includes(sourceDate);
-            });
-            if (sourceStaffIds.length) {
-                const conflictResult = await client.query(
-                    `SELECT COUNT(*)::int AS count
-                     FROM staff_schedule
-                     WHERE date >= $1 AND date <= $2
-                       AND staff_id = ANY($3::int[])`,
-                    [toDates[0], toDates[6], sourceStaffIds]
-                );
-                conflicts = Number(conflictResult.rows[0]?.count || 0);
-            }
-            const sourcePlans = new Map();
-            for (const row of freshSourceRows) {
-                const sourceDate = normalizeScheduleDate(row.date);
-                const rowStatus = normalizeScheduleStatus(row.status, null);
-                if (!sourceDate || !rowStatus || !scheduleStatusNeedsProfession(rowStatus)) continue;
-                const loadedPlan = await loadHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: sourceDate
-                });
-                if (loadedPlan) sourcePlans.set(`${row.staff_id}:${sourceDate}`, loadedPlan);
-            }
-            for (const row of freshSourceRows) {
+            for (const row of sourceRows) {
                 const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
                 const dayIndex = fromDates.indexOf(sourceDate);
                 if (dayIndex === -1) continue;
@@ -1939,45 +1522,54 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                         entry: { staffId: row.staff_id, date: sourceDate }
                     });
                 }
-                const loadedSourcePlan = sourcePlans.get(`${row.staff_id}:${sourceDate}`) || null;
-                const sourcePlanPayload = copyableDayPlanPayload(loadedSourcePlan) || {
-                    shiftStart: row.shift_start,
-                    shiftEnd: row.shift_end,
-                    professionKey: row.profession_key
-                };
-                const targetStatus = loadedSourcePlan?.plan?.status || rowStatus;
-                const scheduleValidation = await validateScheduleWriteStaff(client, row.staff_id, targetDate, {
-                    forUpdate: false
-                });
+                const scheduleValidation = await validateScheduleWriteStaff(client, row.staff_id, targetDate);
                 if (!scheduleValidation.ok) {
                     return rejectUnscheduleableStaff(res, client, scheduleValidation, {
                         entry: { staffId: row.staff_id, date: targetDate, sourceDate }
                     });
                 }
-                const previousPlan = await loadHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: targetDate
-                });
-                const hrSync = await syncHrShiftFromScheduleEntry(client, {
-                    ...sourcePlanPayload,
-                    staffId: row.staff_id,
-                    date: targetDate,
-                    status: targetStatus,
-                    note: row.note
-                }, req.user?.username || null);
-                if (hrSync?.ok === false) {
+                const profession = await resolveScheduleProfession(row.staff_id, rowStatus, { profession_key: row.profession_key }, client);
+                if (!profession.ok) {
                     await client.query('ROLLBACK');
-                    return sendHrShiftSyncError(res, hrSync, {
-                        entry: { staffId: row.staff_id, date: targetDate, sourceDate }
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
+                        entry: { staffId: row.staff_id, date: targetDate }
                     });
                 }
                 const previous = await loadScheduleEntryForUpdate(client, row.staff_id, targetDate);
-                const upserted = await upsertScheduleMirrorFromPlan(client, {
+                const upserted = await client.query(
+                    `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     ON CONFLICT (staff_id, date)
+                     DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7
+                     RETURNING *`,
+                    [row.staff_id, targetDate, row.shift_start, row.shift_end, rowStatus, row.note, profession.professionKey]
+                );
+                const hrSync = await syncHrShiftFromScheduleEntry(client, {
                     staffId: row.staff_id,
                     date: targetDate,
-                    note: row.note
-                }, hrSync.plan);
-                await recordScheduleAudit(client, 'staff_schedule_copy_week', row.staff_id, targetDate, previous, upserted, req, {
+                    shiftStart: row.shift_start,
+                    shiftEnd: row.shift_end,
+                    status: rowStatus,
+                    note: row.note,
+                    professionKey: profession.professionKey
+                }, req.user?.username || null);
+                if (hrSync?.ok === false) {
+                    await client.query('ROLLBACK');
+                    if (hrSync.validation) {
+                        return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                            entry: { staffId: row.staff_id, date: targetDate, sourceDate }
+                        }));
+                    }
+                    return res.status(hrSync.status || 400).json({
+                        success: false,
+                        code: hrSync.code,
+                        error: hrSync.error,
+                        entry: { staffId: row.staff_id, date: targetDate }
+                    });
+                }
+                await recordScheduleAudit(client, 'staff_schedule_copy_week', row.staff_id, targetDate, previous, upserted.rows[0], req, {
                     source: 'staff.schedule.copy_week',
                     fromDate: sourceDate,
                     fromMonday,
@@ -1987,13 +1579,10 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     copyMode,
                     staffCount: sourceStaffIds.length,
                     staffIds: copyMode === 'explicit_staff_ids' ? sourceStaffIds : undefined,
-                    conflictCount: conflicts,
-                    beforePlan: previousPlan?.plan || null,
-                    afterPlan: hrSync.plan
+                    conflictCount: conflicts
                 });
                 affectedStaff.add(row.staff_id);
                 affectedDates.add(targetDate);
-                notificationChanges.push({ staffId: row.staff_id, date: targetDate, plan: hrSync.plan });
                 count++;
             }
             await reconcileAnimatorRosterDates(client, [...affectedDates]);
@@ -2005,7 +1594,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
             client.release();
         }
         // Fire-and-forget notification
-        if (count > 0) notifyBulkScheduleChange(affectedStaff, count, notificationChanges);
+        if (count > 0) notifyBulkScheduleChange(affectedStaff, count);
         broadcastAnimatorRosterDates([...affectedDates], req.user?.id);
         res.json({
             success: true,
@@ -2017,9 +1606,6 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
             displayGroup
         });
     } catch (err) {
-        if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
-        }
         log.error('POST /staff/schedule/copy-week error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -2036,30 +1622,19 @@ router.get('/schedule/hours', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
         const result = await pool.query(
-            `SELECT ss.staff_id, ss.date::text AS date, ss.profession_key,
-                    s.name, s.department, s.position,
+            `SELECT ss.staff_id, s.name, s.department, s.position,
                     ss.shift_start, ss.shift_end,
-                    CASE WHEN ss.status = 'day_off' THEN 'dayoff' ELSE ss.status END AS status,
-                    hs.id AS hr_shift_id,
-                    hs.profession_key AS hr_profession_key,
-                    hs.planned_start AS hr_planned_start,
-                    hs.planned_end AS hr_planned_end,
-                    hs.break_minutes AS hr_break_minutes,
-                    hs.shift_type AS hr_shift_type
+                    CASE WHEN ss.status = 'day_off' THEN 'dayoff' ELSE ss.status END AS status
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
-             LEFT JOIN hr_shifts hs
-               ON hs.staff_id = ss.staff_id
-              AND hs.shift_date::text = LEFT(ss.date::text, 10)
              WHERE ss.date >= $1 AND ss.date <= $2
                AND ${activeScheduleStaffWhere('s', 'ss.date')}
              ORDER BY s.department, s.name`,
             [from, to]
         );
-        const rowsWithPlans = await attachScheduleDayPlans(result.rows);
 
         const stats = {};
-        for (const row of rowsWithPlans) {
+        for (const row of result.rows) {
             if (!stats[row.staff_id]) {
                 stats[row.staff_id] = {
                     name: row.name, department: row.department, position: row.position,
@@ -2068,7 +1643,11 @@ router.get('/schedule/hours', async (req, res) => {
             }
             const s = stats[row.staff_id];
             if ((row.status === 'working' || row.status === 'remote') && row.shift_start && row.shift_end) {
-                s.totalHours += Number(row.plannedMinutes || 0) / 60;
+                const [sh, sm] = row.shift_start.split(':').map(Number);
+                const [eh, em] = row.shift_end.split(':').map(Number);
+                let hours = (eh * 60 + em - sh * 60 - sm) / 60;
+                if (hours < 0) hours += 24; // night shift
+                s.totalHours += hours;
                 if (row.status === 'remote') s.remoteDays++;
                 else s.workingDays++;
             } else if (row.status === 'dayoff') s.dayoffs++;
@@ -2097,36 +1676,25 @@ router.get('/schedule/hours', async (req, res) => {
 router.get('/schedule/check/:date', async (req, res) => {
     try {
         const { date } = req.params;
-        const [availableLines, result] = await Promise.all([
-            getScheduledAnimatorLines(date, pool),
-            pool.query(
-                `SELECT ss.staff_id,
+        const result = await pool.query(
+            `SELECT ss.staff_id,
                     CASE WHEN ss.status = 'day_off' THEN 'dayoff' ELSE ss.status END AS status,
-                    ss.shift_start, ss.shift_end, s.name, s.department, s.role_type,
-                    COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
+                    ss.shift_start, ss.shift_end, s.name, s.department
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
              WHERE ss.date = $1
+               AND s.department = 'animators'
                AND ${activeScheduleStaffWhere('s', 'ss.date')}`,
-                [date]
-            )
-        ]);
-        const available = availableLines.map(line => ({
-            id: Number(line.staffId || line.id),
-            name: line.name,
-            shiftStart: line.shiftStart || null,
-            shiftEnd: line.shiftEnd || null,
-            availabilityWindows: line.availabilityWindows || [],
-            availability_windows: line.availabilityWindows || [],
-            remote: line.shiftStatus === 'remote',
-            needsReview: line.needsReview === true,
-            unavailableAssignments: line.unavailableAssignments || []
-        }));
-        const availableIds = new Set(available.map(line => Number(line.id)));
+            [date]
+        );
+        const available = [];
         const unavailable = [];
         for (const row of result.rows) {
-            const animatorQualified = staffProfessionKeys(row).includes('animator');
-            if (animatorQualified && !availableIds.has(Number(row.staff_id))) {
+            if (row.status === 'working') {
+                available.push({ id: row.staff_id, name: row.name, shiftStart: row.shift_start, shiftEnd: row.shift_end });
+            } else if (row.status === 'remote') {
+                available.push({ id: row.staff_id, name: row.name, shiftStart: row.shift_start, shiftEnd: row.shift_end, remote: true });
+            } else {
                 unavailable.push({ id: row.staff_id, name: row.name, status: row.status });
             }
         }
@@ -2182,8 +1750,7 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
             ORDER BY date, staff_id
         `, [from, to]);
 
-        const attendanceRows = await hydrateAttendanceRecords(pool, result.rows);
-        const summary = attendanceRows.reduce((acc, row) => {
+        const summary = result.rows.reduce((acc, row) => {
             const status = String(row.time_status || '').trim() || (row.checkin_at ? 'present' : 'planned');
             acc.total += 1;
             if (row.clock_in || row.checkin_at) acc.checked_in += 1;
@@ -2195,7 +1762,7 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
             return acc;
         }, { total: 0, checked_in: 0, late: 0, absent: 0, left_early: 0, completed: 0, excused: 0 });
 
-        res.json({ success: true, from, to, data: attendanceRows, summary, source: 'hr_time_records+staff_checkins' });
+        res.json({ success: true, from, to, data: result.rows, summary, source: 'hr_time_records+staff_checkins' });
     } catch (err) {
         if (err.message.includes('does not exist')) {
             return res.json({ success: true, data: [], summary: { total: 0, checked_in: 0, late: 0, absent: 0, left_early: 0, completed: 0, excused: 0 }, source: 'missing_attendance_tables' });

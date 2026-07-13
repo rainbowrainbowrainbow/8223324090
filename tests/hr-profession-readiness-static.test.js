@@ -24,7 +24,6 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const priorityMigration = readRepoFile('db', 'migrations', '248_hr_team_search_rates_structure.sql');
     const hrRoute = readRepoFile('routes', 'hr.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
-    const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
@@ -186,25 +185,24 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /isHiddenProfessionKey\(payload\.key\)/);
         assert.match(hrRoute, /прихована як дубль/);
         assert.match(hrRoute, /buildStaffProfileChanges/);
-        assert.match(hrRoute, /require\('\.\.\/services\/hrShiftSegments'\)/);
-        assert.match(hrRoute, /saveHrShiftDayPlan\(client/);
-        assert.match(hrRoute, /loadHrShiftDayPlan\(client/);
-        assert.match(hrRoute, /validateHrShiftDayPlanProfessions\(client, replacementStaffId, loaded\.plan\)/);
-        assert.doesNotMatch(hrRoute, /resolveHrShiftProfession/);
+        assert.match(hrRoute, /resolveHrShiftProfession/);
+        assert.match(hrRoute, /profession_key = COALESCE\(\$6, profession_key\)/);
+        assert.match(hrRoute, /profession_key = EXCLUDED\.profession_key/);
         assert.match(hrRoute, /router\.post\('\/shifts', requireHrManage/);
         assert.match(hrRoute, /router\.put\('\/shifts\/:id', requireHrManage/);
         assert.match(hrRoute, /router\.delete\('\/shifts\/:id', requireHrManage/);
-        assert.match(shiftSegmentsService, /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
-        assert.match(shiftSegmentsService, /resolveStaffProfessionAssignments\(client, staffId/);
-        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(saved\.shift, client\)/);
-        assert.match(hrRoute, /mirrorHrDayPlanToStaffSchedule\([\s\S]*?currentShift\.staff_id,[\s\S]*?currentShift\.shift_date/);
-        assert.match(hrRoute, /dayPlanPayload\(loaded\.plan/);
+        assert.match(hrRoute, /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
+        assert.match(hrRoute, /resolveHrShiftProfession\(staff_id, req\.body, client\)/);
+        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(result\.rows\[0\], client\)/);
+        assert.match(hrRoute, /removeMirroredStaffSchedule\(existing\.rows\[0\]\.staff_id, existing\.rows\[0\]\.shift_date, client\)/);
+        assert.match(hrRoute, /resolveHrShiftProfession\(sid, req\.body, client\)/);
+        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(result\.rows\[0\], client\)/);
+        assert.match(hrRoute, /resolveHrShiftProfession\(row\.staff_id, \{ profession_key: row\.profession_key \}, client\)/);
 
         assert.match(staffRoute, /function scheduleStatusNeedsProfession/);
-        assert.match(staffRoute, /require\('\.\.\/services\/hrShiftSegments'\)/);
-        assert.match(staffRoute, /saveHrShiftDayPlan\(client/);
-        assert.match(staffRoute, /validateHrShiftDayPlanProfessions\(client, replacementStaffId, sourcePlan\.plan\)/);
-        assert.doesNotMatch(staffRoute, /resolveScheduleProfession/);
+        assert.match(staffRoute, /resolveScheduleProfession/);
+        assert.match(staffRoute, /resolveScheduleProfession\(e\.staffId, entryStatus, e, client\)/);
+        assert.match(staffRoute, /resolveScheduleProfession\(row\.staff_id, rowStatus, \{ profession_key: row\.profession_key \}, client\)/);
         assert.match(staffRoute, /INSERT INTO staff_schedule \(staff_id, date, shift_start, shift_end, status, note, profession_key\)/);
         assert.match(staffRoute, /COALESCE\(s\.secondary_professions, '\[\]'::jsonb\) AS secondary_professions/);
     });
@@ -230,17 +228,15 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 
-        assert.match(staffScheduleShell, /id="schSegmentsList"/);
-        assert.match(staffScheduleShell, /id="schPrimaryProfession"/);
+        assert.match(staffScheduleShell, /id="schProfession"/);
         assert.match(staffSurface, /sch-profession/);
         assert.match(staffPage, /async function fetchHrProfessions/);
         assert.match(staffPage, /StaffState\.professions/);
         assert.match(staffPage, /function professionCatalogOptions/);
         assert.match(staffPage, /await fetchHrProfessions\(\)/);
         assert.match(staffPage, /function staffProfessionOptions/);
-        assert.match(staffPage, /function schedulePlanProfessionOptions/);
-        assert.match(staffPage, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
-        assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
+        assert.match(staffPage, /professionKey: showTime \? normalizeProfessionKey\(emp\.role_type\) : null/);
+        assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey\)/);
     });
 
     it('keeps HR team card profession display on canonical role fields', () => {

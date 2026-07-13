@@ -297,62 +297,6 @@ async function roomConflictPolicyCandidateContext(client, options, businessConte
     return { groupIds: ids, role };
 }
 
-function parseAvailabilityWindows(value) {
-    let source = value;
-    if (typeof source === 'string') {
-        try { source = JSON.parse(source); } catch { source = []; }
-    }
-    if (!Array.isArray(source)) return [];
-    return source.map(window => {
-        const start = String(window?.start || window?.shiftStart || window?.planned_start || '').slice(0, 5);
-        const end = String(window?.end || window?.shiftEnd || window?.planned_end || '').slice(0, 5);
-        if (!validateTime(start) || !validateTime(end) || start === end) return null;
-        const segmentId = Number(window?.segmentId ?? window?.segment_id);
-        return {
-            start,
-            end,
-            segmentId: Number.isFinite(segmentId) ? segmentId : null
-        };
-    }).filter(Boolean).sort((left, right) => timeToMinutes(left.start) - timeToMinutes(right.start));
-}
-
-function availabilityWindowRange(window = {}) {
-    const start = validateTime(window.start) ? timeToMinutes(window.start) : null;
-    const endRaw = validateTime(window.end) ? timeToMinutes(window.end) : null;
-    if (start === null || endRaw === null || start === endRaw) return null;
-    return { start, end: endRaw <= start ? endRaw + (24 * 60) : endRaw };
-}
-
-function isBookingWithinAvailabilityWindows(time, duration, windows = []) {
-    if (!validateTime(String(time || '').slice(0, 5))) return false;
-    const start = timeToMinutes(String(time).slice(0, 5));
-    const durationMinutes = Math.max(0, Number(duration || 0));
-    return parseAvailabilityWindows(windows).some(window => {
-        const range = availabilityWindowRange(window);
-        if (!range) return false;
-        const candidateStart = range.end > (24 * 60) && start < range.start
-            ? start + (24 * 60)
-            : start;
-        return candidateStart >= range.start && candidateStart + durationMinutes <= range.end;
-    });
-}
-
-function isMinuteWithinAvailabilityWindows(minute, windows = []) {
-    const value = Number(minute);
-    if (!Number.isFinite(value)) return false;
-    return parseAvailabilityWindows(windows).some(window => {
-        const range = availabilityWindowRange(window);
-        if (!range) return false;
-        if (range.end <= 24 * 60) return value >= range.start && value < range.end;
-        return value >= range.start || value < (range.end - (24 * 60));
-    });
-}
-
-function availabilityWindowsLabel(windows = []) {
-    const normalized = parseAvailabilityWindows(windows);
-    return normalized.length ? normalized.map(window => `${window.start}–${window.end}`).join(', ') : 'немає доступних вікон';
-}
-
 function roomConflictPolicyAllowsOverlap(candidate, conflict, candidateGroupIds) {
     const conflictGroupIds = bookingRoomConflictGroupIds(conflict);
     const sameGroup = Array.from(conflictGroupIds).some(id => candidateGroupIds.has(id));
@@ -484,64 +428,6 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
         const end = start + (b.duration || 0);
         if (newStart < end && newEnd > start) {
             return { overlap: true, noPause: false, conflictWith: b };
-        }
-    }
-
-    const staffId = Number(lineId);
-    if (Number.isInteger(staffId) && staffId > 0 && String(staffId) === String(lineId)) {
-        const availability = await client.query(
-            `SELECT s.id AS staff_id,
-                    ss.status,
-                    (${scheduleableStaffWhere('s', { dateExpression: '$1::date' })}) AS is_scheduleable,
-                    COALESCE((
-                        SELECT jsonb_agg(
-                            jsonb_build_object(
-                                'start', LEFT(hss.planned_start::text, 5),
-                                'end', LEFT(hss.planned_end::text, 5),
-                                'segmentId', hss.id
-                            ) ORDER BY hss.sort_order, hss.planned_start, hss.id
-                        )
-                        FROM hr_shifts hs
-                        JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
-                        WHERE hs.staff_id = s.id
-                          AND hs.shift_date = $1::date
-                          AND (
-                              hss.profession_key = 'animator'
-                              OR EXISTS (
-                                  SELECT 1 FROM hr_shift_segment_roles hssr
-                                  WHERE hssr.segment_id = hss.id
-                                    AND hssr.profession_key = 'animator'
-                              )
-                          )
-                    ), '[]'::jsonb) AS availability_windows
-             FROM staff s
-             LEFT JOIN staff_schedule ss
-               ON ss.staff_id = s.id
-              AND ss.date = $1::date
-              WHERE s.id = $2`,
-            [date, staffId]
-        );
-        if (availability.rows.length) {
-            const row = availability.rows[0];
-            const windows = parseAvailabilityWindows(row.availability_windows);
-            const working = row.is_scheduleable !== false
-                && ['working', 'remote'].includes(String(row.status || '').toLowerCase());
-            if (!working || !isBookingWithinAvailabilityWindows(time, duration, windows)) {
-                const label = availabilityWindowsLabel(windows);
-                return {
-                    overlap: true,
-                    noPause: false,
-                    unavailable: true,
-                    reason: working ? 'outside_availability_window' : 'staff_not_working',
-                    availabilityWindows: windows,
-                    conflictWith: {
-                        id: null,
-                        label: `Аніматор недоступний; робочі вікна: ${label}`,
-                        time: null,
-                        availabilityWindows: windows
-                    }
-                };
-            }
         }
     }
 
@@ -692,80 +578,32 @@ async function getScheduledAnimatorLines(date, db = pool) {
              s.color,
              ss.shift_start,
              ss.shift_end,
-             ss.status,
-             animator_windows.availability_windows,
-             COALESCE((
-                 SELECT jsonb_agg(jsonb_build_object(
-                     'id', b.id,
-                     'time', LEFT(b.time::text, 5),
-                     'duration', b.duration,
-                     'label', b.label
-                 ) ORDER BY b.time, b.id)
-                 FROM bookings b
-                 WHERE b.date = ss.date
-                   AND b.line_id = s.id::text
-                   AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = '${DEFAULT_TIMELINE_CONTEXT}'
-                   AND ${activeBookingStatusSql('b.status')}
-             ), '[]'::jsonb) AS active_assignments
+             ss.status
          FROM staff_schedule ss
          JOIN staff s ON s.id = ss.staff_id
-         JOIN hr_shifts hs
-           ON hs.staff_id = ss.staff_id
-          AND hs.shift_date = ss.date::date
-         JOIN LATERAL (
-             SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                 'start', LEFT(hss.planned_start::text, 5),
-                 'end', LEFT(hss.planned_end::text, 5),
-                 'segmentId', hss.id
-             ) ORDER BY hss.sort_order, hss.planned_start, hss.id), '[]'::jsonb) AS availability_windows
-             FROM hr_shift_segments hss
-             WHERE hss.hr_shift_id = hs.id
-               AND (
-                   hss.profession_key = 'animator'
-                   OR EXISTS (
-                       SELECT 1 FROM hr_shift_segment_roles hssr
-                       WHERE hssr.segment_id = hss.id
-                         AND hssr.profession_key = 'animator'
-                   )
-               )
-         ) animator_windows ON jsonb_array_length(animator_windows.availability_windows) > 0
          WHERE ss.date = $1
            AND ${scheduleableStaffWhere('s', { dateExpression: 'ss.date' })}
            AND ss.status IN ('working', 'remote')
+           AND (
+                s.role_type = 'animator'
+                OR LOWER(COALESCE(s.position, '')) LIKE '%animator%'
+                OR s.department = 'animators'
+                OR LOWER(COALESCE(s.position, '')) LIKE '%аніматор%'
+           )
          ORDER BY COALESCE(ss.shift_start, '99:99'), s.name`,
         [date]
     );
 
-    return result.rows.map((row, index) => {
-        const fallbackWindows = row.shift_start && row.shift_end
-            ? [{ start: String(row.shift_start).slice(0, 5), end: String(row.shift_end).slice(0, 5), segmentId: null }]
-            : [];
-        const availabilityWindows = parseAvailabilityWindows(row.availability_windows).length
-            ? parseAvailabilityWindows(row.availability_windows)
-            : fallbackWindows;
-        const assignments = Array.isArray(row.active_assignments) ? row.active_assignments : [];
-        const unavailableAssignments = assignments.filter(booking => !isBookingWithinAvailabilityWindows(
-            String(booking.time || '').slice(0, 5),
-            booking.duration,
-            availabilityWindows
-        ));
-        return {
-            id: String(row.staff_id),
-            name: row.name,
-            color: lineColorForIndex(index, row.color),
-            shiftStart: availabilityWindows[0]?.start || row.shift_start,
-            shiftEnd: availabilityWindows.at(-1)?.end || row.shift_end,
-            shiftStatus: row.status,
-            availabilityWindows,
-            fromSheet: true,
-            source: 'hr_shift_segments',
-            needsReview: unavailableAssignments.length > 0,
-            unavailableAssignments,
-            warning: unavailableAssignments.length
-                ? `${unavailableAssignments.length} існуючих призначень поза актуальними вікнами доступності; бронювання збережені.`
-                : null
-        };
-    });
+    return result.rows.map((row, index) => ({
+        id: String(row.staff_id),
+        name: row.name,
+        color: lineColorForIndex(index, row.color),
+        shiftStart: row.shift_start,
+        shiftEnd: row.shift_end,
+        shiftStatus: row.status,
+        fromSheet: true,
+        source: 'staff_schedule'
+    }));
 }
 
 async function syncScheduledAnimatorLines(date, db = pool) {
@@ -977,7 +815,6 @@ module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     normalizeBanquetCreationContext, validateBanquetCreationContext,
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
-    parseAvailabilityWindows, isBookingWithinAvailabilityWindows, isMinuteWithinAvailabilityWindows, availabilityWindowsLabel,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
     checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate, findRoomConflictAmongCandidates,

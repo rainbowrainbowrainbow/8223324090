@@ -6433,10 +6433,7 @@ const DashboardPage = (() => {
             const date = new Date(s.date).toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' });
             const statusLabel = statusMap[s.status] || s.status;
             const statusCls = s.status === 'working' ? 'working' : 'dayoff';
-            const segments = Array.isArray(s.segments) ? s.segments : [];
-            const timeStr = segments.length
-                ? segments.map(segment => `${escapeHtml(segment.start || '')}–${escapeHtml(segment.end || '')}${segment.professionKey ? ` · ${escapeHtml(segment.professionKey)}` : ''}`).join('<br>')
-                : (s.start_time && s.end_time ? `${s.start_time.substring(0,5)}–${s.end_time.substring(0,5)}` : '');
+            const timeStr = s.start_time && s.end_time ? `${s.start_time.substring(0,5)}–${s.end_time.substring(0,5)}` : '';
             return `<div class="schedule-item">
                 <div class="schedule-date">${date}</div>
                 <div class="schedule-status ${statusCls}">${statusLabel}</div>

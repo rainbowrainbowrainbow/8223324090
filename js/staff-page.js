@@ -179,7 +179,6 @@ const SCHEDULE_HEALTH_LABELS = {
     ok: 'OK'
 };
 const SCHEDULE_HEALTH_LONG_SHIFT_MINUTES = 12 * 60;
-const SCHEDULE_HEALTH_LONG_DAY_MINUTES = 14 * 60;
 const SCHEDULE_HEALTH_DEPARTMENT_MIN_WORKING = {
     animators: 1,
     trampoline: 1,
@@ -590,79 +589,6 @@ function scheduleTimeToMinutes(value) {
     return hours * 60 + minutes;
 }
 
-const STAFF_SCHEDULE_MAX_SEGMENTS = 12;
-let staffScheduleSegmentClientSeq = 0;
-
-function normalizeSchedulePlanTime(value) {
-    const minutes = scheduleTimeToMinutes(value);
-    if (minutes === null) return '';
-    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
-function scheduleSegmentDurationMinutes(shiftStart, shiftEnd) {
-    const start = scheduleTimeToMinutes(shiftStart);
-    const rawEnd = scheduleTimeToMinutes(shiftEnd);
-    if (start === null || rawEnd === null) return null;
-    if (start === rawEnd) return 0;
-    return (rawEnd <= start ? rawEnd + (24 * 60) : rawEnd) - start;
-}
-
-function scheduleSegmentClientKey(segment = {}) {
-    const existing = String(segment.clientKey || '').trim();
-    if (existing) return existing;
-    staffScheduleSegmentClientSeq += 1;
-    return `segment-${staffScheduleSegmentClientSeq}`;
-}
-
-function normalizeScheduleSegmentForUi(segment = {}, fallbackProfessionKey = '') {
-    const additionalSource = segment.additionalProfessionKeys || segment.additional_profession_keys || [];
-    const additionalProfessionKeys = parseProfessionArray(additionalSource)
-        .map(normalizeProfessionKey)
-        .filter(Boolean);
-    return {
-        id: segment.id ?? null,
-        clientKey: scheduleSegmentClientKey(segment),
-        professionKey: normalizeProfessionKey(segment.professionKey || segment.profession_key || fallbackProfessionKey),
-        shiftStart: normalizeSchedulePlanTime(segment.shiftStart || segment.shift_start || segment.planned_start) || '10:00',
-        shiftEnd: normalizeSchedulePlanTime(segment.shiftEnd || segment.shift_end || segment.planned_end) || '20:00',
-        breakMinutes: Math.max(0, Number.parseInt(segment.breakMinutes ?? segment.break_minutes ?? 0, 10) || 0),
-        note: String(segment.note ?? segment.notes ?? '').trim(),
-        additionalProfessionKeys: [...new Set(additionalProfessionKeys)]
-    };
-}
-
-function scheduleEntrySegmentsForUi(entry = null, fallbackProfessionKey = '') {
-    const rawSegments = Array.isArray(entry?.segments) ? entry.segments : [];
-    if (rawSegments.length) {
-        return rawSegments.map(segment => normalizeScheduleSegmentForUi(segment, fallbackProfessionKey));
-    }
-    if (entry && ['working', 'remote'].includes(normalizeScheduleStatus(entry.status)) && entry.shift_start && entry.shift_end) {
-        return [normalizeScheduleSegmentForUi({
-            professionKey: entry.primary_profession_key || entry.primaryProfessionKey || entry.profession_key || fallbackProfessionKey,
-            shiftStart: entry.shift_start,
-            shiftEnd: entry.shift_end,
-            breakMinutes: entry.break_minutes || 0
-        }, fallbackProfessionKey)];
-    }
-    return [];
-}
-
-function scheduleEntryProfessionKeys(entry = {}) {
-    const explicit = parseProfessionArray(entry.profession_keys || entry.professionKeys || []);
-    const fromSegments = scheduleEntrySegmentsForUi(entry).flatMap(segment => [
-        segment.professionKey,
-        ...(segment.additionalProfessionKeys || [])
-    ]);
-    return [...new Set([...explicit, ...fromSegments].map(normalizeProfessionKey).filter(Boolean))];
-}
-
-function formatScheduleMinutes(minutes) {
-    const safeMinutes = Math.max(0, Number(minutes || 0));
-    const hours = Math.floor(safeMinutes / 60);
-    const remainder = safeMinutes % 60;
-    return remainder ? `${hours} год ${remainder} хв` : `${hours} год`;
-}
-
 function formatShiftLoadRatio(value) {
     if (!Number.isFinite(value) || value <= 0) return '';
     return String(Math.round(value * 100) / 100).replace(/\.0$/, '');
@@ -685,17 +611,11 @@ function scheduleShiftLoadFullShiftMinutes(entry = {}) {
 function scheduleShiftLoadMeta(entry = {}) {
     const status = normalizeScheduleStatus(entry.status);
     if (!['working', 'remote'].includes(status)) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
-    const explicitPlannedMinutes = Number(entry.planned_minutes ?? entry.plannedMinutes);
-    let minutes = Number.isFinite(explicitPlannedMinutes) && explicitPlannedMinutes >= 0
-        ? explicitPlannedMinutes
-        : null;
-    if (minutes === null) {
-        const start = scheduleTimeToMinutes(entry.shift_start);
-        const end = scheduleTimeToMinutes(entry.shift_end);
-        if (start === null || end === null) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
-        minutes = end - start;
-        if (minutes <= 0) minutes += 24 * 60;
-    }
+    const start = scheduleTimeToMinutes(entry.shift_start);
+    const end = scheduleTimeToMinutes(entry.shift_end);
+    if (start === null || end === null) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
+    let minutes = end - start;
+    if (minutes <= 0) minutes += 24 * 60;
     if (minutes <= 0) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
     const exactRatio = minutes / scheduleShiftLoadFullShiftMinutes(entry);
     const roundedRatio = Math.max(0.25, Math.round(exactRatio * 4) / 4);
@@ -725,14 +645,11 @@ function scheduleHasBlockingConflict(staffId, date, exceptScheduleId = null) {
 }
 
 function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
-    const requiredProfessionKeys = scheduleEntryProfessionKeys(entry);
-    if (!requiredProfessionKeys.length) {
-        requiredProfessionKeys.push(normalizeProfessionKey(entry.profession_key || currentStaff.role_type));
-    }
+    const professionKey = normalizeProfessionKey(entry.profession_key || currentStaff.role_type);
     return StaffState.staff
         .filter(staff => isScheduleableStaffForUi(staff, entry.date))
         .filter(staff => Number(staff.id) !== Number(entry.staff_id))
-        .filter(staff => requiredProfessionKeys.filter(Boolean).every(professionKey => staffHasProfession(staff, professionKey)))
+        .filter(staff => staffHasProfession(staff, professionKey))
         .filter(staff => !scheduleHasBlockingConflict(staff.id, entry.date, entry.id))
         .map(staff => ({
             value: String(staff.id),
@@ -743,18 +660,7 @@ function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
 
 function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     const parts = [`${emp.name} - ${date}`];
-    const segments = scheduleEntrySegmentsForUi(entry, entry?.profession_key || emp.role_type);
-    if (segments.length) {
-        parts.push(...segments.map(segment => {
-            const additional = segment.additionalProfessionKeys.length
-                ? ` + ${segment.additionalProfessionKeys.map(professionLabel).join(', ')}`
-                : '';
-            return `${segment.shiftStart}-${segment.shiftEnd} ${professionLabel(segment.professionKey)}${additional}`;
-        }));
-        parts.push(`Оплачувано: ${formatScheduleMinutes(entry?.planned_minutes ?? entry?.plannedMinutes ?? schedulePlanMetrics(segments).plannedMinutes)}`);
-    } else if (shiftStart && shiftEnd) {
-        parts.push(`${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
-    }
+    if (shiftStart && shiftEnd) parts.push(`${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
     const loadMeta = scheduleShiftLoadMeta({ ...entry, date, shift_start: shiftStart, shift_end: shiftEnd });
     if (loadMeta.label && loadMeta.showBadge) parts.push(`load ${loadMeta.label}x`);
     if (isReplacementEntry(entry)) {
@@ -774,10 +680,7 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
         `дата ${date}`,
         `статус ${statusLabel}`
     ];
-    const segments = scheduleEntrySegmentsForUi(entry, entry?.profession_key || emp.role_type);
-    if (segments.length) {
-        parts.push(...segments.map((segment, index) => `блок ${index + 1}: ${segment.shiftStart}-${segment.shiftEnd}, ${professionLabel(segment.professionKey)}`));
-    } else if (shiftStart && shiftEnd) {
+    if (shiftStart && shiftEnd) {
         parts.push(`час ${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
     }
     if (isReplacementEntry(entry)) {
@@ -790,50 +693,6 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
     if (healthSummary) parts.push(healthSummary);
     parts.push(StaffState.canManage ? 'Enter або пробіл відкриває редагування' : 'Enter або пробіл відкриває перегляд');
     return parts.join('. ');
-}
-
-function scheduleCompactSegmentTime(value) {
-    const normalized = normalizeSchedulePlanTime(value);
-    if (!normalized) return '';
-    return normalized.endsWith(':00') ? normalized.slice(0, 2) : normalized;
-}
-
-function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfessionKey, fullRange = false) {
-    const segments = scheduleEntrySegmentsForUi(entry, fallbackProfessionKey);
-    if (!segments.length) return '';
-    const metrics = schedulePlanMetrics(segments);
-    const plannedMinutes = Number(entry?.planned_minutes ?? entry?.plannedMinutes);
-    const paidMinutes = Number.isFinite(plannedMinutes) ? plannedMinutes : metrics.plannedMinutes;
-    if (fullRange) {
-        return `<span class="sch-month-summary">${segments.length} ${segments.length === 1 ? 'блок' : 'блоки'} · ${escapeHtml(formatScheduleMinutes(paidMinutes))}</span>`;
-    }
-    const normalizedSectionProfession = normalizeProfessionKey(sectionProfessionKey);
-    const hasSectionMatch = normalizedSectionProfession && segments.some(segment => (
-        segment.professionKey === normalizedSectionProfession
-        || segment.additionalProfessionKeys.includes(normalizedSectionProfession)
-    ));
-    const displaySegments = hasSectionMatch
-        ? [
-            ...segments.filter(segment => segment.professionKey === normalizedSectionProfession || segment.additionalProfessionKeys.includes(normalizedSectionProfession)),
-            ...segments.filter(segment => segment.professionKey !== normalizedSectionProfession && !segment.additionalProfessionKeys.includes(normalizedSectionProfession))
-        ]
-        : segments;
-    const visible = displaySegments.slice(0, 2).map(segment => {
-        const matchesSection = normalizedSectionProfession && (
-            segment.professionKey === normalizedSectionProfession
-            || segment.additionalProfessionKeys.includes(normalizedSectionProfession)
-        );
-        const additional = segment.additionalProfessionKeys.length
-            ? ` +${segment.additionalProfessionKeys.length}`
-            : '';
-        const compactTime = `${scheduleCompactSegmentTime(segment.shiftStart)}–${scheduleCompactSegmentTime(segment.shiftEnd)}`;
-        return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}">
-            <span class="sch-time" data-schedule-compact-time="${escapeHtml(compactTime)}">${escapeHtml(compactTime)}</span>
-            <span class="sch-profession">${escapeHtml(professionLabel(segment.professionKey))}${escapeHtml(additional)}</span>
-        </span>`;
-    }).join('');
-    const remaining = segments.length - 2;
-    return `<span class="sch-segment-lines ${hasSectionMatch ? 'has-section-match' : ''}">${visible}${remaining > 0 ? `<span class="sch-segment-more">+${remaining}</span>` : ''}</span>`;
 }
 
 function scheduleHealthCellKey(staffId, date) {
@@ -878,31 +737,6 @@ function scheduleHealthShiftProfessionKey(staff = {}, entry = {}) {
     const explicitProfession = normalizeProfessionKey(entry.profession_key || entry.professionKey);
     if (explicitProfession) return explicitProfession;
     return normalizeProfessionKey(staff.role_type || staff.roleType);
-}
-
-function scheduleHealthSegmentRange(segment = {}) {
-    const start = scheduleTimeToMinutes(segment.shiftStart || segment.shift_start || segment.start);
-    const endRaw = scheduleTimeToMinutes(segment.shiftEnd || segment.shift_end || segment.end);
-    if (start === null || endRaw === null || start === endRaw) return null;
-    return { start, end: endRaw <= start ? endRaw + (24 * 60) : endRaw };
-}
-
-function scheduleHealthSegmentRoles(segment = {}) {
-    return [...new Set([
-        segment.professionKey || segment.profession_key,
-        ...(segment.additionalProfessionKeys || segment.additional_profession_keys || [])
-    ].map(normalizeProfessionKey).filter(Boolean))];
-}
-
-function scheduleHealthBookingFitsSegments(booking = {}, segments = [], professionKey = 'animator') {
-    const start = staffingForecastBookingTimeMinutes(booking);
-    if (start === null) return false;
-    const end = start + Math.max(0, Number(booking.duration || 0));
-    return (segments || []).some(segment => {
-        if (!scheduleHealthSegmentRoles(segment).includes(professionKey)) return false;
-        const range = scheduleHealthSegmentRange(segment);
-        return range && start >= range.start && end <= range.end;
-    });
 }
 
 function scheduleHealthShiftDepartment(staff = {}, entry = {}) {
@@ -1031,15 +865,10 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
             if (!entry) continue;
             const status = normalizeScheduleStatus(entry.status);
             if (!scheduleHealthIsWorkStatus(status)) continue;
-            const segments = scheduleEntrySegmentsForUi(entry, staff.role_type);
-            const segmentDepartments = [...new Set(segments
-                .flatMap(scheduleHealthSegmentRoles)
-                .map(scheduleProfessionDisplayGroupKey)
-                .filter(Boolean))];
-            const shiftDepartment = segmentDepartments[0] || scheduleHealthShiftDepartment(staff, entry);
+            const shiftDepartment = scheduleHealthShiftDepartment(staff, entry);
             const issueDepartment = shiftDepartment || department;
-            for (const segmentDepartment of segmentDepartments.length ? segmentDepartments : [shiftDepartment].filter(Boolean)) {
-                const countKey = `${segmentDepartment}:${date}`;
+            if (shiftDepartment) {
+                const countKey = `${shiftDepartment}:${date}`;
                 workingCountByDepartmentDate.set(countKey, (workingCountByDepartmentDate.get(countKey) || 0) + 1);
             }
 
@@ -1047,44 +876,17 @@ function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = schedule
                 addIssue(scheduleHealthIssue({ code: 'planned_inactive_staff', severity: 'critical', scope: 'cell', title: 'Inactive staff scheduled', detail: 'На зміну поставлений неактивний/offboarded працівник.', staff, date, department: issueDepartment }));
             }
 
-            const professionKeys = [...new Set(segments.flatMap(scheduleHealthSegmentRoles))];
-            if (!professionKeys.length) {
+            const professionKey = scheduleHealthShiftProfessionKey(staff, entry);
+            const explicitProfessionKey = normalizeProfessionKey(entry.profession_key || entry.professionKey);
+            if (!professionKey) {
                 addIssue(scheduleHealthIssue({ code: 'shift_without_role', severity: 'warning', scope: 'cell', title: 'Shift without role', detail: 'Робоча зміна не має професії/ролі.', staff, date, department: issueDepartment }));
-            } else if (professionKeys.some(professionKey => !staffHasProfession(staff, professionKey))) {
+            } else if (explicitProfessionKey && !staffHasProfession(staff, explicitProfessionKey)) {
                 addIssue(scheduleHealthIssue({ code: 'profession_mismatch', severity: 'critical', scope: 'cell', title: 'Profession mismatch', detail: 'Професія зміни не відповідає професіям у HR-картці працівника.', staff, date, department: issueDepartment }));
             }
 
             const loadMeta = scheduleShiftLoadMeta({ ...entry, status, date });
-            if (loadMeta.minutes > SCHEDULE_HEALTH_LONG_DAY_MINUTES) {
-                addIssue(scheduleHealthIssue({ code: 'long_total_day', severity: 'warning', scope: 'cell', title: 'Long total day', detail: `Сумарний оплачуваний план триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department: issueDepartment }));
-            }
-            const ranges = segments.map(segment => ({ segment, range: scheduleHealthSegmentRange(segment) }));
-            if (ranges.some(item => item.range && (item.range.end - item.range.start) > SCHEDULE_HEALTH_LONG_SHIFT_MINUTES)) {
-                addIssue(scheduleHealthIssue({ code: 'long_segment', severity: 'warning', scope: 'cell', title: 'Long segment', detail: 'Окремий часовий блок перевищує 12 годин.', staff, date, department: issueDepartment }));
-            }
-            let segmentOverlap = false;
-            for (let left = 0; left < ranges.length && !segmentOverlap; left += 1) {
-                for (let right = left + 1; right < ranges.length; right += 1) {
-                    if (scheduleHealthRangesOverlap(ranges[left].range, ranges[right].range)) {
-                        segmentOverlap = true;
-                        break;
-                    }
-                }
-            }
-            if (segmentOverlap) {
-                addIssue(scheduleHealthIssue({ code: 'overlapping_segments', severity: 'critical', scope: 'cell', title: 'Overlapping segments', detail: 'Оплачувані часові блоки одного дня перетинаються.', staff, date, department: issueDepartment }));
-            }
-            const animatorSegments = segments.filter(segment => scheduleHealthSegmentRoles(segment).includes('animator'));
-            if (animatorSegments.length) {
-                const outsideBookings = (StaffState.staffingForecastBookings[date] || []).filter(booking => {
-                    const lineId = booking.lineId || booking.line_id || booking.resourceId || booking.resource_id;
-                    return String(lineId || '') === String(staff.id)
-                        && staffingForecastIsActiveBooking(booking)
-                        && !scheduleHealthBookingFitsSegments(booking, animatorSegments, 'animator');
-                });
-                if (outsideBookings.length) {
-                    addIssue(scheduleHealthIssue({ code: 'booking_outside_availability', severity: 'critical', scope: 'cell', title: 'Booking outside availability', detail: `${outsideBookings.length} існуючих бронювань потрапили у прогалину; їх не видалено, потрібна ручна перевірка.`, staff, date, department: issueDepartment }));
-                }
+            if (loadMeta.minutes > SCHEDULE_HEALTH_LONG_SHIFT_MINUTES) {
+                addIssue(scheduleHealthIssue({ code: 'long_shift', severity: 'warning', scope: 'cell', title: 'Long shift', detail: `Зміна триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department: issueDepartment }));
             }
         }
     }
@@ -1525,19 +1327,6 @@ function staffingForecastDepartmentForShift(staff = {}, entry = {}) {
     return STAFFING_FORECAST_DEPARTMENTS.includes(department) ? department : '';
 }
 
-function staffingForecastDepartmentForProfession(professionKey, staff = {}) {
-    const normalized = normalizeProfessionKey(professionKey);
-    if (['manager', 'senior_manager', 'admin', 'vice_director', 'art_director'].includes(normalized)) return 'managers';
-    if (normalized === 'reception') return 'reception';
-    if (['trampoline_instructor', 'senior_instructor', 'instructor'].includes(normalized)) return 'trampoline';
-    if (normalized === 'animator') return 'animators';
-    if (['cook', 'pizzaiolo', 'barista', 'waiter'].includes(normalized)) return 'cafe';
-    if (['cleaner', 'cleaning', 'dishwasher', 'wardrobe'].includes(normalized)) return 'cleaning';
-    if (['tech', 'technician', 'security'].includes(normalized)) return 'tech';
-    const department = scheduleDisplayDepartmentKey(staff);
-    return STAFFING_FORECAST_DEPARTMENTS.includes(department) ? department : '';
-}
-
 function staffingForecastVisibleDepartments() {
     if (StaffState.activeDept === 'reception') return ['reception', 'managers'];
     if (StaffState.activeDept === 'tech') return ['tech'];
@@ -1545,44 +1334,17 @@ function staffingForecastVisibleDepartments() {
     return STAFFING_FORECAST_DEPARTMENTS;
 }
 
-function staffingForecastScheduledCounts(date, staffList = [], atMinutes = null) {
+function staffingForecastScheduledCounts(date, staffList = []) {
     const counts = STAFFING_FORECAST_DEPARTMENTS.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-    const staffByDepartment = STAFFING_FORECAST_DEPARTMENTS.reduce((acc, key) => ({ ...acc, [key]: new Set() }), {});
     for (const staff of staffList || []) {
         const entry = StaffState.schedule[`${staff.id}_${date}`];
         if (!entry || !scheduleHealthIsWorkStatus(entry.status)) continue;
-        const segments = scheduleEntrySegmentsForUi(entry, staff.role_type);
-        for (const segment of segments) {
-            const range = scheduleHealthSegmentRange(segment);
-            if (!range) continue;
-            if (Number.isFinite(atMinutes) && !(atMinutes >= range.start && atMinutes < range.end)) continue;
-            for (const role of scheduleHealthSegmentRoles(segment)) {
-                const department = staffingForecastDepartmentForProfession(role, staff);
-                if (department && staffByDepartment[department]) staffByDepartment[department].add(Number(staff.id));
-            }
+        const department = staffingForecastDepartmentForShift(staff, entry);
+        if (department && Object.prototype.hasOwnProperty.call(counts, department)) {
+            counts[department] += 1;
         }
     }
-    for (const department of STAFFING_FORECAST_DEPARTMENTS) counts[department] = staffByDepartment[department].size;
     return counts;
-}
-
-function staffingForecastCoverageMinutes(bookings = []) {
-    const minutes = new Set();
-    for (const booking of (bookings || []).filter(staffingForecastIsActiveBooking)) {
-        const start = staffingForecastBookingTimeMinutes(booking);
-        if (start === null) continue;
-        const end = start + Math.max(30, Number(booking.duration || 0));
-        minutes.add(start);
-        for (let cursor = Math.ceil(start / 30) * 30; cursor < end; cursor += 30) minutes.add(cursor);
-    }
-    return [...minutes].sort((left, right) => left - right);
-}
-
-function staffingForecastBookingActiveAt(booking = {}, minute) {
-    const start = staffingForecastBookingTimeMinutes(booking);
-    if (start === null) return false;
-    const end = start + Math.max(30, Number(booking.duration || 0));
-    return minute >= start && minute < end;
 }
 
 function staffingForecastGap(recommended = {}, scheduled = {}, departmentKeys = STAFFING_FORECAST_DEPARTMENTS) {
@@ -1603,33 +1365,9 @@ function buildStaffingDemandForecast(dates = getScheduleDates(), visibleStaff = 
     const departmentKeys = staffingForecastVisibleDepartments();
     const days = (dates || []).map(dateObj => {
         const date = typeof dateObj === 'string' ? dateObj : formatDateStr(dateObj);
-        const bookings = (StaffState.staffingForecastBookings[date] || []).filter(staffingForecastIsActiveBooking);
-        const recommendation = staffingForecastDayRecommendation(date, bookings);
-        const coverageSlots = staffingForecastCoverageMinutes(bookings).map(minute => {
-            const activeBookings = bookings.filter(booking => staffingForecastBookingActiveAt(booking, minute));
-            const slotRecommendation = staffingForecastDayRecommendation(date, activeBookings);
-            const scheduled = staffingForecastScheduledCounts(date, visibleStaff, minute);
-            return {
-                minute,
-                time: `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`,
-                bookingCount: activeBookings.length,
-                recommended: slotRecommendation.recommended,
-                scheduled,
-                gaps: staffingForecastGap(slotRecommendation.recommended, scheduled, departmentKeys)
-            };
-        });
-        const fallbackScheduled = staffingForecastScheduledCounts(date, visibleStaff);
-        const gaps = departmentKeys.reduce((acc, key) => {
-            if (!coverageSlots.length) {
-                acc[key] = staffingForecastGap(recommendation.recommended, fallbackScheduled, [key])[key];
-                return acc;
-            }
-            acc[key] = coverageSlots
-                .map(slot => slot.gaps[key])
-                .sort((left, right) => right.missing - left.missing || right.recommended - left.recommended || left.scheduled - right.scheduled)[0];
-            return acc;
-        }, {});
-        const scheduled = departmentKeys.reduce((acc, key) => ({ ...acc, [key]: gaps[key]?.scheduled || 0 }), {});
+        const recommendation = staffingForecastDayRecommendation(date, StaffState.staffingForecastBookings[date] || []);
+        const scheduled = staffingForecastScheduledCounts(date, visibleStaff);
+        const gaps = staffingForecastGap(recommendation.recommended, scheduled, departmentKeys);
         const missing = Object.values(gaps).reduce((sum, gap) => sum + gap.missing, 0);
         const overstaffed = Object.values(gaps).reduce((sum, gap) => sum + gap.overstaffed, 0);
         return {
@@ -1637,7 +1375,6 @@ function buildStaffingDemandForecast(dates = getScheduleDates(), visibleStaff = 
             ...recommendation,
             scheduled,
             gaps,
-            coverageSlots,
             missing,
             overstaffed,
             severity: missing > 0 ? 'critical' : (overstaffed > 0 ? 'warning' : 'ok')
@@ -1656,7 +1393,7 @@ function buildStaffingDemandForecast(dates = getScheduleDates(), visibleStaff = 
         return acc;
     }, {});
     return {
-        source: 'bookings_timeline_windows_v2',
+        source: 'bookings_timeline_heuristics_v1',
         rules: STAFFING_FORECAST_RULES,
         departmentKeys,
         days,
@@ -1697,9 +1434,6 @@ function renderStaffingForecastPanel(forecast = null) {
         const dayGaps = forecast.departmentKeys
             .map(key => renderStaffingForecastGapChip(key, day.gaps[key]))
             .join('');
-        const uncoveredSlots = (day.coverageSlots || []).filter(slot => (
-            Object.values(slot.gaps || {}).some(gap => Number(gap.missing || 0) > 0)
-        ));
         return `<div class="forecast-day-card is-${day.severity}">
             <div class="forecast-day-head">
                 <span>${escapeHtml(day.date.slice(5))}</span>
@@ -1708,10 +1442,8 @@ function renderStaffingForecastPanel(forecast = null) {
             <div class="forecast-day-meta">
                 <span>${day.bookingCount} bookings</span>
                 <span>${day.expectedGuests} guests</span>
-                <span>${day.coverageSlots?.length || 0} time windows</span>
                 ${day.overstaffed ? `<span>${day.overstaffed} over</span>` : ''}
             </div>
-            ${uncoveredSlots.length ? `<div class="forecast-day-meta">Needs coverage: ${uncoveredSlots.slice(0, 4).map(slot => escapeHtml(slot.time)).join(', ')}</div>` : ''}
             <div class="forecast-day-gaps">${dayGaps}</div>
         </div>`;
     }).join('');
@@ -2312,16 +2044,6 @@ function scheduleEntrySearchParts(entry = null) {
     const professionKey = normalizeProfessionKey(entry.profession_key || entry.professionKey);
     const start = entry.shift_start ? String(entry.shift_start).slice(0, 5) : '';
     const end = entry.shift_end ? String(entry.shift_end).slice(0, 5) : '';
-    const segmentParts = scheduleEntrySegmentsForUi(entry, professionKey).flatMap(segment => [
-        segment.professionKey,
-        professionLabel(segment.professionKey),
-        ...segment.additionalProfessionKeys,
-        ...segment.additionalProfessionKeys.map(professionLabel),
-        segment.shiftStart,
-        segment.shiftEnd,
-        `${segment.shiftStart}-${segment.shiftEnd}`,
-        segment.note
-    ]);
     return [
         status,
         STAFF_SCHEDULE_STATUS_LABELS[status] || status,
@@ -2329,8 +2051,7 @@ function scheduleEntrySearchParts(entry = null) {
         professionKey ? professionLabel(professionKey) : '',
         start,
         end,
-        start && end ? `${start}-${end}` : '',
-        ...segmentParts
+        start && end ? `${start}-${end}` : ''
     ];
 }
 
@@ -3435,17 +3156,12 @@ async function postAttendanceAction(action, staffId) {
     return { success: false, error: 'Unknown attendance action' };
 }
 
-async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey = null, dayPlan = null) {
+async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey = null) {
     const token = localStorage.getItem('pzp_token');
-    const payload = { staffId, date, shiftStart, shiftEnd, status, note, professionKey };
-    if (dayPlan) {
-        payload.segments = dayPlan.segments;
-        payload.primaryProfessionKey = dayPlan.primaryProfessionKey;
-    }
     const res = await fetch('/api/staff/schedule', {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ staffId, date, shiftStart, shiftEnd, status, note, professionKey })
     });
     return await res.json();
 }
@@ -3544,7 +3260,7 @@ function scheduleAttendanceFormatTime(value) {
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value).slice(0, 5);
-    return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+    return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
 }
 
 function scheduleAttendancePlannedTimes(entry = {}, record = {}) {
@@ -3599,12 +3315,6 @@ function scheduleAttendanceDetails(entry = null, record = null, date = '') {
     const status = scheduleAttendanceStatus(entry, record, date);
     const actualArrival = record?.clock_in || record?.checkin_at || null;
     const actualLeave = record?.clock_out || record?.checkout_at || null;
-    const segmentAllocations = Array.isArray(record?.segmentAllocations)
-        ? record.segmentAllocations
-        : (Array.isArray(record?.segment_allocations) ? record.segment_allocations : []);
-    const allocationIssues = Array.isArray(record?.allocationIssues)
-        ? record.allocationIssues
-        : (Array.isArray(record?.allocation_issues) ? record.allocation_issues : []);
     return {
         status,
         label: SCHEDULE_ATTENDANCE_LABELS[status] || status,
@@ -3616,13 +3326,6 @@ function scheduleAttendanceDetails(entry = null, record = null, date = '') {
         lateMinutes: Number(record?.late_minutes || 0),
         earlyLeaveMinutes: Number(record?.early_leave_minutes || 0),
         totalWorkedMinutes: Number(record?.total_worked_minutes || 0),
-        plannedMinutes: Number(record?.plannedMinutes ?? record?.planned_minutes ?? entry?.planned_minutes ?? 0),
-        actualMinutes: Number(record?.actualMinutes ?? record?.actual_minutes ?? record?.total_worked_minutes ?? 0),
-        overtimeMinutes: Number(record?.overtimeMinutes ?? record?.overtime_minutes ?? 0),
-        unallocatedGapMinutes: Number(record?.unallocatedGapMinutes ?? record?.unallocated_gap_minutes ?? 0),
-        segmentAllocations,
-        allocationSource: record?.allocationSource || record?.allocation_source || 'none',
-        allocationIssues,
         source: record?.attendance_source || (record ? 'attendance_record' : 'schedule_plan'),
         timeRecordId: record?.time_record_id || null
     };
@@ -3654,31 +3357,13 @@ function renderScheduleAttendanceIndicator(staffId, date, entry = null) {
         details.plannedStart ? String(details.plannedStart).slice(0, 5) : '',
         details.plannedEnd ? String(details.plannedEnd).slice(0, 5) : ''
     ].filter(Boolean).join('-');
-    const paidSummary = details.actualMinutes > 0 ? `${formatScheduleMinutes(details.actualMinutes)} факт` : '';
-    const warningMarker = details.allocationIssues.length ? '⚠' : '';
-    const meta = [actual || (planned ? `plan ${planned}` : details.source), paidSummary, warningMarker]
-        .filter(Boolean)
-        .join(' · ');
-    const segmentAllocationSummary = details.segmentAllocations.map(allocation => {
-        const role = professionLabel(allocation.professionKey || allocation.profession_key);
-        const start = String(allocation.shiftStart || allocation.shift_start || '').slice(0, 5);
-        const end = String(allocation.shiftEnd || allocation.shift_end || '').slice(0, 5);
-        const minutes = Number(allocation.actualMinutes ?? allocation.actual_minutes ?? 0);
-        return `${start}-${end} ${role}: ${formatScheduleMinutes(minutes)}`;
-    });
+    const meta = actual || (planned ? `plan ${planned}` : details.source);
     const title = [
         `Attendance: ${details.label}`,
         planned ? `planned ${planned}` : '',
         actual ? `actual ${actual}` : '',
-        details.plannedMinutes ? `planned paid ${formatScheduleMinutes(details.plannedMinutes)}` : '',
-        details.actualMinutes ? `actual paid ${formatScheduleMinutes(details.actualMinutes)}` : '',
-        ...segmentAllocationSummary,
-        details.unallocatedGapMinutes ? `gap excluded ${formatScheduleMinutes(details.unallocatedGapMinutes)}` : '',
-        details.overtimeMinutes ? `overtime ${formatScheduleMinutes(details.overtimeMinutes)}` : '',
         details.lateMinutes ? `late ${details.lateMinutes}m` : '',
         details.earlyLeaveMinutes ? `early ${details.earlyLeaveMinutes}m` : '',
-        ...details.allocationIssues.map(issue => issue?.message || issue?.code || String(issue)),
-        `allocation ${details.allocationSource}`,
         `source ${details.source}`
     ].filter(Boolean).join(' | ');
     return `<span class="sch-attendance is-${details.status}" title="${escapeHtml(title)}">
@@ -4032,13 +3717,11 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         const attendanceRecord = scheduleAttendanceRecord(emp.id, ds);
         const attendanceDetails = scheduleAttendanceDetails(entry, attendanceRecord, ds);
         let cellContent = '';
-        if ((status === 'working' || status === 'remote') && (shiftStart && shiftEnd || entry?.segments?.length)) {
-            cellContent = renderScheduleCellSegments(
-                entry,
-                entry?.profession_key || emp.role_type,
-                scheduleProfessionKey,
-                dates.length >= 28
-            );
+        if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
+            const compactTime = `${shiftStart.slice(0,2)}–${shiftEnd.slice(0,2)}`;
+            cellContent = `<span class="sch-time" data-schedule-compact-time="${compactTime}">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+            const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
+            if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
             if (isReplacement) {
                 cellContent += `<span class="sch-replacement-badge">Заміна</span>`;
                 cellContent += `<span class="sch-replacement-from">за ${escapeHtml(entry.original_staff_name || 'працівника')}</span>`;
@@ -4298,421 +3981,6 @@ function renderSchedule() {
 let _staffScheduleInitialState = '';
 let _staffFillInitialState = '';
 let _staffScheduleClosePromise = null;
-let _staffFillMutationPending = false;
-
-const STAFF_SCHEDULE_PLAN_SCOPES = Object.freeze({
-    schedule: Object.freeze({
-        editorId: 'schDayPlanEditor',
-        listId: 'schSegmentsList',
-        addButtonId: 'schAddSegmentBtn',
-        primaryId: 'schPrimaryProfession',
-        summaryId: 'schPlanSummary',
-        statusId: 'schStatus',
-        saveButtonId: 'schSaveBtn',
-        legacyProfessionId: 'schProfession',
-        legacyStartId: 'schStart',
-        legacyEndId: 'schEnd'
-    }),
-    fill: Object.freeze({
-        editorId: 'fillDayPlanEditor',
-        listId: 'fillSegmentsList',
-        addButtonId: 'fillAddSegmentBtn',
-        primaryId: 'fillPrimaryProfession',
-        summaryId: 'fillPlanSummary',
-        statusId: 'fillStatus',
-        saveButtonId: 'fillSaveBtn',
-        legacyProfessionId: 'fillProfession',
-        legacyStartId: 'fillStart',
-        legacyEndId: 'fillEnd'
-    })
-});
-
-function schedulePlanScopeConfig(scope) {
-    return STAFF_SCHEDULE_PLAN_SCOPES[scope] || STAFF_SCHEDULE_PLAN_SCOPES.schedule;
-}
-
-function schedulePlanIsWorkingStatus(status) {
-    return ['working', 'remote'].includes(normalizeScheduleStatus(status));
-}
-
-function schedulePlanStaff(scope) {
-    if (scope === 'schedule') {
-        const staffId = Number(StaffState.editingCell?.staffId);
-        const staff = StaffState.staff.find(item => Number(item.id) === staffId);
-        return staff ? [staff] : [];
-    }
-    const selected = document.getElementById('fillStaffSelect')?.value || 'all';
-    if (selected === 'all') return uniqueScheduleStaffById(scheduleableStaffForUi(scheduleVisibleStaff()));
-    const staffId = normalizeScheduleStaffId(selected);
-    return StaffState.staff.filter(item => normalizeScheduleStaffId(item.id) === staffId);
-}
-
-function schedulePlanProfessionOptions(scope, selectedKeys = []) {
-    const staff = schedulePlanStaff(scope);
-    let availableKeys = [];
-    if (staff.length) {
-        const keySets = staff.map(item => new Set(staffProfessionKeys(item)));
-        availableKeys = [...keySets[0]].filter(key => keySets.every(keys => keys.has(key)));
-    }
-    const selected = parseProfessionArray(selectedKeys).map(normalizeProfessionKey).filter(Boolean);
-    const keys = [...new Set([...availableKeys, ...selected])];
-    return keys.map(key => ({
-        value: key,
-        label: professionLabel(key),
-        available: availableKeys.includes(key)
-    }));
-}
-
-function schedulePlanDefaultProfession(scope) {
-    if (scope === 'schedule') {
-        const editing = StaffState.editingCell;
-        const staff = schedulePlanStaff(scope)[0];
-        return normalizeProfessionKey(editing?.sectionProfessionKey || staff?.role_type || staffProfessionKeys(staff || {})[0]);
-    }
-    const options = schedulePlanProfessionOptions(scope);
-    return options[0]?.value || '';
-}
-
-function createSchedulePlanSegment(scope, overrides = {}) {
-    return normalizeScheduleSegmentForUi({
-        professionKey: schedulePlanDefaultProfession(scope),
-        shiftStart: '10:00',
-        shiftEnd: '20:00',
-        breakMinutes: 0,
-        note: '',
-        additionalProfessionKeys: [],
-        ...overrides
-    });
-}
-
-function schedulePlanFieldId(scope, field, index, clientKey) {
-    const config = schedulePlanScopeConfig(scope);
-    if (index === 0 && field === 'profession') return config.legacyProfessionId;
-    if (index === 0 && field === 'start') return config.legacyStartId;
-    if (index === 0 && field === 'end') return config.legacyEndId;
-    return `${scope}Segment-${clientKey}-${field}`;
-}
-
-function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
-    const selectedKeys = [segment.professionKey, ...(segment.additionalProfessionKeys || [])];
-    const professionOptions = schedulePlanProfessionOptions(scope, selectedKeys);
-    const professionId = schedulePlanFieldId(scope, 'profession', index, segment.clientKey);
-    const startId = schedulePlanFieldId(scope, 'start', index, segment.clientKey);
-    const endId = schedulePlanFieldId(scope, 'end', index, segment.clientKey);
-    const breakId = schedulePlanFieldId(scope, 'break', index, segment.clientKey);
-    const noteId = schedulePlanFieldId(scope, 'note', index, segment.clientKey);
-    const optionHtml = professionOptions.length
-        ? professionOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === segment.professionKey ? 'selected' : ''}>${escapeHtml(option.label)}${option.available ? '' : ' · поза карткою'}</option>`).join('')
-        : '<option value="">Професія не задана</option>';
-    const additionalHtml = professionOptions.length
-        ? professionOptions.map(option => {
-            const checked = segment.additionalProfessionKeys.includes(option.value);
-            const isPrimary = option.value === segment.professionKey;
-            return `<label class="sch-additional-role ${isPrimary ? 'is-primary-role' : ''}">
-                <input type="checkbox" data-segment-field="additional" value="${escapeHtml(option.value)}" ${checked ? 'checked' : ''} ${isPrimary ? 'disabled' : ''}>
-                <span>${escapeHtml(option.label)}</span>
-            </label>`;
-        }).join('')
-        : '<span class="sch-segment-empty-roles">У HR-картці немає доступних професій.</span>';
-    return `
-        <article class="sch-segment-card" data-segment-index="${index}" data-segment-key="${escapeHtml(segment.clientKey)}" data-segment-id="${segment.id ?? ''}">
-            <div class="sch-segment-card-head">
-                <strong>Блок ${index + 1}</strong>
-                <div class="sch-segment-card-actions" aria-label="Порядок і видалення блоку ${index + 1}">
-                    <button type="button" data-segment-action="up" aria-label="Перемістити блок ${index + 1} вище" ${index === 0 ? 'disabled' : ''}>↑</button>
-                    <button type="button" data-segment-action="down" aria-label="Перемістити блок ${index + 1} нижче" ${index === segmentCount - 1 ? 'disabled' : ''}>↓</button>
-                    <button type="button" data-segment-action="remove" class="sch-segment-remove" aria-label="Видалити блок ${index + 1}">Видалити</button>
-                </div>
-            </div>
-            <div class="sch-segment-grid">
-                <div class="form-group sch-segment-profession-field">
-                    <label for="${escapeHtml(professionId)}">Професія</label>
-                    <select id="${escapeHtml(professionId)}" data-segment-field="profession">${optionHtml}</select>
-                </div>
-                <div class="form-group">
-                    <label for="${escapeHtml(startId)}">Початок</label>
-                    <input type="time" id="${escapeHtml(startId)}" data-segment-field="start" value="${escapeHtml(segment.shiftStart)}">
-                </div>
-                <div class="form-group">
-                    <label for="${escapeHtml(endId)}">Завершення</label>
-                    <input type="time" id="${escapeHtml(endId)}" data-segment-field="end" value="${escapeHtml(segment.shiftEnd)}">
-                </div>
-                <div class="form-group">
-                    <label for="${escapeHtml(breakId)}">Перерва, хв</label>
-                    <input type="number" id="${escapeHtml(breakId)}" data-segment-field="break" min="0" step="1" inputmode="numeric" value="${Number(segment.breakMinutes || 0)}">
-                </div>
-                <div class="form-group sch-segment-note-field">
-                    <label for="${escapeHtml(noteId)}">Примітка блоку</label>
-                    <input type="text" id="${escapeHtml(noteId)}" data-segment-field="note" value="${escapeHtml(segment.note || '')}" placeholder="Необов'язково">
-                </div>
-            </div>
-            <fieldset class="sch-additional-roles">
-                <legend>Додаткові одночасні ролі</legend>
-                <div class="sch-additional-role-options">${additionalHtml}</div>
-            </fieldset>
-        </article>`;
-}
-
-function readSchedulePlanSegments(scope) {
-    const config = schedulePlanScopeConfig(scope);
-    const cards = Array.from(document.querySelectorAll(`#${config.listId} .sch-segment-card`));
-    if (!cards.length) {
-        const profession = document.getElementById(config.legacyProfessionId);
-        const start = document.getElementById(config.legacyStartId);
-        const end = document.getElementById(config.legacyEndId);
-        if (profession && start && end) {
-            return [{
-                id: null,
-                clientKey: `${scope}-legacy-segment`,
-                professionKey: normalizeProfessionKey(profession.value),
-                shiftStart: normalizeSchedulePlanTime(start.value),
-                shiftEnd: normalizeSchedulePlanTime(end.value),
-                breakMinutes: 0,
-                note: '',
-                additionalProfessionKeys: []
-            }];
-        }
-    }
-    return cards.map(card => ({
-        id: card.dataset.segmentId ? Number(card.dataset.segmentId) : null,
-        clientKey: card.dataset.segmentKey || scheduleSegmentClientKey(),
-        professionKey: normalizeProfessionKey(card.querySelector('[data-segment-field="profession"]')?.value),
-        shiftStart: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="start"]')?.value),
-        shiftEnd: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="end"]')?.value),
-        breakMinutes: Number.parseInt(card.querySelector('[data-segment-field="break"]')?.value, 10) || 0,
-        note: String(card.querySelector('[data-segment-field="note"]')?.value || '').trim(),
-        additionalProfessionKeys: Array.from(card.querySelectorAll('[data-segment-field="additional"]:checked'))
-            .map(input => normalizeProfessionKey(input.value))
-            .filter(Boolean)
-    }));
-}
-
-function schedulePlanMetrics(segments = []) {
-    const timeline = segments.map((segment, index) => {
-        const startMinutes = scheduleTimeToMinutes(segment.shiftStart);
-        const rawEndMinutes = scheduleTimeToMinutes(segment.shiftEnd);
-        const endMinutes = startMinutes === null || rawEndMinutes === null
-            ? null
-            : (rawEndMinutes <= startMinutes ? rawEndMinutes + (24 * 60) : rawEndMinutes);
-        return { segment, index, startMinutes, endMinutes };
-    }).filter(item => item.startMinutes !== null && item.endMinutes !== null)
-        .sort((left, right) => left.startMinutes - right.startMinutes || left.endMinutes - right.endMinutes);
-    const plannedMinutes = segments.reduce((total, segment) => {
-        const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
-        return total + (duration && duration > 0 ? Math.max(0, duration - Number(segment.breakMinutes || 0)) : 0);
-    }, 0);
-    const startMinutes = timeline[0]?.startMinutes ?? null;
-    const endMinutes = timeline.length ? Math.max(...timeline.map(item => item.endMinutes)) : null;
-    const occupiedMinutes = timeline.reduce((total, item) => total + Math.max(0, item.endMinutes - item.startMinutes), 0);
-    const gapMinutes = startMinutes === null || endMinutes === null ? 0 : Math.max(0, (endMinutes - startMinutes) - occupiedMinutes);
-    const roleKeys = [...new Set(segments.flatMap(segment => [segment.professionKey, ...(segment.additionalProfessionKeys || [])]).filter(Boolean))];
-    const toTime = minutes => minutes === null ? '' : `${String(Math.floor((minutes % 1440) / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-    return {
-        timeline,
-        plannedMinutes,
-        gapMinutes,
-        roleCount: roleKeys.length,
-        envelopeStart: toTime(startMinutes),
-        envelopeEnd: toTime(endMinutes)
-    };
-}
-
-function validateSchedulePlan(scope, options = {}) {
-    const config = schedulePlanScopeConfig(scope);
-    const status = document.getElementById(config.statusId)?.value || 'working';
-    const working = schedulePlanIsWorkingStatus(status);
-    const segments = working ? readSchedulePlanSegments(scope) : [];
-    const primaryProfessionKey = working
-        ? normalizeProfessionKey(document.getElementById(config.primaryId)?.value || segments[0]?.professionKey)
-        : null;
-    const errors = [];
-    if (working && !segments.length) errors.push('Додайте хоча б один часовий блок.');
-    if (segments.length > STAFF_SCHEDULE_MAX_SEGMENTS) errors.push(`Максимум ${STAFF_SCHEDULE_MAX_SEGMENTS} блоків на день.`);
-    const qualifiedStaff = options.staff || schedulePlanStaff(scope);
-    const exactSegments = new Set();
-    segments.forEach((segment, index) => {
-        const label = `Блок ${index + 1}`;
-        if (!segment.professionKey) errors.push(`${label}: оберіть професію.`);
-        if (!segment.shiftStart || !segment.shiftEnd) errors.push(`${label}: задайте коректний початок і завершення.`);
-        const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
-        if (segment.shiftStart && segment.shiftStart === segment.shiftEnd) errors.push(`${label}: початок і завершення не можуть збігатися.`);
-        if (duration !== null && Number(segment.breakMinutes || 0) >= duration) errors.push(`${label}: перерва має бути коротшою за тривалість блоку.`);
-        if (Number(segment.breakMinutes || 0) < 0) errors.push(`${label}: перерва не може бути від'ємною.`);
-        const additional = segment.additionalProfessionKeys || [];
-        if (additional.includes(segment.professionKey)) errors.push(`${label}: основну професію не можна дублювати як додаткову.`);
-        const roles = [segment.professionKey, ...additional].filter(Boolean);
-        const invalidRole = roles.find(role => qualifiedStaff.some(staff => !staffHasProfession(staff, role)));
-        if (invalidRole) errors.push(`${label}: професія «${professionLabel(invalidRole)}» відсутня в HR-картці одного з вибраних працівників.`);
-        const exactKey = [segment.professionKey, segment.shiftStart, segment.shiftEnd].join('|');
-        if (exactSegments.has(exactKey)) errors.push(`${label}: точний дубль іншого блоку.`);
-        exactSegments.add(exactKey);
-    });
-    const metrics = schedulePlanMetrics(segments);
-    for (let index = 1; index < metrics.timeline.length; index += 1) {
-        const previous = metrics.timeline[index - 1];
-        const current = metrics.timeline[index];
-        if (current.startMinutes < previous.endMinutes) {
-            errors.push(`Блоки ${previous.index + 1} і ${current.index + 1} перетинаються.`);
-            break;
-        }
-    }
-    if (working && (!primaryProfessionKey || !segments.some(segment => segment.professionKey === primaryProfessionKey))) {
-        errors.push('Основна роль дня має бути основною професією одного з блоків.');
-    }
-    return { valid: errors.length === 0, errors: [...new Set(errors)], segments, primaryProfessionKey, metrics, status };
-}
-
-function updateSchedulePlanPrimaryOptions(scope, preferredValue = '') {
-    const config = schedulePlanScopeConfig(scope);
-    const select = document.getElementById(config.primaryId);
-    if (!select) return;
-    const current = normalizeProfessionKey(preferredValue || select.value);
-    const professionKeys = [...new Set(readSchedulePlanSegments(scope).map(segment => segment.professionKey).filter(Boolean))];
-    select.innerHTML = professionKeys.length
-        ? professionKeys.map(key => `<option value="${escapeHtml(key)}" ${key === current ? 'selected' : ''}>${escapeHtml(professionLabel(key))}</option>`).join('')
-        : '<option value="">Немає ролей у блоках</option>';
-    if (professionKeys.length && !professionKeys.includes(select.value)) select.value = professionKeys[0];
-}
-
-function updateSchedulePlanSummary(scope) {
-    const config = schedulePlanScopeConfig(scope);
-    const summary = document.getElementById(config.summaryId);
-    const validation = validateSchedulePlan(scope);
-    if (summary) {
-        const metrics = validation.metrics;
-        const envelope = metrics.envelopeStart && metrics.envelopeEnd
-            ? `${metrics.envelopeStart}–${metrics.envelopeEnd}`
-            : '—';
-        summary.classList.toggle('has-error', !validation.valid);
-        summary.innerHTML = `
-            <div class="sch-plan-summary-metrics">
-                <span><b>${escapeHtml(envelope)}</b> envelope</span>
-                <span><b>${escapeHtml(formatScheduleMinutes(metrics.plannedMinutes))}</b> оплачувано</span>
-                <span><b>${escapeHtml(formatScheduleMinutes(metrics.gapMinutes))}</b> прогалини</span>
-                <span><b>${metrics.roleCount}</b> ролей</span>
-            </div>
-            ${validation.errors.length ? `<ul>${validation.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '<div class="sch-plan-valid">План дня коректний.</div>'}`;
-    }
-    const saveButton = document.getElementById(config.saveButtonId);
-    if (saveButton) {
-        const pending = scope === 'schedule' ? Boolean(StaffState.editingCell?.mutationPending) : _staffFillMutationPending;
-        const readOnly = scope === 'schedule' && !StaffState.canManage;
-        saveButton.disabled = pending || readOnly || !validation.valid;
-    }
-    return validation;
-}
-
-function renderSchedulePlanEditor(scope, rawSegments = [], options = {}) {
-    const config = schedulePlanScopeConfig(scope);
-    const list = document.getElementById(config.listId);
-    if (!list) return;
-    const status = document.getElementById(config.statusId)?.value || 'working';
-    let segments = (Array.isArray(rawSegments) ? rawSegments : []).map(segment => normalizeScheduleSegmentForUi(segment));
-    if (schedulePlanIsWorkingStatus(status) && !segments.length) segments = [createSchedulePlanSegment(scope)];
-    const activeIndex = Math.min(Math.max(0, Number(options.activeIndex ?? list.dataset.activeSegmentIndex ?? 0)), Math.max(0, segments.length - 1));
-    list.dataset.activeSegmentIndex = String(activeIndex);
-    list.innerHTML = segments.map((segment, index) => renderSchedulePlanSegmentCard(scope, segment, index, segments.length)).join('');
-    const activeCard = list.querySelector(`[data-segment-index="${activeIndex}"]`);
-    activeCard?.classList.add('is-active');
-    updateSchedulePlanPrimaryOptions(scope, options.primaryProfessionKey);
-    updateSchedulePlanSummary(scope);
-}
-
-function getActiveScheduleSegmentCard() {
-    const list = document.getElementById('schSegmentsList');
-    const activeIndex = Number(list?.dataset.activeSegmentIndex || 0);
-    const card = list?.querySelector(`[data-segment-index="${activeIndex}"]`) || list?.querySelector('.sch-segment-card');
-    if (card) return card;
-    return {
-        querySelector(selector) {
-            if (selector.includes('profession')) return document.getElementById('schProfession');
-            if (selector.includes('start')) return document.getElementById('schStart');
-            if (selector.includes('end')) return document.getElementById('schEnd');
-            return null;
-        }
-    };
-}
-
-function handleSchedulePlanProfessionChange() {
-    const editing = StaffState.editingCell;
-    if (!editing) return;
-    const cachedPreferences = StaffState.shiftPreferences[Number(editing.staffId)];
-    const preferences = Array.isArray(cachedPreferences) ? cachedPreferences : [];
-    renderScheduleShiftPreferencePanel(preferences, { autoApply: 'force' });
-    if (!Array.isArray(cachedPreferences)) {
-        loadScheduleShiftPreferences(editing.staffId, { force: true, autoApply: 'force' });
-    }
-}
-
-function bindSchedulePlanEditor(scope) {
-    const config = schedulePlanScopeConfig(scope);
-    const editor = document.getElementById(config.editorId);
-    if (!editor || editor.dataset.segmentEditorBound === 'true') return;
-    const list = document.getElementById(config.listId);
-    const rerender = (segments, options = {}) => renderSchedulePlanEditor(scope, segments, options);
-    editor.addEventListener('focusin', event => {
-        const card = event.target.closest?.('.sch-segment-card');
-        if (!card || !list?.contains(card)) return;
-        list.dataset.activeSegmentIndex = card.dataset.segmentIndex || '0';
-        list.querySelectorAll('.sch-segment-card').forEach(item => item.classList.toggle('is-active', item === card));
-        if (scope === 'schedule' && event.target.matches('[data-segment-field="profession"]')) {
-            const preferences = StaffState.shiftPreferences[Number(StaffState.editingCell?.staffId)] || [];
-            renderScheduleShiftPreferencePanel(preferences);
-        }
-    });
-    editor.addEventListener('input', event => {
-        if (!event.target.matches('[data-segment-field]')) return;
-        updateSchedulePlanPrimaryOptions(scope);
-        updateSchedulePlanSummary(scope);
-    });
-    editor.addEventListener('change', event => {
-        if (!event.target.matches('[data-segment-field]')) return;
-        const card = event.target.closest('.sch-segment-card');
-        if (card && list) list.dataset.activeSegmentIndex = card.dataset.segmentIndex || '0';
-        if (event.target.matches('[data-segment-field="profession"]')) {
-            const primaryValue = document.getElementById(config.primaryId)?.value || '';
-            const segments = readSchedulePlanSegments(scope).map(segment => ({
-                ...segment,
-                additionalProfessionKeys: segment.additionalProfessionKeys.filter(key => key !== segment.professionKey)
-            }));
-            rerender(segments, { primaryProfessionKey: primaryValue, activeIndex: Number(card?.dataset.segmentIndex || 0) });
-            if (scope === 'schedule') handleSchedulePlanProfessionChange();
-            return;
-        }
-        updateSchedulePlanPrimaryOptions(scope);
-        updateSchedulePlanSummary(scope);
-    });
-    editor.addEventListener('click', event => {
-        const addButton = event.target.closest(`#${config.addButtonId}`);
-        if (addButton) {
-            const segments = readSchedulePlanSegments(scope);
-            if (segments.length >= STAFF_SCHEDULE_MAX_SEGMENTS) {
-                showNotification(`Максимум ${STAFF_SCHEDULE_MAX_SEGMENTS} блоків на день`, 'error');
-                return;
-            }
-            segments.push(createSchedulePlanSegment(scope));
-            rerender(segments, { activeIndex: segments.length - 1 });
-            document.getElementById(schedulePlanFieldId(scope, 'profession', segments.length - 1, segments[segments.length - 1].clientKey))?.focus();
-            return;
-        }
-        const actionButton = event.target.closest('[data-segment-action]');
-        if (!actionButton) return;
-        const card = actionButton.closest('.sch-segment-card');
-        const index = Number(card?.dataset.segmentIndex);
-        const segments = readSchedulePlanSegments(scope);
-        if (!Number.isInteger(index) || !segments[index]) return;
-        const primaryProfessionKey = document.getElementById(config.primaryId)?.value || '';
-        if (actionButton.dataset.segmentAction === 'remove') segments.splice(index, 1);
-        if (actionButton.dataset.segmentAction === 'up' && index > 0) [segments[index - 1], segments[index]] = [segments[index], segments[index - 1]];
-        if (actionButton.dataset.segmentAction === 'down' && index < segments.length - 1) [segments[index + 1], segments[index]] = [segments[index], segments[index + 1]];
-        const nextIndex = actionButton.dataset.segmentAction === 'up' ? index - 1
-            : actionButton.dataset.segmentAction === 'down' ? index + 1
-                : Math.min(index, Math.max(0, segments.length - 1));
-        rerender(segments, { primaryProfessionKey, activeIndex: nextIndex });
-    });
-    document.getElementById(config.primaryId)?.addEventListener('change', () => updateSchedulePlanSummary(scope));
-    editor.dataset.segmentEditorBound = 'true';
-}
 
 function scheduleEditingCellMatches(staffId, date, rangeKey = '') {
     const editing = StaffState.editingCell;
@@ -4753,7 +4021,6 @@ function finishScheduleModalMutation(session) {
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'false');
     setScheduleModalMutationControlsDisabled(false);
-    if (document.getElementById('schPlanSummary')) updateSchedulePlanSummary('schedule');
 }
 
 function scheduleCellFocusTarget(staffId, date, fallback = null, departmentKey = '') {
@@ -4851,7 +4118,7 @@ function fallbackScheduleShiftPreference(professionKey, dayType) {
 }
 
 function scheduleShiftPreferencesForCurrentProfession(preferences = []) {
-    const professionKey = normalizeProfessionKey(getActiveScheduleSegmentCard()?.querySelector('[data-segment-field="profession"]')?.value);
+    const professionKey = normalizeProfessionKey(document.getElementById('schProfession')?.value);
     if (!professionKey) return [];
     const savedByDayType = new Map((Array.isArray(preferences) ? preferences : [])
         .map(normalizeScheduleShiftPreference)
@@ -4889,13 +4156,11 @@ function applyScheduleShiftPreference(preference = {}) {
         status.value = 'working';
         toggleTimeFields();
     }
-    const activeCard = getActiveScheduleSegmentCard();
-    const start = activeCard?.querySelector('[data-segment-field="start"]');
-    const end = activeCard?.querySelector('[data-segment-field="end"]');
+    const start = document.getElementById('schStart');
+    const end = document.getElementById('schEnd');
     if (start) start.value = normalized.startTime;
     if (end) end.value = normalized.endTime;
     setScheduleShiftPreferenceActiveDay(normalized.dayType);
-    updateSchedulePlanSummary('schedule');
     return true;
 }
 
@@ -4936,7 +4201,7 @@ function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
         return;
     }
     const editing = StaffState.editingCell;
-    const professionKey = normalizeProfessionKey(getActiveScheduleSegmentCard()?.querySelector('[data-segment-field="profession"]')?.value);
+    const professionKey = normalizeProfessionKey(document.getElementById('schProfession')?.value);
     if (!editing || !professionKey) {
         panel.hidden = true;
         panel.innerHTML = '';
@@ -5014,20 +4279,18 @@ async function loadScheduleShiftPreferences(staffId, options = {}) {
 }
 
 function getStaffScheduleState() {
-    const fields = ['schStatus', 'schPrimaryProfession', 'schNote'].map(id => {
+    return ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
-    return `${fields}|segments:${JSON.stringify(readSchedulePlanSegments('schedule'))}`;
 }
 
 function getStaffFillState() {
     const dayState = Array.from(document.querySelectorAll('#fillDaysRow input[type=checkbox]')).map(cb => cb.checked ? '1' : '0').join('');
-    const fields = ['fillStaffSelect', 'fillStatus', 'fillPrimaryProfession', 'fillNote'].map(id => {
+    return ['fillStaffSelect', 'fillStatus', 'fillStart', 'fillEnd', 'fillNote'].map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
-    }).join('|');
-    return `${fields}|segments:${JSON.stringify(readSchedulePlanSegments('fill'))}|days:${dayState}`;
+    }).join('|') + '|days:' + dayState;
 }
 
 function openEditModal(staffId, date, options = {}) {
@@ -5054,15 +4317,20 @@ function openEditModal(staffId, date, options = {}) {
         mutationPending: false
     };
 
-    document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'План дня' : 'Перегляд плану'}: ${emp.name} — ${date}`;
+    document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'Редагувати' : 'Перегляд'}: ${emp.name} — ${date}`;
     document.getElementById('schStatus').value = entry?.status || 'working';
+    document.getElementById('schStart').value = entry?.shift_start || '10:00';
+    document.getElementById('schEnd').value = entry?.shift_end || '20:00';
     document.getElementById('schNote').value = entry?.note || '';
-    const selectedProfessionKey = normalizeProfessionKey(
-        entry?.primary_profession_key || entry?.primaryProfessionKey || entry?.profession_key || sectionProfessionKey || emp.role_type
-    );
-    renderSchedulePlanEditor('schedule', scheduleEntrySegmentsForUi(entry, selectedProfessionKey), {
-        primaryProfessionKey: selectedProfessionKey
-    });
+    const professionSelect = document.getElementById('schProfession');
+    if (professionSelect) {
+        const selectedProfessionKey = entry?.profession_key || sectionProfessionKey || emp.role_type;
+        const professionOptions = staffProfessionOptions(emp, selectedProfessionKey);
+        professionSelect.innerHTML = professionOptions.length
+            ? professionOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
+            : '<option value="">Професія не задана</option>';
+        professionSelect.disabled = !professionOptions.length;
+    }
 
     const isReplacement = isReplacementEntry(entry);
     const canReplace = StaffState.canManage
@@ -5192,11 +4460,9 @@ async function closeEditModal(force = false, expectedSession = null) {
 function toggleTimeFields() {
     const status = document.getElementById('schStatus')?.value;
     const visible = status === 'working' || status === 'remote';
-    const editor = document.getElementById('schDayPlanEditor');
-    if (editor) editor.hidden = !visible;
-    const warning = document.getElementById('schNonWorkingWarning');
-    if (warning) warning.hidden = visible;
-    if (visible && !readSchedulePlanSegments('schedule').length) renderSchedulePlanEditor('schedule', []);
+    document.getElementById('schTimeFields').style.display = visible ? '' : 'none';
+    const professionGroup = document.getElementById('schProfessionGroup');
+    if (professionGroup) professionGroup.style.display = visible ? '' : 'none';
     const shiftPreferencePanel = document.getElementById('schShiftPreferencePanel');
     if (!visible) {
         if (shiftPreferencePanel) {
@@ -5215,7 +4481,6 @@ function toggleTimeFields() {
     const clearReplacementBtn = document.getElementById('schClearReplacementBtn');
     if (replaceBtn) replaceBtn.hidden = !canReplace;
     if (clearReplacementBtn) clearReplacementBtn.hidden = !(canReplace && isReplacement);
-    updateSchedulePlanSummary('schedule');
 }
 
 function scheduleAuditDetails(row = {}) {
@@ -5343,12 +4608,9 @@ async function loadScheduleCellHistory(staffId, date) {
 }
 
 function setScheduleModalReadOnly(readOnly) {
-    ['schStatus', 'schNote'].forEach(id => {
+    ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = readOnly;
-    });
-    document.querySelectorAll('#schDayPlanEditor input, #schDayPlanEditor select, #schDayPlanEditor button').forEach(element => {
-        if (readOnly) element.disabled = true;
     });
     const saveBtn = document.getElementById('schSaveBtn');
     if (saveBtn) saveBtn.hidden = readOnly;
@@ -5362,7 +4624,6 @@ function setScheduleModalReadOnly(readOnly) {
     document.querySelectorAll('#schShiftPreferencePanel .sch-shift-preference-option').forEach(button => {
         button.disabled = readOnly;
     });
-    updateSchedulePlanSummary('schedule');
 }
 
 async function handleSave() {
@@ -5380,32 +4641,16 @@ async function handleSave() {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
         return;
     }
-    const validation = updateSchedulePlanSummary('schedule');
-    if (!validation.valid) {
-        showNotification(validation.errors[0] || 'Перевірте план дня', 'error');
-        return;
-    }
-    const status = validation.status;
-    const showTime = schedulePlanIsWorkingStatus(status);
-    const shiftStart = showTime ? validation.metrics.envelopeStart : null;
-    const shiftEnd = showTime ? validation.metrics.envelopeEnd : null;
-    const professionKey = showTime ? validation.primaryProfessionKey : null;
+    const status = document.getElementById('schStatus')?.value;
+    const showTime = status === 'working' || status === 'remote';
+    const shiftStart = showTime ? document.getElementById('schStart')?.value : null;
+    const shiftEnd = showTime ? document.getElementById('schEnd')?.value : null;
+    const professionKey = showTime ? (document.getElementById('schProfession')?.value || null) : null;
     const note = document.getElementById('schNote')?.value.trim() || null;
 
     if (!beginScheduleModalMutation(editingSession)) return;
     try {
-        const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey, {
-            primaryProfessionKey: professionKey,
-            segments: validation.segments.map(segment => ({
-                id: segment.id,
-                professionKey: segment.professionKey,
-                shiftStart: segment.shiftStart,
-                shiftEnd: segment.shiftEnd,
-                breakMinutes: segment.breakMinutes,
-                note: segment.note || null,
-                additionalProfessionKeys: segment.additionalProfessionKeys
-            }))
-        });
+        const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey);
         if (result.success) {
             if (scheduleRangeDataReady() && editingRangeKey === scheduleCommittedRangeKey()) {
                 replaceScheduleStateEntry(previousEntry, result.data);
@@ -5673,8 +4918,9 @@ function openFillWeekModal() {
     }
 
     document.getElementById('fillStatus').value = 'working';
+    document.getElementById('fillStart').value = '10:00';
+    document.getElementById('fillEnd').value = '20:00';
     document.getElementById('fillNote').value = '';
-    renderSchedulePlanEditor('fill', [createSchedulePlanSegment('fill')]);
     toggleFillTimeFields();
     updateFillWeekModalCopy();
     const overlay = document.getElementById('fillWeekOverlay');
@@ -5707,24 +4953,19 @@ async function closeFillWeekModal(force = false) {
 
 function toggleFillTimeFields() {
     const status = document.getElementById('fillStatus')?.value;
-    const visible = schedulePlanIsWorkingStatus(status);
-    const editor = document.getElementById('fillDayPlanEditor');
-    if (editor) editor.hidden = !visible;
-    const warning = document.getElementById('fillNonWorkingWarning');
-    if (warning) warning.hidden = visible;
-    if (visible && !readSchedulePlanSegments('fill').length) renderSchedulePlanEditor('fill', []);
-    updateSchedulePlanSummary('fill');
+    document.getElementById('fillTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleFillWeekSave() {
-    if (_staffFillMutationPending) return;
     if (!scheduleRangeDataReady()) {
         showNotification('Період графіка змінився. Відкрийте заповнення повторно.', 'error');
         return;
     }
     const staffValue = document.getElementById('fillStaffSelect')?.value;
     const status = document.getElementById('fillStatus')?.value;
-    const showTime = schedulePlanIsWorkingStatus(status);
+    const showTime = status === 'working' || status === 'remote';
+    const shiftStart = showTime ? document.getElementById('fillStart')?.value : null;
+    const shiftEnd = showTime ? document.getElementById('fillEnd')?.value : null;
     const note = document.getElementById('fillNote')?.value.trim() || null;
 
     // Get selected days (checkboxes)
@@ -5747,24 +4988,6 @@ async function handleFillWeekSave() {
     }
     targetStaff = uniqueScheduleStaffById(scheduleableStaffForUi(targetStaff));
 
-    const validation = validateSchedulePlan('fill', { staff: targetStaff });
-    if (!validation.valid) {
-        updateSchedulePlanSummary('fill');
-        showNotification(validation.errors[0] || 'Перевірте шаблон часових блоків', 'error');
-        return;
-    }
-    const shiftStart = showTime ? validation.metrics.envelopeStart : null;
-    const shiftEnd = showTime ? validation.metrics.envelopeEnd : null;
-    const professionKey = showTime ? validation.primaryProfessionKey : null;
-    const segmentTemplate = showTime ? validation.segments.map(segment => ({
-        professionKey: segment.professionKey,
-        shiftStart: segment.shiftStart,
-        shiftEnd: segment.shiftEnd,
-        breakMinutes: segment.breakMinutes,
-        note: segment.note || null,
-        additionalProfessionKeys: [...segment.additionalProfessionKeys]
-    })) : [];
-
     // Build entries for the visible period; selected weekdays stay as a filter inside that period.
     const dates = getScheduleDates();
     const entries = [];
@@ -5777,12 +5000,7 @@ async function handleFillWeekSave() {
                 staffId: normalizeScheduleStaffId(emp.id),
                 date,
                 shiftStart, shiftEnd, status, note,
-                professionKey,
-                primaryProfessionKey: professionKey,
-                segments: segmentTemplate.map(segment => ({
-                    ...segment,
-                    additionalProfessionKeys: [...segment.additionalProfessionKeys]
-                }))
+                professionKey: showTime ? normalizeProfessionKey(emp.role_type) : null
             });
         }
     }
@@ -5797,34 +5015,26 @@ async function handleFillWeekSave() {
     const rangeLabel = formatScheduleRangeLabel(dates[0], getScheduleRangeEnd(dates));
     const needsConfirmation = dates.length > STAFF_SCHEDULE_WINDOW_DAYS
         || entries.length >= STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD;
-    _staffFillMutationPending = true;
-    updateSchedulePlanSummary('fill');
-    try {
-        if (needsConfirmation) {
-            const confirmLines = [
-                `Заповнити ${entries.length} записів за період ${rangeLabel}?`,
-                '',
-                `Працівників: ${targetStaff.length}`,
-                `Днів у періоді: ${dates.length}`,
-                `Блоків у шаблоні: ${segmentTemplate.length}`,
-                `Вибрані дні тижня: ${selectedWeekdayLabels(checkedDays) || '-'}`,
-                '',
-                'Існуючі записи для цих дат і працівників можуть бути оновлені.'
-            ];
-            if (!await confirmModal(confirmLines.join('\n'), { type: 'warning', okText: 'Заповнити' })) return;
-        }
+    if (needsConfirmation) {
+        const confirmLines = [
+            `Заповнити ${entries.length} записів за період ${rangeLabel}?`,
+            '',
+            `Працівників: ${targetStaff.length}`,
+            `Днів у періоді: ${dates.length}`,
+            `Вибрані дні тижня: ${selectedWeekdayLabels(checkedDays) || '-'}`,
+            '',
+            'Існуючі записи для цих дат і працівників можуть бути оновлені.'
+        ];
+        if (!await confirmModal(confirmLines.join('\n'), { type: 'warning', okText: 'Заповнити' })) return;
+    }
 
-        const result = await bulkSaveSchedule(entries);
-        if (result.success) {
-            closeFillWeekModal(true);
-            showNotification(`Заповнено ${result.count} записів`);
-            await goToScheduleRange(currentRange.start, currentRange.end, currentMode);
-        } else {
-            showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
-        }
-    } finally {
-        _staffFillMutationPending = false;
-        updateSchedulePlanSummary('fill');
+    const result = await bulkSaveSchedule(entries);
+    if (result.success) {
+        closeFillWeekModal(true);
+        showNotification(`Заповнено ${result.count} записів`);
+        await goToScheduleRange(currentRange.start, currentRange.end, currentMode);
+    } else {
+        showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
     }
 }
 
@@ -6474,23 +5684,17 @@ function scheduleExportVisibleStaff() {
 
 function scheduleExportCell(entry) {
     const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
+    const time = (entry?.shift_start && entry?.shift_end)
+        ? `${entry.shift_start.slice(0, 5)}-${entry.shift_end.slice(0, 5)}`
+        : '';
     const label = STAFF_SCHEDULE_STATUS_LABELS[status] || status || '';
+    const profession = entry?.profession_key ? professionLabel(entry.profession_key) : '';
     const note = String(entry?.note || '').trim();
     const lines = [];
-    const segments = scheduleEntrySegmentsForUi(entry, entry?.profession_key);
-    if (segments.length && ['working', 'remote'].includes(status)) {
-        segments.forEach(segment => {
-            const additionalRoles = segment.additionalProfessionKeys.length
-                ? ` + ${segment.additionalProfessionKeys.map(professionLabel).join(', ')}`
-                : '';
-            const breakLabel = segment.breakMinutes > 0 ? ` · перерва ${segment.breakMinutes} хв` : '';
-            lines.push(`${segment.shiftStart}-${segment.shiftEnd} · ${professionLabel(segment.professionKey)}${additionalRoles}${breakLabel}`);
-            if (segment.note) lines.push(`↳ ${segment.note}`);
-        });
-        lines.push(`Разом: ${formatScheduleMinutes(schedulePlanMetrics(segments).plannedMinutes)}`);
-    }
+    if (time) lines.push(time);
     if (status && status !== 'working' && status !== 'unset') lines.push(label);
-    if (!segments.length && status === 'working') lines.push(label);
+    if (!time && status === 'working') lines.push(label);
+    if (profession && ['working', 'remote'].includes(status)) lines.push(profession);
     if (note) lines.push(note);
     return {
         status: String(status || 'unset').replace(/[^a-z0-9_-]/gi, ''),
@@ -6907,12 +6111,21 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
         document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
         document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
-        bindSchedulePlanEditor('schedule');
+        document.getElementById('schProfession')?.addEventListener('change', () => {
+            const editing = StaffState.editingCell;
+            if (!editing) return;
+            const cachedPreferences = StaffState.shiftPreferences[Number(editing.staffId)];
+            const preferences = Array.isArray(cachedPreferences) ? cachedPreferences : [];
+            renderScheduleShiftPreferencePanel(preferences, { autoApply: 'force' });
+            if (!Array.isArray(cachedPreferences)) {
+                loadScheduleShiftPreferences(editing.staffId, { force: true, autoApply: 'force' });
+            }
+        });
         document.getElementById('schShiftPreferencePanel')?.addEventListener('click', event => {
             const button = event.target.closest('[data-shift-pref-start][data-shift-pref-end]');
             if (!button || button.disabled || !StaffState.canManage) return;
             applyScheduleShiftPreference({
-                professionKey: getActiveScheduleSegmentCard()?.querySelector('[data-segment-field="profession"]')?.value,
+                professionKey: document.getElementById('schProfession')?.value,
                 dayType: button.dataset.shiftPrefDay,
                 startTime: button.dataset.shiftPrefStart,
                 endTime: button.dataset.shiftPrefEnd,
@@ -6933,11 +6146,6 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('fillSaveBtn')?.addEventListener('click', handleFillWeekSave);
         document.getElementById('fillCancelBtn')?.addEventListener('click', () => closeFillWeekModal(false));
         document.getElementById('fillStatus')?.addEventListener('change', toggleFillTimeFields);
-        document.getElementById('fillStaffSelect')?.addEventListener('change', () => {
-            const primaryProfessionKey = document.getElementById('fillPrimaryProfession')?.value || '';
-            renderSchedulePlanEditor('fill', readSchedulePlanSegments('fill'), { primaryProfessionKey });
-        });
-        bindSchedulePlanEditor('fill');
         document.getElementById('fillWeekOverlay')?.addEventListener('click', (e) => {
             if (e.target === e.currentTarget) closeFillWeekModal(false);
         });

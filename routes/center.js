@@ -19,6 +19,9 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireMinRole, authenticateToken } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const {
+    parseAvailabilityWindows
+} = require('../services/booking');
 
 const log = createLogger('Center');
 
@@ -68,6 +71,20 @@ function timeToMinutes(value) {
     if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
     return hours * 60 + minutes;
+}
+
+function isWindowCurrentForScheduleDate(scheduleDate, today, nowMinutes, windows = []) {
+    return windows.some(window => {
+        const start = timeToMinutes(window.start);
+        const end = timeToMinutes(window.end);
+        if (start === null || end === null || start === end) return false;
+        if (scheduleDate === today) {
+            return end > start
+                ? nowMinutes >= start && nowMinutes < end
+                : nowMinutes >= start;
+        }
+        return end <= start && nowMinutes < end;
+    });
 }
 
 function timeFromTimestamp(value) {
@@ -886,6 +903,9 @@ router.get('/operations/today', async (req, res) => {
     try {
         const now = getKyivNow();
         const today = formatDateISO(now);
+        const yesterdayDate = new Date(now);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterday = formatDateISO(yesterdayDate);
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
         const bookingsScope = scopedBookingParams(req.user, [today]);
 
@@ -936,6 +956,22 @@ router.get('/operations/today', async (req, res) => {
                     ss.shift_end,
                     ss.status,
                     ss.note,
+                    COALESCE((
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'start', LEFT(hss.planned_start::text, 5),
+                            'end', LEFT(hss.planned_end::text, 5),
+                            'segmentId', hss.id,
+                            'professionKey', hss.profession_key,
+                            'additionalProfessionKeys', COALESCE((
+                                SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                                FROM hr_shift_segment_roles hssr
+                                WHERE hssr.segment_id = hss.id
+                            ), '[]'::jsonb)
+                        ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                        FROM hr_shifts hs
+                        JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                        WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                    ), '[]'::jsonb) AS segments,
                     s.name,
                     s.department,
                     s.position,
@@ -959,12 +995,26 @@ router.get('/operations/today', async (req, res) => {
                 LEFT JOIN staff_checkins sc
                   ON sc.staff_id = ss.staff_id
                  AND sc.date = ss.date::date
-                WHERE ss.date::date = $1::date
+                WHERE (
+                      ss.date::date = $1::date
+                      OR (
+                          ss.date::date = $2::date
+                          AND EXISTS (
+                              SELECT 1
+                              FROM hr_shifts hs_previous
+                              JOIN hr_shift_segments hss_previous ON hss_previous.hr_shift_id = hs_previous.id
+                              WHERE hs_previous.staff_id = ss.staff_id
+                                AND hs_previous.shift_date = ss.date::date
+                                AND hss_previous.planned_end <= hss_previous.planned_start
+                                AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss_previous.planned_end
+                          )
+                      )
+                  )
                   AND ss.status IN ('working', 'remote')
                   AND COALESCE(s.is_active, true) = true
                 ORDER BY ss.shift_start ASC NULLS LAST, s.department ASC, s.name ASC
                 LIMIT 200
-            `, [today]).catch(err => {
+            `, [today, yesterday]).catch(err => {
                 log.warn('Operations center staff schedule read failed', err.message);
                 return { rows: [] };
             }),
@@ -1068,19 +1118,22 @@ router.get('/operations/today', async (req, res) => {
 
         const shifts = scheduleRes.rows.map(row => {
             const attendance = shiftAttendanceStatus(row, nowMinutes);
-            const start = timeToMinutes(row.shift_start);
-            const end = timeToMinutes(row.shift_end);
-            const isCurrent = start !== null && end !== null && nowMinutes >= start && nowMinutes <= end;
+            const segments = Array.isArray(row.segments) ? row.segments : [];
+            const availabilityWindows = parseAvailabilityWindows(segments);
+            const scheduleDate = normalizeDateText(row.date);
+            const isCurrent = isWindowCurrentForScheduleDate(scheduleDate, today, nowMinutes, availabilityWindows);
             return {
                 scheduleId: row.schedule_id,
                 staffId: row.staff_id,
-                date: normalizeDateText(row.date),
+                date: scheduleDate,
                 name: row.name,
                 department: row.department || '',
                 position: row.position || '',
                 roleType: row.role_type || '',
                 plannedStart: row.shift_start || null,
                 plannedEnd: row.shift_end || null,
+                segments,
+                availabilityWindows,
                 status: row.status || '',
                 note: row.note || '',
                 isCurrent,
@@ -1092,8 +1145,8 @@ router.get('/operations/today', async (req, res) => {
         });
 
         const onShiftNow = shifts.filter(shift => shift.isCurrent && !['absent', 'excused'].includes(shift.attendance.status));
-        const lateStaff = shifts.filter(shift => shift.attendance.status === 'late');
-        const noShowStaff = shifts.filter(shift => shift.attendance.status === 'absent');
+        const lateStaff = shifts.filter(shift => shift.date === today && shift.attendance.status === 'late');
+        const noShowStaff = shifts.filter(shift => shift.date === today && shift.attendance.status === 'absent');
         const pendingPayments = bookings.filter(booking =>
             booking.status === 'confirmed'
             && booking.price > 0

@@ -25,6 +25,31 @@ const { callUnifiedChatCompletion, hasAnySharedAIKey } = require('./ai-config');
 
 const log = createLogger('KleshnyaChat');
 
+function staffShiftSegments(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function staffShiftBlocks(row = {}) {
+    const segments = staffShiftSegments(row.segments);
+    if (segments.length) {
+        return segments.map(segment => {
+            const additional = Array.isArray(segment.additionalProfessionKeys) && segment.additionalProfessionKeys.length
+                ? ` + ${segment.additionalProfessionKeys.join(', ')}`
+                : '';
+            const profession = segment.professionKey ? ` ${segment.professionKey}${additional}` : '';
+            return `${segment.start || '?'}–${segment.end || '?'}${profession}`;
+        });
+    }
+    return row.shift_start && row.shift_end ? [`${String(row.shift_start).slice(0, 5)}–${String(row.shift_end).slice(0, 5)}`] : [];
+}
+
 // --- AI Engine (OpenRouter shared rail) ---
 
 const AI_ENABLED = hasAnySharedAIKey();
@@ -113,7 +138,22 @@ async function gatherAIContext(username, dateStr, actor = null, pageContext = nu
 
         // Team today
         const teamRes = await pool.query(
-            `SELECT s.name, s.department, ss.shift_start, ss.shift_end
+            `SELECT s.name, s.department, ss.shift_start, ss.shift_end,
+                    COALESCE((
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'segmentId', hss.id,
+                            'professionKey', hss.profession_key,
+                            'start', LEFT(hss.planned_start::text, 5),
+                            'end', LEFT(hss.planned_end::text, 5),
+                            'additionalProfessionKeys', COALESCE((
+                                SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                                FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id
+                            ), '[]'::jsonb)
+                        ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                        FROM hr_shifts hs
+                        JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                        WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                    ), '[]'::jsonb) AS segments
              FROM staff s JOIN staff_schedule ss ON s.id = ss.staff_id AND ss.date = $1
              WHERE s.is_active = true AND ss.status = 'working'
              ORDER BY s.department, s.name`,
@@ -184,7 +224,7 @@ ${ctx.userTasks?.length > 0 ? ctx.userTasks.map(t =>
 
 👥 Команда на зміні: ${ctx.teamToday?.length || 0}
 ${ctx.teamToday?.length > 0 ? ctx.teamToday.map(t =>
-    `  - ${t.name} (${t.department}) ${t.shift_start || ''}–${t.shift_end || ''}`
+    `  - ${t.name} (${t.department}) ${staffShiftBlocks(t).join('; ')}`
 ).join('\n') : 'Ніхто не на зміні.'}
 
 📈 Статистика тижня: ${ctx.weekStats?.cnt || 0} бронювань, ${ctx.weekStats?.revenue || 0} ₴
@@ -929,7 +969,22 @@ async function handleTeam(lower, username) {
     const date = dateIntent.date || dateIntent.from || getKyivDate(0);
 
     const res = await pool.query(
-        `SELECT s.name, s.department, ss.shift_start, ss.shift_end, ss.status, ss.note
+        `SELECT s.name, s.department, ss.shift_start, ss.shift_end, ss.status, ss.note,
+                COALESCE((
+                    SELECT jsonb_agg(jsonb_build_object(
+                        'segmentId', hss.id,
+                        'professionKey', hss.profession_key,
+                        'start', LEFT(hss.planned_start::text, 5),
+                        'end', LEFT(hss.planned_end::text, 5),
+                        'additionalProfessionKeys', COALESCE((
+                            SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
+                            FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id
+                        ), '[]'::jsonb)
+                    ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
+                    FROM hr_shifts hs
+                    JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
+                    WHERE hs.staff_id = ss.staff_id AND hs.shift_date = ss.date::date
+                ), '[]'::jsonb) AS segments
          FROM staff s
          LEFT JOIN staff_schedule ss ON s.id = ss.staff_id AND ss.date = $1
          WHERE s.is_active = true
@@ -973,7 +1028,8 @@ async function handleTeam(lower, username) {
             msg += `${deptLabel}:\n`;
             for (const s of working) {
                 msg += `  ✅ ${s.name}`;
-                if (s.shift_start && s.shift_end) msg += ` (${s.shift_start}–${s.shift_end})`;
+                const blocks = staffShiftBlocks(s);
+                if (blocks.length) msg += ` (${blocks.join('; ')})`;
                 if (s.note) msg += ` — ${s.note}`;
                 msg += '\n';
             }

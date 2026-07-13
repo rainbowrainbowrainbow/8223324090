@@ -9529,7 +9529,11 @@ function renderSalaryRateSummary(row = {}) {
             rate: Number(segment.rate || segment.hourly_rate || segment.hourlyRate || 0),
             rateUnit: normalizeStaffRateUnit(segment.rate_unit || segment.rateUnit || fallbackUnit),
             hours: Number(segment.hours || 0),
-            days: Number(segment.days || 0)
+            days: Number(segment.days || 0),
+            amount: Number(segment.amount || 0),
+            hasAmount: segment.amount !== null && segment.amount !== undefined,
+            allocationSource: String(segment.allocation_source || segment.allocationSource || '').trim(),
+            kind: String(segment.kind || 'base').trim()
         }))
         .filter(segment => segment.key && segment.rate > 0);
     if (!normalized.length) return formatStaffRate(row.hourly_rate || 0, fallbackUnit);
@@ -9540,7 +9544,10 @@ function renderSalaryRateSummary(row = {}) {
                 : segment.rateUnit === 'day'
                     ? (segment.days ? ` · ${segment.days} дн` : '')
                     : (segment.hours ? ` · ${segment.hours} год` : '');
-            return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}`;
+            const kind = segment.kind === 'overtime' ? ' · overtime' : '';
+            const amount = segment.hasAmount ? ` · ${new Intl.NumberFormat('uk-UA').format(segment.amount)} ₴` : '';
+            const source = segment.allocationSource ? ` · ${escapeHtml(segment.allocationSource)}` : '';
+            return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}${amount}${kind}${source}`;
         })
         .join('<br>');
 }

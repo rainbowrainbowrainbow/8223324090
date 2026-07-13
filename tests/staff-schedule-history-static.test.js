@@ -662,6 +662,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffRoute, /staff_schedule_bulk_update/);
         assert.match(staffRoute, /staff_schedule_copy_week/);
         assert.match(staffRoute, /staff_schedule_replacement_set/);
+        assert.match(staffRoute, /changes\.dayPlan = \{ from: beforePlan, to: afterPlan \}/);
     });
 
     it('does not treat empty schedule cells as working in UI summaries and export', () => {
@@ -764,7 +765,10 @@ describe('staff schedule safety guards', () => {
             'overlapping_shift',
             'shift_without_role',
             'profession_mismatch',
-            'long_shift',
+            'long_segment',
+            'long_total_day',
+            'overlapping_segments',
+            'booking_outside_availability',
             'planned_off_conflict',
             'department_understaffed',
             'no_responsible_manager'
@@ -1200,7 +1204,8 @@ describe('staff schedule safety guards', () => {
         const hrTodayRoute = hrRouteBlock('/today');
         assert.match(staffScheduleRoute, /s\.role_type, s\.company_structure_node_id/);
         assert.match(staffScheduleRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
-        assert.match(staffScheduleRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(staffScheduleRoute, /attachScheduleDayPlans\(result\.rows\)/);
+        assert.match(staffScheduleRoute, /decorateStaffRowsWithDisplayGroups\(rowsWithPlans, \{ displayGroupContext \}\)/);
         assert.match(staffListRoute, /staff\.company_structure_node_id/);
         assert.match(staffListRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
         assert.match(staffListRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
@@ -1520,12 +1525,14 @@ describe('staff schedule safety guards', () => {
     it('keeps one persisted schedule row per staff member and date', () => {
         const putScheduleRoute = routePutBlock('/schedule');
         const bulkScheduleRoute = routePostBlock('/schedule/bulk');
+        const mirrorBlock = namedFunctionBlock(staffRoute, 'upsertScheduleMirrorFromPlan');
 
-        assert.match(putScheduleRoute, /ON CONFLICT \(staff_id, date\)/);
-        assert.match(putScheduleRoute, /DO UPDATE SET shift_start=\$3, shift_end=\$4, status=\$5, note=\$6, profession_key=\$7/);
-        assert.match(putScheduleRoute, /RETURNING \*/);
-        assert.match(bulkScheduleRoute, /ON CONFLICT \(staff_id, date\)/);
-        assert.match(bulkScheduleRoute, /profession_key=\$7/);
+        assert.match(mirrorBlock, /ON CONFLICT \(staff_id, date\)/);
+        assert.match(mirrorBlock, /DO UPDATE SET shift_start = EXCLUDED\.shift_start/);
+        assert.match(mirrorBlock, /profession_key = EXCLUDED\.profession_key/);
+        assert.match(mirrorBlock, /RETURNING \*/);
+        assert.match(putScheduleRoute, /upsertScheduleMirrorFromPlan\(client/);
+        assert.match(bulkScheduleRoute, /upsertScheduleMirrorFromPlan\(client/);
         assert.match(staffScheduleBrowserSmoke, /assertSingleScheduleEntryPerStaffDate\(SCHEDULE_FIXTURE_ENTRIES/);
     });
 
@@ -2019,7 +2026,7 @@ describe('staff schedule safety guards', () => {
         assert.match(narrowBlock, /staff-schedule-range-apply,[\s\S]*staff-schedule-range-presets\s*\{[\s\S]*grid-column:\s*1/);
     });
 
-    it('loads staff shift preferences into schedule modal quick options without changing schedule save API', () => {
+    it('loads staff shift preferences into the active segment and saves the normalized day plan', () => {
         assert.match(staffPage, /shiftPreferences:\s*\{\}/);
         assert.match(staffPage, /function fetchScheduleShiftPreferences/);
         assert.match(staffPage, /function renderScheduleShiftPreferencePanel/);
@@ -2035,8 +2042,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /renderScheduleShiftPreferencePanel\(preferences, \{ autoApply: 'force' \}\)/);
         assert.match(staffPage, /loadScheduleShiftPreferences\(staffId, \{/);
         assert.match(staffPage, /autoApply: \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
-        assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey\)/);
-        assert.doesNotMatch(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey,\s*shiftPreferences/);
+        assert.match(staffPage, /getActiveScheduleSegmentCard\(\)\?\.querySelector\('\[data-segment-field="profession"\]'\)/);
+        assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
+        assert.match(staffPage, /segments:\s*validation\.segments\.map/);
     });
 
     it('keeps shift load classes as metadata without painting schedule cells', () => {

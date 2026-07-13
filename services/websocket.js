@@ -401,7 +401,11 @@ function getConnectedClientsCount() {
  * @param {string|null} [date] - Optional date string (YYYY-MM-DD) to filter by subscribed dates
  */
 function broadcast(eventType, data, excludeUserId, date) {
-    if (String(eventType || '').startsWith('booking:') || String(eventType || '').startsWith('line:')) {
+    if (
+        String(eventType || '').startsWith('booking:')
+        || String(eventType || '').startsWith('line:')
+        || String(eventType || '').startsWith('banquet:')
+    ) {
         log.error(`Blocked protected timeline event through generic broadcast: ${eventType}`);
         return 0;
     }
@@ -555,6 +559,40 @@ function broadcastLineEvent(eventType, lineAudience, excludeUserId, options = {}
         bookingVisibility: false,
         payload: payload => payload
     });
+}
+
+function broadcastBanquetEvent(eventType, banquetAudience, excludeUserId = null, options = {}) {
+    const safeEventType = String(eventType || '');
+    if (!safeEventType.startsWith('banquet:')) {
+        log.error(`Blocked invalid banquet event type: ${eventType}`);
+        return 0;
+    }
+    const groupId = String(
+        banquetAudience?.groupId
+        || banquetAudience?.group_id
+        || banquetAudience?.id
+        || ''
+    ).trim();
+    if (!groupId) {
+        log.error(`Blocked ${eventType}: banquet audience has no groupId`);
+        return 0;
+    }
+    const visibilityBooking = options.visibilityBooking || banquetAudience?.primaryBooking || null;
+    if (!visibilityBooking) {
+        log.error(`Blocked ${eventType}: banquet audience has no visibility booking`);
+        return 0;
+    }
+    try {
+        return _broadcastAuthorizedTimelineEvent(eventType, banquetAudience, excludeUserId, {
+            ...options,
+            bookingVisibility: true,
+            visibilityBookings: [visibilityBooking],
+            payload: payload => ({ groupId, ...payload })
+        });
+    } catch (err) {
+        log.error(`Banquet broadcast [${eventType}] failed:`, err.message);
+        return 0;
+    }
 }
 
 /**
@@ -751,6 +789,7 @@ module.exports = {
     initWebSocket,
     broadcast,
     broadcastBookingEvent,
+    broadcastBanquetEvent,
     broadcastLineEvent,
     broadcastToChannel,
     sendToUser,

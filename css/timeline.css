@@ -2116,6 +2116,7 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
 .timeline-banquet-inspector-actions {
     display: flex;
     flex: 0 0 auto;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px 14px 14px;
     border-top: 1px solid rgba(148, 163, 184, 0.18);
@@ -2123,7 +2124,7 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
 }
 
 .timeline-banquet-inspector-btn {
-    flex: 1;
+    flex: 1 1 104px;
     min-height: 34px;
     padding: 8px 10px;
     border: 1px solid rgba(148, 163, 184, 0.32);

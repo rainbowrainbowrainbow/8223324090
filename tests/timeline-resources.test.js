@@ -448,6 +448,8 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             bookingId: node.dataset.bookingId || '',
             bookingIds: node.dataset.bookingIds || '',
             groupId: node.dataset.banquetRoomMarkerGroup || '',
+            canonicalGroupId: node.dataset.banquetGroupId || '',
+            draggable: node.draggable,
             time: node.dataset.markerTime,
             lane: node.dataset.markerLane,
             parentClass: node.parentElement?.className || '',
@@ -493,7 +495,9 @@ test('timeline banquet snapshot summary reads canonical arrival projection', () 
             date: '2099-06-19',
             time: '13:05',
             room: 'Arrival Room',
-            source: 'activity'
+            source: 'banquet_group',
+            groupSource: 'manual',
+            updatedAt: '2099-06-18T10:00:00.000Z'
         },
         bookings: {
             primary: {
@@ -517,10 +521,12 @@ test('timeline banquet snapshot summary reads canonical arrival projection', () 
     });
 
     assert.equal(summary.arrival.bookingId, 'BK-ACTIVITY');
+    assert.equal(summary.arrival.groupId, 'GRP-ARRIVAL-1');
+    assert.equal(summary.arrival.updatedAt, '2099-06-18T10:00:00.000Z');
     assert.equal(summary.date, '2099-06-19');
     assert.equal(summary.time, '13:05');
     assert.equal(summary.room, 'Arrival Room');
-    assert.equal(summary.banquetArrival.source, 'activity');
+    assert.equal(summary.banquetArrival.source, 'banquet_group');
 });
 
 function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
@@ -2076,6 +2082,11 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
+    assert.match(timeline, /function timelineCanEditBanquetArrival/);
+    assert.match(timeline, /canAccess\('edit_booking'\)/);
+    assert.match(timeline, /params\.set\('editArrival', '1'\)/);
+    assert.match(timeline, /const timeText = normalizeTimelineBanquetServingTime\(arrival\.time\)/);
+    assert.doesNotMatch(timeline, /function timelineBanquetDateTimeText[\s\S]*?timeToMinutes\(startTime\)/);
     assert.match(banquetInspectorHelpers, /function timelineBanquetCommentItems/);
     assert.match(timeline, /function timelineBanquetCommentsHtml/);
     assert.match(banquetInspectorHelpers, /function timelineBanquetActivityStartsText/);
@@ -2178,6 +2189,28 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('booking detail and invite fallbacks use group snapshot arrival instead of member booking time', () => {
+    const booking = read('js/booking.js');
+    const detailStart = booking.indexOf('function bookingDetailBanquetArrival');
+    const detailEnd = booking.indexOf('function renderBookingCustomerCopyAction', detailStart);
+    const renderStart = booking.indexOf("const isBanquetArrivalMode = bookingDetailSafeRender('banquet-arrival-mode'");
+    const renderEnd = booking.indexOf('const customerBlockHtml', renderStart);
+    const inviteStart = booking.indexOf('function bookingInviteFallbackSnapshotArrival');
+    const inviteEnd = booking.indexOf('function buildBookingInviteSharePayloadFallback', inviteStart);
+    const detailHelpers = booking.slice(detailStart, detailEnd);
+    const detailRender = booking.slice(renderStart, renderEnd);
+    const inviteFallback = booking.slice(inviteStart, inviteEnd);
+
+    assert.ok(detailStart >= 0 && detailEnd > detailStart);
+    assert.match(detailHelpers, /banquetSnapshot\?\.arrival/);
+    assert.match(detailHelpers, /time: time \|\| null/);
+    assert.match(detailRender, /banquetArrival\?\.time \|\| '-'/);
+    assert.doesNotMatch(detailRender, /isBanquetArrivalMode \? \(booking\.time/);
+    assert.match(inviteFallback, /bookingInviteFallbackHasActivityTime/);
+    assert.match(inviteFallback, /time: hasActivityTime \? booking\.time : ''/);
+    assert.match(inviteFallback, /arrival: arrival\?\.time \|\| ''/);
 });
 
 test('room timeline active banquet context is carried from inspector to empty-cell booking creation', () => {
@@ -3118,6 +3151,8 @@ test('room timeline renders canonical banquet arrival as a room-grid operational
     assert.equal(markers[0].bookingId, 'BK-ACTIVITY-ARRIVAL');
     assert.equal(markers[0].bookingIds, 'BK-ACTIVITY-ARRIVAL');
     assert.equal(markers[0].groupId, 'group-regression');
+    assert.equal(markers[0].canonicalGroupId, 'group-regression');
+    assert.equal(markers[0].draggable, false);
     assert.equal(markers[0].markerTitle, 'Прихід гостей');
     assert.equal(markers[0].detail, 'Room A');
     assert.equal(markers[0].ariaHaspopup, 'dialog');

@@ -1,6 +1,8 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const jwt = require('jsonwebtoken');
 const WebSocket = require('ws');
 
@@ -331,6 +333,63 @@ describe('WebSocket chat membership authorization', () => {
         });
     });
 
+    it('sends minimal banquet arrival metadata to every subscribed tab in the exact context and date', async () => {
+        const firstTab = await openAuthedClient(1);
+        const secondTab = await openAuthedClient(1);
+        const otherDate = await openAuthedClient(1);
+        const otherContext = await openAuthedClient(4);
+        await withClients([firstTab, secondTab, otherDate, otherContext], async () => {
+            await Promise.all([
+                subscribeDate(firstTab, '2026-07-22'),
+                subscribeDate(secondTab, '2026-07-22'),
+                subscribeDate(otherDate, '2026-07-23'),
+                subscribeDate(otherContext, '2026-07-22')
+            ]);
+            let leakedToOtherDate = false;
+            let leakedToOtherContext = false;
+            otherDate.on('message', raw => {
+                if (JSON.parse(raw.toString()).type === 'banquet:arrival-updated') leakedToOtherDate = true;
+            });
+            otherContext.on('message', raw => {
+                if (JSON.parse(raw.toString()).type === 'banquet:arrival-updated') leakedToOtherContext = true;
+            });
+            const firstMessage = waitForMessage(firstTab, msg => msg.type === 'banquet:arrival-updated');
+            const secondMessage = waitForMessage(secondTab, msg => msg.type === 'banquet:arrival-updated');
+
+            wsService.broadcastBanquetEvent('banquet:arrival-updated', {
+                groupId: 'BQ-WS-ARRIVAL',
+                date: '2026-07-22',
+                businessContext: 'event_genix',
+                updatedAt: '2026-07-13T12:30:00.000Z',
+                primaryBooking: {
+                    id: 'BK-WS-ARRIVAL',
+                    date: '2026-07-22',
+                    businessContext: 'event_genix',
+                    created_by: 'creator-event'
+                }
+            });
+
+            const messages = await Promise.all([firstMessage, secondMessage]);
+            await wait(80);
+            messages.forEach(message => assert.deepEqual(Object.keys(message.payload).sort(), [
+                'businessContext', 'date', 'eventType', 'groupId', 'updatedAt'
+            ]));
+            assert.equal(messages[0].payload.groupId, 'BQ-WS-ARRIVAL');
+            assert.equal(leakedToOtherDate, false);
+            assert.equal(leakedToOtherContext, false);
+        });
+    });
+
+    it('broadcasts arrival only after the owning transaction commit', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'banquetGroups.js'), 'utf8');
+        const start = source.indexOf('async function updateBanquetGuestArrival');
+        const end = source.indexOf('async function attachBookingToBanquetGroup', start);
+        const block = source.slice(start, end);
+        assert.ok(start >= 0 && end > start);
+        assert.ok(block.indexOf("await client.query('COMMIT')") < block.indexOf("broadcastBanquetEvent('banquet:arrival-updated'"));
+        assert.equal((block.match(/broadcastBanquetEvent\('banquet:arrival-updated'/g) || []).length, 1);
+    });
+
     it('notifies both old and new scoped audiences when an update moves a booking', async () => {
         const oldStaff = await openAuthedClient(2);
         const newStaff = await openAuthedClient(3);
@@ -409,7 +468,7 @@ describe('WebSocket chat membership authorization', () => {
         });
     });
 
-    it('blocks booking payloads sent through generic broadcast', async () => {
+    it('blocks booking and banquet payloads sent through generic broadcast', async () => {
         const client = await openAuthedClient(1);
         await withClients([client], async () => {
             await subscribeDate(client, '2026-07-17');
@@ -419,6 +478,15 @@ describe('WebSocket chat membership authorization', () => {
                 async () => wsService.broadcast('booking:created', { id: 504, date: '2026-07-17' })
             );
             assert.equal(received, false);
+            const banquetReceived = await didReceiveMessage(
+                client,
+                msg => msg.type === 'banquet:arrival-updated',
+                async () => wsService.broadcast('banquet:arrival-updated', {
+                    groupId: 'BQ-BLOCKED',
+                    date: '2026-07-17'
+                })
+            );
+            assert.equal(banquetReceived, false);
         });
     });
 });

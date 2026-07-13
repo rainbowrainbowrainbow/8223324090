@@ -189,6 +189,12 @@ function buildBanquetSummaryPrintEdgeFixture() {
         ...base,
         bookingId: 'BK-PRINT-EDGE-QA',
         mode: 'client',
+        arrival: {
+            date: '2026-08-30',
+            time: '14:00',
+            room: 'Grand Crystal Hall With Long Name',
+            source: 'banquet_group'
+        },
         group: { ...base.group, id: 'BQ-PRINT-EDGE-QA', primaryBookingId: 'BK-PRINT-EDGE-QA', groupName: 'Print Edge QA Banquet' },
         document: { ...base.document, title: 'BANQUET SHEET PRINT EDGE CASE', generatedBy: 'qa-print-manager' },
         venue: {
@@ -2733,6 +2739,7 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
 
     const sampleSummary = {
         bookingId: 'BK-2026/0499',
+        arrival: { date: '2026-06-23', time: '13:45', room: 'Rock', source: 'banquet_group' },
         venue: { name: 'Парк', phone: '0 800 753 553' },
         event: { date: '2026-06-23', time: '13:45', room: 'Рок', hasRealProgram: true, programName: 'Паперове шоу' },
         document: { generatedBy: 'Manager' },
@@ -2978,6 +2985,7 @@ test('banquet summary print edge fixture keeps long A4 output printable', async 
 test('banquet summary PDF validation blocks client-critical gaps and keeps staff export available', async () => {
     const invalidClientSummary = {
         bookingId: 'BK-PDF-GUARD',
+        arrival: { date: '2026-06-23', time: '13:45', room: '', source: 'banquet_group' },
         venue: { name: 'Парк' },
         event: { date: '2026-06-23', time: '13:45', room: '', createdAt: '2026-06-20T10:00:00.000Z' },
         document: { generatedBy: 'Manager' },
@@ -3327,7 +3335,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /schedule:\s*selectedActivityScheduleExtra\(scheduleRows\)/);
     assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId\)/);
     assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId, \{ forceRetry: true \}\)/);
-    assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
+    assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities, banquetContext \}\)/);
     assert.match(bookingJs, /multiActivity/);
     assert.doesNotMatch(bookingJs, /additionalMultiHostActivity/);
     assert.match(bookingJs, /secondAnimator:\s*secondAnimatorFields\.secondAnimator/);
@@ -3589,7 +3597,7 @@ test('booking create flow bridges room-source kitchen without an existing banque
     const apiJs = read('js', 'api.js');
     const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
     const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
-    const normalCreate = bookingJs.indexOf('createResult = await apiCreateBooking(booking)', bridgeStart);
+    const normalCreate = bookingJs.indexOf('createResult = await apiCreateBooking(booking,', bridgeStart);
     const roomAvailabilityRefresh = bookingJs.indexOf('await refreshBookingRoomAvailabilityForSelectedDate();');
     const roomSourceContextInit = bookingJs.indexOf('await initializeRoomFirstBookingSourceContext();', roomAvailabilityRefresh);
     const validateBridgeBlock = bookingJs.slice(
@@ -3871,7 +3879,7 @@ test('activity-first kitchen source-only save uses source bridge before normal c
     );
     const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
     const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetMemberBooking(createPath.groupId');
-    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
+    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking,');
 
     assert.match(bookingJs, /case 'source_activity_to_kitchen':[\s\S]*\/api\/banquets\/from-source\/member-booking/);
     assert.match(resolverBlock, /if \(activityFirstKitchenBridge\?\.shouldUse\)[\s\S]*return buildBookingCreatePath\('source_activity_to_kitchen'/);
@@ -3901,7 +3909,7 @@ test('kitchen-first activity source-only save uses source bridge before normal c
     );
     const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetActivityBookingFromSource');
     const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetActivityBooking(bridgeGroupId');
-    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
+    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking,');
 
     assert.match(apiJs, /async function apiCreateBanquetActivityBookingFromSource\(payload = \{\}\)/);
     assert.match(apiJs, /\/banquets\/from-source\/activity-booking/);
@@ -4973,7 +4981,8 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата банкету' : 'Дата';/);
     assert.match(bookingJs, /const isActivityDetailMode = isActivityDetailBooking;/);
     assert.match(bookingJs, /const bookingDetailTimeLabel = isActivityDetailMode \? 'Час активності' : \(isBanquetArrivalMode \? 'Прихід гостей' : 'Час'\);/);
-    assert.match(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(booking\.time \|\| '-'\) : bookingDetailTimeRange;/);
+    assert.match(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(banquetArrival\?\.time \|\| '-'\) : bookingDetailTimeRange;/);
+    assert.doesNotMatch(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(booking\.time \|\| '-'\)/);
     assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailDateLabel\)\}:<\/span>/);
     assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailTimeLabel\)\}:<\/span>/);
     assert.doesNotMatch(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата\/час'/);

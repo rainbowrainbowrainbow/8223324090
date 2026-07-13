@@ -10,13 +10,15 @@ const {
     normalizeBookingStatus,
     BANQUET_SERVICE_LINE_ID,
     validateDate,
-    validateTime
+    validateTime,
+    validateBanquetCreationContext
 } = require('./booking');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canEditBooking } = require('./bookingVisibility');
 const { insertHistory } = require('./historyLog');
 const { applyBookingPackage, applyBookingPackageEntryCharge } = require('./bookingPackage');
 const { upsertManagerBookingDeposit } = require('./banquetDeposits');
+const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
 const WRITABLE_MEMBER_ROLES = new Set(['kitchen', 'activity', 'service', 'manual']);
@@ -71,6 +73,12 @@ function actorUserId(user) {
 
 function actorName(user) {
     return user?.username || user?.name || 'system';
+}
+
+function timestampIso(value) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function generateBanquetGroupId() {
@@ -239,6 +247,7 @@ function mapGroupRow(row = null) {
         customerId: row.customer_id || null,
         date: row.date || null,
         room: row.room || null,
+        guestArrivalTime: row.guest_arrival_time || null,
         groupName: row.group_name || null,
         status: row.status || 'active',
         source: row.source || 'manual',
@@ -888,11 +897,19 @@ async function reconcileBanquetGroupForBooking({
                 return banquetAutoGroupSkip(cleanBookingId, context, 'primary_anchor_not_found', { candidateBookingIds });
             }
             const groupId = generateBanquetGroupId();
+            const guestArrivalTime = normalizeGuestArrivalTime(primary.time);
+            if (!guestArrivalTime) {
+                await client.query('ROLLBACK');
+                return banquetAutoGroupSkip(cleanBookingId, context, 'primary_arrival_time_invalid', {
+                    candidateBookingIds,
+                    primaryBookingId: cleanId(primary.id)
+                });
+            }
             const groupResult = await client.query(
                 `INSERT INTO banquet_groups
-                    (id, business_context, primary_booking_id, customer_id, date, room, group_name, status, source, meta,
+                    (id, business_context, primary_booking_id, customer_id, date, room, guest_arrival_time, group_name, status, source, meta,
                      created_by_user_id, created_by, updated_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9::jsonb, $10, $11, $11)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
                  RETURNING *`,
                 [
                     groupId,
@@ -901,6 +918,7 @@ async function reconcileBanquetGroupForBooking({
                     autoGroupCustomerId(primary),
                     autoGroupDate(primary),
                     autoGroupRoom(primary),
+                    guestArrivalTime,
                     autoGroupLabel(primary) || autoGroupLabel(anchor),
                     normalizeShortText(source, 64) || 'auto_same_customer_room',
                     JSON.stringify({
@@ -1603,15 +1621,279 @@ function bookingStatusWarningLabel(status) {
     return 'підтверджені';
 }
 
+function normalizeGuestArrivalTime(value) {
+    const time = String(value || '').trim();
+    return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time) ? time : null;
+}
+
+function resolveBanquetArrivalBackfillCandidate(group = {}, memberships = [], bookingRows = []) {
+    const bookingsById = new Map((bookingRows || []).map(row => [cleanId(row.id), row]).filter(([id]) => id));
+    const explicitPrimaryIds = [...new Set((memberships || [])
+        .filter(row => String(row.role || '').trim().toLowerCase() === 'primary')
+        .map(row => cleanId(row.booking_id || row.bookingId))
+        .filter(Boolean))];
+
+    if (explicitPrimaryIds.length > 1) {
+        return {
+            resolved: false,
+            source: 'explicit_primary_membership',
+            bookingId: null,
+            guestArrivalTime: null,
+            reason: 'ambiguous_explicit_primary'
+        };
+    }
+
+    if (explicitPrimaryIds.length === 1) {
+        const bookingId = explicitPrimaryIds[0];
+        const booking = bookingsById.get(bookingId) || null;
+        const guestArrivalTime = normalizeGuestArrivalTime(booking?.time);
+        return guestArrivalTime
+            ? { resolved: true, source: 'explicit_primary_membership', bookingId, guestArrivalTime, reason: null }
+            : { resolved: false, source: 'explicit_primary_membership', bookingId, guestArrivalTime: null, reason: booking ? 'invalid_primary_time' : 'primary_booking_missing' };
+    }
+
+    const bookingId = cleanId(group.primary_booking_id || group.primaryBookingId);
+    if (!bookingId) {
+        return {
+            resolved: false,
+            source: 'group_primary_booking',
+            bookingId: null,
+            guestArrivalTime: null,
+            reason: 'primary_booking_missing'
+        };
+    }
+    const booking = bookingsById.get(bookingId) || null;
+    const guestArrivalTime = normalizeGuestArrivalTime(booking?.time);
+    return guestArrivalTime
+        ? { resolved: true, source: 'group_primary_booking', bookingId, guestArrivalTime, reason: null }
+        : { resolved: false, source: 'group_primary_booking', bookingId, guestArrivalTime: null, reason: booking ? 'invalid_primary_time' : 'primary_booking_missing' };
+}
+
+function normalizeAuditContext(value) {
+    const context = String(value || DEFAULT_TIMELINE_CONTEXT).trim().toLowerCase();
+    return ['park_zakrevsky', 'park', 'pzp'].includes(context) ? DEFAULT_TIMELINE_CONTEXT : context;
+}
+
+function legacyAuditComponents(legacyLinks = []) {
+    const adjacency = new Map();
+    const addNode = (context, bookingId) => {
+        const key = `${context}\u0000${bookingId}`;
+        if (!adjacency.has(key)) adjacency.set(key, new Set());
+        return key;
+    };
+    for (const link of legacyLinks || []) {
+        if (String(link.relation_type || link.relationType || BANQUET_LINK_RELATION_TYPE) !== BANQUET_LINK_RELATION_TYPE) continue;
+        const context = normalizeAuditContext(link.business_context || link.businessContext);
+        const a = cleanId(link.booking_a_id || link.bookingAId);
+        const b = cleanId(link.booking_b_id || link.bookingBId);
+        if (!a || !b || a === b) continue;
+        const aKey = addNode(context, a);
+        const bKey = addNode(context, b);
+        adjacency.get(aKey).add(bKey);
+        adjacency.get(bKey).add(aKey);
+    }
+
+    const components = [];
+    const visited = new Set();
+    for (const start of [...adjacency.keys()].sort()) {
+        if (visited.has(start)) continue;
+        const queue = [start];
+        const bookingIds = [];
+        const context = start.split('\u0000')[0];
+        visited.add(start);
+        while (queue.length) {
+            const current = queue.shift();
+            bookingIds.push(current.slice(current.indexOf('\u0000') + 1));
+            for (const next of adjacency.get(current) || []) {
+                if (visited.has(next)) continue;
+                visited.add(next);
+                queue.push(next);
+            }
+        }
+        components.push({ businessContext: context, bookingIds: [...new Set(bookingIds)].sort() });
+    }
+    return components;
+}
+
+function buildBanquetGuestArrivalAudit({
+    groupRows = [],
+    membershipRows = [],
+    bookingRows = [],
+    legacyLinks = []
+} = {}) {
+    const bookingsByContextAndId = new Map((bookingRows || []).map(row => [
+        `${normalizeAuditContext(row.business_context || row.businessContext)}\u0000${cleanId(row.id)}`,
+        row
+    ]));
+    const membershipsByGroup = new Map();
+    const membershipsByContextAndBooking = new Map();
+    for (const membership of membershipRows || []) {
+        const groupId = cleanId(membership.group_id || membership.groupId);
+        if (groupId) {
+            if (!membershipsByGroup.has(groupId)) membershipsByGroup.set(groupId, []);
+            membershipsByGroup.get(groupId).push(membership);
+        }
+        const bookingId = cleanId(membership.booking_id || membership.bookingId);
+        if (bookingId) {
+            membershipsByContextAndBooking.set(
+                `${normalizeAuditContext(membership.business_context || membership.businessContext)}\u0000${bookingId}`,
+                membership
+            );
+        }
+    }
+
+    const activeGroupsWithNull = [];
+    const explicitPrimaryCandidates = [];
+    const groupPrimaryCandidates = [];
+    const ambiguousOrMissingPrimary = [];
+    for (const group of groupRows || []) {
+        const groupId = cleanId(group.id);
+        const context = normalizeAuditContext(group.business_context || group.businessContext);
+        const memberships = membershipsByGroup.get(groupId) || [];
+        const bookingIds = new Set(memberships.map(row => cleanId(row.booking_id || row.bookingId)).filter(Boolean));
+        const groupPrimaryId = cleanId(group.primary_booking_id || group.primaryBookingId);
+        if (groupPrimaryId) bookingIds.add(groupPrimaryId);
+        const bookings = [...bookingIds].map(id => bookingsByContextAndId.get(`${context}\u0000${id}`)).filter(Boolean);
+        const resolution = resolveBanquetArrivalBackfillCandidate(group, memberships, bookings);
+        const record = {
+            groupId,
+            businessContext: context,
+            date: group.date || null,
+            resolution
+        };
+        activeGroupsWithNull.push(record);
+        if (!resolution.resolved) ambiguousOrMissingPrimary.push({ ...record, kind: 'group' });
+        else if (resolution.source === 'explicit_primary_membership') explicitPrimaryCandidates.push(record);
+        else groupPrimaryCandidates.push(record);
+    }
+
+    const legacyLinkOnlyGroups = [];
+    const singleBanquetAnchors = [];
+    for (const component of legacyAuditComponents(legacyLinks)) {
+        const hasMembership = component.bookingIds.some(bookingId => membershipsByContextAndBooking.has(`${component.businessContext}\u0000${bookingId}`));
+        if (hasMembership) continue;
+        const bookings = component.bookingIds
+            .map(bookingId => bookingsByContextAndId.get(`${component.businessContext}\u0000${bookingId}`))
+            .filter(Boolean);
+        const record = {
+            businessContext: component.businessContext,
+            bookingIds: component.bookingIds,
+            date: bookings.map(row => row.date).filter(Boolean).sort()[0] || null
+        };
+        legacyLinkOnlyGroups.push(record);
+        const anchors = bookings.filter(isBanquetAnchor);
+        if (anchors.length === 1) {
+            const anchor = anchors[0];
+            const guestArrivalTime = normalizeGuestArrivalTime(anchor.time);
+            if (guestArrivalTime) {
+                singleBanquetAnchors.push({
+                    ...record,
+                    anchorBookingId: cleanId(anchor.id),
+                    guestArrivalTime
+                });
+                continue;
+            }
+        }
+        ambiguousOrMissingPrimary.push({
+            ...record,
+            kind: 'legacy',
+            reason: anchors.length > 1 ? 'ambiguous_banquet_anchor' : (anchors.length === 1 ? 'invalid_primary_time' : 'banquet_anchor_missing'),
+            anchorBookingIds: anchors.map(row => cleanId(row.id)).filter(Boolean)
+        });
+    }
+
+    const unresolvedSupportedLegacyFlows = ambiguousOrMissingPrimary.filter(record => record.kind === 'legacy');
+    return {
+        summary: {
+            activeGroupsWithNull: activeGroupsWithNull.length,
+            explicitPrimaryCandidates: explicitPrimaryCandidates.length,
+            groupPrimaryCandidates: groupPrimaryCandidates.length,
+            legacyLinkOnlyGroups: legacyLinkOnlyGroups.length,
+            singleBanquetAnchors: singleBanquetAnchors.length,
+            ambiguousOrMissingPrimary: ambiguousOrMissingPrimary.length,
+            unresolvedSupportedLegacyFlows: unresolvedSupportedLegacyFlows.length,
+            readyForRequiredConstraint: activeGroupsWithNull.length === 0 && unresolvedSupportedLegacyFlows.length === 0
+        },
+        activeGroupsWithNull,
+        explicitPrimaryCandidates,
+        groupPrimaryCandidates,
+        legacyLinkOnlyGroups,
+        singleBanquetAnchors,
+        ambiguousOrMissingPrimary,
+        unresolvedSupportedLegacyFlows
+    };
+}
+
+async function auditBanquetGuestArrival({ db = defaultPool, businessContext = null } = {}) {
+    const context = businessContext ? normalizeAuditContext(businessContext) : null;
+    const groupResult = await db.query(
+        `SELECT bg.*
+           FROM banquet_groups bg
+          WHERE LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) = 'active'
+            AND bg.guest_arrival_time IS NULL
+            AND ($1::text IS NULL OR ${bookingContextColumnSql('bg.business_context')} = $1)
+          ORDER BY bg.business_context, bg.date, bg.id`,
+        [context]
+    );
+    const legacyResult = await db.query(
+        `SELECT id, business_context, booking_a_id, booking_b_id, relation_type, created_at
+           FROM booking_banquet_links
+          WHERE relation_type = $2
+            AND ($1::text IS NULL OR ${bookingContextColumnSql('business_context')} = $1)
+          ORDER BY business_context, id`,
+        [context, BANQUET_LINK_RELATION_TYPE]
+    );
+    const groupIds = (groupResult.rows || []).map(row => cleanId(row.id)).filter(Boolean);
+    const legacyBookingIds = (legacyResult.rows || []).flatMap(row => [cleanId(row.booking_a_id), cleanId(row.booking_b_id)]).filter(Boolean);
+    const membershipResult = await db.query(
+        `SELECT bgb.*
+           FROM banquet_group_bookings bgb
+          WHERE bgb.group_id = ANY($1::text[])
+             OR bgb.booking_id = ANY($2::text[])
+          ORDER BY bgb.group_id, bgb.sort_order, bgb.id`,
+        [groupIds, legacyBookingIds]
+    );
+    const bookingIds = [...new Set([
+        ...(groupResult.rows || []).map(row => cleanId(row.primary_booking_id)),
+        ...(membershipResult.rows || []).map(row => cleanId(row.booking_id)),
+        ...legacyBookingIds
+    ].filter(Boolean))];
+    const bookingResult = await db.query(
+        `SELECT b.*
+           FROM bookings b
+          WHERE b.id = ANY($1::text[])
+          ORDER BY b.business_context, b.date, b.time, b.id`,
+        [bookingIds]
+    );
+    return buildBanquetGuestArrivalAudit({
+        groupRows: groupResult.rows || [],
+        membershipRows: membershipResult.rows || [],
+        bookingRows: bookingResult.rows || [],
+        legacyLinks: legacyResult.rows || []
+    });
+}
+
 function buildBanquetArrivalProjection(primaryBooking = null, group = null, snapshotSource = null) {
-    const bookingId = cleanId(primaryBooking?.id || primaryBooking?.bookingId);
-    if (!bookingId) return null;
+    const bookingId = cleanId(primaryBooking?.id || primaryBooking?.bookingId || group?.primaryBookingId);
+    const groupArrivalTime = normalizeGuestArrivalTime(group?.guestArrivalTime || group?.guest_arrival_time);
+    const legacyPrimaryTime = normalizeGuestArrivalTime(primaryBooking?.time);
+    const time = groupArrivalTime || legacyPrimaryTime;
+    if (!bookingId && !time) return null;
+    const usesPersistedGroupArrival = Boolean(groupArrivalTime);
     return {
         bookingId,
         date: primaryBooking?.date || group?.date || null,
-        time: primaryBooking?.time || null,
+        time: time || null,
         room: primaryBooking?.room || group?.room || null,
-        source: group?.source || snapshotSource || null
+        source: usesPersistedGroupArrival
+            ? BANQUET_GROUP_SOURCE.GROUP
+            : (legacyPrimaryTime ? 'legacy_primary_booking' : (group?.source || snapshotSource || null)),
+        groupSource: group?.source || snapshotSource || null,
+        updatedAt: group?.updatedAt
+            || group?.updated_at
+            || primaryBooking?.updatedAt
+            || primaryBooking?.updated_at
+            || null
     };
 }
 
@@ -1669,6 +1951,10 @@ function buildSnapshot({
     if (!schemaAvailable) warnings.push({ code: 'banquet_group_schema_unavailable', message: 'Banquet group schema is not available; legacy links were used if possible.' });
     if (source === BANQUET_GROUP_SOURCE.LEGACY) warnings.push({ code: 'legacy_banquet_links_fallback', message: 'Loaded from legacy booking_banquet_links because no banquet group exists yet.' });
     if (source === BANQUET_GROUP_SOURCE.SINGLE) warnings.push({ code: 'banquet_group_not_found', message: 'Booking is not attached to a banquet group.' });
+    if (arrival?.source === 'legacy_primary_booking') warnings.push({
+        code: 'legacy_primary_booking',
+        message: 'Guest arrival temporarily falls back to the primary booking time until the banquet group is backfilled.'
+    });
     if (!roleBuckets.primary) warnings.push({ code: 'primary_booking_missing', message: 'Primary banquet booking could not be determined.' });
     if (!roleBuckets.kitchen.length) warnings.push({ code: 'kitchen_booking_missing', message: 'No kitchen/menu booking was detected for this banquet.' });
     const memberStatuses = [...new Set(members.map(member => bookingStatusForContract(member.booking)).filter(Boolean))].sort();
@@ -1785,6 +2071,103 @@ async function loadBanquetGroupByBookingId({ db = defaultPool, bookingId, busine
     });
 }
 
+function requireBanquetCreationContext(value, options = {}) {
+    const validation = validateBanquetCreationContext(value, options);
+    if (validation.valid) return validation.context;
+    throw new BanquetGroupError(validation.error, {
+        status: 400,
+        code: validation.code || 'BANQUET_CONTEXT_INVALID'
+    });
+}
+
+async function createBanquetGroupInTransaction({
+    db,
+    primaryBooking,
+    primaryBookingId,
+    businessContext = DEFAULT_TIMELINE_CONTEXT,
+    user = null,
+    groupName = null,
+    source = 'booking_create',
+    meta = {},
+    banquetContext,
+    members = []
+} = {}) {
+    if (!db || typeof db.query !== 'function') {
+        throw new BanquetGroupError('Transactional database client is required', { status: 500, code: 'BANQUET_TRANSACTION_REQUIRED' });
+    }
+    const context = requireBanquetCreationContext(banquetContext, { required: true, expectedMode: 'new' });
+    const cleanPrimaryId = cleanId(primaryBookingId || primaryBooking?.id);
+    if (!cleanPrimaryId || !primaryBooking) {
+        throw new BanquetGroupError('Primary booking is required', { status: 400, code: 'PRIMARY_BOOKING_REQUIRED' });
+    }
+    assertRootBooking(primaryBooking, 'PRIMARY_BOOKING_MUST_BE_ROOT');
+    assertActiveBooking(primaryBooking);
+
+    const scope = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const id = generateBanquetGroupId();
+    const normalizedSource = normalizeShortText(source, 64) || 'booking_create';
+    const groupResult = await db.query(
+        `INSERT INTO banquet_groups
+            (id, business_context, primary_booking_id, customer_id, date, room, guest_arrival_time, group_name, status, source, meta,
+             created_by_user_id, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
+         RETURNING *`,
+        [
+            id,
+            scope,
+            cleanPrimaryId,
+            primaryBooking.customer_id ?? primaryBooking.customerId ?? null,
+            primaryBooking.date,
+            primaryBooking.room || null,
+            context.guestArrivalTime,
+            normalizeShortText(groupName, 200) || normalizeShortText(primaryBooking.label || primaryBooking.program_name || primaryBooking.programName, 200),
+            normalizedSource,
+            JSON.stringify(normalizeMeta(meta)),
+            actorUserId(user),
+            actorName(user)
+        ]
+    );
+    const membershipResult = await db.query(
+        `INSERT INTO banquet_group_bookings
+            (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+         VALUES ($1, $2, $3, 'primary', 10, $4, $5)
+         RETURNING *`,
+        [id, scope, cleanPrimaryId, actorUserId(user), actorName(user)]
+    );
+    const memberResults = [];
+    for (const member of Array.isArray(members) ? members : []) {
+        const bookingId = cleanId(member?.bookingId || member?.booking_id || member?.id);
+        if (!bookingId || bookingId === cleanPrimaryId) continue;
+        const role = normalizeWritableRole(member?.role);
+        if (!role || role === 'primary') {
+            throw new BanquetGroupError('Invalid banquet member role', { status: 400, code: 'INVALID_MEMBER_ROLE' });
+        }
+        const inserted = await db.query(
+            `INSERT INTO banquet_group_bookings
+                (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [id, scope, bookingId, role, memberBookingSortOrderFor(role), actorUserId(user), actorName(user)]
+        );
+        if (inserted.rows[0]) memberResults.push(inserted.rows[0]);
+    }
+    await logBanquetHistory(db, scope, 'banquet_group_created', user, {
+        group_id: id,
+        primary_booking_id: cleanPrimaryId,
+        booking_id: cleanPrimaryId,
+        guest_arrival_time: context.guestArrivalTime,
+        source: normalizedSource
+    });
+    return {
+        groupRow: groupResult.rows[0],
+        membershipRow: membershipResult.rows[0],
+        memberRows: memberResults,
+        group: mapGroupRow(groupResult.rows[0]),
+        membership: mapMembershipRow(membershipResult.rows[0]),
+        members: memberResults.map(mapMembershipRow)
+    };
+}
+
 async function createBanquetGroup({
     db = defaultPool,
     primaryBookingId,
@@ -1792,7 +2175,8 @@ async function createBanquetGroup({
     user = null,
     groupName = null,
     source = 'manual',
-    meta = {}
+    meta = {},
+    banquetContext = null
 } = {}) {
     const cleanPrimaryId = cleanId(primaryBookingId);
     if (!cleanPrimaryId) {
@@ -1812,51 +2196,123 @@ async function createBanquetGroup({
         const existing = await getMembershipForBooking(client, cleanPrimaryId, businessContext);
         if (existing) throw duplicateMembershipError(existing);
 
-        const id = generateBanquetGroupId();
-        const groupResult = await client.query(
-            `INSERT INTO banquet_groups
-                (id, business_context, primary_booking_id, customer_id, date, room, group_name, status, source, meta,
-                 created_by_user_id, created_by, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9::jsonb, $10, $11, $11)
-             RETURNING *`,
-            [
-                id,
-                businessContext || DEFAULT_TIMELINE_CONTEXT,
-                cleanPrimaryId,
-                primary.customer_id || null,
-                primary.date,
-                primary.room || null,
-                normalizeShortText(groupName, 200) || normalizeShortText(primary.label || primary.program_name, 200),
-                normalizeShortText(source, 64) || 'manual',
-                JSON.stringify(normalizeMeta(meta)),
-                actorUserId(user),
-                actorName(user)
-            ]
-        );
-        const membershipResult = await client.query(
-            `INSERT INTO banquet_group_bookings
-                (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
-             VALUES ($1, $2, $3, 'primary', 10, $4, $5)
-             RETURNING *`,
-            [id, businessContext || DEFAULT_TIMELINE_CONTEXT, cleanPrimaryId, actorUserId(user), actorName(user)]
-        );
-        await logBanquetHistory(client, businessContext, 'banquet_group_created', user, {
-            group_id: id,
-            primary_booking_id: cleanPrimaryId,
-            booking_id: cleanPrimaryId,
-            source: normalizeShortText(source, 64) || 'manual'
+        const created = await createBanquetGroupInTransaction({
+            db: client,
+            primaryBooking: primary,
+            primaryBookingId: cleanPrimaryId,
+            businessContext,
+            user,
+            groupName,
+            source,
+            meta,
+            banquetContext
         });
         await client.query('COMMIT');
         return {
             success: true,
-            group: mapGroupRow(groupResult.rows[0]),
-            membership: mapMembershipRow(membershipResult.rows[0])
+            group: created.group,
+            membership: created.membership
         };
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (err?.code === '23505') {
             throw new BanquetGroupError('Booking is already attached to a banquet group', { status: 409, code: 'BOOKING_ALREADY_IN_GROUP' });
         }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function updateBanquetGuestArrival({
+    db = defaultPool,
+    groupId,
+    guestArrivalTime,
+    updatedAt,
+    businessContext = DEFAULT_TIMELINE_CONTEXT,
+    user = null
+} = {}) {
+    const cleanGroupId = cleanId(groupId);
+    if (!cleanGroupId) {
+        throw new BanquetGroupError('Invalid banquet group ID', { status: 400, code: 'BANQUET_GROUP_ID_REQUIRED' });
+    }
+    const cleanArrivalTime = String(guestArrivalTime || '').trim();
+    if (!validateTime(cleanArrivalTime)) {
+        throw new BanquetGroupError('guestArrivalTime must use HH:mm format', { status: 400, code: 'BANQUET_ARRIVAL_TIME_INVALID' });
+    }
+    const expectedUpdatedAt = timestampIso(updatedAt);
+    if (!expectedUpdatedAt) {
+        throw new BanquetGroupError('updatedAt is required', { status: 400, code: 'BANQUET_ARRIVAL_UPDATED_AT_REQUIRED' });
+    }
+
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const group = await getGroupByIdForUpdate(client, cleanGroupId, context);
+        if (!group) {
+            throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
+        }
+        if (String(group.status || 'active').trim().toLowerCase() !== 'active') {
+            throw new BanquetGroupError('Inactive banquet group cannot be edited', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
+        }
+
+        const primaryBooking = await getScopedBooking(client, group.primary_booking_id, context);
+        assertEditableBooking(user, primaryBooking);
+
+        const currentUpdatedAt = timestampIso(group.updated_at);
+        if (!currentUpdatedAt || currentUpdatedAt !== expectedUpdatedAt) {
+            throw new BanquetGroupError('Banquet arrival was changed by another user', {
+                status: 409,
+                code: 'BANQUET_ARRIVAL_VERSION_CONFLICT',
+                details: {
+                    currentArrival: group.guest_arrival_time || null,
+                    currentUpdatedAt
+                }
+            });
+        }
+
+        const updateResult = await client.query(
+            `UPDATE banquet_groups
+                SET guest_arrival_time = $3,
+                    updated_at = NOW(),
+                    updated_by = $4
+              WHERE id = $1
+                AND ${bookingContextSql('', '$2')}
+              RETURNING *`,
+            [cleanGroupId, context, cleanArrivalTime, actorName(user)]
+        );
+        const updatedGroup = updateResult.rows[0];
+        if (!updatedGroup) {
+            throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
+        }
+        await logBanquetHistory(client, context, 'banquet_guest_arrival_updated', user, {
+            group_id: cleanGroupId,
+            primary_booking_id: group.primary_booking_id,
+            previous_guest_arrival_time: group.guest_arrival_time || null,
+            guest_arrival_time: cleanArrivalTime,
+            previous_updated_at: currentUpdatedAt,
+            updated_at: timestampIso(updatedGroup.updated_at)
+        });
+        await client.query('COMMIT');
+
+        const mappedGroup = mapGroupRow(updatedGroup);
+        broadcastBanquetEvent('banquet:arrival-updated', {
+            groupId: mappedGroup.id,
+            date: mappedGroup.date,
+            businessContext: mappedGroup.businessContext || context,
+            updatedAt: mappedGroup.updatedAt,
+            primaryBooking
+        });
+        return {
+            success: true,
+            group: mappedGroup,
+            guestArrivalTime: mappedGroup.guestArrivalTime,
+            updatedAt: mappedGroup.updatedAt,
+            arrival: buildBanquetArrivalProjection(primaryBooking, mappedGroup, mappedGroup.source)
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         throw err;
     } finally {
         client.release();
@@ -2037,7 +2493,8 @@ async function createMemberBookingFromSourceBooking({
     booking,
     role = 'kitchen',
     businessContext = DEFAULT_TIMELINE_CONTEXT,
-    user = null
+    user = null,
+    banquetContext = null
 } = {}) {
     const cleanSourceId = cleanId(sourceBookingId);
     const normalizedRole = normalizeAtomicMemberBookingRole(role);
@@ -2087,46 +2544,31 @@ async function createMemberBookingFromSourceBooking({
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
             if (!group) {
-                const groupId = generateBanquetGroupId();
-                const groupResult = await client.query(
-                    `INSERT INTO banquet_groups
-                        (id, business_context, primary_booking_id, customer_id, date, room, group_name, status, source, meta,
-                         created_by_user_id, created_by, updated_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9::jsonb, $10, $11, $11)
-                     RETURNING *`,
-                    [
-                        groupId,
-                        context,
-                        cleanSourceId,
-                        sourceFields.customerId,
-                        sourceFields.date,
-                        sourceFields.room,
-                        sourceFields.groupName,
-                        'activity_first_kitchen_bridge',
-                        JSON.stringify({
-                            sourceBookingId: cleanSourceId,
-                            rule: 'activity_first_kitchen_bridge'
-                        }),
-                        actorUserId(user),
-                        actorName(user)
-                    ]
-                );
-                group = groupResult.rows[0];
-                createdGroup = true;
-                await logBanquetHistory(client, context, 'banquet_group_created', user, {
-                    group_id: group.id,
-                    primary_booking_id: cleanSourceId,
-                    booking_id: cleanSourceId,
-                    source: 'activity_first_kitchen_bridge'
+                const created = await createBanquetGroupInTransaction({
+                    db: client,
+                    primaryBooking: source,
+                    primaryBookingId: cleanSourceId,
+                    businessContext: context,
+                    user,
+                    groupName: sourceFields.groupName,
+                    source: 'activity_first_kitchen_bridge',
+                    meta: {
+                        sourceBookingId: cleanSourceId,
+                        rule: 'activity_first_kitchen_bridge'
+                    },
+                    banquetContext
                 });
+                group = created.groupRow;
+                createdGroup = true;
+            } else {
+                await client.query(
+                    `INSERT INTO banquet_group_bookings
+                        (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+                     VALUES ($1, $2, $3, 'primary', 10, $4, $5)
+                     RETURNING *`,
+                    [group.id, context, cleanSourceId, actorUserId(user), actorName(user)]
+                );
             }
-            await client.query(
-                `INSERT INTO banquet_group_bookings
-                    (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
-                 VALUES ($1, $2, $3, 'primary', 10, $4, $5)
-                 RETURNING *`,
-                [group.id, context, cleanSourceId, actorUserId(user), actorName(user)]
-            );
         }
 
         const cleanGroupId = cleanId(group.id);
@@ -2241,7 +2683,8 @@ async function createActivityBookingFromSourceBooking({
     booking,
     linkedBookings = [],
     businessContext = DEFAULT_TIMELINE_CONTEXT,
-    user = null
+    user = null,
+    banquetContext = null
 } = {}) {
     const cleanSourceId = cleanId(sourceBookingId);
     const inputBooking = activityBooking || booking;
@@ -2287,46 +2730,31 @@ async function createActivityBookingFromSourceBooking({
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
             if (!group) {
-                const groupId = generateBanquetGroupId();
-                const groupResult = await client.query(
-                    `INSERT INTO banquet_groups
-                        (id, business_context, primary_booking_id, customer_id, date, room, group_name, status, source, meta,
-                         created_by_user_id, created_by, updated_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9::jsonb, $10, $11, $11)
-                     RETURNING *`,
-                    [
-                        groupId,
-                        context,
-                        cleanSourceId,
-                        sourceFields.customerId,
-                        sourceFields.date,
-                        sourceFields.room,
-                        sourceFields.groupName,
-                        'kitchen_first_activity_bridge',
-                        JSON.stringify({
-                            sourceBookingId: cleanSourceId,
-                            rule: 'kitchen_first_activity_bridge'
-                        }),
-                        actorUserId(user),
-                        actorName(user)
-                    ]
-                );
-                group = groupResult.rows[0];
-                createdGroup = true;
-                await logBanquetHistory(client, context, 'banquet_group_created', user, {
-                    group_id: group.id,
-                    primary_booking_id: cleanSourceId,
-                    booking_id: cleanSourceId,
-                    source: 'kitchen_first_activity_bridge'
+                const created = await createBanquetGroupInTransaction({
+                    db: client,
+                    primaryBooking: source,
+                    primaryBookingId: cleanSourceId,
+                    businessContext: context,
+                    user,
+                    groupName: sourceFields.groupName,
+                    source: 'kitchen_first_activity_bridge',
+                    meta: {
+                        sourceBookingId: cleanSourceId,
+                        rule: 'kitchen_first_activity_bridge'
+                    },
+                    banquetContext
                 });
+                group = created.groupRow;
+                createdGroup = true;
+            } else {
+                await client.query(
+                    `INSERT INTO banquet_group_bookings
+                        (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+                     VALUES ($1, $2, $3, 'primary', 10, $4, $5)
+                     RETURNING *`,
+                    [group.id, context, cleanSourceId, actorUserId(user), actorName(user)]
+                );
             }
-            await client.query(
-                `INSERT INTO banquet_group_bookings
-                    (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
-                 VALUES ($1, $2, $3, 'primary', 10, $4, $5)
-                 RETURNING *`,
-                [group.id, context, cleanSourceId, actorUserId(user), actorName(user)]
-            );
         }
 
         const cleanGroupId = cleanId(group.id);
@@ -2783,9 +3211,12 @@ module.exports = {
     BanquetGroupError,
     BANQUET_GROUP_SOURCE,
     attachBookingToBanquetGroup,
+    auditBanquetGuestArrival,
+    buildBanquetGuestArrivalAudit,
     createActivityBookingFromSourceBooking,
     createActivityBookingInBanquetGroup,
     createBanquetGroup,
+    createBanquetGroupInTransaction,
     createMemberBookingFromSourceBooking,
     createMemberBookingInBanquetGroup,
     detachBookingFromBanquetGroup,
@@ -2793,5 +3224,7 @@ module.exports = {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
     reconcileBanquetGroupForBooking,
+    resolveBanquetArrivalBackfillCandidate,
+    updateBanquetGuestArrival,
     isKitchenCandidate
 };

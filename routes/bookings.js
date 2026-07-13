@@ -19,7 +19,8 @@ const {
     isRoomConflictBlockingRoom,
     findRoomConflictAmongCandidates,
     ALL_ROOMS,
-    BANQUET_SERVICE_LINE_ID
+    BANQUET_SERVICE_LINE_ID,
+    validateBanquetCreationContext
 } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
@@ -37,7 +38,8 @@ const { upsertManagerBookingDeposit } = require('../services/banquetDeposits');
 const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
-    reconcileBanquetGroupForBooking
+    reconcileBanquetGroupForBooking,
+    createBanquetGroupInTransaction
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { broadcastBookingEvent } = require('../services/websocket');
@@ -709,6 +711,19 @@ function rejectExplicitBanquetAddToExistingGenericCreate(res, payload = {}) {
     if (!hasExplicitBanquetAddToExistingIntent(payload)) return false;
     res.status(409).json(banquetAddToExistingRequiresAtomicPayload());
     return true;
+}
+
+function validateBookingBanquetCreationContract(res, value) {
+    const validation = validateBanquetCreationContext(value);
+    if (!validation.valid) {
+        res.status(400).json({ success: false, error: validation.error, code: validation.code });
+        return { rejected: true, context: null };
+    }
+    if (validation.context?.mode === 'existing') {
+        res.status(409).json(banquetAddToExistingRequiresAtomicPayload());
+        return { rejected: true, context: null };
+    }
+    return { rejected: false, context: validation.context };
 }
 
 function hasAnyBanquetGroupPayload(...payloadGroups) {
@@ -2798,6 +2813,9 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
     b.businessContext = businessContext;
     if (rejectExplicitBanquetAddToExistingGenericCreate(res, b)) return;
+    const banquetContract = validateBookingBanquetCreationContract(res, b.banquetContext);
+    if (banquetContract.rejected) return;
+    const banquetContext = banquetContract.context;
     if (!b.date || !b.time || !b.lineId) {
         return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
     }
@@ -3015,6 +3033,19 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         const sharedRoomLinkRows = await createSharedRoomActivityLinks(client, businessContext, insertResult.rows[0], req.user);
 
+        const createdBanquetGroup = banquetContext?.mode === 'new'
+            ? await createBanquetGroupInTransaction({
+                db: client,
+                primaryBooking: insertResult.rows[0],
+                businessContext,
+                user: req.user,
+                groupName: b.groupName,
+                source: 'booking_create',
+                meta: { creationContract: 'banquet_context_v1' },
+                banquetContext
+            })
+            : null;
+
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
         // Update first_visit which is not covered by the trigger
         if (sideEffectsAllowedForContext(businessContext) && customerId) {
@@ -3105,11 +3136,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        await reconcileBookingBanquetGroupsSafely(
-            [booking.id || b.id, ...linkedBookings.map(item => item.id)],
-            businessContext,
-            req.user
-        );
+        if (!createdBanquetGroup) {
+            await reconcileBookingBanquetGroupsSafely(
+                [booking.id || b.id, ...linkedBookings.map(item => item.id)],
+                businessContext,
+                req.user
+            );
+        }
         let allCreatedBookings = [booking, ...linkedBookings];
         await Promise.all(allCreatedBookings.map(async createdBooking => {
             createdBooking.timelineProjection = await bookingDayProjectionStatus(client, {
@@ -3328,6 +3361,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             booking: responseBooking,
             linkedBookings: responseLinkedBookings,
             sharedRoomLinks: sharedRoomLinkRows.map(row => mapBanquetLinkRow(row, b.id)),
+            banquetGroup: createdBanquetGroup ? {
+                group: createdBanquetGroup.group,
+                membership: createdBanquetGroup.membership,
+                members: createdBanquetGroup.members
+            } : null,
             allBookings,
             projection: {
                 main: responseBooking.timelineProjection || null,
@@ -3338,7 +3376,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
         log.error('Error creating booking', err);
-        res.status(err.statusCode || 500).json({
+        res.status(err.statusCode || err.status || 500).json({
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',
@@ -3593,6 +3631,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const { main } = req.body;
         const linked = Array.isArray(req.body?.linked) ? req.body.linked : [];
         const banquetActivities = Array.isArray(req.body?.banquetActivities) ? req.body.banquetActivities : [];
+        const banquetContract = validateBookingBanquetCreationContract(res, req.body?.banquetContext);
+        if (banquetContract.rejected) return;
+        const banquetContext = banquetContract.context;
         const businessContext = timelineContextFromRequest(req);
         const timelineView = timelineViewFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
@@ -4010,6 +4051,20 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             sharedRoomLinkRows.push(...createdRoomLinks);
         }
 
+        const createdBanquetGroup = banquetContext?.mode === 'new'
+            ? await createBanquetGroupInTransaction({
+                db: client,
+                primaryBooking: mainInsert.rows[0],
+                businessContext,
+                user: req.user,
+                groupName: main.groupName,
+                source: 'booking_create_full',
+                meta: { creationContract: 'banquet_context_v1' },
+                banquetContext,
+                members: activityRows.map(row => ({ bookingId: row.id, role: 'activity' }))
+            })
+            : null;
+
         await insertScopedHistory(client, 'create', main.createdBy || req.user?.username, main, businessContext);
         for (const activityRow of activityRows) {
             await insertScopedHistory(
@@ -4127,11 +4182,13 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        await reconcileBookingBanquetGroupsSafely(
-            [mainBooking.id || main.id, ...linkedBookings.map(item => item.id), ...activityBookings.map(item => item.id)],
-            businessContext,
-            req.user
-        );
+        if (!createdBanquetGroup) {
+            await reconcileBookingBanquetGroupsSafely(
+                [mainBooking.id || main.id, ...linkedBookings.map(item => item.id), ...activityBookings.map(item => item.id)],
+                businessContext,
+                req.user
+            );
+        }
         let allBookings = [mainBooking, ...linkedBookings, ...activityBookings];
         await Promise.all(allBookings.map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {
@@ -4176,6 +4233,11 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             linkedBookings: responseLinkedBookings,
             activityBookings: responseActivityBookings,
             banquetLinks: mapBookingVisualLinkRowsForResponse(banquetLinkRows, main.id),
+            banquetGroup: createdBanquetGroup ? {
+                group: createdBanquetGroup.group,
+                membership: createdBanquetGroup.membership,
+                members: createdBanquetGroup.members
+            } : null,
             sharedRoomLinks: mapBookingVisualLinkRowsForResponse(
                 sharedRoomLinkRows,
                 main.id,
@@ -4191,7 +4253,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
         log.error('Error creating full booking', err);
-        res.status(err.statusCode || 500).json({
+        res.status(err.statusCode || err.status || 500).json({
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',

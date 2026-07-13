@@ -250,7 +250,7 @@ function stateBackedLineConflict(state) {
     };
 }
 
-function makeDb({ commitCommand = 'COMMIT' } = {}) {
+function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, failBanquetMembershipInsert = false } = {}) {
     const state = {
         rows: [],
         lines: [
@@ -262,13 +262,16 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         tx: [],
         histories: [],
         links: [],
+        banquetGroups: [],
+        banquetMemberships: [],
         customers: [],
         nextCustomerId: 701,
         nextBookingSeq: 1,
         leadAttempts: 0,
         financeAttempts: 0,
         released: 0,
-        timelineLineResolveSelects: 0
+        timelineLineResolveSelects: 0,
+        txSnapshot: null
     };
 
     async function query(text, params = []) {
@@ -277,10 +280,27 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             || sql === 'RELEASE SAVEPOINT booking_optional_step'
             || sql === 'ROLLBACK TO SAVEPOINT booking_optional_step') {
             state.tx.push(sql);
+            if (sql === 'BEGIN') {
+                state.txSnapshot = {
+                    rows: state.rows.length,
+                    groups: state.banquetGroups.length,
+                    memberships: state.banquetMemberships.length,
+                    histories: state.histories.length,
+                    links: state.links.length
+                };
+            } else if (sql === 'ROLLBACK' && state.txSnapshot) {
+                state.rows.length = state.txSnapshot.rows;
+                state.banquetGroups.length = state.txSnapshot.groups;
+                state.banquetMemberships.length = state.txSnapshot.memberships;
+                state.histories.length = state.txSnapshot.histories;
+                state.links.length = state.txSnapshot.links;
+                state.txSnapshot = null;
+            }
             return { rows: [], rowCount: 0, command: sql.split(' ')[0] };
         }
         if (sql === 'COMMIT') {
             state.tx.push(sql);
+            state.txSnapshot = null;
             return { rows: [], rowCount: 0, command: commitCommand };
         }
         if (/SELECT line_id, name, color FROM lines_by_date/i.test(sql)) {
@@ -379,6 +399,46 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const row = bookingRowFromInsert(params);
             state.rows.push(row);
             return { rows: [], rowCount: 1 };
+        }
+        if (/^INSERT INTO banquet_groups/i.test(sql) && /RETURNING \*/i.test(sql)) {
+            if (failBanquetGroupInsert) throw new Error('simulated banquet group insert failure');
+            const row = {
+                id: params[0],
+                business_context: params[1],
+                primary_booking_id: params[2],
+                customer_id: params[3],
+                date: params[4],
+                room: params[5],
+                guest_arrival_time: params[6],
+                group_name: params[7],
+                status: 'active',
+                source: params[8],
+                meta: JSON.parse(params[9] || '{}'),
+                created_by_user_id: params[10],
+                created_by: params[11],
+                updated_by: params[11],
+                created_at: '2099-01-01T00:00:00.000Z',
+                updated_at: '2099-01-01T00:00:00.000Z'
+            };
+            state.banquetGroups.push(row);
+            return { rows: [{ ...row }], rowCount: 1 };
+        }
+        if (/^INSERT INTO banquet_group_bookings/i.test(sql) && /RETURNING \*/i.test(sql)) {
+            if (failBanquetMembershipInsert) throw new Error('simulated banquet membership insert failure');
+            const constantRole = sql.match(/VALUES \(\$1, \$2, \$3, '([^']+)',\s*(\d+)/i);
+            const row = {
+                id: state.banquetMemberships.length + 1,
+                group_id: params[0],
+                business_context: params[1],
+                booking_id: params[2],
+                role: constantRole ? constantRole[1] : params[3],
+                sort_order: constantRole ? Number(constantRole[2]) : params[4],
+                created_by_user_id: constantRole ? params[3] : params[5],
+                created_by: constantRole ? params[4] : params[6],
+                created_at: '2099-01-01T00:00:00.000Z'
+            };
+            state.banquetMemberships.push(row);
+            return { rows: [{ ...row }], rowCount: 1 };
         }
         if (/SELECT \* FROM bookings WHERE id = \$1 AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) IN \('park_zakrevsky', 'park', 'pzp'\) THEN 'event_genix' ELSE LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) END) = \$2(?: FOR UPDATE)?/i.test(sql)) {
             const [id, businessContext] = params;
@@ -644,6 +704,22 @@ async function withApp(dbOptions, fn) {
         validateDate: value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')),
         validateTime: value => /^\d{2}:\d{2}$/.test(String(value || '')),
         validateId: value => Boolean(value),
+        validateBanquetCreationContext: value => {
+            if (!value) return { valid: true, context: null, code: null, error: null };
+            const mode = String(value.mode || '').trim().toLowerCase();
+            const groupId = String(value.groupId || '').trim() || null;
+            const guestArrivalTime = String(value.guestArrivalTime || '').trim() || null;
+            if (!['new', 'existing'].includes(mode)) {
+                return { valid: false, context: null, code: 'BANQUET_CONTEXT_MODE_INVALID', error: 'Invalid banquet context mode' };
+            }
+            if (mode === 'new' && !/^\d{2}:\d{2}$/.test(guestArrivalTime || '')) {
+                return { valid: false, context: null, code: 'GUEST_ARRIVAL_TIME_REQUIRED', error: 'guestArrivalTime is required' };
+            }
+            if (mode === 'existing' && !groupId) {
+                return { valid: false, context: null, code: 'BANQUET_GROUP_ID_REQUIRED', error: 'groupId is required' };
+            }
+            return { valid: true, context: { mode, groupId, guestArrivalTime }, code: null, error: null };
+        },
         mapBookingRow,
         normalizeBookingStatus: (value, fallback = 'confirmed') => {
             if (value === undefined || value === null || value === '') return fallback;
@@ -949,6 +1025,55 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings creates booking and banquet arrival atomically from explicit new context', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            time: '13:00',
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '12:30' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.time, '13:00');
+        assert.equal(res.data.banquetGroup.group.guestArrivalTime, '12:30');
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.banquetGroups.length, 1);
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '12:30');
+        assert.equal(state.banquetMemberships.length, 1);
+        assert.equal(state.banquetMemberships[0].booking_id, res.data.booking.id);
+        assert.equal(state.banquetMemberships[0].role, 'primary');
+        assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings requires arrival for mode=new before persistence', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '' }
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'GUEST_ARRIVAL_TIME_REQUIRED');
+        assert.equal(state.rows.length, 0);
+        assert.equal(state.banquetGroups.length, 0);
+    });
+});
+
+test('POST /api/bookings rolls back booking when atomic banquet membership creation fails', async () => {
+    await withApp({ failBanquetMembershipInsert: true }, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '12:30' }
+        });
+
+        assert.equal(res.status, 500, JSON.stringify(res.data));
+        assert.equal(state.rows.length, 0);
+        assert.equal(state.banquetGroups.length, 0);
+        assert.equal(state.banquetMemberships.length, 0);
+        assert.ok(state.tx.includes('ROLLBACK'));
+        assert.equal(state.tx.includes('COMMIT'), false);
     });
 });
 
@@ -2480,9 +2605,36 @@ test('booking drawer source bridge cannot bypass stale context validation into n
     );
     assert.ok(
         createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource') <
-            createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)'),
+            createFlowBlock.indexOf('createResult = await apiCreateBooking(booking,'),
         'normal create remains only after source bridge branches'
     );
+});
+
+test('booking drawer keeps timeline arrival draft separate from activity booking time', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const indexHtml = read('index.html');
+    const arrivalDraftBlock = bookingJs.slice(
+        bookingJs.indexOf('function initializeBookingArrivalDraft'),
+        bookingJs.indexOf('async function openBookingPanel')
+    );
+    const openBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openBookingPanel'),
+        bookingJs.indexOf('// Скинути toggle додаткового ведучого')
+    );
+
+    assert.match(arrivalDraftBlock, /guestArrivalTime:[\s\S]*timeline_click/);
+    assert.match(openBlock, /initializeBookingArrivalDraft\(time, options\.banquetContext\)/);
+    assert.match(openBlock, /document\.getElementById\('bookingTime'\)\.value = time/);
+    assert.match(indexHtml, /id="bookingGuestArrivalTime"/);
+    assert.match(indexHtml, /Старт активності:/);
+    assert.match(indexHtml, /Незалежний час приходу гостей\. Старт активності не змінюється\./);
+    assert.match(bookingJs, /function syncBookingGuestArrivalField/);
+    assert.match(bookingJs, /visibleArrivalInput \? arrivalInput\.value/);
+    assert.match(bookingJs, /BookingDrawerState\.arrivalDraft = \{[\s\S]*source: 'arrival_input'/);
+    assert.match(bookingJs, /apiCreateBooking\(booking, \{ banquetContext \}\)/);
+    assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities, banquetContext \}\)/);
+    assert.match(apiJs, /if \(options\.banquetContext\) payload\.banquetContext = options\.banquetContext/);
 });
 
 test('active add-to-existing create path only resolves atomic endpoints or blocked states', () => {
@@ -2527,7 +2679,7 @@ test('active add-to-existing create path only resolves atomic endpoints or block
     assert.match(createFlowBlock, /if \(finalCreatePath\.blocked\)[\s\S]*return;/);
     assert.ok(
         createFlowBlock.indexOf('if (finalCreatePath.blocked)') <
-            createFlowBlock.indexOf('apiCreateBooking(booking)'),
+            createFlowBlock.indexOf('apiCreateBooking(booking,'),
         'final active-context block should run before generic apiCreateBooking'
     );
 });

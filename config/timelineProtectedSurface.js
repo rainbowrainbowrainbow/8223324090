@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '26c9394b950202065f64ed93c984cae9c9dd19ae888790023a031c12ef3af883',
+        sha256: '0450fdaeed2626110e926d6f18a96d7950f7231cc9898d636d3582acce3cbb0d',
         approval: {
             approvedBy: 'Product owner (explicit Codex task approval)',
-            approvedOn: '2026-07-12',
-            reason: 'Customer copy actions move from inline JavaScript to delegated data attributes, preventing stored script injection without changing booking identity, API sources, or modal ownership.'
+            approvedOn: '2026-07-13',
+            reason: 'Canonical banquet detail now labels arrival only from the banquet group snapshot, so a kitchen or activity member time cannot be presented as guest arrival.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

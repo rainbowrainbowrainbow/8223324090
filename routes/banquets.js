@@ -1,8 +1,8 @@
 'use strict';
 
 const router = require('express').Router();
-const { authenticateToken } = require('../middleware/auth');
-const { validateDate, validateId } = require('../services/booking');
+const { authenticateToken, requireAction } = require('../middleware/auth');
+const { validateDate, validateId, validateBanquetCreationContext } = require('../services/booking');
 const {
     timelineContextFromRequest,
     requireTimelineContext,
@@ -23,7 +23,8 @@ const {
     detachBookingFromBanquetGroup,
     loadBanquetGroupCandidates,
     loadBanquetGroupByBookingId,
-    loadBanquetGroupById
+    loadBanquetGroupById,
+    updateBanquetGuestArrival
 } = require('../services/banquetGroups');
 const {
     getDepositProjectionForBooking,
@@ -126,10 +127,25 @@ function sendWriteError(res, err) {
             error: err.message,
             code: err.code,
             conflictBookingId: err.details?.conflictBookingId || undefined,
+            currentArrival: Object.prototype.hasOwnProperty.call(err.details || {}, 'currentArrival')
+                ? err.details.currentArrival
+                : undefined,
+            currentUpdatedAt: err.details?.currentUpdatedAt || undefined,
             details: err.details || undefined
         });
     }
     return res.status(500).json({ success: false, error: 'Internal server error' });
+}
+
+function requireBanquetCreationContract(res, value, options = {}) {
+    const validation = validateBanquetCreationContext(value, options);
+    if (validation.valid) return validation.context;
+    res.status(400).json({
+        success: false,
+        error: validation.error,
+        code: validation.code
+    });
+    return null;
 }
 
 router.get('/candidates', async (req, res) => {
@@ -167,13 +183,19 @@ router.post('/', async (req, res) => {
         if (!validateId(primaryBookingId)) {
             return res.status(400).json({ success: false, error: 'Invalid primary booking ID' });
         }
+        const banquetContext = requireBanquetCreationContract(res, req.body?.banquetContext, {
+            required: true,
+            expectedMode: 'new'
+        });
+        if (!banquetContext) return;
         const result = await createBanquetGroup({
             primaryBookingId,
             businessContext,
             user: req.user,
             groupName: req.body?.groupName || req.body?.group_name,
             source: req.body?.source || 'manual',
-            meta: req.body?.meta
+            meta: req.body?.meta,
+            banquetContext
         });
         return res.status(201).json(result);
     } catch (err) {
@@ -191,12 +213,18 @@ router.post('/from-source/member-booking', async (req, res) => {
         if (!validateId(sourceBookingId)) {
             return res.status(400).json({ success: false, error: 'Invalid source booking ID' });
         }
+        const banquetContext = requireBanquetCreationContract(res, req.body?.banquetContext, {
+            required: true,
+            expectedMode: 'new'
+        });
+        if (!banquetContext) return;
         const result = await createMemberBookingFromSourceBooking({
             sourceBookingId,
             memberBooking: req.body?.booking || req.body?.memberBooking || req.body?.member_booking,
             role: req.body?.role,
             businessContext,
-            user: req.user
+            user: req.user,
+            banquetContext
         });
         return res.status(201).json(result);
     } catch (err) {
@@ -214,6 +242,11 @@ router.post('/from-source/activity-booking', async (req, res) => {
         if (!validateId(sourceBookingId)) {
             return res.status(400).json({ success: false, error: 'Invalid source booking ID' });
         }
+        const banquetContext = requireBanquetCreationContract(res, req.body?.banquetContext, {
+            required: true,
+            expectedMode: 'new'
+        });
+        if (!banquetContext) return;
         const activityBooking = req.body?.booking || req.body?.activityBooking || req.body?.activity_booking;
         const linkedBookings = Array.isArray(req.body?.linkedBookings)
             ? req.body.linkedBookings
@@ -223,7 +256,8 @@ router.post('/from-source/activity-booking', async (req, res) => {
             activityBooking,
             linkedBookings,
             businessContext,
-            user: req.user
+            user: req.user,
+            banquetContext
         });
         return res.status(201).json(result);
     } catch (err) {
@@ -347,6 +381,29 @@ router.get('/by-booking/:bookingId', async (req, res) => {
     } catch (err) {
         log.error('GET /banquets/by-booking/:bookingId error', err);
         return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.patch('/:groupId/arrival', requireAction('edit_booking'), async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) {
+            return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const result = await updateBanquetGuestArrival({
+            groupId,
+            guestArrivalTime: req.body?.guestArrivalTime ?? req.body?.guest_arrival_time,
+            updatedAt: req.body?.updatedAt ?? req.body?.updated_at,
+            businessContext,
+            user: req.user
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('PATCH /banquets/:groupId/arrival error', err);
+        return sendWriteError(res, err);
     }
 });
 

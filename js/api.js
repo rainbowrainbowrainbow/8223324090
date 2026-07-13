@@ -46,6 +46,8 @@ function apiFailureFromBody(body = {}, response = null, fallback = 'API error') 
         conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
         currentData: body.currentData || null,
         currentStatus: body.currentStatus || null,
+        currentArrival: body.currentArrival ?? body.details?.currentArrival ?? null,
+        currentUpdatedAt: body.currentUpdatedAt || body.details?.currentUpdatedAt || null,
         status: response?.status || body.status || null,
         requestId,
         details: body.details || null
@@ -1477,10 +1479,12 @@ async function apiGetBookingById(id, options = {}) {
 
 async function apiCreateBooking(booking, options = {}) {
     try {
+        const payload = timelineApiPayload(booking);
+        if (options.banquetContext) payload.banquetContext = options.banquetContext;
         const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
-            body: JSON.stringify(timelineApiPayload(booking))
+            body: JSON.stringify(payload)
         });
         if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
@@ -1564,6 +1568,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
         if (Array.isArray(options.banquetActivities) && options.banquetActivities.length > 0) {
             payload.banquetActivities = options.banquetActivities.map(item => timelineApiPayload(item));
         }
+        if (options.banquetContext) payload.banquetContext = options.banquetContext;
         const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings/full', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
@@ -1718,7 +1723,8 @@ async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
             primaryBookingId,
             groupName: options.groupName || null,
             source: options.source || 'manual',
-            meta: options.meta || {}
+            meta: options.meta || {},
+            banquetContext: options.banquetContext || null
         });
         const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets')}`, {
             method: 'POST',
@@ -1745,7 +1751,8 @@ async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
             body: JSON.stringify(timelineApiPayload({
                 sourceBookingId: payload.sourceBookingId,
                 role: payload.role || 'kitchen',
-                booking: payload.booking || payload.memberBooking || null
+                booking: payload.booking || payload.memberBooking || null,
+                banquetContext: { mode: 'existing', groupId }
             }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -1768,7 +1775,8 @@ async function apiCreateBanquetMemberBookingFromSource(payload = {}) {
             body: JSON.stringify(timelineApiPayload({
                 sourceBookingId: payload.sourceBookingId || payload.source_booking_id,
                 role: payload.role || 'kitchen',
-                booking: payload.booking || payload.memberBooking || payload.member_booking || null
+                booking: payload.booking || payload.memberBooking || payload.member_booking || null,
+                banquetContext: payload.banquetContext || null
             }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -1810,7 +1818,8 @@ async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
             body: JSON.stringify(timelineApiPayload({
                 sourceBookingId: payload.sourceBookingId,
                 booking: payload.booking || payload.activityBooking || null,
-                linkedBookings: Array.isArray(payload.linkedBookings) ? payload.linkedBookings : []
+                linkedBookings: Array.isArray(payload.linkedBookings) ? payload.linkedBookings : [],
+                banquetContext: { mode: 'existing', groupId }
             }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -1833,7 +1842,8 @@ async function apiCreateBanquetActivityBookingFromSource(payload = {}) {
             body: JSON.stringify(timelineApiPayload({
                 sourceBookingId: payload.sourceBookingId || payload.source_booking_id,
                 booking: payload.booking || payload.activityBooking || payload.activity_booking || null,
-                linkedBookings: Array.isArray(payload.linkedBookings) ? payload.linkedBookings : []
+                linkedBookings: Array.isArray(payload.linkedBookings) ? payload.linkedBookings : [],
+                banquetContext: payload.banquetContext || null
             }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -1892,6 +1902,25 @@ async function apiDeleteBooking(id) {
     } catch (err) {
         console.error('API deleteBooking error:', err);
         return apiOfflineFailure(err, 'Не вдалося видалити бронювання. Перевірте зʼєднання і спробуйте ще раз.');
+    }
+}
+
+async function apiUpdateBanquetGuestArrival(groupId, guestArrivalTime, updatedAt, options = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/arrival`, {
+            businessContext: options.businessContext
+        })}`, {
+            method: 'PATCH',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({ guestArrivalTime, updatedAt }))
+        });
+        if (handleAuthError(response)) return apiAuthFailure(response);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return apiFailureFromBody(body, response);
+        return body;
+    } catch (err) {
+        console.error('API updateBanquetGuestArrival error:', err);
+        return apiOfflineFailure(err, 'Не вдалося змінити час приходу гостей. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 

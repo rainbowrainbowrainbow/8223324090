@@ -181,13 +181,17 @@ function timelineBanquetSnapshotArrival(snapshot = {}) {
     const time = normalizeTimelineBanquetServingTime(raw.time);
     const room = String(raw.room || '').trim();
     const source = String(raw.source || '').trim();
+    const updatedAt = String(raw.updatedAt || raw.updated_at || '').trim();
+    const groupId = String(snapshot?.groupId || snapshot?.group?.id || '').trim();
     if (!bookingId && !date && !time && !room && !source) return null;
     return {
         bookingId: bookingId || null,
+        groupId: groupId || null,
         date: date || null,
         time: time || null,
         room: room || null,
-        source: source || null
+        source: source || null,
+        updatedAt: updatedAt || null
     };
 }
 
@@ -197,6 +201,7 @@ function timelineBanquetArrivalMarker(summary = {}) {
     const time = normalizeTimelineBanquetServingTime(arrival.time);
     if (!time) return null;
     const bookingId = String(arrival.bookingId || arrival.booking_id || '').trim();
+    const groupId = String(arrival.groupId || arrival.group_id || summary.groupId || '').trim();
     const room = String(arrival.room || summary.room || '').trim();
     return {
         type: 'guest_arrival',
@@ -206,6 +211,7 @@ function timelineBanquetArrivalMarker(summary = {}) {
         date: String(arrival.date || summary.date || '').trim().slice(0, 10) || null,
         room: room || null,
         source: String(arrival.source || '').trim() || null,
+        groupId: groupId || null,
         bookingId: bookingId || null,
         bookingIds: bookingId ? [bookingId] : [],
         count: 1,

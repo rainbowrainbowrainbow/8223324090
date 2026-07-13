@@ -477,6 +477,12 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     const summary = {
         success: true,
         bookingId: 'BK-QTY',
+        arrival: {
+            date: '2026-06-23',
+            time: '12:30',
+            room: 'Minecraft',
+            source: 'banquet_group'
+        },
         venue: { name: 'Банкетний лист' },
         document: { title: 'БАНКЕТНИЙ ЛИСТ' },
         event: {

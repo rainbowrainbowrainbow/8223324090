@@ -1078,13 +1078,14 @@ function createFakePool() {
                     customer_id: params[3],
                     date: params[4],
                     room: params[5],
-                    group_name: params[6],
+                    guest_arrival_time: params[6],
+                    group_name: params[7],
                     status: 'active',
-                    source: params[7] || 'manual',
-                    meta: typeof params[8] === 'string' ? JSON.parse(params[8] || '{}') : (params[8] || {}),
-                    created_by_user_id: params[9],
-                    created_by: params[10],
-                    updated_by: params[10],
+                    source: params[8] || 'manual',
+                    meta: typeof params[9] === 'string' ? JSON.parse(params[9] || '{}') : (params[9] || {}),
+                    created_by_user_id: params[10],
+                    created_by: params[11],
+                    updated_by: params[11],
                     created_at: '2099-06-01T13:00:00.000Z',
                     updated_at: '2099-06-01T13:00:00.000Z'
                 };
@@ -1127,6 +1128,16 @@ function createFakePool() {
                     row.updated_by = params[2] || row.updated_by;
                 }
                 return { rows: [], rowCount: row || params[0] === 'BQ-SMOKE' ? 1 : 0 };
+            }
+            if (/UPDATE banquet_groups\s+SET guest_arrival_time = \$3,\s+updated_at = NOW\(\),\s+updated_by = \$4/i.test(text)) {
+                const row = hrState.banquetGroups.get(params[0]);
+                if (!row || String(row.business_context || 'event_genix') !== String(params[1])) {
+                    return { rows: [], rowCount: 0 };
+                }
+                row.guest_arrival_time = params[2];
+                row.updated_by = params[3];
+                row.updated_at = '2099-06-01T14:00:00.000Z';
+                return { rows: [{ ...row }], rowCount: 1 };
             }
             if (/SELECT b\.\*\s+FROM bookings b/i.test(text)
                 && /b\.customer_id = \$4/i.test(text)
@@ -3317,7 +3328,11 @@ describe('route-level API safety smoke', () => {
         const created = await request(
             'POST',
             '/api/banquets?businessContext=event_genix',
-            { primaryBookingId: 'BK-GROUP-PRIMARY', groupName: 'Controlled banquet' },
+            {
+                primaryBookingId: 'BK-GROUP-PRIMARY',
+                groupName: 'Controlled banquet',
+                banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '13:00' }
+            },
             withAuth()
         );
 
@@ -3327,6 +3342,26 @@ describe('route-level API safety smoke', () => {
         assert.equal(created.data.group.primaryBookingId, 'BK-GROUP-PRIMARY');
         assert.equal(created.data.membership.role, 'primary');
         const groupId = created.data.group.id;
+
+        const unauthorizedArrivalUpdate = await request(
+            'PATCH',
+            `/api/banquets/${encodeURIComponent(groupId)}/arrival?businessContext=event_genix`,
+            { guestArrivalTime: '12:20', updatedAt: created.data.group.updatedAt },
+            withAuth({}, 'animator')
+        );
+        assert.equal(unauthorizedArrivalUpdate.status, 403, JSON.stringify(unauthorizedArrivalUpdate.data));
+
+        const arrivalUpdated = await request(
+            'PATCH',
+            `/api/banquets/${encodeURIComponent(groupId)}/arrival?businessContext=event_genix`,
+            { guestArrivalTime: '12:30', updatedAt: created.data.group.updatedAt },
+            withAuth()
+        );
+        assert.equal(arrivalUpdated.status, 200, JSON.stringify(arrivalUpdated.data));
+        assert.equal(arrivalUpdated.data.guestArrivalTime, '12:30');
+        assert.equal(arrivalUpdated.data.updatedAt, '2099-06-01T14:00:00.000Z');
+        assert.ok(queries.some(q => /UPDATE banquet_groups[\s\S]*guest_arrival_time/i.test(q.text)));
+        assert.equal(queries.some(q => /UPDATE bookings[\s\S]*guest_arrival_time/i.test(q.text)), false);
 
         const attached = await request(
             'POST',
@@ -3353,7 +3388,11 @@ describe('route-level API safety smoke', () => {
         const secondCreated = await request(
             'POST',
             '/api/banquets?businessContext=event_genix',
-            { primaryBookingId: 'BK-GROUP-OTHER-PRIMARY', groupName: 'Second controlled banquet' },
+            {
+                primaryBookingId: 'BK-GROUP-OTHER-PRIMARY',
+                groupName: 'Second controlled banquet',
+                banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '14:00' }
+            },
             withAuth()
         );
         assert.equal(secondCreated.status, 201, JSON.stringify(secondCreated.data));

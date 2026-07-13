@@ -9,6 +9,14 @@
         groupId: '',
         mode: 'client'
     };
+    let arrivalSaveInFlight = false;
+    let summaryLoadGeneration = 0;
+    let summaryRealtimeRefreshTimer = null;
+
+    const SUMMARY_ARRIVAL_EDIT_ROLES = new Set([
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'
+    ]);
 
     function qs() {
         return new URLSearchParams(window.location.search || '');
@@ -51,6 +59,184 @@
         toast.textContent = message;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 1600);
+    }
+
+    function storedSummaryUser() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem('pzp_current_user') || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function summaryCanEditArrival() {
+        try {
+            if (typeof canAccess === 'function') return Boolean(canAccess('edit_booking'));
+        } catch {}
+
+        const user = storedSummaryUser();
+        const permissions = user.permissions || {};
+        if (permissions.actions && Object.prototype.hasOwnProperty.call(permissions.actions, 'edit_booking')) {
+            return Boolean(permissions.actions.edit_booking);
+        }
+        const denylist = [...(user.actionDenylist || []), ...(user.action_denylist || []), ...(permissions.actionDenylist || [])];
+        if (denylist.includes('edit_booking')) return false;
+        const allowlist = [...(user.actionAllowlist || []), ...(user.action_allowlist || []), ...(permissions.actionAllowlist || [])];
+        if (allowlist.includes('edit_booking')) return true;
+
+        let previewRole = '';
+        let workingRole = '';
+        try {
+            previewRole = sessionStorage.getItem('testRole') || localStorage.getItem('pzp_test_role') || '';
+            workingRole = localStorage.getItem('pzp_working_role') || '';
+        } catch {}
+        const roles = previewRole
+            ? [previewRole]
+            : [workingRole, user.effectiveRole, user.workingRole, user.activeRole, user.role, ...(user.roles || []), ...(user.extraRoles || []), ...(user.extra_roles || [])];
+        return roles.filter(Boolean).some(role => SUMMARY_ARRIVAL_EDIT_ROLES.has(String(role)));
+    }
+
+    function summaryArrivalGroupId(summary = currentSummary) {
+        return String(summary?.group?.id || currentSummaryRequest.groupId || '').trim();
+    }
+
+    function setArrivalEditorState(state = 'idle', message = '') {
+        const section = el('bookingSummaryArrivalEditor');
+        const form = el('bookingSummaryArrivalForm');
+        const edit = el('bookingSummaryArrivalEdit');
+        const input = el('bookingSummaryArrivalInput');
+        const save = el('bookingSummaryArrivalSave');
+        const cancel = el('bookingSummaryArrivalCancel');
+        const status = el('bookingSummaryArrivalStatus');
+        if (!section || !form || !input) return;
+        const editing = ['editing', 'saving', 'validation_error', 'offline', 'forbidden', 'version_conflict'].includes(state);
+        const locked = state === 'saving' || state === 'forbidden';
+        section.dataset.state = state;
+        form.hidden = !editing;
+        if (edit) edit.hidden = editing;
+        input.disabled = locked;
+        input.setAttribute('aria-invalid', state === 'validation_error' ? 'true' : 'false');
+        if (save) {
+            save.disabled = locked || arrivalSaveInFlight;
+            save.textContent = state === 'saving' ? 'Збереження…' : 'Зберегти';
+        }
+        if (cancel) cancel.disabled = state === 'saving';
+        if (status) status.textContent = message;
+    }
+
+    function renderArrivalEditor(summary = currentSummary, options = {}) {
+        const section = el('bookingSummaryArrivalEditor');
+        const current = el('bookingSummaryArrivalCurrent');
+        const input = el('bookingSummaryArrivalInput');
+        if (!section || !current || !input) return;
+        const groupId = summaryArrivalGroupId(summary);
+        const groupStatus = String(summary?.group?.status || '').trim().toLowerCase();
+        const visible = Boolean(groupId && (!groupStatus || groupStatus === 'active') && summaryCanEditArrival());
+        section.hidden = !visible;
+        if (!visible) return;
+        const arrival = summaryArrival(summary);
+        current.textContent = arrival.time || '—';
+        input.value = arrival.time || '';
+        setArrivalEditorState(options.edit === true ? 'editing' : 'idle');
+        if (options.edit === true) {
+            const focusInput = () => input.focus();
+            if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focusInput);
+            else setTimeout(focusInput, 0);
+        }
+    }
+
+    function applyArrivalUpdateToSummary(time, updatedAt) {
+        if (!currentSummary) return;
+        const nextArrival = {
+            ...(currentSummary.arrival || currentSummary.banquetArrival || {}),
+            time: time || null,
+            updatedAt: updatedAt || null
+        };
+        currentSummary.arrival = nextArrival;
+        currentSummary.banquetArrival = nextArrival;
+        if (currentSummary.group) currentSummary.group.updatedAt = updatedAt || currentSummary.group.updatedAt || null;
+        if (Array.isArray(currentSummary.schedule)) {
+            currentSummary.schedule = currentSummary.schedule.map(item => item?.type === 'arrival'
+                ? { ...item, time: time || null }
+                : item);
+        }
+    }
+
+    function startArrivalEditing() {
+        if (!currentSummary) return;
+        const input = el('bookingSummaryArrivalInput');
+        input.value = summaryArrival(currentSummary).time || '';
+        setArrivalEditorState('editing');
+        input.focus();
+    }
+
+    function cancelArrivalEditing() {
+        const input = el('bookingSummaryArrivalInput');
+        input.value = summaryArrival(currentSummary).time || '';
+        setArrivalEditorState('idle');
+        el('bookingSummaryArrivalEdit')?.focus();
+    }
+
+    async function saveArrival(event) {
+        event?.preventDefault?.();
+        if (arrivalSaveInFlight || !currentSummary) return;
+        const input = el('bookingSummaryArrivalInput');
+        const guestArrivalTime = String(input?.value || '').trim();
+        if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(guestArrivalTime)) {
+            setArrivalEditorState('validation_error', 'Вкажіть коректний час у форматі HH:mm.');
+            input?.focus();
+            return;
+        }
+        const groupId = summaryArrivalGroupId();
+        const updatedAt = currentSummary.arrival?.updatedAt || currentSummary.banquetArrival?.updatedAt || currentSummary.group?.updatedAt || '';
+        if (!groupId || !updatedAt) {
+            setArrivalEditorState('validation_error', 'Не вдалося визначити актуальну версію банкету. Оновіть сторінку.');
+            return;
+        }
+
+        arrivalSaveInFlight = true;
+        setArrivalEditorState('saving', 'Зберігаємо час приходу…');
+        try {
+            const result = typeof apiUpdateBanquetGuestArrival === 'function'
+                ? await apiUpdateBanquetGuestArrival(groupId, guestArrivalTime, updatedAt, {
+                    businessContext: currentSummaryRequest.businessContext
+                })
+                : { success: false, offline: true, error: 'API редагування недоступний.' };
+            if (result?.success !== false) {
+                applyArrivalUpdateToSummary(result?.arrival?.time || result?.guestArrivalTime || guestArrivalTime, result?.arrival?.updatedAt || result?.updatedAt);
+                renderDocument(currentSummary);
+                renderArrivalEditor(currentSummary);
+                showToast('Час приходу гостей оновлено');
+                return;
+            }
+            if (result.status === 409 && result.code === 'BANQUET_ARRIVAL_VERSION_CONFLICT') {
+                applyArrivalUpdateToSummary(result.currentArrival, result.currentUpdatedAt);
+                renderDocument(currentSummary);
+                renderArrivalEditor(currentSummary, { edit: true });
+                input.value = result.currentArrival || '';
+                setArrivalEditorState('version_conflict', `Час уже змінено в іншій вкладці. Актуальне значення: ${result.currentArrival || 'не вказано'}.`);
+                input.focus();
+                return;
+            }
+            if (result.status === 401 || result.status === 403) {
+                setArrivalEditorState('forbidden', 'Недостатньо прав для зміни часу приходу.');
+                return;
+            }
+            if (result.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+                setArrivalEditorState('offline', 'Немає зв’язку із сервером. Перевірте мережу та повторіть збереження.');
+                return;
+            }
+            setArrivalEditorState('validation_error', result.error || 'Не вдалося зберегти час приходу.');
+        } catch (err) {
+            console.error('[booking-summary] arrival update failed', err);
+            setArrivalEditorState('offline', 'Немає зв’язку із сервером. Перевірте мережу та повторіть збереження.');
+        } finally {
+            arrivalSaveInFlight = false;
+            const save = el('bookingSummaryArrivalSave');
+            const state = el('bookingSummaryArrivalEditor')?.dataset.state;
+            if (save) save.disabled = state === 'saving' || state === 'forbidden';
+        }
     }
 
     function formatDate(value) {
@@ -434,7 +620,7 @@
         const arrival = summary?.arrival || summary?.banquetArrival || {};
         return {
             date: arrival?.date || event.date || null,
-            time: arrival?.time || event.time || null,
+            time: arrival?.time || null,
             room: arrival?.room || event.room || null
         };
     }
@@ -931,7 +1117,7 @@
                         briefItem('Телефон', customer.phone),
                         briefItem('Кімната', arrival.room || event.room),
                         briefItem('Дата банкету', formatDate(arrival.date || event.date)),
-                        briefItem('Прихід гостей', arrival.time || event.time)
+                        briefItem('Прихід гостей', arrival.time)
                     ])}
                     ${briefColumn([
                         briefItem('Діти', counts.children),
@@ -1030,7 +1216,7 @@
             `Booking ID: ${summary.bookingId || '—'}`,
             '',
             `Дата банкету: ${formatDate(arrival.date || event.date)}`,
-            `Прихід гостей: ${formatValue(arrival.time || event.time)}`,
+            `Прихід гостей: ${formatValue(arrival.time)}`,
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
             `${celebrantsNameLabel}: ${formatValue(celebrantsNameDisplay)}`,
@@ -1231,7 +1417,8 @@
         }
     }
 
-    async function loadSummary() {
+    async function loadSummary(options = {}) {
+        const loadGeneration = ++summaryLoadGeneration;
         const params = qs();
         const id = params.get('id');
         const businessContext = params.get('businessContext') || 'event_genix';
@@ -1256,11 +1443,14 @@
 
         const requestParams = new URLSearchParams({ businessContext, mode });
         if (groupId) requestParams.set('groupId', groupId);
+        if (options.fresh === true) requestParams.set('_fresh', String(Date.now()));
         const url = `${API_BASE}/bookings/${encodeURIComponent(id)}/banquet-summary?${requestParams.toString()}`;
         const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            cache: options.fresh === true ? 'no-store' : 'default'
         });
         const data = await response.json().catch(() => ({}));
+        if (loadGeneration !== summaryLoadGeneration) return;
         if (!response.ok || data.success === false) {
             setState(data.error || `Не вдалося завантажити банкетний лист (${response.status}).`, 'error');
             return;
@@ -1269,13 +1459,45 @@
         currentSummary = data;
         renderWarnings(summaryModeSection(data, 'warnings', mode) ? data.warnings : []);
         renderDocument(data);
+        renderArrivalEditor(data, { edit: params.get('editArrival') === '1' });
         setState('');
+        const subscriptionDate = summaryArrival(data).date || data.event?.date || '';
+        if (typeof ParkWS !== 'undefined') {
+            ParkWS.setSubscribedDates(subscriptionDate ? [String(subscriptionDate).slice(0, 10)] : []);
+            ParkWS.connect();
+        }
+    }
+
+    function summaryRealtimePayloadMatches(payload = {}) {
+        const eventGroupId = String(payload.groupId || payload.group_id || '').trim();
+        const eventContext = String(payload.businessContext || payload.business_context || '').trim();
+        return Boolean(
+            currentSummary
+            && eventGroupId
+            && eventGroupId === summaryArrivalGroupId(currentSummary)
+            && eventContext === String(currentSummaryRequest.businessContext || '').trim()
+        );
+    }
+
+    function scheduleSummaryRealtimeRefresh(reason = 'websocket') {
+        if (!currentSummary) return;
+        if (summaryRealtimeRefreshTimer) clearTimeout(summaryRealtimeRefreshTimer);
+        summaryRealtimeRefreshTimer = setTimeout(() => {
+            summaryRealtimeRefreshTimer = null;
+            loadSummary({ fresh: true, reason }).catch(err => {
+                console.error('[booking-summary] realtime refresh failed', err);
+                setState('Не вдалося синхронізувати оновлений час приходу. Оновіть сторінку.', 'error');
+            });
+        }, 100);
     }
 
     function bindActions() {
         el('bookingSummaryClose')?.addEventListener('click', closeSummaryDocument);
         el('bookingSummaryPrint')?.addEventListener('click', printSummaryDocument);
         el('bookingSummaryClientPdf')?.addEventListener('click', () => exportSummaryPdf('client'));
+        el('bookingSummaryArrivalEdit')?.addEventListener('click', startArrivalEditing);
+        el('bookingSummaryArrivalCancel')?.addEventListener('click', cancelArrivalEditing);
+        el('bookingSummaryArrivalForm')?.addEventListener('submit', saveArrival);
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
                 showToast('Банкетний лист ще не завантажений');
@@ -1287,6 +1509,15 @@
             } catch {
                 showToast('Не вдалося скопіювати текст');
             }
+        });
+        window.addEventListener('ws:banquet', event => {
+            if (!summaryRealtimePayloadMatches(event?.detail?.payload || {})) return;
+            scheduleSummaryRealtimeRefresh('banquet_arrival_updated');
+        });
+        window.addEventListener('ws:reconnected', event => {
+            const context = String(event?.detail?.businessContext || '').trim();
+            if (!currentSummary || context !== String(currentSummaryRequest.businessContext || '').trim()) return;
+            scheduleSummaryRealtimeRefresh('websocket_reconnected');
         });
     }
 

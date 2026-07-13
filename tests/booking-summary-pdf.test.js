@@ -277,7 +277,9 @@ test('banquet PDF validation and fallback schedule use canonical arrival project
         date: '2026-06-24',
         time: '12:30',
         room: 'Sun Hall',
-        source: 'test_arrival'
+        source: 'banquet_group',
+        groupSource: 'manual',
+        updatedAt: '2026-06-20T10:00:00.000Z'
     };
     summary.banquetArrival = summary.arrival;
     summary.event = {

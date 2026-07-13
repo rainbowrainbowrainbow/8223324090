@@ -177,21 +177,52 @@ function setTimelineCacheEntry(cache, date, data, options = {}) {
     if (legacyKey !== key) delete cache[legacyKey];
 }
 
+const TIMELINE_FRESH_BOOKING_DATE_REQUESTS = new Set();
+
+function timelineFreshBookingDateKey(date, businessContext = timelineCacheScopeSnapshot().context) {
+    return `${String(businessContext || '').trim()}|${timelineDateKey(date)}`;
+}
+
+function requestFreshTimelineBookingDate(date, options = {}) {
+    const businessContext = options.businessContext || timelineCacheScopeSnapshot().context;
+    TIMELINE_FRESH_BOOKING_DATE_REQUESTS.add(timelineFreshBookingDateKey(date, businessContext));
+}
+
+function consumeFreshTimelineBookingDate(date, options = {}) {
+    const businessContext = options.businessContext || timelineCacheScopeSnapshot().context;
+    const key = timelineFreshBookingDateKey(date, businessContext);
+    if (!TIMELINE_FRESH_BOOKING_DATE_REQUESTS.has(key)) return false;
+    TIMELINE_FRESH_BOOKING_DATE_REQUESTS.delete(key);
+    return true;
+}
+
 function invalidateTimelineDateCache(date, options = {}) {
     const dateStr = timelineDateKey(date);
     const clearBookings = options.bookings !== false;
     const clearLines = options.lines !== false;
+    const businessContext = String(options.businessContext || '').trim();
+    const currentContext = String(timelineCacheScopeSnapshot().context || '').trim();
     const clearFrom = cache => {
         if (!cache) return;
         Object.keys(cache).forEach(key => {
-            if (key === dateStr || key.endsWith(`|${dateStr}`)) delete cache[key];
+            const isLegacyDateKey = key === dateStr;
+            const isScopedDateKey = key.endsWith(`|${dateStr}`);
+            const matchesContext = !businessContext
+                || (isLegacyDateKey && currentContext === businessContext)
+                || key.startsWith(`${businessContext}|`);
+            if ((isLegacyDateKey || isScopedDateKey) && matchesContext) delete cache[key];
         });
     };
     if (clearBookings) clearFrom(AppState.cachedBookings);
     if (clearLines) clearFrom(AppState.cachedLines);
+    if (clearBookings && options.fresh === true) {
+        requestFreshTimelineBookingDate(dateStr, { businessContext: businessContext || currentContext });
+    }
 }
 
 window.invalidateTimelineDateCache = invalidateTimelineDateCache;
+window.requestFreshTimelineBookingDate = requestFreshTimelineBookingDate;
+window.consumeFreshTimelineBookingDate = consumeFreshTimelineBookingDate;
 window.getTimelineCacheEntry = getTimelineCacheEntry;
 window.timelineCacheScopeKey = timelineCacheScopeKey;
 window.timelineCacheScopeSnapshot = timelineCacheScopeSnapshot;

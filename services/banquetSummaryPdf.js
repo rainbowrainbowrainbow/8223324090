@@ -108,7 +108,7 @@ function summaryArrival(summary = {}) {
     const arrival = summary.arrival || summary.banquetArrival || {};
     return {
         date: cleanText(arrival.date) || event.date || null,
-        time: cleanText(arrival.time) || event.time || null,
+        time: cleanText(arrival.time) || null,
         room: cleanText(arrival.room) || event.room || null
     };
 }
@@ -1253,7 +1253,7 @@ function buildBriefItems(summary = {}, view) {
         { label: 'Телефон', value: customer.phone },
         { label: 'Кімната', value: arrival.room || event.room },
         { label: 'Дата', value: formatDate(arrival.date || event.date) },
-        { label: 'Прихід гостей', value: arrival.time || event.time },
+        { label: 'Прихід гостей', value: arrival.time },
         { label: 'Діти', value: counts.children },
         { label: 'Дорослі', value: counts.adults },
         { label: 'Столи', value: counts.tables },

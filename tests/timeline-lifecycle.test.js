@@ -187,6 +187,15 @@ function createHarness(options = {}) {
             getTimelineCacheEntry,
             setTimelineCacheEntry,
             invalidateTimelineDateCache,
+            consumeFreshTimelineBookingDate,
+            cacheTimelineBanquetSnapshot,
+            invalidateTimelineBanquetSnapshotCache,
+            getBanquetSnapshotCacheKeys() {
+                return {
+                    byBooking: [...TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.keys()],
+                    byGroup: [...TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.keys()]
+                };
+            },
             invalidateTimelineBanquetPreviewFreshness,
             applyTimelineBanquetPreview,
             timelineBanquetPreviewHydrationContext,
@@ -946,6 +955,59 @@ test('timeline date invalidation removes every scoped cache entry for that date 
     api.invalidateTimelineDateCache('2026-05-31', { bookings: false });
 
     assert.equal(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31'], undefined);
+});
+
+test('arrival invalidation preserves another business context and forces one fresh booking fetch', async () => {
+    const { window, api } = createHarness();
+    window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31'] = { data: ['event'] };
+    window.AppState.cachedBookings['maysternya_doli|services|resource|resources|2026-05-31'] = { data: ['other'] };
+    let requestOptions = null;
+    window.apiGetBookings = async (date, options) => {
+        requestOptions = { date, options };
+        return [{ id: 'fresh-arrival-booking' }];
+    };
+
+    api.invalidateTimelineDateCache('2026-05-31', {
+        lines: false,
+        bookings: true,
+        fresh: true,
+        businessContext: 'event_genix'
+    });
+
+    assert.equal(window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31'], undefined);
+    assert.deepEqual(window.AppState.cachedBookings['maysternya_doli|services|resource|resources|2026-05-31'].data, ['other']);
+    const bookings = await api.getBookingsForDate('2026-05-31');
+    assert.deepEqual(bookings.map(item => item.id), ['fresh-arrival-booking']);
+    assert.equal(requestOptions.options.fresh, true);
+    assert.equal(api.consumeFreshTimelineBookingDate('2026-05-31', { businessContext: 'event_genix' }), false);
+});
+
+test('TIMELINE_BANQUET_SNAPSHOT_CACHE invalidates a group only inside the matching business context', () => {
+    const { window, api } = createHarness();
+    let activeContext = 'event_genix';
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: activeContext, key: activeContext }),
+        state: () => ({ activeBusinessContext: activeContext })
+    };
+    const snapshot = {
+        success: true,
+        groupId: 'BQ-SHARED-ID',
+        group: { id: 'BQ-SHARED-ID' },
+        members: [{ bookingId: 'BK-SHARED-ID', booking: { id: 'BK-SHARED-ID' } }]
+    };
+    api.cacheTimelineBanquetSnapshot(snapshot, 'BK-SHARED-ID');
+    activeContext = 'maysternya_doli';
+    api.cacheTimelineBanquetSnapshot(snapshot, 'BK-SHARED-ID');
+
+    api.invalidateTimelineBanquetSnapshotCache({
+        groupId: 'BQ-SHARED-ID',
+        businessContext: 'event_genix'
+    });
+
+    assert.deepEqual(JSON.parse(JSON.stringify(api.getBanquetSnapshotCacheKeys())), {
+        byBooking: ['maysternya_doli::BK-SHARED-ID'],
+        byGroup: ['maysternya_doli::BQ-SHARED-ID']
+    });
 });
 
 test('late banquet preview snapshot after date switch cannot mutate current room timeline', () => {

@@ -365,9 +365,20 @@ function invalidateTimelineBanquetSnapshotCache(options = {}) {
             .filter(Boolean)
     );
     const clearAll = options.clearAll === true || (!bookingIds.size && !groupIds.size);
+    const businessContext = String(options.businessContext || '').trim();
+    const cacheKeyMatchesContext = key => !businessContext || String(key || '').startsWith(`${businessContext}::`);
     if (clearAll) {
-        TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.clear();
-        TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.clear();
+        if (!businessContext) {
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.clear();
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.clear();
+        } else {
+            for (const key of TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.keys()) {
+                if (cacheKeyMatchesContext(key)) TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.delete(key);
+            }
+            for (const key of TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.keys()) {
+                if (cacheKeyMatchesContext(key)) TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.delete(key);
+            }
+        }
         return;
     }
 
@@ -396,11 +407,13 @@ function invalidateTimelineBanquetSnapshotCache(options = {}) {
     };
 
     for (const [key, record] of TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.entries()) {
+        if (!cacheKeyMatchesContext(key)) continue;
         if (bookingIds.has(String(key).split('::').pop()) || snapshotMatches(record?.snapshot)) {
             TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.delete(key);
         }
     }
     for (const [key, record] of TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.entries()) {
+        if (!cacheKeyMatchesContext(key)) continue;
         if (groupIds.has(String(key).split('::').pop()) || snapshotMatches(record?.snapshot)) {
             TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.delete(key);
         }
@@ -2393,7 +2406,7 @@ function resolveTimelineBanquetBadgeCarrier(snapshot = {}) {
     };
 }
 
-function timelineBanquetSummaryHref(summary = {}) {
+function timelineBanquetSummaryHref(summary = {}, options = {}) {
     const booking = summary.carrierBooking || summary.primaryBooking || summary.allBookings?.[0] || {};
     const context = booking.businessContext
         || booking.business_context
@@ -2405,7 +2418,19 @@ function timelineBanquetSummaryHref(summary = {}) {
         return: `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
     });
     if (summary.groupId) params.set('groupId', summary.groupId);
+    if (options.editArrival === true) params.set('editArrival', '1');
     return `/booking-summary.html?${params.toString()}`;
+}
+
+function timelineCanEditBanquetArrival(summary = {}) {
+    const groupId = String(summary.groupId || timelineBanquetSnapshotGroupId(summary.snapshot) || '').trim();
+    const status = String(summary.snapshot?.group?.status || '').trim().toLowerCase();
+    if (!groupId || (status && status !== 'active')) return false;
+    try {
+        return typeof canAccess === 'function' && canAccess('edit_booking');
+    } catch {
+        return false;
+    }
 }
 
 function ensureTimelineBanquetInspector() {
@@ -2431,14 +2456,9 @@ function hideTimelineBanquetInspector() {
 }
 
 function timelineBanquetDateTimeText(summary = {}) {
-    const dateText = String(summary.date || '').trim().slice(0, 10);
-    const startTime = normalizeTimelineBanquetServingTime(summary.time);
-    const duration = Number(summary.duration || 0);
-    let endTime = '';
-    if (startTime && Number.isFinite(duration) && duration > 0 && typeof timeToMinutes === 'function' && typeof minutesToTime === 'function') {
-        endTime = minutesToTime(timeToMinutes(startTime) + duration);
-    }
-    const timeText = startTime ? `${startTime}${endTime ? `-${endTime}` : ''}` : '';
+    const arrival = summary.arrival || summary.banquetArrival || {};
+    const dateText = String(arrival.date || summary.date || '').trim().slice(0, 10);
+    const timeText = normalizeTimelineBanquetServingTime(arrival.time);
     return [dateText, timeText].filter(Boolean).join(' · ') || 'Не вказано';
 }
 
@@ -2634,6 +2654,9 @@ function showTimelineBanquetInspector(event, summary, trigger) {
     const activityLabel = `${summary.activityCount || 0} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`;
     const activityStartsText = timelineBanquetActivityStartsText(summary);
     const commentsHtml = timelineBanquetCommentsHtml(summary);
+    const editArrivalLink = timelineCanEditBanquetArrival(summary)
+        ? `<a class="timeline-banquet-inspector-btn" data-banquet-inspector-edit-arrival href="${escapeHtml(timelineBanquetSummaryHref(summary, { editArrival: true }))}">Змінити прихід</a>`
+        : '';
     inspector.innerHTML = `
         <div class="timeline-banquet-inspector-head">
             <div>
@@ -2667,6 +2690,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         </div>
         <div class="timeline-banquet-inspector-actions">
             <button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-details>Деталі</button>
+            ${editArrivalLink}
             <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Банкетний лист</a>
         </div>
     `;
@@ -3121,6 +3145,7 @@ function syncTimelineRoomServiceMarkerLayout(lineGrid = null) {
 function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
     if (!isRoomTimelineView() || !summary) return;
     const groupId = timelineRoomServiceMarkerGroupId(summary, options.groupId);
+    const canonicalGroupId = String(summary.groupId || timelineBanquetSnapshotGroupId(summary.snapshot) || options.groupId || '').trim();
     if (groupId) clearTimelineRoomServiceMarkers(null, groupId);
     const lineGrid = timelineBanquetRoomGridForSummary(summary);
     if (!lineGrid) return;
@@ -3168,6 +3193,7 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         markerEl.dataset.markerIndex = String(index);
         markerEl.dataset.markerLane = String(laneIndex);
         markerEl.dataset.markerTitle = display.title;
+        if (canonicalGroupId) markerEl.dataset.banquetGroupId = canonicalGroupId;
         if (display.detail) markerEl.dataset.markerDetail = display.detail;
         const markerBookingIds = Array.isArray(marker.bookingIds)
             ? marker.bookingIds.map(id => String(id || '').trim()).filter(Boolean)
@@ -3179,6 +3205,7 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
             : (markerBookingId ? [markerBookingId] : []);
         if (allMarkerBookingIds.length) markerEl.dataset.bookingIds = allMarkerBookingIds.join(' ');
         if (groupId) markerEl.dataset.banquetRoomMarkerGroup = groupId;
+        if (type === 'guest_arrival') markerEl.draggable = false;
         markerEl.classList.toggle('has-user-letter', Boolean(ownerLetter));
         markerEl.style.left = `${left}px`;
         markerEl.style.top = `${markerTop}px`;
@@ -7304,12 +7331,15 @@ async function changeDate(days) {
 async function getBookingsForDate(date, options = {}) {
     const dateStr = timelineDateKey(date);
     const requestToken = captureTimelineRequestToken(dateStr, options);
+    const forceFresh = options.force === true || consumeFreshTimelineBookingDate(dateStr, {
+        businessContext: requestToken.businessContext
+    });
     const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr, { scopeKey: requestToken.cacheScope });
-    if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
+    if (!forceFresh && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
     const bookings = await apiGetBookings(dateStr, {
-        fresh: options.force === true,
+        fresh: forceFresh,
         throwOnError: true,
         businessContext: requestToken.businessContext,
         timelineView: requestToken.timelineView,

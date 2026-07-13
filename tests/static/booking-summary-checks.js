@@ -70,6 +70,7 @@ checkPage('booking-summary.html', (doc, html) => {
     const printDirectBodyRule = cssRuleIncludingSelectorText(printCss, 'html > body.booking-summary-page');
     const printToolbarRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toolbar');
     const printStateRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-state');
+    const printArrivalEditorRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-arrival-editor');
     const printToastRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toast');
     const printDocumentRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-document');
     const printA4PageRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-a4-page');
@@ -172,6 +173,30 @@ checkPage('booking-summary.html', (doc, html) => {
         && mobileSummaryCloseRule.includes('grid-column: 3')
         && printToolbarRule.includes('display: none !important')
         && !pageCss.includes('.booking-summary-export'));
+    check('Booking summary arrival editor is permission-gated, conflict-aware, and print-safe',
+        !!doc.getElementById('bookingSummaryArrivalEditor')
+        && !!doc.getElementById('bookingSummaryArrivalInput')
+        && !!doc.getElementById('bookingSummaryArrivalSave')
+        && !!doc.getElementById('bookingSummaryArrivalCancel')
+        && doc.getElementById('bookingSummaryArrivalStatus')?.getAttribute('aria-live') === 'polite'
+        && pageCode.includes("summaryCanEditArrival()")
+        && pageCode.includes("canAccess('edit_booking')")
+        && pageCode.includes("setArrivalEditorState('saving'")
+        && pageCode.includes("setArrivalEditorState('validation_error'")
+        && pageCode.includes("setArrivalEditorState('offline'")
+        && pageCode.includes("setArrivalEditorState('forbidden'")
+        && pageCode.includes("setArrivalEditorState('version_conflict'")
+        && pageCode.includes("result.code === 'BANQUET_ARRIVAL_VERSION_CONFLICT'")
+        && pageCode.includes('if (arrivalSaveInFlight || !currentSummary) return;')
+        && pageCode.includes('apiUpdateBanquetGuestArrival(groupId, guestArrivalTime, updatedAt')
+        && pageCode.includes('result.currentArrival')
+        && banquetSummaryServiceCode.includes('function buildBanquetSchedule({ event = {}, arrival = {}')
+        && banquetSummaryServiceCode.includes('time: arrival.time')
+        && banquetSummaryServiceCode.includes("time: cleanText(valueOf(primaryBooking, 'time'), 20)")
+        && banquetSummaryPdfCode.includes('time: cleanText(arrival.time) || null')
+        && !banquetSummaryPdfCode.includes('time: cleanText(arrival.time) || event.time')
+        && printArrivalEditorRule.includes('display: none !important')
+        && pageCss.includes('.booking-summary-arrival-editor__form input[type="time"]:focus-visible'));
     check('Booking summary browser smoke covers client document surface without joining npm test',
         pkg.scripts?.['test:browser:booking-summary'] === 'npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js'
         && pkg.scripts?.test === 'npm run verify'
@@ -220,12 +245,14 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('function summaryModeAllowsComment(summary, type, mode = summaryMode(summary))')
         && pageCode.includes('function summaryArrival(summary = {})')
         && renderDocumentBody.includes("briefItem('Дата банкету', formatDate(arrival.date || event.date))")
-        && renderDocumentBody.includes("briefItem('Прихід гостей', arrival.time || event.time)")
+        && renderDocumentBody.includes("briefItem('Прихід гостей', arrival.time)")
         && !renderDocumentBody.includes("briefItem('Дата', formatDate(event.date))")
         && !renderDocumentBody.includes("briefItem('Час', event.time)")
         && summaryTextBody.includes('const arrival = summaryArrival(summary)')
         && summaryTextBody.includes('`Дата банкету: ${formatDate(arrival.date || event.date)}`')
-        && summaryTextBody.includes('`Прихід гостей: ${formatValue(arrival.time || event.time)}`')
+        && summaryTextBody.includes('`Прихід гостей: ${formatValue(arrival.time)}`')
+        && !renderDocumentBody.includes('arrival.time || event.time')
+        && !summaryTextBody.includes('arrival.time || event.time')
         && !summaryTextBody.includes('Дата' + '/час:')
         && renderDocumentBody.includes('summary-section--comments')
         && renderDocumentBody.includes('${renderComments(summary, mode)}')

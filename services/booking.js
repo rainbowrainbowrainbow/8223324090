@@ -25,6 +25,48 @@ function validateId(str) {
     return typeof str === 'string' && str.length > 0 && str.length <= 100;
 }
 
+function normalizeBanquetCreationContext(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const mode = String(value.mode || '').trim().toLowerCase();
+    const groupId = String(value.groupId || value.group_id || '').trim() || null;
+    const guestArrivalTime = String(value.guestArrivalTime || value.guest_arrival_time || '').trim() || null;
+    return { mode, groupId, guestArrivalTime };
+}
+
+function validateBanquetCreationContext(value = null, options = {}) {
+    const required = options.required === true;
+    const expectedMode = String(options.expectedMode || '').trim().toLowerCase() || null;
+    const expectedGroupId = String(options.expectedGroupId || '').trim() || null;
+    const context = normalizeBanquetCreationContext(value);
+
+    if (!context) {
+        return required
+            ? { valid: false, context: null, code: 'BANQUET_CONTEXT_REQUIRED', error: 'banquetContext is required' }
+            : { valid: true, context: null, code: null, error: null };
+    }
+    if (!['new', 'existing'].includes(context.mode)) {
+        return { valid: false, context, code: 'BANQUET_CONTEXT_MODE_INVALID', error: 'banquetContext.mode must be new or existing' };
+    }
+    if (expectedMode && context.mode !== expectedMode) {
+        return { valid: false, context, code: 'BANQUET_CONTEXT_MODE_MISMATCH', error: `banquetContext.mode must be ${expectedMode}` };
+    }
+    if (context.mode === 'new' && !validateTime(context.guestArrivalTime)) {
+        return { valid: false, context, code: 'GUEST_ARRIVAL_TIME_REQUIRED', error: 'guestArrivalTime in HH:mm format is required for a new banquet' };
+    }
+    if (context.mode === 'existing' && !validateId(context.groupId)) {
+        return { valid: false, context, code: 'BANQUET_GROUP_ID_REQUIRED', error: 'groupId is required for an existing banquet' };
+    }
+    if (expectedGroupId && context.groupId !== expectedGroupId) {
+        return { valid: false, context, code: 'BANQUET_GROUP_ID_MISMATCH', error: 'banquetContext.groupId does not match the target banquet group' };
+    }
+    return {
+        valid: true,
+        context: context.mode === 'existing' ? { ...context, guestArrivalTime: null } : context,
+        code: null,
+        error: null
+    };
+}
+
 function validateSettingKey(str) {
     return typeof str === 'string' && /^[a-z_]{1,100}$/.test(str);
 }
@@ -771,6 +813,7 @@ function getKyivTimeStr() {
 
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
+    normalizeBanquetCreationContext, validateBanquetCreationContext,
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,

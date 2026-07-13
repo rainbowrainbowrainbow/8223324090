@@ -346,6 +346,7 @@ var ParkWS = (function () {
                 }
                 // Re-subscribe to previously subscribed dates
                 _resubscribeDates();
+                if (wasReconnect) _reconcileTimelineAfterReconnect();
                 // Fetch chat unread badge
                 _updateChatBadge();
                 break;
@@ -365,6 +366,10 @@ var ParkWS = (function () {
             case 'booking:moved':
             case 'booking:banquet-link-updated':
                 _handleBookingEvent(message);
+                break;
+
+            case 'banquet:arrival-updated':
+                _handleBanquetEvent(message);
                 break;
 
             // Line events
@@ -562,6 +567,37 @@ var ParkWS = (function () {
         }, 300); // 300ms debounce
     }
 
+    function _handleBanquetEvent(message) {
+        _debug('[WS] Banquet event:', message.type, message.payload);
+        if (!_payloadMatchesCurrentTimelineBusiness(message.payload)) {
+            _debug('[WS] Ignoring banquet event for another business context:', message.payload && message.payload.businessContext);
+            return;
+        }
+        var payload = message.payload || {};
+        var affectedDate = _extractDateFromPayload(payload);
+        var businessContext = _payloadBusinessContext(payload);
+        var groupId = String(payload.groupId || payload.group_id || '').trim();
+        if (affectedDate) {
+            window.invalidateTimelineDateCache?.(affectedDate, {
+                lines: false,
+                bookings: true,
+                fresh: true,
+                businessContext: businessContext
+            });
+            _invalidateSWCache('/api/bookings/' + affectedDate);
+        }
+        if (groupId) {
+            window.invalidateTimelineBanquetPreviewFreshness?.({
+                groupId: groupId,
+                businessContext: businessContext
+            });
+        }
+        _triggerTimelineRefresh();
+        window.dispatchEvent(new CustomEvent('ws:banquet', {
+            detail: { eventType: message.type, payload: payload }
+        }));
+    }
+
     function _currentTimelineBusinessContext() {
         return window.TimelineBusinessContext?.state?.()?.activeBusinessContext
             || window.TimelineBusinessContext?.current?.()?.apiValue
@@ -638,6 +674,27 @@ var ParkWS = (function () {
         for (var channelId of _subscribedChannels) {
             _send({ type: 'CHAT_JOIN', channelId: channelId });
         }
+    }
+
+    function _reconcileTimelineAfterReconnect() {
+        var businessContext = _currentTimelineBusinessContext();
+        for (var dateStr of _subscribedDates) {
+            window.invalidateTimelineDateCache?.(dateStr, {
+                lines: false,
+                bookings: true,
+                fresh: true,
+                businessContext: businessContext
+            });
+            _invalidateSWCache('/api/bookings/' + dateStr);
+        }
+        window.invalidateTimelineBanquetPreviewFreshness?.({
+            clearAll: true,
+            businessContext: businessContext
+        });
+        _triggerTimelineRefresh();
+        window.dispatchEvent(new CustomEvent('ws:reconnected', {
+            detail: { businessContext: businessContext, dates: Array.from(_subscribedDates) }
+        }));
     }
 
     // ==========================================

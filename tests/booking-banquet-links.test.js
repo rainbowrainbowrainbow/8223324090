@@ -1,6 +1,32 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
+
+test('banquet guest arrival migration adds a nullable HH:mm field outside db startup schema', () => {
+    const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '284_banquet_guest_arrival.sql'), 'utf8');
+    const dbStartup = fs.readFileSync(path.join(__dirname, '..', 'db', 'index.js'), 'utf8');
+
+    assert.match(migration, /MIGRATION_KIND:\s*schema/i);
+    assert.match(migration, /SAFETY:/i);
+    assert.match(migration, /ROLLBACK:/i);
+    assert.match(migration, /ADD COLUMN IF NOT EXISTS guest_arrival_time VARCHAR\(5\)/i);
+    assert.match(migration, /guest_arrival_time IS NULL/i);
+    assert.match(migration, /\^\(\[01\]\[0-9\]\|2\[0-3\]\):\[0-5\]\[0-9\]\$/);
+    assert.doesNotMatch(migration, /guest_arrival_time[^;]*NOT NULL/i);
+    assert.doesNotMatch(dbStartup, /guest_arrival_time/i);
+});
+
+test('frontend arrival API uses the dedicated PATCH endpoint', () => {
+    const apiSource = fs.readFileSync(path.join(__dirname, '..', 'js', 'api.js'), 'utf8');
+
+    assert.match(apiSource, /async function apiUpdateBanquetGuestArrival\(groupId, guestArrivalTime, updatedAt, options = \{\}\)/);
+    assert.match(apiSource, /timelineApiUrl\(`\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/arrival`, \{/);
+    assert.match(apiSource, /businessContext: options\.businessContext/);
+    assert.match(apiSource, /method:\s*'PATCH'/);
+    assert.match(apiSource, /timelineApiPayload\(\{ guestArrivalTime, updatedAt \}\)/);
+});
 
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
@@ -418,7 +444,10 @@ function makeDb(rows, links = [], options = {}) {
             };
         }
         if (/SELECT bg\.\*\s+FROM banquet_groups bg\s+WHERE bg\.id = \$1/i.test(sql)) {
-            const group = state.banquetGroups.find(item => item.id === params[0]);
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+            );
             return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
         }
         if (/SELECT bg\.\*\s+FROM banquet_groups bg\s+WHERE bg\.primary_booking_id = \$1/i.test(sql)) {
@@ -501,7 +530,7 @@ function makeDb(rows, links = [], options = {}) {
         if (/INSERT INTO banquet_groups/i.test(sql) && /RETURNING \*/i.test(sql)) {
             let meta = {};
             try {
-                meta = typeof params[8] === 'string' ? JSON.parse(params[8]) : (params[8] || {});
+                meta = typeof params[9] === 'string' ? JSON.parse(params[9]) : (params[9] || {});
             } catch {
                 meta = {};
             }
@@ -512,13 +541,14 @@ function makeDb(rows, links = [], options = {}) {
                 customer_id: params[3],
                 date: params[4],
                 room: params[5],
-                group_name: params[6],
+                guest_arrival_time: params[6],
+                group_name: params[7],
                 status: 'active',
-                source: params[7],
+                source: params[8],
                 meta,
-                created_by_user_id: params[9],
-                created_by: params[10],
-                updated_by: params[10],
+                created_by_user_id: params[10],
+                created_by: params[11],
+                updated_by: params[11],
                 created_at: new Date('2099-01-01T00:00:00Z').toISOString(),
                 updated_at: new Date('2099-01-01T00:00:00Z').toISOString()
             };
@@ -622,6 +652,17 @@ function makeDb(rows, links = [], options = {}) {
                     visible.has(link.booking_b_id)
                 )
             };
+        }
+        if (/UPDATE banquet_groups\s+SET guest_arrival_time = \$3,\s+updated_at = NOW\(\),\s+updated_by = \$4/i.test(sql)) {
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+            );
+            if (!group) return { rows: [], rowCount: 0 };
+            group.guest_arrival_time = params[2];
+            group.updated_by = params[3];
+            group.updated_at = options.nextGroupUpdatedAt || '2099-03-01T00:00:00.000Z';
+            return { rows: [{ ...group }], rowCount: 1 };
         }
         if (/FROM customers/i.test(sql)) {
             const [customerId, businessContext] = params;
@@ -734,8 +775,8 @@ async function withApp(rows, links, fn, options = {}) {
     installMock('../services/bookingVisibility', {
         bookingAccessDeniedPayload: () => ({ success: false, error: 'denied' }),
         buildBookingVisibilityScope: () => '',
-        canEditBooking: () => true,
-        canViewBooking: () => true
+        canEditBooking: (...args) => options.canEditBooking ? options.canEditBooking(...args) : true,
+        canViewBooking: (...args) => options.canViewBooking ? options.canViewBooking(...args) : true
     });
     installMock('../services/telegram', { notifyTelegram: async () => null });
     installMock('../services/bookingAutomation', { processBookingAutomation: async () => null });
@@ -828,7 +869,10 @@ async function postSourceMemberBooking(baseUrl, payload) {
     const res = await fetch(`${baseUrl}/api/banquets/from-source/member-booking?businessContext=event_genix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+            ...payload,
+            banquetContext: payload.banquetContext || { mode: 'new', groupId: null, guestArrivalTime: '12:30' }
+        })
     });
     const text = await res.text();
     let data = {};
@@ -844,7 +888,10 @@ async function postSourceActivityBooking(baseUrl, payload) {
     const res = await fetch(`${baseUrl}/api/banquets/from-source/activity-booking?businessContext=event_genix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+            ...payload,
+            banquetContext: payload.banquetContext || { mode: 'new', groupId: null, guestArrivalTime: '12:30' }
+        })
     });
     const text = await res.text();
     let data = {};
@@ -898,6 +945,16 @@ function assertNoDuplicateBanquetReadModel(state, groupId, expectedBookingIds = 
         link.relation_type
     ].join('|'));
     assert.equal(new Set(linkKeys).size, linkKeys.length, 'compatibility links should not contain duplicate pairs');
+}
+
+async function patchBanquetArrival(baseUrl, groupId, payload, businessContext = 'event_genix') {
+    const res = await fetch(`${baseUrl}/api/banquets/${encodeURIComponent(groupId)}/arrival?businessContext=${encodeURIComponent(businessContext)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
 }
 
 function assertBanquetArrival(snapshot, expected) {
@@ -1337,7 +1394,7 @@ test('GET banquet candidates validates date and selected customer', async () => 
     });
 });
 
-test('GET banquet read endpoints expose canonical arrival from group primary booking', async () => {
+test('GET banquet read endpoints prefer persisted group arrival when primary booking time changes', async () => {
     await withApp([
         bookingRow({
             id: 'BK-ROOT',
@@ -1364,24 +1421,30 @@ test('GET banquet read endpoints expose canonical arrival from group primary boo
                 }
             })
         })
-    ], [], async ({ baseUrl }) => {
+    ], [], async ({ baseUrl, state }) => {
         const expected = {
             bookingId: 'BK-ROOT',
             date: '2099-06-01',
-            time: '14:20',
+            time: '12:05',
             room: 'Room A',
-            source: 'manual'
+            source: 'banquet_group',
+            groupSource: 'manual',
+            updatedAt: '2099-02-01T00:00:00.000Z'
         };
 
         const byBooking = await fetch(`${baseUrl}/api/banquets/by-booking/BK-KITCHEN?businessContext=event_genix`);
         const byBookingData = await byBooking.json();
         assert.equal(byBooking.status, 200, JSON.stringify(byBookingData));
         assertBanquetArrival(byBookingData, expected);
+        assert.equal(byBookingData.warnings.some(warning => warning.code === 'legacy_primary_booking'), false);
+
+        state.rows.find(row => row.id === 'BK-ROOT').time = '18:40';
 
         const byGroup = await fetch(`${baseUrl}/api/banquets/BQ-ROOT?businessContext=event_genix`);
         const byGroupData = await byGroup.json();
         assert.equal(byGroup.status, 200, JSON.stringify(byGroupData));
         assertBanquetArrival(byGroupData, expected);
+        assert.equal(byGroupData.bookings.primary.time, '18:40');
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -1390,10 +1453,12 @@ test('GET banquet read endpoints expose canonical arrival from group primary boo
             customer_id: 101,
             date: '2099-06-01',
             room: 'Room A',
+            guest_arrival_time: '12:05',
             group_name: 'Yurii banquet',
             status: 'active',
             source: 'manual',
-            meta: {}
+            meta: {},
+            updated_at: '2099-02-01T00:00:00.000Z'
         }],
         banquetMemberships: [{
             id: 1,
@@ -1413,6 +1478,158 @@ test('GET banquet read endpoints expose canonical arrival from group primary boo
     });
 });
 
+test('GET banquet read endpoint keeps legacy primary-booking fallback with warning', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-LEGACY-ROOT', time: '14:20', customer_id: 101, room: 'Room A' })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-LEGACY?businessContext=event_genix`);
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assertBanquetArrival(data, {
+            bookingId: 'BK-LEGACY-ROOT',
+            date: '2099-06-01',
+            time: '14:20',
+            room: 'Room A',
+            source: 'legacy_primary_booking',
+            groupSource: 'manual',
+            updatedAt: '2099-01-01T00:00:00.000Z'
+        });
+        assert.ok(data.warnings.some(warning => warning.code === 'legacy_primary_booking'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-LEGACY',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-LEGACY-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Legacy banquet',
+            status: 'active',
+            source: 'manual',
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-LEGACY',
+            business_context: 'event_genix',
+            booking_id: 'BK-LEGACY-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PATCH banquet arrival changes only group arrival and returns fresh projection', async () => {
+    const primary = bookingRow({ id: 'BK-ARRIVAL-ROOT', time: '13:00', room: 'Room A' });
+    await withApp([primary], [], async ({ baseUrl, state }) => {
+        const bookingBefore = cloneStateValue(state.rows);
+        const { res, data } = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', {
+            guestArrivalTime: '12:30',
+            updatedAt: '2099-02-01T00:00:00.000Z'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.guestArrivalTime, '12:30');
+        assert.equal(data.updatedAt, '2099-03-01T00:00:00.000Z');
+        assert.equal(data.arrival.time, '12:30');
+        assert.equal(data.arrival.source, 'banquet_group');
+        assert.deepEqual(state.rows, bookingBefore, 'arrival PATCH must not mutate booking rows');
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '12:30');
+        assert.ok(state.queries.some(query => /SELECT bg\.\*[\s\S]*FOR UPDATE/i.test(query.sql)));
+        const updateQueries = state.queries.filter(query => /^UPDATE /i.test(query.sql));
+        assert.equal(updateQueries.some(query => /^UPDATE bookings/i.test(query.sql)), false);
+        assert.ok(updateQueries.some(query => /^UPDATE banquet_groups SET guest_arrival_time = \$3, updated_at = NOW\(\), updated_by = \$4/i.test(query.sql)));
+        assert.ok(state.histories.some(row => row.action === 'banquet_guest_arrival_updated'));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ARRIVAL', business_context: 'event_genix', primary_booking_id: 'BK-ARRIVAL-ROOT',
+            guest_arrival_time: '12:00', status: 'active', source: 'manual',
+            date: '2099-06-01', room: 'Room A', updated_at: '2099-02-01T00:00:00.000Z'
+        }]
+    });
+});
+
+test('PATCH banquet arrival rejects invalid time and missing updatedAt before writes', async () => {
+    await withApp([bookingRow({ id: 'BK-ARRIVAL-ROOT' })], [], async ({ baseUrl, state }) => {
+        const invalid = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', {
+            guestArrivalTime: '25:90', updatedAt: '2099-02-01T00:00:00.000Z'
+        });
+        assert.equal(invalid.res.status, 400, JSON.stringify(invalid.data));
+        assert.equal(invalid.data.code, 'BANQUET_ARRIVAL_TIME_INVALID');
+
+        const missingVersion = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', { guestArrivalTime: '12:30' });
+        assert.equal(missingVersion.res.status, 400, JSON.stringify(missingVersion.data));
+        assert.equal(missingVersion.data.code, 'BANQUET_ARRIVAL_UPDATED_AT_REQUIRED');
+        assert.equal(state.queries.some(query => /^UPDATE /i.test(query.sql)), false);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ARRIVAL', business_context: 'event_genix', primary_booking_id: 'BK-ARRIVAL-ROOT',
+            guest_arrival_time: '12:00', status: 'active', updated_at: '2099-02-01T00:00:00.000Z'
+        }]
+    });
+});
+
+test('PATCH banquet arrival returns current version on stale update', async () => {
+    await withApp([bookingRow({ id: 'BK-ARRIVAL-ROOT' })], [], async ({ baseUrl, state }) => {
+        const { res, data } = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', {
+            guestArrivalTime: '12:30', updatedAt: '2099-01-01T00:00:00.000Z'
+        });
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_ARRIVAL_VERSION_CONFLICT');
+        assert.equal(data.currentArrival, '12:05');
+        assert.equal(data.currentUpdatedAt, '2099-02-01T00:00:00.000Z');
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '12:05');
+        assert.equal(state.queries.some(query => /^UPDATE /i.test(query.sql)), false);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ARRIVAL', business_context: 'event_genix', primary_booking_id: 'BK-ARRIVAL-ROOT',
+            guest_arrival_time: '12:05', status: 'active', updated_at: '2099-02-01T00:00:00.000Z'
+        }]
+    });
+});
+
+test('PATCH banquet arrival blocks inactive and cancelled groups', async () => {
+    for (const status of ['inactive', 'cancelled']) {
+        await withApp([bookingRow({ id: 'BK-ARRIVAL-ROOT' })], [], async ({ baseUrl, state }) => {
+            const { res, data } = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', {
+                guestArrivalTime: '12:30', updatedAt: '2099-02-01T00:00:00.000Z'
+            });
+            assert.equal(res.status, 409, `${status}: ${JSON.stringify(data)}`);
+            assert.equal(data.code, 'BANQUET_GROUP_INACTIVE');
+            assert.equal(state.queries.some(query => /^UPDATE /i.test(query.sql)), false);
+        }, {
+            banquetGroups: [{
+                id: 'BQ-ARRIVAL', business_context: 'event_genix', primary_booking_id: 'BK-ARRIVAL-ROOT',
+                guest_arrival_time: '12:00', status, updated_at: '2099-02-01T00:00:00.000Z'
+            }]
+        });
+    }
+});
+
+test('PATCH banquet arrival masks cross-context and booking visibility failures', async () => {
+    const group = {
+        id: 'BQ-ARRIVAL', business_context: 'event_genix', primary_booking_id: 'BK-ARRIVAL-ROOT',
+        guest_arrival_time: '12:00', status: 'active', updated_at: '2099-02-01T00:00:00.000Z'
+    };
+    const payload = { guestArrivalTime: '12:30', updatedAt: '2099-02-01T00:00:00.000Z' };
+    await withApp([bookingRow({ id: 'BK-ARRIVAL-ROOT' })], [], async ({ baseUrl }) => {
+        const crossContext = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', payload, 'maysternya_doli');
+        assert.equal(crossContext.res.status, 404, JSON.stringify(crossContext.data));
+        assert.equal(crossContext.data.code, 'BANQUET_GROUP_NOT_FOUND');
+    }, { banquetGroups: [group] });
+
+    await withApp([bookingRow({ id: 'BK-ARRIVAL-ROOT' })], [], async ({ baseUrl }) => {
+        const hidden = await patchBanquetArrival(baseUrl, 'BQ-ARRIVAL', payload);
+        assert.equal(hidden.res.status, 404, JSON.stringify(hidden.data));
+        assert.equal(hidden.data.code, 'BOOKING_NOT_FOUND');
+    }, { banquetGroups: [group], canEditBooking: () => false });
+});
+
 test('POST banquet source member-booking creates group from activity-first booking atomically', async () => {
     await withApp([
         activityFirstSourceBooking()
@@ -1427,9 +1644,11 @@ test('POST banquet source member-booking creates group from activity-first booki
         assertBanquetArrival(data.banquetGroup, {
             bookingId: 'BK-ACTIVITY-FIRST',
             date: '2099-06-01',
-            time: '12:45',
+            time: '12:30',
             room: 'Room A',
-            source: 'activity_first_kitchen_bridge'
+            source: 'banquet_group',
+            groupSource: 'activity_first_kitchen_bridge',
+            updatedAt: '2099-01-01T00:00:00.000Z'
         });
 
         const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-ACTIVITY-FIRST');
@@ -1437,6 +1656,7 @@ test('POST banquet source member-booking creates group from activity-first booki
         assert.equal(group.customer_id, 101);
         assert.equal(group.date, '2099-06-01');
         assert.equal(group.room, 'Room A');
+        assert.equal(group.guest_arrival_time, '12:30');
         assert.equal(group.status, 'active');
 
         assert.ok(state.banquetMemberships.some(row =>
@@ -1567,6 +1787,7 @@ test('POST banquet source member-booking reuses existing activity group without 
 
         assert.equal(state.banquetGroups.length, 1);
         assert.equal(state.banquetGroups[0].id, 'BQ-ACTIVITY-FIRST');
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:55');
         assert.equal(
             state.banquetMemberships.filter(row => row.group_id === 'BQ-ACTIVITY-FIRST' && row.booking_id === 'BK-ACTIVITY-FIRST').length,
             1
@@ -1595,6 +1816,7 @@ test('POST banquet source member-booking reuses existing activity group without 
             customer_id: 101,
             date: '2099-06-01',
             room: 'Room A',
+            guest_arrival_time: '11:55',
             group_name: 'Paper neon show',
             status: 'active',
             source: 'test',
@@ -1698,9 +1920,11 @@ test('POST banquet source activity-booking creates group from kitchen-first book
         assertBanquetArrival(data.banquetGroup, {
             bookingId: 'BK-KITCHEN-FIRST',
             date: '2099-06-01',
-            time: '13:15',
+            time: '12:30',
             room: 'Room A',
-            source: 'kitchen_first_activity_bridge'
+            source: 'banquet_group',
+            groupSource: 'kitchen_first_activity_bridge',
+            updatedAt: '2099-01-01T00:00:00.000Z'
         });
 
         const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-KITCHEN-FIRST');
@@ -1708,6 +1932,7 @@ test('POST banquet source activity-booking creates group from kitchen-first book
         assert.equal(group.customer_id, 101);
         assert.equal(group.date, '2099-06-01');
         assert.equal(group.room, 'Room A');
+        assert.equal(group.guest_arrival_time, '12:30');
         assert.equal(group.source, 'kitchen_first_activity_bridge');
 
         assert.ok(state.banquetMemberships.some(row =>
@@ -1823,6 +2048,7 @@ test('POST banquet source activity-booking reuses existing kitchen group without
 
         assert.equal(state.banquetGroups.length, 1);
         assert.equal(state.banquetGroups[0].id, 'BQ-KITCHEN-FIRST');
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:50');
         assert.equal(
             state.banquetMemberships.filter(row => row.group_id === 'BQ-KITCHEN-FIRST' && row.booking_id === 'BK-KITCHEN-FIRST').length,
             1
@@ -1841,6 +2067,7 @@ test('POST banquet source activity-booking reuses existing kitchen group without
             customer_id: 101,
             date: '2099-06-01',
             room: 'Room A',
+            guest_arrival_time: '11:50',
             group_name: 'Kitchen order',
             status: 'active',
             source: 'test',
@@ -2702,7 +2929,9 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
             date: '2099-06-01',
             time: '12:00',
             room: 'Room A',
-            source: 'test'
+            source: 'legacy_primary_booking',
+            groupSource: 'test',
+            updatedAt: '2099-01-01T00:00:00.000Z'
         };
         assert.deepEqual(data.arrival, expectedArrival);
         assert.deepEqual(data.banquetArrival, expectedArrival);
@@ -2928,6 +3157,7 @@ test('banquet summary reads workspace comments and does not borrow booking group
     const { buildBanquetSummary } = require('../services/banquetSummary');
     const primary = bookingRow({
         id: 'BK-SUMMARY-PRIMARY',
+        time: '15:00',
         label: 'Primary party',
         program_name: 'Primary party',
         notes: 'legacy primary note',
@@ -3008,13 +3238,16 @@ test('banquet summary reads workspace comments and does not borrow booking group
         date: '2099-06-02',
         time: '14:10',
         room: 'Room B',
-        source: 'test_arrival'
+        source: 'test_arrival',
+        groupSource: 'banquet_group',
+        updatedAt: '2099-01-01T00:00:00.000Z'
     });
     assert.deepEqual(summary.banquetArrival, summary.arrival);
-    assert.equal(summary.event.date, '2099-06-02');
-    assert.equal(summary.event.time, '14:10');
-    assert.equal(summary.event.room, 'Room B');
+    assert.equal(summary.event.date, '2099-06-01');
+    assert.equal(summary.event.time, '15:00');
+    assert.equal(summary.event.room, 'Room A');
     assert.equal(summary.schedule.find(row => row.type === 'arrival')?.time, '14:10');
+    assert.equal(summary.schedule.find(row => row.type === 'program')?.time, '15:00');
     assert.equal(summary.event.groupName, 'canonical banquet group');
     assert.equal(summary.orderRows.find(row => row.type === 'program')?.comment, 'workspace activity comment');
     assert.equal(summary.orderRows.find(row => row.type === 'menu')?.comment, 'workspace kitchen comment');

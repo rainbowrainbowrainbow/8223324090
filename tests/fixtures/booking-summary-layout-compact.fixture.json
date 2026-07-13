@@ -32,6 +32,12 @@
       "manager": "Sergey",
       "createdAt": "2026-06-26T14:14:00.000Z"
     },
+    "arrival": {
+      "date": "2026-07-02",
+      "time": "12:45",
+      "room": "Ninja",
+      "source": "banquet_group"
+    },
     "customer": {
       "name": "Mia",
       "phone": "+380500000001",

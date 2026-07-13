@@ -47,7 +47,8 @@ function mockAuth() {
         requireRole: (...roles) => (req, res, next) => {
             if (!roleAllows(req.user, roles)) return res.status(403).json({ error: 'Insufficient permissions' });
             return next();
-        }
+        },
+        requireAction: () => (_req, _res, next) => next()
     };
 }
 

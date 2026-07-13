@@ -60,6 +60,7 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-07-13, `booking-detail-safe-open`: explicit product-owner approval for the arrival consistency task. Canonical banquet detail now reads guest arrival from the banquet group snapshot and never relabels the opened kitchen/activity member time as arrival.
 - 2026-07-13, `route-project-timeline-identity`: explicit product-owner approval for Task 5. Room timeline projection now resolves active rooms to durable resource IDs, preserves legacy room text separately, and sends unmatched or inactive room identities to a non-assignable quarantine lane instead of the takeaway row.
 - 2026-07-12, `booking-detail-safe-open`: explicit product-owner approval for a security fix. Customer name, phone, and Instagram copy actions now use encoded `data-*` attributes with one delegated handler instead of inline JavaScript; canonical booking detail identity, API source, and modal ownership are unchanged.
 - 2026-07-07, `booking-detail-safe-open`: booking detail invite generation now receives the resolved banquet snapshot so public invite links can carry canonical banquet arrival time while keeping private booking/customer fields out of the URL.

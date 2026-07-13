@@ -697,7 +697,7 @@ function serviceEventScheduleModes(row = {}) {
     return ['staff'];
 }
 
-function buildBanquetSchedule({ event = {}, orderRows = [], serviceEvents = [], warnings = [] } = {}) {
+function buildBanquetSchedule({ event = {}, arrival = {}, orderRows = [], serviceEvents = [], warnings = [] } = {}) {
     const items = [];
     const seen = new Set();
     const rows = Array.isArray(orderRows) ? orderRows : [];
@@ -706,10 +706,10 @@ function buildBanquetSchedule({ event = {}, orderRows = [], serviceEvents = [], 
     pushBanquetScheduleItem(items, seen, warnings, {
         id: 'schedule:arrival',
         type: 'arrival',
-        source: 'event',
-        time: event.time,
+        source: arrival.source || 'arrival',
+        time: arrival.time,
         title: 'Прихід гостей',
-        note: event.room ? `Кімната: ${event.room}` : null,
+        note: arrival.room ? `Кімната: ${arrival.room}` : null,
         modes: ['client', 'staff'],
         noteModes: ['client', 'staff'],
         sortOrder: 0
@@ -1167,18 +1167,29 @@ function firstNonNull(...values) {
 function normalizeBanquetArrivalProjection(candidate = null, fallbackBooking = {}, fallbackGroup = null, fallbackSource = null) {
     const source = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : {};
     const group = fallbackGroup && typeof fallbackGroup === 'object' && !Array.isArray(fallbackGroup) ? fallbackGroup : {};
+    const groupArrivalTime = cleanText(valueOf(group, 'guestArrivalTime', 'guest_arrival_time'), 5);
     const arrival = {
         bookingId: cleanText(valueOf(source, 'bookingId', 'booking_id'), 100) || bookingIdOf(fallbackBooking),
         date: cleanText(valueOf(source, 'date'), 40)
             || cleanText(valueOf(fallbackBooking, 'date'), 40)
             || cleanText(valueOf(group, 'date'), 40),
         time: cleanText(valueOf(source, 'time'), 20)
+            || groupArrivalTime
             || cleanText(valueOf(fallbackBooking, 'time'), 20),
         room: cleanText(valueOf(source, 'room'), 120)
             || cleanText(valueOf(fallbackBooking, 'room'), 120)
             || cleanText(valueOf(group, 'room'), 120),
         source: cleanText(valueOf(source, 'source'), 120)
+            || (groupArrivalTime ? 'banquet_group' : null)
             || cleanText(fallbackSource, 120)
+            || null,
+        groupSource: cleanText(valueOf(source, 'groupSource', 'group_source'), 120)
+            || cleanText(valueOf(group, 'source'), 120)
+            || cleanText(fallbackSource, 120)
+            || null,
+        updatedAt: cleanText(valueOf(source, 'updatedAt', 'updated_at'), 80)
+            || cleanText(valueOf(group, 'updatedAt', 'updated_at'), 80)
+            || cleanText(valueOf(fallbackBooking, 'updatedAt', 'updated_at'), 80)
             || null
     };
     return arrival.bookingId || arrival.date || arrival.time || arrival.room ? arrival : null;
@@ -1615,9 +1626,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const eventProgramName = cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200);
     const hasRealProgram = isRealBanquetProgram(primaryBooking);
     const eventSummary = {
-        date: arrival?.date || cleanText(valueOf(primaryBooking, 'date'), 40),
-        time: arrival?.time || cleanText(valueOf(primaryBooking, 'time'), 20),
-        room: arrival?.room || cleanText(valueOf(primaryBooking, 'room'), 120),
+        date: cleanText(valueOf(primaryBooking, 'date'), 40) || arrival?.date,
+        time: cleanText(valueOf(primaryBooking, 'time'), 20),
+        room: cleanText(valueOf(primaryBooking, 'room'), 120) || arrival?.room,
         programName: eventProgramName,
         hasRealProgram,
         programDisplayName: hasRealProgram ? eventProgramName : null,
@@ -1632,6 +1643,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     };
     const schedule = buildBanquetSchedule({
         event: eventSummary,
+        arrival,
         orderRows,
         serviceEvents: serviceEventRows,
         warnings

@@ -3661,7 +3661,22 @@ check('Banquet groups schema stays isolated from bookings and legacy visual link
     && !htmlContains('db/migrations/265_banquet_groups.sql', 'ALTER TABLE bookings ADD COLUMN')
     && !htmlContains('db/index.js', 'banquet_group_id'));
 check('Timeline booking API failures render an explicit error state instead of an empty day', apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError') && timelineCode.includes('Не вдалося завантажити бронювання') && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));
-check('Timeline booking connector visual layer is non-blocking and dark-themeable', timelineConstructorCss.includes('.timeline-banquet-link-layer') && timelineConstructorCss.includes('pointer-events: none') && timelineConstructorCss.includes('.timeline-banquet-link-path') && timelineConstructorCss.includes('.timeline-booking-link-path--room') && timelineConstructorCss.includes('.timeline-booking-link-path--adjacent') && timelineConstructorCss.includes('.booking-banquet-link-handle') && timelineConstructorCss.includes('body.banquet-linking-active') && timelineConstructorCss.includes('html[data-theme="dark"] .booking-banquet-links-detail'));
+const timelineBookingLinkLayerZIndex = Number(timelineConstructorCss.match(/\.timeline-banquet-link-layer\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);
+const timelineBookingBlockZIndex = Number(timelineConstructorCss.match(/\.booking-block\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);
+const timelineBanquetOccupancyZIndex = Number(timelineConstructorCss.match(/\.booking-block\.is-timeline-banquet-occupancy-band\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);
+check('Timeline booking connector visual layer stays behind booking cards and above the grid',
+    timelineConstructorCss.includes('.timeline-banquet-link-layer')
+    && timelineConstructorCss.includes('pointer-events: none')
+    && timelineConstructorCss.includes('.timeline-banquet-link-path')
+    && timelineConstructorCss.includes('.timeline-booking-link-path--room')
+    && timelineConstructorCss.includes('.timeline-booking-link-path--adjacent')
+    && timelineConstructorCss.includes('.booking-banquet-link-handle')
+    && timelineConstructorCss.includes('body.banquet-linking-active')
+    && timelineConstructorCss.includes('html[data-theme="dark"] .booking-banquet-links-detail')
+    && timelineBookingLinkLayerZIndex === 6
+    && timelineBookingBlockZIndex === 10
+    && timelineBanquetOccupancyZIndex === 7
+    && timelineBookingLinkLayerZIndex < Math.min(timelineBookingBlockZIndex, timelineBanquetOccupancyZIndex));
 check('Room timeline suppresses banquet connector visual lines',
     timelineCode.includes('function clearBanquetLinkLayer')
     && /if\s*\(\s*isRoomTimelineView\(\)\s*\)\s*\{\s*clearBanquetLinkLayer\(\);\s*return;\s*\}/.test(timelineCode)

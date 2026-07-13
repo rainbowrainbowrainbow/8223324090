@@ -1362,6 +1362,7 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(browserFlow, /receptionSession|receptionPage/);
         assert.match(liveStaffScheduleSmoke, /findAnimatorReceptionMembershipStaffId/);
         assert.match(liveStaffScheduleSmoke, /assertWorkbookStaffPlacementParity/);
+        assert.match(liveStaffScheduleSmoke, /serviceWorkers:\s*'block'/);
         assert.doesNotMatch(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
     });
 

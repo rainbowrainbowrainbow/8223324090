@@ -150,7 +150,11 @@ function staffUrl(base) {
 }
 
 async function openAuthenticatedContext(browser, session, viewport) {
-    const context = await browser.newContext({ viewport, acceptDownloads: true });
+    const context = await browser.newContext({
+        viewport,
+        acceptDownloads: true,
+        serviceWorkers: 'block'
+    });
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user, businessContext }) => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);

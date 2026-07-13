@@ -128,6 +128,25 @@ function makeDb(initialRows) {
             };
         }
 
+        if (/FROM bookings b LEFT JOIN banquet_group_bookings/i.test(sql)) {
+            const exclude = new Set(params[3] || []);
+            return {
+                rows: state.rows
+                    .filter(row =>
+                        row.date === params[0] &&
+                        row.room === params[1] &&
+                        normalizeContext(row.business_context) === normalizeContext(params[2]) &&
+                        row.status !== 'cancelled' &&
+                        !exclude.has(row.id)
+                    )
+                    .map(row => ({
+                        ...row,
+                        banquet_group_id: row.banquet_group_id || null,
+                        banquet_group_role: row.banquet_group_role || null
+                    }))
+            };
+        }
+
         if (/FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
             const hasBusinessContext = hasScopedBusinessContext(sql);
             const businessContext = hasBusinessContext ? params[2] : null;
@@ -140,6 +159,19 @@ function makeDb(initialRows) {
                     row.status !== 'cancelled' &&
                     !exclude.has(row.id)
                 )
+            };
+        }
+
+        if (/FROM banquet_group_bookings/i.test(sql) && /booking_id = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const bookingIds = new Set((params[0] || []).map(String));
+            return {
+                rows: state.rows
+                    .filter(row => bookingIds.has(String(row.id)) && row.banquet_group_id)
+                    .map(row => ({
+                        booking_id: row.id,
+                        group_id: row.banquet_group_id,
+                        role: row.banquet_group_role || null
+                    }))
             };
         }
 
@@ -236,7 +268,7 @@ async function withApp(rows, fn) {
     });
     installMock('../services/telegram', { notifyTelegram: async () => null });
     installMock('../services/bookingAutomation', { processBookingAutomation: async () => null });
-    installMock('../services/websocket', { broadcast: () => null });
+    installMock('../services/websocket', { broadcastBookingEvent: () => null });
     installMock('../services/eventBus', { publish: () => null });
     installMock('../routes/dashboard', { triggerAlertBroadcast: () => null });
 
@@ -292,6 +324,77 @@ test('linked-atomic room move syncs linked rows without changing animator line i
         assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').room, 'Room B');
         assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').line_id, 'line-2');
         assert.equal(state.histories[0].data.reason, 'room-first-drag');
+    });
+});
+
+test('linked-atomic allows same-banquet activity and kitchen overlap', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-2026-0001',
+            time: '10:00',
+            line_id: 'banquet-service',
+            room: 'Room A',
+            category: 'kitchen',
+            program_code: 'KITCHEN',
+            banquet_group_id: 'BG-1',
+            banquet_group_role: 'kitchen'
+        }),
+        bookingRow({
+            id: 'BK-2026-0002',
+            time: '10:15',
+            line_id: 'line-2',
+            room: 'Room A',
+            category: 'animation',
+            linked_to: 'BK-2026-0001',
+            banquet_group_id: 'BG-1',
+            banquet_group_role: 'activity'
+        })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { duration: 90 },
+            linked: [{ id: 'BK-2026-0002', duration: 90 }],
+            historyAction: 'resize'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').duration, 90);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').duration, 90);
+    });
+});
+
+test('linked-atomic blocks same-banquet activity overlap and returns the conflicting booking id', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-2026-0001',
+            time: '10:00',
+            room: 'Room A',
+            category: 'animation',
+            banquet_group_id: 'BG-1',
+            banquet_group_role: 'activity'
+        }),
+        bookingRow({
+            id: 'BK-2026-0002',
+            time: '10:15',
+            line_id: 'line-2',
+            room: 'Room A',
+            category: 'quest',
+            linked_to: 'BK-2026-0001',
+            banquet_group_id: 'BG-1',
+            banquet_group_role: 'activity'
+        })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { duration: 90 },
+            linked: [{ id: 'BK-2026-0002', duration: 90 }],
+            historyAction: 'resize'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.conflictBookingId, 'BK-2026-0002');
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').duration, 60);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').duration, 60);
     });
 });
 

@@ -660,6 +660,7 @@ async function withApp(dbOptions, fn) {
             const room = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
             return Boolean(room && room !== 'інше' && room !== 'other' && room !== 'на виніс' && room !== 'room-takeaway');
         },
+        ALL_ROOMS: ['Room A', '\u041f\u043e\u043d\u0456'],
         BANQUET_SERVICE_LINE_ID: 'banquet-service',
         checkServerConflicts,
         checkServerDuplicate: async () => null,
@@ -670,6 +671,31 @@ async function withApp(dbOptions, fn) {
         }
     });
     installMock('../services/timelineResources', {
+        listTimelineResources: async () => ([
+            { resourceId: 'room-a', type: 'room', name: 'Room A', isActive: true, metadata: {} },
+            { resourceId: 'room-pony', type: 'room', name: '\u041f\u043e\u043d\u0456', isActive: true, metadata: {} }
+        ]),
+        resolveRoomTimelineResourceIdentity: (resources, booking) => {
+            const room = String(booking.room || '').trim();
+            const resource = resources.find(item => item.name === room);
+            return resource
+                ? {
+                    resourceId: resource.resourceId,
+                    resourceName: resource.name,
+                    legacyRoomName: room,
+                    status: 'active',
+                    diagnosticReason: null,
+                    assignmentAllowed: true
+                }
+                : {
+                    resourceId: 'room-quarantine',
+                    resourceName: 'Невідома / неактивна кімната',
+                    legacyRoomName: room,
+                    status: 'custom',
+                    diagnosticReason: 'custom_room',
+                    assignmentAllowed: false
+                };
+        },
         findTimelineResource: async (_queryable, businessContext, resourceId) => {
             if (businessContext === 'maysternya_doli' && resourceId === 'md-consult-room') {
                 return {
@@ -714,7 +740,7 @@ async function withApp(dbOptions, fn) {
         applyBookingPackageEntryCharge: async (_queryable, booking) => booking,
         bookingPackageAudit: () => ({})
     });
-    installMock('../services/websocket', { broadcast: () => null });
+    installMock('../services/websocket', { broadcastBookingEvent: () => null });
     installMock('../services/eventBus', { publish: () => null });
     installMock('../routes/dashboard', { triggerAlertBroadcast: () => null });
 
@@ -898,7 +924,9 @@ test('booking create response projection is derived from the request timeline vi
     const source = read('routes', 'bookings.js');
 
     assert.match(source, /function timelineViewFromRequest\(req, fallback = 'animators'\)/);
-    assert.match(source, /const allCreatedBookings = \[booking, \.\.\.linkedBookings\]/);
+    assert.match(source, /let allCreatedBookings = \[booking, \.\.\.linkedBookings\]/);
+    assert.match(source, /allCreatedBookings = await attachRoomTimelineResourceResolution\(client, allCreatedBookings, businessContext\)/);
+    assert.match(source, /allBookings = await attachRoomTimelineResourceResolution\(client, allBookings, businessContext\)/);
     assert.match(source, /projectCreatedBookingsForTimelineResponse\(allCreatedBookings, timelineView\)/);
     assert.match(source, /projectCreatedBookingsForTimelineResponse\(allBookings, timelineView\)/);
     assert.doesNotMatch(source, /projectCreatedBookingsForTimelineResponse\(allBookings,\s*['"]animators['"]\)/);
@@ -932,14 +960,14 @@ test('POST /api/bookings projects created response for requested room timeline v
         assert.equal(res.timelineView, 'rooms');
         assert.equal(res.data.success, true);
         assert.equal(res.data.booking.id, 'BK-2099-0001');
-        assert.equal(res.data.booking.resourceId, 'Room A');
+        assert.equal(res.data.booking.resourceId, 'room-a');
         assert.equal(res.data.booking.resourceType, 'room');
         assert.equal(res.data.booking.timelineProjection.view, 'rooms');
-        assert.equal(res.data.booking.timelineProjection.resourceId, 'Room A');
+        assert.equal(res.data.booking.timelineProjection.resourceId, 'room-a');
         assert.equal(res.data.booking.timelineProjection.resourceType, 'room');
         assert.equal(res.data.booking.timelineVisibility.visible, true);
         assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
-        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['Room A']);
+        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['room-a']);
     });
 });
 
@@ -1350,7 +1378,7 @@ test('GET /api/bookings room view projects banquet service root with persisted s
         assert.equal(data.length, 1);
         assert.equal(data[0].id, 'BK-2099-0200');
         assert.equal(data[0].lineId, 'banquet-service');
-        assert.equal(data[0].resourceId, roomName);
+        assert.equal(data[0].resourceId, 'room-pony');
         assert.equal(data[0].resourceType, 'room');
         assert.equal(data[0].timelineProjection.view, 'rooms');
         assert.equal(data[0].timelineProjection.sourceLineId, 'banquet-service');
@@ -1907,15 +1935,15 @@ test('POST /api/bookings/full projects created response for requested room timel
         assert.equal(res.data.success, true);
         assert.equal(res.data.serverVerified, true);
         assert.equal(res.data.mainBooking.id, 'BK-2099-0001');
-        assert.equal(res.data.mainBooking.resourceId, 'Room A');
+        assert.equal(res.data.mainBooking.resourceId, 'room-a');
         assert.equal(res.data.mainBooking.resourceType, 'room');
         assert.equal(res.data.mainBooking.timelineProjection.view, 'rooms');
-        assert.equal(res.data.mainBooking.timelineProjection.resourceId, 'Room A');
+        assert.equal(res.data.mainBooking.timelineProjection.resourceId, 'room-a');
         assert.equal(res.data.mainBooking.timelineProjection.resourceType, 'room');
         assert.equal(res.data.mainBooking.timelineVisibility.visible, true);
         assert.deepEqual(res.data.linkedBookings, []);
         assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
-        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['Room A']);
+        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['room-a']);
 
         const linkedRow = state.rows.find(row => row.linked_to === res.data.mainBooking.id);
         assert.ok(linkedRow, 'linked animator row must still be inserted even when room response filters it out');
@@ -1925,7 +1953,7 @@ test('POST /api/bookings/full projects created response for requested room timel
         assert.equal(reload.status, 200, JSON.stringify(reloadData));
         assert.deepEqual(reloadData.map(item => item.id), [res.data.mainBooking.id]);
         assert.equal(reloadData[0].timelineProjection.view, 'rooms');
-        assert.equal(reloadData[0].timelineProjection.resourceId, 'Room A');
+        assert.equal(reloadData[0].timelineProjection.resourceId, 'room-a');
     });
 });
 

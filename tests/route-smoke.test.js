@@ -1361,10 +1361,10 @@ function createFakePool() {
                     });
                 return { rows, rowCount: rows.length };
             }
-            if (/SELECT group_id\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(text)) {
+            if (/SELECT group_id(?:, role)?\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(text)) {
                 const rows = hrState.banquetMemberships
                     .filter(item => item.booking_id === params[0] && item.business_context === params[1])
-                    .map(item => ({ group_id: item.group_id }));
+                    .map(item => ({ group_id: item.group_id, role: item.role }));
                 return { rows, rowCount: rows.length };
             }
             if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
@@ -2906,6 +2906,8 @@ describe('route-level API safety smoke', () => {
         });
         installMock('../services/websocket', {
             broadcast: () => {},
+            broadcastBookingEvent: () => {},
+            broadcastLineEvent: () => {},
             broadcastToChannel: () => {},
             sendToUser: () => {}
         });
@@ -4270,7 +4272,13 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.open_resource_count, 1);
         assert.equal(res.data.disabled_accounts, 1);
         assert.deepEqual(res.data.disabled_account_usernames, ['offboard.employee']);
-        assert.deepEqual(res.data.schedule_cleanup, { hr_shifts: 2, staff_schedule: 3, from_date: '2099-06-06' });
+        assert.deepEqual(res.data.schedule_cleanup, {
+            hr_shifts: 2,
+            staff_schedule: 3,
+            from_date: '2099-06-06',
+            dates: [],
+            roster_reconciliation: []
+        });
         assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = NOW\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND COALESCE\(is_active, true\) = true RETURNING id, user_id/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE refresh_tokens SET revoked_at = NOW\(\)/i.test(q.text)));

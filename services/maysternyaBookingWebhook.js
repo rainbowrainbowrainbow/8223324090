@@ -16,7 +16,7 @@ const {
 } = require('./booking');
 const { insertHistory } = require('./historyLog');
 const { ensureLeadForBooking } = require('./leadBookingLink');
-const { broadcast } = require('./websocket');
+const { broadcastBookingEvent } = require('./websocket');
 const { publishInTransaction, publish } = require('./eventBus');
 const {
   findTimelineResource,
@@ -1161,7 +1161,7 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
 
     const response = bookingResponse(row, resource, { created: true, dryRun: false, leadLink });
     try {
-      broadcast('booking:created', response.booking, null, booking.date);
+      broadcastBookingEvent('booking:created', response.booking, null, { businessContext: MAYSTERNYA_CONTEXT });
     } catch (err) {
       log.warn(`Maysternya booking broadcast failed (non-critical): ${err.message}`);
     }

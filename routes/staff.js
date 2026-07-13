@@ -38,8 +38,9 @@ const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegr
 const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
-const { broadcast } = require('../services/websocket');
+const { broadcast, broadcastLineEvent } = require('../services/websocket');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { reconcileScheduledAnimatorLines } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
@@ -85,6 +86,28 @@ const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoli
 const STAFF_COPY_WEEK_MAX_STAFF_IDS = 500;
 const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
 const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
+
+function rosterMutationDates(values = []) {
+    return [...new Set(values.map(normalizeScheduleDate).filter(Boolean))].sort();
+}
+
+async function reconcileAnimatorRosterDates(client, values = []) {
+    const dates = rosterMutationDates(values);
+    const results = [];
+    for (const date of dates) {
+        results.push({ date, ...(await reconcileScheduledAnimatorLines(date, client)) });
+    }
+    return results;
+}
+
+function broadcastAnimatorRosterDates(values = [], userId = null) {
+    rosterMutationDates(values).forEach(date => {
+        broadcastLineEvent('timeline:roster-updated', {
+            date,
+            businessContext: DEFAULT_BUSINESS_CONTEXT
+        }, null);
+    });
+}
 
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
@@ -962,9 +985,11 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
         await recordScheduleAudit(client, 'staff_schedule_update', staffId, date, previous, enriched || result.rows[0], req, {
             source: 'staff.schedule.put'
         });
+        await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
         // Fire-and-forget Telegram notification
         notifyScheduleChange(staffId, date, scheduleStatus, shiftStart, shiftEnd);
+        broadcastAnimatorRosterDates([date], req.user?.id);
         res.json({ success: true, data: enriched || result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1170,9 +1195,11 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             reason,
             force: true
         });
+        await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
 
         notifyScheduleChange(replacementStaffId, date, status, schedule.shift_start, schedule.shift_end);
+        broadcastAnimatorRosterDates([date], req.user?.id);
         res.json({ success: true, data: enriched, replacement: replacement.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1272,9 +1299,11 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
             replacementStaffId: schedule.staff_id,
             force: true
         });
+        await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
 
         notifyScheduleChange(originalStaffId, date, staffScheduleStatusForShift(restoredShift.rows[0].shift_type), restoredShift.rows[0].planned_start, restoredShift.rows[0].planned_end);
+        broadcastAnimatorRosterDates([date], req.user?.id);
         res.json({ success: true, data: enriched, original: original.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1296,6 +1325,7 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
         }
         let count = 0;
         const affectedStaff = new Set();
+        const affectedDates = new Set();
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -1362,8 +1392,10 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                     batchSize: entries.length
                 });
                 affectedStaff.add(e.staffId);
+                affectedDates.add(normalizeScheduleDate(e.date));
                 count++;
             }
+            await reconcileAnimatorRosterDates(client, [...affectedDates]);
             await client.query('COMMIT');
         } catch (txErr) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1373,6 +1405,7 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
         }
         // Fire-and-forget: bulk notification summary
         notifyBulkScheduleChange(affectedStaff, count);
+        broadcastAnimatorRosterDates([...affectedDates], req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
         log.error('POST /staff/schedule/bulk error', err);
@@ -1471,6 +1504,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
 
         let count = 0;
         const affectedStaff = new Set();
+        const affectedDates = new Set();
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -1548,8 +1582,10 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     conflictCount: conflicts
                 });
                 affectedStaff.add(row.staff_id);
+                affectedDates.add(targetDate);
                 count++;
             }
+            await reconcileAnimatorRosterDates(client, [...affectedDates]);
             await client.query('COMMIT');
         } catch (txErr) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1559,6 +1595,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         }
         // Fire-and-forget notification
         if (count > 0) notifyBulkScheduleChange(affectedStaff, count);
+        broadcastAnimatorRosterDates([...affectedDates], req.user?.id);
         res.json({
             success: true,
             count,

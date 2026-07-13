@@ -216,7 +216,11 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /LOWER\(TRIM\(l\.name\)\) ~ '\^аніматор\[\[:space:\]\]\+\[0-9\]\+\$'/);
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM bookings b[\s\S]*activeBookingStatusSql\('b\.status'\)/);
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM afisha a/);
-        assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
+        assert.match(bookingService, /function reconcileScheduledAnimatorLines/);
+        assert.match(bookingService, /function getAnimatorTimelineLines/);
+        assert.match(linesRoute, /getAnimatorTimelineLines\(date, pool\)/);
+        const lineGetBlock = linesRoute.slice(linesRoute.indexOf("router.get('/:date'"), linesRoute.indexOf("router.post('/:date'"));
+        assert.doesNotMatch(lineGetBlock, /syncScheduledAnimatorLines|INSERT INTO lines_by_date|DELETE FROM lines_by_date/);
         assert.match(linesRoute, /X-Timeline-Lines-Source/);
         assert.match(timelinePage, /line-header line-header--title-only/);
         assert.doesNotMatch(timelinePage, /getLineSubtitle\(lineForHeader\)/);

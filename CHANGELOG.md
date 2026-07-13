@@ -4,6 +4,18 @@
 
 ---
 
+## v0.79.5 - Захищений і стабільний таймлайн
+
+### Timeline / Security / Reliability / (13.07.2026) [codex]
+- **Захищені WebSocket-події** — бронювання та оновлення графіка отримують лише користувачі відповідного business context, дати й visibility scope; payload не містить клієнтських або фінансових даних.
+- **Стабільне перемикання «Свята / Банкети»** — deep links, resize, cache та повільні запити більше не повертають старий view або помилковий rollback після успішного save.
+- **Графік аніматорів як source of truth** — sick, dayoff, replacement та offboarding одразу прибирають вільні generated lines, але зберігають лінії з чинними бронюваннями як недоступні.
+- **Єдина conflict policy банкетів** — room drag/resize використовує ту саму role-aware матрицю, що й сервер, включно з дозволеним overlap activity ↔ kitchen/service.
+- **Безпечна room identity** — активні кімнати використовують durable resource ID, а unknown, inactive або custom rooms потрапляють у quarantine замість рядка «На виніс».
+- **Регресійний захист** — додані focused authorization, lifecycle, resource identity, conflict matrix та browser smoke тести.
+
+---
+
 ## v0.79.4 - Надійне збереження додаткових професій
 
 ### Release / Versioning / (13.07.2026) [codex]

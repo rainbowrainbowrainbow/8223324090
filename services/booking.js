@@ -233,22 +233,26 @@ function bookingRoomConflictIsOperational(role, booking = {}) {
         || bookingPackageHasOperationalData(extra);
 }
 
-async function roomConflictPolicyGroupIds(client, options, businessContext) {
+async function roomConflictPolicyCandidateContext(client, options, businessContext) {
     const ids = new Set();
+    let role = '';
     addCleanSetValue(ids, options.banquetGroupId || options.banquet_group_id);
     for (const id of bookingRoomConflictGroupIds(options.candidateBooking || {})) ids.add(id);
     const sourceBookingId = String(options.sourceBookingId || options.source_booking_id || '').trim();
     if (sourceBookingId) {
         const result = await client.query(
-            `SELECT group_id
+            `SELECT group_id, role
              FROM banquet_group_bookings
              WHERE booking_id = $1
                AND COALESCE(business_context, 'event_genix') = $2`,
             [sourceBookingId, normalizeTimelineContext(businessContext)]
         );
-        for (const row of result.rows || []) addCleanSetValue(ids, row.group_id);
+        for (const row of result.rows || []) {
+            addCleanSetValue(ids, row.group_id);
+            if (!role) role = normalizedRoomConflictRole(row.role);
+        }
     }
-    return ids;
+    return { groupIds: ids, role };
 }
 
 function roomConflictPolicyAllowsOverlap(candidate, conflict, candidateGroupIds) {
@@ -266,6 +270,31 @@ function roomConflictPolicyAllowsOverlap(candidate, conflict, candidateGroupIds)
     if (candidateActivity && conflictOperational) return true;
     if (candidateOperational && conflictActivity) return true;
     return false;
+}
+
+function findRoomConflictAmongCandidates(candidates = []) {
+    const rows = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
+    for (let leftIndex = 0; leftIndex < rows.length; leftIndex += 1) {
+        const candidate = rows[leftIndex];
+        if (normalizeBookingStatus(candidate.status) === 'cancelled' || !isRoomConflictBlockingRoom(candidate.room)) continue;
+        for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
+            const conflict = rows[rightIndex];
+            if (normalizeBookingStatus(conflict.status) === 'cancelled' || !isRoomConflictBlockingRoom(conflict.room)) continue;
+            if (String(candidate.date || '') !== String(conflict.date || '')) continue;
+            if (String(candidate.room || '') !== String(conflict.room || '')) continue;
+            const candidateStart = timeToMinutes(candidate.time);
+            const candidateEnd = candidateStart + (parseInt(candidate.duration, 10) || 0);
+            const conflictStart = timeToMinutes(conflict.time);
+            const conflictEnd = conflictStart + (parseInt(conflict.duration, 10) || 0);
+            if (!(candidateStart < conflictEnd && candidateEnd > conflictStart)) continue;
+            const candidateGroupIds = bookingRoomConflictGroupIds(candidate);
+            const conflictGroupIds = bookingRoomConflictGroupIds(conflict);
+            if (!candidateGroupIds.size || !conflictGroupIds.size) continue;
+            if (roomConflictPolicyAllowsOverlap(candidate, conflict, candidateGroupIds)) continue;
+            return { candidate, conflict };
+        }
+    }
+    return null;
 }
 
 async function queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata) {
@@ -303,14 +332,18 @@ async function checkRoomConflictWithPolicy(client, date, room, time, duration, e
     const excludeIds = options.excludeIds || [];
     const includePolicyMetadata = Boolean(options.allowSameBanquetOperationalOverlap);
     const result = await queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata);
-    const candidateGroupIds = includePolicyMetadata
-        ? await roomConflictPolicyGroupIds(client, options, context)
-        : new Set();
-    const candidateBooking = options.candidateBooking || {};
+    const candidateContext = includePolicyMetadata
+        ? await roomConflictPolicyCandidateContext(client, options, context)
+        : { groupIds: new Set(), role: '' };
+    const baseCandidateBooking = options.candidateBooking || {};
+    const candidateBooking = candidateContext.role && bookingRoomConflictRole(baseCandidateBooking) === 'generic'
+        ? { ...baseCandidateBooking, banquetGroupRole: candidateContext.role }
+        : baseCandidateBooking;
     const newStart = timeToMinutes(time);
     const newEnd = newStart + (parseInt(duration, 10) || 0);
     for (const b of result.rows) {
         if (excludeIds.includes(String(b.id || '').trim())) continue;
+        if (normalizeBookingStatus(b.status) === 'cancelled') continue;
         const bStart = timeToMinutes(b.time);
         const bEnd = bStart + (b.duration || 0);
         if (newStart < bEnd && newEnd > bStart) {
@@ -319,7 +352,7 @@ async function checkRoomConflictWithPolicy(client, date, room, time, duration, e
                 && roomConflictPolicyAllowsOverlap(
                     { ...candidateBooking, date, room, time, duration },
                     b,
-                    candidateGroupIds
+                    candidateContext.groupIds
                 )
             ) {
                 continue;
@@ -525,18 +558,18 @@ async function getScheduledAnimatorLines(date, db = pool) {
         color: lineColorForIndex(index, row.color),
         shiftStart: row.shift_start,
         shiftEnd: row.shift_end,
+        shiftStatus: row.status,
         fromSheet: true,
         source: 'staff_schedule'
     }));
 }
 
 async function syncScheduledAnimatorLines(date, db = pool) {
-    const scheduledLines = await getScheduledAnimatorLines(date, db);
+    return reconcileScheduledAnimatorLines(date, db);
+}
 
-    if (scheduledLines.length === 0) {
-        await ensureDefaultLines(date, db);
-        return { source: 'defaults', count: 0 };
-    }
+async function reconcileScheduledAnimatorLines(date, db = pool) {
+    const scheduledLines = await getScheduledAnimatorLines(date, db);
 
     for (const line of scheduledLines) {
         await db.query(
@@ -551,9 +584,118 @@ async function syncScheduledAnimatorLines(date, db = pool) {
         );
     }
 
-    await cleanupLegacyDefaultAnimatorLines(date, db);
+    const scheduledIds = scheduledLines.map(line => String(line.id));
+    const removed = await db.query(
+        `DELETE FROM lines_by_date l
+         WHERE l.date = $1
+           AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+           AND l.from_sheet IS TRUE
+           AND NOT (l.line_id = ANY($3::text[]))
+           AND NOT EXISTS (
+                SELECT 1 FROM bookings b
+                WHERE b.date = l.date
+                  AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+                  AND b.line_id = l.line_id
+                  AND ${activeBookingStatusSql('b.status')}
+           )
+           AND NOT EXISTS (
+                SELECT 1 FROM afisha a
+                WHERE a.date = l.date
+                  AND a.line_id::text = l.line_id
+           )
+         RETURNING l.line_id`,
+        [date, DEFAULT_TIMELINE_CONTEXT, scheduledIds]
+    );
 
-    return { source: 'staff_schedule', count: scheduledLines.length };
+    return {
+        source: 'staff_schedule',
+        count: scheduledLines.length,
+        removed: removed.rowCount || 0,
+        removedLineIds: (removed.rows || []).map(row => String(row.line_id))
+    };
+}
+
+async function getAnimatorTimelineLines(date, db = pool) {
+    const scheduledLines = await getScheduledAnimatorLines(date, db);
+    const persisted = await db.query(
+        `SELECT l.*,
+                EXISTS (
+                    SELECT 1 FROM bookings b
+                    WHERE b.date = l.date
+                      AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+                      AND b.line_id = l.line_id
+                      AND ${activeBookingStatusSql('b.status')}
+                ) AS has_active_booking,
+                EXISTS (
+                    SELECT 1 FROM afisha a
+                    WHERE a.date = l.date
+                      AND a.line_id::text = l.line_id
+                ) AS has_active_afisha
+         FROM lines_by_date l
+         WHERE l.date = $1
+           AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+         ORDER BY l.id`,
+        [date, DEFAULT_TIMELINE_CONTEXT]
+    );
+    const scheduledIds = new Set(scheduledLines.map(line => String(line.id)));
+    const lines = scheduledLines.map(line => ({
+        ...line,
+        resourceId: line.id,
+        resourceType: 'animator',
+        businessContext: DEFAULT_TIMELINE_CONTEXT,
+        staffId: Number(line.id) || null,
+        shiftStatus: line.shiftStatus || 'working',
+        assignmentAllowed: true,
+        isUnavailable: false
+    }));
+
+    for (const row of persisted.rows) {
+        const lineId = String(row.line_id);
+        if (scheduledIds.has(lineId)) continue;
+        const generated = row.from_sheet === true;
+        const hasActiveAssignment = row.has_active_booking === true || row.has_active_afisha === true;
+        if (generated && !hasActiveAssignment) continue;
+        lines.push({
+            id: lineId,
+            resourceId: lineId,
+            resourceType: 'animator',
+            businessContext: DEFAULT_TIMELINE_CONTEXT,
+            name: row.name,
+            color: row.color,
+            fromSheet: generated,
+            staffId: generated ? (Number(lineId) || null) : null,
+            shiftStart: null,
+            shiftEnd: null,
+            shiftStatus: generated ? 'unavailable' : null,
+            source: generated ? 'staff_schedule_orphan' : 'manual',
+            assignmentAllowed: !generated,
+            isUnavailable: generated,
+            orphaned: generated,
+            warning: generated
+                ? 'Аніматор більше не доступний у графіку. Існуючі бронювання збережено, нові призначення заборонені.'
+                : null
+        });
+    }
+
+    if (lines.length) return lines;
+    return [{
+        id: `empty-roster-${date}`,
+        resourceId: `empty-roster-${date}`,
+        resourceType: 'animator',
+        businessContext: DEFAULT_TIMELINE_CONTEXT,
+        name: 'Немає аніматорів у графіку',
+        color: '#94A3B8',
+        fromSheet: false,
+        staffId: null,
+        shiftStart: null,
+        shiftEnd: null,
+        shiftStatus: 'empty',
+        source: 'empty_roster_virtual',
+        assignmentAllowed: false,
+        isUnavailable: true,
+        virtual: true,
+        warning: 'Додайте робочу зміну аніматора в графік персоналу.'
+    }];
 }
 
 async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
@@ -632,7 +774,8 @@ module.exports = {
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
-    checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate,
-    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
+    checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate, findRoomConflictAmongCandidates,
+    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, getAnimatorTimelineLines,
+    syncScheduledAnimatorLines, reconcileScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

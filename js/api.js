@@ -108,7 +108,12 @@ async function apiErrorFromResponse(response, fallback = 'API error') {
     return apiErrorFromPayload({ ...payload, status: response.status }, fallback);
 }
 
-function timelineApiUrl(url) {
+function timelineApiUrl(url, options = {}) {
+    if (options.businessContext) {
+        if (/[?&](businessContext|business_context)=/.test(String(url || ''))) return url;
+        const joiner = url.includes('?') ? '&' : '?';
+        return `${url}${joiner}businessContext=${encodeURIComponent(String(options.businessContext))}`;
+    }
     if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
         return window.TimelineBusinessContext.appendApiContext(url);
     }
@@ -116,7 +121,7 @@ function timelineApiUrl(url) {
 }
 
 function timelineApiUrlWithView(url, options = {}) {
-    let path = timelineApiUrl(url);
+    let path = timelineApiUrl(url, options);
     const view = options.timelineView || (typeof window !== 'undefined' ? window.TimelineView?.current?.() : null);
     if (view) {
         path += `${path.includes('?') ? '&' : '?'}timelineView=${encodeURIComponent(String(view))}`;
@@ -1417,7 +1422,10 @@ async function apiGetBookings(date, options = {}) {
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${path}`, {
+            headers: getTimelineAuthHeaders(false),
+            signal: options.signal
+        });
         if (handleAuthError(response)) return null;
         if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
@@ -1427,6 +1435,7 @@ async function apiGetBookings(date, options = {}) {
         }
         return await response.json();
     } catch (err) {
+        if (err?.name === 'AbortError') throw err;
         console.error('API getBookings error:', {
             message: err?.message,
             status: err?.status || null,
@@ -2036,12 +2045,16 @@ async function apiGetLines(date, options = {}) {
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${path}`, {
+            headers: getTimelineAuthHeaders(false),
+            signal: options.signal
+        });
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
         if (!response.ok) throw new Error('API error ' + response.status);
         const data = await response.json();
         return data;
     } catch (err) {
+        if (err?.name === 'AbortError') throw err;
         console.error('[apiGetLines] error:', err);
         return null;
     }

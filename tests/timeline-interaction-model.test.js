@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const model = require('../js/timeline-interaction-model');
+const banquetConflictMatrix = require('./fixtures/banquet-conflict-matrix');
 
 function booking(overrides = {}) {
     return {
@@ -14,7 +15,8 @@ function booking(overrides = {}) {
         programCode: overrides.programCode || 'PRG',
         room: overrides.room || 'Room A',
         linkedTo: overrides.linkedTo || null,
-        status: overrides.status || 'confirmed'
+        status: overrides.status || 'confirmed',
+        ...overrides
     };
 }
 
@@ -102,10 +104,61 @@ test('room drag changes room only and keeps animator line ids untouched', () => 
 
     assert.equal(intent.mainCandidate.next.lineId, 'line-1');
     assert.equal(intent.mainCandidate.next.room, 'Room B');
+    assert.equal(intent.assignmentMode, 'room');
+    assert.equal(intent.targetRoom, 'Room B');
+    assert.equal(intent.sourceBookingId, 'BK-main');
     assert.deepEqual(payload.main, { time: '14:30', room: 'Room B' });
     assert.deepEqual(payload.linked, [{ id: 'BK-linked', time: '14:45', room: 'Room B' }]);
     assert.deepEqual(undoPayload.main, { time: '14:00', room: 'Room A' });
     assert.deepEqual(undoPayload.linked, [{ id: 'BK-linked', time: '14:15', room: 'Room A' }]);
+});
+
+for (const scenario of banquetConflictMatrix) {
+    test(`client banquet conflict matrix: ${scenario.name}`, () => {
+        const candidate = booking({
+            id: 'BK-candidate',
+            time: '14:00',
+            room: scenario.candidate.room || 'Room A',
+            ...scenario.candidate
+        });
+        const conflict = booking({
+            id: 'BK-conflict',
+            time: '14:15',
+            room: scenario.conflict.room || 'Room A',
+            ...scenario.conflict
+        });
+        const intent = model.buildDragInteractionIntent({
+            draggedBooking: candidate,
+            allBookings: [candidate, conflict],
+            startMin: 14 * 60,
+            currentMin: 14 * 60,
+            startLineId: candidate.room,
+            targetLineId: candidate.room,
+            assignmentMode: 'room',
+            startRoom: candidate.room,
+            targetRoom: candidate.room
+        });
+        const result = model.evaluateTimelineCandidateConflicts(intent, [candidate, conflict]);
+
+        assert.equal(result.valid, scenario.expected === 'allow', scenario.name);
+        if (scenario.expected === 'block') assert.equal(result.conflictBooking.id, 'BK-conflict');
+    });
+}
+
+test('client defers a potentially legal banquet overlap when group metadata is incomplete', () => {
+    const candidate = booking({ id: 'BK-candidate', category: 'animation', room: 'Room A' });
+    const conflict = booking({ id: 'BK-conflict', category: 'kitchen', programCode: 'KITCHEN', room: 'Room A' });
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: candidate,
+        allBookings: [candidate, conflict],
+        assignmentMode: 'room',
+        startRoom: 'Room A',
+        targetRoom: 'Room A'
+    });
+    const result = model.evaluateTimelineCandidateConflicts(intent, [candidate, conflict]);
+
+    assert.equal(result.valid, true);
+    assert.equal(result.deferredToServer, true);
 });
 
 test('room drag conflict evaluation checks room overlaps, not line overlaps', () => {
@@ -173,6 +226,42 @@ test('resize intent rejects a newly occupied target window', () => {
     assert.equal(result.type, 'overlap');
     assert.equal(result.conflictBooking.id, 'BK-blocker');
     assert.equal(result.candidate.id, 'BK-main');
+});
+
+test('room resize checks the physical room and carries banquet authorization metadata', () => {
+    const activity = booking({
+        id: 'BK-activity',
+        lineId: 'animator-1',
+        room: 'Room A',
+        category: 'animation',
+        banquetGroupId: 'BG-1',
+        banquetGroupRole: 'activity'
+    });
+    const roomBlocker = booking({
+        id: 'BK-blocker',
+        time: '14:45',
+        lineId: 'animator-99',
+        room: 'Room A',
+        category: 'animation',
+        banquetGroupId: 'BG-2',
+        banquetGroupRole: 'activity'
+    });
+    const intent = model.buildResizeInteractionIntent({
+        booking: activity,
+        allBookings: [activity, roomBlocker],
+        newDuration: 90,
+        assignmentMode: 'room',
+        targetRoom: 'Room A'
+    });
+    const result = model.evaluateTimelineCandidateConflicts(intent, [activity, roomBlocker]);
+
+    assert.equal(intent.assignmentMode, 'room');
+    assert.equal(intent.targetRoom, 'Room A');
+    assert.equal(intent.banquetGroupId, 'BG-1');
+    assert.equal(intent.bookingRole, 'activity');
+    assert.equal(intent.sourceBookingId, 'BK-activity');
+    assert.equal(result.valid, false);
+    assert.equal(result.conflictBooking.id, 'BK-blocker');
 });
 
 test('drag undo snapshot preserves old and new linked positions', () => {

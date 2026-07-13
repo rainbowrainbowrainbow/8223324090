@@ -207,6 +207,12 @@ function buildAuthUserPayload(user) {
     const businessContexts = allowedBusinessContextsForUser(user);
     const businessContextPolicy = resolveBusinessContextPolicy(user);
     const defaultBusinessContext = businessContextPolicy.defaultContext || resolveDefaultBusinessContext(user, businessContexts);
+    const staffIds = Array.from(new Set([
+        ...(Array.isArray(user?.staff_ids) ? user.staff_ids : []),
+        ...(Array.isArray(user?.staffIds) ? user.staffIds : []),
+        user?.staff_id,
+        user?.staffId
+    ].map(value => Number(value)).filter(value => Number.isInteger(value) && value > 0)));
     return {
         id: user.id,
         username: user.username,
@@ -223,10 +229,104 @@ function buildAuthUserPayload(user) {
         defaultBusinessContext,
         default_business_context: defaultBusinessContext,
         businessContextPolicy,
+        staffIds,
+        staff_ids: staffIds,
         name: user.name,
         telegram_chat_id: user.telegram_chat_id || user.telegramChatId || null,
         telegramChatId: user.telegram_chat_id || user.telegramChatId || null
     };
+}
+
+function authSessionError(message, code = 'auth_session_invalid') {
+    const error = new Error(message);
+    error.code = code;
+    error.status = 403;
+    error.isAuthSessionError = true;
+    return error;
+}
+
+function isAuthCompatibilityMiss(error) {
+    const message = String(error?.message || '');
+    return /Unexpected .*query/i.test(message)
+        || /column .*session_revoked_at.*does not exist/i.test(message)
+        || /relation .*users.*does not exist/i.test(message);
+}
+
+async function loadAuthenticatedUserAccess(user, options = {}) {
+    const requireFresh = options.requireFresh === true;
+    const includeStaffProfile = options.includeStaffProfile === true || requireFresh;
+    const userId = user?.id || user?.userId || user?.sub;
+    if (!userId) {
+        if (requireFresh) throw authSessionError('User not found or deactivated', 'auth_user_missing');
+        return user;
+    }
+
+    try {
+        const sessionState = await pool.query(
+            'SELECT is_active, session_revoked_at FROM users WHERE id = $1',
+            [userId]
+        );
+        const sessionRow = sessionState.rows[0];
+        if (!sessionRow && requireFresh) {
+            throw authSessionError('User not found or deactivated', 'auth_user_missing');
+        }
+        if (sessionRow?.is_active === false) {
+            throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
+        }
+        const revokedUnix = sessionRow?.session_revoked_at
+            ? Math.floor(new Date(sessionRow.session_revoked_at).getTime() / 1000)
+            : 0;
+        if (revokedUnix && Number(user.iat || 0) < revokedUnix) {
+            throw authSessionError('Session revoked. Please login again.', 'auth_session_revoked');
+        }
+
+        const freshAccessState = await pool.query(
+            `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts,
+                    default_business_context, name, telegram_chat_id, is_active
+             FROM users WHERE id = $1`,
+            [userId]
+        );
+        const freshUser = freshAccessState.rows[0];
+        if (!freshUser) {
+            if (requireFresh) throw authSessionError('User not found or deactivated', 'auth_user_missing');
+            return user;
+        }
+        if (freshUser.is_active === false) {
+            throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
+        }
+
+        let staffState = { rows: [] };
+        if (includeStaffProfile) {
+            try {
+                staffState = await pool.query(
+                    `SELECT staff_id
+                     FROM employee_profiles
+                     WHERE user_id = $1
+                       AND COALESCE(is_active, true) IS TRUE
+                       AND staff_id IS NOT NULL`,
+                    [userId]
+                );
+            } catch (error) {
+                if (requireFresh) throw error;
+            }
+        }
+        const staffIds = staffState.rows
+            .map(row => Number(row.staff_id))
+            .filter(value => Number.isInteger(value) && value > 0);
+
+        return {
+            ...user,
+            ...buildAuthUserPayload({ ...freshUser, staffIds }),
+            iat: user.iat,
+            exp: user.exp,
+            imp: user.imp,
+            impBy: user.impBy
+        };
+    } catch (error) {
+        if (error?.isAuthSessionError) throw error;
+        if (!requireFresh && isAuthCompatibilityMiss(error)) return user;
+        throw error;
+    }
 }
 
 async function authenticateToken(req, res, next) {
@@ -236,48 +336,7 @@ async function authenticateToken(req, res, next) {
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
-        let requestUser = user;
-        if (user?.id) {
-            try {
-                const sessionState = await pool.query(
-                    'SELECT is_active, session_revoked_at FROM users WHERE id = $1',
-                    [user.id]
-                );
-                const row = sessionState.rows[0];
-                if (row?.is_active === false) {
-                    return res.status(403).json({ error: 'User not found or deactivated' });
-                }
-                const revokedUnix = row?.session_revoked_at
-                    ? Math.floor(new Date(row.session_revoked_at).getTime() / 1000)
-                    : 0;
-                if (revokedUnix && Number(user.iat || 0) < revokedUnix) {
-                    return res.status(403).json({ error: 'Session revoked. Please login again.' });
-                }
-                const freshAccessState = await pool.query(
-                    `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts,
-                            default_business_context, name, telegram_chat_id, is_active
-                     FROM users WHERE id = $1`,
-                    [user.id]
-                ).catch(() => ({ rows: [] }));
-                const freshUser = freshAccessState.rows[0];
-                if (freshUser) {
-                    requestUser = {
-                        ...user,
-                        ...buildAuthUserPayload(freshUser),
-                        iat: user.iat,
-                        exp: user.exp,
-                        imp: user.imp,
-                        impBy: user.impBy
-                    };
-                }
-            } catch (sessionErr) {
-                const message = String(sessionErr?.message || '');
-                const isCompatibilityMiss = /Unexpected .*query/i.test(message)
-                    || /column .*session_revoked_at.*does not exist/i.test(message)
-                    || /relation .*users.*does not exist/i.test(message);
-                if (!isCompatibilityMiss) throw sessionErr;
-            }
-        }
+        const requestUser = await loadAuthenticatedUserAccess(user);
         req.user = requestUser;
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
@@ -310,6 +369,9 @@ async function authenticateToken(req, res, next) {
 
         next();
     } catch (err) {
+        if (err?.isAuthSessionError) {
+            return res.status(err.status || 403).json({ error: err.message });
+        }
         return res.status(403).json({ error: 'Invalid or expired token' });
     }
 }
@@ -538,5 +600,6 @@ module.exports = {
     canUseAction,
     actionPermissionDecision,
     buildAuthUserPayload,
+    loadAuthenticatedUserAccess,
     ANY_ROLE
 };

@@ -50,7 +50,7 @@ function pointerEvent(window, type, init = {}) {
     return event;
 }
 
-function createHarness() {
+function createHarness(options = {}) {
     const consoleErrors = [];
     const dom = new JSDOM(`<!doctype html><html><body>
         <div id="timeScale"></div>
@@ -62,7 +62,7 @@ function createHarness() {
         <span id="dayOfWeekLabel"></span>
         <span id="workingHours"></span>
     </body></html>`, {
-        url: 'http://localhost/',
+        url: options.url || 'http://localhost/',
         runScripts: 'outside-only',
         pretendToBeVisual: true
     });
@@ -121,7 +121,12 @@ function createHarness() {
         tooltip.classList.add('hidden');
         tooltip.setAttribute('aria-hidden', 'true');
     };
-    window.showNotification = () => {};
+    if (options.timelineContext) window.TimelineBusinessContext = options.timelineContext;
+    Object.entries(options.initialStorage || {}).forEach(([key, value]) => {
+        window.localStorage.setItem(key, value);
+    });
+    window.__notifications = [];
+    window.showNotification = (message, type) => window.__notifications.push({ message, type });
     window.showWarning = () => {};
     window.handleError = () => {};
     window.renderNowLine = () => {};
@@ -141,6 +146,10 @@ function createHarness() {
     window.handleUndo = async () => {};
     window.changeZoom = () => {};
     window.navigator.vibrate = () => {};
+    window.__wsDateSubscriptions = [];
+    window.ParkWS = {
+        setSubscribedDates: dates => window.__wsDateSubscriptions.push([...dates])
+    };
     window.setInterval = () => 1;
     window.clearInterval = () => {};
 
@@ -151,13 +160,18 @@ function createHarness() {
         window.__timelineLifecycleTest = {
             initBookingDrag,
             initBookingResize,
+            handleResizeEnd: _handleResizeEnd,
             renderTimeline,
+            syncTimelineWebSocketDateSubscriptions,
             changeDate,
             setTimelineView,
             handleTimelineBusinessContextChanged,
             cancelActiveTimelineInteractions,
             getLinesForDate,
             getBookingsForDate,
+            timelineCurrentView,
+            captureTimelineRequestToken,
+            timelineRequestTokenIsCurrent,
             timelineCacheScopeKey,
             getTimelineCacheEntry,
             setTimelineCacheEntry,
@@ -257,6 +271,288 @@ function banquetPreviewSnapshot(date = '2026-05-26') {
         ]
     };
 }
+
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
+function parkTimelineContext(storagePrefix = 'test') {
+    return {
+        current: () => ({ apiValue: 'event_genix', key: 'event_genix' }),
+        state: () => ({ activeBusinessContext: 'event_genix' }),
+        presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
+        storageKey: name => `${storagePrefix}_${name}`
+    };
+}
+
+test('timelineView deep link is bootstrap-only and user switches replace the URL', async () => {
+    const context = parkTimelineContext('deep');
+    const { window, api } = createHarness({
+        url: 'http://localhost/?timelineView=rooms&keep=1',
+        timelineContext: context
+    });
+
+    assert.equal(api.timelineCurrentView(), 'rooms');
+    await api.setTimelineView('animators', { render: false });
+    assert.equal(api.timelineCurrentView(), 'animators');
+    assert.equal(new URL(window.location.href).searchParams.get('timelineView'), 'animators');
+    assert.equal(new URL(window.location.href).searchParams.get('keep'), '1');
+
+    await api.setTimelineView('rooms', { render: false });
+    assert.equal(api.timelineCurrentView(), 'rooms');
+    assert.equal(new URL(window.location.href).searchParams.get('timelineView'), 'rooms');
+});
+
+test('unknown timelineView behaves like an absent parameter and preserves stored choice', () => {
+    const context = parkTimelineContext('unknown');
+    const { api } = createHarness({
+        url: 'http://localhost/?timelineView=unsupported',
+        timelineContext: context,
+        initialStorage: { unknown_timeline_view: 'rooms' }
+    });
+
+    assert.equal(api.timelineCurrentView(), 'rooms');
+});
+
+test('timeline request token freezes context, view, date, generation and cache scope', () => {
+    const context = parkTimelineContext('token');
+    const { api } = createHarness({ timelineContext: context });
+    const token = api.captureTimelineRequestToken('2026-05-26');
+
+    assert.equal(Object.isFrozen(token), true);
+    assert.equal(token.businessContext, 'event_genix');
+    assert.equal(token.timelineView, 'animators');
+    assert.equal(token.date, '2026-05-26');
+    assert.equal(typeof token.renderGeneration, 'number');
+    assert.match(token.cacheScope, /^event_genix\|park\|room\|animators$/);
+    assert.equal(api.timelineRequestTokenIsCurrent(token), true);
+});
+
+test('late old-view responses cannot populate the new-view cache or DOM', async () => {
+    const context = parkTimelineContext('race');
+    const { window, api } = createHarness({ timelineContext: context });
+    const oldLines = deferred();
+    const oldBookings = deferred();
+    let oldSignal = null;
+    window.apiGetLines = async (_date, options = {}) => {
+        if (options.timelineView === 'animators') {
+            oldSignal = options.signal;
+            return oldLines.promise;
+        }
+        return [{ id: 'room-line', resourceId: 'room-line', resourceType: 'room', name: 'Room line' }];
+    };
+    window.apiGetBookings = async (_date, options = {}) => {
+        if (options.timelineView === 'animators') return oldBookings.promise;
+        return [{
+            id: 'room-booking',
+            date: '2026-05-26',
+            time: '14:00',
+            duration: 60,
+            room: 'Room line',
+            resourceId: 'room-line',
+            resourceType: 'room',
+            businessContext: 'event_genix',
+            status: 'confirmed'
+        }];
+    };
+
+    const staleRender = api.renderTimeline();
+    await Promise.resolve();
+    await api.setTimelineView('rooms', { render: false });
+    const currentRender = api.renderTimeline();
+    await currentRender;
+
+    assert.equal(oldSignal?.aborted, true);
+    oldLines.resolve([{ id: 'old-animator-line', resourceType: 'animator', name: 'Old line' }]);
+    oldBookings.resolve([{ id: 'old-booking', date: '2026-05-26', time: '13:00', duration: 60 }]);
+    assert.equal(await staleRender, false);
+
+    const cached = api.getTimelineCacheEntry(window.AppState.cachedBookings, '2026-05-26');
+    assert.deepEqual(cached.data.map(booking => booking.id), ['room-booking']);
+    assert.equal(window.document.querySelector('[data-booking-id="old-booking"]'), null);
+    assert.equal(window.document.querySelector('.timeline-data-error'), null);
+});
+
+test('stale request errors cannot replace a newer timeline with error UI', async () => {
+    const context = parkTimelineContext('race-error');
+    const { window, api } = createHarness({ timelineContext: context });
+    const oldLines = deferred();
+    const oldBookings = deferred();
+    window.apiGetLines = async (_date, options = {}) => options.timelineView === 'animators'
+        ? oldLines.promise
+        : [{ id: 'room-line', resourceId: 'room-line', resourceType: 'room', name: 'Room line' }];
+    window.apiGetBookings = async (_date, options = {}) => options.timelineView === 'animators'
+        ? oldBookings.promise
+        : [];
+
+    const staleRender = api.renderTimeline();
+    await Promise.resolve();
+    await api.setTimelineView('rooms', { render: false });
+    await api.renderTimeline();
+    oldLines.resolve([]);
+    oldBookings.reject(new Error('old view failed'));
+
+    assert.equal(await staleRender, false);
+    assert.equal(window.document.querySelector('.timeline-data-error'), null);
+    assert.equal(window.document.getElementById('timelineLines').textContent.includes('old view failed'), false);
+});
+
+test('successful resize reconciles server duration without reload or ReferenceError', async () => {
+    const { window, api } = createHarness();
+    const booking = {
+        id: 'resize-booking',
+        date: '2026-05-26',
+        time: '14:00',
+        duration: 60,
+        lineId: 'line-1',
+        category: 'custom',
+        status: 'confirmed'
+    };
+    api.setTimelineCacheEntry(window.AppState.cachedBookings, booking.date, [booking]);
+    const block = window.document.createElement('div');
+    block.className = 'booking-block resizing';
+    block.style.width = '300px';
+    block.innerHTML = '<div class="duration-badge">90хв</div><div class="resize-handle"></div>';
+    window.document.body.appendChild(block);
+    const handle = block.querySelector('.resize-handle');
+    handle.releasePointerCapture = () => {};
+    window.apiUpdateLinkedBookingsAtomic = async () => ({
+        success: true,
+        booking: { ...booking, duration: 90 },
+        linkedBookings: []
+    });
+    api.setResizeState({
+        block,
+        handle,
+        pointerId: 61,
+        booking,
+        originalDuration: 60,
+        newDuration: 90
+    });
+
+    await api.handleResizeEnd({ pointerId: 61 });
+
+    const cached = api.getTimelineCacheEntry(window.AppState.cachedBookings, booking.date);
+    assert.equal(cached.data.find(item => item.id === booking.id).duration, 90);
+    assert.equal(window.__notifications.some(item => item.type === 'success'), true);
+    assert.equal(window.__notifications.some(item => /ReferenceError/.test(item.message)), false);
+});
+
+test('room timeline resize allows same-banquet activity over kitchen and saves through the DOM flow', async () => {
+    const { window, api } = createHarness();
+    enableParkRoomTimeline(window);
+    const activity = {
+        id: 'resize-activity',
+        date: '2026-05-26',
+        time: '14:00',
+        duration: 30,
+        lineId: 'animator-1',
+        room: 'Room A',
+        category: 'animation',
+        banquetGroupId: 'BG-1',
+        banquetGroupRole: 'activity',
+        status: 'confirmed'
+    };
+    const kitchen = {
+        id: 'resize-kitchen',
+        date: activity.date,
+        time: '14:45',
+        duration: 60,
+        lineId: 'banquet-service',
+        room: 'Room A',
+        category: 'kitchen',
+        programCode: 'KITCHEN',
+        banquetGroupId: 'BG-1',
+        banquetGroupRole: 'kitchen',
+        status: 'confirmed'
+    };
+    api.setTimelineCacheEntry(window.AppState.cachedBookings, activity.date, [activity, kitchen]);
+    const block = window.document.createElement('div');
+    block.className = 'booking-block resizing';
+    block.style.width = '300px';
+    block.innerHTML = '<div class="duration-badge">60С…РІ</div><div class="resize-handle"></div>';
+    window.document.body.appendChild(block);
+    const handle = block.querySelector('.resize-handle');
+    handle.releasePointerCapture = () => {};
+    let savedPayload = null;
+    window.apiUpdateLinkedBookingsAtomic = async (id, payload) => {
+        savedPayload = { id, payload };
+        return { success: true, booking: { ...activity, duration: 60 }, linkedBookings: [] };
+    };
+    api.setResizeState({
+        block,
+        handle,
+        pointerId: 63,
+        booking: activity,
+        originalDuration: 30,
+        newDuration: 60
+    });
+
+    await api.handleResizeEnd({ pointerId: 63 });
+
+    assert.ok(savedPayload, 'legal same-banquet resize should reach the server');
+    assert.equal(savedPayload.id, activity.id);
+    assert.equal(savedPayload.payload.main.duration, 60);
+    assert.equal(window.__notifications.some(item => item.type === 'success'), true);
+});
+
+test('render failure after confirmed resize never rolls the visual back as a failed save', async () => {
+    const { window, api } = createHarness();
+    const booking = {
+        id: 'resize-render-failure',
+        date: '2026-05-26',
+        time: '14:00',
+        duration: 60,
+        lineId: 'line-1',
+        category: 'custom',
+        status: 'confirmed'
+    };
+    api.setTimelineCacheEntry(window.AppState.cachedBookings, booking.date, [booking]);
+    const block = window.document.createElement('div');
+    block.className = 'booking-block resizing';
+    block.style.width = '300px';
+    block.innerHTML = '<div class="duration-badge">90хв</div><div class="resize-handle"></div>';
+    window.document.body.appendChild(block);
+    const handle = block.querySelector('.resize-handle');
+    handle.releasePointerCapture = () => {};
+    window.apiUpdateLinkedBookingsAtomic = async () => ({ success: true, booking: { ...booking, duration: 90 } });
+    window.renderNowLine = () => { throw new Error('planned render failure'); };
+    api.setResizeState({ block, handle, pointerId: 62, booking, originalDuration: 60, newDuration: 90 });
+
+    await api.handleResizeEnd({ pointerId: 62 });
+
+    assert.equal(block.style.width, '300px');
+    assert.equal(block.querySelector('.duration-badge').textContent, '90хв');
+    assert.equal(window.__notifications.some(item => item.type === 'success'), true);
+    assert.equal(window.__notifications.some(item => item.type === 'error'), false);
+    assert.equal(window.__notifications.some(item => item.type === 'warning'), true);
+});
+
+test('timeline WebSocket subscriptions follow day and active week dates', () => {
+    const { window, api } = createHarness();
+
+    api.syncTimelineWebSocketDateSubscriptions(new Date('2026-05-26T00:00:00'));
+    assert.deepEqual(window.__wsDateSubscriptions.at(-1), ['2026-05-26']);
+
+    window.AppState.multiDayMode = true;
+    window.AppState.daysToShow = 7;
+    api.syncTimelineWebSocketDateSubscriptions(new Date('2026-05-26T00:00:00'));
+    assert.deepEqual(window.__wsDateSubscriptions.at(-1), [
+        '2026-05-26',
+        '2026-05-27',
+        '2026-05-28',
+        '2026-05-29',
+        '2026-05-30',
+        '2026-05-31',
+        '2026-06-01'
+    ]);
+});
 
 test('booking tooltip lifecycle creates one accessible singleton without pre-rendered HTML', () => {
     const { window, api } = createHarness();

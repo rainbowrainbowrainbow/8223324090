@@ -89,6 +89,27 @@ async function openAuthedClient(userId) {
     return client;
 }
 
+function subscribeDate(client, date) {
+    client.send(JSON.stringify({ type: 'JOIN_DATE', date }));
+    return wait(20);
+}
+
+async function didReceiveMessage(client, predicate, action, timeoutMs = 120) {
+    let received = false;
+    function onMessage(raw) {
+        const message = JSON.parse(raw.toString());
+        if (predicate(message)) received = true;
+    }
+    client.on('message', onMessage);
+    try {
+        await action();
+        await wait(timeoutMs);
+        return received;
+    } finally {
+        client.off('message', onMessage);
+    }
+}
+
 async function withClients(clients, fn) {
     try {
         return await fn();
@@ -107,11 +128,33 @@ describe('WebSocket chat membership authorization', () => {
         process.env.JWT_SECRET = TEST_JWT_SECRET;
         clearModules();
         state = {
-            memberships: new Set()
+            memberships: new Set(),
+            users: new Map([
+                [1, { id: 1, username: 'creator-event', name: 'Creator Event', role: 'creator', business_contexts: ['event_genix'], is_active: true }],
+                [2, { id: 2, username: 'staff-22', name: 'Staff 22', role: 'animator', business_contexts: ['event_genix'], is_active: true }],
+                [3, { id: 3, username: 'staff-33', name: 'Staff 33', role: 'animator', business_contexts: ['event_genix'], is_active: true }],
+                [4, { id: 4, username: 'creator-maysternya', name: 'Creator Maysternya', role: 'creator', business_contexts: ['maysternya_doli'], is_active: true }]
+            ]),
+            staffIds: new Map([[2, [22]], [3, [33]]])
         };
 
         const pool = {
-            query: async () => ({ rows: [], rowCount: 0 })
+            query: async (sql, params = []) => {
+                const userId = Number(params[0]);
+                if (/SELECT is_active, session_revoked_at FROM users/i.test(sql)) {
+                    const user = state.users.get(userId);
+                    return { rows: user ? [{ is_active: user.is_active, session_revoked_at: null }] : [], rowCount: user ? 1 : 0 };
+                }
+                if (/FROM users WHERE id = \$1/i.test(sql)) {
+                    const user = state.users.get(userId);
+                    return { rows: user ? [{ ...user }] : [], rowCount: user ? 1 : 0 };
+                }
+                if (/FROM employee_profiles/i.test(sql)) {
+                    const rows = (state.staffIds.get(userId) || []).map(staffId => ({ staff_id: staffId }));
+                    return { rows, rowCount: rows.length };
+                }
+                return { rows: [], rowCount: 0 };
+            }
         };
         installMock('../db', { pool, query: pool.query.bind(pool) });
         installMock('../services/chatService', {
@@ -207,6 +250,175 @@ describe('WebSocket chat membership authorization', () => {
             const typing = await waitForMessage(receiver, msg => msg.type === 'chat:typing');
             assert.equal(typing.payload.channelId, 77);
             assert.equal(typing.payload.userId, '1');
+        });
+    });
+
+    it('sends only minimal booking metadata inside the authorized business context', async () => {
+        const allowed = await openAuthedClient(1);
+        const otherContext = await openAuthedClient(4);
+        await withClients([allowed, otherContext], async () => {
+            await Promise.all([
+                subscribeDate(allowed, '2026-07-14'),
+                subscribeDate(otherContext, '2026-07-14')
+            ]);
+
+            const allowedMessage = waitForMessage(allowed, msg => msg.type === 'booking:created');
+            const leaked = didReceiveMessage(
+                otherContext,
+                msg => msg.type === 'booking:created',
+                async () => wsService.broadcastBookingEvent('booking:created', {
+                    id: 501,
+                    date: '2026-07-14',
+                    businessContext: 'event_genix',
+                    lineId: 22,
+                    customer: { name: 'Sensitive Customer' },
+                    notes: 'Sensitive notes',
+                    price: 5000,
+                    extraData: { secret: true }
+                })
+            );
+
+            const message = await allowedMessage;
+            assert.equal(await leaked, false);
+            assert.deepEqual(Object.keys(message.payload).sort(), [
+                'businessContext', 'date', 'eventType', 'id', 'updatedAt'
+            ]);
+            assert.equal(message.payload.id, 501);
+            assert.equal(message.payload.businessContext, 'event_genix');
+        });
+    });
+
+    it('uses fresh DB role and staff binding for booking visibility', async () => {
+        const assignedStaff = await openAuthedClient(2);
+        const otherStaff = await openAuthedClient(3);
+        await withClients([assignedStaff, otherStaff], async () => {
+            await Promise.all([
+                subscribeDate(assignedStaff, '2026-07-15'),
+                subscribeDate(otherStaff, '2026-07-15')
+            ]);
+
+            const assignedMessage = waitForMessage(assignedStaff, msg => msg.type === 'booking:updated');
+            const leaked = didReceiveMessage(
+                otherStaff,
+                msg => msg.type === 'booking:updated',
+                async () => wsService.broadcastBookingEvent('booking:updated', {
+                    id: 502,
+                    date: '2026-07-15',
+                    business_context: 'event_genix',
+                    line_id: '22',
+                    created_by: 'someone-else'
+                })
+            );
+
+            assert.equal((await assignedMessage).payload.id, 502);
+            assert.equal(await leaked, false);
+        });
+    });
+
+    it('does not send timeline events without an exact date subscription', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const received = await didReceiveMessage(
+                client,
+                msg => msg.type === 'booking:deleted',
+                async () => wsService.broadcastBookingEvent('booking:deleted', {
+                    id: 503,
+                    date: '2026-07-16',
+                    businessContext: 'event_genix'
+                })
+            );
+            assert.equal(received, false);
+        });
+    });
+
+    it('notifies both old and new scoped audiences when an update moves a booking', async () => {
+        const oldStaff = await openAuthedClient(2);
+        const newStaff = await openAuthedClient(3);
+        await withClients([oldStaff, newStaff], async () => {
+            await Promise.all([
+                subscribeDate(oldStaff, '2026-07-18'),
+                subscribeDate(newStaff, '2026-07-19')
+            ]);
+            const oldAudienceMessage = waitForMessage(oldStaff, msg => msg.type === 'booking:updated');
+            const newAudienceMessage = waitForMessage(newStaff, msg => msg.type === 'booking:updated');
+
+            wsService.broadcastBookingEvent('booking:updated', {
+                id: 505,
+                date: '2026-07-19',
+                businessContext: 'event_genix',
+                lineId: 33
+            }, null, {
+                previousBooking: {
+                    id: 505,
+                    date: '2026-07-18',
+                    businessContext: 'event_genix',
+                    lineId: 22
+                }
+            });
+
+            assert.equal((await oldAudienceMessage).payload.date, '2026-07-18');
+            assert.equal((await newAudienceMessage).payload.date, '2026-07-19');
+        });
+    });
+
+    it('filters line metadata by business context and exact date subscription', async () => {
+        const allowed = await openAuthedClient(1);
+        const otherContext = await openAuthedClient(4);
+        await withClients([allowed, otherContext], async () => {
+            await Promise.all([
+                subscribeDate(allowed, '2026-07-20'),
+                subscribeDate(otherContext, '2026-07-20')
+            ]);
+            const allowedMessage = waitForMessage(allowed, msg => msg.type === 'line:updated');
+            const leaked = didReceiveMessage(
+                otherContext,
+                msg => msg.type === 'line:updated',
+                async () => wsService.broadcastLineEvent('line:updated', {
+                    date: '2026-07-20',
+                    businessContext: 'event_genix'
+                })
+            );
+
+            assert.deepEqual(Object.keys((await allowedMessage).payload).sort(), [
+                'businessContext', 'date', 'eventType', 'updatedAt'
+            ]);
+            assert.equal(await leaked, false);
+        });
+    });
+
+    it('scopes roster updates by business context and exact date subscription', async () => {
+        const allowed = await openAuthedClient(1);
+        const otherContext = await openAuthedClient(4);
+        await withClients([allowed, otherContext], async () => {
+            await Promise.all([
+                subscribeDate(allowed, '2026-07-21'),
+                subscribeDate(otherContext, '2026-07-21')
+            ]);
+            const allowedMessage = waitForMessage(allowed, msg => msg.type === 'timeline:roster-updated');
+            const leaked = didReceiveMessage(
+                otherContext,
+                msg => msg.type === 'timeline:roster-updated',
+                async () => wsService.broadcastLineEvent('timeline:roster-updated', {
+                    date: '2026-07-21',
+                    businessContext: 'event_genix'
+                })
+            );
+
+            assert.equal((await allowedMessage).payload.eventType, 'timeline:roster-updated');
+            assert.equal(await leaked, false);
+        });
+    });
+
+    it('blocks booking payloads sent through generic broadcast', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            await subscribeDate(client, '2026-07-17');
+            const received = await didReceiveMessage(
+                client,
+                msg => msg.type === 'booking:created',
+                async () => wsService.broadcast('booking:created', { id: 504, date: '2026-07-17' })
+            );
+            assert.equal(received, false);
         });
     });
 });

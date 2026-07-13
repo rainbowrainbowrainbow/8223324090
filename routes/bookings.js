@@ -17,6 +17,8 @@ const {
     lockBookingConflictResources,
     isLineConflictBlockingLine,
     isRoomConflictBlockingRoom,
+    findRoomConflictAmongCandidates,
+    ALL_ROOMS,
     BANQUET_SERVICE_LINE_ID
 } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
@@ -38,7 +40,7 @@ const {
     reconcileBanquetGroupForBooking
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
-const { broadcast } = require('../services/websocket');
+const { broadcastBookingEvent } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
     DEFAULT_TIMELINE_CONTEXT,
@@ -60,6 +62,8 @@ const {
     findTimelineResource,
     findTimelineResourceByName,
     getTimelineDisplaySettings,
+    listTimelineResources,
+    resolveRoomTimelineResourceIdentity,
     resourceTypeForDisplayMode
 } = require('../services/timelineResources');
 const {
@@ -483,6 +487,18 @@ async function ensureParkAnimatorLine(client, { businessContext, date, lineId, n
           WHERE date = $1
             AND ${bookingContextSql('', '$2')}
             AND (
+                from_sheet IS DISTINCT FROM true
+                OR EXISTS (
+                    SELECT 1
+                    FROM staff_schedule ss
+                    JOIN staff scheduled_staff ON scheduled_staff.id = ss.staff_id
+                    WHERE ss.staff_id::text = lines_by_date.line_id
+                      AND LEFT(ss.date::text, 10) = $1
+                      AND ss.status IN ('working', 'remote')
+                      AND ${scheduleableStaffWhere('scheduled_staff', { dateExpression: '$1' })}
+                )
+            )
+            AND (
                 ($3 <> '' AND line_id = $3)
                 OR ($4 <> '' AND LOWER(BTRIM(name)) = LOWER(BTRIM($4)))
             )
@@ -540,6 +556,18 @@ async function visibleLineByDate(queryable, { businessContext, date, lineId }) {
           WHERE date = $1
             AND ${bookingContextSql('', '$2')}
             AND line_id = $3
+            AND (
+                from_sheet IS DISTINCT FROM true
+                OR EXISTS (
+                    SELECT 1
+                    FROM staff_schedule ss
+                    JOIN staff scheduled_staff ON scheduled_staff.id = ss.staff_id
+                    WHERE ss.staff_id::text = lines_by_date.line_id
+                      AND LEFT(ss.date::text, 10) = $1
+                      AND ss.status IN ('working', 'remote')
+                      AND ${scheduleableStaffWhere('scheduled_staff', { dateExpression: '$1' })}
+                )
+            )
           LIMIT 1`,
         [safeDate, businessContext || DEFAULT_TIMELINE_CONTEXT, safeLineId]
     );
@@ -996,7 +1024,7 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
     const broadcastRows = updatedRows.length ? updatedRows : [row];
     for (const updatedRow of broadcastRows) {
         const updatedBooking = mapBookingRow(updatedRow);
-        broadcast('booking:updated', updatedBooking, actor?.id?.toString(), updatedBooking.date);
+        broadcastBookingEvent('booking:updated', updatedBooking, actor?.id?.toString());
     }
     _alertPush();
 
@@ -1021,7 +1049,7 @@ function runBookingPreliminarySideEffects(row, actor, source, updatedRows = [], 
     const broadcastRows = updatedRows.length ? updatedRows : [row];
     for (const updatedRow of broadcastRows) {
         const updatedBooking = mapBookingRow(updatedRow);
-        broadcast('booking:updated', updatedBooking, actor?.id?.toString(), updatedBooking.date);
+        broadcastBookingEvent('booking:updated', updatedBooking, actor?.id?.toString());
     }
     _alertPush();
 
@@ -1427,6 +1455,9 @@ function buildBookingTimelineProjection(booking = {}, timelineView = 'animators'
     const sourceResourceName = bookingSourceResourceName(booking);
     const room = String(booking.room || '').trim();
     const hasRoom = isRealRoom(room);
+    const roomResolution = booking.roomTimelineResolution || booking.room_timeline_resolution || null;
+    const roomResourceId = roomResolution?.resourceId || (hasRoom ? room : null);
+    const roomResourceName = roomResolution?.resourceName || (hasRoom ? room : null);
     const banquetService = isBanquetServiceTimelineBooking(booking);
     const banquetServiceRoot = isBanquetServiceRootBooking(booking);
     const roomProjectableService = isRoomProjectableBanquetServiceRootBooking(booking);
@@ -1438,9 +1469,9 @@ function buildBookingTimelineProjection(booking = {}, timelineView = 'animators'
         && (!banquetServiceRoot || roomProjectableService)
     );
     const currentVisible = view === 'rooms' ? visibleInRoomTimeline : visibleInAnimatorTimeline;
-    const resourceId = view === 'rooms' ? (hasRoom ? room : null) : sourceResourceId;
+    const resourceId = view === 'rooms' ? roomResourceId : sourceResourceId;
     const resourceType = view === 'rooms' ? 'room' : (banquetService ? 'service' : (sourceResourceType || 'unknown'));
-    const resourceName = view === 'rooms' ? (hasRoom ? room : null) : sourceResourceName;
+    const resourceName = view === 'rooms' ? roomResourceName : sourceResourceName;
     let displaySurface = 'hidden';
     let hiddenReason = null;
 
@@ -1477,7 +1508,11 @@ function buildBookingTimelineProjection(booking = {}, timelineView = 'animators'
         displaySurface,
         hiddenReason,
         businessContext,
-        date: booking.date || null
+        date: booking.date || null,
+        legacyRoomName: view === 'rooms' ? (roomResolution?.legacyRoomName || room || null) : null,
+        roomResourceStatus: view === 'rooms' ? (roomResolution?.status || (hasRoom ? 'legacy' : 'missing')) : null,
+        diagnosticReason: view === 'rooms' ? (roomResolution?.diagnosticReason || null) : null,
+        assignmentAllowed: view === 'rooms' ? roomResolution?.assignmentAllowed !== false : true
     };
 }
 
@@ -1515,16 +1550,17 @@ function projectBookingForTimelineView(booking = {}, timelineView = 'animators')
     const previousIdentity = booking.timelineIdentity || {};
     return {
         ...booking,
-        resourceId: room,
+        resourceId: projection.resourceId,
         resourceType: 'room',
         timelineIdentity: {
             ...previousIdentity,
             businessContext: booking.businessContext || previousIdentity.businessContext || DEFAULT_TIMELINE_CONTEXT,
-            resourceId: room,
+            resourceId: projection.resourceId,
             resourceType: 'room',
-            resourceName: room,
+            resourceName: projection.resourceName,
+            legacyRoomName: projection.legacyRoomName,
             lineId: booking.lineId || previousIdentity.lineId || null,
-            source: 'room_timeline_projection'
+            source: projection.diagnosticReason ? 'room_timeline_resolver' : 'room_timeline_projection'
         },
         timelineProjection: {
             ...(booking.timelineProjection || {}),
@@ -2161,7 +2197,7 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
         await client.query('COMMIT');
 
         cancelled.forEach(booking => {
-            broadcast('booking:deleted', { id: booking.id, date: booking.date, educationSeriesId: seriesId, seriesCancel: true }, req.user?.id?.toString(), booking.date);
+            broadcastBookingEvent('booking:deleted', booking, req.user?.id?.toString(), { businessContext });
         });
         _alertPush();
         res.json({ success: true, seriesId, scope, fromDate, cancelledCount: cancelled.length, bookings: cancelled });
@@ -2185,6 +2221,42 @@ function jsonObject(value) {
         }
     }
     return typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+async function attachRoomTimelineResourceResolution(queryable, bookings = [], businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const resources = await listTimelineResources(queryable, {
+        context: businessContext,
+        type: 'room',
+        includeInactive: true
+    });
+    return (Array.isArray(bookings) ? bookings : []).map(booking => ({
+        ...booking,
+        roomTimelineResolution: resolveRoomTimelineResourceIdentity(resources, booking, {
+            legacyRoomNames: ALL_ROOMS,
+            quarantineResourceId: 'room-quarantine',
+            quarantineName: 'Невідома / неактивна кімната',
+            takeawayName: 'На виніс'
+        })
+    }));
+}
+
+async function attachAtomicBanquetConflictMetadata(client, candidates, businessContext) {
+    const byId = new Map((candidates || []).filter(candidate => candidate?.id).map(candidate => [String(candidate.id), candidate]));
+    if (!byId.size) return candidates;
+    const result = await client.query(
+        `SELECT booking_id, group_id, role
+           FROM banquet_group_bookings
+          WHERE booking_id = ANY($1::text[])
+            AND COALESCE(business_context, 'event_genix') = $2`,
+        [Array.from(byId.keys()), businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    for (const row of result.rows || []) {
+        const candidate = byId.get(String(row.booking_id));
+        if (!candidate) continue;
+        candidate.banquet_group_id = candidate.banquet_group_id || row.group_id;
+        candidate.banquet_group_role = candidate.banquet_group_role || row.role;
+    }
+    return candidates;
 }
 
 function banquetSummaryDepositProjection(row = null, context = {}) {
@@ -2564,7 +2636,11 @@ router.get('/:date', async (req, res) => {
              ORDER BY time`,
             params
         );
-        const mapped = projectBookingsForTimelineView(result.rows.map(mapBookingRow), timelineView);
+        const sourceBookings = result.rows.map(mapBookingRow);
+        const resolvedBookings = timelineView === 'rooms'
+            ? await attachRoomTimelineResourceResolution(pool, sourceBookings, businessContext)
+            : sourceBookings;
+        const mapped = projectBookingsForTimelineView(resolvedBookings, timelineView);
         res.set('X-Timeline-View', timelineView);
         res.json(await attachBanquetLinksToBookings(mapped, businessContext));
     } catch (err) {
@@ -2631,7 +2707,7 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
         );
         await client.query('COMMIT');
         const link = mapBanquetLinkRow(insertedLink, id);
-        broadcast('booking:banquet-link-updated', { link, date: source.date }, req.user?.id?.toString(), source.date);
+        broadcastBookingEvent('booking:banquet-link-updated', source, req.user?.id?.toString(), { businessContext });
         res.json({ success: true, link });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link create)', rbErr));
@@ -2701,7 +2777,7 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
         );
         await client.query('COMMIT');
         const link = deleted.rows[0] ? mapBanquetLinkRow(deleted.rows[0], id) : null;
-        broadcast('booking:banquet-link-updated', { link, removed: true, date: source.date }, req.user?.id?.toString(), source.date);
+        broadcastBookingEvent('booking:banquet-link-updated', source, req.user?.id?.toString(), { businessContext });
         res.json({ success: true, removed: deleted.rowCount > 0, link });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link delete)', rbErr));
@@ -3034,7 +3110,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             businessContext,
             req.user
         );
-        const allCreatedBookings = [booking, ...linkedBookings];
+        let allCreatedBookings = [booking, ...linkedBookings];
         await Promise.all(allCreatedBookings.map(async createdBooking => {
             createdBooking.timelineProjection = await bookingDayProjectionStatus(client, {
                 id: createdBooking.id || b.id,
@@ -3051,6 +3127,9 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             }
         }));
 
+        if (timelineView === 'rooms') {
+            allCreatedBookings = await attachRoomTimelineResourceResolution(client, allCreatedBookings, businessContext);
+        }
         let allBookings = projectCreatedBookingsForTimelineResponse(allCreatedBookings, timelineView);
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
@@ -3063,7 +3142,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         const responseLinkedBookings = allBookings.filter(item => linkedIdSet.has(String(item.id)));
 
         // WebSocket: notify other clients
-        broadcast('booking:created', responseBooking, req.user?.id?.toString(), b.date);
+        broadcastBookingEvent('booking:created', responseBooking, req.user?.id?.toString(), { businessContext });
         _alertPush();
 
         // ==========================================
@@ -3452,7 +3531,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
 
         const bookings = insertedRows.map(mapBookingRow);
         bookings.forEach(booking => {
-            broadcast('booking:created', booking, req.user?.id?.toString(), booking.date);
+            broadcastBookingEvent('booking:created', booking, req.user?.id?.toString(), { businessContext });
         });
         _alertPush();
 
@@ -4069,6 +4148,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 });
             }
         }));
+        if (timelineView === 'rooms') {
+            allBookings = await attachRoomTimelineResourceResolution(client, allBookings, businessContext);
+        }
         allBookings = projectCreatedBookingsForTimelineResponse(allBookings, timelineView);
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
@@ -4084,7 +4166,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         allBookings.forEach(booking => {
-            broadcast('booking:created', booking, req.user?.id?.toString(), booking.date || main.date);
+            broadcastBookingEvent('booking:created', booking, req.user?.id?.toString(), { businessContext });
         });
 
         res.set('X-Timeline-View', timelineView);
@@ -4214,7 +4296,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
 
         // WebSocket: notify other clients
-        broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
+        broadcastBookingEvent('booking:deleted', booking, req.user?.id?.toString(), { businessContext });
         _alertPush();
 
         // v19.1: Publish to event queue
@@ -4374,9 +4456,11 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
 
         const linkedCandidates = [];
+        const allLinkedCandidates = [];
         for (const row of linkedRows) {
             const patch = linkedPatchById.get(row.id) || {};
             const candidate = buildAtomicLinkedCandidate(row, patch);
+            allLinkedCandidates.push(candidate);
             const validationError = validateAtomicLinkedCandidate(candidate);
             if (validationError) {
                 await client.query('ROLLBACK');
@@ -4390,6 +4474,18 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             [oldMain, mainCandidate, ...linkedRows, ...linkedCandidates],
             businessContext
         );
+
+        const atomicCandidates = [mainCandidate, ...allLinkedCandidates];
+        await attachAtomicBanquetConflictMetadata(client, atomicCandidates, businessContext);
+        const internalRoomConflict = findRoomConflictAmongCandidates(atomicCandidates);
+        if (internalRoomConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: `Кімната зайнята: ${internalRoomConflict.conflict.label || internalRoomConflict.conflict.program_code || internalRoomConflict.conflict.id}`,
+                conflictBookingId: internalRoomConflict.conflict.id
+            });
+        }
 
         const mainLineConflict = await findAtomicLineConflict(client, mainCandidate, groupIds);
         if (mainLineConflict) {
@@ -4457,10 +4553,17 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         const mainBooking = savedMainRow ? mapBookingRow(savedMainRow) : mapBookingRow(oldMain);
         const linkedBookings = savedLinkedRows.map(mapBookingRow);
 
-        broadcast('booking:updated', mainBooking, req.user?.id?.toString(), mainBooking.date);
+        broadcastBookingEvent('booking:updated', mainBooking, req.user?.id?.toString(), {
+            businessContext,
+            previousBooking: mapBookingRow(oldMain)
+        });
         for (const linkedRow of updatedLinkedRows) {
             const linkedBooking = mapBookingRow(linkedRow);
-            broadcast('booking:updated', linkedBooking, req.user?.id?.toString(), linkedBooking.date);
+            const previousLinked = linkedRows.find(row => String(row.id) === String(linkedRow.id));
+            broadcastBookingEvent('booking:updated', linkedBooking, req.user?.id?.toString(), {
+                businessContext,
+                previousBooking: previousLinked ? mapBookingRow(previousLinked) : null
+            });
         }
         _alertPush();
 
@@ -5156,7 +5259,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         if (managerDepositResult?.projection) savedBooking.banquetDeposit = managerDepositResult.projection;
-        broadcast('booking:updated', savedBooking, req.user?.id?.toString(), b.date);
+        broadcastBookingEvent('booking:updated', savedBooking, req.user?.id?.toString(), {
+            businessContext,
+            previousBooking: mapBookingRow(oldBooking)
+        });
         _alertPush();
 
         // v19.1: Publish status change events to event queue

@@ -393,6 +393,180 @@ function resourceToLine(resource) {
     };
 }
 
+function timelineResourceAliases(resource = {}) {
+    const metadata = normalizeMetadata(resource.metadata);
+    const values = [
+        ...(Array.isArray(metadata.aliases) ? metadata.aliases : []),
+        ...(Array.isArray(metadata.legacyNames) ? metadata.legacyNames : []),
+        ...(Array.isArray(metadata.legacy_names) ? metadata.legacy_names : [])
+    ];
+    return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function mergeTimelineResourceRenameAliases(existing = null, inputMetadata = {}, nextName = '') {
+    const existingMetadata = normalizeMetadata(existing?.metadata);
+    const incomingMetadata = normalizeMetadata(inputMetadata);
+    const metadata = {
+        ...existingMetadata,
+        ...incomingMetadata
+    };
+    const aliases = new Set([
+        ...timelineResourceAliases({ metadata: existingMetadata }),
+        ...timelineResourceAliases({ metadata: incomingMetadata })
+    ]);
+    const previousNames = [existing?.name, existing?.shortName].map(value => String(value || '').trim()).filter(Boolean);
+    const normalizedNextName = String(nextName || '').trim().toLowerCase();
+    previousNames.forEach(value => {
+        if (value.toLowerCase() !== normalizedNextName) aliases.add(value);
+    });
+    return {
+        ...metadata,
+        aliases: Array.from(aliases).slice(-50)
+    };
+}
+
+function normalizedRoomIdentityValue(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function resolveRoomTimelineResourceIdentity(resources = [], booking = {}, options = {}) {
+    const safeResources = Array.isArray(resources) ? resources : [];
+    const identity = booking.timelineIdentity || booking.timeline_identity || {};
+    const projection = booking.timelineProjection || booking.timeline_projection || {};
+    const explicitResourceType = normalizedRoomIdentityValue(
+        booking.roomResourceType
+        || booking.room_resource_type
+        || projection.resourceType
+        || projection.resource_type
+        || booking.resourceType
+        || booking.resource_type
+        || identity.resourceType
+        || identity.resource_type
+    );
+    const durableResourceId = String(
+        booking.roomResourceId
+        || booking.room_resource_id
+        || projection.roomResourceId
+        || projection.room_resource_id
+        || (explicitResourceType === 'room' ? (
+            projection.resourceId
+            || projection.resource_id
+            || booking.resourceId
+            || booking.resource_id
+            || identity.resourceId
+            || identity.resource_id
+        ) : '')
+        || ''
+    ).trim();
+    const legacyRoomName = String(booking.room || booking.legacyRoomName || booking.legacy_room_name || '').trim();
+    const normalizedRoom = normalizedRoomIdentityValue(legacyRoomName);
+    if (['room-takeaway', 'takeaway', 'на виніс', 'на вынос'].includes(normalizedRoom)
+        || normalizedRoomIdentityValue(durableResourceId) === 'room-takeaway') {
+        return {
+            resourceId: 'room-takeaway',
+            resourceName: options.takeawayName || 'На виніс',
+            legacyRoomName,
+            status: 'takeaway',
+            diagnosticReason: null,
+            assignmentAllowed: true
+        };
+    }
+
+    const byDurableId = durableResourceId
+        ? safeResources.find(resource => String(resource.resourceId || '') === durableResourceId)
+        : null;
+    if (byDurableId) {
+        return byDurableId.isActive === false
+            ? {
+                resourceId: options.quarantineResourceId || 'room-quarantine',
+                resourceName: options.quarantineName || 'Невідома / неактивна кімната',
+                legacyRoomName,
+                resolvedResourceId: byDurableId.resourceId,
+                resolvedResourceName: byDurableId.name,
+                status: 'inactive',
+                diagnosticReason: 'inactive_room',
+                assignmentAllowed: false
+            }
+            : {
+                resourceId: byDurableId.resourceId,
+                resourceName: byDurableId.name,
+                legacyRoomName,
+                status: 'active',
+                diagnosticReason: normalizedRoom && normalizedRoom !== normalizedRoomIdentityValue(byDurableId.name) ? 'renamed_room' : null,
+                assignmentAllowed: true
+            };
+    }
+
+    const exactName = safeResources.find(resource => [resource.name, resource.shortName]
+        .some(value => normalizedRoomIdentityValue(value) === normalizedRoom));
+    if (exactName) {
+        return exactName.isActive === false
+            ? {
+                resourceId: options.quarantineResourceId || 'room-quarantine',
+                resourceName: options.quarantineName || 'Невідома / неактивна кімната',
+                legacyRoomName,
+                resolvedResourceId: exactName.resourceId,
+                resolvedResourceName: exactName.name,
+                status: 'inactive',
+                diagnosticReason: 'inactive_room',
+                assignmentAllowed: false
+            }
+            : {
+                resourceId: exactName.resourceId,
+                resourceName: exactName.name,
+                legacyRoomName,
+                status: 'active',
+                diagnosticReason: null,
+                assignmentAllowed: true
+            };
+    }
+
+    const aliasMatch = safeResources.find(resource => timelineResourceAliases(resource)
+        .some(alias => normalizedRoomIdentityValue(alias) === normalizedRoom));
+    if (aliasMatch) {
+        return aliasMatch.isActive === false
+            ? {
+                resourceId: options.quarantineResourceId || 'room-quarantine',
+                resourceName: options.quarantineName || 'Невідома / неактивна кімната',
+                legacyRoomName,
+                resolvedResourceId: aliasMatch.resourceId,
+                resolvedResourceName: aliasMatch.name,
+                status: 'inactive',
+                diagnosticReason: 'inactive_room',
+                assignmentAllowed: false
+            }
+            : {
+                resourceId: aliasMatch.resourceId,
+                resourceName: aliasMatch.name,
+                legacyRoomName,
+                status: 'renamed',
+                diagnosticReason: 'renamed_room',
+                assignmentAllowed: true
+            };
+    }
+
+    const legacyNames = new Set((options.legacyRoomNames || []).map(normalizedRoomIdentityValue));
+    if (normalizedRoom && legacyNames.has(normalizedRoom)) {
+        return {
+            resourceId: legacyRoomName,
+            resourceName: legacyRoomName,
+            legacyRoomName,
+            status: 'legacy_active',
+            diagnosticReason: 'legacy_room_text',
+            assignmentAllowed: true
+        };
+    }
+    return {
+        resourceId: options.quarantineResourceId || 'room-quarantine',
+        resourceName: options.quarantineName || 'Невідома / неактивна кімната',
+        legacyRoomName,
+        unresolvedResourceId: durableResourceId || null,
+        status: durableResourceId ? 'unmatched' : 'custom',
+        diagnosticReason: durableResourceId ? 'unmatched_room' : 'custom_room',
+        assignmentAllowed: false
+    };
+}
+
 async function upsertTimelineResource(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, input = {}) {
     const businessContext = normalizeTimelineContext(context);
     const type = normalizeResourceType(input.type, 'cabinet');
@@ -534,6 +708,12 @@ async function syncTimelineResourcesFromLines(db = defaultPool, context = DEFAUL
     const businessContext = normalizeTimelineContext(context);
     const resourceType = normalizeResourceType(type, 'cabinet');
     const normalizedLines = Array.isArray(lines) ? lines : [];
+    const existingResources = await listTimelineResources(db, {
+        context: businessContext,
+        type: resourceType,
+        includeInactive: true
+    });
+    const existingById = new Map(existingResources.map(resource => [String(resource.resourceId), resource]));
     const saved = [];
     for (let index = 0; index < normalizedLines.length; index += 1) {
         const line = normalizedLines[index] || {};
@@ -545,7 +725,7 @@ async function syncTimelineResourcesFromLines(db = defaultPool, context = DEFAUL
             color: line.color || resourceColor(index),
             capacity: line.capacity,
             equipment: line.equipment,
-            metadata: line.metadata,
+            metadata: mergeTimelineResourceRenameAliases(existingById.get(String(line.resourceId || line.id)), line.metadata, line.name),
             isActive: true,
             sortOrder: line.sortOrder ?? index * 10
         });
@@ -734,6 +914,9 @@ module.exports = {
     normalizeResourceType,
     mapTimelineResourceRow,
     resourceToLine,
+    timelineResourceAliases,
+    mergeTimelineResourceRenameAliases,
+    resolveRoomTimelineResourceIdentity,
     upsertTimelineResource,
     ensureDefaultTimelineResources,
     listTimelineResources,

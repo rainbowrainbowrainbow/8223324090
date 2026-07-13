@@ -5,11 +5,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const {
     validateDate,
-    syncScheduledAnimatorLines,
+    getAnimatorTimelineLines,
     ALL_ROOMS,
     BANQUET_SERVICE_LINE_ID
 } = require('../services/booking');
-const { broadcast } = require('../services/websocket');
+const { broadcastLineEvent } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const {
@@ -46,6 +46,27 @@ const ROOM_TIMELINE_TAKEAWAY_LINE = Object.freeze({
     resourceSource: 'rooms_virtual',
     sortOrder: 0,
     metadata: { serviceRoom: true, takeaway: true }
+});
+
+const ROOM_TIMELINE_QUARANTINE_LINE = Object.freeze({
+    id: 'room-quarantine',
+    resourceId: 'room-quarantine',
+    resourceType: 'room',
+    name: 'Невідома / неактивна кімната',
+    shortName: 'Невідома кімната',
+    color: '#F59E0B',
+    fromSheet: false,
+    staffId: null,
+    shiftStart: null,
+    shiftEnd: null,
+    shiftStatus: 'unavailable',
+    source: 'rooms_quarantine',
+    resourceSource: 'rooms_quarantine',
+    sortOrder: 1,
+    assignmentAllowed: false,
+    isUnavailable: true,
+    warning: 'Кімнату бронювання не вдалося зіставити з активним ресурсом. Перевірте налаштування кімнати.',
+    metadata: { quarantine: true, roomIdentityQuarantine: true }
 });
 
 function normalizeRoomLineText(value) {
@@ -139,7 +160,11 @@ function withTakeawayRoomLine(lines = [], businessContext = DEFAULT_TIMELINE_CON
         };
     return [
         takeawayLine,
-        ...safeLines.filter(line => line !== existingTakeaway)
+        {
+            ...ROOM_TIMELINE_QUARANTINE_LINE,
+            businessContext
+        },
+        ...safeLines.filter(line => line !== existingTakeaway && String(line?.id || line?.resourceId || '') !== ROOM_TIMELINE_QUARANTINE_LINE.id)
     ];
 }
 
@@ -199,9 +224,18 @@ router.get('/:date', async (req, res) => {
             return res.json(lines || []);
         }
 
-        const sync = businessContext === DEFAULT_TIMELINE_CONTEXT
-            ? await syncScheduledAnimatorLines(date)
-            : { source: 'maysternya_context' };
+        if (businessContext === DEFAULT_TIMELINE_CONTEXT) {
+            const animatorLines = (await getAnimatorTimelineLines(date, pool)).filter(line => {
+                if (String(line.id || '').trim() === BANQUET_SERVICE_LINE_ID) return false;
+                return !isLegacyRoomTimelineLineRow(line);
+            });
+            res.set('X-Timeline-Lines-Source', animatorLines.some(line => line.source === 'empty_roster_virtual')
+                ? 'empty_roster_virtual'
+                : 'staff_schedule_read_only');
+            res.set('X-Timeline-Resource-Type', 'animator');
+            res.set('X-Timeline-View', 'animators');
+            return res.json(animatorLines);
+        }
         const result = await pool.query(
             `SELECT
                  l.*,
@@ -251,13 +285,13 @@ router.get('/:date', async (req, res) => {
                 shiftStatus: row.shift_status || null,
                 source: row.staff_id ? 'staff_schedule' : (row.from_sheet ? 'sheet' : 'manual')
             }));
-        res.set('X-Timeline-Lines-Source', sync.source);
-        res.json(lines.length ? lines : (businessContext === DEFAULT_TIMELINE_CONTEXT ? [] : MAYSTERNYA_DEFAULT_LINES.map(line => ({
+        res.set('X-Timeline-Lines-Source', 'maysternya_context');
+        res.json(lines.length ? lines : MAYSTERNYA_DEFAULT_LINES.map(line => ({
             ...line,
             resourceId: line.id,
             resourceType: 'specialist',
             businessContext
-        }))));
+        })));
     } catch (err) {
         log.error('Error fetching lines', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -297,7 +331,7 @@ router.post('/:date', async (req, res) => {
                 source: 'timeline_resource',
                 sortOrder: resource.sortOrder
             }));
-            broadcast('line:updated', { date, lines: savedLines, businessContext, resourceType }, req.user?.id?.toString(), date);
+            broadcastLineEvent('line:updated', { date, businessContext }, req.user?.id?.toString());
             return res.json({ success: true, resources, lines: savedLines });
         }
 
@@ -325,7 +359,7 @@ router.post('/:date', async (req, res) => {
         await client.query('COMMIT');
 
         // WebSocket: notify other clients about line changes
-        broadcast('line:updated', { date, lines, businessContext }, req.user?.id?.toString(), date);
+        broadcastLineEvent('line:updated', { date, businessContext }, req.user?.id?.toString());
 
         res.json({ success: true });
     } catch (err) {

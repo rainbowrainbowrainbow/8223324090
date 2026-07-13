@@ -20,8 +20,8 @@ test('week timeline uses the same canonical resource identity as day timeline', 
     assert.match(timeline, /function normalizeTimelineBookingsForContext/);
     assert.match(timeline, /lines = normalizeTimelineLinesForContext\(Array\.isArray\(linesResult\) \? linesResult : \[\]\)/);
     assert.match(timeline, /bookings = normalizeTimelineBookingsForContext\(Array\.isArray\(bookingsResult\) \? bookingsResult : \[\]\)/);
-    assert.match(timeline, /const rawLines = await getLinesForDate\(date\)/);
-    assert.match(timeline, /const rawBookings = await getBookingsForDate\(date\)/);
+    assert.match(timeline, /const rawLines = await getLinesForDate\(date, \{ requestToken: options\.requestToken \}\)/);
+    assert.match(timeline, /const rawBookings = await getBookingsForDate\(date, \{ requestToken: options\.requestToken \}\)/);
     assert.match(timeline, /const lines = normalizeTimelineLinesForContext\(Array\.isArray\(rawLines\) \? rawLines : \[\]\)/);
     assert.match(timeline, /const bookings = normalizeTimelineBookingsForContext\(Array\.isArray\(rawBookings\) \? rawBookings : \[\]\)/);
     assert.match(timeline, /const hourWidth = cellWidth \* 4/);
@@ -50,7 +50,7 @@ test('day/week period switch resets outer horizontal scroll and keeps week shell
 
     assert.match(app, /function applyTimelinePeriod\(period[\s\S]*const previousPeriod = AppState\.multiDayMode \? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY/);
     assert.match(app, /previousPeriod !== normalizedPeriod[\s\S]*markTimelineNavigationScrollReset\('period-change'\)[\s\S]*renderTimeline\(\)/);
-    assert.match(renderTimelineBlock, /if \(AppState\.multiDayMode\) \{[\s\S]*await renderMultiDayTimeline\(\);[\s\S]*return;[\s\S]*renderTimeScale\(selectedDate\);/);
+    assert.match(renderTimelineBlock, /if \(AppState\.multiDayMode\) \{[\s\S]*await renderMultiDayTimeline\(renderRequestToken\);[\s\S]*return true;[\s\S]*renderTimeScale\(selectedDate\);/);
     assert.doesNotMatch(renderMultiDayBlock, /captureTimelineHorizontalScrollState|restoreTimelineHorizontalScrollState|scrollLeft =/);
     assert.match(read('css/timeline.css'), /\.day-section-content\s*\{[\s\S]*overflow-x: auto/);
 });

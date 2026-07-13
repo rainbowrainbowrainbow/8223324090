@@ -100,16 +100,18 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'routes/bookings.js',
         start: 'function bookingTimelineIdentity(booking = {})',
         end: "function projectBookingForTimelineView(booking = {}, timelineView = 'animators')",
-        sha256: '8a68f58600c6e2506b6de7960ba8ad0733fbdeec32ae12d680097f6a6dde2104',
+        sha256: '764c26d20b67386bc93eabe0d65f2794bc0204311869b03a95175be160576af7',
         approval: {
-            approvedBy: 'Serhii',
-            approvedOn: '2026-07-03',
-            reason: 'Timeline projection must keep source line/resource identity and linked child visibility rules.'
+            approvedBy: 'Product owner (explicit Codex task approval)',
+            approvedOn: '2026-07-13',
+            reason: 'Task 5 makes room projection use canonical durable room resources and quarantines unmatched or inactive room identity instead of allowing a takeaway collision.'
         },
         requiredNeedles: [
             'function bookingTimelineIdentity(booking = {})',
             'function bookingSourceLineId(booking = {})',
             'function bookingSourceResourceId(booking = {})',
+            'const roomResolution = booking.roomTimelineResolution || booking.room_timeline_resolution || null',
+            'diagnosticReason: view === \'rooms\' ? (roomResolution?.diagnosticReason || null) : null',
             'const linkedChild = Boolean(String(booking.linkedTo || booking.linked_to ||',
             "hiddenReason = 'linked_child_hidden_from_room_timeline'",
             'resourceId,',

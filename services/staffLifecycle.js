@@ -1,6 +1,7 @@
 'use strict';
 
 const { recordAccountSecurityEvent } = require('./accountSecurity');
+const { reconcileScheduledAnimatorLines } = require('./booking');
 
 function normalizeLifecycleDate(value) {
     if (!value) return null;
@@ -19,7 +20,7 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
     const id = Number(staffId);
     const safeFrom = normalizeLifecycleDate(fromDate) || fallbackToday();
     if (!Number.isFinite(id) || id <= 0) {
-        return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom };
+        return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom, dates: [], roster_reconciliation: [] };
     }
     const shifts = await db.query(
         `DELETE FROM hr_shifts hs
@@ -29,7 +30,8 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
                 SELECT 1 FROM hr_time_records tr
                 WHERE tr.staff_id = hs.staff_id
                   AND tr.record_date = hs.shift_date
-           )`,
+           )
+         RETURNING hs.shift_date::text AS date`,
         [id, safeFrom]
     );
     const schedule = await db.query(
@@ -40,13 +42,24 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
                 SELECT 1 FROM hr_time_records tr
                 WHERE tr.staff_id = ss.staff_id
                   AND tr.record_date::text = LEFT(ss.date::text, 10)
-           )`,
+           )
+         RETURNING LEFT(ss.date::text, 10) AS date`,
         [id, safeFrom]
     );
+    const dates = [...new Set([
+        ...(shifts.rows || []).map(row => normalizeLifecycleDate(row.date)),
+        ...(schedule.rows || []).map(row => normalizeLifecycleDate(row.date))
+    ].filter(Boolean))].sort();
+    const roster_reconciliation = [];
+    for (const date of dates) {
+        roster_reconciliation.push({ date, ...(await reconcileScheduledAnimatorLines(date, db)) });
+    }
     return {
         hr_shifts: shifts.rowCount || 0,
         staff_schedule: schedule.rowCount || 0,
-        from_date: safeFrom
+        from_date: safeFrom,
+        dates,
+        roster_reconciliation
     };
 }
 

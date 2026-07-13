@@ -104,6 +104,20 @@ function timelineProjectionDiagnosticReason(booking = {}) {
             hiddenReason: reason
         };
     }
+    const resourceDiagnosticReason = String(
+        canonicalProjection?.diagnosticReason
+        || canonicalProjection?.diagnostic_reason
+        || ''
+    ).trim();
+    if (resourceDiagnosticReason) {
+        return {
+            category: 'room_identity',
+            reason: resourceDiagnosticReason,
+            currentView,
+            projectionView: projectionView || currentView,
+            hiddenReason: null
+        };
+    }
     const resourceId = timelineProjectionResourceId(canonicalProjection);
     const lineId = timelineProjectionLineId(canonicalProjection);
     if (!resourceId && !lineId) {
@@ -290,6 +304,7 @@ function timelineBookingMatchDiagnostic(booking = {}, lines = []) {
     let reason = 'matched';
     if (projectionDiagnostic?.category === 'wrong_timeline_view') reason = 'wrong_timeline_view';
     else if (hiddenReason) reason = projectionDiagnostic?.category || 'hidden_by_projection';
+    else if (projectionDiagnostic?.category === 'room_identity') reason = projectionDiagnostic.reason;
     else if (!bookingKeys.length) reason = 'missing_line';
     else if (!matchedLineIds.length) reason = 'unmatched_line_keys';
     return {

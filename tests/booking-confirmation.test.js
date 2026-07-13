@@ -203,7 +203,7 @@ async function withApp(rows, fn) {
         processBookingAutomation: async booking => { sideEffects.automation.push(booking); }
     });
     installMock('../services/websocket', {
-        broadcast: (...args) => { sideEffects.broadcasts.push(args); }
+        broadcastBookingEvent: (...args) => { sideEffects.broadcasts.push(args); }
     });
     installMock('../services/eventBus', {
         publish: (...args) => { sideEffects.events.push(args); }

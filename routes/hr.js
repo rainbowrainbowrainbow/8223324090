@@ -10,7 +10,8 @@ const path = require('path');
 const multer = require('multer');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { getKyivDate, getKyivDateStr, reconcileScheduledAnimatorLines } = require('../services/booking');
+const { broadcastLineEvent } = require('../services/websocket');
 const costumeInventory = require('../services/costumeInventory');
 const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
@@ -103,6 +104,21 @@ router.use(requireRole(...HR_VIEW_ROLES));
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
 const log = createLogger('HR');
+
+function rosterDates(values = []) {
+    return [...new Set(values.map(toDateOnly).filter(Boolean))].sort();
+}
+
+async function reconcileRosterDates(client, values = []) {
+    for (const date of rosterDates(values)) await reconcileScheduledAnimatorLines(date, client);
+}
+
+function broadcastRosterDates(values = [], userId = null) {
+    rosterDates(values).forEach(date => broadcastLineEvent('timeline:roster-updated', {
+        date,
+        businessContext: DEFAULT_BUSINESS_CONTEXT
+    }, null));
+}
 
 const COMPANY_STRUCTURE_SCHEMA_VERSION = 1;
 const COMPANY_STRUCTURE_NODE_LIMIT = 60;
@@ -2850,6 +2866,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             logger: log
         });
         await client.query('COMMIT');
+        broadcastRosterDates(scheduleCleanup.dates || [], req.user?.id);
         await auditLog('staff_offboarding_complete', parseInt(req.params.id), req.user?.username, {
             event_id: event.rows[0].id,
             effective_date: effectiveDate,
@@ -3070,6 +3087,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         } finally {
             client.release();
         }
+        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         const changedFields = [
             'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
             'hourly_rate', 'rate_unit', 'company_structure_node_id', 'birth_date', 'photo_url', 'address', 'notes', 'telegram_id', 'telegram_username',
@@ -3266,6 +3284,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
         }
 
         await client.query('COMMIT');
+        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         await auditLog(isActive ? 'staff_rehire' : 'status_change', parseInt(req.params.id), req.user?.username, {
             is_active: isActive,
             reactivated_accounts: reactivatedAccounts.length,
@@ -3340,6 +3359,7 @@ router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
             ? await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv())
             : null;
         await client.query('COMMIT');
+        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         await auditLog('pool_status_update', parseInt(req.params.id), req.user?.username, {
             status,
             reason,
@@ -3562,7 +3582,9 @@ router.post('/shifts', requireHrManage, async (req, res) => {
             [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username, profession.professionKey]
         );
         await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+        await reconcileRosterDates(client, [shift_date]);
         await client.query('COMMIT');
+        broadcastRosterDates([shift_date], req.user?.id);
         await auditLog('shift_create', staff_id, req.user?.username, { shift_date, planned_start, planned_end }, req.ip);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -3616,7 +3638,9 @@ router.put('/shifts/:id', requireHrManage, async (req, res) => {
             [planned_start, planned_end, shift_type, break_minutes, notes, professionKey, req.params.id]
         );
         await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+        await reconcileRosterDates(client, [currentShift.shift_date]);
         await client.query('COMMIT');
+        broadcastRosterDates([currentShift.shift_date], req.user?.id);
         await auditLog('shift_update', result.rows[0].staff_id, req.user?.username, req.body, req.ip);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -3640,7 +3664,9 @@ router.delete('/shifts/:id', requireHrManage, async (req, res) => {
         }
         await client.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
         await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date, client);
+        await reconcileRosterDates(client, [existing.rows[0].shift_date]);
         await client.query('COMMIT');
+        broadcastRosterDates([existing.rows[0].shift_date], req.user?.id);
         await auditLog('shift_delete', existing.rows[0].staff_id, req.user?.username,
             { shift_date: existing.rows[0].shift_date }, req.ip);
         res.json({ success: true });
@@ -3726,7 +3752,9 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
 
         await removeMirroredStaffSchedule(oldShift.staff_id, oldShift.shift_date, client);
         await mirrorHrShiftToStaffSchedule(updated.rows[0], client);
+        await reconcileRosterDates(client, [oldShift.shift_date]);
         await client.query('COMMIT');
+        broadcastRosterDates([oldShift.shift_date], req.user?.id);
 
         await auditLog('shift_replace', oldShift.staff_id, req.user?.username, {
             shift_id: parseInt(req.params.id),
@@ -3793,6 +3821,7 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
                     count++;
                 }
             }
+            await reconcileRosterDates(client, dates);
             await client.query('COMMIT');
         } catch (txErr) {
             await client.query('ROLLBACK').catch(() => {});
@@ -3801,6 +3830,7 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
             client.release();
         }
         await auditLog('shift_bulk', null, req.user?.username, { staff_ids, dates, count }, req.ip);
+        broadcastRosterDates(dates, req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
         log.error('POST /hr/shifts/bulk error', err);
@@ -3872,6 +3902,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                 await mirrorHrShiftToStaffSchedule(copied.rows[0], client);
                 count++;
             }
+            await reconcileRosterDates(client, tgtDates);
             await client.query('COMMIT');
         } catch (txErr) {
             await client.query('ROLLBACK').catch(() => {});
@@ -3880,6 +3911,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
             client.release();
         }
         await auditLog('shift_copy_week', null, req.user?.username, { source_week, target_week, count }, req.ip);
+        broadcastRosterDates(tgtDates, req.user?.id);
         res.json({ success: true, count });
     } catch (err) {
         log.error('POST /hr/shifts/copy-week error', err);

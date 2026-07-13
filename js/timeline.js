@@ -17,6 +17,9 @@ const TIMELINE_SCHEDULE_VIEW_ROOMS = 'rooms';
 const TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service';
 const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
+let _timelineViewRuntime = null;
+let _timelineViewUrlBootstrapPending = true;
+let _timelineRenderAbortController = null;
 const TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set(['primary', 'root', 'banquet']);
 const TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual']);
 const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES = new Set([
@@ -490,7 +493,7 @@ function timelineViewFromUrl() {
     try {
         const params = new URLSearchParams(window.location.search || '');
         const value = params.get('timelineView') || params.get('timeline_view');
-        return value ? normalizeTimelineViewMode(value) : null;
+        return value ? normalizeStoredTimelineViewMode(value) : null;
     } catch {
         return null;
     }
@@ -503,7 +506,15 @@ function defaultTimelineViewMode() {
 }
 
 function timelineCurrentView() {
-    const urlView = timelineViewFromUrl();
+    const storageKey = timelineViewStorageKey();
+    if (_timelineViewRuntime?.storageKey === storageKey) {
+        if (_timelineViewRuntime.view === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) {
+            _timelineViewRuntime = { storageKey, view: TIMELINE_VIEW_ANIMATORS };
+        }
+        return _timelineViewRuntime.view;
+    }
+    const urlView = _timelineViewUrlBootstrapPending ? timelineViewFromUrl() : null;
+    _timelineViewUrlBootstrapPending = false;
     const storedRaw = localStorage.getItem(timelineViewStorageKey());
     const storedView = storedRaw ? normalizeStoredTimelineViewMode(storedRaw) : null;
     const defaultView = defaultTimelineViewMode();
@@ -511,8 +522,19 @@ function timelineCurrentView() {
         try { localStorage.removeItem(timelineViewStorageKey()); } catch {}
     }
     const requested = urlView || storedView || defaultView;
-    if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
-    return requested;
+    const resolved = requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()
+        ? TIMELINE_VIEW_ANIMATORS
+        : requested;
+    _timelineViewRuntime = { storageKey, view: resolved };
+    return resolved;
+}
+
+function syncTimelineViewInUrl(view) {
+    if (typeof window === 'undefined' || !window.history?.replaceState) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('timeline_view');
+    url.searchParams.set('timelineView', view);
+    window.history.replaceState(window.history.state || {}, '', url.pathname + url.search + url.hash);
 }
 
 function isRoomTimelineView() {
@@ -675,6 +697,8 @@ async function setTimelineView(view, options = {}) {
     if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
     const current = timelineCurrentView();
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
+    _timelineViewRuntime = { storageKey: timelineViewStorageKey(), view: next };
+    syncTimelineViewInUrl(next);
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     try {
         const nextMode = typeof AppState !== 'undefined' && AppState.multiDayMode
@@ -725,14 +749,65 @@ function _debugRender() {}
 
 // Timeline cache helpers live in js/timeline-cache.js.
 
+function captureTimelineRequestToken(date, options = {}) {
+    const parent = options.requestToken || null;
+    const scope = parent || timelineCacheScopeSnapshot();
+    return Object.freeze({
+        businessContext: parent?.businessContext || scope.context,
+        timelineView: parent?.timelineView || scope.timelineView,
+        date: timelineDateKey(date),
+        renderGeneration: options.renderGeneration ?? parent?.renderGeneration ?? _renderGen,
+        cacheScope: options.cacheScope || parent?.cacheScope || scope.scopeKey,
+        signal: options.signal || parent?.signal || null
+    });
+}
+
+function timelineRequestTokenIsCurrent(token) {
+    if (!token) return false;
+    return token.renderGeneration === _renderGen
+        && token.cacheScope === timelineCacheScopeKey()
+        && token.timelineView === timelineCurrentView()
+        && token.businessContext === timelineCacheScopeSnapshot().context;
+}
+
+function timelineStaleRequestError(token) {
+    const error = new Error('Stale timeline request ignored');
+    error.name = 'TimelineStaleRequestError';
+    error.code = 'timeline_stale_request';
+    error.timelineRequestToken = token;
+    return error;
+}
+
+function isTimelineStaleRequestError(error) {
+    return error?.code === 'timeline_stale_request'
+        || error?.name === 'TimelineStaleRequestError'
+        || error?.name === 'AbortError';
+}
+
+function beginTimelineRenderRequest(date, renderGeneration) {
+    if (_timelineRenderAbortController) _timelineRenderAbortController.abort();
+    _timelineRenderAbortController = typeof AbortController === 'function' ? new AbortController() : null;
+    return captureTimelineRequestToken(date, {
+        renderGeneration,
+        signal: _timelineRenderAbortController?.signal || null
+    });
+}
+
 // v3.9: Cache with TTL
 async function getLinesForDate(date, options = {}) {
     const dateStr = timelineDateKey(date);
-    const cached = getTimelineCacheEntry(AppState.cachedLines, dateStr);
+    const requestToken = captureTimelineRequestToken(dateStr, options);
+    const cached = getTimelineCacheEntry(AppState.cachedLines, dateStr, { scopeKey: requestToken.cacheScope });
     if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
-    const lines = await apiGetLines(dateStr, { fresh: options.force === true });
+    const lines = await apiGetLines(dateStr, {
+        fresh: options.force === true,
+        businessContext: requestToken.businessContext,
+        timelineView: requestToken.timelineView,
+        signal: requestToken.signal
+    });
+    if (!timelineRequestTokenIsCurrent(requestToken)) throw timelineStaleRequestError(requestToken);
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (lines === null) {
         if (cached) return cached.data;
@@ -746,7 +821,7 @@ async function getLinesForDate(date, options = {}) {
         return [];
     }
     if (lines.length > 0) {
-        setTimelineCacheEntry(AppState.cachedLines, dateStr, lines);
+        setTimelineCacheEntry(AppState.cachedLines, dateStr, lines, { scopeKey: requestToken.cacheScope });
     }
     return lines;
 }
@@ -3679,6 +3754,8 @@ async function renderTimeline() {
         normalizeTimelineModeState(AppState);
     }
     const selectedDate = new Date(AppState.selectedDate);
+    const renderRequestToken = beginTimelineRenderRequest(selectedDate, thisGen);
+    syncTimelineWebSocketDateSubscriptions(selectedDate);
 
     try {
         if (hasActiveTimelineInteractionState()) {
@@ -3697,11 +3774,11 @@ async function renderTimeline() {
         cancelBanquetLinkDraft(false);
         clearTimelineBanquetRoomPreviews();
         document.getElementById('timelineBanquetLinkLayer')?.remove();
-        await renderMultiDayTimeline();
+        await renderMultiDayTimeline(renderRequestToken);
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-complete');
         }
-        return;
+        return true;
     }
 
     renderTimeScale(selectedDate);
@@ -3720,16 +3797,29 @@ async function renderTimeline() {
     // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
     let bookingFetchError = null;
+    let requestBecameStale = false;
     try {
         const [linesResult, bookingsResult, afishaResult] = await Promise.all([
-            getLinesForDate(selectedDate).catch(e => { console.error('[Timeline] getLinesForDate error:', e); return []; }),
-            getBookingsForDate(selectedDate).catch(e => {
+            getLinesForDate(selectedDate, { requestToken: renderRequestToken }).catch(e => {
+                if (isTimelineStaleRequestError(e) || !timelineRequestTokenIsCurrent(renderRequestToken)) {
+                    requestBecameStale = true;
+                    return null;
+                }
+                console.error('[Timeline] getLinesForDate error:', e);
+                return [];
+            }),
+            getBookingsForDate(selectedDate, { requestToken: renderRequestToken }).catch(e => {
+                if (isTimelineStaleRequestError(e) || !timelineRequestTokenIsCurrent(renderRequestToken)) {
+                    requestBecameStale = true;
+                    return null;
+                }
                 bookingFetchError = e;
                 console.error('[Timeline] getBookingsForDate error:', e);
                 return null;
             }),
             showAfisha ? apiGetAfishaByDate(formatDate(selectedDate)).catch(() => []) : Promise.resolve([])
         ]);
+        if (requestBecameStale || !timelineRequestTokenIsCurrent(renderRequestToken)) return false;
         lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
         if (bookingFetchError && !Array.isArray(bookingsResult)) {
             renderTimelineDataError(container, bookingFetchError, selectedDate);
@@ -3748,8 +3838,8 @@ async function renderTimeline() {
     }
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
-    if (thisGen !== _renderGen) {
-        return;
+    if (!timelineRequestTokenIsCurrent(renderRequestToken)) {
+        return false;
     }
 
     // v12.6: If lines came back empty, retry once after 2s
@@ -3814,28 +3904,51 @@ async function renderTimeline() {
     });
     const unmatchedBookings = bookings.filter(booking => !matchedBookingIds.has(String(booking.id)));
     if (unmatchedBookings.length && lines.length) {
-        const fallbackLine = lines[0];
-        const fallbackKey = String(fallbackLine.id);
+        const fallbackLine = isRoomTimelineView()
+            ? lines.find(line => {
+                const metadata = line?.metadata || {};
+                return String(line?.id || line?.resourceId || '').trim() === 'room-quarantine'
+                    || metadata.quarantine === true
+                    || metadata.roomIdentityQuarantine === true;
+            })
+            : lines[0];
         recordTimelineUnmatchedBookingDiagnostics(unmatchedBookings, lines, {
             phase: 'render',
-            fallbackLineId: fallbackLine.id
+            fallbackLineId: fallbackLine?.id || null,
+            reason: isRoomTimelineView() ? 'room_identity_quarantine' : 'unmatched_line_keys'
         });
-        lineBookingsById.set(fallbackKey, [
-            ...(lineBookingsById.get(fallbackKey) || []),
-            ...unmatchedBookings.map(booking => ({
-                ...booking,
-                timelineIdentity: {
-                    ...(booking.timelineIdentity || {}),
-                    fallbackLineId: fallbackLine.id,
-                    fallbackReason: 'unmatched_line_identity'
-                }
-            }))
-        ]);
-        console.warn('[Timeline] Rendered unmatched bookings on fallback line', {
-            lineId: fallbackLine.id,
+        if (fallbackLine) {
+            const fallbackKey = String(fallbackLine.id);
+            lineBookingsById.set(fallbackKey, [
+                ...(lineBookingsById.get(fallbackKey) || []),
+                ...unmatchedBookings.map(booking => ({
+                    ...booking,
+                    timelineIdentity: {
+                        ...(booking.timelineIdentity || {}),
+                        fallbackLineId: fallbackLine.id,
+                        fallbackReason: isRoomTimelineView() ? 'room_identity_quarantine' : 'unmatched_line_identity'
+                    }
+                }))
+            ]);
+        }
+        console.warn(fallbackLine
+            ? '[Timeline] Rendered unmatched bookings on fallback line'
+            : '[Timeline] Skipped unmatched room bookings because quarantine line is unavailable', {
+            lineId: fallbackLine?.id || null,
             bookingIds: unmatchedBookings.map(booking => booking.id),
             diagnostics: timelineBookingDiagnosticsStore().unmatched
                 .filter(item => unmatchedBookings.some(booking => String(booking.id) === String(item.id)))
+        });
+    }
+
+    if (isRoomTimelineView()) {
+        bookings.forEach(booking => {
+            const diagnostic = timelineProjectionDiagnosticReason(booking);
+            if (diagnostic?.category !== 'room_identity') return;
+            recordTimelineUnmatchedBookingDiagnostics([booking], lines, {
+                phase: 'room-identity',
+                reason: diagnostic.reason
+            });
         });
     }
 
@@ -3843,12 +3956,15 @@ async function renderTimeline() {
         try {
         const lineBookings = lineBookingsById.get(String(line.id)) || [];
         const lineEl = document.createElement('div');
-        lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
+        const lineUnavailable = line?.assignmentAllowed === false || line?.isUnavailable === true;
+        lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}${lineUnavailable ? ' timeline-line--unavailable' : ''}`;
         lineEl.dataset.lineType = line.resourceType || window.TimelineBusinessContext?.presentation?.().lineTypeLabel || 'line';
+        lineEl.dataset.assignmentAllowed = lineUnavailable ? 'false' : 'true';
 
         lineEl.innerHTML = `
-            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
+            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}" title="${escapeHtml(line.warning || '')}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
+                ${lineUnavailable ? `<span class="line-unavailable-warning" role="status">Недоступний</span>` : ''}
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}
@@ -3921,7 +4037,10 @@ async function renderTimeline() {
         normalizeTimelineToolbarTransientState('render-complete');
     }
 
+    return true;
+
     } catch (outerErr) {
+        if (isTimelineStaleRequestError(outerErr) || !timelineRequestTokenIsCurrent(renderRequestToken)) return false;
         console.error('[Timeline] CRITICAL renderTimeline error:', outerErr);
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-error');
@@ -3931,6 +4050,7 @@ async function renderTimeline() {
         if (container) {
             container.innerHTML = '<div style="padding:20px;color:#ef4444;font-weight:600">⚠️ Помилка завантаження таймлайну</div>';
         }
+        return false;
     }
 }
 
@@ -4034,6 +4154,16 @@ function renderGridCells(lineId, date) {
     }
     return html;
 }
+
+function syncTimelineWebSocketDateSubscriptions(selectedDate = new Date(AppState.selectedDate)) {
+    if (!window.ParkWS || typeof window.ParkWS.setSubscribedDates !== 'function') return;
+    const dates = AppState.multiDayMode
+        ? buildMultiDayDates().map(date => formatDate(date))
+        : [formatDate(selectedDate)];
+    window.ParkWS.setSubscribedDates(dates);
+}
+
+window.syncTimelineWebSocketDateSubscriptions = syncTimelineWebSocketDateSubscriptions;
 
 function parseBookingExtraData(booking) {
     const raw = booking?.extraData || booking?.extra_data || null;
@@ -4185,6 +4315,11 @@ function graduationNestedHtml(booking, segments) {
 
 async function selectCell(cell) {
     if (isViewer()) return;
+    const line = (AppState.lines || []).find(item => String(item?.id) === String(cell?.dataset?.line));
+    if (line?.assignmentAllowed === false || line?.isUnavailable === true) {
+        showNotification(line.warning || 'Ця лінія недоступна для нових бронювань.', 'warning');
+        return false;
+    }
     const banquetContext = getTimelineActiveBanquetContextForCell(cell);
     const opened = await openBookingPanel(cell.dataset.time, cell.dataset.line, {
         banquetContext,
@@ -4258,7 +4393,10 @@ async function openTimelineCreateBookingFromToolbar() {
     }
 
     const lines = normalizeTimelineLinesForContext(await getLinesForDate(AppState.selectedDate).catch(() => []));
-    const line = lines.find(item => item && String(item.id || '') !== 'afisha');
+    const line = lines.find(item => item
+        && String(item.id || '') !== 'afisha'
+        && item.assignmentAllowed !== false
+        && item.isUnavailable !== true);
     if (!line) {
         showNotification('Немає активної лінії для створення бронювання. Додайте ресурс або оновіть таймлайн.', 'warning');
         return false;
@@ -5600,6 +5738,7 @@ function _buildDragIntentFromState(state, timeDelta = null, lineChanged = null) 
     if (!model?.buildDragInteractionIntent) return null;
     const assignmentMode = isRoomTimelineView() ? 'room' : 'line';
     const targetRoom = assignmentMode === 'room' ? _timelineLineLabel(state.newLineId) : state.newRoom;
+    const metadata = model.banquetConflictMetadata?.(state.draggedBooking || state.booking) || {};
     return model.buildDragInteractionIntent({
         state,
         timeDelta,
@@ -5607,6 +5746,9 @@ function _buildDragIntentFromState(state, timeDelta = null, lineChanged = null) 
         assignmentMode,
         startRoom: state.startRoom,
         targetRoom,
+        banquetGroupId: metadata.groupId,
+        bookingRole: metadata.role,
+        sourceBookingId: metadata.sourceBookingId || state.draggedBooking?.id || state.booking?.id,
         allBookings: state.groupBookings || _getTimelineCachedBookings()
     });
 }
@@ -6342,6 +6484,32 @@ function _handleResizeMove(e) {
     renderBanquetLinksOverlay();
 }
 
+function reconcileResizeServerState(dateStr, scopeKey, resizeIntent, newDuration, result = {}) {
+    const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr, { scopeKey });
+    const existing = Array.isArray(cached?.data) ? cached.data : [];
+    const serverRows = [
+        result.booking,
+        result.mainBooking,
+        ...(Array.isArray(result.linkedBookings) ? result.linkedBookings : []),
+        ...(Array.isArray(result.updatedBookings) ? result.updatedBookings : [])
+    ].filter(Boolean);
+    const fallbackRows = [resizeIntent.mainBooking, ...(resizeIntent.linkedCandidates || [])]
+        .filter(Boolean)
+        .map(booking => ({ ...booking, duration: newDuration }));
+    const updates = serverRows.length ? serverRows : fallbackRows;
+    const updatesById = new Map(updates.map(booking => [String(booking.id), booking]));
+    const merged = existing.map(booking => updatesById.has(String(booking.id))
+        ? { ...booking, ...updatesById.get(String(booking.id)) }
+        : booking);
+    updates.forEach(booking => {
+        if (!merged.some(item => String(item.id) === String(booking.id))) merged.push(booking);
+    });
+
+    invalidateTimelineDateCache(dateStr, { lines: false });
+    setTimelineCacheEntry(AppState.cachedBookings, dateStr, merged, { scopeKey });
+    return merged;
+}
+
 async function _handleResizeEnd(e) {
     if (!_resizeState) return;
     const s = _resizeState;
@@ -6361,10 +6529,17 @@ async function _handleResizeEnd(e) {
     // Client-side conflict check
     const allBookings = _getTimelineCachedBookings();
     const model = timelineInteractionModel();
+    const resizeAssignmentMode = isRoomTimelineView() ? 'room' : 'line';
+    const resizeMetadata = model?.banquetConflictMetadata?.(s.booking) || {};
     const resizeIntent = model?.buildResizeInteractionIntent?.({
         booking: s.booking,
         allBookings,
-        newDuration: s.newDuration
+        newDuration: s.newDuration,
+        assignmentMode: resizeAssignmentMode,
+        targetRoom: s.booking.room,
+        banquetGroupId: resizeMetadata.groupId,
+        bookingRole: resizeMetadata.role,
+        sourceBookingId: resizeMetadata.sourceBookingId || s.booking.id
     });
     if (!resizeIntent || !model?.evaluateTimelineCandidateConflicts || !model?.buildResizeAtomicPayload || !model?.buildResizeUndoSnapshot) {
         timelineInteractionUnavailable();
@@ -6410,7 +6585,10 @@ async function _handleResizeEnd(e) {
         newDuration: s.newDuration,
         linked: resizeIntent.linkedCandidates.map(candidate => candidate.id)
     });
+    const dateStr = timelineDateKey(s.booking.date || AppState.selectedDate);
+    const resizeScope = timelineCacheScopeSnapshot();
     let result;
+    let serverSaveConfirmed = false;
     try {
         result = await apiUpdateLinkedBookingsAtomic(resizeIntent.mainBooking.id, payload);
         if (result && result.success === false) {
@@ -6421,6 +6599,7 @@ async function _handleResizeEnd(e) {
             const badge = s.block.querySelector('.duration-badge');
             if (badge) badge.textContent = `${s.originalDuration}хв`;
         } else {
+            serverSaveConfirmed = true;
             pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
 
             invalidateTimelineBanquetPreviewFreshness({
@@ -6429,10 +6608,34 @@ async function _handleResizeEnd(e) {
                     ...(resizeIntent.linkedCandidates || []).map(candidate => candidate?.id)
                 ])
             });
-            invalidateTimelineDateCache(dateStr, { lines: false });
-            await renderTimeline();
+            reconcileResizeServerState(dateStr, resizeScope.scopeKey, resizeIntent, s.newDuration, result);
+            const resizeScopeIsCurrent = resizeScope.scopeKey === timelineCacheScopeKey()
+                && dateStr === timelineDateKey(AppState.selectedDate);
+            let renderSucceeded = true;
+            if (resizeScopeIsCurrent) {
+                try {
+                    renderSucceeded = await renderTimeline() !== false;
+                } catch (renderError) {
+                    renderSucceeded = false;
+                    console.error('[Timeline] Resize saved but render failed:', renderError);
+                }
+            }
             showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
+            if (!renderSucceeded) {
+                showNotification('Тривалість збережено, але таймлайн не вдалося оновити', 'warning');
+            }
             _triggerHaptic('success');
+        }
+    } catch (error) {
+        if (serverSaveConfirmed) {
+            console.error('[Timeline] Resize post-save reconciliation failed:', error);
+            showNotification('Тривалість збережено, але таймлайн потребує оновлення', 'warning');
+        } else {
+            const origWidth = timelineDurationWidth(s.originalDuration, s.block);
+            s.block.style.width = `${origWidth}px`;
+            const badge = s.block.querySelector('.duration-badge');
+            if (badge) badge.textContent = `${s.originalDuration}хв`;
+            showNotification(error?.message || 'Помилка зміни тривалості', 'error');
         }
     } finally {
         _timelineInteractionSaveInFlight = false;
@@ -6816,7 +7019,7 @@ function buildMultiDayDates() {
     return dates;
 }
 
-async function renderDaySectionHtml(date) {
+async function renderDaySectionHtml(date, options = {}) {
     const dayOfWeek = date.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
@@ -6825,8 +7028,8 @@ async function renderDaySectionHtml(date) {
     const hourWidth = cellWidth * 4;
     const gridWidth = Math.max(hourWidth, (end - start) * hourWidth);
 
-    const rawLines = await getLinesForDate(date);
-    const rawBookings = await getBookingsForDate(date);
+    const rawLines = await getLinesForDate(date, { requestToken: options.requestToken });
+    const rawBookings = await getBookingsForDate(date, { requestToken: options.requestToken });
     const lines = normalizeTimelineLinesForContext(Array.isArray(rawLines) ? rawLines : []);
     const bookings = normalizeTimelineBookingsForContext(Array.isArray(rawBookings) ? rawBookings : []);
     const dateStr = formatDate(date);
@@ -6851,6 +7054,14 @@ async function renderDaySectionHtml(date) {
         const lineBookings = timelineBookingsForLine(bookings, line);
         lineBookings.forEach(booking => miniMatchedBookingIds.add(String(booking.id)));
         html += renderMiniLineHtml(line, lineBookings, start, end, cellWidth);
+    }
+
+    const targetLine = (AppState.lines || []).find(line => String(line?.id) === String(intent.targetLineId));
+    if (intent.lineChanged && (targetLine?.assignmentAllowed === false || targetLine?.isUnavailable === true)) {
+        return {
+            valid: false,
+            error: targetLine.warning || 'Ця лінія недоступна для нових призначень.'
+        };
     }
     const miniUnmatchedBookings = bookings.filter(booking => !miniMatchedBookingIds.has(String(booking.id)));
     if (miniUnmatchedBookings.length) {
@@ -6946,8 +7157,8 @@ function attachMultiDayListeners() {
     });
 }
 
-async function renderMultiDayTimeline() {
-    const gen = _renderGen; // v7.0: capture current generation
+async function renderMultiDayTimeline(requestToken = captureTimelineRequestToken(AppState.selectedDate)) {
+    const gen = requestToken.renderGeneration;
 
     const timeScaleEl = document.getElementById('timeScale');
     const linesContainer = document.getElementById('timelineLines');
@@ -6979,8 +7190,8 @@ async function renderMultiDayTimeline() {
 
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {
-        multiDayHtml += await renderDaySectionHtml(date);
-        if (gen !== _renderGen) return; // v7.0: stale render guard
+        multiDayHtml += await renderDaySectionHtml(date, { requestToken });
+        if (gen !== _renderGen || !timelineRequestTokenIsCurrent(requestToken)) return;
     }
     multiDayHtml += '</div>';
 
@@ -7066,11 +7277,19 @@ async function changeDate(days) {
 // v3.9: Cache with TTL
 async function getBookingsForDate(date, options = {}) {
     const dateStr = timelineDateKey(date);
-    const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr);
+    const requestToken = captureTimelineRequestToken(dateStr, options);
+    const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr, { scopeKey: requestToken.cacheScope });
     if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
-    const bookings = await apiGetBookings(dateStr, { fresh: options.force === true, throwOnError: true });
+    const bookings = await apiGetBookings(dateStr, {
+        fresh: options.force === true,
+        throwOnError: true,
+        businessContext: requestToken.businessContext,
+        timelineView: requestToken.timelineView,
+        signal: requestToken.signal
+    });
+    if (!timelineRequestTokenIsCurrent(requestToken)) throw timelineStaleRequestError(requestToken);
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (bookings === null) {
         if (cached) return cached.data;
@@ -7085,6 +7304,6 @@ async function getBookingsForDate(date, options = {}) {
         if (cached && Array.isArray(cached.data)) return cached.data;
         throw error;
     }
-    setTimelineCacheEntry(AppState.cachedBookings, dateStr, bookings);
+    setTimelineCacheEntry(AppState.cachedBookings, dateStr, bookings, { scopeKey: requestToken.cacheScope });
     return bookings;
 }

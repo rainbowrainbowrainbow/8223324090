@@ -184,6 +184,7 @@ var ParkWS = (function () {
      * @param {string} dateStr - Date in YYYY-MM-DD format
      */
     function subscribeDate(dateStr) {
+        if (!_isValidDate(dateStr) || _subscribedDates.has(dateStr)) return;
         _subscribedDates.add(dateStr);
         if (isConnected()) {
             _send({ type: 'JOIN_DATE', date: dateStr });
@@ -195,6 +196,7 @@ var ParkWS = (function () {
      * @param {string} dateStr - Date in YYYY-MM-DD format
      */
     function unsubscribeDate(dateStr) {
+        if (!_isValidDate(dateStr) || !_subscribedDates.has(dateStr)) return;
         _subscribedDates.delete(dateStr);
         if (isConnected()) {
             _send({ type: 'LEAVE_DATE', date: dateStr });
@@ -218,6 +220,22 @@ var ParkWS = (function () {
         } catch (err) {
             return false;
         }
+    }
+
+    function setSubscribedDates(dateStrings) {
+        var nextDates = new Set((Array.isArray(dateStrings) ? dateStrings : []).filter(_isValidDate));
+        Array.from(_subscribedDates).forEach(function (dateStr) {
+            if (!nextDates.has(dateStr)) unsubscribeDate(dateStr);
+        });
+        nextDates.forEach(function (dateStr) {
+            if (!_subscribedDates.has(dateStr)) subscribeDate(dateStr);
+        });
+    }
+
+    function _isValidDate(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        var parsed = new Date(value + 'T00:00:00.000Z');
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
     }
 
     function _taskArrivalSignalKey(payload) {
@@ -345,6 +363,7 @@ var ParkWS = (function () {
             case 'booking:updated':
             case 'booking:deleted':
             case 'booking:moved':
+            case 'booking:banquet-link-updated':
                 _handleBookingEvent(message);
                 break;
 
@@ -352,6 +371,7 @@ var ParkWS = (function () {
             case 'line:created':
             case 'line:updated':
             case 'line:deleted':
+            case 'timeline:roster-updated':
                 _handleLineEvent(message);
                 break;
 
@@ -561,7 +581,7 @@ var ParkWS = (function () {
 
     function _payloadMatchesCurrentTimelineBusiness(payload) {
         var context = _payloadBusinessContext(payload);
-        if (!context) return true;
+        if (!context) return false;
         return String(context) === String(_currentTimelineBusinessContext());
     }
 
@@ -763,6 +783,7 @@ var ParkWS = (function () {
         isConnected: isConnected,
         subscribeDate: subscribeDate,
         unsubscribeDate: unsubscribeDate,
+        setSubscribedDates: setSubscribedDates,
         joinChannel: joinChannel,
         leaveChannel: leaveChannel,
         sendChatTyping: sendChatTyping,

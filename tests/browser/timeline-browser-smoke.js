@@ -306,6 +306,39 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
     return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
 }
 
+async function assertTimelineDeepLinkSwitching(page, base, date) {
+    const deepLink = new URL('/', base);
+    deepLink.searchParams.set('date', date);
+    deepLink.searchParams.set('timelineView', 'rooms');
+    deepLink.searchParams.set('smokeKeep', '1');
+    await page.goto(deepLink.toString(), { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+
+    const switched = await page.evaluate(async () => {
+        await window.TimelineView.set('animators', { render: false });
+        const afterAnimators = {
+            current: window.TimelineView.current(),
+            urlView: new URL(window.location.href).searchParams.get('timelineView'),
+            keep: new URL(window.location.href).searchParams.get('smokeKeep')
+        };
+        await window.TimelineView.set('rooms', { render: false });
+        const afterRooms = {
+            current: window.TimelineView.current(),
+            urlView: new URL(window.location.href).searchParams.get('timelineView')
+        };
+        return { afterAnimators, afterRooms };
+    });
+    assert.deepEqual(switched.afterAnimators, { current: 'animators', urlView: 'animators', keep: '1' });
+    assert.deepEqual(switched.afterRooms, { current: 'rooms', urlView: 'rooms' });
+
+    const unknownLink = new URL(page.url());
+    unknownLink.searchParams.set('timelineView', 'unsupported');
+    await page.goto(unknownLink.toString(), { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    assert.equal(await page.evaluate(() => window.TimelineView.current()), 'rooms');
+    await page.evaluate(async () => window.TimelineView.set('animators', { render: false }));
+}
+
 async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot) {
     await renderTimelineView(page, date, 'rooms');
     return page.evaluate(async ({ room, time, snapshot }) => {
@@ -1318,6 +1351,7 @@ async function run() {
         createdBookingIds.push(activity.id);
 
         ({ context, page } = await openAuthenticatedPage(browser, base, session));
+        await assertTimelineDeepLinkSwitching(page, base, date);
         await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
 
         const activityFirstDrawer = await openRoomDrawer(page, date, room, '13:00');

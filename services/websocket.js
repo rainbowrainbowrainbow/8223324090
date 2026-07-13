@@ -9,15 +9,17 @@
  *
  * Then in route files (routes/bookings.js, routes/lines.js, routes/settings.js),
  * after successful DB commit, call:
- *   const { broadcast } = require('../services/websocket');
- *   broadcast('booking:created', bookingData, excludeUserId);
+ *   const { broadcastBookingEvent } = require('../services/websocket');
+ *   broadcastBookingEvent('booking:created', bookingData, excludeUserId);
  *
  * Requires: npm install ws
  */
 
 const { createLogger } = require('../utils/logger');
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, loadAuthenticatedUserAccess } = require('../middleware/auth');
+const { canAccessTimelineContext } = require('./timelineContext');
+const { canViewBooking } = require('./bookingVisibility');
 
 const log = createLogger('WebSocket');
 
@@ -102,6 +104,7 @@ function _handleConnection(ws, req) {
         userId: null,
         username: null,
         role: null,
+        accessUser: null,
         subscribedDates: new Set(),
         subscribedChannels: new Set(),
         missedPongs: 0,
@@ -156,7 +159,7 @@ async function _handleMessage(ws, rawData, authTimeout) {
     // First message must be auth
     if (!ws._pzp.authenticated) {
         if (message.type === 'auth' && message.token) {
-            _authenticateClient(ws, message.token, authTimeout);
+            await _authenticateClient(ws, message.token, authTimeout);
         } else {
             _sendError(ws, 'First message must be auth with token');
             ws.close(4001, 'Authentication required');
@@ -167,13 +170,13 @@ async function _handleMessage(ws, rawData, authTimeout) {
     // Handle authenticated messages
     switch (message.type) {
         case 'JOIN_DATE':
-            if (message.date && typeof message.date === 'string') {
+            if (_isValidDateSubscription(message.date)) {
                 ws._pzp.subscribedDates.add(message.date);
             }
             break;
 
         case 'LEAVE_DATE':
-            if (message.date && typeof message.date === 'string') {
+            if (_isValidDateSubscription(message.date)) {
                 ws._pzp.subscribedDates.delete(message.date);
             }
             break;
@@ -204,15 +207,17 @@ async function _handleMessage(ws, rawData, authTimeout) {
 /**
  * Authenticate client using JWT token.
  */
-function _authenticateClient(ws, token, authTimeout) {
+async function _authenticateClient(ws, token, authTimeout) {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+        const accessUser = await loadAuthenticatedUserAccess(decoded, { requireFresh: true });
         clearTimeout(authTimeout);
 
         ws._pzp.authenticated = true;
-        ws._pzp.userId = String(decoded.id || decoded.userId || decoded.sub);
-        ws._pzp.username = decoded.username || decoded.name || 'unknown';
-        ws._pzp.role = decoded.role || 'viewer';
+        ws._pzp.userId = String(accessUser.id || accessUser.userId || accessUser.sub);
+        ws._pzp.username = accessUser.username || accessUser.name || 'unknown';
+        ws._pzp.role = accessUser.role || 'viewer';
+        ws._pzp.accessUser = accessUser;
 
         // Track client connection
         _addClient(ws);
@@ -232,6 +237,12 @@ function _authenticateClient(ws, token, authTimeout) {
         _sendError(ws, 'Invalid or expired token');
         ws.close(4001, 'Invalid token');
     }
+}
+
+function _isValidDateSubscription(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function _parseChannelId(channelId) {
@@ -390,7 +401,11 @@ function getConnectedClientsCount() {
  * @param {string|null} [date] - Optional date string (YYYY-MM-DD) to filter by subscribed dates
  */
 function broadcast(eventType, data, excludeUserId, date) {
-    if (!_wss) return;
+    if (String(eventType || '').startsWith('booking:') || String(eventType || '').startsWith('line:')) {
+        log.error(`Blocked protected timeline event through generic broadcast: ${eventType}`);
+        return 0;
+    }
+    if (!_wss) return 0;
 
     const message = JSON.stringify({
         type: eventType,
@@ -411,7 +426,7 @@ function broadcast(eventType, data, excludeUserId, date) {
             if (ws.readyState !== 1) continue; // Only send to OPEN connections
 
             // If date filtering is requested, only send to clients subscribed to that date
-            if (date && ws._pzp.subscribedDates.size > 0 && !ws._pzp.subscribedDates.has(date)) {
+            if (date && !ws._pzp.subscribedDates.has(date)) {
                 continue;
             }
 
@@ -427,6 +442,119 @@ function broadcast(eventType, data, excludeUserId, date) {
     if (sent > 0) {
         log.info(`Broadcast [${eventType}] to ${sent} client(s)` + (date ? ` for date ${date}` : ''));
     }
+    return sent;
+}
+
+function _timelineEventPayload(eventType, audience, options = {}) {
+    const date = String(audience?.date || '').trim();
+    const businessContext = String(
+        audience?.businessContext
+        || audience?.business_context
+        || options.businessContext
+        || ''
+    ).trim();
+    const updatedAt = audience?.updatedAt
+        || audience?.updated_at
+        || options.updatedAt
+        || new Date().toISOString();
+    return { date, businessContext, eventType, updatedAt };
+}
+
+function _broadcastAuthorizedTimelineEvent(eventType, audience, excludeUserId, options = {}) {
+    if (!_wss) return 0;
+
+    const payload = _timelineEventPayload(eventType, audience, options);
+    if (!_isValidDateSubscription(payload.date) || !payload.businessContext) {
+        log.error(`Blocked ${eventType}: timeline audience is incomplete`);
+        return 0;
+    }
+
+    const excludeId = excludeUserId == null ? null : String(excludeUserId);
+    const message = JSON.stringify({
+        type: eventType,
+        payload: options.payload(payload),
+        meta: { timestamp: new Date().toISOString() }
+    });
+    let sent = 0;
+
+    for (const [userId, connections] of _clients) {
+        if (excludeId && userId === excludeId) continue;
+        for (const ws of connections) {
+            if (ws.readyState !== 1) continue;
+            if (!ws._pzp.subscribedDates.has(payload.date)) continue;
+            const accessUser = ws._pzp.accessUser;
+            if (!canAccessTimelineContext(accessUser, payload.businessContext)) continue;
+            const visibilityBookings = Array.isArray(options.visibilityBookings)
+                ? options.visibilityBookings
+                : [audience];
+            if (options.bookingVisibility && !visibilityBookings.some(booking => canViewBooking(accessUser, booking))) continue;
+            try {
+                ws.send(message);
+                sent++;
+            } catch (err) {
+                log.error('Authorized timeline broadcast send error:', err.message);
+            }
+        }
+    }
+
+    if (sent > 0) {
+        log.info(`Authorized broadcast [${eventType}] to ${sent} client(s) for ${payload.businessContext}/${payload.date}`);
+    }
+    return sent;
+}
+
+function broadcastBookingEvent(eventType, booking, excludeUserId, options = {}) {
+    if (!String(eventType || '').startsWith('booking:')) {
+        log.error(`Blocked invalid booking event type: ${eventType}`);
+        return 0;
+    }
+    const id = booking?.id ?? booking?.bookingId ?? booking?.booking_id;
+    if (id == null || id === '') {
+        log.error(`Blocked ${eventType}: booking audience has no id`);
+        return 0;
+    }
+    const previousBookings = Array.isArray(options.previousBooking)
+        ? options.previousBooking
+        : (options.previousBooking ? [options.previousBooking] : []);
+    const audienceGroups = new Map();
+    [booking, ...previousBookings].forEach(state => {
+        if (!state) return;
+        const normalizedState = {
+            ...state,
+            businessContext: state.businessContext || state.business_context || options.businessContext
+        };
+        const payload = _timelineEventPayload(eventType, normalizedState, options);
+        const key = `${payload.businessContext}::${payload.date}`;
+        if (!audienceGroups.has(key)) {
+            audienceGroups.set(key, { state: normalizedState, visibilityBookings: [] });
+        }
+        audienceGroups.get(key).visibilityBookings.push(normalizedState);
+    });
+
+    let sent = 0;
+    for (const group of audienceGroups.values()) {
+        sent += _broadcastAuthorizedTimelineEvent(eventType, group.state, excludeUserId, {
+            ...options,
+            updatedAt: booking.updatedAt || booking.updated_at || options.updatedAt,
+            bookingVisibility: true,
+            visibilityBookings: group.visibilityBookings,
+            payload: payload => ({ id, ...payload })
+        });
+    }
+    return sent;
+}
+
+function broadcastLineEvent(eventType, lineAudience, excludeUserId, options = {}) {
+    const safeEventType = String(eventType || '');
+    if (!safeEventType.startsWith('line:') && safeEventType !== 'timeline:roster-updated') {
+        log.error(`Blocked invalid line event type: ${eventType}`);
+        return 0;
+    }
+    return _broadcastAuthorizedTimelineEvent(eventType, lineAudience, excludeUserId, {
+        ...options,
+        bookingVisibility: false,
+        payload: payload => payload
+    });
 }
 
 /**
@@ -622,6 +750,8 @@ function getLastSeen(userId) {
 module.exports = {
     initWebSocket,
     broadcast,
+    broadcastBookingEvent,
+    broadcastLineEvent,
     broadcastToChannel,
     sendToUser,
     sendToUsername,

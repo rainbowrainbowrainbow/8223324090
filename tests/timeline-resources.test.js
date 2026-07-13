@@ -22,7 +22,9 @@ const {
     resourceTypeForDisplayMode,
     findTimelineResourceByName,
     resourceToLine,
-    timelineResourceAvailability
+    timelineResourceAvailability,
+    mergeTimelineResourceRenameAliases,
+    resolveRoomTimelineResourceIdentity
 } = require('../services/timelineResources');
 const {
     TIMELINE_VISUAL_BLOCKS,
@@ -37,8 +39,10 @@ const {
     isLineConflictBlockingLine,
     isRoomConflictBlockingRoom,
     isTakeawayRoomValue,
-    lockBookingConflictResources
+    lockBookingConflictResources,
+    findRoomConflictAmongCandidates
 } = require('../services/booking');
+const banquetConflictMatrix = require('./fixtures/banquet-conflict-matrix');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -317,6 +321,65 @@ function createTimelineBanquetMarkerScenario(bookingPackage, options = {}) {
     const inspectorSummary = ctx.timelineBanquetSummaryForInspector(summary, servingInfo, kitchenBooking);
     return { ctx, inspectorSummary };
 }
+
+for (const scenario of banquetConflictMatrix) {
+    test(`server banquet conflict matrix: ${scenario.name}`, async () => {
+        const candidate = {
+            id: 'BK-candidate',
+            date: '2099-06-01',
+            time: '11:30',
+            duration: 60,
+            room: scenario.candidate.room || 'Room A',
+            status: 'confirmed',
+            ...scenario.candidate
+        };
+        const conflictBooking = {
+            id: 'BK-conflict',
+            date: candidate.date,
+            time: '11:30',
+            duration: 60,
+            room: scenario.conflict.room || 'Room A',
+            status: 'confirmed',
+            ...scenario.conflict
+        };
+        const client = roomConflictPolicyClient([conflictBooking]);
+        const conflict = await checkRoomConflict(
+            client,
+            candidate.date,
+            candidate.room,
+            candidate.time,
+            candidate.duration,
+            {
+                banquetGroupId: candidate.banquetGroupId,
+                sourceBookingId: candidate.id,
+                candidateBooking: candidate,
+                allowSameBanquetOperationalOverlap: true
+            }
+        );
+
+        assert.equal(Boolean(conflict), scenario.expected === 'block', scenario.name);
+        if (scenario.expected === 'block') assert.equal(conflict.id, 'BK-conflict');
+    });
+}
+
+test('atomic room candidates use role-aware policy and return a concrete conflicting booking', () => {
+    const base = {
+        date: '2099-06-01',
+        time: '11:30',
+        duration: 60,
+        room: 'Room A',
+        status: 'confirmed',
+        banquetGroupId: 'BG-1'
+    };
+    const kitchen = { ...base, id: 'BK-kitchen', category: 'kitchen', programCode: 'KITCHEN', banquetGroupRole: 'kitchen' };
+    const firstActivity = { ...base, id: 'BK-activity-1', category: 'animation', banquetGroupRole: 'activity' };
+    const secondActivity = { ...base, id: 'BK-activity-2', category: 'quest', banquetGroupRole: 'activity' };
+
+    assert.equal(findRoomConflictAmongCandidates([kitchen, firstActivity]), null);
+    const conflict = findRoomConflictAmongCandidates([kitchen, firstActivity, secondActivity]);
+    assert.equal(conflict.candidate.id, 'BK-activity-1');
+    assert.equal(conflict.conflict.id, 'BK-activity-2');
+});
 
 function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
     const { ctx, inspectorSummary } = createTimelineBanquetMarkerScenario(bookingPackage, options);
@@ -814,10 +877,14 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(linesRoute, /ROOM_TIMELINE_TAKEAWAY_LINE/);
     assert.match(linesRoute, /withTakeawayRoomLine\(resources\.map\(resourceToLine\), businessContext\)/);
     assert.match(linesRoute, /id: 'room-takeaway'/);
+    assert.match(linesRoute, /id: 'room-quarantine'/);
+    assert.match(linesRoute, /assignmentAllowed: false/);
     assert.match(linesRoute, /BANQUET_SERVICE_LINE_ID/);
     assert.match(linesRoute, /String\(row\.line_id \|\| ''\)\.trim\(\) === BANQUET_SERVICE_LINE_ID/);
     assert.match(linesRoute, /!isLegacyRoomTimelineLineRow\(row\)/);
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
+    assert.match(bookingsRoute, /attachRoomTimelineResourceResolution/);
+    assert.match(bookingsRoute, /resolveRoomTimelineResourceIdentity/);
     assert.match(bookingsRoute, /function bookingMatchesBanquetServiceLine/);
     assert.match(bookingsRoute, /function isBanquetServiceTimelineBooking/);
     assert.match(bookingsRoute, /function isBanquetServiceRootBooking/);
@@ -2519,6 +2586,105 @@ test('short timeline activity blocks use compact labels while preserving full ti
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
 });
 
+test('room timeline matches quarantined booking only to quarantine and keeps diagnostic reason', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const booking = {
+        id: 'BK-QUARANTINE',
+        room: 'Legacy Custom Room',
+        resourceId: 'room-takeaway',
+        timelineProjection: {
+            timelineView: 'rooms',
+            resourceId: 'room-quarantine',
+            resourceName: 'Невідома / неактивна кімната',
+            resourceType: 'room',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            diagnosticReason: 'custom_room'
+        }
+    };
+    const takeawayLine = { id: 'room-takeaway', resourceId: 'room-takeaway', resourceType: 'room' };
+    const quarantineLine = { id: 'room-quarantine', resourceId: 'room-quarantine', resourceType: 'room' };
+
+    assert.equal(hooks.timelineBookingsForLine([booking], takeawayLine).length, 0);
+    assert.equal(hooks.timelineBookingsForLine([booking], quarantineLine).length, 1);
+    const diagnostic = hooks.timelineBookingMatchDiagnostic(booking, [takeawayLine, quarantineLine]);
+    assert.equal(diagnostic.reason, 'custom_room');
+    assert.deepEqual(Array.from(diagnostic.matchedLineIds), ['room-quarantine']);
+});
+
+test('room render fallback is quarantine-only and never uses the first room line', () => {
+    const timeline = read('js/timeline.js');
+    const fallbackStart = timeline.indexOf('const unmatchedBookings = bookings.filter');
+    const fallbackEnd = timeline.indexOf('if (isRoomTimelineView()) {', fallbackStart + 1);
+    const fallbackBlock = timeline.slice(fallbackStart, fallbackEnd);
+
+    assert.match(fallbackBlock, /String\(line\?\.id \|\| line\?\.resourceId \|\| ''\)\.trim\(\) === 'room-quarantine'/);
+    assert.match(fallbackBlock, /isRoomTimelineView\(\)[\s\S]*:\s*lines\[0\]/);
+    assert.doesNotMatch(fallbackBlock, /const fallbackLine = lines\[0\]/);
+});
+
+test('room identity resolver maps active and renamed rooms to durable resources', () => {
+    const resources = [{
+        resourceId: 'room-marvel',
+        type: 'room',
+        name: 'Marvel Hall',
+        shortName: 'Marvel',
+        isActive: true,
+        metadata: { aliases: ['Old Marvel'] }
+    }];
+
+    const active = resolveRoomTimelineResourceIdentity(resources, { room: 'Marvel Hall' });
+    assert.equal(active.resourceId, 'room-marvel');
+    assert.equal(active.resourceName, 'Marvel Hall');
+    assert.equal(active.diagnosticReason, null);
+    assert.equal(active.assignmentAllowed, true);
+
+    const renamed = resolveRoomTimelineResourceIdentity(resources, { room: 'Old Marvel' });
+    assert.equal(renamed.resourceId, 'room-marvel');
+    assert.equal(renamed.resourceName, 'Marvel Hall');
+    assert.equal(renamed.legacyRoomName, 'Old Marvel');
+    assert.equal(renamed.diagnosticReason, 'renamed_room');
+    assert.equal(renamed.assignmentAllowed, true);
+});
+
+test('room identity resolver quarantines inactive, unmatched and custom rooms without colliding with takeaway', () => {
+    const inactiveResources = [{
+        resourceId: 'room-retired',
+        type: 'room',
+        name: 'Retired Room',
+        isActive: false,
+        metadata: { aliases: ['Former Room'] }
+    }];
+
+    for (const booking of [
+        { room: 'Retired Room' },
+        { room: 'Former Room' },
+        { room: 'Unknown Room', roomResourceId: 'room-missing' },
+        { room: 'Custom Room' }
+    ]) {
+        const resolved = resolveRoomTimelineResourceIdentity(inactiveResources, booking);
+        assert.equal(resolved.resourceId, 'room-quarantine');
+        assert.equal(resolved.assignmentAllowed, false);
+        assert.notEqual(resolved.diagnosticReason, null);
+    }
+
+    const takeaway = resolveRoomTimelineResourceIdentity(inactiveResources, { room: 'room-takeaway' });
+    assert.equal(takeaway.resourceId, 'room-takeaway');
+    assert.equal(takeaway.diagnosticReason, null);
+    assert.equal(takeaway.assignmentAllowed, true);
+});
+
+test('timeline resource rename metadata preserves old and incoming aliases', () => {
+    const metadata = mergeTimelineResourceRenameAliases(
+        { name: 'Old Name', shortName: 'Old', metadata: { aliases: ['Very Old Name'] } },
+        { aliases: ['Imported Alias'], custom: true },
+        'New Name'
+    );
+    assert.deepEqual(new Set(metadata.aliases), new Set(['Very Old Name', 'Imported Alias', 'Old Name', 'Old']));
+    assert.equal(metadata.custom, true);
+});
+
 test('shared PinataNumbers helper owns operational number normalization', () => {
     const helper = pinataNumbersHarness();
 
@@ -3183,7 +3349,7 @@ test('room-grid service marker lifecycle is scoped to room view and view-aware c
     );
     const renderStartIndex = timeline.indexOf('async function renderTimeline()');
     const renderClearIndex = timeline.indexOf('clearTimelineBanquetRoomPreviews()', renderStartIndex);
-    const renderFetchIndex = timeline.indexOf('getLinesForDate(selectedDate)', renderStartIndex);
+    const renderFetchIndex = timeline.indexOf('getLinesForDate(selectedDate, { requestToken: renderRequestToken })', renderStartIndex);
     const cacheScopeBlock = timelineCache.slice(
         timelineCache.indexOf('function timelineCacheScopeKey'),
         timelineCache.indexOf('function timelineDateKey')

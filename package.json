@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.4",
+  "version": "0.79.5",
   "eventGenix": {
-    "releaseLabel": "Надійне збереження додаткових професій"
+    "releaseLabel": "Захищений і стабільний таймлайн"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -49,7 +49,7 @@
     "test:customers-profile-async": "node --test tests/customers-profile-async.test.js",
     "test:leads-tasks-pagination-behavior": "node --test tests/leads-tasks-pagination-behavior.test.js",
     "test:staff-schedule": "node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js",
-    "test:staff-shift-preferences": "node --test tests/staff-shift-preferences-static.test.js",
+    "test:staff-shift-preferences": "node --test tests/staff-shift-preferences-static.test.js tests/staff-timeline-roster.test.js",
     "test:ui": "node tests/ui-check.js",
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",

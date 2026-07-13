@@ -369,7 +369,8 @@ test('timeline view isolation matrix keeps polluted room rows out of animator st
             source: 'timeline_resource'
         }
     ], 'event_genix');
-    assert.deepEqual(roomRows.map(line => line.id), ['room-takeaway', 'room-marvel']);
+    assert.deepEqual(roomRows.map(line => line.id), ['room-takeaway', 'room-quarantine', 'room-marvel']);
+    assert.equal(roomRows[1].assignmentAllowed, false);
     assert.equal(hooks.isRoomTimelineLinePayload({ id: 'room-marvel', resourceType: 'room' }), true);
     assert.equal(hooks.isRoomTimelineLinePayload({ id: '748', resourceType: 'animator', name: 'Пасенко Женя' }), false);
 });

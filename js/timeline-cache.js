@@ -11,6 +11,25 @@ function timelineCacheScopeKey() {
     return `${context}|${mode}|${resourceType}|${timelineView}`;
 }
 
+function timelineCacheScopeSnapshot() {
+    const contextState = window.TimelineBusinessContext?.state?.();
+    const context = contextState?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue
+        || window.TimelineBusinessContext?.current?.()?.key
+        || 'event_genix';
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    const mode = presentation?.mode || 'park';
+    const resourceType = presentation?.resourceType || 'line';
+    const timelineView = timelineCurrentView();
+    return Object.freeze({
+        context,
+        mode,
+        resourceType,
+        timelineView,
+        scopeKey: `${context}|${mode}|${resourceType}|${timelineView}`
+    });
+}
+
 function timelineDateKey(date) {
     if (typeof date === 'string') {
         const trimmed = date.trim();
@@ -31,8 +50,8 @@ function timelineDateKey(date) {
     return formatDate(new Date());
 }
 
-function timelineCacheKeyForDate(date) {
-    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}`;
+function timelineCacheKeyForDate(date, scopeKey = timelineCacheScopeKey()) {
+    return `${scopeKey}|${timelineDateKey(date)}`;
 }
 
 let _timelineHorizontalScrollResetGeneration = 0;
@@ -128,9 +147,9 @@ function markTimelineCacheLegacyAccepted(entry, expectedScopeKey) {
 
 function getTimelineCacheEntry(cache, date, options = {}) {
     if (!cache) return null;
-    const scopeKey = timelineCacheScopeKey();
+    const scopeKey = options.scopeKey || timelineCacheScopeKey();
     const legacyKey = timelineDateKey(date);
-    const key = timelineCacheKeyForDate(date);
+    const key = timelineCacheKeyForDate(date, scopeKey);
     const entry = cache[key];
     if (entry?.scopeKey === scopeKey) return entry;
     if (entry) {
@@ -149,11 +168,12 @@ function getTimelineCacheEntry(cache, date, options = {}) {
     return null;
 }
 
-function setTimelineCacheEntry(cache, date, data) {
+function setTimelineCacheEntry(cache, date, data, options = {}) {
     if (!cache) return;
-    const key = timelineCacheKeyForDate(date);
+    const scopeKey = options.scopeKey || timelineCacheScopeKey();
+    const key = timelineCacheKeyForDate(date, scopeKey);
     const legacyKey = timelineDateKey(date);
-    cache[key] = { data, ts: Date.now(), scopeKey: timelineCacheScopeKey() };
+    cache[key] = { data, ts: Date.now(), scopeKey };
     if (legacyKey !== key) delete cache[legacyKey];
 }
 
@@ -174,6 +194,7 @@ function invalidateTimelineDateCache(date, options = {}) {
 window.invalidateTimelineDateCache = invalidateTimelineDateCache;
 window.getTimelineCacheEntry = getTimelineCacheEntry;
 window.timelineCacheScopeKey = timelineCacheScopeKey;
+window.timelineCacheScopeSnapshot = timelineCacheScopeSnapshot;
 window.timelineDateKey = timelineDateKey;
 window.timelineCacheKeyForDate = timelineCacheKeyForDate;
 window.setTimelineCacheEntry = setTimelineCacheEntry;

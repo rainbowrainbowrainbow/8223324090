@@ -29,6 +29,111 @@
         return idOf(a) === idOf(b);
     }
 
+    function objectValue(value) {
+        if (!value) return {};
+        if (typeof value === 'object' && !Array.isArray(value)) return value;
+        if (typeof value !== 'string' || !value.trim()) return {};
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function banquetConflictMetadata(booking = {}, fallback = {}) {
+        const extra = objectValue(booking.extraData ?? booking.extra_data);
+        const group = extra.banquetGroup || extra.banquet_group || booking.banquetGroup || booking.banquet_group || {};
+        const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+        const workspaceGroup = workspace.banquetGroup || workspace.banquet_group || {};
+        const groupId = idOf(
+            booking.banquetGroupId
+            || booking.banquet_group_id
+            || group.groupId
+            || group.group_id
+            || group.id
+            || workspace.banquetGroupId
+            || workspace.banquet_group_id
+            || workspaceGroup.groupId
+            || workspaceGroup.group_id
+            || workspaceGroup.id
+            || fallback.banquetGroupId
+        ).trim();
+        const explicitRole = String(
+            booking.banquetGroupRole
+            || booking.banquet_group_role
+            || group.role
+            || workspace.banquetRole
+            || workspace.banquet_role
+            || fallback.bookingRole
+            || ''
+        ).trim().toLowerCase();
+        const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+        const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+        const lineId = idOf(booking.lineId || booking.line_id).trim();
+        const bookingPackage = extra.bookingPackage || extra.booking_package || {};
+        const hasOperationalPackage = (Array.isArray(bookingPackage.menuPositions || bookingPackage.menu_positions)
+            && (bookingPackage.menuPositions || bookingPackage.menu_positions).length > 0)
+            || (Array.isArray(bookingPackage.serviceEvents || bookingPackage.service_events)
+                && (bookingPackage.serviceEvents || bookingPackage.service_events).length > 0);
+        let role = ['activity', 'kitchen', 'service', 'manual', 'primary'].includes(explicitRole) ? explicitRole : '';
+        if (!role && (programCode === 'KITCHEN' || category === 'kitchen')) role = 'kitchen';
+        if (!role && lineId === 'banquet-service') role = 'service';
+        if (!role && category === 'banquet' && hasOperationalPackage) role = 'service';
+        if (!role && ['animation', 'activity', 'custom', 'quest', 'show', 'masterclass', 'workshop'].includes(category)) role = 'activity';
+        const sourceBookingId = idOf(
+            group.sourceBookingId
+            || group.source_booking_id
+            || workspace.sourceBookingId
+            || workspace.source_booking_id
+            || fallback.sourceBookingId
+            || booking.id
+        ).trim();
+        const potentialBanquet = Boolean(groupId || role || category === 'banquet' || programCode === 'KITCHEN');
+        return { groupId, role, sourceBookingId, potentialBanquet };
+    }
+
+    function isTakeawayRoom(value) {
+        const room = String(value || '').trim().toLowerCase();
+        return ['room-takeaway', 'takeaway', 'на виніс', 'на вынос'].includes(room);
+    }
+
+    function isOperationalBanquetRole(metadata, booking = {}) {
+        if (['kitchen', 'service', 'manual'].includes(metadata.role)) return true;
+        if (metadata.role !== 'primary') return false;
+        const extra = objectValue(booking.extraData ?? booking.extra_data);
+        const bookingPackage = extra.bookingPackage || extra.booking_package || {};
+        const hasOperationalPackage = (Array.isArray(bookingPackage.menuPositions || bookingPackage.menu_positions)
+            && (bookingPackage.menuPositions || bookingPackage.menu_positions).length > 0)
+            || (Array.isArray(bookingPackage.serviceEvents || bookingPackage.service_events)
+                && (bookingPackage.serviceEvents || bookingPackage.service_events).length > 0);
+        const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+        return category === 'banquet'
+            || idOf(booking.lineId || booking.line_id).trim() === 'banquet-service'
+            || hasOperationalPackage
+            || String(booking.programCode || booking.program_code || '').trim().toUpperCase() === 'KITCHEN';
+    }
+
+    function roomOverlapPolicy(candidate, conflict, fallback = {}) {
+        if (String(conflict?.status || '').trim().toLowerCase() === 'cancelled') return 'allow';
+        if (isTakeawayRoom(candidate?.room) || isTakeawayRoom(conflict?.room)) return 'allow';
+        const candidateMeta = banquetConflictMetadata(candidate, fallback);
+        const conflictMeta = banquetConflictMetadata(conflict);
+        if (candidateMeta.groupId && conflictMeta.groupId && candidateMeta.groupId !== conflictMeta.groupId) return 'block';
+        if (candidateMeta.groupId && conflictMeta.groupId) {
+            if (!candidateMeta.role || !conflictMeta.role) return 'defer';
+            const candidateActivity = candidateMeta.role === 'activity';
+            const conflictActivity = conflictMeta.role === 'activity';
+            const candidateOperational = isOperationalBanquetRole(candidateMeta, candidate);
+            const conflictOperational = isOperationalBanquetRole(conflictMeta, conflict);
+            return (candidateActivity && conflictOperational) || (candidateOperational && conflictActivity)
+                ? 'allow'
+                : 'block';
+        }
+        if (candidateMeta.potentialBanquet || conflictMeta.potentialBanquet) return 'defer';
+        return 'block';
+    }
+
     function uniqueBookings(bookings) {
         const seen = new Set();
         const result = [];
@@ -131,6 +236,11 @@
         const targetRoom = input.targetRoom ?? state.newRoom ?? state.targetRoom ?? startRoom;
         const roomChanged = assignmentMode === 'room' && !sameLine(startRoom, targetRoom);
         const draggedIsMain = sameId(actorId, mainId);
+        const actorMetadata = banquetConflictMetadata(draggedBooking, {
+            banquetGroupId: input.banquetGroupId,
+            bookingRole: input.bookingRole,
+            sourceBookingId: input.sourceBookingId
+        });
 
         const candidates = groupBookings.map(booking => {
             const isMain = sameId(booking.id, mainId);
@@ -187,6 +297,9 @@
             startRoom,
             targetRoom,
             roomChanged,
+            banquetGroupId: actorMetadata.groupId,
+            bookingRole: actorMetadata.role,
+            sourceBookingId: actorMetadata.sourceBookingId || actorId,
             candidates,
             mainCandidate,
             linkedCandidates
@@ -417,6 +530,12 @@
         const mainId = idOf(mainBooking?.id);
         const newDuration = parseInt(input.newDuration, 10);
         const groupBookings = uniqueBookings([mainBooking, ...group.groupBookings]);
+        const assignmentMode = String(input.assignmentMode || 'line') === 'room' ? 'room' : 'line';
+        const actorMetadata = banquetConflictMetadata(booking, {
+            banquetGroupId: input.banquetGroupId,
+            bookingRole: input.bookingRole,
+            sourceBookingId: input.sourceBookingId
+        });
         const candidates = groupBookings.map(item => ({
             id: item.id,
             isMain: sameId(item.id, mainId),
@@ -437,6 +556,11 @@
             linkedBookings: groupBookings.filter(item => !sameId(item.id, mainId)),
             groupBookingIds: new Set(groupBookings.map(item => idOf(item.id))),
             newDuration,
+            assignmentMode,
+            targetRoom: input.targetRoom ?? booking?.room ?? mainBooking?.room ?? '',
+            banquetGroupId: actorMetadata.groupId,
+            bookingRole: actorMetadata.role,
+            sourceBookingId: actorMetadata.sourceBookingId || idOf(booking?.id),
             candidates,
             mainCandidate: candidates.find(candidate => candidate.isMain) || null,
             linkedCandidates: candidates.filter(candidate => !candidate.isMain)
@@ -490,7 +614,9 @@
         const dayStartMin = Number.isFinite(Number(options.dayStartMin)) ? Number(options.dayStartMin) : null;
         const dayEndMin = Number.isFinite(Number(options.dayEndMin)) ? Number(options.dayEndMin) : null;
 
-        for (const candidate of intent.candidates || []) {
+        let deferredToServer = false;
+        const candidates = intent.candidates || [];
+        for (const candidate of candidates) {
             const start = timeToMinutesValue(candidate.next.time);
             const end = start + (parseInt(candidate.next.duration, 10) || 0);
 
@@ -505,14 +631,23 @@
 
             const blocker = (allBookings || []).find(other => {
                 if (!other || excludeIds.has(idOf(other.id))) return false;
-                if (other.status === 'cancelled') return false;
+                if (String(other.status || '').trim().toLowerCase() === 'cancelled') return false;
                 if (intent.assignmentMode === 'room') {
+                    if (isTakeawayRoom(candidate.next.room) || isTakeawayRoom(other.room)) return false;
                     if (!sameLine(other.room, candidate.next.room)) return false;
                 } else if (!sameLine(other.lineId, candidate.next.lineId)) return false;
                 if (candidate.next.date && other.date && String(other.date) !== String(candidate.next.date)) return false;
                 const otherStart = timeToMinutesValue(other.time);
                 const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
-                return start < otherEnd && end > otherStart;
+                if (!(start < otherEnd && end > otherStart)) return false;
+                if (intent.assignmentMode !== 'room') return true;
+                const policy = roomOverlapPolicy(candidate.next, other, {
+                    banquetGroupId: candidate.isDragged ? intent.banquetGroupId : '',
+                    bookingRole: candidate.isDragged ? intent.bookingRole : '',
+                    sourceBookingId: candidate.isDragged ? intent.sourceBookingId : candidate.id
+                });
+                if (policy === 'defer') deferredToServer = true;
+                return policy === 'block';
             });
 
             if (blocker) {
@@ -526,6 +661,32 @@
             }
         }
 
+        for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
+            for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
+                const left = candidates[leftIndex];
+                const right = candidates[rightIndex];
+                if (left.next.date && right.next.date && String(left.next.date) !== String(right.next.date)) continue;
+                if (intent.assignmentMode === 'room') {
+                    if (isTakeawayRoom(left.next.room) || isTakeawayRoom(right.next.room)) continue;
+                    if (!sameLine(left.next.room, right.next.room)) continue;
+                } else if (!sameLine(left.next.lineId, right.next.lineId)) continue;
+                const leftStart = timeToMinutesValue(left.next.time);
+                const leftEnd = leftStart + (parseInt(left.next.duration, 10) || 0);
+                const rightStart = timeToMinutesValue(right.next.time);
+                const rightEnd = rightStart + (parseInt(right.next.duration, 10) || 0);
+                if (!(leftStart < rightEnd && leftEnd > rightStart)) continue;
+                if (intent.assignmentMode === 'room') {
+                    const policy = roomOverlapPolicy(left.next, right.next);
+                    if (policy === 'allow') continue;
+                    if (policy === 'defer') {
+                        deferredToServer = true;
+                        continue;
+                    }
+                }
+                return { valid: false, type: 'overlap', candidate: left, conflictBooking: right.next, error: 'overlap' };
+            }
+        }
+
         let pauseWarning = null;
         const minPause = Number(options.minPause || 0);
         if (minPause > 0 && intent.mainCandidate) {
@@ -534,8 +695,9 @@
             const end = start + (parseInt(candidate.next.duration, 10) || 0);
             pauseWarning = (allBookings || []).find(other => {
                 if (!other || excludeIds.has(idOf(other.id))) return false;
-                if (other.status === 'cancelled') return false;
+                if (String(other.status || '').trim().toLowerCase() === 'cancelled') return false;
                 if (intent.assignmentMode === 'room') {
+                    if (isTakeawayRoom(candidate.next.room) || isTakeawayRoom(other.room)) return false;
                     if (!sameLine(other.room, candidate.next.room)) return false;
                 } else if (!sameLine(other.lineId, candidate.next.lineId)) return false;
                 const otherStart = timeToMinutesValue(other.time);
@@ -545,7 +707,7 @@
             }) || null;
         }
 
-        return { valid: true, pauseWarning };
+        return { valid: true, pauseWarning, deferredToServer };
     }
 
     return {
@@ -563,6 +725,8 @@
         buildResizeAtomicPayload,
         buildResizeUndoSnapshot,
         buildResizeUndoAtomicPayload,
-        evaluateTimelineCandidateConflicts
+        evaluateTimelineCandidateConflicts,
+        banquetConflictMetadata,
+        roomOverlapPolicy
     };
 });

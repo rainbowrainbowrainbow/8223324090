@@ -55,7 +55,7 @@ test('timeline create API calls include the current timeline view without droppi
     const createBookingBlock = apiCode.slice(createBookingStart, createFullStart);
     const createFullBlock = apiCode.slice(createFullStart, createFullEnd);
 
-    assert.match(apiCode, /function timelineApiUrlWithView\(url, options = \{\}\)[\s\S]*let path = timelineApiUrl\(url\)/);
+    assert.match(apiCode, /function timelineApiUrlWithView\(url, options = \{\}\)[\s\S]*let path = timelineApiUrl\(url, options\)/);
     assert.match(apiCode, /window\.TimelineView\?\.current\?\.\(\)/);
     assert.match(createBookingBlock, /async function apiCreateBooking\(booking, options = \{\}\)/);
     assert.match(createBookingBlock, /timelineApiUrlWithView\('\/bookings', options\)/);

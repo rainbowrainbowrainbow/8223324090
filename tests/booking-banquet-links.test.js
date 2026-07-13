@@ -265,14 +265,14 @@ function makeDb(rows, links = [], options = {}) {
                 });
             return { rows, rowCount: rows.length };
         }
-        if (/SELECT group_id\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(sql)) {
+        if (/SELECT group_id(?:, role)?\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(sql)) {
             const [bookingId, businessContext] = params;
             const rows = state.banquetMemberships
                 .filter(item =>
                     item.booking_id === bookingId &&
                     normalizeContext(item.business_context) === normalizeContext(businessContext)
                 )
-                .map(item => ({ group_id: item.group_id }));
+                .map(item => ({ group_id: item.group_id, role: item.role }));
             return { rows, rowCount: rows.length };
         }
         if (/FROM bookings b\s+(?:LEFT JOIN[\s\S]+?\s+)?WHERE b\.date = \$1/i.test(sql)) {
@@ -692,6 +692,13 @@ function makeDb(rows, links = [], options = {}) {
                 );
             return { rows: rows.slice(0, 1).map(row => ({ ...row })), rowCount: rows.length ? 1 : 0 };
         }
+        if (/FROM timeline_resources/i.test(sql)) {
+            const rows = [
+                { id: 1, business_context: 'event_genix', resource_id: 'room-a', type: 'room', name: 'Room A', short_name: 'Room A', color: '#6366F1', capacity: null, equipment: [], metadata: {}, is_active: true, sort_order: 10 },
+                { id: 2, business_context: 'event_genix', resource_id: 'room-b', type: 'room', name: 'Room B', short_name: 'Room B', color: '#8B5CF6', capacity: null, equipment: [], metadata: {}, is_active: true, sort_order: 20 }
+            ];
+            return { rows, rowCount: rows.length };
+        }
         throw new Error(`Unexpected banquet-link query: ${sql}`);
     }
 
@@ -732,7 +739,7 @@ async function withApp(rows, links, fn, options = {}) {
     });
     installMock('../services/telegram', { notifyTelegram: async () => null });
     installMock('../services/bookingAutomation', { processBookingAutomation: async () => null });
-    installMock('../services/websocket', { broadcast: () => null });
+    installMock('../services/websocket', { broadcastBookingEvent: () => null });
     installMock('../services/eventBus', { publish: () => null });
     installMock('../routes/dashboard', { triggerAlertBroadcast: () => null });
 
@@ -1074,7 +1081,11 @@ test('GET bookings returns canonical animator timelineProjection for activity, k
             displaySurface: 'booking_block',
             hiddenReason: null,
             businessContext: 'event_genix',
-            date: '2099-06-01'
+            date: '2099-06-01',
+            legacyRoomName: null,
+            roomResourceStatus: null,
+            diagnosticReason: null,
+            assignmentAllowed: true
         });
 
         const kitchen = data.find(item => item.id === 'BK-KITCHEN-FIRST');
@@ -1136,10 +1147,10 @@ test('GET bookings room view projects activity and kitchen rows through the same
         assert.equal(data.filter(item => item.id === 'BK-KITCHEN-FIRST').length, 1);
 
         const activity = data.find(item => item.id === 'BK-ACTIVITY-FIRST');
-        assert.equal(activity.resourceId, 'Room A');
+        assert.equal(activity.resourceId, 'room-a');
         assert.equal(activity.resourceType, 'room');
         assert.equal(activity.timelineProjection.timelineView, 'rooms');
-        assert.equal(activity.timelineProjection.resourceId, 'Room A');
+        assert.equal(activity.timelineProjection.resourceId, 'room-a');
         assert.equal(activity.timelineProjection.resourceType, 'room');
         assert.equal(activity.timelineProjection.lineId, 'line-rock');
         assert.equal(activity.timelineProjection.visibleInAnimatorTimeline, true);
@@ -1148,10 +1159,10 @@ test('GET bookings room view projects activity and kitchen rows through the same
         assert.equal(activity.timelineProjection.hiddenReason, null);
 
         const kitchen = data.find(item => item.id === 'BK-KITCHEN-FIRST');
-        assert.equal(kitchen.resourceId, 'Room A');
+        assert.equal(kitchen.resourceId, 'room-a');
         assert.equal(kitchen.resourceType, 'room');
         assert.equal(kitchen.timelineProjection.timelineView, 'rooms');
-        assert.equal(kitchen.timelineProjection.resourceId, 'Room A');
+        assert.equal(kitchen.timelineProjection.resourceId, 'room-a');
         assert.equal(kitchen.timelineProjection.resourceType, 'room');
         assert.equal(kitchen.timelineProjection.lineId, 'banquet-service');
         assert.equal(kitchen.timelineProjection.visibleInAnimatorTimeline, false);
@@ -1512,24 +1523,24 @@ test('POST banquet source member-booking exposes final activity-first timeline p
         assert.equal(roomRows.filter(item => item.id === 'BK-ACTIVITY-FIRST').length, 1);
         assert.equal(roomRows.filter(item => item.id === data.booking.id).length, 1);
         const roomActivity = timelineBooking(roomRows, 'BK-ACTIVITY-FIRST');
-        assert.equal(roomActivity.resourceId, 'Room A');
+        assert.equal(roomActivity.resourceId, 'room-a');
         assert.equal(roomActivity.resourceType, 'room');
         assertTimelineProjection(roomActivity, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'booking_block',
             hiddenReason: null,
             visibleInAnimatorTimeline: true,
             visibleInRoomTimeline: true
         });
         const roomKitchen = timelineBooking(roomRows, data.booking.id);
-        assert.equal(roomKitchen.resourceId, 'Room A');
+        assert.equal(roomKitchen.resourceId, 'room-a');
         assert.equal(roomKitchen.resourceType, 'room');
         assertTimelineProjection(roomKitchen, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'service_marker',
             hiddenReason: null,
             visibleInAnimatorTimeline: false,
@@ -1781,7 +1792,7 @@ test('POST banquet source activity-booking exposes final kitchen-first timeline 
         assertTimelineProjection(roomKitchen, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'service_marker',
             hiddenReason: null,
             visibleInAnimatorTimeline: false,
@@ -1791,7 +1802,7 @@ test('POST banquet source activity-booking exposes final kitchen-first timeline 
         assertTimelineProjection(roomActivity, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'booking_block',
             hiddenReason: null,
             visibleInAnimatorTimeline: true,
@@ -3193,7 +3204,7 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
         assertTimelineProjection(kitchen, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'service_marker',
             hiddenReason: null
         });
@@ -3276,7 +3287,7 @@ test('DELETE booking removes cancelled kitchen marker while keeping source banqu
         assertTimelineProjection(roomActivity, {
             timelineView: 'rooms',
             resourceType: 'room',
-            resourceId: 'Room A',
+            resourceId: 'room-a',
             displaySurface: 'booking_block',
             hiddenReason: null
         });

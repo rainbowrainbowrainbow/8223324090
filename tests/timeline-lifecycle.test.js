@@ -309,6 +309,25 @@ test('timelineView deep link is bootstrap-only and user switches replace the URL
     assert.equal(new URL(window.location.href).searchParams.get('timelineView'), 'rooms');
 });
 
+test('timelineView deep link survives delayed business-context bootstrap', () => {
+    let ready = false;
+    const context = {
+        current: () => ready ? ({ apiValue: 'event_genix', key: 'event_genix' }) : null,
+        state: () => ready ? ({ activeBusinessContext: 'event_genix' }) : ({}),
+        presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
+        storageKey: name => `${ready ? 'ready' : 'early'}_${name}`
+    };
+    const { api } = createHarness({
+        url: 'http://localhost/?timelineView=animators',
+        timelineContext: context,
+        initialStorage: { ready_timeline_view: 'rooms' }
+    });
+
+    assert.equal(api.timelineCurrentView(), 'animators');
+    ready = true;
+    assert.equal(api.timelineCurrentView(), 'animators');
+});
+
 test('unknown timelineView behaves like an absent parameter and preserves stored choice', () => {
     const context = parkTimelineContext('unknown');
     const { api } = createHarness({

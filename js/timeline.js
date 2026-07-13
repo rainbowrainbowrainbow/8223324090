@@ -507,14 +507,15 @@ function defaultTimelineViewMode() {
 
 function timelineCurrentView() {
     const storageKey = timelineViewStorageKey();
-    if (_timelineViewRuntime?.storageKey === storageKey) {
+    const contextReady = timelineViewBusinessContextReady();
+    if (_timelineViewRuntime?.storageKey === storageKey && (!_timelineViewUrlBootstrapPending || !contextReady)) {
         if (_timelineViewRuntime.view === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) {
             _timelineViewRuntime = { storageKey, view: TIMELINE_VIEW_ANIMATORS };
         }
         return _timelineViewRuntime.view;
     }
     const urlView = _timelineViewUrlBootstrapPending ? timelineViewFromUrl() : null;
-    _timelineViewUrlBootstrapPending = false;
+    if (contextReady) _timelineViewUrlBootstrapPending = false;
     const storedRaw = localStorage.getItem(timelineViewStorageKey());
     const storedView = storedRaw ? normalizeStoredTimelineViewMode(storedRaw) : null;
     const defaultView = defaultTimelineViewMode();
@@ -527,6 +528,10 @@ function timelineCurrentView() {
         : requested;
     _timelineViewRuntime = { storageKey, view: resolved };
     return resolved;
+}
+
+function timelineViewBusinessContextReady() {
+    return Boolean(window.TimelineBusinessContext?.state?.()?.activeBusinessContext);
 }
 
 function syncTimelineViewInUrl(view) {
@@ -696,6 +701,7 @@ async function setTimelineView(view, options = {}) {
     const next = normalizeTimelineViewMode(view);
     if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
     const current = timelineCurrentView();
+    _timelineViewUrlBootstrapPending = false;
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
     _timelineViewRuntime = { storageKey: timelineViewStorageKey(), view: next };
     syncTimelineViewInUrl(next);

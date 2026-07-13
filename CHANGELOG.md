@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.6 - Надійний deep link таймлайну
+
+### Timeline / Reliability / (13.07.2026) [codex]
+- **Виправлено bootstrap із URL** — `?timelineView=animators` більше не губиться, якщо business context завершує ініціалізацію після першого читання timeline state.
+- **Live regression** — доданий behavioral test для delayed business-context bootstrap, знайденого під час production QA.
+
+---
+
 ## v0.79.5 - Захищений і стабільний таймлайн
 
 ### Timeline / Security / Reliability / (13.07.2026) [codex]

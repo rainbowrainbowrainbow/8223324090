@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.2",
+  "version": "0.79.3",
   "eventGenix": {
-    "releaseLabel": "Безпечний запуск CRM без pre-auth запитів"
+    "releaseLabel": "Multi-profession staff schedule"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

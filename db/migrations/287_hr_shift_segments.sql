@@ -7,10 +7,10 @@
 -- hr_shifts envelope in the same transaction. This migration only backfills rows
 -- present while the lock below is held; it intentionally adds no DB trigger.
 
--- Keep the preflight and backfill stable against concurrent staff, HR-shift, and
--- schedule writes. The order matches the runtime lock hierarchy. The migration
--- runner already wraps this file in one transaction.
-LOCK TABLE staff, hr_shifts, staff_schedule IN SHARE ROW EXCLUSIVE MODE;
+-- Keep the preflight and backfill stable against concurrent HR-shift writes.
+-- staff_schedule-only rows are intentionally outside this migration's scope.
+-- The migration runner already wraps this file in one transaction.
+LOCK TABLE hr_shifts IN SHARE ROW EXCLUSIVE MODE;
 
 DO $$
 DECLARE
@@ -21,8 +21,6 @@ DECLARE
     negative_break_count BIGINT;
     oversized_break_count BIGINT;
     non_minute_time_count BIGINT;
-    noncanonical_schedule_profession_count BIGINT;
-    unassigned_schedule_profession_count BIGINT;
 BEGIN
     SELECT
         COUNT(*) FILTER (
@@ -71,70 +69,6 @@ BEGIN
         non_minute_time_count
     FROM hr_shifts;
 
-    WITH eligible_schedule_rows AS (
-        SELECT COALESCE(
-                   NULLIF(BTRIM(ss.profession_key), ''),
-                   NULLIF(BTRIM(s.role_type), '')
-               ) AS profession_key,
-               s.role_type,
-               COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
-        FROM staff_schedule ss
-        JOIN staff s ON s.id = ss.staff_id
-        LEFT JOIN hr_shifts hs
-          ON hs.staff_id = ss.staff_id
-         AND hs.shift_date::text = LEFT(ss.date::text, 10)
-        WHERE ss.status IN ('working', 'remote')
-          AND LEFT(ss.date::text, 10) ~ '^\d{4}-\d{2}-\d{2}$'
-          AND LEFT(ss.shift_start::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-          AND LEFT(ss.shift_end::text, 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-          AND LEFT(ss.shift_start::text, 5) <> LEFT(ss.shift_end::text, 5)
-          AND COALESCE(
-                  NULLIF(BTRIM(ss.profession_key), ''),
-                  NULLIF(BTRIM(s.role_type), '')
-              ) IS NOT NULL
-          AND s.is_active = true
-          AND COALESCE(s.hr_pool_status, 'core') = 'core'
-          AND COALESCE(s.is_freelance, false) = false
-          AND (
-              s.termination_date IS NULL
-              OR s.termination_date::date > LEFT(ss.date::text, 10)::date
-          )
-          AND hs.id IS NULL
-    )
-    SELECT
-        COUNT(*) FILTER (
-            WHERE profession_key <> LOWER(BTRIM(profession_key))
-               OR BTRIM(profession_key) !~ '^[a-z0-9_:-]{1,64}$'
-        ),
-        COUNT(*) FILTER (
-            WHERE profession_key <> LOWER(LEFT(
-                      REGEXP_REPLACE(
-                          REGEXP_REPLACE(BTRIM(COALESCE(role_type, '')), '[[:space:]]+', '_', 'g'),
-                          '[^a-zA-Z0-9_:-]',
-                          '',
-                          'g'
-                      ),
-                      64
-                  ))
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM jsonb_array_elements_text(secondary_professions) AS secondary(value)
-                  WHERE profession_key = LOWER(LEFT(
-                            REGEXP_REPLACE(
-                                REGEXP_REPLACE(BTRIM(secondary.value), '[[:space:]]+', '_', 'g'),
-                                '[^a-zA-Z0-9_:-]',
-                                '',
-                                'g'
-                            ),
-                            64
-                        ))
-              )
-        )
-    INTO
-        noncanonical_schedule_profession_count,
-        unassigned_schedule_profession_count
-    FROM eligible_schedule_rows;
-
     IF missing_profession_count > 0 THEN
         RAISE EXCEPTION
             'Migration 287 cannot backfill % hr_shifts rows without profession_key',
@@ -147,20 +81,6 @@ BEGIN
             'Migration 287 cannot backfill % hr_shifts rows with noncanonical profession_key',
             noncanonical_profession_count
             USING HINT = 'Normalize legacy keys to lowercase [a-z0-9_:-] before retrying; the migration will not rewrite business roles implicitly.';
-    END IF;
-
-    IF noncanonical_schedule_profession_count > 0 THEN
-        RAISE EXCEPTION
-            'Migration 287 found % eligible staff_schedule-only rows with noncanonical profession_key',
-            noncanonical_schedule_profession_count
-            USING HINT = 'Normalize the effective schedule profession key before retrying; read-side HR backfill uses strict profession keys.';
-    END IF;
-
-    IF unassigned_schedule_profession_count > 0 THEN
-        RAISE EXCEPTION
-            'Migration 287 found % eligible staff_schedule-only rows whose profession is absent from the staff HR card',
-            unassigned_schedule_profession_count
-            USING HINT = 'Add each effective schedule profession to role_type or secondary_professions before retrying; the migration will not change staff role assignments.';
     END IF;
 
     IF zero_length_count > 0 THEN

@@ -602,6 +602,13 @@ function staffSecondaryProfessions(staff = {}) {
     return normalizeProfessionList(staff.secondary_professions || staff.secondaryProfessions, [staff.role_type]);
 }
 
+function staffProfessionKeys(staff = {}) {
+    return normalizeProfessionList([
+        staff.role_type,
+        ...staffSecondaryProfessions(staff)
+    ]);
+}
+
 function staffHasProfession(staff = {}, key = '') {
     const normalized = normalizeProfessionKey(key);
     if (!normalized) return true;
@@ -1185,6 +1192,141 @@ function renderStaffOnboardingAssignment(staff = {}) {
     </div>`;
 }
 
+let staffOnboardingDialogState = null;
+let staffOnboardingReturnFocus = null;
+
+function onboardingAdmissionLabel(value) {
+    const labels = {
+        pending: 'Допуск очікує',
+        approved: 'Допущено',
+        blocked: 'Допуск заблоковано',
+        rejected: 'Допуск відхилено',
+        suspended: 'Допуск призупинено'
+    };
+    return labels[value] || 'Допуск не задано';
+}
+
+function onboardingInternshipLabel(value) {
+    const labels = {
+        none: 'Без стажування',
+        planned: 'Стажування заплановано',
+        in_progress: 'Стажування триває',
+        completed: 'Стажування завершено',
+        failed: 'Стажування не пройдено'
+    };
+    return labels[value] || 'Стажування не задано';
+}
+
+function staffProfessionChecklistReadiness(staff = {}, professionKey = '') {
+    const entry = staffTrainingReadiness(staff).professions.find(item => normalizeProfessionKey(item.key) === normalizeProfessionKey(professionKey));
+    const checklist = Array.isArray(entry?.checklist) ? entry.checklist : [];
+    const completed = checklist.filter(item => item.completed_at).length;
+    return {
+        completed,
+        total: checklist.length,
+        percent: checklist.length ? Math.round((completed / checklist.length) * 100) : 0
+    };
+}
+
+function renderStaffOnboardingScopeCard(staff, assignment = null, process = null) {
+    const professionKey = normalizeProfessionKey(assignment?.profession_key || process?.profession_key);
+    const isGeneral = !professionKey;
+    const readiness = isGeneral
+        ? {
+            completed: Number(process?.completed_items || 0),
+            total: Number(process?.total_items || 0),
+            percent: Number(process?.percent || 0)
+        }
+        : (process?.readiness || staffProfessionChecklistReadiness(staff, professionKey));
+    const percent = Math.max(0, Math.min(100, Number(readiness.percent || 0)));
+    const responsible = process?.responsible_name || process?.responsible_username || 'Відповідального не призначено';
+    const tasks = process?.task_summary || {};
+    const status = process ? onboardingStatusLabel(process.training_status || process.status) : 'не стартував';
+    const completed = process?.status === 'completed' || process?.training_status === 'completed';
+    const assignmentActive = isGeneral || assignment?.status === 'active';
+    const title = isGeneral
+        ? 'Загальний корпоративний онбординг'
+        : (assignment?.profession_title || process?.profession_title || professionTitle(professionKey));
+    const roleType = isGeneral ? 'Корпоративний setup' : (assignment?.is_primary ? 'Основна професія' : 'Додаткова професія');
+    const actionLabel = completed ? 'Процес завершено' : (process ? 'Змінити відповідального' : (isGeneral ? 'Запустити загальний онбординг' : 'Запустити онбординг професії'));
+    const canAct = assignmentActive && !completed;
+    const professionArg = professionKey ? `'${escapeJsString(professionKey)}'` : "''";
+    return `<article class="hr-onboarding-scope-card ${completed ? 'is-completed' : ''} ${process ? 'is-active' : 'is-empty'}">
+        <div class="hr-onboarding-scope-head">
+            <div>
+                <span class="hr-onboarding-scope-kicker">${escapeHtml(roleType)}</span>
+                <h4>${escapeHtml(title)}</h4>
+            </div>
+            <strong>${percent}%</strong>
+        </div>
+        <div class="hr-onboarding-scope-meta">
+            <span>${escapeHtml(status)}</span>
+            <span>Відповідальний: ${escapeHtml(responsible)}</span>
+            <span>Чекліст: ${Number(readiness.completed || 0)}/${Number(readiness.total || 0)}</span>
+            ${isGeneral ? '' : `<span>${escapeHtml(onboardingInternshipLabel(assignment?.internship_status || process?.internship_status))}</span>
+                <span>${escapeHtml(onboardingAdmissionLabel(assignment?.admission_status || process?.admission_status))}</span>`}
+            <span>Задачі: ${Number(tasks.active || 0)} активні · ${Number(tasks.completed || 0)} виконано</span>
+        </div>
+        <div class="hr-onboarding-scope-meter" role="progressbar" aria-label="${escapeHtml(title)}: ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
+        <button type="button" class="btn-secondary hr-onboarding-scope-action" onclick="editStaffOnboardingScope(${Number(staff.id)}, ${professionArg}, this)" ${canAct ? '' : 'disabled aria-disabled="true"'}>
+            ${escapeHtml(assignmentActive ? actionLabel : 'Професія неактивна')}
+        </button>
+    </article>`;
+}
+
+function closeStaffOnboardingDialog() {
+    document.getElementById('staffOnboardingScopeOverlay')?.remove();
+    const focusTarget = staffOnboardingReturnFocus;
+    staffOnboardingDialogState = null;
+    staffOnboardingReturnFocus = null;
+    if (focusTarget?.isConnected && typeof focusTarget.focus === 'function') focusTarget.focus();
+}
+
+function renderStaffOnboardingDialog() {
+    const root = document.getElementById('staffOnboardingScopeBody');
+    const state = staffOnboardingDialogState;
+    if (!root || !state) return;
+    const { staff, processes, assignments } = state;
+    const professionProcesses = new Map((processes.professions || []).map(item => [normalizeProfessionKey(item.profession_key), item]));
+    root.setAttribute('aria-busy', 'false');
+    root.innerHTML = `
+        <div class="hr-onboarding-scope-explainer" role="note">
+            Корпоративний setup не впливає на професійний допуск. Кожна професія має власний чекліст, відповідального і статус готовності.
+        </div>
+        <div class="hr-onboarding-scope-grid">
+            ${renderStaffOnboardingScopeCard(staff, null, processes.general || processes.history?.[0] || null)}
+            ${assignments.length
+                ? assignments.map(assignment => renderStaffOnboardingScopeCard(staff, assignment, professionProcesses.get(normalizeProfessionKey(assignment.profession_key)) || null)).join('')
+                : '<div class="hr-onboarding-scope-empty">Працівнику ще не призначено жодної професії.</div>'}
+        </div>`;
+}
+
+async function refreshStaffOnboardingDialog(staffId) {
+    const root = document.getElementById('staffOnboardingScopeBody');
+    if (root) {
+        root.setAttribute('aria-busy', 'true');
+        root.innerHTML = '<div class="hr-onboarding-scope-empty">Завантаження процесів онбордингу...</div>';
+    }
+    const [processesResponse, assignmentsResponse] = await Promise.all([
+        hrFetch(`/staff/${staffId}/onboarding-processes`),
+        hrFetch(`/staff/${staffId}/role-assignments`)
+    ]);
+    if (!processesResponse?.success || !assignmentsResponse?.success) {
+        if (root) {
+            root.setAttribute('aria-busy', 'false');
+            root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(processesResponse?.error || assignmentsResponse?.error || 'Не вдалося завантажити онбординг.')}<button type="button" class="btn-secondary" onclick="refreshStaffOnboardingDialog(${Number(staffId)})">Повторити</button></div>`;
+        }
+        return;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId)) || processesResponse.staff || { id: staffId };
+    staffOnboardingDialogState = {
+        staff,
+        processes: processesResponse.data || { general: null, professions: [] },
+        assignments: Array.isArray(assignmentsResponse.data) ? assignmentsResponse.data : []
+    };
+    renderStaffOnboardingDialog();
+}
+
 async function ensureOnboardingResponsibleCandidates(force = false) {
     if (Array.isArray(onboardingResponsibleCandidates) && !force) return onboardingResponsibleCandidates;
     const data = await hrFetch('/onboarding/responsible-candidates');
@@ -1207,47 +1349,80 @@ window.openStaffOnboardingAssignment = async function(staffId) {
         return;
     }
     const id = Number(staffId);
-    const staff = teamStaff.find(item => Number(item.id) === id);
+    const staff = teamStaff.find(item => Number(item.id) === id) || { id, name: 'Працівник' };
+    closeStaffOnboardingDialog();
+    staffOnboardingReturnFocus = document.activeElement;
+    const overlay = document.createElement('div');
+    overlay.id = 'staffOnboardingScopeOverlay';
+    overlay.className = 'candidate-detail-overlay';
+    overlay.innerHTML = `<div class="candidate-detail-modal hr-onboarding-scope-modal" role="dialog" aria-modal="true" aria-labelledby="staffOnboardingScopeTitle">
+        <div class="candidate-detail-head">
+            <div>
+                <div class="candidate-detail-kicker">Онбординг і професійна готовність</div>
+                <h3 id="staffOnboardingScopeTitle">${escapeHtml(staff.name || 'Працівник')}</h3>
+                <p>Незалежні процеси без спільного агрегованого відсотка.</p>
+            </div>
+            <button type="button" class="candidate-detail-close" onclick="closeStaffOnboardingDialog()" aria-label="Закрити">×</button>
+        </div>
+        <div id="staffOnboardingScopeBody" class="hr-onboarding-scope-body" aria-live="polite" aria-busy="true">
+            <div class="hr-onboarding-scope-empty">Завантаження процесів онбордингу...</div>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', event => { if (event.target === overlay) closeStaffOnboardingDialog(); });
+    overlay.addEventListener('keydown', event => { if (event.key === 'Escape') closeStaffOnboardingDialog(); });
+    overlay.querySelector('.candidate-detail-close')?.focus();
     try {
-        const [candidates, current] = await Promise.all([
-            ensureOnboardingResponsibleCandidates(true),
-            hrFetch(`/staff/${id}/onboarding-assignment`)
-        ]);
+        await Promise.all([ensureOnboardingResponsibleCandidates(true), refreshStaffOnboardingDialog(id)]);
+    } catch (error) {
+        console.error('Onboarding dialog error', error);
+        const root = document.getElementById('staffOnboardingScopeBody');
+        if (root) root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(error.message || 'Не вдалося завантажити онбординг.')}</div>`;
+    }
+};
+
+window.closeStaffOnboardingDialog = closeStaffOnboardingDialog;
+window.refreshStaffOnboardingDialog = refreshStaffOnboardingDialog;
+
+window.editStaffOnboardingScope = async function(staffId, professionKey = '', button = null) {
+    const state = staffOnboardingDialogState;
+    const key = normalizeProfessionKey(professionKey);
+    const process = key
+        ? state?.processes?.professions?.find(item => normalizeProfessionKey(item.profession_key) === key)
+        : (state?.processes?.general || state?.processes?.history?.[0] || null);
+    if (button) button.disabled = true;
+    try {
+        const candidates = await ensureOnboardingResponsibleCandidates();
         if (!candidates.length) {
             showNotification('Немає активних користувачів, яких можна призначити відповідальними', 'warning');
             return;
         }
-        const assignment = current?.data || staffOnboardingAssignment(staff) || {};
-        const options = responsibleCandidateOptions(assignment.responsible_user_id || assignment.responsibleUserId || candidates[0]?.id);
-        const result = await formModal(`Відповідальний за onboarding${staff?.name ? ` · ${staff.name}` : ''}`, [
-            {
-                key: 'responsibleUserId',
-                label: 'Відповідальний',
-                type: 'select',
-                options,
-                defaultValue: String(assignment.responsible_user_id || assignment.responsibleUserId || candidates[0]?.id || ''),
-                required: true,
-                hint: 'CRM створить або оновить задачі навчання для цього відповідального без дублів.'
-            }
-        ], { icon: '🎯', okText: 'Зберегти', type: 'info' });
+        const currentId = process?.responsible_user_id || candidates[0]?.id;
+        const result = await formModal(`${process ? 'Відповідальний' : 'Запустити онбординг'} · ${key ? professionTitle(key) : 'корпоративний setup'}`, [{
+            key: 'responsibleUserId',
+            label: 'Відповідальний',
+            type: 'select',
+            options: responsibleCandidateOptions(currentId),
+            defaultValue: String(currentId || ''),
+            required: true,
+            hint: 'Повторне збереження синхронізує той самий процес і не створить дубль.'
+        }], { icon: key ? '🎓' : '🎯', okText: process ? 'Зберегти' : 'Запустити', type: 'info' });
         if (!result) return;
-        const ownerId = Number(result.responsibleUserId);
-        if (!Number.isInteger(ownerId) || ownerId <= 0) {
-            showNotification('Оберіть відповідального', 'error');
-            return;
-        }
-        const saved = await hrFetch(`/staff/${id}/onboarding-assignment`, 'PUT', { responsible_user_id: ownerId });
+        const payload = { responsible_user_id: Number(result.responsibleUserId) };
+        if (key) payload.profession_key = key;
+        const saved = await hrFetch(`/staff/${Number(staffId)}/onboarding-assignment`, 'PUT', payload);
         if (!saved?.success) {
-            showNotification(saved?.error || 'Не вдалося призначити відповідального', 'error');
+            showNotification(saved?.error || 'Не вдалося запустити онбординг', 'error');
             return;
         }
-        showNotification(saved.action === 'reassigned' ? 'Відповідального оновлено' : 'Відповідального призначено', 'success');
-        await loadTeam();
-        const onboardingPanel = document.getElementById('onboardingList');
-        if (onboardingPanel) loadOnboarding();
+        showNotification(saved.action === 'reassigned' ? 'Відповідального оновлено' : 'Онбординг синхронізовано', 'success');
+        await Promise.all([loadTeam(), refreshStaffOnboardingDialog(staffId)]);
+        if (document.getElementById('onboardingList')) loadOnboarding();
     } catch (error) {
-        console.error('Onboarding assignment error', error);
-        showNotification(error.message || 'Не вдалося оновити відповідального', 'error');
+        console.error('Scoped onboarding assignment error', error);
+        showNotification(error.message || 'Не вдалося оновити онбординг', 'error');
+    } finally {
+        if (button?.isConnected) button.disabled = false;
     }
 };
 
@@ -10300,58 +10475,103 @@ function renderKpi({ rows = [], sources = {} }) {
 // ==========================================
 
 async function loadOnboarding() {
+    const el = document.getElementById('onboardingList');
+    if (el) {
+        el.setAttribute('aria-busy', 'true');
+        el.innerHTML = '<div class="hr-onboarding-empty">Завантаження процесів онбордингу...</div>';
+    }
     const data = await hrFetch('/onboarding');
-    if (!data || !data.success) return;
+    if (!data?.success) {
+        if (el) {
+            el.setAttribute('aria-busy', 'false');
+            el.innerHTML = `<div class="hr-onboarding-empty is-error" role="alert">${escapeHtml(data?.error || 'Не вдалося завантажити онбординг.')}<button type="button" class="btn-secondary" onclick="loadOnboarding()">Повторити</button></div>`;
+        }
+        return;
+    }
     renderOnboarding(data.data);
+}
+
+function renderOnboardingProcessCard(process = {}) {
+    const professionKey = normalizeProfessionKey(process.profession_key);
+    const isGeneral = !professionKey;
+    const items = Array.isArray(process.items) ? process.items : [];
+    const total = Number(process.total_items || items.length || 0);
+    const completed = Number(process.completed_items || items.filter(item => item?.done).length || 0);
+    const percent = total ? Math.round((completed / total) * 100) : 0;
+    const status = onboardingStatusLabel(process.training_status || process.status);
+    const responsible = process.responsible_name || process.responsible_username || 'відповідального не призначено';
+    const tasks = process.task_summary || {};
+    const title = isGeneral ? 'Загальний корпоративний онбординг' : (process.profession_title || professionTitle(professionKey));
+    const scopeLabel = isGeneral ? 'Корпоративний setup' : (process.is_primary ? 'Основна професія' : 'Додаткова професія');
+    return `<article class="hr-onboarding-process-card ${process.status === 'completed' ? 'is-completed' : ''}">
+        <div class="hr-onboarding-process-head">
+            <div><span>${escapeHtml(scopeLabel)}</span><h4>${escapeHtml(title)}</h4></div>
+            <strong>${percent}%</strong>
+        </div>
+        <div class="hr-onboarding-process-meta">
+            <span>${escapeHtml(status)}</span>
+            <span>Відповідальний: ${escapeHtml(responsible)}</span>
+            <span>Чекліст: ${completed}/${total}</span>
+            ${isGeneral ? '' : `<span>${escapeHtml(onboardingInternshipLabel(process.internship_status))}</span><span>${escapeHtml(onboardingAdmissionLabel(process.admission_status))}</span>`}
+            <span>Задачі: ${Number(tasks.active || 0)} активні · ${Number(tasks.completed || 0)} виконано</span>
+        </div>
+        <div class="hr-onboarding-process-meter" role="progressbar" aria-label="${escapeHtml(title)}: ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
+        <div class="hr-onboarding-process-checklist">
+            ${items.length ? items.map((item, index) => {
+                const done = Boolean(item?.done || item?.completed_at);
+                const itemId = Number(item?.id || index + 1);
+                const handler = isGeneral
+                    ? `toggleOnboardingItem(${Number(process.id)}, ${itemId}, this.checked, this)`
+                    : `toggleProfessionOnboardingItem(${Number(process.staff_id)}, '${escapeJsString(professionKey)}', '${escapeJsString(item.checklist_key || item.key)}', '${escapeJsString(item.title || 'Пункт чекліста')}', this.checked, this)`;
+                return `<label class="hr-onboarding-process-check ${done ? 'is-done' : ''}"><input type="checkbox" ${done ? 'checked' : ''} onchange="${handler}"><span>${escapeHtml(item.title || 'Пункт чекліста')}</span></label>`;
+            }).join('') : '<div class="hr-onboarding-process-empty">Чекліст ще не налаштовано.</div>'}
+        </div>
+    </article>`;
 }
 
 function renderOnboarding(list) {
     const el = document.getElementById('onboardingList');
-    if (!list.length) {
-        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає активних онбордингів</div>';
+    if (!el) return;
+    el.setAttribute('aria-busy', 'false');
+    if (!Array.isArray(list) || !list.length) {
+        el.innerHTML = '<div class="hr-onboarding-empty">Процесів онбордингу поки немає. Загальний setup і професійні допуски запускаються окремо.</div>';
         return;
     }
-
-    el.innerHTML = list.map(o => {
-        const pct = o.total_items > 0 ? Math.round(o.completed_items / o.total_items * 100) : 0;
-        const items = o.items || [];
-        const status = onboardingStatusLabel(o.training_status || o.status);
-        const responsible = o.responsible_name || o.responsible_username || 'відповідального не призначено';
-        const totalTasks = Number(o.generated_task_count || o.task_summary?.total || 0);
-        const activeTasks = Number(o.active_task_count || o.task_summary?.active || 0);
-        const completedTasks = Number(o.completed_task_count || o.task_summary?.completed || 0);
-        return `
-        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;">
-                <div>
-                    <strong>${escapeHtml(o.staff_name)}</strong>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px;color:var(--gray-500);font-weight:800;">
-                        <span>${escapeHtml(o.template_name || 'Онбординг')}</span>
-                        <span>Відповідальний: ${escapeHtml(responsible)}</span>
-                        <span>${escapeHtml(status)}</span>
-                        <span>Задачі: ${activeTasks}/${totalTasks} активні · ${completedTasks} виконано</span>
-                    </div>
-                </div>
-                <span style="font-weight:800;color:${pct === 100 ? '#10B981' : '#6366F1'};">${pct}%</span>
-            </div>
-            <div style="background:var(--gray-100);border-radius:99px;height:6px;margin-bottom:12px;overflow:hidden;">
-                <div style="background:${pct === 100 ? '#10B981' : '#6366F1'};height:100%;width:${pct}%;border-radius:99px;transition:width 0.3s;"></div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px;">
-                ${items.map(it => `
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;${it.done ? 'color:var(--gray-400);text-decoration:line-through;' : ''}">
-                        <input type="checkbox" ${it.done ? 'checked' : ''} onchange="toggleOnboardingItem(${o.id}, ${it.id}, this.checked)" style="width:16px;height:16px;">
-                        <span>${escapeHtml(it.title)}</span>
-                    </label>
-                `).join('')}
-            </div>
-        </div>`;
-    }).join('');
+    const groups = new Map();
+    list.forEach(process => {
+        const key = String(process.staff_id || process.staff_name || 'unknown');
+        if (!groups.has(key)) groups.set(key, { name: process.staff_name || 'Працівник', processes: [] });
+        groups.get(key).processes.push(process);
+    });
+    el.innerHTML = Array.from(groups.values()).map(group => `<section class="hr-onboarding-staff-group">
+        <div class="hr-onboarding-staff-head"><h3>${escapeHtml(group.name)}</h3><span>${group.processes.length} окремих процесів</span></div>
+        <div class="hr-onboarding-process-grid">${group.processes.map(renderOnboardingProcessCard).join('')}</div>
+    </section>`).join('');
 }
 
-window.toggleOnboardingItem = async function(progressId, itemId, done) {
+window.toggleOnboardingItem = async function(progressId, itemId, done, input = null) {
+    if (input) input.disabled = true;
     const data = await hrFetch(`/onboarding/${progressId}/check`, 'PUT', { item_id: itemId, done });
-    if (data?.success) loadOnboarding();
+    if (data?.success) await loadOnboarding();
+    else {
+        if (input) input.checked = !done;
+        showNotification(data?.error || 'Не вдалося оновити корпоративний чекліст', 'error');
+    }
+    if (input?.isConnected) input.disabled = false;
+};
+
+window.toggleProfessionOnboardingItem = async function(staffId, professionKey, checklistKey, title, completed, input = null) {
+    if (input) input.disabled = true;
+    const data = await hrFetch(`/staff/${staffId}/profession-checklist`, {
+        method: 'PUT',
+        body: JSON.stringify({ profession_key: professionKey, checklist_key: checklistKey, title, completed })
+    });
+    if (data?.success) await Promise.all([loadOnboarding(), loadTeam()]);
+    else {
+        if (input) input.checked = !completed;
+        showNotification(data?.error || 'Не вдалося оновити професійний чекліст', 'error');
+    }
+    if (input?.isConnected) input.disabled = false;
 };
 
 window.showStartOnboarding = async function() {
@@ -10362,24 +10582,50 @@ window.showStartOnboarding = async function() {
     ]);
     if (!staff?.success || !templates?.success) return;
     onboardingResponsibleCandidates = Array.isArray(candidates?.data) ? candidates.data : [];
-    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const staffRows = staff.data || [];
+    const staffOptions = staffRows.map(s => ({ value: String(s.id), label: `${s.name}` }));
     const templateOptions = templates.data.map(t => ({ value: String(t.id), label: `${t.name}` }));
     const responsibleOptions = responsibleCandidateOptions(onboardingResponsibleCandidates[0]?.id);
     if (!responsibleOptions.length) {
         showNotification('Немає активних користувачів для призначення відповідального', 'warning');
         return;
     }
-    const result = await formModal('Запустити онбординг', [
+    const result = await formModal('Запустити окремий процес онбордингу', [
+        { key: 'scope', label: 'Тип процесу', type: 'select', options: [
+            { value: 'general', label: 'Загальний корпоративний онбординг' },
+            { value: 'profession', label: 'Онбординг конкретної професії' }
+        ], required: true },
         { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
-        { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true },
+        {
+            key: 'professionKey',
+            label: 'Призначена професія',
+            type: 'select',
+            options: [],
+            dependsOn: 'staffId',
+            optionsFor: staffId => {
+                const person = staffRows.find(item => String(item.id) === String(staffId));
+                return staffProfessionKeys(person || {}).map(key => ({ value: key, label: professionTitle(key) }));
+            },
+            visibleWhen: values => values.scope === 'profession',
+            required: true,
+            hint: 'У списку доступні тільки професії, вже призначені цьому працівнику.'
+        },
+        { key: 'templateId', label: 'Корпоративний шаблон', type: 'select', options: templateOptions, visibleWhen: values => values.scope === 'general', required: true },
         { key: 'responsibleUserId', label: 'Відповідальний', type: 'select', options: responsibleOptions, required: true }
-    ], { icon: '🚀' });
-    if (!result) return;
-    const data = await hrFetch('/onboarding/start', 'POST', {
-        staff_id: parseInt(result.staffId),
-        template_id: parseInt(result.templateId),
-        responsible_user_id: parseInt(result.responsibleUserId)
+    ], {
+        icon: '🚀',
+        validate: values => values.scope === 'profession' && !values.professionKey
+            ? { key: 'professionKey', message: 'Для професійного онбордингу виберіть призначену професію.' }
+            : null
     });
+    if (!result) return;
+    const payload = {
+        staff_id: parseInt(result.staffId),
+        responsible_user_id: parseInt(result.responsibleUserId)
+    };
+    if (result.scope === 'profession') payload.profession_key = normalizeProfessionKey(result.professionKey);
+    else payload.template_id = parseInt(result.templateId);
+    const data = await hrFetch('/onboarding/start', 'POST', payload);
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
 
@@ -10686,7 +10932,7 @@ function renderInterviewResults() {
             <div class="kc-actions">
                 <button type="button" class="kc-btn" onclick="openCandidateDetail(${candidate.id})">Картка</button>
                 <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'offer')">Оффер</button>
-                <button type="button" class="kc-btn success" onclick="hireCandidate(${candidate.id})">Найняти</button>
+                <button type="button" class="kc-btn success" onclick="hireCandidate(${candidate.id}, this)">Найняти</button>
                 <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>
             </div>
         </article>
@@ -10778,6 +11024,7 @@ async function loadVacancies() {
             </div>
             <div class="vac-title">${escapeHtml(v.title)}</div>
             <div class="vac-role">${ROLE_LABELS[v.role_type] || v.role_type}</div>
+            ${v.target_hires ? `<div class="vac-meta">Найнято ${Number(v.hired_count || 0)} із ${Number(v.target_hires)}</div>` : '<div class="vac-meta">Headcount не задано · закриття вручну</div>'}
             ${v.schedule ? `<div class="vac-meta">🕐 ${escapeHtml(v.schedule)}</div>` : ''}
             ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
             ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
@@ -10841,7 +11088,7 @@ async function refreshCandidates() {
                         <div class="kc-actions">
                             <button type="button" class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
                             ${s !== 'offer' ? `<button type="button" class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
-                            ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id})">Найняти</button>` : ''}
+                            ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id}, this)">Найняти</button>` : ''}
                             <button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">Відхилити</button>
                         </div>
                     </div>
@@ -10976,13 +11223,147 @@ async function moveCandidate(id, status) {
     refreshCandidates();
 }
 
-async function hireCandidate(id) {
-    if (!await confirmModal('Найняти кандидата? Буде створений запис у команді.', { type: 'danger' })) return;
-    const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: JSON.stringify({}) });
-    if (res?.success) {
-        showNotification(res.message || 'Кандидата найнято!', 'success');
-        loadVacancies();
-        refreshCandidates();
+async function hireCandidate(id, button = null) {
+    const candidate = findCurrentApplication(id);
+    if (!candidate) {
+        showNotification('Заявку не знайдено у поточному списку', 'error');
+        return;
+    }
+    if (candidate.staff_id || candidate.status === 'hired') {
+        showNotification('Цю заявку вже застосовано до працівника', 'warning');
+        return;
+    }
+    if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
+    try {
+        const [staffResponse, responsibleResponse] = await Promise.all([
+            hrFetch('/staff?active=true'),
+            hrFetch('/onboarding/responsible-candidates')
+        ]);
+        if (!staffResponse?.success || !responsibleResponse?.success) {
+            showNotification(staffResponse?.error || responsibleResponse?.error || 'Не вдалося підготувати форму найму', 'error');
+            return;
+        }
+        const professionKey = normalizeProfessionKey(candidate.vacancy_role_type);
+        const vacancyHasHeadcount = Number(candidate.vacancy_target_hires) > 0;
+        const eligibleStaff = (staffResponse.data || []).filter(staff => !staffProfessionKeys(staff).includes(professionKey));
+        const staffOptions = eligibleStaff.map(staff => ({
+            value: String(staff.id),
+            label: `${staff.name} · ${professionTitle(staff.role_type) || staff.role_type || 'без основної професії'}`
+        }));
+        const responsibleOptions = (responsibleResponse.data || []).map(user => ({
+            value: String(user.id),
+            label: `${user.label || user.name || user.username || `User #${user.id}`}${user.role ? ` · ${ROLE_LABELS[user.role] || user.role}` : ''}`
+        }));
+        const result = await formModal(`Найняти · ${candidate.name}`, [
+            {
+                key: 'hireMode',
+                label: 'Сценарій найму',
+                type: 'select',
+                options: [
+                    { value: 'new_staff', label: 'Створити нового працівника' },
+                    { value: 'existing_staff', label: 'Додати професію наявному працівнику' }
+                ],
+                required: true
+            },
+            {
+                key: 'existingStaffId',
+                label: 'Наявний працівник',
+                type: 'select',
+                options: staffOptions,
+                visibleWhen: values => values.hireMode === 'existing_staff',
+                required: true,
+                hint: `Професія «${professionTitle(professionKey) || professionKey}» буде додана як додаткова. Працівники, яким вона вже призначена, приховані.`
+            },
+            {
+                key: 'department',
+                label: 'Відділ нового працівника',
+                defaultValue: candidate.vacancy_department || 'animators',
+                visibleWhen: values => values.hireMode === 'new_staff',
+                required: true
+            },
+            {
+                key: 'salary',
+                label: 'Ставка нового працівника',
+                type: 'number',
+                defaultValue: candidate.salary_expectation || 0,
+                visibleWhen: values => values.hireMode === 'new_staff'
+            },
+            {
+                key: 'startOnboarding',
+                label: 'Професійний онбординг',
+                type: 'select',
+                options: [
+                    { value: 'yes', label: 'Запустити одразу' },
+                    { value: 'no', label: 'Не запускати зараз' }
+                ],
+                required: true
+            },
+            {
+                key: 'responsibleUserId',
+                label: 'Відповідальний за професійний онбординг',
+                type: 'select',
+                options: responsibleOptions,
+                visibleWhen: values => values.startOnboarding === 'yes',
+                required: true
+            },
+            {
+                key: 'vacancyAction',
+                label: 'Що зробити з вакансією',
+                type: 'select',
+                options: [
+                    { value: 'keep_open', label: 'Залишити вакансію відкритою' },
+                    { value: 'mark_filled', label: 'Закрити вакансію як filled' }
+                ],
+                visibleWhen: () => !vacancyHasHeadcount,
+                required: !vacancyHasHeadcount,
+                hint: vacancyHasHeadcount
+                    ? `CRM автоматично закриє вакансію після ${Number(candidate.vacancy_target_hires)} durable наймів.`
+                    : 'Без визначеного headcount CRM не закриває вакансію автоматично.'
+            }
+        ], {
+            icon: '✅',
+            okText: 'Підтвердити найм',
+            type: 'info',
+            validate: values => {
+                if (values.hireMode === 'existing_staff' && !staffOptions.length) {
+                    return { key: 'existingStaffId', message: 'Немає активних працівників без цієї професії.' };
+                }
+                if (values.startOnboarding === 'yes' && !responsibleOptions.length) {
+                    return { key: 'responsibleUserId', message: 'Немає доступного відповідального для онбордингу.' };
+                }
+                return null;
+            }
+        });
+        if (!result) return;
+        const payload = {
+            hire_mode: result.hireMode,
+            start_profession_onboarding: result.startOnboarding === 'yes'
+        };
+        if (!vacancyHasHeadcount) payload.vacancy_action = result.vacancyAction;
+        if (result.hireMode === 'existing_staff') payload.existing_staff_id = Number(result.existingStaffId);
+        else {
+            payload.department = result.department;
+            payload.salary = Number(result.salary || 0);
+        }
+        if (result.startOnboarding === 'yes') payload.responsible_user_id = Number(result.responsibleUserId);
+        const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: payload });
+        if (!res?.success) {
+            showNotification(res?.error || 'Не вдалося виконати найм', 'error');
+            return;
+        }
+        showNotification(res.message || 'Найм завершено', 'success');
+        await Promise.all([loadVacancies(), refreshCandidates(), loadTeam()]);
+    } catch (error) {
+        console.error('Hire candidate error', error);
+        showNotification(error.message || 'Не вдалося виконати найм', 'error');
+    } finally {
+        if (button?.isConnected) {
+            button.disabled = false;
+            button.setAttribute('aria-busy', 'false');
+        }
     }
 }
 
@@ -11128,6 +11509,7 @@ document.getElementById('btnAddVacancy')?.addEventListener('click', async () => 
         { key: 'role_type', label: 'Роль', type: 'select', options: roleOptions, required: true },
         { key: 'salary_from', label: 'Зарплата від (₴)', type: 'number', placeholder: '0' },
         { key: 'salary_to', label: 'Зарплата до (₴)', type: 'number', placeholder: '0' },
+        { key: 'target_hires', label: 'Потрібно найняти людей', type: 'number', placeholder: 'Наприклад, 2', hint: 'Залиште порожнім для ручного закриття вакансії.' },
         { key: 'schedule', label: 'Графік', placeholder: 'Пн-Пт 10:00-18:00' }
     ], { icon: '📋' });
     if (!result) return;
@@ -11139,6 +11521,7 @@ document.getElementById('btnAddVacancy')?.addEventListener('click', async () => 
             role_type: result.role_type,
             salary_from: parseInt(result.salary_from) || null,
             salary_to: parseInt(result.salary_to) || null,
+            target_hires: parseInt(result.target_hires) || null,
             schedule: result.schedule || null,
             priority
         })

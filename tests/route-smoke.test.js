@@ -188,7 +188,8 @@ function createFakePool() {
                 notes: '',
                 department: 'Operations',
                 position: 'Trainee',
-                role_type: 'animator'
+                role_type: 'animator',
+                secondary_professions: ['barista']
             }],
             [46, {
                 id: 46,
@@ -329,6 +330,54 @@ function createFakePool() {
             }]
         ]),
         onboardingProgress: new Map(),
+        hrProfessions: new Map([
+            ['animator', {
+                key: 'animator',
+                title: 'Аніматор',
+                checklist: ['Вступ у роль аніматора', 'Пробна зміна аніматора'],
+                is_active: true
+            }],
+            ['barista', {
+                key: 'barista',
+                title: 'Бариста',
+                checklist: ['Вступ у роль бариста', 'Пробна зміна бариста'],
+                is_active: true
+            }],
+            ['cook', {
+                key: 'cook',
+                title: 'Кухар',
+                checklist: ['Вступ у роль кухаря'],
+                is_active: true
+            }]
+        ]),
+        staffRoleAssignments: new Map([
+            ['45:animator', {
+                staff_id: 45,
+                profession_key: 'animator',
+                is_primary: true,
+                status: 'active',
+                admission_status: 'approved',
+                internship_status: 'none'
+            }],
+            ['45:barista', {
+                staff_id: 45,
+                profession_key: 'barista',
+                is_primary: false,
+                status: 'active',
+                admission_status: 'pending',
+                internship_status: 'in_progress'
+            }]
+        ]),
+        professionChecklistProgress: new Map(),
+        jobVacancies: new Map([
+            [56, { id: 56, title: 'Кухар', role_type: 'cook', department: 'cafe', status: 'open' }],
+            [57, { id: 57, title: 'Бариста', role_type: 'barista', department: 'cafe', status: 'open' }]
+        ]),
+        jobApplications: new Map([
+            [703, { id: 703, vacancy_id: 56, name: 'Кандидат на додаткову професію', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
+            [704, { id: 704, vacancy_id: 57, name: 'Новий кандидат вакансії', phone: '+380500000704', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }]
+        ]),
+        nextStaffId: 60,
         tasks: [],
         bookings: [],
         customerChildren: [{
@@ -1563,6 +1612,72 @@ function createFakePool() {
                     is_active: staff.is_active
                 }] : [] };
             }
+            if (/SELECT id, name, role_type, COALESCE\(secondary_professions, '\[\]'::jsonb\) AS secondary_professions, is_active FROM staff WHERE id = \$1/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [{
+                    id: staff.id,
+                    name: staff.name,
+                    role_type: staff.role_type || null,
+                    secondary_professions: staff.secondary_professions || [],
+                    is_active: staff.is_active
+                }] : [] };
+            }
+            if (/FROM hr_professions hp LEFT JOIN staff_role_assignments sra ON sra\.staff_id = \$1 AND sra\.profession_key = hp\.key WHERE hp\.key = \$2/i.test(text)) {
+                const profession = hrState.hrProfessions.get(String(params[1]));
+                const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
+                return { rows: profession ? [{
+                    profession_key: profession.key,
+                    profession_title: profession.title,
+                    checklist: profession.checklist,
+                    profession_is_active: profession.is_active,
+                    is_primary: assignment?.is_primary || false,
+                    assignment_status: assignment?.status || null,
+                    admission_status: assignment?.admission_status || null,
+                    internship_status: assignment?.internship_status || null
+                }] : [] };
+            }
+            if (/INSERT INTO hr_staff_profession_checklist_progress/i.test(text) && /ON CONFLICT \(staff_id, profession_key, checklist_key\) DO NOTHING/i.test(text)) {
+                const key = `${Number(params[0])}:${String(params[1])}:${String(params[2])}`;
+                if (!hrState.professionChecklistProgress.has(key)) {
+                    hrState.professionChecklistProgress.set(key, {
+                        id: hrState.professionChecklistProgress.size + 1,
+                        staff_id: Number(params[0]),
+                        profession_key: String(params[1]),
+                        checklist_key: String(params[2]),
+                        title: String(params[3]),
+                        completed_at: null,
+                        completed_by: null,
+                        notes: null,
+                        created_at: '2099-06-06T11:50:00Z'
+                    });
+                    return { rows: [], rowCount: 1 };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            if (/INSERT INTO hr_staff_profession_checklist_progress/i.test(text) && /ON CONFLICT \(staff_id, profession_key, checklist_key\) DO UPDATE SET/i.test(text)) {
+                const key = `${Number(params[0])}:${String(params[1])}:${String(params[2])}`;
+                const existing = hrState.professionChecklistProgress.get(key) || {
+                    id: hrState.professionChecklistProgress.size + 1,
+                    staff_id: Number(params[0]),
+                    profession_key: String(params[1]),
+                    checklist_key: String(params[2]),
+                    created_at: '2099-06-06T11:50:00Z'
+                };
+                const row = {
+                    ...existing,
+                    title: String(params[3]),
+                    completed_at: params[4] ? (existing.completed_at || '2099-06-06T12:45:00Z') : null,
+                    completed_by: params[4] ? (params[5] || null) : null,
+                    notes: params[6] || null
+                };
+                hrState.professionChecklistProgress.set(key, row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/SELECT checklist_key, title, completed_at, completed_by, notes FROM hr_staff_profession_checklist_progress/i.test(text)) {
+                const rows = Array.from(hrState.professionChecklistProgress.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.profession_key === String(params[1]));
+                return { rows };
+            }
             if (/SELECT \* FROM onboarding_templates ORDER BY name/i.test(text)) {
                 return { rows: Array.from(hrState.onboardingTemplates.values()) };
             }
@@ -1589,39 +1704,50 @@ function createFakePool() {
                 hrState.onboardingTemplates.set(id, template);
                 return { rows: [template], rowCount: 1 };
             }
-            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1 AND op\.status <> 'completed'/i.test(text)) {
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text) && /LIMIT 1/i.test(text)) {
+                const professionKey = /op\.profession_key = \$3/i.test(text) ? String(params[2]) : null;
                 const progress = Array.from(hrState.onboardingProgress.values())
-                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.status !== 'completed')
+                    .filter(row => Number(row.staff_id) === Number(params[0])
+                        && (row.profession_key || null) === professionKey
+                        && row.status !== 'completed')
                     .sort((a, b) => Number(b.id) - Number(a.id))[0];
                 return { rows: progress ? [onboardingRow(progress)] : [] };
             }
-            if (/SELECT \* FROM onboarding_progress WHERE staff_id = \$1 AND status <> 'completed'/i.test(text)) {
+            if (/SELECT \* FROM onboarding_progress WHERE staff_id = \$1 AND profession_key = \$2 ORDER BY started_at DESC/i.test(text)) {
                 const progress = Array.from(hrState.onboardingProgress.values())
-                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.status !== 'completed')
+                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.profession_key === String(params[1]))
+                    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+                return { rows: progress ? [progress] : [] };
+            }
+            if (/SELECT \* FROM onboarding_progress WHERE staff_id = \$1 AND profession_key IS NULL AND status <> 'completed'/i.test(text)) {
+                const progress = Array.from(hrState.onboardingProgress.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]) && !row.profession_key && row.status !== 'completed')
                     .sort((a, b) => Number(b.id) - Number(a.id))[0];
                 return { rows: progress ? [progress] : [] };
             }
             if (/INSERT INTO onboarding_progress/i.test(text)) {
                 const id = hrState.nextOnboardingProgressId++;
+                const hasProfessionScope = text.includes('profession_key');
                 const hasResponsible = text.includes('responsible_user_id');
                 const row = hasResponsible ? {
                     id,
                     staff_id: Number(params[0]),
-                    template_id: Number(params[1]),
-                    items: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
-                    total_items: Number(params[3]),
+                    template_id: params[1] === null ? null : Number(params[1]),
+                    profession_key: hasProfessionScope ? (params[2] || null) : null,
+                    items: typeof params[hasProfessionScope ? 3 : 2] === 'string' ? JSON.parse(params[hasProfessionScope ? 3 : 2]) : params[hasProfessionScope ? 3 : 2],
+                    total_items: Number(params[hasProfessionScope ? 4 : 3]),
                     completed_items: 0,
                     status: 'in_progress',
                     started_at: '2099-06-06T12:00:00Z',
                     completed_at: null,
-                    responsible_user_id: Number(params[4]),
-                    assigned_by_user_id: params[5],
-                    assigned_by_username: params[6],
+                    responsible_user_id: Number(params[hasProfessionScope ? 5 : 4]),
+                    assigned_by_user_id: params[hasProfessionScope ? 6 : 5],
+                    assigned_by_username: params[hasProfessionScope ? 7 : 6],
                     assigned_at: '2099-06-06T12:00:00Z',
                     reassigned_at: null,
                     training_status: 'not_started',
-                    assignment_history: typeof params[7] === 'string' ? JSON.parse(params[7]) : params[7],
-                    checklist_template_key: params[8],
+                    assignment_history: typeof params[hasProfessionScope ? 8 : 7] === 'string' ? JSON.parse(params[hasProfessionScope ? 8 : 7]) : params[hasProfessionScope ? 8 : 7],
+                    checklist_template_key: params[hasProfessionScope ? 9 : 8],
                     last_task_sync_at: null
                 } : {
                     id,
@@ -1657,6 +1783,14 @@ function createFakePool() {
                 });
                 return { rows: [row], rowCount: 1 };
             }
+            if (/UPDATE onboarding_progress SET status = \$2(?:::text)?, training_status = \$3(?:::text)?,/i.test(text)) {
+                const row = hrState.onboardingProgress.get(Number(params[0]));
+                if (!row) return { rows: [], rowCount: 0 };
+                row.status = params[1];
+                row.training_status = params[2];
+                row.completed_at = params[1] === 'completed' ? (row.completed_at || '2099-06-06T13:00:00Z') : null;
+                return { rows: [row], rowCount: 1 };
+            }
             if (/UPDATE onboarding_progress SET last_task_sync_at = NOW\(\) WHERE id = \$1/i.test(text)) {
                 const row = hrState.onboardingProgress.get(Number(params[0]));
                 if (row) row.last_task_sync_at = '2099-06-06T12:05:00Z';
@@ -1664,6 +1798,11 @@ function createFakePool() {
             }
             if (/SELECT op\.\*, s\.name AS staff_name, s\.department, ot\.name AS template_name/i.test(text) && /FROM onboarding_progress op JOIN staff s ON s\.id = op\.staff_id/i.test(text)) {
                 return { rows: Array.from(hrState.onboardingProgress.values()).map(onboardingRow) };
+            }
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text)) {
+                return { rows: Array.from(hrState.onboardingProgress.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]))
+                    .map(onboardingRow) };
             }
             if (/SELECT \* FROM tasks WHERE source_type = \$1 AND source_id = \$2/i.test(text)) {
                 const row = hrState.tasks.find(task => task.source_type === params[0] && String(task.source_id) === String(params[1]));
@@ -2583,6 +2722,107 @@ function createFakePool() {
                         notes: params[6]
                     }]
                 };
+            }
+            if (/SELECT a\.\*, v\.role_type AS vacancy_role_type, v\.title AS vacancy_title, v\.department AS vacancy_department, v\.target_hires AS vacancy_target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.vacancy_id=\$1/i.test(text)) {
+                const rows = Array.from(hrState.jobApplications.values())
+                    .filter(row => Number(row.vacancy_id) === Number(params[0]))
+                    .map(row => {
+                        const vacancy = hrState.jobVacancies.get(Number(row.vacancy_id)) || {};
+                        return { ...row, vacancy_role_type: vacancy.role_type, vacancy_title: vacancy.title, vacancy_department: vacancy.department, vacancy_target_hires: vacancy.target_hires ?? null };
+                    });
+                if (Number(params[0]) === 55) rows.push({
+                    id: 701,
+                    vacancy_id: 55,
+                    name: 'РђРЅРЅР° РљР°РЅРґРёРґР°С‚',
+                    phone: '+380501112233',
+                    telegram_username: 'anna_hr',
+                    status: 'new',
+                    raw_application_text: 'РџР°СЃС‚РµРґ CV',
+                    experience: 'РђРЅС–РјР°С†С–СЏ',
+                    interview_notes: 'Р”РѕРґР°С‚Рё С‚РµСЃС‚',
+                    vacancy_role_type: 'animator',
+                    vacancy_title: 'Аніматор',
+                    vacancy_department: 'animators',
+                    vacancy_target_hires: null
+                });
+                return { rows };
+            }
+            if (/SELECT a\.\*, v\.role_type, v\.department AS vacancy_department, v\.title AS vac_title, v\.status AS vacancy_status, v\.target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.id=\$1 FOR UPDATE OF a, v/i.test(text)) {
+                const application = hrState.jobApplications.get(Number(params[0]));
+                if (!application) return { rows: [] };
+                const vacancy = hrState.jobVacancies.get(Number(application.vacancy_id));
+                return { rows: [{ ...application, role_type: vacancy.role_type, vacancy_department: vacancy.department, vac_title: vacancy.title, vacancy_status: vacancy.status, target_hires: vacancy.target_hires ?? null }] };
+            }
+            if (/SELECT key, title FROM hr_professions WHERE key = \$1 AND is_active = true LIMIT 1/i.test(text)) {
+                const profession = hrState.hrProfessions.get(String(params[0]));
+                return { rows: profession?.is_active === false || !profession ? [] : [{ key: profession.key, title: profession.title }] };
+            }
+            if (/SELECT id, name, department, position, role_type, COALESCE\(secondary_professions, '\[\]'::jsonb\) AS secondary_professions, is_active FROM staff WHERE id = \$1 FOR UPDATE/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [{ ...staff, secondary_professions: staff.secondary_professions || [] }] : [] };
+            }
+            if (/UPDATE staff SET secondary_professions = \$2::jsonb WHERE id = \$1/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                if (staff) staff.secondary_professions = JSON.parse(params[1]);
+                return { rows: [], rowCount: staff ? 1 : 0 };
+            }
+            if (/SELECT sra\.\*, hp\.title AS profession_title, ps\.title AS payroll_scheme_title, ps\.scheme_type AS payroll_scheme_type FROM staff_role_assignments sra/i.test(text)) {
+                const rows = Array.from(hrState.staffRoleAssignments.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]))
+                    .map((row, index) => ({ ...row, id: row.id || index + 1, profession_title: hrState.hrProfessions.get(row.profession_key)?.title || row.profession_key }));
+                return { rows };
+            }
+            if (/DELETE FROM staff_role_assignments WHERE staff_id = \$1/i.test(text)) {
+                Array.from(hrState.staffRoleAssignments.keys()).forEach(key => {
+                    if (key.startsWith(`${Number(params[0])}:`)) hrState.staffRoleAssignments.delete(key);
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO staff_role_assignments/i.test(text)) {
+                const row = {
+                    id: hrState.staffRoleAssignments.size + 1,
+                    staff_id: Number(params[0]),
+                    profession_key: String(params[1]),
+                    is_primary: params[2] === true,
+                    status: params[3],
+                    admission_status: params[4],
+                    internship_status: params[5],
+                    hourly_rate: params[6],
+                    payroll_scheme_id: params[7],
+                    notes: params[8]
+                };
+                hrState.staffRoleAssignments.set(`${row.staff_id}:${row.profession_key}`, row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/INSERT INTO staff \(name, department, position, phone, role_type, secondary_professions, hire_date,/i.test(text)) {
+                const id = hrState.nextStaffId++;
+                const row = {
+                    id,
+                    name: params[0],
+                    department: params[1],
+                    position: params[2],
+                    phone: params[3],
+                    role_type: params[4],
+                    secondary_professions: [],
+                    is_active: true
+                };
+                hrState.staff.set(id, row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/UPDATE job_applications SET status = 'hired', staff_id = \$2, profession_key = \$3, onboarding_progress_id = \$4,/i.test(text)) {
+                const row = hrState.jobApplications.get(Number(params[0]));
+                if (row) Object.assign(row, { status: 'hired', staff_id: Number(params[1]), profession_key: params[2], onboarding_progress_id: params[3] || null, hired_by: params[4] });
+                return { rows: [], rowCount: row ? 1 : 0 };
+            }
+            if (/UPDATE job_vacancies SET status = 'filled', closed_at = NOW\(\) WHERE id = \$1/i.test(text)) {
+                const row = hrState.jobVacancies.get(Number(params[0]));
+                if (row) row.status = 'filled';
+                return { rows: [], rowCount: row ? 1 : 0 };
+            }
+            if (/SELECT a\.id, a\.vacancy_id, a\.status, a\.profession_key, a\.hired_at, a\.hired_by, v\.title AS vacancy_title FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.staff_id = \$1/i.test(text)) {
+                const application = Array.from(hrState.jobApplications.values()).find(row => Number(row.staff_id) === Number(params[0]));
+                const vacancy = application ? hrState.jobVacancies.get(Number(application.vacancy_id)) : null;
+                return { rows: application ? [{ ...application, vacancy_title: vacancy?.title || null }] : [] };
             }
             if (/SELECT \* FROM job_applications WHERE vacancy_id=\$1 ORDER BY created_at DESC/i.test(text)) {
                 return {
@@ -4445,6 +4685,89 @@ describe('route-level API safety smoke', () => {
         assert.equal(list.data.data[0].active_task_count, 4);
     });
 
+    it('keeps general and profession-scoped onboarding independent and profession checklist canonical', async () => {
+        queries.length = 0;
+        const animator = await request('POST', '/api/hr/onboarding/start', {
+            staff_id: 45,
+            profession_key: 'animator',
+            responsible_user_id: 2
+        }, withAuth());
+        assert.equal(animator.status, 200, JSON.stringify(animator.data));
+        assert.equal(animator.data.progress.scope, 'profession');
+        assert.equal(animator.data.progress.profession_key, 'animator');
+        assert.equal(animator.data.progress.items.length, 2);
+        assert.equal(animator.data.progress.total_items, 2);
+        assert.equal(animator.data.taskSync.created_count, 4);
+        assert.ok(queries.some(q => /INSERT INTO onboarding_progress/i.test(q.text) && q.params[2] === 'animator' && q.params[3] === '[]'));
+        assert.ok(queries.some(q => {
+            if (!/INSERT INTO tasks/i.test(q.text)) return false;
+            const titleIndex = /^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 1 : 0;
+            return String(q.params[titleIndex]).includes('(Аніматор)');
+        }));
+
+        queries.length = 0;
+        const barista = await request('POST', '/api/hr/onboarding/start', {
+            staff_id: 45,
+            profession_key: 'barista',
+            responsible_user_id: 3
+        }, withAuth());
+        assert.equal(barista.status, 200, JSON.stringify(barista.data));
+        assert.equal(barista.data.progress.profession_key, 'barista');
+        assert.equal(barista.data.progress.responsible_user_id, 3);
+        assert.equal(barista.data.taskSync.created_count, 4);
+
+        queries.length = 0;
+        const repeated = await request('POST', '/api/hr/onboarding/start', {
+            staff_id: 45,
+            profession_key: 'animator',
+            responsible_user_id: 2
+        }, withAuth());
+        assert.equal(repeated.status, 200, JSON.stringify(repeated.data));
+        assert.equal(repeated.data.action, 'confirmed');
+        assert.equal(repeated.data.taskSync.created_count, 0);
+        assert.equal(queries.some(q => /INSERT INTO onboarding_progress/i.test(q.text)), false);
+
+        const rejected = await request('POST', '/api/hr/onboarding/start', {
+            staff_id: 45,
+            profession_key: 'cook',
+            responsible_user_id: 2
+        }, withAuth());
+        assert.equal(rejected.status, 409, JSON.stringify(rejected.data));
+        assert.equal(rejected.data.code, 'PROFESSION_NOT_ASSIGNED');
+
+        const checked = await request('PUT', '/api/hr/staff/45/profession-checklist', {
+            profession_key: 'animator',
+            checklist_key: 'item_1',
+            title: 'Вступ у роль аніматора',
+            completed: true
+        }, withAuth());
+        assert.equal(checked.status, 200, JSON.stringify(checked.data));
+        assert.equal(checked.data.onboarding.profession_key, 'animator');
+        assert.equal(checked.data.onboarding.completed_items, 1);
+        assert.equal(checked.data.onboarding.status, 'in_progress');
+
+        const processes = await request('GET', '/api/hr/staff/45/onboarding-processes', undefined, withAuth());
+        assert.equal(processes.status, 200, JSON.stringify(processes.data));
+        assert.equal(processes.data.data.general.responsible_user_id, 3);
+        assert.deepEqual(processes.data.data.professions.map(item => item.profession_key).sort(), ['animator', 'barista']);
+        const animatorProcess = processes.data.data.professions.find(item => item.profession_key === 'animator');
+        const baristaProcess = processes.data.data.professions.find(item => item.profession_key === 'barista');
+        assert.equal(animatorProcess.completed_items, 1);
+        assert.equal(baristaProcess.completed_items, 0);
+        assert.equal(baristaProcess.responsible_user_id, 3);
+
+        queries.length = 0;
+        const completed = await request('PUT', '/api/hr/staff/45/profession-checklist', {
+            profession_key: 'animator',
+            checklist_key: 'item_2',
+            title: 'Пробна зміна аніматора',
+            completed: true
+        }, withAuth());
+        assert.equal(completed.status, 200, JSON.stringify(completed.data));
+        assert.equal(completed.data.onboarding.status, 'completed');
+        assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'profession_onboarding_completed'));
+    });
+
     it('exposes typed task operations endpoints behind object visibility', async () => {
         const owners = await request('GET', '/api/tasks/owners', undefined, withAuth({}, 'manager'));
         assert.equal(owners.status, 200, JSON.stringify(owners.data));
@@ -5215,6 +5538,60 @@ describe('route-level API safety smoke', () => {
         assert.equal(download.status, 200);
         assert.match(download.headers.get('content-disposition') || '', /filename=/);
         assert.equal(await download.text(), 'resume text content');
+    });
+
+    it('hires vacancy applications into new staff or an explicit existing staff profession atomically', async () => {
+        queries.length = 0;
+        const existing = await request('POST', '/api/hr/applications/703/hire', {
+            hire_mode: 'existing_staff',
+            existing_staff_id: 45,
+            vacancy_action: 'keep_open',
+            start_profession_onboarding: true,
+            responsible_user_id: 2
+        }, withAuth());
+        assert.equal(existing.status, 200, JSON.stringify(existing.data));
+        assert.equal(existing.data.staff_id, 45);
+        assert.equal(existing.data.profession_key, 'cook');
+        assert.ok(existing.data.onboarding_progress_id);
+        assert.equal(existing.data.vacancy_status, 'open');
+        assert.ok(queries.some(q => /UPDATE staff SET secondary_professions/i.test(q.text) && JSON.parse(q.params[1]).includes('cook')));
+        assert.ok(queries.some(q => /INSERT INTO staff_role_assignments/i.test(q.text) && q.params[1] === 'cook' && q.params[4] === 'pending' && q.params[5] === 'in_progress'));
+        assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'application_hired_existing_staff_profession'));
+        assert.equal(queries.some(q => /UPDATE job_vacancies SET status = 'filled'/i.test(q.text)), false);
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+
+        const linked = await request('GET', '/api/hr/vacancies/56/applications', undefined, withAuth());
+        assert.equal(linked.status, 200, JSON.stringify(linked.data));
+        assert.equal(linked.data.applications[0].staff_id, 45);
+        assert.equal(linked.data.applications[0].profession_key, 'cook');
+        assert.equal(linked.data.applications[0].onboarding_progress_id, existing.data.onboarding_progress_id);
+
+        queries.length = 0;
+        const repeated = await request('POST', '/api/hr/applications/703/hire', {
+            hire_mode: 'existing_staff',
+            existing_staff_id: 46,
+            vacancy_action: 'keep_open',
+            start_profession_onboarding: false
+        }, withAuth());
+        assert.equal(repeated.status, 409, JSON.stringify(repeated.data));
+        assert.equal(repeated.data.code, 'APPLICATION_ALREADY_HIRED');
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+
+        queries.length = 0;
+        const created = await request('POST', '/api/hr/applications/704/hire', {
+            hire_mode: 'new_staff',
+            vacancy_action: 'mark_filled',
+            start_profession_onboarding: false,
+            department: 'cafe',
+            salary: 18000
+        }, withAuth());
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        assert.notEqual(created.data.staff_id, 45);
+        assert.equal(created.data.profession_key, 'barista');
+        assert.equal(created.data.vacancy_status, 'filled');
+        assert.ok(queries.some(q => /INSERT INTO staff \(name, department, position/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE job_vacancies SET status = 'filled'/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'application_hired_new_staff'));
     });
 
     it('prepares HR vacancy platform templates and AI formatting preview', async () => {

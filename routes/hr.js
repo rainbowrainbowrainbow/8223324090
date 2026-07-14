@@ -28,9 +28,12 @@ const {
     ONBOARDING_TASK_SOURCE_TYPE,
     assignOnboardingResponsible,
     attachOnboardingAssignments,
+    attachProfessionOnboardingContext,
     loadActiveOnboardingProgress,
+    loadOnboardingProcessesForStaff,
     loadStaffForOnboarding,
-    onboardingProgressMeta
+    onboardingProgressMeta,
+    syncProfessionOnboardingProgress
 } = require('../services/hrOnboarding');
 const {
     parseTextList,
@@ -689,6 +692,7 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
         openTimeResult,
         payrollResult,
         offboardingEventResult,
+        applicationResult,
         onboardingProgress,
         offboardingReadiness
     ] = await Promise.all([
@@ -772,6 +776,19 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
              LIMIT 1`,
             [id]
         ),
+        db.query(
+            `SELECT a.id, a.vacancy_id, a.status, a.profession_key, a.hired_at, a.hired_by,
+                    v.title AS vacancy_title
+             FROM job_applications a
+             JOIN job_vacancies v ON v.id = a.vacancy_id
+             WHERE a.staff_id = $1
+             ORDER BY a.hired_at DESC NULLS LAST, a.updated_at DESC, a.id DESC
+             LIMIT 1`,
+            [id]
+        ).catch(err => {
+            log.warn(`Lifecycle application link skipped for staff ${id}: ${err.message}`);
+            return { rows: [] };
+        }),
         loadActiveOnboardingProgress(id, db).catch(err => {
             log.warn(`Lifecycle onboarding progress skipped for staff ${id}: ${err.message}`);
             return null;
@@ -790,6 +807,7 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
     const openTime = openTimeResult.rows[0] || {};
     const payroll = payrollResult.rows[0] || {};
     const latestOffboarding = offboardingEventResult.rows[0] || null;
+    const hiringApplication = applicationResult.rows[0] || null;
     const onboarding = onboardingProgress ? onboardingProgressMeta(onboardingProgress) : null;
     const professionKeys = staffProfessionKeys(staff);
     const readiness = staff.training_readiness || { percent: 0, total: 0, completed: 0 };
@@ -810,11 +828,13 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
     const isActiveCoreStaff = staff.is_active !== false && poolStatus === 'core';
 
     const onboardingItems = [
-        lifecycleChecklistItem('candidate_approved', 'Кандидат погоджений', false, {
-            unknown: true,
+        lifecycleChecklistItem('candidate_approved', 'Кандидат погоджений', Boolean(hiringApplication), {
+            unknown: !hiringApplication,
             severity: 'info',
-            detail: 'У staff немає durable application_id. Найм із вакансії ставить application у hired, але не зберігає прямий link у картці.',
-            source: 'job_applications.status without staff link'
+            detail: hiringApplication
+                ? `${hiringApplication.vacancy_title} · ${hiringApplication.profession_key || staff.role_type}`
+                : 'Немає пов’язаної заявки з вакансії. Для працівника, створеного вручну, це допустимо.',
+            source: hiringApplication ? `job_applications#${hiringApplication.id}` : 'job_applications.staff_id'
         }),
         lifecycleChecklistItem('hr_card_created', 'HR-картка створена', true, {
             action: 'profile',
@@ -997,14 +1017,9 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
         },
         sections,
         latest_offboarding_event: latestOffboarding,
+        hiring_application: hiringApplication,
         onboarding_assignment: onboarding,
-        findings: [
-            {
-                key: 'candidate_staff_link_missing',
-                severity: 'warning',
-                message: 'Hire flow не зберігає job_application_id у staff, тому candidate → HR card не можна підтвердити без евристики.'
-            }
-        ]
+        findings: []
     };
 }
 
@@ -2569,6 +2584,7 @@ router.get('/staff/:id/history', async (req, res) => {
 });
 
 router.put('/staff/:id/profession-checklist', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const professionKey = normalizeProfessionKey(req.body.profession_key ?? req.body.professionKey);
         const checklistKey = String(req.body.checklist_key ?? req.body.checklistKey ?? '').trim().slice(0, 128);
@@ -2578,11 +2594,13 @@ router.put('/staff/:id/profession-checklist', requireRole('creator', 'director',
         if (!professionKey || !checklistKey || !title) {
             return res.status(400).json({ success: false, error: 'Потрібні profession_key, checklist_key та title' });
         }
-        const assignment = await resolveStaffProfessionAssignment(pool, req.params.id, professionKey, { requireActive: false });
+        await client.query('BEGIN');
+        const assignment = await resolveStaffProfessionAssignment(client, req.params.id, professionKey, { requireActive: false });
         if (!assignment.ok) {
+            await client.query('ROLLBACK');
             return res.status(assignment.status || 400).json({ success: false, error: assignment.error });
         }
-        const result = await pool.query(
+        const result = await client.query(
             `INSERT INTO hr_staff_profession_checklist_progress
                 (staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes, updated_at)
              VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN NOW() ELSE NULL END, $6, $7, NOW())
@@ -2595,16 +2613,25 @@ router.put('/staff/:id/profession-checklist', requireRole('creator', 'director',
              RETURNING *`,
             [req.params.id, professionKey, checklistKey, title, completed, req.user?.username || null, notes]
         );
+        const onboarding = await syncProfessionOnboardingProgress(req.params.id, professionKey, req.user, {
+            db: client,
+            lock: true,
+            ipAddress: req.ip
+        });
+        await client.query('COMMIT');
         await auditLog('staff_profession_checklist_update', parseInt(req.params.id), req.user?.username, {
             profession_key: professionKey,
             checklist_key: checklistKey,
             title,
             completed
         }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: result.rows[0], onboarding });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/profession-checklist error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -5499,7 +5526,8 @@ router.get('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
     try {
         const staff = await loadStaffForOnboarding(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
-        const progress = await loadActiveOnboardingProgress(staff.id);
+        const professionKey = normalizeProfessionKey(req.query.profession_key ?? req.query.professionKey);
+        const progress = await loadActiveOnboardingProgress(staff.id, pool, { professionKey });
         res.json({
             success: true,
             staff,
@@ -5511,16 +5539,31 @@ router.get('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
     }
 });
 
+// GET /api/hr/staff/:id/onboarding-processes - general and profession-scoped onboarding
+router.get('/staff/:id/onboarding-processes', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffForOnboarding(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
+        const data = await loadOnboardingProcessesForStaff(staff.id);
+        res.json({ success: true, staff, data });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/onboarding-processes error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити процеси onboarding' });
+    }
+});
+
 // PUT /api/hr/staff/:id/onboarding-assignment - assign/reassign responsible owner and sync onboarding tasks
 router.put('/staff/:id/onboarding-assignment', requireHrManage, async (req, res) => {
     try {
         const responsibleUserId = Number(req.body.responsible_user_id ?? req.body.responsibleUserId);
         const templateId = req.body.template_id || req.body.templateId || null;
+        const professionKey = normalizeProfessionKey(req.body.profession_key ?? req.body.professionKey);
         if (!Number.isInteger(responsibleUserId) || responsibleUserId <= 0) {
             return res.status(400).json({ success: false, error: 'Потрібен responsible_user_id' });
         }
         const result = await assignOnboardingResponsible(req.params.id, responsibleUserId, req.user, {
             templateId: templateId ? Number(templateId) : null,
+            professionKey,
             ipAddress: req.ip
         });
         res.json({ success: true, ...result });
@@ -5537,16 +5580,25 @@ router.put('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
 router.post('/onboarding/start', requireHrManage, async (req, res) => {
     try {
         const { staff_id, template_id } = req.body;
+        const professionKey = normalizeProfessionKey(req.body.profession_key ?? req.body.professionKey);
         const responsibleUserId = Number((req.body.responsible_user_id ?? req.body.responsibleUserId) || 0);
         if (!Number.isInteger(responsibleUserId) || responsibleUserId <= 0) {
             return res.status(400).json({ success: false, error: 'Потрібен responsible_user_id' });
         }
-        if (!staff_id || !template_id) return res.status(400).json({ success: false, error: 'Потрібні staff_id та template_id' });
+        if (!staff_id || (!professionKey && !template_id)) {
+            return res.status(400).json({ success: false, error: 'Потрібен staff_id; для загального onboarding також потрібен template_id' });
+        }
 
-        const tpl = await pool.query('SELECT * FROM onboarding_templates WHERE id = $1', [template_id]);
-        if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
+        if (!professionKey) {
+            const tpl = await pool.query('SELECT * FROM onboarding_templates WHERE id = $1', [template_id]);
+            if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
+        }
 
-        const assigned = await assignOnboardingResponsible(staff_id, responsibleUserId, req.user, { templateId: template_id, ipAddress: req.ip });
+        const assigned = await assignOnboardingResponsible(staff_id, responsibleUserId, req.user, {
+            templateId: template_id || null,
+            professionKey,
+            ipAddress: req.ip
+        });
         res.json({ success: true, data: assigned.progress, ...assigned, reused: assigned.action !== 'assigned' });
     } catch (err) {
         log.error('POST /hr/onboarding/start error', err);
@@ -5561,7 +5613,8 @@ router.post('/onboarding/start', requireHrManage, async (req, res) => {
 // GET /api/hr/onboarding — list all progress
 router.get('/onboarding', async (req, res) => {
     try {
-        const { staff_id, status } = req.query;
+        const { staff_id, status, scope } = req.query;
+        const professionKey = normalizeProfessionKey(req.query.profession_key ?? req.query.professionKey);
         let sql = `SELECT op.*, s.name AS staff_name, s.department, ot.name AS template_name,
                           u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
                           COUNT(t.id)::int AS generated_task_count,
@@ -5576,11 +5629,15 @@ router.get('/onboarding', async (req, res) => {
         const conds = [];
         if (staff_id) { params.push(parseInt(staff_id)); conds.push(`op.staff_id = $${params.length}`); }
         if (status) { params.push(status); conds.push(`op.status = $${params.length}`); }
+        if (professionKey) { params.push(professionKey); conds.push(`op.profession_key = $${params.length}`); }
+        else if (scope === 'general') conds.push('op.profession_key IS NULL');
+        else if (scope === 'profession') conds.push('op.profession_key IS NOT NULL');
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
         sql += ' GROUP BY op.id, s.name, s.department, ot.name, u.name, u.username, u.role';
         sql += ' ORDER BY op.started_at DESC';
         const result = await pool.query(sql, params);
-        res.json({ success: true, data: result.rows });
+        await attachProfessionOnboardingContext(result.rows, pool);
+        res.json({ success: true, data: result.rows.map(onboardingProgressMeta) });
     } catch (err) {
         log.error('GET /hr/onboarding error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -5593,6 +5650,13 @@ router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
         const { item_id, done } = req.body;
         const prog = await pool.query('SELECT * FROM onboarding_progress WHERE id = $1', [req.params.id]);
         if (prog.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        if (normalizeProfessionKey(prog.rows[0].profession_key)) {
+            return res.status(409).json({
+                success: false,
+                error: 'Професійний checklist оновлюється через /staff/:id/profession-checklist',
+                code: 'PROFESSION_CHECKLIST_CANONICAL_ENDPOINT'
+            });
+        }
 
         const items = prog.rows[0].items || [];
         const item = items.find(i => i.id === item_id);
@@ -6427,7 +6491,10 @@ router.post('/vacancy-platforms/format-preview', requireHrManage, async (req, re
 router.get('/vacancies', async (req, res) => {
     try {
         const { status = 'open', role_type } = req.query;
-        let q = `SELECT v.*, (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status!='rejected') as active_candidates FROM job_vacancies v`;
+        let q = `SELECT v.*,
+                        (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status!='rejected') AS active_candidates,
+                        (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status='hired' AND a.staff_id IS NOT NULL) AS hired_count
+                 FROM job_vacancies v`;
         const conds = [], params = [];
         if (status !== 'all') { conds.push(`v.status=$${params.length+1}`); params.push(status); }
         if (role_type)        { conds.push(`v.role_type=$${params.length+1}`); params.push(role_type); }
@@ -6442,13 +6509,18 @@ router.post('/vacancies', requireHrManage, async (req, res) => {
     const { title, role_type, department = 'animators', description, requirements,
             salary_from, salary_to, schedule, work_format = 'office',
             status = 'open', priority = 'normal' } = req.body;
+    const targetHires = req.body.target_hires ?? req.body.targetHires ?? null;
     if (!title?.trim() || !role_type) return res.status(400).json({ error: 'title і role_type обов\'язкові' });
+    if (targetHires !== null && targetHires !== '' && (!Number.isInteger(Number(targetHires)) || Number(targetHires) <= 0)) {
+        return res.status(400).json({ error: 'target_hires має бути додатним цілим числом або null' });
+    }
     try {
         const r = await pool.query(
-            `INSERT INTO job_vacancies (title,role_type,department,description,requirements,salary_from,salary_to,schedule,work_format,status,priority,created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+            `INSERT INTO job_vacancies (title,role_type,department,description,requirements,salary_from,salary_to,schedule,work_format,status,priority,created_by,target_hires)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
             [title.trim(), role_type, department, description||null, requirements||null,
-             salary_from||null, salary_to||null, schedule||null, work_format, status, priority, req.user?.username||null]);
+             salary_from||null, salary_to||null, schedule||null, work_format, status, priority, req.user?.username||null,
+             targetHires === null || targetHires === '' ? null : Number(targetHires)]);
         res.json({ success: true, vacancy: r.rows[0] });
     } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -6465,6 +6537,14 @@ router.patch('/vacancies/:id', requireHrManage, async (req, res) => {
     if (salary_from !== undefined) { sets.push(`salary_from=$${i++}`); vals.push(salary_from); }
     if (salary_to !== undefined)   { sets.push(`salary_to=$${i++}`);   vals.push(salary_to); }
     if (schedule !== undefined)    { sets.push(`schedule=$${i++}`);    vals.push(schedule); }
+    if (req.body.target_hires !== undefined || req.body.targetHires !== undefined) {
+        const targetHires = req.body.target_hires ?? req.body.targetHires;
+        if (targetHires !== null && targetHires !== '' && (!Number.isInteger(Number(targetHires)) || Number(targetHires) <= 0)) {
+            return res.status(400).json({ error: 'target_hires має бути додатним цілим числом або null' });
+        }
+        sets.push(`target_hires=$${i++}`);
+        vals.push(targetHires === null || targetHires === '' ? null : Number(targetHires));
+    }
     if (['filled','closed'].includes(status)) sets.push('closed_at=NOW()');
     if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
     vals.push(parseInt(req.params.id));
@@ -6487,7 +6567,15 @@ router.delete('/vacancies/:id', requireHrManage, async (req, res) => {
 
 router.get('/vacancies/:id/applications', async (req, res) => {
     try {
-        const r = await pool.query('SELECT * FROM job_applications WHERE vacancy_id=$1 ORDER BY created_at DESC', [req.params.id]);
+        const r = await pool.query(
+            `SELECT a.*, v.role_type AS vacancy_role_type, v.title AS vacancy_title,
+                    v.department AS vacancy_department, v.target_hires AS vacancy_target_hires
+             FROM job_applications a
+             JOIN job_vacancies v ON v.id = a.vacancy_id
+             WHERE a.vacancy_id=$1
+             ORDER BY a.created_at DESC`,
+            [req.params.id]
+        );
         const filesByApplication = await loadResumeFilesForApplications(r.rows.map(row => row.id));
         const applications = r.rows.map(row => ({
             ...row,
@@ -6624,6 +6712,7 @@ router.patch('/applications/:id', requireHrManage, async (req, res) => {
     const { status, notes, interview_date, salary_expectation, address, birth_date, availability, experience, interview_notes, raw_application_text, parsed_payload } = req.body;
     const sets = [], vals = [];
     let i = 1;
+    if (status === 'hired') return res.status(400).json({ success: false, error: 'Статус hired встановлюється тільки через транзакційну дію Найняти' });
     if (status)              { sets.push(`status=$${i++}`); vals.push(status); }
     if (notes !== undefined) { sets.push(`notes=$${i++}`);  vals.push(notes); }
     if (interview_date)      { sets.push(`interview_date=$${i++}`); vals.push(interview_date); }
@@ -6644,22 +6733,226 @@ router.patch('/applications/:id', requireHrManage, async (req, res) => {
 });
 
 router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    const afterCommit = [];
     try {
-        const app = await pool.query(
-            `SELECT a.*, v.role_type, v.title as vac_title FROM job_applications a
-             JOIN job_vacancies v ON v.id=a.vacancy_id WHERE a.id=$1`, [req.params.id]);
-        if (!app.rows.length) return res.status(404).json({ error: 'Not found' });
+        const hireMode = String(req.body.hire_mode || req.body.hireMode || 'new_staff').trim();
+        const vacancyAction = String(req.body.vacancy_action || req.body.vacancyAction || '').trim();
+        const startProfessionOnboarding = req.body.start_profession_onboarding === true || req.body.startProfessionOnboarding === true;
+        const responsibleUserId = Number(req.body.responsible_user_id ?? req.body.responsibleUserId ?? 0);
+        if (!['new_staff', 'existing_staff'].includes(hireMode)) {
+            return res.status(400).json({ success: false, error: 'hire_mode має бути new_staff або existing_staff' });
+        }
+        if (startProfessionOnboarding && (!Number.isInteger(responsibleUserId) || responsibleUserId <= 0)) {
+            return res.status(400).json({ success: false, error: 'Для запуску професійного онбордингу потрібен responsible_user_id' });
+        }
+
+        await client.query('BEGIN');
+        const app = await client.query(
+            `SELECT a.*, v.role_type, v.department AS vacancy_department, v.title AS vac_title,
+                    v.status AS vacancy_status, v.target_hires
+             FROM job_applications a
+             JOIN job_vacancies v ON v.id = a.vacancy_id
+             WHERE a.id=$1
+             FOR UPDATE OF a, v`,
+            [req.params.id]
+        );
+        if (!app.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Заявку не знайдено' });
+        }
         const a = app.rows[0];
-        await pool.query("UPDATE job_applications SET status='hired', updated_at=NOW() WHERE id=$1", [req.params.id]);
-        await pool.query("UPDATE job_vacancies SET status='filled', closed_at=NOW() WHERE id=$1", [a.vacancy_id]);
-        const { department = 'animators', salary } = req.body;
-        const staffResult = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, role_type, hire_date, telegram_username, telegram_id, hourly_rate, address, is_active)
-             VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,true) RETURNING id`,
-            [a.name, department, a.vac_title, a.phone||null, a.role_type,
-             a.telegram_username||null, a.telegram_id||null, salary||0, a.address || null]);
-        res.json({ success: true, staff_id: staffResult.rows[0].id, message: `${a.name} найнятий як ${a.role_type}` });
-    } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: 'Internal server error' }); }
+        const targetHires = a.target_hires == null ? null : Number(a.target_hires);
+        if (targetHires === null && !['keep_open', 'mark_filled'].includes(vacancyAction)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Для вакансії без headcount потрібне явне рішення vacancy_action: keep_open або mark_filled' });
+        }
+        if (a.staff_id || a.status === 'hired') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'APPLICATION_ALREADY_HIRED',
+                error: 'Цю заявку вже застосовано до працівника',
+                staff_id: a.staff_id || null,
+                profession_key: a.profession_key || null
+            });
+        }
+        const professionKey = normalizeProfessionKey(a.role_type);
+        const profession = await client.query('SELECT key, title FROM hr_professions WHERE key = $1 AND is_active = true LIMIT 1', [professionKey]);
+        if (!profession.rows.length) {
+            throw Object.assign(new Error('Професія вакансії відсутня або неактивна'), { statusCode: 409, code: 'VACANCY_PROFESSION_INACTIVE' });
+        }
+
+        let staff;
+        if (hireMode === 'new_staff') {
+            const department = cleanStaffText(req.body.department, 120) || a.vacancy_department || 'animators';
+            const salary = Math.max(0, Number(req.body.salary || 0));
+            const staffResult = await client.query(
+                `INSERT INTO staff
+                    (name, department, position, phone, role_type, secondary_professions, hire_date,
+                     telegram_username, telegram_id, hourly_rate, address, is_active)
+                 VALUES ($1,$2,$3,$4,$5,'[]'::jsonb,CURRENT_DATE,$6,$7,$8,$9,true)
+                 RETURNING id, name, department, position, role_type,
+                           COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions, is_active`,
+                [a.name, department, a.vac_title, a.phone || null, professionKey,
+                 a.telegram_username || null, a.telegram_id || null, salary, a.address || null]
+            );
+            staff = staffResult.rows[0];
+            await replaceStaffRoleAssignments(client, staff.id, [{
+                profession_key: professionKey,
+                is_primary: true,
+                status: 'active',
+                admission_status: 'pending',
+                internship_status: 'in_progress',
+                hourly_rate: salary || null,
+                payroll_scheme_id: null,
+                notes: `Найм із заявки #${a.id}`
+            }], req.user?.username || null);
+        } else {
+            const existingStaffId = Number(req.body.existing_staff_id ?? req.body.existingStaffId);
+            if (!Number.isInteger(existingStaffId) || existingStaffId <= 0) {
+                throw Object.assign(new Error('Для existing_staff потрібен явний existing_staff_id'), { statusCode: 400, code: 'EXISTING_STAFF_REQUIRED' });
+            }
+            const staffResult = await client.query(
+                `SELECT id, name, department, position, role_type,
+                        COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions, is_active
+                 FROM staff WHERE id = $1 FOR UPDATE`,
+                [existingStaffId]
+            );
+            staff = staffResult.rows[0];
+            if (!staff) throw Object.assign(new Error('Працівника не знайдено'), { statusCode: 404, code: 'STAFF_NOT_FOUND' });
+            if (staff.is_active === false) throw Object.assign(new Error('Не можна додати професію неактивному працівнику'), { statusCode: 409, code: 'STAFF_INACTIVE' });
+            if (staffProfessionKeys(staff).includes(professionKey)) {
+                throw Object.assign(new Error('Ця професія вже призначена працівнику'), { statusCode: 409, code: 'PROFESSION_ALREADY_ASSIGNED' });
+            }
+            const secondaryProfessions = normalizeSecondaryProfessions([...(staff.secondary_professions || []), professionKey], staff.role_type);
+            await client.query(
+                `UPDATE staff SET secondary_professions = $2::jsonb WHERE id = $1`,
+                [staff.id, JSON.stringify(secondaryProfessions)]
+            );
+            staff.secondary_professions = secondaryProfessions;
+            const currentAssignments = await loadStaffRoleAssignments(staff.id, client);
+            const assignmentRows = currentAssignments.map(row => ({
+                profession_key: row.profession_key,
+                is_primary: row.is_primary,
+                status: row.status,
+                admission_status: row.admission_status,
+                internship_status: row.internship_status,
+                hourly_rate: row.hourly_rate,
+                payroll_scheme_id: row.payroll_scheme_id,
+                notes: row.notes
+            }));
+            assignmentRows.push({
+                profession_key: professionKey,
+                is_primary: false,
+                status: 'active',
+                admission_status: 'pending',
+                internship_status: 'in_progress',
+                hourly_rate: null,
+                payroll_scheme_id: null,
+                notes: `Додаткова професія із заявки #${a.id}`
+            });
+            await replaceStaffRoleAssignments(
+                client,
+                staff.id,
+                normalizeRoleAssignmentInputRows(assignmentRows, staff.role_type),
+                req.user?.username || null
+            );
+        }
+
+        let onboarding = null;
+        if (startProfessionOnboarding) {
+            onboarding = await assignOnboardingResponsible(staff.id, responsibleUserId, req.user, {
+                professionKey,
+                ipAddress: req.ip,
+                db: client,
+                afterCommit
+            });
+        }
+        await client.query(
+            `UPDATE job_applications
+             SET status = 'hired', staff_id = $2, profession_key = $3, onboarding_progress_id = $4,
+                 hired_at = NOW(), hired_by = $5, updated_at = NOW()
+             WHERE id = $1`,
+            [a.id, staff.id, professionKey, onboarding?.progress?.id || null, req.user?.username || null]
+        );
+        let hiredCount = null;
+        let resolvedVacancyAction = vacancyAction;
+        let vacancyStatus = a.vacancy_status;
+        if (targetHires !== null) {
+            const headcount = await client.query(
+                `SELECT COUNT(*)::int AS hired_count
+                 FROM job_applications
+                 WHERE vacancy_id = $1 AND status = 'hired' AND staff_id IS NOT NULL`,
+                [a.vacancy_id]
+            );
+            hiredCount = Number(headcount.rows[0]?.hired_count || 0);
+            const reached = hiredCount >= targetHires;
+            resolvedVacancyAction = reached ? 'auto_filled_by_headcount' : 'kept_open_by_headcount';
+            vacancyStatus = reached ? 'filled' : 'open';
+            await client.query(
+                `UPDATE job_vacancies
+                 SET status = $2, closed_at = CASE WHEN $2 = 'filled' THEN NOW() ELSE NULL END
+                 WHERE id = $1`,
+                [a.vacancy_id, vacancyStatus]
+            );
+        } else if (vacancyAction === 'mark_filled') {
+            await client.query(
+                `UPDATE job_vacancies SET status = 'filled', closed_at = NOW() WHERE id = $1`,
+                [a.vacancy_id]
+            );
+            vacancyStatus = 'filled';
+        }
+        await auditLog(
+            hireMode === 'new_staff' ? 'application_hired_new_staff' : 'application_hired_existing_staff_profession',
+            staff.id,
+            req.user?.username,
+            {
+                application_id: a.id,
+                vacancy_id: a.vacancy_id,
+                profession_key: professionKey,
+                hire_mode: hireMode,
+                vacancy_action: resolvedVacancyAction,
+                target_hires: targetHires,
+                hired_count: hiredCount,
+                onboarding_progress_id: onboarding?.progress?.id || null
+            },
+            req.ip,
+            client
+        );
+        await client.query('COMMIT');
+        for (const callback of afterCommit) {
+            try {
+                Promise.resolve(callback()).catch(err => log.warn(`Hire post-commit hook skipped: ${err.message}`));
+            } catch (err) {
+                log.warn(`Hire post-commit hook skipped: ${err.message}`);
+            }
+        }
+        res.json({
+            success: true,
+            staff_id: staff.id,
+            profession_key: professionKey,
+            onboarding_progress_id: onboarding?.progress?.id || null,
+            hire_mode: hireMode,
+            vacancy_action: resolvedVacancyAction,
+            vacancy_status: vacancyStatus,
+            target_hires: targetHires,
+            hired_count: hiredCount,
+            message: hireMode === 'new_staff'
+                ? `${a.name} найнятий як ${profession.rows[0].title || professionKey}`
+                : `${profession.rows[0].title || professionKey} додано працівнику ${staff.name}`
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /applications/:id/hire', err);
+        res.status(err.statusCode || (err.code === '23505' ? 409 : 500)).json({
+            success: false,
+            code: err.code || 'HIRE_FAILED',
+            error: err.statusCode || err.code === '23505' ? err.message : 'Internal server error'
+        });
+    } finally {
+        client.release();
+    }
 });
 
 // ==========================================

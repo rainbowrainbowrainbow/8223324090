@@ -156,7 +156,13 @@
                 Number(checkbox.dataset.progressId),
                 Number(checkbox.dataset.itemId),
                 checkbox.checked,
-                checkbox
+                checkbox,
+                {
+                    staffId: Number(checkbox.dataset.staffId),
+                    professionKey: checkbox.dataset.professionKey || '',
+                    checklistKey: checkbox.dataset.checklistKey || '',
+                    title: checkbox.dataset.checklistTitle || ''
+                }
             );
         });
         updateOnboardingAccess();
@@ -567,14 +573,18 @@
         if (!list) return;
         updateOnboardingAccess();
         if (onboardingLoaded && !force) return;
+        list.setAttribute('aria-busy', 'true');
         list.innerHTML = '<div class="empty-state"><div class="empty-icon">🚀</div><div class="empty-text">Завантаження...</div></div>';
         try {
             const data = await trainingJson('/api/hr/onboarding');
             onboardingLoaded = true;
+            list.setAttribute('aria-busy', 'false');
             renderOnboarding(data.data || []);
         } catch (error) {
             console.error('Onboarding error', error);
-            list.innerHTML = '<div class="training-onboarding-empty">Не вдалося завантажити онбординг. Перевірте доступ або повторіть пізніше.</div>';
+            list.setAttribute('aria-busy', 'false');
+            list.innerHTML = '<div class="training-onboarding-empty is-error" role="alert">Не вдалося завантажити онбординг. Перевірте доступ або повторіть пізніше.<button type="button" class="training-action-btn" data-onboarding-retry>Повторити</button></div>';
+            list.querySelector('[data-onboarding-retry]')?.addEventListener('click', () => loadOnboarding(true));
         }
     }
 
@@ -599,49 +609,73 @@
         if (!list) return;
         const canManage = canManageOnboarding();
         if (!Array.isArray(processes) || processes.length === 0) {
-            list.innerHTML = '<div class="training-onboarding-empty">Активних процесів онбордингу поки немає.</div>';
+            list.innerHTML = '<div class="training-onboarding-empty">Процесів онбордингу поки немає. Корпоративний setup і професійні допуски запускаються окремо.</div>';
             return;
         }
 
-        list.innerHTML = processes.map(process => {
+        const renderProcess = process => {
+            const professionKey = String(process.profession_key || '').trim();
+            const isGeneral = !professionKey;
             const items = Array.isArray(process.items) ? process.items : [];
             const total = Number(process.total_items || items.length || 0);
-            const completed = Number(process.completed_items || items.filter(item => item?.done).length || 0);
+            const completed = Number(process.completed_items || items.filter(item => item?.done || item?.completed_at).length || 0);
             const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
             const statusText = onboardingStatusLabel(process.training_status || process.status);
             const responsible = process.responsible_name || process.responsible_username || 'відповідального не призначено';
             const totalTasks = Number(process.generated_task_count || process.task_summary?.total || 0);
             const activeTasks = Number(process.active_task_count || process.task_summary?.active || 0);
             const completedTasks = Number(process.completed_task_count || process.task_summary?.completed || 0);
-            return `<article class="training-onboarding-card">
+            const scopeTitle = isGeneral ? 'Загальний корпоративний онбординг' : (process.profession_title || professionKey);
+            const scopeLabel = isGeneral ? 'Корпоративний setup' : (process.is_primary ? 'Основна професія' : 'Додаткова професія');
+            return `<article class="training-onboarding-card ${process.status === 'completed' ? 'is-completed' : ''}">
                 <div class="training-onboarding-card-head">
                     <div class="training-onboarding-card-title">
-                        <strong>${esc(process.staff_name || 'Працівник')}</strong>
-                        <span>${esc(process.template_name || 'Онбординг')} · ${esc(statusText)}</span>
+                        <span class="training-onboarding-scope">${esc(scopeLabel)}</span>
+                        <strong>${esc(scopeTitle)}</strong>
+                        <span>${esc(statusText)}</span>
                     </div>
                     <div class="training-onboarding-percent">${percent}%</div>
                 </div>
                 <div class="training-onboarding-meta">
                     <span>Відповідальний: ${esc(responsible)}</span>
                     <span>Чек-лист: ${completed}/${total}</span>
+                    ${isGeneral ? '' : `<span>${esc(onboardingInternshipLabel(process.internship_status))}</span><span>${esc(onboardingAdmissionLabel(process.admission_status))}</span>`}
                     <span>Задачі: ${activeTasks}/${totalTasks} активні · ${completedTasks} виконано</span>
                 </div>
-                <div class="training-onboarding-meter" aria-hidden="true"><i style="width:${percent}%"></i></div>
+                <div class="training-onboarding-meter" role="progressbar" aria-label="${esc(scopeTitle)}: ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
                 <div class="training-onboarding-checklist">
                     ${items.length ? items.map((item, index) => {
-                        const done = !!item?.done;
+                        const done = !!(item?.done || item?.completed_at);
                         const itemId = Number(item?.id || index + 1);
                         return `<label class="training-onboarding-check ${done ? 'is-done' : ''}">
-                            <input type="checkbox" data-onboarding-check data-progress-id="${Number(process.id)}" data-item-id="${itemId}" ${done ? 'checked' : ''} ${canManage ? '' : 'disabled'}>
+                            <input type="checkbox" data-onboarding-check data-progress-id="${Number(process.id)}" data-item-id="${itemId}" data-staff-id="${Number(process.staff_id)}" data-profession-key="${esc(professionKey)}" data-checklist-key="${esc(item?.checklist_key || item?.key || '')}" data-checklist-title="${esc(onboardingItemTitle(item))}" ${done ? 'checked' : ''} ${canManage ? '' : 'disabled'}>
                             <span>${esc(onboardingItemTitle(item))}</span>
                         </label>`;
                     }).join('') : '<div class="training-onboarding-empty">У шаблоні ще немає чек-пунктів.</div>'}
                 </div>
             </article>`;
-        }).join('');
+        };
+        const groups = new Map();
+        processes.forEach(process => {
+            const key = String(process.staff_id || process.staff_name || 'unknown');
+            if (!groups.has(key)) groups.set(key, { name: process.staff_name || 'Працівник', processes: [] });
+            groups.get(key).processes.push(process);
+        });
+        list.innerHTML = Array.from(groups.values()).map(group => `<section class="training-onboarding-staff-group">
+            <div class="training-onboarding-staff-head"><h3>${esc(group.name)}</h3><span>${group.processes.length} окремих процесів</span></div>
+            <div class="training-onboarding-scope-grid">${group.processes.map(renderProcess).join('')}</div>
+        </section>`).join('');
     }
 
-    async function toggleOnboardingItem(progressId, itemId, done, checkbox) {
+    function onboardingAdmissionLabel(value) {
+        return ({ pending: 'Допуск очікує', approved: 'Допущено', blocked: 'Допуск заблоковано', rejected: 'Допуск відхилено', suspended: 'Допуск призупинено' })[value] || 'Допуск не задано';
+    }
+
+    function onboardingInternshipLabel(value) {
+        return ({ none: 'Без стажування', planned: 'Стажування заплановано', in_progress: 'Стажування триває', completed: 'Стажування завершено', failed: 'Стажування не пройдено' })[value] || 'Стажування не задано';
+    }
+
+    async function toggleOnboardingItem(progressId, itemId, done, checkbox, scope = {}) {
         if (!canManageOnboarding()) {
             if (checkbox) checkbox.checked = !done;
             if (typeof showNotification === 'function') showNotification('Змінювати онбординг можуть тільки HR або керівники', 'error');
@@ -650,10 +684,22 @@
         if (!progressId || !itemId) return;
         if (checkbox) checkbox.disabled = true;
         try {
-            await trainingJson(`/api/hr/onboarding/${progressId}/check`, {
-                method: 'PUT',
-                body: JSON.stringify({ item_id: itemId, done })
-            });
+            if (scope.professionKey) {
+                await trainingJson(`/api/hr/staff/${scope.staffId}/profession-checklist`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        profession_key: scope.professionKey,
+                        checklist_key: scope.checklistKey,
+                        title: scope.title,
+                        completed: done
+                    })
+                });
+            } else {
+                await trainingJson(`/api/hr/onboarding/${progressId}/check`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ item_id: itemId, done })
+                });
+            }
             onboardingLoaded = false;
             await loadOnboarding(true);
             if (typeof showNotification === 'function') showNotification('Онбординг оновлено', 'success');
@@ -675,13 +721,19 @@
             if (typeof showNotification === 'function') showNotification('Форма запуску тимчасово недоступна', 'error');
             return;
         }
+        const startButton = document.getElementById('trainingStartOnboarding');
+        if (startButton) {
+            startButton.disabled = true;
+            startButton.setAttribute('aria-busy', 'true');
+        }
         try {
             const [staff, templates, responsible] = await Promise.all([
                 trainingJson('/api/hr/staff?active=true'),
                 trainingJson('/api/hr/onboarding/templates'),
                 trainingJson('/api/hr/onboarding/responsible-candidates')
             ]);
-            const staffOptions = (staff.data || []).map(person => ({
+            const staffRows = staff.data || [];
+            const staffOptions = staffRows.map(person => ({
                 value: String(person.id),
                 label: person.name || `ID ${person.id}`
             }));
@@ -697,19 +749,49 @@
                 if (typeof showNotification === 'function') showNotification('Потрібні активні працівники, шаблони і відповідальні для онбордингу', 'warning');
                 return;
             }
-            const result = await formModal('Запустити онбординг', [
+            const result = await formModal('Запустити окремий процес онбордингу', [
+                { key: 'scope', label: 'Тип процесу', type: 'select', options: [
+                    { value: 'general', label: 'Загальний корпоративний онбординг' },
+                    { value: 'profession', label: 'Онбординг конкретної професії' }
+                ], required: true },
                 { key: 'staffId', label: 'Працівник', type: 'select', options: staffOptions, required: true },
-                { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true },
+                {
+                    key: 'professionKey',
+                    label: 'Призначена професія',
+                    type: 'select',
+                    options: [],
+                    dependsOn: 'staffId',
+                    optionsFor: staffId => {
+                        const person = staffRows.find(item => String(item.id) === String(staffId));
+                        const primary = String(person?.role_type || '').trim();
+                        const secondary = Array.isArray(person?.secondary_professions) ? person.secondary_professions : [];
+                        return [...new Set([primary, ...secondary].filter(Boolean))].map(key => ({
+                            value: key,
+                            label: key === primary ? `${key} · основна` : `${key} · додаткова`
+                        }));
+                    },
+                    visibleWhen: values => values.scope === 'profession',
+                    required: true,
+                    hint: 'У списку доступні тільки професії, вже призначені цьому працівнику.'
+                },
+                { key: 'templateId', label: 'Корпоративний шаблон', type: 'select', options: templateOptions, visibleWhen: values => values.scope === 'general', required: true },
                 { key: 'responsibleUserId', label: 'Відповідальний', type: 'select', options: responsibleOptions, required: true }
-            ], { icon: '🚀' });
+            ], {
+                icon: '🚀',
+                validate: values => values.scope === 'profession' && !values.professionKey
+                    ? { key: 'professionKey', message: 'Для професійного онбордингу виберіть призначену професію.' }
+                    : null
+            });
             if (!result) return;
+            const payload = {
+                staff_id: Number(result.staffId),
+                responsible_user_id: Number(result.responsibleUserId)
+            };
+            if (result.scope === 'profession') payload.profession_key = result.professionKey;
+            else payload.template_id = Number(result.templateId);
             await trainingJson('/api/hr/onboarding/start', {
                 method: 'POST',
-                body: JSON.stringify({
-                    staff_id: Number(result.staffId),
-                    template_id: Number(result.templateId),
-                    responsible_user_id: Number(result.responsibleUserId)
-                })
+                body: JSON.stringify(payload)
             });
             onboardingLoaded = false;
             await loadOnboarding(true);
@@ -718,6 +800,11 @@
         } catch (error) {
             console.error('Start onboarding error', error);
             if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося запустити онбординг', 'error');
+        } finally {
+            if (startButton) {
+                startButton.disabled = false;
+                startButton.setAttribute('aria-busy', 'false');
+            }
         }
     }
 

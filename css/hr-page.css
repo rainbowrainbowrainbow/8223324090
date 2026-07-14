@@ -6248,6 +6248,43 @@ body.dark-mode .ai-task-form input { background: #1E1E38; border-color: #3D3D5C;
 .candidate-intake-actions span { margin-right: auto; color: var(--gray-500); font-size: 13px; }
 .hr-training-readiness-modal { width: min(760px, 100%); }
 .hr-training-readiness-summary { margin-bottom: 14px; }
+.hr-onboarding-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.hr-onboarding-page-head h2 { margin: 0 0 4px; color: var(--gray-800); font-size: 22px; }
+.hr-onboarding-page-head p { margin: 0; color: var(--gray-500); font-size: 13px; font-weight: 700; }
+.hr-onboarding-staff-group { display: grid; gap: 12px; margin-bottom: 16px; padding: 14px; border: 1px solid var(--gray-100); border-radius: var(--radius); background: var(--white); box-shadow: var(--shadow-xs); }
+.hr-onboarding-staff-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hr-onboarding-staff-head h3 { margin: 0; color: var(--gray-800); font-size: 17px; }
+.hr-onboarding-staff-head span { color: var(--gray-500); font-size: 11px; font-weight: 800; }
+.hr-onboarding-process-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.hr-onboarding-process-card { display: grid; align-content: start; gap: 10px; padding: 13px; border: 1px solid var(--gray-100); border-radius: 11px; background: color-mix(in srgb, var(--white) 94%, var(--primary) 6%); }
+.hr-onboarding-process-card.is-completed { border-color: color-mix(in srgb, var(--success) 34%, transparent); }
+.hr-onboarding-process-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.hr-onboarding-process-head span { color: var(--gray-500); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.hr-onboarding-process-head h4 { margin: 3px 0 0; color: var(--gray-800); font-size: 14px; }
+.hr-onboarding-process-head > strong { color: var(--primary); font-size: 17px; }
+.hr-onboarding-process-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+.hr-onboarding-process-meta span { padding: 4px 7px; border-radius: 999px; background: var(--gray-100); color: var(--gray-600); font-size: 10px; font-weight: 800; }
+.hr-onboarding-process-meter { height: 7px; overflow: hidden; border-radius: 999px; background: var(--gray-100); }
+.hr-onboarding-process-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--primary-light)); }
+.hr-onboarding-process-card.is-completed .hr-onboarding-process-meter i { background: var(--success); }
+.hr-onboarding-process-checklist { display: grid; gap: 6px; }
+.hr-onboarding-process-check { display: grid; grid-template-columns: 17px minmax(0, 1fr); gap: 8px; align-items: center; color: var(--gray-700); font-size: 12px; font-weight: 700; cursor: pointer; }
+.hr-onboarding-process-check input { width: 15px; height: 15px; accent-color: var(--primary); }
+.hr-onboarding-process-check.is-done span { color: var(--gray-400); text-decoration: line-through; }
+.hr-onboarding-empty, .hr-onboarding-process-empty { display: grid; gap: 10px; place-items: center; padding: 28px 16px; border: 1px dashed var(--gray-200); border-radius: var(--radius); color: var(--gray-500); text-align: center; font-weight: 800; }
+.hr-onboarding-empty.is-error { color: var(--danger); }
+
+body.dark-mode .hr-onboarding-staff-group,
+body.dark-mode .hr-onboarding-process-card { border-color: rgba(148, 163, 184, 0.16); background: var(--surface, #1e1e38); }
+body.dark-mode .hr-onboarding-page-head h2,
+body.dark-mode .hr-onboarding-staff-head h3,
+body.dark-mode .hr-onboarding-process-head h4 { color: var(--text, #f8fafc); }
+
+@media (max-width: 640px) {
+    .hr-onboarding-page-head, .hr-onboarding-staff-head { align-items: stretch; flex-direction: column; }
+    .hr-onboarding-process-grid { grid-template-columns: 1fr; }
+}
+
 .hr-training-profession-list { display: grid; gap: 12px; }
 .hr-training-profession-card {
     border: 1px solid var(--gray-100);

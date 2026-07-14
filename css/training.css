@@ -362,8 +362,49 @@
     gap: 12px;
 }
 
+.training-onboarding-staff-group {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(103, 232, 249, 0.14);
+    border-radius: var(--training-radius);
+    background: rgba(15, 23, 42, 0.22);
+}
+
+.training-onboarding-staff-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.training-onboarding-staff-head h3 {
+    margin: 0;
+    color: var(--training-text);
+    font-size: 17px;
+}
+
+.training-onboarding-staff-head span,
+.training-onboarding-scope {
+    color: var(--training-muted);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.training-onboarding-scope-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 12px;
+}
+
 .training-onboarding-card {
     padding: 16px;
+}
+
+.training-onboarding-card.is-completed {
+    border-color: rgba(45, 212, 191, 0.36);
 }
 
 .training-onboarding-card-head {
@@ -469,6 +510,14 @@
     color: var(--training-muted);
     text-align: center;
     font-weight: 900;
+}
+
+.training-onboarding-empty.is-error {
+    color: #fca5a5;
+}
+
+.training-onboarding-empty .training-action-btn {
+    margin-top: 12px;
 }
 
 .read-modal,
@@ -596,9 +645,14 @@ body:not(.dark-mode) .leaderboard-table td {
     }
 
     .training-onboarding-head,
-    .training-onboarding-card-head {
+    .training-onboarding-card-head,
+    .training-onboarding-staff-head {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .training-onboarding-scope-grid {
+        grid-template-columns: 1fr;
     }
 
     .training-action-btn {

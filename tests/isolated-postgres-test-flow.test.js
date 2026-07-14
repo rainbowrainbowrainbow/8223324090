@@ -98,6 +98,9 @@ describe('isolated PostgreSQL test flow safety', () => {
         const root = path.resolve(__dirname, '..');
         const runner = fs.readFileSync(path.join(root, 'scripts', 'run-isolated-postgres-tests.js'), 'utf8');
         const hrSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-disposable.integration.test.js'), 'utf8');
+        const onboardingSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-onboarding-hire.integration.test.js'), 'utf8');
+        const onboardingBrowserSuite = fs.readFileSync(path.join(root, 'tests', 'browser', 'hr-onboarding-flow-browser-smoke.js'), 'utf8');
+        const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
 
         assert.match(runner, /DROP SCHEMA IF EXISTS public CASCADE/);
         assert.match(runner, /verifyAllMigrationsApplied/);
@@ -111,5 +114,14 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(hrSuite, /DELETE', `\/api\/staff\/\$\{staffId\}`/);
         assert.doesNotMatch(hrSuite, /HR_DISPOSABLE_STAFF_ID/);
         assert.doesNotMatch(hrSuite, /copied\.length, 2/);
+        assert.match(runner, /onboarding:\s*\[\s*'tests\/integration\/hr-onboarding-hire\.integration\.test\.js'\s*\]/);
+        assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
+        assert.match(onboardingSuite, /one corporate and three profession processes exist/);
+        assert.match(onboardingSuite, /cook progress remains unchanged/);
+        assert.match(workflow, /hr-onboarding-postgres:/);
+        assert.match(workflow, /test:integration:hr-onboarding:isolated/);
+        assert.match(workflow, /test:browser:hr-onboarding/);
+        assert.match(onboardingBrowserSuite, /HR onboarding cross-surface browser smoke passed/);
+        assert.match(onboardingBrowserSuite, /staffScheduleShell/);
     });
 });

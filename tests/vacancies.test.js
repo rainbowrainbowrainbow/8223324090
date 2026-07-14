@@ -4,6 +4,8 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { authRequest } = require('./helpers');
 
 describe('HR Vacancies CRUD', () => {
@@ -106,11 +108,70 @@ describe('HR Job Applications', () => {
     it('POST /hr/applications/:id/hire — hire candidate', async () => {
         if (!applicationId) return;
         const res = await authRequest('POST', `/api/hr/applications/${applicationId}/hire`, {
-            role: 'animator',
+            hire_mode: 'new_staff',
+            vacancy_action: 'keep_open',
+            start_profession_onboarding: false,
             salary: 20000
         });
-        // Hire may succeed or fail depending on DB constraints
-        assert.ok([200, 201, 400, 409].includes(res.status),
+        assert.ok([200, 201, 409].includes(res.status),
             `Hire returned unexpected status: ${res.status}`);
+        if ([200, 201].includes(res.status)) {
+            assert.ok(res.data.staff_id, 'hire should return durable staff id');
+            assert.equal(res.data.profession_key, 'animator');
+            assert.equal(res.data.vacancy_action, 'keep_open');
+            const repeated = await authRequest('POST', `/api/hr/applications/${applicationId}/hire`, {
+                hire_mode: 'new_staff',
+                vacancy_action: 'keep_open',
+                start_profession_onboarding: false
+            });
+            assert.equal(repeated.status, 409, 'the same application must not be hired twice');
+        }
+    });
+});
+
+describe('HR durable vacancy hire contract', () => {
+    const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hr.js'), 'utf8');
+    const pageCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'hr-page.js'), 'utf8');
+    const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '290_job_application_staff_profession_link.sql'), 'utf8');
+    const backfillMigration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '291_job_application_legacy_link_backfill.sql'), 'utf8');
+    const headcountMigration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '292_job_vacancy_headcount.sql'), 'utf8');
+
+    it('links applications to staff, profession, and optional onboarding durably', () => {
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS staff_id INTEGER/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS profession_key VARCHAR\(64\)/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS onboarding_progress_id INTEGER/);
+        assert.match(routeCode, /FOR UPDATE OF a, v/);
+        assert.match(routeCode, /APPLICATION_ALREADY_HIRED/);
+        assert.match(routeCode, /application_hired_existing_staff_profession/);
+        assert.match(routeCode, /vacancyAction === 'mark_filled'/);
+    });
+
+    it('offers explicit new staff and existing staff modes without name matching', () => {
+        assert.match(pageCode, /value: 'new_staff'/);
+        assert.match(pageCode, /value: 'existing_staff'/);
+        assert.match(pageCode, /existing_staff_id/);
+        assert.match(pageCode, /value: 'keep_open'/);
+        assert.match(pageCode, /value: 'mark_filled'/);
+        assert.doesNotMatch(routeCode, /WHERE\s+(?:LOWER\()?s?\.?(?:name|full_name).*a\.name/i);
+    });
+
+    it('backfills legacy hires only through an unambiguous phone and assigned profession', () => {
+        assert.match(backfillMigration, /status = 'hired'/);
+        assert.match(backfillMigration, /staff_id IS NULL/);
+        assert.match(backfillMigration, /regexp_replace\(COALESCE\(a\.phone/);
+        assert.match(backfillMigration, /HAVING COUNT\(DISTINCT s\.id\) = 1/);
+        assert.match(backfillMigration, /staff_role_assignments/);
+        assert.doesNotMatch(backfillMigration, /LOWER\([^\n]*(?:name|full_name)/i);
+    });
+
+    it('models optional vacancy headcount while retaining the manual MVP fallback', () => {
+        assert.match(headcountMigration, /ADD COLUMN IF NOT EXISTS target_hires INTEGER/);
+        assert.match(headcountMigration, /target_hires IS NULL OR target_hires > 0/);
+        assert.match(routeCode, /COUNT\(\*\)::int AS hired_count/);
+        assert.match(routeCode, /kept_open_by_headcount/);
+        assert.match(routeCode, /auto_filled_by_headcount/);
+        assert.match(pageCode, /\.target_hires/);
+        assert.match(pageCode, /target_hires:\s*parseInt\(result\.target_hires\) \|\| null/);
+        assert.match(pageCode, /if \(!vacancyHasHeadcount\) payload\.vacancy_action/);
     });
 });

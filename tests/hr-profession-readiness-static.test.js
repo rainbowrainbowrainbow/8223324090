@@ -28,6 +28,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const staffScheduleMutations = readRepoFile('services', 'staffScheduleMutations.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
+    const trainingPage = readRepoFile('js', 'training-page.js');
+    const trainingSurface = `${readRepoFile('training.html')}\n${readRepoFile('css', 'training.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
     const staffScheduleShell = readRepoFile('js', 'staff-schedule-shell.js');
@@ -179,7 +181,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /function loadStaffLifecycleChecklist/);
         assert.match(hrRoute, /router\.get\('\/staff\/:id\/lifecycle-checklist', requireHrManage/);
         assert.match(hrRoute, /candidate_approved/);
-        assert.match(hrRoute, /candidate_staff_link_missing/);
+        assert.match(hrRoute, /hiring_application: hiringApplication/);
+        assert.match(hrRoute, /FROM job_applications a[\s\S]*a\.staff_id = \$1/);
         assert.match(hrRoute, /future_schedule_count/);
         assert.match(hrRoute, /open_payroll_count/);
         assert.match(hrRoute, /if \(payload\.key !== currentKey\)/);
@@ -242,6 +245,26 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffPage, /function schedulePlanProfessionOptions/);
         assert.match(staffPage, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
+    });
+
+    it('keeps corporate and profession onboarding as independent UI scopes', () => {
+        assert.match(hrPage, /function renderStaffOnboardingScopeCard/);
+        assert.match(hrPage, /\/staff\/\$\{staffId\}\/onboarding-processes/);
+        assert.match(hrPage, /\/staff\/\$\{staffId\}\/role-assignments/);
+        assert.match(hrPage, /Загальний корпоративний онбординг/);
+        assert.match(hrPage, /Основна професія/);
+        assert.match(hrPage, /Додаткова професія/);
+        assert.match(hrPage, /toggleProfessionOnboardingItem/);
+        assert.match(hrPage, /\/profession-checklist/);
+        assert.match(hrPage, /visibleWhen: values => values\.scope === 'profession'/);
+        assert.match(hrPage, /optionsFor: staffId =>/);
+        assert.match(trainingPage, /data-profession-key/);
+        assert.match(trainingPage, /scope\.professionKey/);
+        assert.match(trainingPage, /\/profession-checklist/);
+        assert.match(trainingPage, /Корпоративний setup/);
+        assert.match(trainingSurface, /aria-live="polite" aria-busy="true"/);
+        assert.match(trainingSurface, /training-onboarding-scope-grid/);
+        assert.match(hrHtml, /Корпоративний setup та допуск кожної професії показуються незалежно/);
     });
 
     it('keeps HR team card profession display on canonical role fields', () => {

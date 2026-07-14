@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const MODES = {
     api: ['tests/api.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
+    onboarding: ['tests/integration/hr-onboarding-hire.integration.test.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -27,7 +28,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|hr|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|hr|onboarding|qa|all>';
 }
 
 function createPool(testDb) {
@@ -210,6 +211,7 @@ async function runSuite(testDb, testFile) {
         REQUIRE_ISOLATED_TEST_TARGET: 'true',
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
+        RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'
     };
     const output = { text: '' };
@@ -268,9 +270,9 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'hr', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'hr', 'onboarding', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
-    const files = mode === 'all' ? [...MODES.api, ...MODES.hr] : MODES[mode];
+    const files = mode === 'all' ? [...MODES.api, ...MODES.hr, ...MODES.onboarding] : MODES[mode];
 
     for (const testFile of files) {
         process.stdout.write(`\n[isolated-db] Running ${testFile} against ${testDb.hostname}/${testDb.databaseName}\n`);

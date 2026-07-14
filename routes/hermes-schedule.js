@@ -349,8 +349,8 @@ function createHermesScheduleRouter(options = {}) {
             const staffIds = parseStaffIds(req.query.staffIds ?? req.query.staff_ids);
             const params = [range.dateFrom, range.dateTo];
             const where = [
-                'ss.date >= $1::date',
-                'ss.date <= $2::date',
+                'ss.date >= $1',
+                'ss.date <= $2',
                 scheduleableStaffWhere('s', { dateExpression: 'ss.date', includeFreelance: false })
             ];
             if (staffIds.length) {

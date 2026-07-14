@@ -167,6 +167,9 @@ describe('Hermes schedule OCR preview', () => {
         assert.ok(expiresAt >= startedAt + 29 * 60 * 1000);
         assert.ok(expiresAt <= Date.now() + 31 * 60 * 1000);
         assert.equal(db.calls.some(call => /(?:INSERT|UPDATE|DELETE)[\s\S]*(?:staff_schedule|hr_shifts)/i.test(call.sql)), false);
+        const currentStateCall = db.calls.find(call => /LEFT JOIN staff_schedule ss/.test(call.sql));
+        assert.match(currentStateCall.sql, /\$3::text\[\]/);
+        assert.doesNotMatch(currentStateCall.sql, /\$3::date\[\]/);
     });
 
     it('returns ambiguous_staff for two scheduleable exact matches', async () => {

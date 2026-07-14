@@ -262,6 +262,9 @@ describe('Hermes schedule apply service', () => {
         assert.equal(batchCall[2].sourceMetadata.previewId, PREVIEW_ID);
         assert.equal(batchCall[2].sourceMetadata.documentDate, '2026-07-13');
         assert.equal(batchCall[2].sourceMetadataForEntry(batchCall[1][0]).rowId, ROW_ID);
+        const currentStateCall = db.queries.find(query => /FROM staff_schedule ss[\s\S]*FOR UPDATE OF ss/.test(query.sql));
+        assert.match(currentStateCall.sql, /\$2::text\[\]/);
+        assert.doesNotMatch(currentStateCall.sql, /\$2::date\[\]/);
         assert.match(db.queries.map(query => query.sql).join('\n'), /SET status = 'ready'/);
         assert.match(db.queries.map(query => query.sql).join('\n'), /SET status = 'applied'/);
     });

@@ -188,7 +188,9 @@ describe('Hermes staff and schedule read routes', () => {
         assert.deepEqual(response.data.meta.staffIds, [746]);
 
         const scheduleCall = pool.calls.find(call => /FROM staff_schedule ss/.test(call.sql));
-        assert.match(scheduleCall.sql, /ss\.date >= \$1::date/);
+        assert.match(scheduleCall.sql, /ss\.date >= \$1/);
+        assert.match(scheduleCall.sql, /ss\.date <= \$2/);
+        assert.doesNotMatch(scheduleCall.sql, /ss\.date >= \$1::date|ss\.date <= \$2::date/);
         assert.match(scheduleCall.sql, /ss\.staff_id = ANY\(\$3::int\[\]\)/);
         assert.match(scheduleCall.sql, /COALESCE\(s\.hr_pool_status, 'core'\) = 'core'/);
         assert.doesNotMatch(scheduleCall.sql, /phone|hourly_rate|payroll|document/i);

@@ -558,7 +558,7 @@ async function loadHermesPreviewCurrentStates(db, matchedRows) {
     const result = await db.query(
         `WITH requested AS (
              SELECT *
-             FROM UNNEST($1::int[], $2::int[], $3::date[])
+             FROM UNNEST($1::int[], $2::int[], $3::text[])
                   AS source(row_index, staff_id, schedule_date)
          )
          SELECT requested.row_index,
@@ -1011,7 +1011,7 @@ async function loadHermesScheduleStatesForApply(db, selectedRows) {
     const result = await db.query(
         `WITH requested AS (
              SELECT *
-             FROM UNNEST($1::int[], $2::date[])
+             FROM UNNEST($1::int[], $2::text[])
                   AS source(staff_id, schedule_date)
          )
          SELECT ss.id AS schedule_id,

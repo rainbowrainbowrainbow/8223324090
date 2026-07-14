@@ -58,7 +58,7 @@
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
                         <div id="scheduleStaffFilterInfo" class="staff-schedule-filter-info" aria-live="polite"></div>
                     </div>
-                    <div id="deptFilter" class="dept-filter"></div>
+                    <div id="deptFilter" class="dept-filter" role="group" aria-label="Фільтр працівників за професійною секцією"></div>
                 </div>
             </div>
 

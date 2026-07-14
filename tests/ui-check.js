@@ -2027,7 +2027,7 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('function scheduleDepartmentCountMap(staffList = StaffState.staff)')
         && staffCode.includes('const counts = scheduleDepartmentCountMap(StaffState.staff)')
         && !staffDeptFilterRenderBlock.includes('${label} (${count})')
-        && /min-height:\s*32px;/.test(staffScheduleDeptChipRule)
+        && /min-height:\s*38px;/.test(staffScheduleDeptChipRule)
         && /border-radius:\s*10px;/.test(staffScheduleDeptChipRule)
         && /background:\s*rgba\(255,255,255,0\.56\);/.test(staffScheduleDeptChipRule)
         && /background:\s*rgba\(20,184,166,0\.12\);/.test(staffScheduleDeptChipActiveRule)
@@ -2050,7 +2050,7 @@ checkPage('staff.html', (doc, html) => {
         && staffFunctionBlock('scheduleVisibleStaff').includes('visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query))')
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
-        && staffScheduleRenderBlock.includes("grouping: 'membership'"));
+        && !staffScheduleRenderBlock.includes("grouping: 'membership'"));
     check('Staff schedule subgroup ownership is deterministic while duplicate-label headers stay suppressed',
         staffCode.includes('function staffProfessionKeys(staff = {})')
         && staffCode.includes('function staffScheduleDepartmentKeys(staff = {})')
@@ -2200,7 +2200,7 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-schedule-range-state')
         && staffPagesCss.includes('[data-schedule-state="loading"]')
         && staffPagesCss.includes('[data-schedule-state="error"]'));
-    check('Staff schedule renders multi-profession membership per section while keeping operations unique',
+    check('Staff schedule keeps All canonical and selected profession sections qualification-aware',
         staffScheduleNormalizeStaffIdBlock.includes('Number(')
         && /Number\.is(?:SafeInteger|Integer|Finite)/.test(staffScheduleNormalizeStaffIdBlock)
         && staffScheduleUniqueStaffBlock.includes('normalizeScheduleStaffId')
@@ -2215,7 +2215,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleGroupingKeysBlock.includes('staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : []')
         && staffScheduleGroupingKeysBlock.includes('return [scheduleCanonicalDisplayGroupKey(staff)]')
         && staffScheduleGroupingKeysBlock.includes("options.grouping === 'membership'")
-        && staffScheduleRenderBlock.includes("grouping: 'membership'")
+        && !staffScheduleRenderBlock.includes("grouping: 'membership'")
         && staffScheduleDepartmentCountBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleVisibleWithoutSearchBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleGroupStaffBlock.includes('uniqueScheduleStaffById(')
@@ -2232,7 +2232,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleDisplayNameBlock.includes('staff.display_name || staff.displayName || staff.name')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-staff-id=')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-department=')
-        && staffScheduleWorkbookBlock.includes("grouping: 'membership'")
+        && !staffScheduleWorkbookBlock.includes("grouping: 'membership'")
         && staffScheduleWorkbookBlock.includes('scheduleStaffDisplayName(emp)')
         && staffScheduleBrowserSmokeCode.includes('const STAFF_API_ROWS =')
         && /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/.test(staffScheduleBrowserSmokeCode)
@@ -2330,12 +2330,12 @@ checkPage('staff.html', (doc, html) => {
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions \.btn-page-toolbar[\s\S]*min-width:\s*76px;/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-search-row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*position:\s*absolute;[\s\S]*clip-path:\s*inset\(50%\);[\s\S]*white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock));
-    check('Staff schedule mobile controls use compact rails and a stacked command grid',
+    check('Staff schedule mobile controls use 44px touch targets and a stacked command grid',
         staffScheduleMobileCommandBlock.includes('body[data-page-group="hr"] .staff-schedule-command-bar')
         && /display:\s*grid;/.test(staffScheduleMobileCommandBlock)
         && /"controls";/.test(staffScheduleMobileCommandBlock)
         && /grid-area:\s*controls;/.test(staffScheduleMobileCommandBlock)
-        && /grid-template-columns:\s*36px minmax\(0,\s*1fr\) 36px minmax\(72px,\s*max-content\);/.test(staffScheduleMobileCommandBlock)
+        && /grid-template-columns:\s*44px minmax\(0,\s*1fr\) 44px minmax\(78px,\s*max-content\);/.test(staffScheduleMobileCommandBlock)
         && /grid-column:\s*auto;/.test(staffScheduleMobileCommandBlock)
         && /flex-wrap:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
         && /overflow-x:\s*auto;/.test(staffScheduleMobileCommandBlock)
@@ -2345,7 +2345,7 @@ checkPage('staff.html', (doc, html) => {
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions[\s\S]*width:\s*max-content;/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions \.btn-page-toolbar[\s\S]*min-width:\s*76px;/.test(staffScheduleMobileCommandBlock)
         && /white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
-        && /max-width:\s*min\(58vw,\s*168px\);/.test(staffScheduleMobileCommandBlock)
+        && /max-width:\s*min\(72vw,\s*190px\);/.test(staffScheduleMobileCommandBlock)
         && staffScheduleSummaryBlock.includes("container.innerHTML = ''")
         && staffScheduleSummaryBlock.includes('container.hidden = true')
         && !staffScheduleSummaryBlock.includes('summary-chip'));
@@ -2428,7 +2428,7 @@ checkPage('staff.html', (doc, html) => {
         && !staffScheduleLiveSmokeCode.includes('data-schedule-view="accounts"')
         && staffScheduleLiveSmokeCode.includes("applyPreset(page, 'first-half')")
         && staffScheduleBrowserSmokeCode.includes("applyPreset(page, 'second-half')")
-        && staffScheduleBrowserSmokeCode.includes('assertHalfMonthScheduleLayout')
+        && staffScheduleBrowserSmokeCode.includes('assertFittedScheduleLayout')
         && staffScheduleBrowserSmokeCode.includes("second-half starts on day 16")
         && staffScheduleLiveSmokeCode.includes("await waitForDayColumns(page, 9)")
         && staffScheduleLiveSmokeCode.includes("await waitForDayColumns(page, 15)")

@@ -431,18 +431,6 @@ function staffPlacementSetsMatch(left, right) {
     return right.every(item => expected.has(`${item.department}:${item.id}`));
 }
 
-function findAnimatorReceptionMembershipStaffId(state) {
-    const departmentsByStaffId = new Map();
-    for (const placement of state.placements || []) {
-        if (!departmentsByStaffId.has(placement.id)) departmentsByStaffId.set(placement.id, new Set());
-        departmentsByStaffId.get(placement.id).add(placement.department);
-    }
-    for (const [staffId, departments] of departmentsByStaffId) {
-        if (departments.has('animators') && departments.has('reception')) return staffId;
-    }
-    return null;
-}
-
 async function readScheduleStaffSetState(page) {
     return page.locator('#scheduleBody').evaluate(tbody => {
         const placements = Array.from(tbody.querySelectorAll('[data-schedule-staff-row]'))
@@ -546,13 +534,11 @@ async function assertCommercialStaffSetContracts(page) {
     const allChipCount = Number(await page.locator('#deptFilter .dept-chip[data-dept="all"] .dept-chip-count').textContent());
     const allState = await readScheduleStaffSetState(page);
     assert.equal(allState.hasEmptyState, false, 'all filter has schedule staff rows');
-    assert.equal(staffPlacementsAreUnique(allState.placements), true, 'all filter renders each numeric staff ID once per professional section');
+    assert.equal(staffIdsAreUnique(allState.ids), true, 'all filter renders each physical staff member exactly once');
     assert.equal(allState.uniqueIds.length, allChipCount, 'all chip count matches the unique people total');
-    assert.equal(allState.rowCount >= allState.uniqueIds.length, true, 'membership placements never reduce the unique people set');
+    assert.equal(allState.rowCount, allState.uniqueIds.length, 'all rows equal the unique people set');
     assert.equal(allState.groupStaffCount, allState.rowCount, 'all top-level group counts match the table');
-    const sharedStaffId = findAnimatorReceptionMembershipStaffId(allState);
-    assert.equal(Number.isSafeInteger(sharedStaffId), true, 'all filter includes a staff member in both animators and reception');
-    await assertWorkbookStaffPlacementParity(page, allState.placements, 'all membership export');
+    await assertWorkbookStaffPlacementParity(page, allState.placements, 'all canonical export');
 
     const refreshSnapshot = await page.evaluate(() => ({
         from: document.getElementById('scheduleDateFrom')?.value || '',
@@ -571,7 +557,7 @@ async function assertCommercialStaffSetContracts(page) {
             .every(button => button.getAttribute('aria-expanded') === 'true')
     ));
     const refreshedAllState = await readScheduleStaffSetState(page);
-    assert.equal(staffPlacementSetsMatch(allState.placements, refreshedAllState.placements), true, 'read-only refresh preserves all membership placements');
+    assert.equal(staffPlacementSetsMatch(allState.placements, refreshedAllState.placements), true, 'read-only refresh preserves all canonical placements');
     assert.equal(refreshedAllState.uniqueIds.length, allChipCount, 'read-only refresh preserves the unique people total');
     assert.deepEqual(await page.evaluate(() => ({
         from: document.getElementById('scheduleDateFrom')?.value || '',
@@ -581,12 +567,18 @@ async function assertCommercialStaffSetContracts(page) {
         navigationCount: performance.getEntriesByType('navigation').length
     })), refreshSnapshot, 'read-only refresh preserves range, filter, search, and navigation state');
 
+    const sharedSectionStates = {};
     for (const department of ['animators', 'reception']) {
         await activateDepartmentFilter(page, department);
         await expandAllScheduleGroups(page);
         const state = await readScheduleStaffSetState(page);
+        sharedSectionStates[department] = state;
+    }
+    const sharedStaffId = sharedSectionStates.animators.ids.find(id => sharedSectionStates.reception.ids.includes(id));
+    assert.equal(Number.isSafeInteger(sharedStaffId), true, 'qualification filters expose a shared animator/reception staff member');
+    for (const department of ['animators', 'reception']) {
         assert.equal(
-            state.placements.filter(item => item.id === sharedStaffId && item.department === department).length,
+            sharedSectionStates[department].placements.filter(item => item.id === sharedStaffId && item.department === department).length,
             1,
             'shared multi-profession staff member appears once in the active professional section'
         );

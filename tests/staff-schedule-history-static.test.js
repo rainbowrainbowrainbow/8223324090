@@ -79,6 +79,10 @@ window.__staffScheduleBehaviorApi = {
                 .map(([key, staff]) => [key, staff.map(item => normalizeScheduleStaffId(item.id))])
         );
     },
+    scheduleEntrySegmentsForUi,
+    renderScheduleCellSegments,
+    scheduleCellAriaLabel,
+    renderScheduleHealthBadges,
     buildScheduleWorkbookHtml
 };
 ${marker}`);
@@ -817,9 +821,92 @@ describe('staff schedule safety guards', () => {
         assert.match(staffCss, /\.schedule-health-badges\s*\{[\s\S]*flex-wrap:\s*nowrap;[\s\S]*\}/);
         assert.match(staffCss, /\.schedule-health-badge-compact\s*\{[\s\S]*border-radius:\s*999px;[\s\S]*white-space:\s*nowrap;[\s\S]*\}/);
         assert.match(staffCss, /\.schedule-health-badge-count/);
-        assert.match(staffCss, /\.sch-cell\.has-health-critical/);
+        assert.match(staffCss, /\.schedule-health-badge\.is-critical\s*\{[\s\S]*background:\s*#DC2626;[\s\S]*color:\s*#FFFFFF;/);
+        assert.doesNotMatch(staffCss, /\.sch-cell\.has-health-critical\s*\{/);
+        assert.doesNotMatch(staffCss, /tr\.has-health-critical\s+td:first-child/);
+        assert.match(staffCss, /td\.schedule-day-cell\.status-working/);
+        assert.match(staffCss, /tr\.is-schedule-focus td\s*\{[\s\S]*box-shadow:\s*inset 0 -2px 0 #2563EB;/);
+        assert.match(staffPage, /const focusAttributes = focusClass \? ' aria-current="true"' : '';/);
         assert.match(staffCss, /\.sch-cell:focus-visible/);
         assert.match(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-health-panel/);
+    });
+
+    it('keeps hidden section matches discoverable without reordering visible segments', () => {
+        const api = loadStaffScheduleBehaviorApi();
+        api.setState({
+            professions: [
+                { key: 'reception', title: 'Reception' },
+                { key: 'manager', title: 'Manager' },
+                { key: 'barista', title: 'Barista' },
+                { key: 'animator', title: 'Animator' }
+            ]
+        });
+        const entry = {
+            planned_minutes: 600,
+            profession_key: 'reception',
+            segments: [
+                { professionKey: 'reception', shiftStart: '09:00', shiftEnd: '12:00', additionalProfessionKeys: ['manager'] },
+                { professionKey: 'barista', shiftStart: '12:00', shiftEnd: '15:00' },
+                { professionKey: 'animator', shiftStart: '17:00', shiftEnd: '20:00' }
+            ]
+        };
+
+        const html = api.renderScheduleCellSegments(entry, 'reception', 'animator', false);
+        assert.ok(html.indexOf('data-schedule-compact-time="09–12"') < html.indexOf('data-schedule-compact-time="12–15"'));
+        assert.doesNotMatch(html, /sch-segment-lines has-section-match/);
+        assert.match(html, /sch-segment-more is-section-role[^>]*title="[^"]*17–20 · Animator/);
+
+        const ariaLabel = api.scheduleCellAriaLabel(
+            { name: 'QA Staff', role_type: 'reception' },
+            '2026-07-14',
+            entry,
+            'working',
+            '09:00',
+            '20:00'
+        );
+        assert.match(ariaLabel, /Reception, додатково Manager/);
+        assert.match(ariaLabel, /17:00-20:00, Animator/);
+    });
+
+    it('defensively sorts unsorted segment payloads without mutating their IDs or source order', () => {
+        const api = loadStaffScheduleBehaviorApi();
+        const source = [
+            { id: 303, professionKey: 'manager', shiftStart: '15:00', shiftEnd: '20:00', clientKey: 'late' },
+            { id: 301, professionKey: 'reception', shiftStart: '09:00', shiftEnd: '13:00', clientKey: 'early' },
+            { id: 302, professionKey: 'barista', shiftStart: '13:00', shiftEnd: '15:00', clientKey: 'middle' }
+        ];
+
+        const sorted = api.scheduleEntrySegmentsForUi({ segments: source });
+        assert.deepEqual(
+            JSON.parse(JSON.stringify(sorted.map(segment => ({
+                id: segment.id,
+                clientKey: segment.clientKey,
+                shiftStart: segment.shiftStart,
+                shiftEnd: segment.shiftEnd
+            })))),
+            [
+                { id: 301, clientKey: 'early', shiftStart: '09:00', shiftEnd: '13:00' },
+                { id: 302, clientKey: 'middle', shiftStart: '13:00', shiftEnd: '15:00' },
+                { id: 303, clientKey: 'late', shiftStart: '15:00', shiftEnd: '20:00' }
+            ]
+        );
+        assert.deepEqual(source.map(segment => segment.id), [303, 301, 302], 'source payload order remains untouched');
+
+        const overnight = api.scheduleEntrySegmentsForUi({
+            segments: [{ id: 401, professionKey: 'animator', shiftStart: '22:00', shiftEnd: '02:00' }]
+        });
+        assert.equal(overnight[0].id, 401, 'a single overnight segment remains valid and stable');
+    });
+
+    it('keeps critical health semantics explicit without restoring cell or row outlines', () => {
+        const api = loadStaffScheduleBehaviorApi();
+        const html = api.renderScheduleHealthBadges([
+            { severity: 'critical', title: 'Profession mismatch', detail: 'Manual review required' }
+        ]);
+
+        assert.match(html, /schedule-health-badge[^>]*is-critical/);
+        assert.match(html, /aria-label="Schedule health critical, 1 issue:/);
+        assert.match(html, /Profession mismatch/);
     });
 
     it('attributes each working shift to exactly one profession department and keeps readiness truthful', () => {
@@ -1263,8 +1350,8 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function renderLoadView\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
         assert.match(staffPage, /function scheduleExportVisibleStaff\(\) \{[\s\S]*scheduleFinalVisibleStaffSnapshot\(/);
         assert.match(staffPage, /const visibleSnapshot = scheduleFinalVisibleStaffSnapshot\(StaffState\.staff, dates\)/);
-        assert.match(staffPage, /const grouped = groupStaffByScheduleDepartment\(filtered, \{[\s\S]*department: StaffState\.activeDept,[\s\S]*grouping: 'membership'/);
-        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{[\s\S]*department: StaffState\.activeDept,[\s\S]*grouping: 'membership'/);
+        assert.match(staffPage, /const grouped = groupStaffByScheduleDepartment\(filtered, \{[\s\S]*department: StaffState\.activeDept[\s\S]*\}\)/);
+        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{[\s\S]*department: StaffState\.activeDept[\s\S]*\}\)/);
         assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set\(\['animators', 'trampoline', 'cafe', 'cleaning'\]\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set\(\['reception', 'tech', 'admin'\]\)/);
@@ -1280,7 +1367,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /visible staffIds\[\]/);
     });
 
-    it('renders multi-profession membership across table, export, and print without duplicating operations', () => {
+    it('renders unique canonical staff in All while selected sections keep qualification membership', () => {
         const normalizeIdBlock = namedFunctionBlock(staffPage, 'normalizeScheduleStaffId');
         const uniqueStaffBlock = namedFunctionBlock(staffPage, 'uniqueScheduleStaffById');
         const canonicalGroupBlock = namedFunctionBlock(staffPage, 'scheduleCanonicalDisplayGroupKey');
@@ -1318,7 +1405,7 @@ describe('staff schedule safety guards', () => {
         assert.match(groupingKeysBlock, /staffMatchesScheduleDepartment\(staff, activeDepartment\) \? \[activeDepartment\] : \[\]/);
         assert.match(groupingKeysBlock, /return \[scheduleCanonicalDisplayGroupKey\(staff\)\]/);
         assert.match(groupingKeysBlock, /options\.grouping === 'membership'/);
-        assert.match(renderBlock, /grouping: 'membership'/);
+        assert.doesNotMatch(renderBlock, /grouping: 'membership'/);
         assert.match(renderBlock, /department: dept/);
         assert.match(professionContextBlock, /scheduleSubGroupProfessionCandidates\(staff, normalizedDepartment\)/);
         assert.match(openCellBlock, /professionKey: cell\.dataset\.scheduleProfession/);
@@ -1341,7 +1428,7 @@ describe('staff schedule safety guards', () => {
         assert.match(displayNameBlock, /staff\.display_name \|\| staff\.displayName \|\| staff\.name/);
         assert.match(workbookBlock, /data-schedule-export-staff-id=/);
         assert.match(workbookBlock, /data-schedule-export-department=/);
-        assert.match(workbookBlock, /grouping: 'membership'/);
+        assert.doesNotMatch(workbookBlock, /grouping: 'membership'/);
         assert.match(workbookBlock, /scheduleStaffDisplayName\(emp\)/);
 
         assert.match(staffScheduleBrowserSmoke, /const STAFF_API_ROWS\s*=/);
@@ -1366,13 +1453,12 @@ describe('staff schedule safety guards', () => {
         assert.match(browserFlow, /queueScheduleSaveResponseScenario/);
         assert.match(browserFlow, /page\.mouse\.click/);
         assert.doesNotMatch(browserFlow, /receptionSession|receptionPage/);
-        assert.match(liveStaffScheduleSmoke, /findAnimatorReceptionMembershipStaffId/);
         assert.match(liveStaffScheduleSmoke, /assertWorkbookStaffPlacementParity/);
         assert.match(liveStaffScheduleSmoke, /serviceWorkers:\s*'block'/);
-        assert.doesNotMatch(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
+        assert.match(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
     });
 
-    it('enforces unique membership within each section and exact table/export placement parity', () => {
+    it('keeps All unique, section membership complete, and table/export placement parity exact', () => {
         const api = loadStaffScheduleBehaviorApi();
         const common = {
             is_active: true,
@@ -1493,6 +1579,17 @@ describe('staff schedule safety guards', () => {
         Object.entries(allGrouped).forEach(([department, ids]) => {
             assert.equal(ids.length, new Set(ids).size, `${department} renders every staff ID at most once`);
         });
+        const canonicalGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds(staff)));
+        assert.deepEqual(canonicalGrouped, {
+            reception: [101, 103],
+            cafe: [102, 105],
+            admin: [104]
+        });
+        assert.equal(
+            Object.values(canonicalGrouped).flat().length,
+            allVisibleIds.length,
+            'All renders each physical staff member exactly once'
+        );
         assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'animators'), 'animator');
         assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'reception'), 'senior_manager');
 
@@ -1506,7 +1603,7 @@ describe('staff schedule safety guards', () => {
         ).sort();
         const workbookIds = exportedIds(api.buildScheduleWorkbookHtml());
         const printIds = exportedIds(api.buildScheduleWorkbookHtml({ print: true }));
-        const expectedPlacements = Object.entries(allGrouped)
+        const expectedPlacements = Object.entries(canonicalGrouped)
             .flatMap(([department, ids]) => ids.map(id => `${department}:${id}`))
             .sort();
         assert.deepEqual(exportedPlacements(api.buildScheduleWorkbookHtml()), expectedPlacements);

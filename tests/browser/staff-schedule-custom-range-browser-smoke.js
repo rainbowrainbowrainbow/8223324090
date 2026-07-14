@@ -994,7 +994,9 @@ async function openStaffPage(browser, base, viewport, options = {}) {
     page.on('pageerror', err => {
         throw err;
     });
-    await page.goto(`${base}/staff`, { waitUntil: 'domcontentloaded' });
+    const search = String(options.search || '').trim();
+    const normalizedSearch = search ? (search.startsWith('?') ? search : `?${search}`) : '';
+    await page.goto(`${base}/staff${normalizedSearch}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => Boolean(
         window.StaffSchedulePage
         && typeof window.StaffSchedulePage.isInitialized === 'function'
@@ -1466,11 +1468,11 @@ async function assertShiftLoadClassesDoNotPaintScheduleCells(page) {
         long: '2026-07-13'
     };
     for (const date of Object.values(datesByBucket)) {
-        await page.locator(`[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="${date}"]`).waitFor({ state: 'visible' });
+        await page.locator(`[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="${date}"]`).waitFor({ state: 'visible' });
     }
     const metrics = await page.evaluate(dates => {
         const inspect = date => {
-            const cell = document.querySelector(`[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="${date}"]`);
+            const cell = document.querySelector(`[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="${date}"]`);
             if (!cell) return null;
             const after = getComputedStyle(cell, '::after');
             const cellStyle = getComputedStyle(cell);
@@ -1593,17 +1595,24 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
 }
 
-async function assertHalfMonthScheduleLayout(page, label, expectedDays) {
+async function assertFittedScheduleLayout(page, label, expectedDays) {
     const metrics = await page.evaluate(expectedDays => {
         const wrapper = document.querySelector('#scheduleWrapper');
         const table = wrapper?.querySelector('.schedule-table');
         if (!wrapper || !table) return null;
         const dayHeaders = Array.from(table.querySelectorAll('thead th:not(:first-child)'));
+        const dayWidths = dayHeaders.map(header => header.getBoundingClientRect().width).filter(Boolean);
+        const firstHeader = table.querySelector('thead th:first-child');
         return {
             isLongRange: wrapper.classList.contains('is-long-range'),
             isFullRange: wrapper.classList.contains('is-full-range'),
             dataDays: Number(wrapper.dataset.scheduleDayCount || 0),
             dayHeaderCount: dayHeaders.length,
+            tableLayout: getComputedStyle(table).tableLayout,
+            minDayWidth: dayWidths.length ? Math.min(...dayWidths) : 0,
+            maxDayWidth: dayWidths.length ? Math.max(...dayWidths) : 0,
+            firstHeaderWidth: firstHeader?.getBoundingClientRect().width || 0,
+            stickyWidth: Number.parseFloat(getComputedStyle(wrapper).getPropertyValue('--schedule-sticky-column-width')) || 0,
             wrapperClientWidth: wrapper.clientWidth,
             wrapperScrollWidth: wrapper.scrollWidth,
             viewportWidth: window.innerWidth,
@@ -1611,13 +1620,51 @@ async function assertHalfMonthScheduleLayout(page, label, expectedDays) {
             expectedDays
         };
     }, expectedDays);
-    assert.ok(metrics, `${label}: half-month layout metrics are available`);
-    assert.equal(metrics.isLongRange, false, `${label}: 16-day half-month stays in fitted schedule mode`);
-    assert.equal(metrics.isFullRange, false, `${label}: half-month does not use full-month density`);
-    assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records the half-month day count`);
-    assert.equal(metrics.dayHeaderCount, expectedDays, `${label}: all half-month headers render`);
-    assert.ok(metrics.wrapperScrollWidth <= metrics.wrapperClientWidth + 2, `${label}: half-month fits without schedule-table horizontal scrolling`);
+    assert.ok(metrics, `${label}: fitted layout metrics are available`);
+    assert.equal(metrics.isLongRange, false, `${label}: range stays in fitted schedule mode`);
+    assert.equal(metrics.isFullRange, false, `${label}: range does not use full-month density`);
+    assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records the fitted day count`);
+    assert.equal(metrics.dayHeaderCount, expectedDays, `${label}: every fitted day header renders`);
+    assert.equal(metrics.tableLayout, 'fixed', `${label}: content cannot resize individual day columns`);
+    assert.ok(metrics.maxDayWidth - metrics.minDayWidth <= 2, `${label}: all day columns have equal width`);
+    assert.ok(Math.abs(metrics.firstHeaderWidth - metrics.stickyWidth) <= 2, `${label}: sticky staff column follows the layout variable`);
+    assert.ok(metrics.wrapperScrollWidth <= metrics.wrapperClientWidth + 2, `${label}: fitted range does not add desktop table scrolling`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
+}
+
+async function assertScheduleLayoutResync(page, label) {
+    const readLayoutVariables = () => page.locator('#scheduleWrapper').evaluate(wrapper => {
+        const style = getComputedStyle(wrapper);
+        return {
+            stickyColumn: style.getPropertyValue('--schedule-sticky-column-width').trim(),
+            dayColumn: style.getPropertyValue('--schedule-day-column-width').trim()
+        };
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('scheduleWrapper')).getPropertyValue('--schedule-sticky-column-width').trim() === '176px');
+    assert.deepEqual(await readLayoutVariables(), { stickyColumn: '176px', dayColumn: '128px' }, `${label}: mobile variables are recomputed across the 768px breakpoint`);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('scheduleWrapper')).getPropertyValue('--schedule-sticky-column-width').trim() === '240px');
+    assert.deepEqual(await readLayoutVariables(), { stickyColumn: '240px', dayColumn: '144px' }, `${label}: desktop variables are restored across the 768px breakpoint`);
+}
+
+async function assertDepartmentChipGrid(page, label, expectedRows) {
+    const metrics = await page.locator('#deptFilter .dept-chip').evaluateAll(chips => chips.map(chip => {
+        const box = chip.getBoundingClientRect();
+        return { top: Math.round(box.top), width: box.width, height: box.height };
+    }));
+    assert.ok(metrics.length > 0, `${label}: department chips are available`);
+    const rowTops = [...new Set(metrics.map(metric => metric.top))];
+    assert.equal(rowTops.length, expectedRows, `${label}: department chips use the expected balanced row count`);
+    assert.ok(Math.max(...metrics.map(metric => metric.height)) - Math.min(...metrics.map(metric => metric.height)) <= 1, `${label}: chip heights are equal`);
+    for (const top of rowTops) {
+        const widths = metrics.filter(metric => metric.top === top).map(metric => metric.width);
+        if (widths.length > 1) {
+            assert.ok(Math.max(...widths) - Math.min(...widths) <= 2, `${label}: chip widths are equal within each row`);
+        }
+    }
 }
 
 async function assertNoControlOverlap(page, label) {
@@ -1789,6 +1836,33 @@ async function assertNarrowMobileContract(page, label, options) {
         const toBox = rect(toInput);
         const tableStyle = table ? getComputedStyle(table) : null;
         const page = document.querySelector('#main-content');
+        const controlHeights = [
+            '#prevWeekBtn',
+            '#weekLabel',
+            '#nextWeekBtn',
+            '#todayWeekBtn',
+            '#scheduleDateFrom',
+            '#scheduleDateTo',
+            '#applyScheduleRangeBtn',
+            '.staff-schedule-range-preset',
+            '#exportExcelBtn',
+            '#printBtn',
+            '#scheduleStaffSearch',
+            '#deptFilter .dept-chip'
+        ].map(selector => ({
+            selector,
+            height: document.querySelector(selector)?.getBoundingClientRect().height || 0
+        }));
+        const weekControls = {
+            previous: rect(document.querySelector('#prevWeekBtn')),
+            period: rect(document.querySelector('#weekLabel')),
+            next: rect(document.querySelector('#nextWeekBtn')),
+            today: rect(document.querySelector('#todayWeekBtn')),
+            periodWhiteSpace: getComputedStyle(document.querySelector('#weekLabel')).whiteSpace
+        };
+        const visibleEmployeePositionCount = Array.from(document.querySelectorAll('#scheduleBody .emp-position'))
+            .filter(element => element.getClientRects().length > 0)
+            .length;
 
         return {
             viewportMeta: document.querySelector('meta[name="viewport"]')?.getAttribute('content') || '',
@@ -1824,6 +1898,9 @@ async function assertNarrowMobileContract(page, label, options) {
             firstHeader: styleSnapshot(firstHeader),
             firstEmployeeCell: styleSnapshot(firstEmployeeCell),
             firstCategoryCell: styleSnapshot(firstCategoryCell),
+            controlHeights,
+            weekControls,
+            visibleEmployeePositionCount,
             tableBrightness: colorBrightness(tableStyle?.backgroundColor),
             tableBackground: tableStyle?.backgroundColor || ''
         };
@@ -1869,6 +1946,17 @@ async function assertNarrowMobileContract(page, label, options) {
         metrics.datesStacked || (metrics.fromBox.width >= 120 && metrics.toBox.width >= 120),
         `${label}: date fields are stacked or wide enough to remain readable`
     );
+    for (const control of metrics.controlHeights) {
+        assert.ok(control.height >= 43.5, `${label}: ${control.selector} keeps a consistent 44px touch target (${control.height}px)`);
+    }
+    if (width <= 390) {
+        const weekHeights = [metrics.weekControls.previous, metrics.weekControls.period, metrics.weekControls.next, metrics.weekControls.today]
+            .map(box => box?.height || 0);
+        assert.ok(Math.max(...weekHeights) - Math.min(...weekHeights) <= 1, `${label}: week navigation controls share one 44px height`);
+        assert.ok(metrics.weekControls.today.top >= metrics.weekControls.period.bottom - 1, `${label}: Today occupies a full second navigation row`);
+        assert.equal(metrics.weekControls.periodWhiteSpace, 'nowrap', `${label}: period label stays on one line`);
+    }
+    assert.equal(metrics.visibleEmployeePositionCount, 0, `${label}: mobile employee rows hide verbose profession text`);
 
     assert.ok(metrics.wrapper, `${label}: schedule wrapper metrics are available`);
     assert.ok(['auto', 'scroll'].includes(metrics.wrapper.overflowX), `${label}: schedule wrapper owns table scrolling`);
@@ -2125,7 +2213,7 @@ async function runPeriodReliabilityFlow(browser, base) {
         assert.equal(navigationError.retryHidden, false, '500 exposes retry for the failed A range');
         assert.match(navigationError.statePanelText, /1\D+15\D+2026/, '500 error names the failed A range');
         assert.match(
-            await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(),
+            await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-31"]').innerText(),
             /10/,
             '500 preserves confirmed B schedule data'
         );
@@ -2242,7 +2330,7 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
             marker: 'HISTORY-A-LATE',
             hold: true
         });
-        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').click();
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"]').click();
         await delayedA.started.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'history A exposes its loading state');
@@ -2317,7 +2405,7 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
                 return nativeFetch(input, init);
             };
         });
-        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').click();
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"]').click();
         await closeBeforeResponse.started.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'close-before-response starts with busy history');
@@ -2368,10 +2456,11 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
         assert.equal(cellSemantics.every(cell => cell.role === 'button'), true, 'every interactive schedule cell exposes button semantics');
         assert.equal(cellSemantics.every(cell => cell.tabIndex === '0'), true, 'every interactive schedule cell is keyboard reachable');
         assert.equal(cellSemantics.every(cell => cell.ariaLabel.trim().length > 0), true, 'every interactive schedule cell has an accessible name');
+        assert.equal(await page.locator('#scheduleBody .sch-cell button').count(), 0, 'schedule cell triggers do not contain nested interactive buttons');
         assert.equal(await page.getByLabel('Від', { exact: true }).count(), 1, 'range start has an explicit label');
         assert.equal(await page.getByLabel('До', { exact: true }).count(), 1, 'range end has an explicit label');
 
-        const trigger = page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]');
+        const trigger = page.locator('[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"]');
         await trigger.evaluate(cell => { window.__scheduleKeyboardTrigger = cell; });
         await trigger.focus();
         assert.equal(
@@ -2424,17 +2513,17 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
 
         await page.evaluate(() => window.StaffSchedulePage.renderSchedule());
         await page.waitForFunction(() => window.__scheduleKeyboardTrigger?.isConnected === false);
-        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]').waitFor({ state: 'visible' });
+        await page.locator('[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"]').waitFor({ state: 'visible' });
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
         await page.waitForFunction(() => {
             const active = document.activeElement;
-            return active?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="animators"]');
+            return active?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="reception"]');
         });
         assert.equal(
             await page.evaluate(() => (
                 document.activeElement !== window.__scheduleKeyboardTrigger
-                && document.activeElement?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="animators"]')
+                && document.activeElement?.matches?.('.sch-cell[data-staff="101"][data-date="2026-07-11"][data-schedule-department="reception"]')
             )),
             true,
             'Escape restores focus to the fresh matching cell after a schedule rerender'
@@ -2447,19 +2536,14 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
 async function runMembershipGroupingFlow(browser, base) {
     const expectedUniqueIds = [101, 102, 103, 104, 105, 106, 107, 108];
     const expectedAllPlacements = [
-        { id: 101, department: 'animators' },
         { id: 108, department: 'animators' },
         { id: 103, department: 'admin' },
-        { id: 103, department: 'cafe' },
         { id: 104, department: 'cafe' },
         { id: 107, department: 'cafe' },
         { id: 101, department: 'reception' },
         { id: 102, department: 'reception' },
-        { id: 103, department: 'reception' },
         { id: 106, department: 'reception' },
-        { id: 105, department: 'tech' },
-        { id: 104, department: 'trampoline' },
-        { id: 108, department: 'trampoline' }
+        { id: 105, department: 'tech' }
     ];
     const expectedAllIds = expectedAllPlacements.map(row => row.id);
     const expectedChipCounts = {
@@ -2485,15 +2569,14 @@ async function runMembershipGroupingFlow(browser, base) {
         const allIds = await scheduleStaffIdsFromDom(page);
         const allRows = await scheduleStaffRowsFromDom(page);
         assertUniqueScheduleStaffPlacements(allRows, 'All schedule table');
-        assert.deepEqual(sortedScheduleStaffIds([...new Set(allIds)]), expectedUniqueIds, 'All still exposes the unique fixture staff set');
-        assert.ok(allIds.length > expectedUniqueIds.length, 'All renders more membership placements than unique people');
+        assert.deepEqual(sortedScheduleStaffIds(allIds), expectedUniqueIds, 'All exposes the unique fixture staff set');
+        assert.equal(allIds.length, new Set(allIds).size, 'All renders each physical employee exactly once');
         const allStaffGroups = await scheduleStaffGroupsFromDom(page);
         assert.deepEqual(
             sortedScheduleStaffPlacements(allStaffGroups),
             sortedScheduleStaffPlacements(expectedAllPlacements),
-            'All renders every employee in each primary or secondary profession department'
+            'All renders every employee in the canonical primary department'
         );
-        assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'animators').length, 1, 'shared employee appears once in animators');
         assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'reception').length, 1, 'shared employee appears once in reception');
 
         const chipCounts = await page.locator('#deptFilter .dept-chip').evaluateAll(chips => Object.fromEntries(
@@ -2507,8 +2590,8 @@ async function runMembershipGroupingFlow(browser, base) {
         await assertScheduleExportParity(page, allIds, 'All');
         await assertDepartmentFiltersRenderOnlyActiveGroup(page);
 
-        await activateScheduleDepartment(page, 'all');
-        await expandAllScheduleGroups(page);
+        await activateScheduleDepartment(page, 'reception');
+        await expandScheduleGroup(page, 'reception');
         const existingReceptionCell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-13"]');
         await existingReceptionCell.click();
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
@@ -2518,6 +2601,8 @@ async function runMembershipGroupingFlow(browser, base) {
         await page.locator('#schCancelBtn').click();
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
         const emptyAnimatorCell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-14"]');
         await emptyAnimatorCell.click();
         await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'animator' && document.getElementById('schStart')?.value === '12:00');
@@ -2553,6 +2638,8 @@ async function runMembershipGroupingFlow(browser, base) {
         await animatorSaveScenario.finished.promise;
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 
+        await activateScheduleDepartment(page, 'reception');
+        await expandScheduleGroup(page, 'reception');
         const savedAnimatorFromReception = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-14"]');
         await savedAnimatorFromReception.click();
         await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'animator');
@@ -2577,6 +2664,8 @@ async function runMembershipGroupingFlow(browser, base) {
         await page.locator('#schSaveBtn').click();
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
 
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
         const savedReceptionFromAnimator = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-15"]');
         await savedReceptionFromAnimator.click();
         await page.waitForFunction(() => document.getElementById('schProfession')?.value === 'reception');
@@ -2652,36 +2741,29 @@ async function runMembershipGroupingFlow(browser, base) {
         await expandAllScheduleGroups(page);
 
         await collapseAllScheduleGroups(page);
-        assert.equal(await scheduleEmployeeRowCount(page), 0, 'membership search starts with every group collapsed');
+        assert.equal(await scheduleEmployeeRowCount(page), 0, 'canonical All search starts with every group collapsed');
         await page.locator('#scheduleStaffSearch').fill('Батутисти');
-        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 4);
-        const membershipSearchRows = await scheduleStaffGroupsFromDom(page);
-        assertUniqueScheduleStaffPlacements(membershipSearchRows, 'secondary department membership search');
-        const membershipSearchGroups = await scheduleStaffGroupsFromDom(page);
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 2);
+        const canonicalSearchRows = await scheduleStaffGroupsFromDom(page);
+        assertUniqueScheduleStaffIds(canonicalSearchRows.map(row => row.id), 'canonical All search');
+        const canonicalSearchGroups = await scheduleStaffGroupsFromDom(page);
         assert.deepEqual(
-            sortedScheduleStaffPlacements(membershipSearchGroups),
+            sortedScheduleStaffPlacements(canonicalSearchGroups),
             sortedScheduleStaffPlacements([
                 { id: 104, department: 'cafe' },
-                { id: 104, department: 'trampoline' },
-                { id: 108, department: 'animators' },
-                { id: 108, department: 'trampoline' }
+                { id: 108, department: 'animators' }
             ]),
-            'search keeps every matching multi-profession membership placement'
+            'All search keeps each matching multi-profession employee in one canonical row'
         );
         assert.equal(
             await page.locator('[data-schedule-group-toggle="animators"]').getAttribute('aria-expanded'),
             'true',
-            'search auto-expands the animators membership group'
+            'search auto-expands the canonical animators group'
         );
         assert.equal(
             await page.locator('[data-schedule-group-toggle="cafe"]').getAttribute('aria-expanded'),
             'true',
-            'search auto-expands the cafe membership group'
-        );
-        assert.equal(
-            await page.locator('[data-schedule-group-toggle="trampoline"]').getAttribute('aria-expanded'),
-            'true',
-            'search auto-expands the trampoline membership group'
+            'search auto-expands the canonical cafe group'
         );
         await page.locator('#scheduleStaffSearch').fill('');
         await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 0);
@@ -2736,7 +2818,6 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
         assertPlacement(allPlacements, 106, 'reception', 'Менеджери', 'All manager with secondary reception');
         assertPlacement(allPlacements, 107, 'cafe', 'Офіціанти', 'All waiter with secondary cook');
         assertPlacement(allPlacements, 108, 'animators', 'Аніматори', 'All animator with secondary trampoline');
-        assertPlacement(allPlacements, 108, 'trampoline', 'Батутисти', 'All trampoline membership for animator');
 
         const missingReadiness = await scheduleStaffReadinessSnapshot(page, 106);
         assert.match(missingReadiness.readinessClass, /\bneutral\b/, 'missing readiness is rendered as neutral metadata');
@@ -2759,18 +2840,18 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
 
         assert.equal(
             await page.locator('#scheduleBody [data-schedule-staff-row="108"]').count(),
-            2,
-            'animator/trampoline employee renders once in each profession section'
+            1,
+            'All renders the animator/trampoline employee once in the canonical section'
         );
         assert.deepEqual(
             await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-11"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
-            ['Аніматор', 'Аніматор'],
-            'animator shift renders its saved profession in both membership rows'
+            ['Аніматор'],
+            'animator shift renders its saved profession in the canonical row'
         );
         assert.deepEqual(
             await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
-            ['Інструктор батутів', 'Інструктор батутів'],
-            'trampoline shift renders its saved profession in both membership rows'
+            ['Інструктор батутів'],
+            'trampoline shift keeps its saved profession without duplicating the person'
         );
 
         await activateScheduleDepartment(page, 'reception');
@@ -2803,6 +2884,154 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
             'active trampoline keeps the multi-profession employee unique'
         );
     } finally {
+        await context.close();
+    }
+}
+
+async function runSegmentCellPresentationFlow(browser, base) {
+    const fixtureIndex = SCHEDULE_FIXTURE_ENTRIES.findIndex(entry => (
+        Number(entry.staff_id) === 108 && entry.date === '2026-07-11'
+    ));
+    assert.notEqual(fixtureIndex, -1, 'segment presentation fixture exists');
+    const originalFixture = structuredClone(SCHEDULE_FIXTURE_ENTRIES[fixtureIndex]);
+    const { context, page } = await openStaffPage(
+        browser,
+        base,
+        { width: 1440, height: 900 },
+        { darkMode: true, search: 'scheduleStaff=108' }
+    );
+    try {
+        await page.waitForFunction(() => (
+            document.activeElement?.matches('[data-hr-profile="108"]')
+        ));
+        SCHEDULE_FIXTURE_ENTRIES[fixtureIndex] = {
+            ...originalFixture,
+            shift_start: '09:00:00',
+            shift_end: '20:00:00',
+            planned_minutes: 540,
+            profession_key: 'animator',
+            primary_profession_key: 'animator',
+            segments: [
+                {
+                    id: 9302,
+                    professionKey: 'manager',
+                    shiftStart: '15:00',
+                    shiftEnd: '20:00',
+                    breakMinutes: 0,
+                    note: 'Later block',
+                    additionalProfessionKeys: []
+                },
+                {
+                    id: 9301,
+                    professionKey: 'animator',
+                    shiftStart: '09:00',
+                    shiftEnd: '13:00',
+                    breakMinutes: 0,
+                    note: 'Earlier block',
+                    additionalProfessionKeys: []
+                }
+            ]
+        };
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await activateScheduleDepartment(page, 'all');
+        await expandAllScheduleGroups(page);
+
+        const focusedRows = page.locator('#scheduleBody tr.is-schedule-focus[aria-current="true"]');
+        assert.equal(await focusedRows.count(), 1, 'deep link keeps exactly one current schedule row');
+        assert.equal(
+            await focusedRows.first().getAttribute('data-schedule-staff-row'),
+            '108',
+            'deep link marks the requested employee row'
+        );
+
+        const targetCell = page.locator(
+            '#scheduleBody [data-schedule-staff-row="108"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]'
+        );
+        await targetCell.waitFor({ state: 'visible' });
+        assert.deepEqual(
+            await targetCell.locator('.sch-segment-line .sch-time').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
+            ['09–13', '15–20'],
+            'unsorted API segments render in canonical chronological order'
+        );
+        await targetCell.evaluate(cell => cell.closest('td')?.classList.add('today-col', 'is-replacement'));
+        await page.waitForFunction(() => {
+            const cell = document.querySelector(
+                '#scheduleBody [data-schedule-staff-row="108"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]'
+            );
+            const dayCell = cell?.closest('td');
+            return Boolean(dayCell && getComputedStyle(dayCell, '::before').height === '2px');
+        });
+        await assertFittedScheduleLayout(page, 'desktop two-day schedule', 2);
+
+        const matchingSegment = targetCell.locator('.sch-segment-line.is-section-role');
+        assert.equal(await matchingSegment.count(), 1, 'profession section marks the matching segment without duplicating it');
+        const presentation = await matchingSegment.evaluate(line => {
+            const profession = line.querySelector('.sch-profession');
+            const cell = line.closest('.sch-cell');
+            const dayCell = cell?.closest('td');
+            const lineStyle = getComputedStyle(line);
+            const professionStyle = profession ? getComputedStyle(profession) : null;
+            const cellStyle = cell ? getComputedStyle(cell) : null;
+            const dayCellStyle = dayCell ? getComputedStyle(dayCell) : null;
+            const todayAccentStyle = dayCell ? getComputedStyle(dayCell, '::before') : null;
+            const replacementAccentStyle = dayCell ? getComputedStyle(dayCell, '::after') : null;
+            const criticalBadge = dayCell?.querySelector('.schedule-health-badge.is-critical');
+            const criticalBadgeStyle = criticalBadge ? getComputedStyle(criticalBadge) : null;
+            return {
+                backgroundColor: lineStyle.backgroundColor,
+                lineBoxShadow: lineStyle.boxShadow,
+                borderRadius: lineStyle.borderRadius,
+                professionTextTransform: professionStyle?.textTransform || '',
+                cellBoxShadow: cellStyle?.boxShadow || '',
+                cellBackground: cellStyle?.backgroundColor || '',
+                dayCellBackground: dayCellStyle?.backgroundColor || '',
+                dayCellBoxShadow: dayCellStyle?.boxShadow || '',
+                todayAccentHeight: todayAccentStyle?.height || '',
+                todayAccentBackground: todayAccentStyle?.backgroundColor || '',
+                replacementAccentWidth: replacementAccentStyle?.width || '',
+                replacementAccentBackground: replacementAccentStyle?.backgroundColor || '',
+                criticalBadgeCount: dayCell?.querySelectorAll('.schedule-health-badge.is-critical').length || 0,
+                criticalBadgeBackground: criticalBadgeStyle?.backgroundColor || '',
+                criticalBadgeColor: criticalBadgeStyle?.color || '',
+                cellHeight: cell?.getBoundingClientRect().height || 0,
+                dayCellHeight: dayCell?.getBoundingClientRect().height || 0,
+                dayCellBorderBlock: dayCellStyle
+                    ? Number.parseFloat(dayCellStyle.borderTopWidth || '0') + Number.parseFloat(dayCellStyle.borderBottomWidth || '0')
+                    : 0
+            };
+        });
+
+        assert.equal(presentation.backgroundColor, 'rgba(0, 0, 0, 0)', 'matching segment does not render a nested pill background');
+        assert.equal(presentation.lineBoxShadow, 'none', 'matching segment does not render an inner frame');
+        assert.equal(presentation.borderRadius, '0px', 'matching segment does not render a rounded inner container');
+        assert.equal(presentation.professionTextTransform, 'none', 'profession label keeps normal readable casing');
+        assert.equal(presentation.cellBoxShadow, 'none', 'inner schedule cell does not render competing state frames');
+        assert.equal(presentation.cellBackground, 'rgba(0, 0, 0, 0)', 'inner schedule cell stays transparent');
+        assert.notEqual(presentation.dayCellBackground, 'rgba(0, 0, 0, 0)', 'the full table cell owns the working status surface');
+        assert.match(presentation.dayCellBoxShadow, /rgb\(147, 197, 253\)/, 'focused row keeps a distinct dark-mode bottom accent');
+        assert.equal(presentation.todayAccentHeight, '2px', 'today uses one restrained top accent');
+        assert.notEqual(presentation.todayAccentBackground, 'rgba(0, 0, 0, 0)', 'today accent remains visible');
+        assert.equal(presentation.replacementAccentWidth, '3px', 'replacement uses one narrow side accent');
+        assert.notEqual(presentation.replacementAccentBackground, 'rgba(0, 0, 0, 0)', 'replacement remains visible without a competing frame');
+        assert.equal(presentation.criticalBadgeCount, 1, 'critical schedule health keeps one compact marker');
+        assert.equal(presentation.criticalBadgeBackground, 'rgb(220, 38, 38)', 'critical health marker uses a solid red surface');
+        assert.equal(presentation.criticalBadgeColor, 'rgb(255, 255, 255)', 'critical health marker keeps readable white text');
+        assert.ok(
+            Math.abs((presentation.dayCellHeight - presentation.dayCellBorderBlock) - presentation.cellHeight) <= 1,
+            `clickable cell fills the table cell content box (td=${presentation.dayCellHeight}, borders=${presentation.dayCellBorderBlock}, cell=${presentation.cellHeight})`
+        );
+
+        const groupBackgrounds = await page.locator('#scheduleBody .dept-row[data-dept="animators"]').evaluate(row => ({
+            sticky: getComputedStyle(row.children[0]).backgroundColor,
+            fill: getComputedStyle(row.children[1]).backgroundColor
+        }));
+        assert.equal(groupBackgrounds.sticky, groupBackgrounds.fill, 'dark department header has no sticky/fill seam');
+
+        await page.locator('#scheduleWrapper').screenshot({
+            path: path.join(OUTPUT_DIR, 'desktop-dark-segment-cells.png')
+        });
+    } finally {
+        SCHEDULE_FIXTURE_ENTRIES[fixtureIndex] = originalFixture;
         await context.close();
     }
 }
@@ -2840,6 +3069,17 @@ async function runMultiSegmentPersistenceFlow(browser, base) {
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'two adjacent blocks are saveable');
         await page.locator('#schSaveBtn').click();
         await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        const animatorOrder = await targetCell().locator('.sch-segment-line .sch-time').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || ''));
+        assert.deepEqual(animatorOrder, ['09–13', '13–20'], 'animator section keeps the canonical chronological segment order');
+        await activateScheduleDepartment(page, 'reception');
+        await expandScheduleGroup(page, 'reception');
+        const receptionOrder = await page.locator(
+            '#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"] .sch-segment-line .sch-time'
+        ).evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || ''));
+        assert.deepEqual(receptionOrder, animatorOrder, 'profession highlighting never reorders the same day plan');
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
 
         await reloadAndOpenTargetPlan();
         assert.equal(await cards.count(), 2, 'full page refresh restores both saved blocks');
@@ -2881,6 +3121,12 @@ async function runDesktopFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
         await waitForDayColumns(page, 9);
+        await assertFittedScheduleLayout(page, 'desktop nine-day schedule', 9);
+        await assertScheduleLayoutResync(page, 'desktop schedule');
+        await assertDepartmentChipGrid(page, 'desktop 1440 department filter', 1);
+        await page.setViewportSize({ width: 1024, height: 900 });
+        await assertDepartmentChipGrid(page, 'desktop 1024 department filter', 2);
+        await page.setViewportSize({ width: 1440, height: 900 });
         await assertPeriodPresetLabelsAndSummary(page);
         await assertNoDuplicateDepartmentSubGroups(page);
         await assertScheduleGroupsCollapsedByDefault(page);
@@ -2895,6 +3141,7 @@ async function runDesktopFlow(browser, base) {
         assert.equal(firstHalfFrom.endsWith('-01'), true, 'first-half starts on day 1');
         assert.equal(firstHalfTo.endsWith('-15'), true, 'first-half ends on day 15');
         await waitForDayColumns(page, 15);
+        await assertFittedScheduleLayout(page, 'desktop first-half', 15);
         assert.match(await page.locator('#weekLabel').innerText(), /1 .+15 .+20\d{2}/, 'visible label reflects 1-15 range');
         assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
         await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
@@ -2974,8 +3221,8 @@ async function runDesktopFlow(browser, base) {
         assert.equal(secondHalfDays, 16, 'second-half can render a 16-day range for 31-day months');
         await waitForDayColumns(page, secondHalfDays);
         assert.match(await page.locator('#weekLabel').innerText(), /16 .+31 .+20\d{2}/, 'visible label reflects 16-end-of-month range');
-        await assertHalfMonthScheduleLayout(page, 'desktop second-half', secondHalfDays);
-        assert.match(await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-31"]').innerText(), /10/, 'second-half renders schedule data through the last day');
+        await assertFittedScheduleLayout(page, 'desktop second-half', secondHalfDays);
+        assert.match(await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-31"]').innerText(), /10/, 'second-half renders schedule data through the last day');
 
         const scheduleCallsAfterSecondHalf = apiCalls.scheduleRanges.length;
         const tooLongEnd = new Date(`${firstHalfFrom}T00:00:00`);
@@ -3102,6 +3349,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await runScheduleKeyboardAccessibilityFlow(browser, base);
         await runMembershipGroupingFlow(browser, base);
         await runDeterministicSubgroupReadinessFlow(browser, base);
+        await runSegmentCellPresentationFlow(browser, base);
         await runMultiSegmentPersistenceFlow(browser, base);
         await runDesktopFlow(browser, base);
         const mobileViewports = [

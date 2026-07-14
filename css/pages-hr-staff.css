@@ -557,9 +557,10 @@ body[data-page-group="hr"] .sch-cell .schedule-health-badge-count {
 }
 
 body[data-page-group="hr"] .schedule-health-badge.is-critical {
-    background: rgba(239, 68, 68, 0.14);
-    border-color: rgba(239, 68, 68, 0.32);
-    color: #B91C1C;
+    background: #DC2626;
+    border-color: #991B1B;
+    color: #FFFFFF;
+    box-shadow: 0 1px 4px rgba(127, 29, 29, 0.28);
 }
 
 body[data-page-group="hr"] .schedule-health-badge.is-warning {
@@ -582,33 +583,6 @@ body[data-page-group="hr"] .schedule-health-badge-more {
     border-radius: 50%;
     background: rgba(100, 116, 139, 0.12);
     color: #475569;
-}
-
-body[data-page-group="hr"] .schedule-table tr.has-health-critical td:first-child {
-    box-shadow: inset 3px 0 0 #EF4444;
-}
-
-body[data-page-group="hr"] .schedule-table tr.has-health-warning td:first-child {
-    box-shadow: inset 3px 0 0 #F59E0B;
-}
-
-body[data-page-group="hr"] .schedule-table tr.has-health-info td:first-child {
-    box-shadow: inset 3px 0 0 #3B82F6;
-}
-
-body[data-page-group="hr"] .schedule-table .sch-cell.has-health-critical {
-    outline: 2px solid rgba(239, 68, 68, 0.45);
-    outline-offset: -2px;
-}
-
-body[data-page-group="hr"] .schedule-table .sch-cell.has-health-warning {
-    outline: 2px solid rgba(245, 158, 11, 0.42);
-    outline-offset: -2px;
-}
-
-body[data-page-group="hr"] .schedule-table .sch-cell.has-health-info {
-    outline: 2px solid rgba(59, 130, 246, 0.34);
-    outline-offset: -2px;
 }
 
 body[data-page-group="hr"] .schedule-health-empty-row td {
@@ -2472,8 +2446,8 @@ body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-in
 
 body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
     grid-area: dept;
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -2488,11 +2462,11 @@ body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    flex: 0 1 auto;
+    width: 100%;
     box-sizing: border-box;
-    min-height: 32px;
-    min-width: min(116px, 100%);
-    max-width: min(190px, 100%);
+    min-height: 38px;
+    min-width: 0;
+    max-width: none;
     padding: 6px 10px;
     border: 1px solid rgba(148,163,184,0.22);
     border-radius: 10px;
@@ -2596,18 +2570,12 @@ body[data-page-group="hr"] .summary-chip-replacement {
 body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
 body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
 body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--warning) 10%, var(--white)),
-        color-mix(in srgb, var(--warning) 5%, transparent)
-    );
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, transparent);
+    background: transparent;
+    box-shadow: none;
 }
 
 body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--warning) 32%, transparent);
+    box-shadow: none;
 }
 
 body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
@@ -2723,18 +2691,17 @@ body[data-page-group="hr"] .schedule-table tbody tr:not(.dept-row):not(.sub-grou
 body[data-page-group="hr"] .schedule-table tbody tr.is-schedule-focus td,
 .schedule-table tbody tr.is-schedule-focus td {
     background: color-mix(in srgb, #3B82F6 10%, var(--white));
+    box-shadow: inset 0 -2px 0 #2563EB;
 }
 
 body[data-page-group="hr"] .schedule-table tbody tr.is-schedule-focus td:first-child,
 .schedule-table tbody tr.is-schedule-focus td:first-child {
     background: color-mix(in srgb, #3B82F6 14%, var(--white));
-    box-shadow: inset 4px 0 0 #2563EB;
+    box-shadow: inset 4px 0 0 #2563EB, inset 0 -2px 0 #2563EB;
 }
 
 body[data-page-group="hr"] .schedule-table .sch-cell.today-col {
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--primary) 24%, transparent),
-        inset 0 -4px 0 color-mix(in srgb, var(--primary) 22%, transparent);
+    box-shadow: none;
 }
 
 body.dark-mode[data-page-group="hr"] .schedule-table,
@@ -2776,6 +2743,7 @@ body.dark-mode[data-page-group="hr"] .schedule-table tbody tr.is-schedule-focus 
 body.dark-mode .schedule-table tbody tr.is-schedule-focus td,
 [data-theme="dark"] .schedule-table tbody tr.is-schedule-focus td {
     background: color-mix(in srgb, #60A5FA 16%, var(--bg-primary, #0F172A));
+    box-shadow: inset 0 -2px 0 #93C5FD;
 }
 
 body.dark-mode[data-page-group="hr"] .schedule-table tbody tr.is-schedule-focus td:first-child,
@@ -2783,14 +2751,12 @@ body.dark-mode[data-page-group="hr"] .schedule-table tbody tr.is-schedule-focus 
 body.dark-mode .schedule-table tbody tr.is-schedule-focus td:first-child,
 [data-theme="dark"] .schedule-table tbody tr.is-schedule-focus td:first-child {
     background: color-mix(in srgb, #60A5FA 20%, var(--surface, #1E1E38));
-    box-shadow: inset 4px 0 0 #93C5FD;
+    box-shadow: inset 4px 0 0 #93C5FD, inset 0 -2px 0 #93C5FD;
 }
 
 body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.today-col,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.today-col {
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--primary-light, var(--primary)) 28%, transparent),
-        inset 0 -4px 0 color-mix(in srgb, var(--primary-light, var(--primary)) 20%, transparent);
+    box-shadow: none;
 }
 
 body.dark-mode .staff-pulse-nav,
@@ -3109,19 +3075,13 @@ body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.st
 [data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--warning) 20%, var(--surface, #1E1E38)),
-        color-mix(in srgb, var(--warning) 10%, var(--bg-primary, #1A1A2E))
-    );
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 30%, transparent);
+    background: transparent;
+    box-shadow: none;
 }
 
 body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--primary-light, var(--primary)) 26%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--warning) 34%, transparent);
+    box-shadow: none;
 }
 
 body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
@@ -3631,6 +3591,12 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 }
 
+@media (min-width: 769px) and (max-width: 1180px) {
+    body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 768px) {
     .hr-kpi-actions {
         width: 100%;
@@ -3981,17 +3947,17 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav {
         display: grid;
-        grid-template-columns: 36px minmax(0, 1fr) 36px minmax(72px, max-content);
+        grid-template-columns: 44px minmax(0, 1fr) 44px minmax(78px, max-content);
         align-items: center;
         width: 100%;
-        min-height: 38px;
+        min-height: 52px;
         gap: 4px;
         padding: 3px;
         justify-content: stretch;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-label {
-        min-height: 34px;
+        min-height: 44px;
         min-width: 0;
         width: 100%;
         padding-inline: 6px;
@@ -4007,7 +3973,8 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button {
         min-width: 0;
         width: 100%;
-        height: 34px;
+        height: auto;
+        min-height: 44px;
         border-radius: 10px;
         font-size: 12px;
     }
@@ -4025,8 +3992,8 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-preset {
-        min-height: 34px;
-        font-size: 11px;
+        min-height: 44px;
+        font-size: 12px;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input {
@@ -4057,7 +4024,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar {
         width: auto;
         min-width: 76px;
-        min-height: 36px;
+        min-height: 44px;
         padding: 6px 10px;
         border-radius: 10px;
         font-size: 11px;
@@ -4070,7 +4037,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search {
-        min-height: 36px;
+        min-height: 44px;
         padding-inline: 10px;
         font-size: 12px;
     }
@@ -4089,6 +4056,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
+        display: flex;
         gap: 6px;
         min-width: 0;
         padding: 0 18px 1px 0;
@@ -4098,10 +4066,11 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip {
         flex: 0 0 auto;
+        width: auto;
         min-width: 0;
-        max-width: min(58vw, 168px);
-        min-height: 30px;
-        padding: 5px 8px;
+        max-width: min(72vw, 190px);
+        min-height: 44px;
+        padding: 8px 10px;
         justify-content: space-between;
         white-space: nowrap;
         line-height: 1.1;
@@ -4597,6 +4566,33 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     background: var(--white);
 }
 
+#scheduleWrapper:not(.is-long-range) .schedule-table,
+#loadViewWrapper:not(.is-long-range) .schedule-table {
+    table-layout: fixed;
+}
+
+#scheduleWrapper:not(.is-long-range) .schedule-table thead th:first-child,
+#scheduleWrapper:not(.is-long-range) .schedule-table .schedule-category-sticky-cell,
+#scheduleWrapper:not(.is-long-range) .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child:not([colspan]),
+#loadViewWrapper:not(.is-long-range) .schedule-table thead th:first-child,
+#loadViewWrapper:not(.is-long-range) .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child:not([colspan]) {
+    width: var(--schedule-sticky-column-width, 240px);
+    min-width: var(--schedule-sticky-column-width, 240px);
+    max-width: var(--schedule-sticky-column-width, 240px);
+}
+
+#loadViewWrapper:not(.is-long-range) .schedule-table thead th:last-child:not(:first-child),
+#loadViewWrapper:not(.is-long-range) .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td:last-child:not(:first-child) {
+    width: var(--schedule-trailing-column-width, 92px);
+    min-width: var(--schedule-trailing-column-width, 92px);
+    max-width: var(--schedule-trailing-column-width, 92px);
+}
+
+#scheduleWrapper .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td:not(:first-child),
+#loadViewWrapper .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td:not(:first-child) {
+    overflow: hidden;
+}
+
 .schedule-wrapper.is-long-range {
     position: relative;
     overflow-x: auto;
@@ -5086,7 +5082,10 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 
 /* Schedule cells */
 .sch-cell {
+    position: relative;
+    box-sizing: border-box;
     width: 100%;
+    height: 100%;
     min-height: 44px;
     display: flex;
     flex-direction: column;
@@ -5215,7 +5214,112 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 }
 
 .sch-cell.today-col {
-    box-shadow: inset 0 0 0 2px rgba(16,185,129,0.15);
+    box-shadow: none;
+}
+
+.schedule-table td.schedule-day-cell {
+    --schedule-day-status-bg: transparent;
+    position: relative;
+    height: 1px;
+    background: var(--schedule-day-status-bg);
+}
+
+.schedule-table td.schedule-day-cell.status-working {
+    --schedule-day-status-bg: rgba(16, 185, 129, 0.06);
+}
+
+.schedule-table td.schedule-day-cell.status-dayoff {
+    --schedule-day-status-bg: var(--gray-50);
+}
+
+.schedule-table td.schedule-day-cell.status-vacation {
+    --schedule-day-status-bg: rgba(59, 130, 246, 0.06);
+}
+
+.schedule-table td.schedule-day-cell.status-sick {
+    --schedule-day-status-bg: rgba(239, 68, 68, 0.06);
+}
+
+.schedule-table td.schedule-day-cell.status-remote {
+    --schedule-day-status-bg: rgba(245, 158, 11, 0.08);
+}
+
+.schedule-table td.schedule-day-cell.today-col::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    height: 2px;
+    background: rgba(16, 185, 129, 0.42);
+    pointer-events: none;
+}
+
+.schedule-table td.schedule-day-cell.is-replacement::after {
+    content: '';
+    position: absolute;
+    inset: 4px auto 4px 0;
+    z-index: 2;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: rgba(245, 158, 11, 0.82);
+    pointer-events: none;
+}
+
+body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .sch-cell {
+    min-height: 100%;
+    background: transparent;
+    box-shadow: none;
+}
+
+body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .sch-cell:hover {
+    background: rgba(20, 184, 166, 0.07);
+}
+
+body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-health-badges-cell {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    z-index: 3;
+    justify-content: flex-end;
+    max-width: calc(100% - 6px);
+}
+
+body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-health-badges-cell .schedule-health-badge-compact {
+    min-width: 22px;
+    height: 16px;
+    padding: 0 5px;
+    font-size: 9px;
+}
+
+.sch-cell-main {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.sch-cell-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.sch-cell-meta .sch-note,
+.sch-cell-meta .sch-replacement-from {
+    min-width: 0;
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sch-cell-meta > * {
+    margin-top: 0;
 }
 
 /* Edit modal */
@@ -5372,7 +5476,8 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 
 .sch-segment-card.is-active {
     border-color: rgba(20, 184, 166, 0.52);
-    box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.08);
+    background: rgba(240, 253, 250, 0.72);
+    box-shadow: none;
 }
 
 .sch-segment-card-head {
@@ -5592,17 +5697,16 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     gap: 4px;
     width: 100%;
     min-width: 0;
-    padding: 2px 4px;
-    border-radius: 5px;
+    padding: 1px 3px;
 }
 
 .sch-segment-lines.has-section-match .sch-segment-line:not(.is-section-role) {
-    opacity: 0.46;
+    opacity: 0.62;
 }
 
 .sch-segment-line.is-section-role {
-    background: rgba(20, 184, 166, 0.13);
-    box-shadow: inset 2px 0 0 rgba(13, 148, 136, 0.72);
+    background: transparent;
+    box-shadow: none;
 }
 
 .sch-cell .sch-segment-line .sch-time,
@@ -5616,6 +5720,15 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 
 .sch-cell .sch-segment-line .sch-profession {
     text-align: left;
+    color: var(--gray-500);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: none;
+}
+
+.sch-cell .sch-segment-line.is-section-role .sch-time,
+.sch-cell .sch-segment-line.is-section-role .sch-profession {
+    color: #0f766e;
 }
 
 .sch-segment-more,
@@ -5865,7 +5978,7 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     .sch-shift-preference-options {
         grid-template-columns: 1fr;
     }
-    .emp-position { display: none; }
+    body[data-page-group="hr"] .schedule-table .emp-position { display: none; }
 }
 
 /* Account linking (v39.1) */
@@ -6186,15 +6299,19 @@ body.dark-mode .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover
 
 body.dark-mode .dept-row td,
 [data-theme="dark"] .dept-row td {
-    background: linear-gradient(90deg, #1F2937, #111827);
+    background: #111827;
     color: #E5E7EB;
     border-top-color: rgba(148, 163, 184, 0.22);
+}
+
+.sch-segment-more.is-section-role {
+    color: #0f766e;
 }
 
 body.dark-mode .dept-row .schedule-category-fill-cell,
 [data-theme="dark"] .dept-row .schedule-category-fill-cell {
     background: #111827;
-    border-left-color: rgba(148, 163, 184, 0.12);
+    border-left-color: transparent;
 }
 
 body.dark-mode .sub-group-row td,
@@ -6363,7 +6480,53 @@ body.dark-mode .sch-cell.status-unset:hover,
 
 body.dark-mode .sch-cell.today-col,
 [data-theme="dark"] .sch-cell.today-col {
-    box-shadow: inset 0 0 0 2px rgba(52, 211, 153, 0.28);
+    box-shadow: none;
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-working,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-working {
+    --schedule-day-status-bg: rgba(16, 185, 129, 0.13);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-dayoff,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-dayoff {
+    --schedule-day-status-bg: rgba(100, 116, 139, 0.14);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-vacation,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-vacation {
+    --schedule-day-status-bg: rgba(59, 130, 246, 0.14);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-sick,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-sick {
+    --schedule-day-status-bg: rgba(239, 68, 68, 0.13);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-remote,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-remote {
+    --schedule-day-status-bg: rgba(245, 158, 11, 0.14);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.status-unset,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.status-unset {
+    --schedule-day-status-bg: rgba(15, 23, 42, 0.26);
+}
+
+body.dark-mode .schedule-table td.schedule-day-cell.today-col::before,
+[data-theme="dark"] .schedule-table td.schedule-day-cell.today-col::before {
+    background: rgba(94, 234, 212, 0.58);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table td.schedule-day-cell > .sch-cell:hover,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .sch-cell:hover {
+    background: rgba(45, 212, 191, 0.09);
+}
+
+body[data-page-group="hr"] .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) > td.schedule-day-cell,
+body.dark-mode[data-page-group="hr"] .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover > td.schedule-day-cell,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover > td.schedule-day-cell {
+    background: var(--schedule-day-status-bg);
 }
 
 body.dark-mode .load-table .load-total td,
@@ -6597,7 +6760,8 @@ body.dark-mode .sch-segment-card,
 body.dark-mode .sch-segment-card.is-active,
 [data-theme="dark"] .sch-segment-card.is-active {
     border-color: rgba(45, 212, 191, 0.52);
-    box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.09);
+    background: rgba(13, 148, 136, 0.12);
+    box-shadow: none;
 }
 
 body.dark-mode .sch-day-plan-head strong,
@@ -6655,8 +6819,20 @@ body.dark-mode .sch-nonworking-warning,
 
 body.dark-mode .sch-segment-line.is-section-role,
 [data-theme="dark"] .sch-segment-line.is-section-role {
-    background: rgba(45, 212, 191, 0.14);
-    box-shadow: inset 2px 0 0 rgba(45, 212, 191, 0.76);
+    background: transparent;
+    box-shadow: none;
+}
+
+body.dark-mode .sch-cell .sch-segment-line.is-section-role .sch-time,
+body.dark-mode .sch-cell .sch-segment-line.is-section-role .sch-profession,
+[data-theme="dark"] .sch-cell .sch-segment-line.is-section-role .sch-time,
+[data-theme="dark"] .sch-cell .sch-segment-line.is-section-role .sch-profession {
+    color: #5eead4;
+}
+
+body.dark-mode .sch-segment-more.is-section-role,
+[data-theme="dark"] .sch-segment-more.is-section-role {
+    color: #5eead4;
 }
 
 /* Extracted from staff.html presentation-only inline attrs. */
@@ -6851,6 +7027,34 @@ body.dark-mode .hr-shift-multi-guard__segments span,
 }
 
 @media (max-width: 390px) {
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav {
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        grid-template-areas:
+            "previous period next"
+            "today today today";
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav #prevWeekBtn {
+        grid-area: previous;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav .week-label {
+        grid-area: period;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav #nextWeekBtn {
+        grid-area: next;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav #todayWeekBtn {
+        grid-area: today;
+        grid-column: 1 / -1;
+        width: 100% !important;
+    }
+
     .hr-shift-multi-guard {
         padding: 11px;
     }

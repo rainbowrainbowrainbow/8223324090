@@ -86,6 +86,7 @@ test('single save keeps an optimistic plan version and handles stale conflicts w
 
 test('cells, role sections, export and print use segments instead of envelope duration', () => {
     assert.match(page, /segments\.slice\(0, 2\)|displaySegments\.slice\(0, 2\)/);
+    assert.doesNotMatch(page, /const displaySegments = hasSectionMatch/);
     assert.match(page, /sch-segment-more/);
     assert.match(page, /sch-month-summary/);
     assert.match(page, /segment\.additionalProfessionKeys\.includes\(normalizedSectionProfession\)/);
@@ -93,6 +94,20 @@ test('cells, role sections, export and print use segments instead of envelope du
     assert.match(page, /schedulePlanMetrics\(segments\)\.plannedMinutes/);
     assert.match(page, /Разом: \$\{formatScheduleMinutes/);
     assert.match(page, /buildScheduleWorkbookHtml\(\{ print: true \}\)/);
+    assert.match(page, /class="schedule-day-cell status-\$\{status\}/);
+    assert.match(page, /class="sch-cell-main"/);
+    assert.match(page, /class="sch-cell-meta"/);
+    assert.match(page, /function sortScheduleSegmentsForUi\(segments = \[\], fallbackProfessionKey = ''\)/);
+    assert.match(page, /return sortScheduleSegmentsForUi\(rawSegments, fallbackProfessionKey\)/);
+    assert.match(page, /aria-current="true"/);
+    assert.doesNotMatch(page, /metaContent\.push\(cellHealthBadges\)/);
+    assert.match(page, /\$\{cellHealthBadges\}\s*<\/td>/);
+    assert.match(page, /function bindScheduleLayoutViewportSync/);
+    assert.match(page, /staffScheduleLayoutMediaQuery\.addEventListener\('change'/);
+    assert.match(css, /#scheduleWrapper:not\(\.is-long-range\) \.schedule-table[\s\S]*table-layout:\s*fixed/);
+    assert.match(css, /td\.schedule-day-cell\.status-working/);
+    assert.match(css, /\.schedule-health-badge\.is-critical\s*\{[\s\S]*background:\s*#DC2626;/);
+    assert.match(css, /tr\.is-schedule-focus td\s*\{[\s\S]*box-shadow:\s*inset 0 -2px 0 #2563EB;/);
 });
 
 test('segment editor keeps dark and 320-390px layouts explicit', () => {

@@ -29,6 +29,7 @@ let staffScheduleRefreshQueue = Promise.resolve();
 let staffScheduleRangeLoadSeq = 0;
 let staffScheduleRangeAbortController = null;
 let scheduleCellHistoryAbortController = null;
+let staffScheduleLayoutMediaQuery = null;
 
 function staffScheduleMode(options = {}) {
     return options.mode === 'hr' ? 'hr' : 'standalone';
@@ -633,10 +634,33 @@ function normalizeScheduleSegmentForUi(segment = {}, fallbackProfessionKey = '')
     };
 }
 
+function sortScheduleSegmentsForUi(segments = [], fallbackProfessionKey = '') {
+    return segments
+        .map((segment, inputIndex) => {
+            const normalized = normalizeScheduleSegmentForUi(segment, fallbackProfessionKey);
+            const startMinutes = scheduleTimeToMinutes(normalized.shiftStart);
+            const rawEndMinutes = scheduleTimeToMinutes(normalized.shiftEnd);
+            const endMinutes = startMinutes === null || rawEndMinutes === null
+                ? Number.MAX_SAFE_INTEGER
+                : (rawEndMinutes <= startMinutes ? rawEndMinutes + (24 * 60) : rawEndMinutes);
+            return {
+                segment: normalized,
+                inputIndex,
+                startMinutes: startMinutes ?? Number.MAX_SAFE_INTEGER,
+                endMinutes
+            };
+        })
+        .sort((left, right) => left.startMinutes - right.startMinutes
+            || left.endMinutes - right.endMinutes
+            || String(left.segment.professionKey).localeCompare(String(right.segment.professionKey), 'en')
+            || left.inputIndex - right.inputIndex)
+        .map(item => item.segment);
+}
+
 function scheduleEntrySegmentsForUi(entry = null, fallbackProfessionKey = '') {
     const rawSegments = Array.isArray(entry?.segments) ? entry.segments : [];
     if (rawSegments.length) {
-        return rawSegments.map(segment => normalizeScheduleSegmentForUi(segment, fallbackProfessionKey));
+        return sortScheduleSegmentsForUi(rawSegments, fallbackProfessionKey);
     }
     if (entry && ['working', 'remote'].includes(normalizeScheduleStatus(entry.status)) && entry.shift_start && entry.shift_end) {
         return [normalizeScheduleSegmentForUi({
@@ -778,7 +802,13 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
     ];
     const segments = scheduleEntrySegmentsForUi(entry, entry?.profession_key || emp.role_type);
     if (segments.length) {
-        parts.push(...segments.map((segment, index) => `блок ${index + 1}: ${segment.shiftStart}-${segment.shiftEnd}, ${professionLabel(segment.professionKey)}`));
+        parts.push(...segments.map((segment, index) => {
+            const additionalRoles = segment.additionalProfessionKeys
+                .map(professionLabel)
+                .filter(Boolean);
+            const roleLabel = [professionLabel(segment.professionKey), ...additionalRoles].filter(Boolean).join(', додатково ');
+            return `блок ${index + 1}: ${segment.shiftStart}-${segment.shiftEnd}, ${roleLabel}`;
+        }));
     } else if (shiftStart && shiftEnd) {
         parts.push(`час ${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
     }
@@ -810,32 +840,38 @@ function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfess
         return `<span class="sch-month-summary">${segments.length} ${segments.length === 1 ? 'блок' : 'блоки'} · ${escapeHtml(formatScheduleMinutes(paidMinutes))}</span>`;
     }
     const normalizedSectionProfession = normalizeProfessionKey(sectionProfessionKey);
-    const hasSectionMatch = normalizedSectionProfession && segments.some(segment => (
+    const segmentMatchesSection = segment => Boolean(normalizedSectionProfession && (
         segment.professionKey === normalizedSectionProfession
         || segment.additionalProfessionKeys.includes(normalizedSectionProfession)
     ));
-    const displaySegments = hasSectionMatch
-        ? [
-            ...segments.filter(segment => segment.professionKey === normalizedSectionProfession || segment.additionalProfessionKeys.includes(normalizedSectionProfession)),
-            ...segments.filter(segment => segment.professionKey !== normalizedSectionProfession && !segment.additionalProfessionKeys.includes(normalizedSectionProfession))
-        ]
-        : segments;
-    const visible = displaySegments.slice(0, 2).map(segment => {
-        const matchesSection = normalizedSectionProfession && (
-            segment.professionKey === normalizedSectionProfession
-            || segment.additionalProfessionKeys.includes(normalizedSectionProfession)
-        );
+    const visibleSegments = segments.slice(0, 2);
+    const hiddenSegments = segments.slice(2);
+    const hasVisibleSectionMatch = visibleSegments.some(segmentMatchesSection);
+    const hasHiddenSectionMatch = hiddenSegments.some(segmentMatchesSection);
+    const segmentSummary = segment => {
+        const compactTime = `${scheduleCompactSegmentTime(segment.shiftStart)}–${scheduleCompactSegmentTime(segment.shiftEnd)}`;
+        const roleSummary = [
+            professionLabel(segment.professionKey),
+            ...segment.additionalProfessionKeys.map(professionLabel)
+        ].filter(Boolean).join(' + ');
+        return { compactTime, roleSummary, text: `${compactTime} · ${roleSummary}` };
+    };
+    const visible = visibleSegments.map(segment => {
+        const matchesSection = segmentMatchesSection(segment);
         const additional = segment.additionalProfessionKeys.length
             ? ` +${segment.additionalProfessionKeys.length}`
             : '';
-        const compactTime = `${scheduleCompactSegmentTime(segment.shiftStart)}–${scheduleCompactSegmentTime(segment.shiftEnd)}`;
-        return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}">
-            <span class="sch-time" data-schedule-compact-time="${escapeHtml(compactTime)}">${escapeHtml(compactTime)}</span>
+        const summary = segmentSummary(segment);
+        return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}" title="${escapeHtml(summary.text)}">
+            <span class="sch-time" data-schedule-compact-time="${escapeHtml(summary.compactTime)}">${escapeHtml(summary.compactTime)}</span>
             <span class="sch-profession">${escapeHtml(professionLabel(segment.professionKey))}${escapeHtml(additional)}</span>
         </span>`;
     }).join('');
-    const remaining = segments.length - 2;
-    return `<span class="sch-segment-lines ${hasSectionMatch ? 'has-section-match' : ''}">${visible}${remaining > 0 ? `<span class="sch-segment-more">+${remaining}</span>` : ''}</span>`;
+    const hiddenSummary = hiddenSegments.map(segment => segmentSummary(segment).text).join(' | ');
+    const more = hiddenSegments.length
+        ? `<span class="sch-segment-more ${hasHiddenSectionMatch ? 'is-section-role' : ''}" title="${escapeHtml(hiddenSummary)}">+${hiddenSegments.length}</span>`
+        : '';
+    return `<span class="sch-segment-lines ${hasVisibleSectionMatch ? 'has-section-match' : ''}">${visible}${more}</span>`;
 }
 
 function scheduleHealthCellKey(staffId, date) {
@@ -2618,6 +2654,23 @@ function syncScheduleRangeLayout(wrapperId, dates = [], variant = 'schedule') {
     if (table) table.dataset.scheduleDayCount = String(dayCount);
 }
 
+function syncScheduleLayoutsForCurrentViewport() {
+    const dates = getScheduleDates();
+    syncScheduleRangeLayout('scheduleWrapper', dates, 'schedule');
+    syncScheduleRangeLayout('loadViewWrapper', dates, 'load');
+}
+
+function bindScheduleLayoutViewportSync() {
+    if (staffScheduleLayoutMediaQuery || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    staffScheduleLayoutMediaQuery = window.matchMedia('(max-width: 768px)');
+    const handleViewportClassChange = () => syncScheduleLayoutsForCurrentViewport();
+    if (typeof staffScheduleLayoutMediaQuery.addEventListener === 'function') {
+        staffScheduleLayoutMediaQuery.addEventListener('change', handleViewportClassChange);
+    } else if (typeof staffScheduleLayoutMediaQuery.addListener === 'function') {
+        staffScheduleLayoutMediaQuery.addListener(handleViewportClassChange);
+    }
+}
+
 // ==========================================
 // HELPERS
 // ==========================================
@@ -4012,7 +4065,8 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
     const subGroupAttributes = subGroupIdentity
         ? ` data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(subGroup.label || '')}"`
         : '';
-    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}"${departmentAttributes}${professionAttributes}${subGroupAttributes}>`;
+    const focusAttributes = focusClass ? ' aria-current="true"' : '';
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}"${departmentAttributes}${professionAttributes}${subGroupAttributes}${focusAttributes}>`;
     html += `<td>
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
              title="Відкрити HR профіль: ${escapeHtml(employeeName)}"
@@ -4044,38 +4098,37 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         const cellHealthBadges = renderScheduleHealthBadges(cellHealthIssues, 'cell');
         const attendanceRecord = scheduleAttendanceRecord(emp.id, ds);
         const attendanceDetails = scheduleAttendanceDetails(entry, attendanceRecord, ds);
-        let cellContent = '';
+        let primaryContent = '';
+        const metaContent = [];
         if ((status === 'working' || status === 'remote') && (shiftStart && shiftEnd || entry?.segments?.length)) {
-            cellContent = renderScheduleCellSegments(
+            primaryContent = renderScheduleCellSegments(
                 entry,
                 entry?.profession_key || emp.role_type,
                 scheduleProfessionKey,
                 dates.length >= 28
             );
             if (isReplacement) {
-                cellContent += `<span class="sch-replacement-badge">Заміна</span>`;
-                cellContent += `<span class="sch-replacement-from">за ${escapeHtml(entry.original_staff_name || 'працівника')}</span>`;
+                metaContent.push(`<span class="sch-replacement-badge">Заміна</span>`);
+                metaContent.push(`<span class="sch-replacement-from">за ${escapeHtml(entry.original_staff_name || 'працівника')}</span>`);
             }
-            if (status === 'remote') cellContent += `<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`;
+            if (status === 'remote') metaContent.push(`<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`);
         } else if (status === 'working') {
-            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
+            primaryContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
         } else if (status === 'unset') {
-            cellContent = `<span class="sch-label sch-unset"><span class="sch-icon">${icon}</span></span>`;
+            primaryContent = `<span class="sch-label sch-unset"><span class="sch-icon">${icon}</span></span>`;
         } else {
-            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STAFF_SCHEDULE_STATUS_LABELS[status] || status}</span>`;
+            primaryContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STAFF_SCHEDULE_STATUS_LABELS[status] || status}</span>`;
         }
 
         if (entry?.note) {
-            cellContent += `<span class="sch-note">${escapeHtml(entry.note)}</span>`;
+            metaContent.push(`<span class="sch-note">${escapeHtml(entry.note)}</span>`);
         }
-        if (cellHealthBadges) {
-            cellContent += cellHealthBadges;
-        }
+        const cellContent = `<span class="sch-cell-main">${primaryContent}</span>${metaContent.length ? `<span class="sch-cell-meta">${metaContent.join('')}</span>` : ''}`;
 
         const cellTitle = [scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | ');
         const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues);
 
-        html += `<td>
+        html += `<td class="schedule-day-cell status-${status} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}">
             <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}"
                  role="button" tabindex="0" aria-label="${escapeHtml(cellAriaLabel)}"
                  data-staff="${emp.id}" data-date="${ds}"${departmentAttributes}${professionAttributes}
@@ -4084,6 +4137,7 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
                  title="${escapeHtml(cellTitle)}">
                 ${cellContent}
             </div>
+            ${cellHealthBadges}
         </td>`;
     }
     html += `</tr>`;
@@ -4172,8 +4226,7 @@ function renderSchedule() {
 
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered, {
-        department: StaffState.activeDept,
-        grouping: 'membership'
+        department: StaffState.activeDept
     });
 
     let bodyHtml = '';
@@ -6642,8 +6695,7 @@ function buildScheduleWorkbookHtml(options = {}) {
     const dates = getScheduleDates();
     const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
     const grouped = groupStaffByScheduleDepartment(exportStaff, {
-        department: StaffState.activeDept,
-        grouping: 'membership'
+        department: StaffState.activeDept
     });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
@@ -7038,6 +7090,7 @@ async function initStaffSchedulePage(options = {}) {
 
         // Event listeners
         bindScheduleRangeControls();
+        bindScheduleLayoutViewportSync();
         bindScheduleViewSwitchControls();
         document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
         document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.20",
+  "version": "0.79.21",
   "eventGenix": {
-    "releaseLabel": "Безпечний multi-segment графік"
+    "releaseLabel": "Охайний графік персоналу"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

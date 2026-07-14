@@ -82,7 +82,7 @@ test('active schedule read paths use the shared scheduleable staff filter', () =
 
     assert.match(hrRoute, /scheduleableStaffWhere\('staff', \{\s*includeFreelance: include_freelance === 'true'/);
     assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'hs\.shift_date' \}\)/);
-    assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: "LEFT\(ss\.date::text, 10\)" \}\)/);
+    assert.doesNotMatch(hrRoute, /FROM staff_schedule ss/);
     assert.match(hrRoute, /scheduleableStaffWhere\('staff', \{ dateExpression: '\$1' \}\)/);
     assert.doesNotMatch(hrRoute, /COALESCE\(hr_pool_status, 'core'\) <> 'reserve'[\s\S]{0,120}OR EXISTS \(SELECT 1 FROM hr_shifts/);
 
@@ -112,19 +112,21 @@ test('schedule write paths reject non-scheduleable staff before writes and mirro
     assert.match(staffScheduleMutations, /validateScheduleWriteStaff\(client, staffId, date/);
     assert.match(staffRoute, /mutateStaffScheduleEntry\(client/);
     assert.match(staffRoute, /forUpdate: false/);
-    assert.match(staffRoute, /validateScheduleWriteStaff\(client, row\.staff_id, targetDate, \{\s*forUpdate: false\s*\}\)/);
+    assert.match(staffRoute, /loadStaffScheduleabilityCards\(client, sourceStaffIds\)/);
+    assert.match(staffRoute, /validateStaffScheduleabilityCardForDate\(staffRow, targetDate\)/);
     assert.match(staffRoute, /validateScheduleWriteStaff\(client, replacementStaffId, date, \{\s*forUpdate: false\s*\}\)/);
     assert.match(staffRoute, /validateScheduleWriteStaff\(client, originalStaffId, date, \{\s*forUpdate: false\s*\}\)/);
     assert.match(staffRoute, /validateStaffScheduleableForDate\(client, shift\.staff_id, date, \{ forUpdate: false \}\)/);
-    assert.match(staffRoute, /activeScheduleStaffWhere\('s', 'hs\.shift_date'\)/);
     assert.doesNotMatch(staffRoute, /backfillStaffScheduleFromHrShifts[\s\S]{0,800}COALESCE\(s\.is_active, true\) = true/);
 
     assert.match(hrRoute, /async function validateShiftWriteStaff/);
     assert.match(hrRoute, /validateShiftWriteStaff\(client, staffId, shiftDate\)/);
     assert.match(hrRoute, /validateShiftWriteStaff\(client, observedShift\.staff_id, observedShift\.shift_date\)/);
     assert.match(hrRoute, /validateShiftWriteStaff\(client, replacementStaffId, oldShift\.shift_date, \{\s*forUpdate: false\s*\}\)/);
-    assert.match(hrRoute, /validateShiftWriteStaff\(client, sid, d, \{\s*forUpdate: false\s*\}\)/);
-    assert.match(hrRoute, /validateShiftWriteStaff\(client, row\.staff_id, targetDate, \{\s*forUpdate: false\s*\}\)/);
+    assert.match(hrRoute, /loadStaffScheduleabilityCards\(client, orderedStaffIds\)/);
+    assert.match(hrRoute, /validateStaffScheduleabilityCardForDate\(staffRow, d\)/);
+    assert.match(hrRoute, /loadStaffScheduleabilityCards\(client, sourceStaffIds\)/);
+    assert.match(hrRoute, /validateStaffScheduleabilityCardForDate\(staffRow, targetDate\)/);
     assert.match(hrRoute, /validateStaffScheduleableForDate\(db, shift\.staff_id, date, \{ forUpdate: false \}\)/);
     assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'hs\.shift_date' \}\)/);
 });

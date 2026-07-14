@@ -28,8 +28,8 @@
  *   4. PUT /api/staff/schedule — mark vacation:
  *      { staffId: 5, date: "2026-02-12", status: "vacation", note: "Відпустка до 20.02" }
  *
- * BULK OPERATIONS: Loop over dates/staff and call PUT /api/staff/schedule for each.
- * Each PUT is an UPSERT (ON CONFLICT DO UPDATE), so safe to call multiple times.
+ * BULK OPERATIONS: POST /schedule/bulk accepts at most 500 unique staff/date rows,
+ * 500 staff members and 31 distinct dates. Copy-week is fixed to 7 dates and 500 staff.
  */
 const express = require('express');
 const router = express.Router();
@@ -57,20 +57,25 @@ const {
 } = require('../services/professions');
 const {
     loadHrShiftDayPlan,
+    loadHrShiftDayPlansForStaffDates,
     hydrateHrShiftDayPlans,
     normalizeHrShiftDayPlan,
     validateHrShiftDayPlanProfessions,
     isHrShiftPlanError,
-    hrShiftPlanErrorPayload
+    hrShiftPlanErrorPayload,
+    professionCardFromStaff
 } = require('../services/hrShiftSegments');
 const {
     activeStaffWhere,
+    loadStaffScheduleabilityCards,
     scheduleableStaffErrorPayload,
     scheduleableStaffWhere,
+    validateStaffScheduleabilityCardForDate,
     validateStaffScheduleableForDate
 } = require('../services/staffOperationalFilters');
 const {
     loadEnrichedScheduleEntry,
+    loadScheduleEntriesForUpdate,
     loadScheduleEntryForUpdate,
     lockScheduleStaffRows,
     mutateStaffScheduleEntry,
@@ -78,10 +83,13 @@ const {
     normalizeScheduleStatus,
     reconcileAnimatorRosterDates,
     recordScheduleAudit,
+    recordScheduleStaleRejection,
     rosterMutationDates,
+    scheduleDateSequence,
     scheduleStatusNeedsProfession,
     syncHrShiftFromScheduleEntry,
     upsertScheduleMirrorFromPlan,
+    validateScheduleBulkEntries,
     validateScheduleWriteStaff
 } = require('../services/staffScheduleMutations');
 const {
@@ -113,6 +121,11 @@ router.use(authenticateToken);
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
 const STAFF_COPY_WEEK_MAX_STAFF_IDS = 500;
+// Product/API caps: keep batch memory, locks and audit payloads bounded and deterministic.
+const STAFF_SCHEDULE_BULK_MAX_ENTRIES = 500;
+const STAFF_SCHEDULE_BULK_MAX_DATES = 31;
+const STAFF_SCHEDULE_BULK_MAX_STAFF = 500;
+const STAFF_COPY_WEEK_DATE_COUNT = 7;
 const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
 const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
 
@@ -662,12 +675,19 @@ function copyableDayPlanPayload(loadedPlan) {
 
 function scheduleEntryWithDayPlan(entry, plan = null) {
     const publicEntry = { ...(entry || {}) };
+    const planUpdatedAt = publicEntry.hr_plan_updated_at
+        || publicEntry.plan_updated_at_token
+        || null;
+    const hrShiftUpdatedAt = publicEntry.hr_shift_updated_at || null;
     delete publicEntry.hr_profession_key;
     delete publicEntry.hr_planned_start;
     delete publicEntry.hr_planned_end;
     delete publicEntry.hr_break_minutes;
     delete publicEntry.hr_shift_type;
     delete publicEntry.hr_segments;
+    delete publicEntry.hr_plan_updated_at;
+    delete publicEntry.plan_updated_at_token;
+    delete publicEntry.hr_shift_updated_at;
     const primaryProfessionKey = plan?.primaryProfessionKey || null;
     const professionKeys = plan?.professionKeys || [];
     const plannedMinutes = plan?.plannedMinutes || 0;
@@ -692,7 +712,11 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
         profession_keys: professionKeys,
         plannedMinutes,
         planned_minutes: plannedMinutes,
-        gapMinutes: plan?.gapMinutes || 0
+        gapMinutes: plan?.gapMinutes || 0,
+        planUpdatedAt,
+        plan_updated_at: planUpdatedAt,
+        hrShiftUpdatedAt,
+        hr_shift_updated_at: hrShiftUpdatedAt
     };
 }
 
@@ -760,26 +784,6 @@ async function attachScheduleDayPlans(rows = [], db = pool) {
         }
         return scheduleEntryWithDayPlan(row, plan);
     });
-}
-
-async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
-    if (!from || !to) return;
-    const result = await db.query(
-        `SELECT hs.*
-         FROM hr_shifts hs
-         JOIN staff s ON s.id = hs.staff_id
-         LEFT JOIN staff_schedule ss
-           ON ss.staff_id = hs.staff_id
-          AND LEFT(ss.date::text, 10) = hs.shift_date::text
-         WHERE hs.shift_date >= $1
-           AND hs.shift_date <= $2
-           AND ${activeScheduleStaffWhere('s', 'hs.shift_date')}
-           AND ss.id IS NULL`,
-        [from, to]
-    );
-    for (const shift of result.rows) {
-        await upsertScheduleMirror(db, shift);
-    }
 }
 
 /**
@@ -914,6 +918,11 @@ router.get('/schedule', async (req, res) => {
                     hs.planned_end AS hr_planned_end,
                     hs.break_minutes AS hr_break_minutes,
                     hs.shift_type AS hr_shift_type,
+                    hs.updated_at AS hr_shift_updated_at,
+                    to_char(
+                        COALESCE(hs.updated_at, hs.created_at) AT TIME ZONE 'UTC',
+                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+                    ) AS hr_plan_updated_at,
                     hs.original_staff_id,
                     original_staff.name AS original_staff_name,
                     hs.replacement_reason,
@@ -980,10 +989,20 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
         }, {
             actor: { user: req.user, ip: req.ip },
             source: 'staff.schedule.put',
-            auditAction: 'staff_schedule_update'
+            auditAction: 'staff_schedule_update',
+            requireExpectedUpdatedAt: true
         });
         if (!mutation.ok) {
             await client.query('ROLLBACK');
+            if (mutation.code === 'HR_SHIFT_PLAN_STALE') {
+                await recordScheduleStaleRejection(
+                    pool,
+                    staffId,
+                    date,
+                    { user: req.user, ip: req.ip },
+                    { ...mutation.details, source: 'staff.schedule.put' }
+                ).catch(auditError => log.error('Staff schedule stale rejection audit error', auditError));
+            }
             return sendHrShiftSyncError(res, mutation, { entry: { staffId, date } });
         }
         await reconcileAnimatorRosterDates(client, [date]);
@@ -991,7 +1010,14 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
         // Fire-and-forget Telegram notification
         notifyScheduleChange(staffId, date, mutation.plan.status, mutation.plan.plannedStart, mutation.plan.plannedEnd, mutation.plan);
         broadcastAnimatorRosterDates([date], req.user?.id);
-        res.json({ success: true, data: scheduleEntryWithDayPlan(mutation.entry, mutation.plan) });
+        res.json({
+            success: true,
+            data: scheduleEntryWithDayPlan({
+                ...mutation.entry,
+                hr_plan_updated_at: mutation.shift?.plan_updated_at_token,
+                hr_shift_updated_at: mutation.shift?.updated_at
+            }, mutation.plan)
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (isHrShiftPlanError(err)) {
@@ -1441,8 +1467,26 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
         if (!Array.isArray(entries) || entries.length === 0) {
             return res.status(400).json({ success: false, error: 'Потрібен масив entries' });
         }
-        if (entries.length > 500) {
-            return res.status(400).json({ success: false, error: 'Максимум 500 записів за раз' });
+        if (entries.length > STAFF_SCHEDULE_BULK_MAX_ENTRIES) {
+            return res.status(400).json({ success: false, error: `Максимум ${STAFF_SCHEDULE_BULK_MAX_ENTRIES} записів за раз` });
+        }
+        const validatedEntries = validateScheduleBulkEntries(entries);
+        if (!validatedEntries.ok) {
+            return res.status(validatedEntries.status || 400).json({
+                success: false,
+                error: validatedEntries.error,
+                code: validatedEntries.code,
+                details: validatedEntries.details
+            });
+        }
+        const bulkStaffIds = [...new Set(validatedEntries.entries.map(entry => entry.staffId))];
+        const bulkDates = [...new Set(validatedEntries.entries.map(entry => entry.date))];
+        if (bulkStaffIds.length > STAFF_SCHEDULE_BULK_MAX_STAFF || bulkDates.length > STAFF_SCHEDULE_BULK_MAX_DATES) {
+            return res.status(400).json({
+                success: false,
+                code: 'SCHEDULE_BULK_CAP_EXCEEDED',
+                error: `Bulk підтримує максимум ${STAFF_SCHEDULE_BULK_MAX_STAFF} працівників і ${STAFF_SCHEDULE_BULK_MAX_DATES} дат`
+            });
         }
         let count = 0;
         const affectedStaff = new Set();
@@ -1451,12 +1495,16 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const orderedEntries = [...entries].sort((left, right) =>
+            const orderedEntries = [...validatedEntries.entries].sort((left, right) =>
                 Number(left.staffId) - Number(right.staffId)
                 || String(left.date || '').localeCompare(String(right.date || '')));
             await lockScheduleStaffRows(client, orderedEntries.map(entry => entry.staffId));
+            const staffCards = await loadStaffScheduleabilityCards(client, bulkStaffIds);
+            const previousPlans = await loadHrShiftDayPlansForStaffDates(client, orderedEntries);
+            const previousScheduleEntries = await loadScheduleEntriesForUpdate(client, orderedEntries);
             for (const e of orderedEntries) {
-                if (!e.staffId || !e.date) continue;
+                const staffRow = staffCards.get(Number(e.staffId)) || null;
+                const staffValidation = validateStaffScheduleabilityCardForDate(staffRow, e.date);
                 const mutation = await mutateStaffScheduleEntry(client, {
                     ...e,
                     staffId: e.staffId,
@@ -1469,7 +1517,14 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                     sourceMetadata: { batchSize: entries.length },
                     loadEnriched: false,
                     auditWithEnriched: false,
-                    forUpdate: false
+                    forUpdate: false,
+                    // Bulk owns ordered locks and reads each target inside this transaction.
+                    requireExpectedUpdatedAt: false,
+                    ignoreExpectedUpdatedAt: true,
+                    staffValidation,
+                    professionCard: professionCardFromStaff(staffRow),
+                    previousPlan: previousPlans.get(`${e.staffId}:${e.date}`) || null,
+                    previousScheduleEntry: previousScheduleEntries.get(`${e.staffId}:${e.date}`) || null
                 });
                 if (!mutation.ok) {
                     await client.query('ROLLBACK');
@@ -1524,6 +1579,16 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         if (!fromMonday || !toMonday) {
             return res.status(400).json({ success: false, error: 'Потрібні fromMonday та toMonday' });
         }
+        const normalizedFromMonday = normalizeScheduleDate(fromMonday);
+        const normalizedToMonday = normalizeScheduleDate(toMonday);
+        if (!normalizedFromMonday || String(fromMonday).trim() !== normalizedFromMonday
+            || !normalizedToMonday || String(toMonday).trim() !== normalizedToMonday) {
+            return res.status(400).json({
+                success: false,
+                error: 'fromMonday та toMonday мають бути валідними календарними датами YYYY-MM-DD',
+                code: 'SCHEDULE_COPY_WEEK_DATE_INVALID'
+            });
+        }
         if (Array.isArray(req.body.staffIds || req.body.staff_ids) && !staffIds.length) {
             return res.status(400).json({ success: false, error: 'staffIds[] має містити хоча б один валідний staff id' });
         }
@@ -1542,19 +1607,11 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         const copyMode = staffIds.length ? 'explicit_staff_ids' : (department ? 'raw_department' : 'all');
 
         // Build date pairs (Mon→Mon, Tue→Tue, etc.)
-        const fromDates = [];
-        const toDates = [];
-        for (let i = 0; i < 7; i++) {
-            const fd = new Date(fromMonday);
-            fd.setDate(fd.getDate() + i);
-            fromDates.push(fd.toISOString().split('T')[0]);
-            const td = new Date(toMonday);
-            td.setDate(td.getDate() + i);
-            toDates.push(td.toISOString().split('T')[0]);
-        }
+        const fromDates = scheduleDateSequence(normalizedFromMonday, STAFF_COPY_WEEK_DATE_COUNT);
+        const toDates = scheduleDateSequence(normalizedToMonday, STAFF_COPY_WEEK_DATE_COUNT);
 
         // Fetch source week schedule
-        let sql = `SELECT ss.* FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
+        let sql = `SELECT ss.*, ss.date::text AS date FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
                     WHERE ss.date >= $1 AND ss.date <= $2
                       AND ${activeScheduleStaffWhere('s', 'ss.date')}`;
         const params = [fromDates[0], fromDates[6]];
@@ -1567,7 +1624,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         }
         const source = await pool.query(sql, params);
         const sourceRows = source.rows.filter(row => {
-            const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
+            const sourceDate = normalizeScheduleDate(row.date);
             return fromDates.includes(sourceDate);
         }).sort((left, right) =>
             Number(left.staff_id) - Number(right.staff_id)
@@ -1634,19 +1691,17 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                 );
                 conflicts = Number(conflictResult.rows[0]?.count || 0);
             }
-            const sourcePlans = new Map();
+            const sourcePlans = await loadHrShiftDayPlansForStaffDates(client, freshSourceRows);
+            const targetEntries = freshSourceRows.map(row => {
+                const sourceDate = normalizeScheduleDate(row.date);
+                const dayIndex = fromDates.indexOf(sourceDate);
+                return { staffId: Number(row.staff_id), date: dayIndex === -1 ? null : toDates[dayIndex] };
+            }).filter(entry => entry.date);
+            const staffCards = await loadStaffScheduleabilityCards(client, sourceStaffIds);
+            const previousPlans = await loadHrShiftDayPlansForStaffDates(client, targetEntries);
+            const previousScheduleEntries = await loadScheduleEntriesForUpdate(client, targetEntries);
             for (const row of freshSourceRows) {
                 const sourceDate = normalizeScheduleDate(row.date);
-                const rowStatus = normalizeScheduleStatus(row.status, null);
-                if (!sourceDate || !rowStatus || !scheduleStatusNeedsProfession(rowStatus)) continue;
-                const loadedPlan = await loadHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: sourceDate
-                });
-                if (loadedPlan) sourcePlans.set(`${row.staff_id}:${sourceDate}`, loadedPlan);
-            }
-            for (const row of freshSourceRows) {
-                const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
                 const dayIndex = fromDates.indexOf(sourceDate);
                 if (dayIndex === -1) continue;
                 const targetDate = toDates[dayIndex];
@@ -1666,32 +1721,34 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     professionKey: row.profession_key
                 };
                 const targetStatus = loadedSourcePlan?.plan?.status || rowStatus;
-                const scheduleValidation = await validateScheduleWriteStaff(client, row.staff_id, targetDate, {
-                    forUpdate: false
-                });
+                const staffRow = staffCards.get(Number(row.staff_id)) || null;
+                const scheduleValidation = validateStaffScheduleabilityCardForDate(staffRow, targetDate);
                 if (!scheduleValidation.ok) {
                     return rejectUnscheduleableStaff(res, client, scheduleValidation, {
                         entry: { staffId: row.staff_id, date: targetDate, sourceDate }
                     });
                 }
-                const previousPlan = await loadHrShiftDayPlan(client, {
-                    staffId: row.staff_id,
-                    shiftDate: targetDate
-                });
+                const targetKey = `${Number(row.staff_id)}:${targetDate}`;
+                const previousPlan = previousPlans.get(targetKey) || null;
                 const hrSync = await syncHrShiftFromScheduleEntry(client, {
                     ...sourcePlanPayload,
                     staffId: row.staff_id,
                     date: targetDate,
                     status: targetStatus,
                     note: row.note
-                }, req.user?.username || null);
+                }, req.user?.username || null, {
+                    // Copy-week uses the freshly locked target state, not a browser snapshot.
+                    requireExpectedUpdatedAt: false,
+                    ignoreExpectedUpdatedAt: true,
+                    professionCard: professionCardFromStaff(staffRow)
+                });
                 if (hrSync?.ok === false) {
                     await client.query('ROLLBACK');
                     return sendHrShiftSyncError(res, hrSync, {
                         entry: { staffId: row.staff_id, date: targetDate, sourceDate }
                     });
                 }
-                const previous = await loadScheduleEntryForUpdate(client, row.staff_id, targetDate);
+                const previous = previousScheduleEntries.get(targetKey) || null;
                 const upserted = await upsertScheduleMirrorFromPlan(client, {
                     staffId: row.staff_id,
                     date: targetDate,
@@ -1700,8 +1757,8 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                 await recordScheduleAudit(client, 'staff_schedule_copy_week', row.staff_id, targetDate, previous, upserted, req, {
                     source: 'staff.schedule.copy_week',
                     fromDate: sourceDate,
-                    fromMonday,
-                    toMonday,
+                    fromMonday: normalizedFromMonday,
+                    toMonday: normalizedToMonday,
                     department: department || null,
                     displayGroup,
                     copyMode,

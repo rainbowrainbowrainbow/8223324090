@@ -42,8 +42,8 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrRoute, /INSERT INTO staff_schedule/);
         assert.match(hrRoute, /ON CONFLICT \(staff_id, date\)/);
         assert.match(hrRoute, /function removeMirroredStaffSchedule/);
-        assert.match(hrRoute, /function backfillHrShiftsFromStaffSchedule/);
-        assert.match(hrRoute, /await backfillHrShiftsFromStaffSchedule\(dateFrom, dateTo\)/);
+        assert.doesNotMatch(hrRoute, /function backfillHrShiftsFromStaffSchedule/);
+        assert.doesNotMatch(hrRoute, /await backfillHrShiftsFromStaffSchedule\(dateFrom, dateTo\)/);
         assert.match(hrRoute, /router\.post\('\/shifts\/:id\/replace'/);
         assert.match(hrRoute, /replacement_staff_id/);
         assert.match(hrRoute, /original_staff_id = COALESCE\(original_staff_id, staff_id\)/);
@@ -60,7 +60,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.doesNotMatch(staffRoute, /INSERT INTO hr_shifts/);
         assert.match(shiftSegmentsService, /INSERT INTO hr_shifts/);
         assert.match(shiftSegmentsService, /ON CONFLICT \(staff_id, shift_date\) DO UPDATE/);
-        assert.match(staffRoute, /function backfillStaffScheduleFromHrShifts/);
+        assert.doesNotMatch(staffRoute, /function backfillStaffScheduleFromHrShifts/);
         assert.doesNotMatch(staffRoute, /router\.get\('\/schedule'[\s\S]*await backfillStaffScheduleFromHrShifts\(from, to\)/);
         assert.match(staffRoute, /hs\.shift_date::text = LEFT\(ss\.date::text, 10\)/);
         assert.match(staffRoute, /router\.get\('\/schedule\/history\/:staffId\/:date'/);

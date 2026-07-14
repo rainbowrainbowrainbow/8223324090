@@ -309,6 +309,15 @@ function pushPayrollIssue(issues, code) {
     if (code && !issues.includes(code)) issues.push(code);
 }
 
+function normalizeSegmentRefs(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value
+        .map(ref => (ref && typeof ref === 'object' ? (ref.id ?? ref.segmentId ?? ref.segment_id) : ref))
+        .filter(ref => ref !== null && ref !== undefined && String(ref).trim() !== '')
+        .map(ref => Number(ref))
+        .filter(Number.isFinite))];
+}
+
 function normalizePayrollRows(table = {}) {
     const rows = Array.isArray(table.rows) ? table.rows : [];
     const duplicateCounts = {};
@@ -340,6 +349,17 @@ function normalizePayrollRows(table = {}) {
         next.bonuses = numericValue(next.bonus || next.bonuses);
         next.penalties = numericValue(next.penalty || next.penalties);
         next.notes = next.notes || '';
+        if (Array.isArray(next.segment_refs)) next.segment_refs = normalizeSegmentRefs(next.segment_refs);
+        if (next.primary_profession_key || next.primaryProfessionKey) {
+            next.primary_profession_key = String(next.primary_profession_key || next.primaryProfessionKey).trim();
+        }
+        if (next.planned_allocation_source) {
+            next.planned_allocation_source = String(next.planned_allocation_source).trim();
+        }
+        if (next.allocation_source || next.allocationSource) {
+            next.allocation_source = String(next.allocation_source || next.allocationSource).trim();
+        }
+        if (next.reconciliation_source) next.reconciliation_source = String(next.reconciliation_source).trim();
 
         if (!staffId && hasAnyValue) pushPayrollIssue(issues, 'missing_staff_id');
         if (!date && hasAnyValue) pushPayrollIssue(issues, 'missing_payroll_date');

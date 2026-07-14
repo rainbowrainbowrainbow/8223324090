@@ -20,10 +20,136 @@ function scheduleStatusNeedsProfession(status) {
     return ['working', 'remote'].includes(normalizeScheduleStatus(status, 'working'));
 }
 
+function formatScheduleDateParts(year, month, day) {
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function scheduleDaysInMonth(year, month) {
+    if (month === 2) {
+        const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return leapYear ? 29 : 28;
+    }
+    return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function parseScheduleDateParts(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (year < 1 || month < 1 || month > 12 || day < 1 || day > scheduleDaysInMonth(year, month)) {
+        return null;
+    }
+    return { year, month, day };
+}
+
 function normalizeScheduleDate(value) {
     if (!value) return null;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    return String(value).slice(0, 10);
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        return formatScheduleDateParts(value.getFullYear(), value.getMonth() + 1, value.getDate());
+    }
+    const parts = parseScheduleDateParts(value);
+    return parts ? formatScheduleDateParts(parts.year, parts.month, parts.day) : null;
+}
+
+function addScheduleCalendarDays(value, offset) {
+    const normalized = normalizeScheduleDate(value);
+    const amount = Number(offset);
+    if (!normalized || !Number.isInteger(amount)) return null;
+    const parts = parseScheduleDateParts(normalized);
+    let { year, month, day } = parts;
+    const direction = amount < 0 ? -1 : 1;
+    let remaining = Math.abs(amount);
+    while (remaining > 0) {
+        day += direction;
+        if (direction > 0 && day > scheduleDaysInMonth(year, month)) {
+            day = 1;
+            month += 1;
+            if (month > 12) {
+                month = 1;
+                year += 1;
+            }
+        } else if (direction < 0 && day < 1) {
+            month -= 1;
+            if (month < 1) {
+                month = 12;
+                year -= 1;
+            }
+            if (year < 1) return null;
+            day = scheduleDaysInMonth(year, month);
+        }
+        remaining -= 1;
+    }
+    return formatScheduleDateParts(year, month, day);
+}
+
+function scheduleDateSequence(value, count) {
+    const normalized = normalizeScheduleDate(value);
+    const length = Number(count);
+    if (!normalized || !Number.isInteger(length) || length < 0) return null;
+    return Array.from({ length }, (_, index) => addScheduleCalendarDays(normalized, index));
+}
+
+function validateScheduleBulkEntries(entries = []) {
+    const normalizedEntries = [];
+    const seen = new Set();
+    for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return {
+                ok: false,
+                status: 400,
+                code: 'SCHEDULE_BULK_ENTRY_INVALID',
+                error: 'Кожен елемент bulk-графіка має бути об’єктом',
+                details: { entryIndex: index }
+            };
+        }
+        const staffId = Number(entry.staffId ?? entry.staff_id);
+        if (!Number.isInteger(staffId) || staffId <= 0) {
+            return {
+                ok: false,
+                status: 400,
+                code: 'SCHEDULE_BULK_STAFF_ID_INVALID',
+                error: 'Кожен bulk-запис повинен містити валідний staffId',
+                details: { entryIndex: index }
+            };
+        }
+        const date = normalizeScheduleDate(entry.date);
+        if (!date || typeof entry.date !== 'string' || entry.date.trim() !== date) {
+            return {
+                ok: false,
+                status: 400,
+                code: 'SCHEDULE_BULK_DATE_INVALID',
+                error: 'Кожен bulk-запис повинен містити валідну календарну дату YYYY-MM-DD',
+                details: { entryIndex: index, date: entry.date ?? null }
+            };
+        }
+        const status = normalizeScheduleStatus(entry.status, 'working');
+        if (!status) {
+            return {
+                ok: false,
+                status: 400,
+                code: 'SCHEDULE_BULK_STATUS_INVALID',
+                error: 'Bulk-запис містить невідомий статус графіка',
+                details: { entryIndex: index, status: entry.status ?? null }
+            };
+        }
+        const key = `${staffId}:${date}`;
+        if (seen.has(key)) {
+            return {
+                ok: false,
+                status: 400,
+                code: 'SCHEDULE_BULK_DUPLICATE_STAFF_DATE',
+                error: 'Bulk-запит містить дубль staffId/date',
+                details: { entryIndex: index, staffId, date }
+            };
+        }
+        seen.add(key);
+        normalizedEntries.push({ ...entry, staffId, date, status });
+    }
+    return { ok: true, entries: normalizedEntries };
 }
 
 function normalizeActorMetadata(actor = null) {
@@ -211,6 +337,32 @@ async function recordScheduleAudit(client, action, staffId, date, beforeEntry, a
     return true;
 }
 
+async function recordScheduleStaleRejection(db, staffId, date, actor, details = {}) {
+    const actorMetadata = normalizeActorMetadata(actor);
+    const auditDetails = {
+        source: details.source || 'staff.schedule',
+        outcome: 'rejected',
+        code: 'HR_SHIFT_PLAN_STALE',
+        date: normalizeScheduleDate(date),
+        staffId: Number(staffId) || null,
+        hrShiftId: Number(details.hrShiftId) || null,
+        expectedUpdatedAt: details.expectedUpdatedAt || null,
+        currentUpdatedAt: details.currentUpdatedAt || null,
+        changes: {}
+    };
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+            'staff_schedule_stale_rejected',
+            Number(staffId) || null,
+            actorMetadata.username,
+            JSON.stringify(auditDetails),
+            actorMetadata.ipAddress
+        ]
+    );
+}
+
 async function loadScheduleEntryForUpdate(client, staffId, date) {
     const result = await client.query(
         `SELECT *, date::text AS date
@@ -222,12 +374,46 @@ async function loadScheduleEntryForUpdate(client, staffId, date) {
     return result.rows[0] || null;
 }
 
+async function loadScheduleEntriesForUpdate(client, entries = []) {
+    const unique = new Map();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+        const staffId = Number(entry?.staffId ?? entry?.staff_id);
+        const date = normalizeScheduleDate(entry?.date);
+        if (!Number.isInteger(staffId) || staffId <= 0 || !date) continue;
+        unique.set(`${staffId}:${date}`, { staffId, date });
+    }
+    const pairs = [...unique.values()].sort((left, right) => (
+        left.staffId - right.staffId || left.date.localeCompare(right.date)
+    ));
+    if (!pairs.length) return new Map();
+    const result = await client.query(
+        `SELECT *, date::text AS date
+         FROM staff_schedule
+         WHERE (staff_id, date) IN (
+             SELECT pair.staff_id, pair.date
+             FROM UNNEST($1::int[], $2::date[]) AS pair(staff_id, date)
+         )
+         ORDER BY staff_id, date, id
+         FOR UPDATE`,
+        [pairs.map(pair => pair.staffId), pairs.map(pair => pair.date)]
+    );
+    return new Map(result.rows.map(row => [
+        `${Number(row.staff_id)}:${normalizeScheduleDate(row.date)}`,
+        row
+    ]));
+}
+
 async function loadEnrichedScheduleEntry(client, scheduleId) {
     const result = await client.query(
         `SELECT ss.*, ss.date::text AS date,
                 s.name, s.department, s.position, s.color, s.is_active,
                 s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
                 hs.id AS hr_shift_id,
+                hs.updated_at AS hr_shift_updated_at,
+                to_char(
+                    COALESCE(hs.updated_at, hs.created_at) AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+                ) AS hr_plan_updated_at,
                 hs.original_staff_id,
                 original_staff.name AS original_staff_name,
                 hs.replacement_reason,
@@ -296,7 +482,12 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
             shiftDate: date,
             status,
             payload: { ...entry, status }
-        }, { actor: normalizeActorMetadata(actor).username });
+        }, {
+            actor: normalizeActorMetadata(actor).username,
+            requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
+            ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
+            professionCard: options.professionCard || null
+        });
         return { ok: true, shift: saved.shift || null, plan: saved.plan };
     } catch (error) {
         if (!isHrShiftPlanError(error)) throw error;
@@ -318,19 +509,26 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
     if (!status) {
         return { ok: false, status: 400, code: 'SCHEDULE_STATUS_INVALID', error: 'Невідомий статус графіка' };
     }
-    const validation = await validateScheduleWriteStaff(client, staffId, date, {
+    const validation = options.staffValidation || await validateScheduleWriteStaff(client, staffId, date, {
         forUpdate: options.forUpdate !== false
     });
     if (!validation.ok) {
         return { ok: false, status: validation.status || 400, code: validation.code, error: validation.error, validation };
     }
-    const previousPlan = await loadHrShiftDayPlan(client, { staffId, shiftDate: date });
+    const previousPlan = Object.prototype.hasOwnProperty.call(options, 'previousPlan')
+        ? options.previousPlan
+        : await loadHrShiftDayPlan(client, { staffId, shiftDate: date });
     const normalizedEntry = { ...entry, staffId, date, status };
     const hrSync = await syncHrShiftFromScheduleEntry(client, normalizedEntry, options.actor, {
-        skipStaffValidation: true
+        skipStaffValidation: true,
+        requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
+        ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
+        professionCard: options.professionCard || null
     });
     if (hrSync?.ok === false) return hrSync;
-    const previous = await loadScheduleEntryForUpdate(client, staffId, date);
+    const previous = Object.prototype.hasOwnProperty.call(options, 'previousScheduleEntry')
+        ? options.previousScheduleEntry
+        : await loadScheduleEntryForUpdate(client, staffId, date);
     const upserted = await upsertScheduleMirrorFromPlan(client, normalizedEntry, hrSync.plan);
     const enriched = options.loadEnriched === false || !upserted?.id
         ? null
@@ -351,7 +549,15 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
             afterPlan: hrSync.plan
         }
     );
-    return { ok: true, staffId, date, plan: hrSync.plan, previous, entry: enriched || upserted };
+    return {
+        ok: true,
+        staffId,
+        date,
+        shift: hrSync.shift,
+        plan: hrSync.plan,
+        previous,
+        entry: enriched || upserted
+    };
 }
 
 async function mutateStaffScheduleBatch(client, entries = [], options = {}) {
@@ -387,7 +593,9 @@ async function mutateStaffScheduleBatch(client, entries = [], options = {}) {
             },
             loadEnriched: options.loadEnriched === true,
             auditWithEnriched: options.auditWithEnriched === true,
-            forUpdate: false
+            forUpdate: false,
+            requireExpectedUpdatedAt: false,
+            ignoreExpectedUpdatedAt: true
         });
         if (!mutation.ok) {
             return {
@@ -440,7 +648,9 @@ async function reconcileAnimatorRosterDates(client, values = []) {
 }
 
 module.exports = {
+    addScheduleCalendarDays,
     loadEnrichedScheduleEntry,
+    loadScheduleEntriesForUpdate,
     loadScheduleEntryForUpdate,
     lockScheduleStaffRows,
     mutateStaffScheduleBatch,
@@ -450,10 +660,13 @@ module.exports = {
     normalizeScheduleStatus,
     reconcileAnimatorRosterDates,
     recordScheduleAudit,
+    recordScheduleStaleRejection,
     rosterMutationDates,
+    scheduleDateSequence,
     scheduleStatusNeedsProfession,
     syncHrShiftFromScheduleEntry,
     upsertScheduleMirrorFromPlan,
+    validateScheduleBulkEntries,
     validateScheduleMutationTimes,
     validateScheduleWriteStaff
 };

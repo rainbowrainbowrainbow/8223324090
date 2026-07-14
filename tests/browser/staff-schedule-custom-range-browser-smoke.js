@@ -280,6 +280,36 @@ const apiCalls = {
     bulkBodies: [],
     copyWeekBodies: []
 };
+let fixtureSegmentIdSequence = 30000;
+let fixturePlanVersionSequence = 1;
+
+function fixtureSegmentDurationMinutes(segment = {}) {
+    const toMinutes = value => {
+        const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+        return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+    };
+    const start = toMinutes(segment.shiftStart || segment.shift_start);
+    const rawEnd = toMinutes(segment.shiftEnd || segment.shift_end);
+    if (start === null || rawEnd === null || start === rawEnd) return 0;
+    const end = rawEnd < start ? rawEnd + (24 * 60) : rawEnd;
+    return Math.max(0, end - start - Number(segment.breakMinutes || segment.break_minutes || 0));
+}
+
+function fixtureSavedSegments(body = {}) {
+    return (Array.isArray(body.segments) ? body.segments : []).map(segment => {
+        return {
+            id: ++fixtureSegmentIdSequence,
+            professionKey: segment.professionKey,
+            shiftStart: segment.shiftStart,
+            shiftEnd: segment.shiftEnd,
+            breakMinutes: Number(segment.breakMinutes || 0),
+            note: segment.note || null,
+            additionalProfessionKeys: Array.isArray(segment.additionalProfessionKeys)
+                ? [...segment.additionalProfessionKeys]
+                : []
+        };
+    });
+}
 
 function setFixtureSecondaryProfessions(staffId, professions) {
     const normalizedStaffId = Number(staffId);
@@ -684,6 +714,8 @@ async function handleApi(req, res, url) {
             Number(entry.staff_id) === staffId && entry.date === body.date
         ));
         const existing = existingIndex >= 0 ? SCHEDULE_FIXTURE_ENTRIES[existingIndex] : null;
+        const segments = fixtureSavedSegments(body);
+        const planUpdatedAt = `2026-07-14T10:00:00.${String(fixturePlanVersionSequence++).padStart(6, '0')}Z`;
         const saved = {
             id: existing?.id || (9900 + SCHEDULE_FIXTURE_ENTRIES.length),
             staff_id: staffId,
@@ -692,7 +724,16 @@ async function handleApi(req, res, url) {
             shift_end: body.shiftEnd || null,
             status: body.status || 'working',
             note: body.note || null,
-            profession_key: body.professionKey || null
+            profession_key: body.professionKey || null,
+            primary_profession_key: body.primaryProfessionKey || body.professionKey || null,
+            profession_keys: [...new Set(segments.flatMap(segment => [
+                segment.professionKey,
+                ...(segment.additionalProfessionKeys || [])
+            ]).filter(Boolean))],
+            planned_minutes: segments.reduce((total, segment) => total + fixtureSegmentDurationMinutes(segment), 0),
+            planUpdatedAt,
+            plan_updated_at: planUpdatedAt,
+            segments
         };
         if (existingIndex >= 0) SCHEDULE_FIXTURE_ENTRIES.splice(existingIndex, 1, saved);
         else SCHEDULE_FIXTURE_ENTRIES.push(saved);
@@ -2766,6 +2807,76 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
     }
 }
 
+async function runMultiSegmentPersistenceFlow(browser, base) {
+    const originalEntries = SCHEDULE_FIXTURE_ENTRIES.map(entry => structuredClone(entry));
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
+    const targetCell = () => page.locator(
+        '#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]'
+    );
+    const openTargetPlan = async () => {
+        await applyManualRange(page, '2026-07-11', '2026-07-12');
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        await targetCell().click();
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+    };
+    const reloadAndOpenTargetPlan = async () => {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForDayColumns(page, 9);
+        await openTargetPlan();
+    };
+
+    try {
+        await openTargetPlan();
+        await page.locator('#schAddSegmentBtn').click();
+        const cards = page.locator('#schSegmentsList .sch-segment-card');
+        assert.equal(await cards.count(), 2, 'multi-segment persistence flow creates two blocks');
+        await cards.nth(0).locator('[data-segment-field="profession"]').selectOption('animator');
+        await cards.nth(0).locator('[data-segment-field="start"]').fill('09:00');
+        await cards.nth(0).locator('[data-segment-field="end"]').fill('13:00');
+        await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('reception');
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('13:00');
+        await cards.nth(1).locator('[data-segment-field="end"]').fill('20:00');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'two adjacent blocks are saveable');
+        await page.locator('#schSaveBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+
+        await reloadAndOpenTargetPlan();
+        assert.equal(await cards.count(), 2, 'full page refresh restores both saved blocks');
+        const initialIds = await cards.evaluateAll(nodes => nodes.map(node => Number(node.dataset.segmentId)));
+        assert.ok(initialIds.every(Number.isInteger), 'saved blocks receive server IDs');
+
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('14:00');
+        await page.locator('#schSaveBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        await reloadAndOpenTargetPlan();
+        assert.equal(await cards.count(), 2, 'editing only the second block keeps the first block present');
+        assert.equal(
+            await cards.nth(0).locator('[data-segment-field="start"]').inputValue(),
+            '09:00',
+            'editing the second block does not overwrite the first block'
+        );
+        assert.equal(
+            await cards.nth(1).locator('[data-segment-field="start"]').inputValue(),
+            '14:00',
+            'refresh restores the edited second block'
+        );
+
+        await cards.nth(0).locator('[data-segment-action="remove"]').click();
+        assert.equal(await cards.count(), 1, 'first block can be removed without replacing the second block');
+        await page.locator('#schSaveBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        await reloadAndOpenTargetPlan();
+        assert.equal(await cards.count(), 1, 'refresh keeps the deleted first block absent');
+        assert.equal(await cards.first().locator('[data-segment-field="profession"]').inputValue(), 'reception');
+        assert.equal(await cards.first().locator('[data-segment-field="start"]').inputValue(), '14:00');
+        await page.locator('#schCancelBtn').click();
+    } finally {
+        SCHEDULE_FIXTURE_ENTRIES.splice(0, SCHEDULE_FIXTURE_ENTRIES.length, ...originalEntries);
+        await context.close();
+    }
+}
+
 async function runDesktopFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
@@ -2966,8 +3077,8 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         assert.match(await page.locator('#schPlanSummary').innerText(), /1 год[\s\S]*прогалини/, `${label} reports gaps outside paid time`);
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('22:00');
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('02:00');
-        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, `${label} accepts an overnight segment`);
-        assert.match(await page.locator('#schPlanSummary').innerText(), /8 год/, `${label} calculates overnight duration across midnight`);
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, `${label} rejects multi-segment plans containing an overnight block without day offsets`);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /Нічний блок без day offsets/, `${label} explains the overnight ambiguity`);
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('14:00');
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('20:00');
         if (options.screenshot) {
@@ -2991,6 +3102,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await runScheduleKeyboardAccessibilityFlow(browser, base);
         await runMembershipGroupingFlow(browser, base);
         await runDeterministicSubgroupReadinessFlow(browser, base);
+        await runMultiSegmentPersistenceFlow(browser, base);
         await runDesktopFlow(browser, base);
         const mobileViewports = [
             { width: 320, height: 760 },

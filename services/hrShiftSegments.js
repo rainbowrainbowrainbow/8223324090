@@ -4,7 +4,8 @@ const {
     normalizeProfessionKey,
     normalizeRequestedProfessionKey,
     parseJsonArray,
-    resolveStaffProfessionAssignments
+    resolveStaffProfessionAssignments,
+    staffProfessionKeys
 } = require('./professions');
 
 // Product guardrail: a physical HR shift may contain at most 12 paid segments.
@@ -13,6 +14,22 @@ const MAX_HR_SHIFT_SEGMENTS_PER_DAY = 12;
 const MINUTES_PER_DAY = 24 * 60;
 const WORKING_DAY_STATUSES = new Set(['working', 'remote']);
 const NON_WORKING_DAY_STATUSES = new Set(['dayoff', 'vacation', 'sick']);
+
+function professionCardFromStaff(staff = null, options = {}) {
+    if (!staff) return null;
+    const allowedProfessionKeys = staffProfessionKeys(staff);
+    if (options.requireActive !== false && staff.is_active === false) {
+        return { ok: false, status: 400, error: 'Співробітник неактивний', staff, allowedProfessionKeys };
+    }
+    return {
+        ok: true,
+        staff,
+        professionKeys: [],
+        allowedProfessionKeys,
+        invalidProfessionKeys: [],
+        malformedProfessionKeys: []
+    };
+}
 
 class HrShiftPlanError extends Error {
     constructor(code, message, details = {}, status = 400) {
@@ -212,8 +229,8 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
     const endMinutes = rawEndMinutes <= startMinutes ? rawEndMinutes + MINUTES_PER_DAY : rawEndMinutes;
     const durationMinutes = endMinutes - startMinutes;
     const breakMinutes = normalizeBreakMinutes(firstDefined(segment.breakMinutes, segment.break_minutes), segmentIndex);
-    if (breakMinutes > durationMinutes) {
-        fail('HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION', 'Перерва не може бути довшою за тривалість сегмента', {
+    if (breakMinutes >= durationMinutes) {
+        fail('HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION', 'Перерва має бути коротшою за тривалість сегмента', {
             segmentIndex,
             breakMinutes,
             durationMinutes
@@ -400,6 +417,18 @@ function normalizeHrShiftDayPlan(payload = {}, options = {}) {
     };
     const normalizedSegments = rawSegments.map((segment, index) =>
         normalizeSegment(segment, index, professionOptions));
+    const overnightSegments = normalizedSegments.filter(segment => segment.endMinutes > MINUTES_PER_DAY);
+    if (normalizedSegments.length > 1 && overnightSegments.length > 0) {
+        fail(
+            'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
+            'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня',
+            {
+                policy: 'single_overnight_segment_only',
+                overnightSegmentIndexes: overnightSegments.map(segment => segment.inputIndex),
+                segmentCount: normalizedSegments.length
+            }
+        );
+    }
     const segments = sortSegmentsChronologically(normalizedSegments);
     const overlap = findOverlappingSegments(segments);
     if (overlap) {
@@ -504,14 +533,103 @@ function shiftSelector(input = {}) {
     return { staffId, shiftDate };
 }
 
+const HR_SHIFT_PLAN_UPDATED_AT_SQL = `to_char(
+    COALESCE(updated_at, created_at) AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+)`;
+
+function hrShiftPlanUpdatedAt(shift = {}) {
+    const value = shift.plan_updated_at_token ?? shift.planUpdatedAt ?? shift.plan_updated_at;
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    if (shift.updated_at instanceof Date && !Number.isNaN(shift.updated_at.getTime())) {
+        return shift.updated_at.toISOString();
+    }
+    return shift.updated_at ? String(shift.updated_at).trim() : null;
+}
+
+// Compatibility policy: version-aware single-save routes require expectedUpdatedAt
+// only when replacing an existing explicit segments[] plan. Legacy payloads without
+// segments remain supported; bulk/copy callers must rely on their fresh ordered locks.
+function assertExpectedHrShiftPlanUpdatedAt(currentShift, input = {}, options = {}) {
+    if (options.ignoreExpectedUpdatedAt === true) return;
+    const payload = input.payload && typeof input.payload === 'object' ? input.payload : input;
+    const expectedValue = firstDefined(
+        input.expectedUpdatedAt,
+        input.expected_updated_at,
+        payload.expectedUpdatedAt,
+        payload.expected_updated_at
+    );
+    const hasExpectedValue = expectedValue !== undefined
+        && expectedValue !== null
+        && String(expectedValue).trim() !== '';
+    if (!currentShift) {
+        if (hasExpectedValue) {
+            fail(
+                'HR_SHIFT_PLAN_STALE',
+                'План зміни вже видалено або перенесено іншим менеджером. Оновіть дані перед повторним збереженням',
+                {
+                    hrShiftId: Number(firstDefined(input.hrShiftId, input.hr_shift_id)) || null,
+                    staffId: Number(firstDefined(input.staffId, input.staff_id)) || null,
+                    shiftDate: normalizeShiftDate(firstDefined(input.shiftDate, input.shift_date, input.date)),
+                    expectedUpdatedAt: String(expectedValue).trim(),
+                    currentUpdatedAt: null
+                },
+                409
+            );
+        }
+        return;
+    }
+    const currentUpdatedAt = hrShiftPlanUpdatedAt(currentShift);
+    const requiresToken = options.requireExpectedUpdatedAt === true
+        && Object.prototype.hasOwnProperty.call(payload || {}, 'segments');
+
+    if (!hasExpectedValue) {
+        if (requiresToken) {
+            fail(
+                'HR_SHIFT_PLAN_VERSION_REQUIRED',
+                'План зміни потрібно оновити перед збереженням',
+                {
+                    hrShiftId: Number(currentShift.id),
+                    staffId: Number(currentShift.staff_id),
+                    shiftDate: normalizeShiftDate(currentShift.shift_date),
+                    currentUpdatedAt
+                },
+                409
+            );
+        }
+        return;
+    }
+
+    const expectedUpdatedAt = String(expectedValue).trim();
+    if (!currentUpdatedAt || expectedUpdatedAt !== currentUpdatedAt) {
+        fail(
+            'HR_SHIFT_PLAN_STALE',
+            'План зміни вже оновив інший менеджер. Оновіть дані перед повторним збереженням',
+            {
+                hrShiftId: Number(currentShift.id),
+                staffId: Number(currentShift.staff_id),
+                shiftDate: normalizeShiftDate(currentShift.shift_date),
+                expectedUpdatedAt,
+                currentUpdatedAt
+            },
+            409
+        );
+    }
+}
+
 async function loadHrShiftParent(db, selector, options = {}) {
     const lockSql = options.forUpdate ? ' FOR UPDATE' : '';
     if (selector.hrShiftId) {
-        const result = await db.query(`SELECT * FROM hr_shifts WHERE id = $1${lockSql}`, [selector.hrShiftId]);
+        const result = await db.query(
+            `SELECT *, ${HR_SHIFT_PLAN_UPDATED_AT_SQL} AS plan_updated_at_token
+             FROM hr_shifts WHERE id = $1${lockSql}`,
+            [selector.hrShiftId]
+        );
         return result.rows[0] || null;
     }
     const result = await db.query(
-        `SELECT * FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2${lockSql}`,
+        `SELECT *, ${HR_SHIFT_PLAN_UPDATED_AT_SQL} AS plan_updated_at_token
+         FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2${lockSql}`,
         [selector.staffId, selector.shiftDate]
     );
     return result.rows[0] || null;
@@ -538,6 +656,10 @@ async function loadHrShiftSegments(db, hrShiftId) {
 async function loadHrShiftSnapshots(db, whereSql, params) {
     const result = await db.query(
         `SELECT to_jsonb(hs) AS shift_row,
+                to_char(
+                    COALESCE(hs.updated_at, hs.created_at) AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+                ) AS plan_updated_at_token,
                 hss.id AS segment_id,
                 hss.profession_key,
                 hss.planned_start,
@@ -559,7 +681,10 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
     );
     const snapshotsById = new Map();
     for (const row of result.rows) {
-        const shift = row.shift_row;
+        const shift = {
+            ...row.shift_row,
+            plan_updated_at_token: row.plan_updated_at_token
+        };
         const shiftId = Number(shift?.id);
         if (!Number.isInteger(shiftId)) continue;
         if (!snapshotsById.has(shiftId)) snapshotsById.set(shiftId, { shift, segmentRows: [] });
@@ -618,6 +743,32 @@ async function hydrateHrShiftDayPlans(db, shifts = []) {
             snapshot.segmentRows
         );
     }).filter(Boolean);
+}
+
+async function loadHrShiftDayPlansForStaffDates(db, entries = []) {
+    const unique = new Map();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+        const staffId = Number(entry?.staffId ?? entry?.staff_id);
+        const shiftDate = normalizeShiftDate(entry?.shiftDate ?? entry?.shift_date ?? entry?.date);
+        if (!Number.isInteger(staffId) || staffId <= 0 || !shiftDate) continue;
+        unique.set(`${staffId}:${shiftDate}`, { staffId, shiftDate });
+    }
+    const pairs = [...unique.values()].sort((left, right) => (
+        left.staffId - right.staffId || left.shiftDate.localeCompare(right.shiftDate)
+    ));
+    if (!pairs.length) return new Map();
+    const snapshots = await loadHrShiftSnapshots(
+        db,
+        `(hs.staff_id, hs.shift_date) IN (
+            SELECT pair.staff_id, pair.shift_date
+            FROM UNNEST($1::int[], $2::date[]) AS pair(staff_id, shift_date)
+        )`,
+        [pairs.map(pair => pair.staffId), pairs.map(pair => pair.shiftDate)]
+    );
+    return new Map(snapshots.map(snapshot => {
+        const hydrated = hydrateHrShiftSnapshot(snapshot.shift, snapshot.segmentRows);
+        return [`${Number(snapshot.shift.staff_id)}:${normalizeShiftDate(snapshot.shift.shift_date)}`, hydrated];
+    }));
 }
 
 function planStatusFromShift(shift = {}) {
@@ -729,7 +880,7 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             profession_key = $4,
             updated_at = NOW()
          WHERE id = $5
-         RETURNING *`,
+         RETURNING *, ${HR_SHIFT_PLAN_UPDATED_AT_SQL} AS plan_updated_at_token`,
         [
             normalizedPlan.plannedStart,
             normalizedPlan.plannedEnd,
@@ -739,36 +890,113 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         ]
     );
 
-    await client.query('DELETE FROM hr_shift_segments WHERE hr_shift_id = $1', [hrShiftId]);
+    const existingRows = await loadHrShiftSegments(client, hrShiftId);
+    const existingById = new Map(existingRows.map(row => [String(row.id), row]));
+    const retainedIds = new Set();
     const persistedSegments = [];
+    const roleResetIds = [];
+    const roleInsertPairs = [];
     for (const segment of normalizedPlan.segments) {
-        const inserted = await client.query(
-            `INSERT INTO hr_shift_segments (
-                hr_shift_id, profession_key, planned_start, planned_end,
-                break_minutes, notes, sort_order, created_by, updated_by
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-             RETURNING *`,
-            [
-                hrShiftId,
-                segment.professionKey,
-                segment.shiftStart,
-                segment.shiftEnd,
-                segment.breakMinutes,
-                segment.note,
-                segment.sortOrder,
-                actor
-            ]
-        );
-        const segmentRow = inserted.rows[0];
-        for (const professionKey of segment.additionalProfessionKeys) {
-            await client.query(
-                `INSERT INTO hr_shift_segment_roles (segment_id, profession_key)
-                 VALUES ($1, $2)`,
-                [segmentRow.id, professionKey]
-            );
+        const requestedId = segment.id === null || segment.id === undefined ? null : String(segment.id);
+        const existing = requestedId ? existingById.get(requestedId) : null;
+        if (requestedId && !existing) {
+            fail('HR_SHIFT_SEGMENT_ID_NOT_ON_PARENT', 'Сегмент не належить поточній HR-зміні', {
+                hrShiftId: Number(hrShiftId),
+                segmentId: requestedId
+            }, 409);
         }
-        persistedSegments.push({ ...segment, id: segmentRow.id });
+        let segmentId;
+        if (existing) {
+            segmentId = existing.id;
+            retainedIds.add(String(segmentId));
+            const fieldsChanged = normalizeProfessionKey(existing.profession_key) !== segment.professionKey
+                || normalizeShiftTime(existing.planned_start) !== segment.shiftStart
+                || normalizeShiftTime(existing.planned_end) !== segment.shiftEnd
+                || Number(existing.break_minutes || 0) !== segment.breakMinutes
+                || normalizeSegmentNote(existing.notes) !== segment.note
+                || Number(existing.sort_order || 0) !== segment.sortOrder;
+            if (fieldsChanged) {
+                await client.query(
+                    `UPDATE hr_shift_segments SET
+                        profession_key = $1,
+                        planned_start = $2,
+                        planned_end = $3,
+                        break_minutes = $4,
+                        notes = $5,
+                        sort_order = $6,
+                        updated_by = $7,
+                        updated_at = NOW()
+                     WHERE id = $8 AND hr_shift_id = $9`,
+                    [
+                        segment.professionKey,
+                        segment.shiftStart,
+                        segment.shiftEnd,
+                        segment.breakMinutes,
+                        segment.note,
+                        segment.sortOrder,
+                        actor,
+                        segmentId,
+                        hrShiftId
+                    ]
+                );
+            }
+            const existingRoles = [...(existing.additional_profession_keys || [])]
+                .map(normalizeProfessionKey).filter(Boolean).sort();
+            if (JSON.stringify(existingRoles) !== JSON.stringify(segment.additionalProfessionKeys)) {
+                roleResetIds.push(segmentId);
+                for (const professionKey of segment.additionalProfessionKeys) {
+                    roleInsertPairs.push([segmentId, professionKey]);
+                }
+            }
+        } else {
+            const inserted = await client.query(
+                `INSERT INTO hr_shift_segments (
+                    hr_shift_id, profession_key, planned_start, planned_end,
+                    break_minutes, notes, sort_order, created_by, updated_by
+                 )
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                 RETURNING *`,
+                [
+                    hrShiftId,
+                    segment.professionKey,
+                    segment.shiftStart,
+                    segment.shiftEnd,
+                    segment.breakMinutes,
+                    segment.note,
+                    segment.sortOrder,
+                    actor
+                ]
+            );
+            segmentId = inserted.rows[0].id;
+            for (const professionKey of segment.additionalProfessionKeys) {
+                roleInsertPairs.push([segmentId, professionKey]);
+            }
+        }
+        persistedSegments.push({ ...segment, id: segmentId });
+    }
+
+    const removedIds = existingRows
+        .map(row => row.id)
+        .filter(id => !retainedIds.has(String(id)));
+    if (removedIds.length) {
+        await client.query(
+            'DELETE FROM hr_shift_segments WHERE hr_shift_id = $1 AND id = ANY($2::bigint[])',
+            [hrShiftId, removedIds]
+        );
+    }
+    if (roleResetIds.length) {
+        await client.query(
+            'DELETE FROM hr_shift_segment_roles WHERE segment_id = ANY($1::bigint[])',
+            [roleResetIds]
+        );
+    }
+    if (roleInsertPairs.length) {
+        await client.query(
+            `INSERT INTO hr_shift_segment_roles (segment_id, profession_key)
+             SELECT roles.segment_id, roles.profession_key
+             FROM UNNEST($1::bigint[], $2::varchar[]) AS roles(segment_id, profession_key)`,
+            [roleInsertPairs.map(pair => pair[0]), roleInsertPairs.map(pair => pair[1])]
+        );
     }
 
     return {
@@ -923,11 +1151,22 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
         )
     });
     if (!provisionalStatus) fail('HR_SHIFT_PLAN_INVALID_STATUS', 'Невідомий статус денного плану');
-    const lockedProfessionCard = await resolveStaffProfessionAssignments(client, expectedStaffId, [], {
-        requireActive: WORKING_DAY_STATUSES.has(provisionalStatus)
-            && options.requireActiveStaff !== false,
-        forShare: true
-    });
+    const lockedProfessionCard = options.professionCard
+        ? professionCardFromStaff(options.professionCard.staff || options.professionCard, {
+            requireActive: WORKING_DAY_STATUSES.has(provisionalStatus)
+                && options.requireActiveStaff !== false
+        })
+        : await resolveStaffProfessionAssignments(client, expectedStaffId, [], {
+            requireActive: WORKING_DAY_STATUSES.has(provisionalStatus)
+                && options.requireActiveStaff !== false,
+            forShare: true
+        });
+    if (lockedProfessionCard?.staff && Number(lockedProfessionCard.staff.id) !== expectedStaffId) {
+        fail('HR_SHIFT_PLAN_PROFESSION_CARD_MISMATCH', 'HR-картка не відповідає працівнику зміни', {
+            expectedStaffId,
+            cardStaffId: Number(lockedProfessionCard.staff.id)
+        }, 409);
+    }
     if (!lockedProfessionCard.ok) {
         fail('HR_SHIFT_PLAN_STAFF_INVALID', lockedProfessionCard.error, {
             staffId: expectedStaffId
@@ -963,6 +1202,8 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
             hrShiftId: currentShift.id
         });
     }
+
+    assertExpectedHrShiftPlanUpdatedAt(currentShift, input, options);
 
     const staffId = expectedStaffId;
     const shiftDate = normalizeShiftDate(currentShift?.shift_date ?? requestedShiftDate ?? selector.shiftDate);
@@ -1084,12 +1325,15 @@ module.exports = {
     durationAcrossMidnight,
     findOverlappingSegments,
     hrShiftPlanErrorPayload,
+    hrShiftPlanUpdatedAt,
     hydrateHrShiftDayPlans,
     isHrShiftPlanError,
     loadHrShiftDayPlan,
+    loadHrShiftDayPlansForStaffDates,
     normalizeDayStatus,
     normalizeHrShiftDayPlan,
     normalizeShiftTime,
+    professionCardFromStaff,
     replaceHrShiftSegments,
     saveHrShiftDayPlan,
     sortSegmentsChronologically,

@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+    HR_ATTENDANCE_BREAK_POLICY,
     allocateAttendanceToSegments,
     calculateHrClockOutPayroll
 } = require('../services/hrAttendance');
@@ -69,6 +70,29 @@ test('a segment break is deducted only from that segment', () => {
 
     assert.deepEqual(result.segmentAllocations.map(item => item.actualMinutes), [210, 240]);
     assert.equal(result.actualMinutes, 450);
+    assert.equal(result.breakPolicy, HR_ATTENDANCE_BREAK_POLICY);
+});
+
+test('a break is capped by the minutes actually touching its segment', () => {
+    const partiallyTouched = allocate({
+        clockIn: '2026-07-13T09:45:00.000Z', // 12:45 Europe/Kyiv
+        clockOut: '2026-07-13T10:00:00.000Z', // 13:00 Europe/Kyiv
+        segments: [segment('reception', '09:00', '13:00', 30)]
+    });
+    const untouched = allocate({
+        clockIn: '2026-07-13T10:00:00.000Z',
+        clockOut: '2026-07-13T11:00:00.000Z',
+        segments: [
+            segment('reception', '09:00', '13:00', 30),
+            segment('manager', '13:00', '14:00')
+        ]
+    });
+
+    assert.equal(partiallyTouched.segmentAllocations[0].overlapMinutes, 15);
+    assert.equal(partiallyTouched.segmentAllocations[0].actualMinutes, 0);
+    assert.equal(untouched.segmentAllocations[0].actualMinutes, 0);
+    assert.equal(untouched.segmentAllocations[1].actualMinutes, 60);
+    assert.equal(untouched.breakPolicy, 'segment_minutes_mvp');
 });
 
 test('additional simultaneous professions do not receive duplicate actual minutes', () => {
@@ -178,6 +202,7 @@ test('HR, face checkout and attendance UI reuse the shared allocation contract',
     const hrRoute = fs.readFileSync(path.join(root, 'routes', 'hr.js'), 'utf8');
     const staffRoute = fs.readFileSync(path.join(root, 'routes', 'staff.js'), 'utf8');
     const staffPage = fs.readFileSync(path.join(root, 'js', 'staff-page.js'), 'utf8');
+    const attendanceService = fs.readFileSync(path.join(root, 'services', 'hrAttendance.js'), 'utf8');
     const correctionBlock = hrRoute.slice(
         hrRoute.indexOf("router.put('/records/:id/correct'"),
         hrRoute.indexOf('// REPORTS')
@@ -189,6 +214,8 @@ test('HR, face checkout and attendance UI reuse the shared allocation contract',
     assert.match(staffRoute, /hydrateAttendanceRecords\(pool, result\.rows\)/);
     assert.match(staffRoute, /data: attendanceRows/);
     assert.match(staffRoute, /segment_allocations: payroll\.allocation\.segmentAllocations/);
+    assert.match(attendanceService, /break_policy: allocation\.breakPolicy/);
+    assert.match(attendanceService, /segment_minutes_mvp/);
     assert.match(staffPage, /segmentAllocations/);
     assert.match(staffPage, /allocationIssues/);
     assert.match(staffPage, /timeZone: 'Europe\/Kyiv'/);

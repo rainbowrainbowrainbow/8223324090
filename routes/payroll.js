@@ -101,6 +101,7 @@ router.get('/export', async (req, res) => {
                 item.kind || 'base',
                 `${item.actual_hours || 0}h`,
                 `${item.rate || 0}/${item.rate_unit || 'hour'}`,
+                item.rate_source || 'unresolved',
                 item.amount || 0,
                 item.allocation_source || 'none'
             ].join('|')).join(' / ');

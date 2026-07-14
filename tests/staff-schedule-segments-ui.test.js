@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '..');
 const page = fs.readFileSync(path.join(root, 'js', 'staff-page.js'), 'utf8');
+const hrPage = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
 const shell = fs.readFileSync(path.join(root, 'js', 'staff-schedule-shell.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css', 'pages-hr-staff.css'), 'utf8');
 
@@ -38,6 +39,7 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /function validateSchedulePlan/);
     assert.match(page, /початок і завершення не можуть збігатися/);
     assert.match(page, /перерва має бути коротшою за тривалість блоку/);
+    assert.match(page, /Нічний блок без day offsets можна зберігати лише як єдиний блок дня/);
     assert.match(page, /current\.startMinutes < previous\.endMinutes/);
     assert.match(page, /перетинаються/);
     assert.match(page, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
@@ -53,6 +55,27 @@ test('single and fill-week saves send the normalized segment contract', () => {
     assert.match(page, /segments:\s*segmentTemplate\.map/);
     assert.match(page, /_staffFillMutationPending = true/);
     assert.match(page, /finally\s*\{[\s\S]*_staffFillMutationPending = false/);
+});
+
+test('legacy HR shift modal cannot flatten a multi-segment plan and links to the canonical editor', () => {
+    assert.match(hrPage, /legacyHrShiftHasMultipleSegments/);
+    assert.match(hrPage, /compatibility envelope/);
+    assert.match(hrPage, /Редагування тут вимкнено, щоб не втратити блоки/);
+    assert.match(hrPage, /openCanonicalShiftDayPlan/);
+    assert.match(hrPage, /StaffSchedulePage\?\.openDayPlan/);
+    assert.match(hrPage, /Multi-segment план можна редагувати лише у «Графіку команди»/);
+    assert.match(page, /openDayPlan: openScheduleDayPlan/);
+});
+
+test('single save keeps an optimistic plan version and handles stale conflicts without closing the modal', () => {
+    assert.match(page, /planUpdatedAt: scheduleEntryPlanUpdatedAt\(entry\)/);
+    assert.match(page, /expectedUpdatedAt: editingSession\.planUpdatedAt/);
+    assert.match(page, /HR_SHIFT_PLAN_STALE/);
+    assert.match(page, /Ваші поля не перезаписані/);
+    assert.match(page, /Оновити з сервера/);
+    assert.match(page, /Залишити мої дані/);
+    assert.match(page, /if \(shouldRefresh && scheduleModalSessionIsCurrent\(editingSession\)\)/);
+    assert.match(page, /await refreshStaleScheduleModalPlan\(editingSession\)/);
 });
 
 test('cells, role sections, export and print use segments instead of envelope duration', () => {

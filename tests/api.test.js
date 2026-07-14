@@ -2952,15 +2952,67 @@ describe('Staff Schedule Bulk (v7.10)', () => {
         assert.equal(res.status, 400);
     });
 
-    it('POST /api/staff/schedule/bulk — skips entries without staffId', async () => {
+    it('POST /api/staff/schedule/bulk — more than 31 distinct dates returns a controlled 400', async () => {
+        const dates = [
+            ...Array.from({ length: 31 }, (_, index) => `2098-01-${String(index + 1).padStart(2, '0')}`),
+            '2098-02-01'
+        ];
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', {
+            entries: dates.map(date => ({ staffId: testStaffId, date, status: 'dayoff' }))
+        });
+        assert.equal(res.status, 400);
+        assert.equal(res.data.code, 'SCHEDULE_BULK_CAP_EXCEEDED');
+    });
+
+    it('POST /api/staff/schedule/bulk — rejects a missing staffId without writing valid siblings', async () => {
         const res = await authRequest('POST', '/api/staff/schedule/bulk', {
             entries: [
                 { date: '2099-07-10', status: 'working' },
                 { staffId: testStaffId, date: '2099-07-10', shiftStart: '08:00', shiftEnd: '19:00', status: 'working' }
             ]
         });
-        assert.equal(res.status, 200);
-        assert.equal(res.data.count, 1, 'Should skip entry without staffId');
+        assert.equal(res.status, 400);
+        assert.equal(res.data.code, 'SCHEDULE_BULK_STAFF_ID_INVALID');
+        const check = await authRequest('GET', '/api/staff/schedule?from=2099-07-10&to=2099-07-10');
+        assert.equal(check.data.data.some(entry => Number(entry.staff_id) === Number(testStaffId)), false);
+    });
+
+    it('POST /api/staff/schedule/bulk — rejects invalid dates, statuses and duplicate staff/date pairs', async () => {
+        for (const fixture of [
+            {
+                entries: [{ staffId: testStaffId, date: '2099-02-30', status: 'working' }],
+                code: 'SCHEDULE_BULK_DATE_INVALID'
+            },
+            {
+                entries: [{ staffId: testStaffId, date: '2099-07-11', status: 'mystery' }],
+                code: 'SCHEDULE_BULK_STATUS_INVALID'
+            },
+            {
+                entries: [
+                    { staffId: testStaffId, date: '2099-07-11', status: 'dayoff' },
+                    { staffId: testStaffId, date: '2099-07-11', status: 'working', shiftStart: '08:00', shiftEnd: '19:00' }
+                ],
+                code: 'SCHEDULE_BULK_DUPLICATE_STAFF_DATE'
+            }
+        ]) {
+            const res = await authRequest('POST', '/api/staff/schedule/bulk', { entries: fixture.entries });
+            assert.equal(res.status, 400);
+            assert.equal(res.data.code, fixture.code);
+        }
+        const check = await authRequest('GET', '/api/staff/schedule?from=2099-07-11&to=2099-07-11');
+        assert.equal(check.data.data.some(entry => Number(entry.staff_id) === Number(testStaffId)), false);
+    });
+
+    it('POST /api/staff/schedule/bulk — rolls back earlier writes when a later mutation fails', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', {
+            entries: [
+                { staffId: testStaffId, date: '2099-07-12', status: 'working', shiftStart: '08:00', shiftEnd: '19:00' },
+                { staffId: testStaffId, date: '2099-07-13', status: 'working', shiftStart: '10:00', shiftEnd: '10:00' }
+            ]
+        });
+        assert.equal(res.status, 400);
+        const check = await authRequest('GET', '/api/staff/schedule?from=2099-07-12&to=2099-07-13');
+        assert.equal(check.data.data.some(entry => Number(entry.staff_id) === Number(testStaffId)), false);
     });
 
     after(async () => {
@@ -2977,33 +3029,102 @@ describe('Staff Schedule Copy Week (v7.10)', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/staff', {
-            name: 'Copy Тест', department: 'animators', position: 'Копіювальник', role_type: 'animator'
+            name: 'Copy Тест', department: 'animators', position: 'Копіювальник',
+            role_type: 'animator', secondaryProfessions: ['manager']
         });
+        assert.equal(res.status, 200);
         testStaffId = res.data.data.id;
         // Fill source week Mon-Sun 2099-08-04 to 2099-08-10
         const entries = [];
         for (let d = 4; d <= 10; d++) {
+            if (d === 4) {
+                entries.push({
+                    staffId: testStaffId,
+                    date: '2099-08-04',
+                    status: 'working',
+                    primaryProfessionKey: 'animator',
+                    note: 'Multi-segment source day',
+                    segments: [
+                        {
+                            professionKey: 'animator', shiftStart: '10:00', shiftEnd: '13:00',
+                            breakMinutes: 15, note: 'Morning block', additionalProfessionKeys: ['manager']
+                        },
+                        {
+                            professionKey: 'manager', shiftStart: '17:00', shiftEnd: '20:00',
+                            breakMinutes: 0, note: 'Evening block', additionalProfessionKeys: []
+                        }
+                    ]
+                });
+                continue;
+            }
             entries.push({
                 staffId: testStaffId, date: `2099-08-${d < 10 ? '0' + d : d}`,
                 shiftStart: d <= 8 ? '10:00' : null, shiftEnd: d <= 8 ? '20:00' : null,
                 status: d <= 8 ? 'working' : 'dayoff'
             });
         }
-        await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+        const fill = await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+        assert.equal(fill.status, 200);
+        assert.equal(fill.data.count, 7);
     });
 
     it('POST /api/staff/schedule/copy-week — copies week to next', async () => {
         const res = await authRequest('POST', '/api/staff/schedule/copy-week', {
-            fromMonday: '2099-08-04', toMonday: '2099-08-11'
+            fromMonday: '2099-08-04', toMonday: '2099-08-11', staffIds: [testStaffId]
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
-        assert.ok(res.data.count > 0, 'Should copy at least 1 entry');
+        assert.equal(res.data.count, 7);
 
-        // Verify target week has entries
-        const check = await authRequest('GET', '/api/staff/schedule?from=2099-08-11&to=2099-08-17');
-        const copied = check.data.data.filter(e => e.staff_id === testStaffId);
-        assert.ok(copied.length > 0, 'Target week should have copied entries');
+        const [sourceCheck, targetCheck] = await Promise.all([
+            authRequest('GET', '/api/staff/schedule?from=2099-08-04&to=2099-08-10'),
+            authRequest('GET', '/api/staff/schedule?from=2099-08-11&to=2099-08-17')
+        ]);
+        const source = sourceCheck.data.data.filter(entry => Number(entry.staff_id) === Number(testStaffId));
+        const copied = targetCheck.data.data.filter(entry => Number(entry.staff_id) === Number(testStaffId));
+        assert.deepEqual(copied.map(entry => String(entry.date).slice(0, 10)), [
+            '2099-08-11', '2099-08-12', '2099-08-13', '2099-08-14',
+            '2099-08-15', '2099-08-16', '2099-08-17'
+        ]);
+        assert.equal(source.length, copied.length);
+
+        const sourcePlan = source.find(entry => String(entry.date).slice(0, 10) === '2099-08-04');
+        const copiedPlan = copied.find(entry => String(entry.date).slice(0, 10) === '2099-08-11');
+        const comparableSegments = entry => entry.segments.map(segment => ({
+            professionKey: segment.professionKey,
+            shiftStart: segment.shiftStart,
+            shiftEnd: segment.shiftEnd,
+            breakMinutes: segment.breakMinutes,
+            note: segment.note,
+            additionalProfessionKeys: segment.additionalProfessionKeys
+        }));
+        assert.deepEqual(comparableSegments(copiedPlan), comparableSegments(sourcePlan));
+        assert.ok(copiedPlan.segments.every((segment, index) => (
+            segment.id && sourcePlan.segments[index].id
+            && String(segment.id) !== String(sourcePlan.segments[index].id)
+        )));
+        assert.equal(copiedPlan.primary_profession_key, sourcePlan.primary_profession_key);
+        assert.equal(copiedPlan.note, sourcePlan.note);
+    });
+
+    it('POST /api/staff/schedule/copy-week — keeps winter dates across month and year boundaries', async () => {
+        const sourceDates = ['2099-12-28', '2099-12-29', '2099-12-30', '2099-12-31', '2100-01-01', '2100-01-02', '2100-01-03'];
+        const fill = await authRequest('POST', '/api/staff/schedule/bulk', {
+            entries: sourceDates.map(date => ({ staffId: testStaffId, date, status: 'dayoff' }))
+        });
+        assert.equal(fill.status, 200);
+        const copy = await authRequest('POST', '/api/staff/schedule/copy-week', {
+            fromMonday: '2099-12-28', toMonday: '2100-01-04', staffIds: [testStaffId]
+        });
+        assert.equal(copy.status, 200);
+        assert.equal(copy.data.count, 7);
+        const check = await authRequest('GET', '/api/staff/schedule?from=2100-01-04&to=2100-01-10');
+        assert.deepEqual(
+            check.data.data
+                .filter(entry => Number(entry.staff_id) === Number(testStaffId))
+                .map(entry => String(entry.date).slice(0, 10)),
+            ['2100-01-04', '2100-01-05', '2100-01-06', '2100-01-07', '2100-01-08', '2100-01-09', '2100-01-10']
+        );
     });
 
     it('POST /api/staff/schedule/copy-week — missing params returns 400', async () => {

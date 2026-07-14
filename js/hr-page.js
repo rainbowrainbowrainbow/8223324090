@@ -2447,6 +2447,88 @@ function renderTemplateSelect() {
     ).join('');
 }
 
+function legacyHrShiftSegments(shift = null) {
+    return Array.isArray(shift?.segments)
+        ? shift.segments.filter(segment => segment && (segment.shiftStart || segment.planned_start))
+        : [];
+}
+
+function legacyHrShiftHasMultipleSegments(shift = null) {
+    return legacyHrShiftSegments(shift).length > 1;
+}
+
+function legacyHrShiftSegmentLabel(segment = {}) {
+    const start = fmtTime(segment.shiftStart || segment.shift_start || segment.planned_start);
+    const end = fmtTime(segment.shiftEnd || segment.shift_end || segment.planned_end);
+    const profession = professionTitle(segment.professionKey || segment.profession_key) || 'Професія не задана';
+    return `${start}–${end} · ${profession}`;
+}
+
+function legacyHrShiftMutationErrorMessage(result = {}, fallback = 'Не вдалося зберегти зміну') {
+    if (result?.status === 409 || result?.code === 'HR_SHIFT_PLAN_STALE') {
+        return 'План дня вже змінив інший менеджер. Відкрийте його у «Графіку команди» та оновіть дані.';
+    }
+    if (result?.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT') {
+        return 'Нічний блок без day offsets може бути лише єдиним блоком дня.';
+    }
+    return hrScheduleableStaffErrorMessage(result, result?.error || fallback);
+}
+
+async function openCanonicalShiftDayPlan() {
+    const context = editingShift ? { staffId: editingShift.staffId, date: editingShift.date } : null;
+    if (!context) return;
+    await closeHrEditableModal('shiftModal', true);
+    await activateHrTab('schedule', { updateHash: true });
+    const opened = await window.StaffSchedulePage?.openDayPlan?.(context.staffId, context.date);
+    if (!opened) showNotification('Не вдалося відкрити план дня у «Графіку команди».', 'error');
+}
+
+function renderLegacyHrShiftPlanGuard(shift = null) {
+    const modal = document.querySelector('#shiftModal .hr-modal');
+    if (!modal) return false;
+    let guard = document.getElementById('legacyShiftMultiSegmentGuard');
+    if (!guard) {
+        guard = document.createElement('section');
+        guard.id = 'legacyShiftMultiSegmentGuard';
+        guard.className = 'hr-shift-multi-guard';
+        guard.hidden = true;
+        modal.querySelector('.form-group')?.before(guard);
+    }
+
+    const segments = legacyHrShiftSegments(shift);
+    const isMultiSegment = segments.length > 1;
+    const protectedFields = ['shiftProfession', 'shiftStart', 'shiftEnd', 'shiftType', 'shiftBreak', 'shiftNotes', 'shiftSave'];
+    protectedFields.forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        if (isMultiSegment) {
+            if (!field.hasAttribute('data-disabled-before-multi-guard')) {
+                field.setAttribute('data-disabled-before-multi-guard', field.disabled ? 'true' : 'false');
+            }
+            field.disabled = true;
+        } else if (field.hasAttribute('data-disabled-before-multi-guard')) {
+            field.disabled = field.getAttribute('data-disabled-before-multi-guard') === 'true';
+            field.removeAttribute('data-disabled-before-multi-guard');
+        }
+    });
+
+    guard.hidden = !isMultiSegment;
+    if (!isMultiSegment) {
+        guard.replaceChildren();
+        return false;
+    }
+
+    guard.innerHTML = `
+        <div class="hr-shift-multi-guard__title">Цей день має ${segments.length} часові блоки</div>
+        <p>Поля нижче показують лише compatibility envelope і не є фактичним робочим інтервалом. Редагування тут вимкнено, щоб не втратити блоки.</p>
+        <div class="hr-shift-multi-guard__segments">
+            ${segments.map(segment => `<span>${escapeHtml(legacyHrShiftSegmentLabel(segment))}</span>`).join('')}
+        </div>
+        <button type="button" class="btn-primary hr-shift-multi-guard__open">Відкрити план дня у Графіку команди</button>`;
+    guard.querySelector('.hr-shift-multi-guard__open')?.addEventListener('click', openCanonicalShiftDayPlan);
+    return true;
+}
+
 function renderSchedule(dates) {
     const today = todayStr();
 
@@ -2495,7 +2577,10 @@ function renderSchedule(dates) {
                 const cls = isPast ? 'past ' + (shift.shift_type || 'regular') : (shift.shift_type || 'regular');
                 const professionLabel = professionTitle(shift.profession_key || staff.role_type);
                 cellExtra = professionLabel ? `<small class="hr-shift-profession">${escapeHtml(professionLabel)}</small>` : '';
-                cellContent = `<span class="hr-shift-cell ${cls}">${fmtTime(shift.planned_start)}–${fmtTime(shift.planned_end)}</span>`;
+                const segments = legacyHrShiftSegments(shift);
+                cellContent = segments.length > 1
+                    ? `<span class="hr-shift-cell ${cls} is-multi"><strong>${segments.length} блоки</strong>${segments.slice(0, 2).map(segment => `<small>${escapeHtml(legacyHrShiftSegmentLabel(segment))}</small>`).join('')}${segments.length > 2 ? `<small>+${segments.length - 2}</small>` : ''}</span>`
+                    : `<span class="hr-shift-cell ${cls}">${fmtTime(shift.planned_start)}–${fmtTime(shift.planned_end)}</span>`;
             } else {
                 cellContent = '<span class="hr-shift-cell empty">—</span>';
             }
@@ -2555,11 +2640,17 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftReplace').style.display = 'none';
     }
 
+    renderLegacyHrShiftPlanGuard(existing);
+
     showHrEditableModal('shiftModal');
 }
 
 async function saveShift() {
     if (!editingShift) return;
+    if (legacyHrShiftHasMultipleSegments(editingShift.existing)) {
+        showNotification('Multi-segment план можна редагувати лише у «Графіку команди».', 'error');
+        return;
+    }
     const btn = document.getElementById('shiftSave');
     if (btn && btn.disabled) return;
     const body = {
@@ -2608,7 +2699,7 @@ async function saveShift() {
             await closeHrEditableModal('shiftModal', true);
             await loadSchedule();
         } else {
-            showNotification(hrScheduleableStaffErrorMessage(data, 'Помилка'), 'error');
+            showNotification(legacyHrShiftMutationErrorMessage(data), 'error');
         }
     } finally {
         if (btn) btn.disabled = false;

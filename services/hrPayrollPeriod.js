@@ -103,6 +103,28 @@ function buildPayrollSourceReconciliation(sourceDays = []) {
     return { days, warnings };
 }
 
+function buildPayrollRateUnitWarnings(rateSummary = []) {
+    const seen = new Set();
+    const warnings = [];
+    for (const item of Array.isArray(rateSummary) ? rateSummary : []) {
+        const rateSource = String(item?.rate_source || item?.rateSource || '').trim();
+        const rateUnit = String(item?.rate_unit || item?.rateUnit || '').trim().toLowerCase();
+        if (!rateSource.startsWith('staff_profession_rates') || rateUnit === 'hour') continue;
+        const professionKey = item?.profession_key || item?.professionKey || item?.profession || null;
+        const key = `${professionKey || ''}:${rateUnit}:${rateSource}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        warnings.push({
+            code: 'PAYROLL_RATE_UNIT_MISMATCH',
+            professionKey,
+            rateUnit: rateUnit || null,
+            rateSource,
+            message: 'Погодинну ставку професії заборонено використовувати як денну або місячну'
+        });
+    }
+    return warnings;
+}
+
 function payrollDefaultLock(month) {
     return {
         period_month: month,
@@ -324,6 +346,7 @@ module.exports = {
     PAYROLL_EVENT_LABELS,
     PAYROLL_EVENT_TYPES,
     assertPayrollPeriodOpen,
+    buildPayrollRateUnitWarnings,
     buildPayrollSourceReconciliation,
     loadPayrollPeriodEvents,
     loadPayrollPeriodLock,

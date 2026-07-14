@@ -2033,6 +2033,16 @@ function replaceScheduleStateEntry(previousEntry, nextEntry) {
     }
 }
 
+function replaceScheduleRawStateEntry(previousEntry, nextEntry) {
+    const previousKey = scheduleEntryKey(previousEntry || {});
+    const rows = Array.isArray(StaffState.scheduleRawEntries) ? StaffState.scheduleRawEntries : [];
+    const remaining = previousKey
+        ? rows.filter(entry => scheduleEntryKey(entry) !== previousKey)
+        : [...rows];
+    if (nextEntry) remaining.push({ ...nextEntry, status: normalizeScheduleStatus(nextEntry.status) });
+    StaffState.scheduleRawEntries = remaining;
+}
+
 const LEGACY_DEPARTMENT_FALLBACK = {
     animators: 'Аніматори',
     trampoline: 'Батутисти',
@@ -3441,6 +3451,7 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
     if (dayPlan) {
         payload.segments = dayPlan.segments;
         payload.primaryProfessionKey = dayPlan.primaryProfessionKey;
+        if (dayPlan.expectedUpdatedAt) payload.expectedUpdatedAt = dayPlan.expectedUpdatedAt;
     }
     const res = await fetch('/api/staff/schedule', {
         method: 'PUT',
@@ -4547,6 +4558,14 @@ function validateSchedulePlan(scope, options = {}) {
         if (exactSegments.has(exactKey)) errors.push(`${label}: точний дубль іншого блоку.`);
         exactSegments.add(exactKey);
     });
+    const overnightSegments = segments.filter(segment => {
+        const start = scheduleTimeToMinutes(segment.shiftStart);
+        const end = scheduleTimeToMinutes(segment.shiftEnd);
+        return start !== null && end !== null && end < start;
+    });
+    if (segments.length > 1 && overnightSegments.length > 0) {
+        errors.push('Нічний блок без day offsets можна зберігати лише як єдиний блок дня. Окреме продовження після 00:00 поки не підтримується.');
+    }
     const metrics = schedulePlanMetrics(segments);
     for (let index = 1; index < metrics.timeline.length; index += 1) {
         const previous = metrics.timeline[index - 1];
@@ -5030,6 +5049,14 @@ function getStaffFillState() {
     return `${fields}|segments:${JSON.stringify(readSchedulePlanSegments('fill'))}|days:${dayState}`;
 }
 
+function scheduleEntryPlanUpdatedAt(entry = null) {
+    return entry?.planUpdatedAt
+        || entry?.plan_updated_at
+        || entry?.hrShiftUpdatedAt
+        || entry?.hr_shift_updated_at
+        || null;
+}
+
 function openEditModal(staffId, date, options = {}) {
     if (_staffScheduleClosePromise || StaffState.editingCell?.mutationPending) return;
     if (!scheduleRangeDataReady()) return;
@@ -5051,7 +5078,9 @@ function openEditModal(staffId, date, options = {}) {
         sectionProfessionKey,
         rangeKey: scheduleCommittedRangeKey(),
         sessionId: ++StaffState.scheduleModalSessionSeq,
-        mutationPending: false
+        mutationPending: false,
+        planUpdatedAt: scheduleEntryPlanUpdatedAt(entry),
+        staleConflict: null
     };
 
     document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'План дня' : 'Перегляд плану'}: ${emp.name} — ${date}`;
@@ -5129,6 +5158,44 @@ function openEditModal(staffId, date, options = {}) {
         onlyIfState: stateBeforePreferences,
         resetInitialState: true
     });
+}
+
+async function refreshStaleScheduleModalPlan(session) {
+    if (!scheduleModalSessionIsCurrent(session)) return false;
+    const result = await fetchSchedule(session.date, session.date);
+    if (!result.success) {
+        showNotification(result.error || 'Не вдалося оновити план дня', 'error');
+        return false;
+    }
+    if (!scheduleModalSessionIsCurrent(session)) return false;
+
+    const previousEntry = session.entry || StaffState.schedule[`${session.staffId}_${session.date}`] || null;
+    const freshEntry = result.schedule[`${session.staffId}_${session.date}`] || null;
+    replaceScheduleStateEntry(previousEntry, freshEntry);
+    replaceScheduleRawStateEntry(previousEntry, freshEntry);
+    session.entry = freshEntry;
+    session.planUpdatedAt = scheduleEntryPlanUpdatedAt(freshEntry);
+    session.staleConflict = null;
+
+    const employee = StaffState.staff.find(staff => Number(staff.id) === Number(session.staffId));
+    const primaryProfessionKey = normalizeProfessionKey(
+        freshEntry?.primary_profession_key
+        || freshEntry?.primaryProfessionKey
+        || freshEntry?.profession_key
+        || session.sectionProfessionKey
+        || employee?.role_type
+    );
+    document.getElementById('schStatus').value = freshEntry?.status || 'working';
+    document.getElementById('schNote').value = freshEntry?.note || '';
+    renderSchedulePlanEditor('schedule', scheduleEntrySegmentsForUi(freshEntry, primaryProfessionKey), {
+        primaryProfessionKey
+    });
+    toggleTimeFields();
+    _staffScheduleInitialState = getStaffScheduleState();
+    renderSchedule();
+    loadScheduleCellHistory(session.staffId, session.date);
+    showNotification('План дня оновлено. Перевірте зміни перед збереженням.', 'info');
+    return true;
 }
 
 async function closeEditModal(force = false, expectedSession = null) {
@@ -5235,7 +5302,8 @@ function scheduleAuditActionLabel(action) {
         staff_schedule_replacement_removed: 'Зміну знято через підміну',
         staff_schedule_replacement_set: 'Виставлено підміну',
         staff_schedule_replacement_clear_removed: 'Підміну знято',
-        staff_schedule_replacement_restored: 'Повернено оригінальну зміну'
+        staff_schedule_replacement_restored: 'Повернено оригінальну зміну',
+        staff_schedule_stale_rejected: 'Відхилено застаріле збереження'
     };
     return labels[action] || action || 'Зміна графіка';
 }
@@ -5248,6 +5316,9 @@ function scheduleAuditValueLabel(field, value) {
 }
 
 function scheduleAuditChangesText(details = {}) {
+    if (details.outcome === 'rejected' && details.code === 'HR_SHIFT_PLAN_STALE') {
+        return 'План не змінено: у менеджера була застаріла версія';
+    }
     const fieldLabels = {
         status: 'статус',
         shiftStart: 'початок',
@@ -5396,6 +5467,7 @@ async function handleSave() {
     try {
         const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey, {
             primaryProfessionKey: professionKey,
+            expectedUpdatedAt: editingSession.planUpdatedAt,
             segments: validation.segments.map(segment => ({
                 id: segment.id,
                 professionKey: segment.professionKey,
@@ -5415,6 +5487,22 @@ async function handleSave() {
                 await closeEditModal(true, editingSession);
             }
             showNotification('Зміну збережено');
+        } else if (['HR_SHIFT_PLAN_STALE', 'HR_SHIFT_PLAN_VERSION_REQUIRED'].includes(result.code)) {
+            editingSession.staleConflict = result.details || {};
+            showNotification('Цей план уже змінив інший менеджер. Ваші поля не перезаписані.', 'error');
+            const shouldRefresh = typeof confirmModal === 'function'
+                ? await confirmModal(
+                    'На сервері вже є новіша версія плану дня. Оновити форму з сервера?\n\nВаші поточні незбережені поля буде замінено лише після підтвердження.',
+                    {
+                        type: 'warning',
+                        okText: 'Оновити з сервера',
+                        cancelText: 'Залишити мої дані'
+                    }
+                )
+                : false;
+            if (shouldRefresh && scheduleModalSessionIsCurrent(editingSession)) {
+                await refreshStaleScheduleModalPlan(editingSession);
+            }
         } else {
             showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
         }
@@ -5619,6 +5707,30 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
 async function goToWeek(monday) {
     const range = getScheduleWindowRange(monday);
     return goToScheduleRange(range.start, range.end, 'rolling');
+}
+
+async function openScheduleDayPlan(staffId, date) {
+    if (!staffScheduleInitialized && staffScheduleInitPromise) await staffScheduleInitPromise;
+    if (!staffScheduleInitialized) return false;
+    const normalizedStaffId = normalizeScheduleFocusStaffId(staffId);
+    const targetDate = parseScheduleDateInput(date);
+    if (!normalizedStaffId || !targetDate) return false;
+
+    const currentRange = scheduleCurrentRange();
+    const targetIsLoaded = scheduleRangeDataReady()
+        && targetDate >= currentRange.start
+        && targetDate <= currentRange.end;
+    if (!targetIsLoaded) {
+        const loaded = await goToWeek(getScheduleFocusStart(targetDate));
+        if (!loaded) return false;
+    }
+
+    focusScheduleStaff(normalizedStaffId);
+    const dateKey = formatDateStr(targetDate);
+    openEditModal(normalizedStaffId, dateKey);
+    return Boolean(StaffState.editingCell
+        && Number(StaffState.editingCell.staffId) === normalizedStaffId
+        && StaffState.editingCell.date === dateKey);
 }
 
 function prevWeek() {
@@ -6997,6 +7109,7 @@ window.StaffSchedulePage = {
     refresh: refreshStaffSchedulePage,
     isInitialized: () => staffScheduleInitialized,
     focusStaff: focusScheduleStaff,
+    openDayPlan: openScheduleDayPlan,
     renderSchedule
 };
 

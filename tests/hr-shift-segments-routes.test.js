@@ -12,6 +12,14 @@ const hrRoute = read('routes', 'hr.js');
 const staffRoute = read('routes', 'staff.js');
 const service = read('services', 'hrShiftSegments.js');
 const staffScheduleMutations = read('services', 'staffScheduleMutations.js');
+const reconciliationService = read('services', 'hrShiftReconciliation.js');
+
+function sourceSlice(source, startNeedle, endNeedle) {
+    const start = source.indexOf(startNeedle);
+    const end = source.indexOf(endNeedle, start + startNeedle.length);
+    assert.ok(start >= 0 && end > start, `source slice ${startNeedle} -> ${endNeedle}`);
+    return source.slice(start, end);
+}
 
 test('HR and Staff routes delegate canonical HR-shift writes to the shared service', () => {
     for (const route of [hrRoute]) {
@@ -40,10 +48,40 @@ test('all multi-write route flows retain explicit transaction ownership', () => 
     assert.match(staffRoute, /router\.post\('\/schedule\/bulk'[^]*?await client\.query\('BEGIN'\)[^]*?mutateStaffScheduleEntry\(client[^]*?await client\.query\('COMMIT'\)/);
 });
 
-test('legacy read-side backfill refreshes eligible rows under ordered staff locks', () => {
-    assert.match(hrRoute, /async function backfillHrShiftsFromStaffSchedule[^]*?lockHrShiftStaffRows\(client, candidateStaffIds\)[^]*?const freshSource = await client\.query/);
-    assert.match(hrRoute, /const freshSource = await client\.query\([^]*?ss\.staff_id = ANY\(\$3::int\[\]\)[^]*?for \(const row of freshSource\.rows\)/);
-    assert.match(hrRoute, /for \(const row of freshSource\.rows\)[^]*?SELECT id FROM hr_shifts WHERE staff_id = \$1 AND shift_date = \$2[^]*?if \(alreadyCreated\.rows\.length\) continue/);
+test('HR shift GET is read-only and legacy reconciliation is explicit', () => {
+    const getBlock = hrRoute.match(/router\.get\('\/shifts'[^]*?\n\}\);/)?.[0] || '';
+    assert.doesNotMatch(getBlock, /backfill|reconcil(?:e|iation)/i);
+    assert.doesNotMatch(getBlock, /\b(?:INSERT|UPDATE|DELETE)\b/i);
+    assert.match(reconciliationService, /options\.dryRun !== false/);
+    assert.match(reconciliationService, /candidateCount/);
+    assert.match(reconciliationService, /errorCount/);
+    assert.match(reconciliationService, /hs\.id IS NULL/);
+    assert.match(reconciliationService, /HR_SHIFT_RECONCILIATION_HAS_ERRORS/);
+});
+
+test('HR shift mutations persist required audit before commit and broadcast only after commit', () => {
+    const flows = [
+        ["router.post('/shifts'", "// PUT /api/hr/shifts/:id", 'shift_create'],
+        ["router.put('/shifts/:id'", "// DELETE /api/hr/shifts/:id", 'shift_update'],
+        ["router.delete('/shifts/:id'", "// POST /api/hr/shifts/:id/replace", 'shift_delete'],
+        ["router.post('/shifts/:id/replace'", "// POST /api/hr/shifts/bulk", 'shift_replace'],
+        ["router.post('/shifts/bulk'", "// POST /api/hr/shifts/copy-week", 'shift_bulk'],
+        ["router.post('/shifts/copy-week'", '// CLOCK IN / CLOCK OUT', 'shift_copy_week']
+    ];
+    for (const [start, end, action] of flows) {
+        const block = sourceSlice(hrRoute, start, end);
+        const auditIndex = block.indexOf(`'${action}'`);
+        const commitIndex = block.indexOf("await client.query('COMMIT')", auditIndex);
+        const broadcastIndex = block.indexOf('broadcastRosterDates', commitIndex);
+        assert.ok(auditIndex >= 0, `${action} audit exists`);
+        assert.ok(commitIndex > auditIndex, `${action} audit precedes commit`);
+        assert.match(block.slice(auditIndex, commitIndex), /req\.ip,\s*client/);
+        assert.ok(broadcastIndex > commitIndex, `${action} broadcast follows commit`);
+        assert.match(block, /catch \([^)]*\)[^]*?ROLLBACK/);
+        assert.match(block, /sendHrMutationFailure/);
+    }
+    assert.match(hrRoute, /async function auditLog\([^)]*db = null\)/);
+    assert.match(hrRoute, /if \(db\)[^]*?HR_AUDIT_WRITE_FAILED[^]*?throw auditError/);
 });
 
 test('read and copy flows preserve ordered segments and simultaneous roles', () => {
@@ -67,6 +105,23 @@ test('Staff schedule GET aggregates segments without multiplying parent rows and
     assert.match(staffRoute, /planned_minutes: plannedMinutes/);
     assert.match(staffRoute, /shift_start: plannedStart/);
     assert.match(staffRoute, /shift_end: plannedEnd/);
+    assert.match(staffRoute, /planUpdatedAt/);
+    assert.match(staffRoute, /hrShiftUpdatedAt/);
+});
+
+test('single-save routes enforce optimistic plan versions while bulk and copy use fresh locked state', () => {
+    assert.match(service, /assertExpectedHrShiftPlanUpdatedAt\(currentShift, input, options\)/);
+    assert.match(service, /HR_SHIFT_PLAN_STALE/);
+    assert.match(service, /HR_SHIFT_PLAN_VERSION_REQUIRED/);
+    assert.match(staffRoute, /router\.put\('\/schedule'[^]*?requireExpectedUpdatedAt: true/);
+    assert.match(hrRoute, /router\.put\('\/shifts\/:id'[^]*?requireExpectedUpdatedAt: true/);
+    assert.match(staffRoute, /router\.post\('\/schedule\/bulk'[^]*?requireExpectedUpdatedAt: false/);
+    assert.match(staffRoute, /router\.post\('\/schedule\/copy-week'[^]*?requireExpectedUpdatedAt: false/);
+    assert.match(staffRoute, /router\.post\('\/schedule\/bulk'[^]*?ignoreExpectedUpdatedAt: true/);
+    assert.match(hrRoute, /router\.post\('\/shifts\/copy-week'[^]*?ignoreExpectedUpdatedAt: true/);
+    assert.match(staffScheduleMutations, /staff_schedule_stale_rejected/);
+    assert.match(staffScheduleMutations, /outcome: 'rejected'/);
+    assert.match(staffScheduleMutations, /changes: \{\}/);
 });
 
 test('replacement validates every plan profession before moving the parent shift', () => {
@@ -127,7 +182,7 @@ test('replacement and direct HR mutation routes reject stale owner snapshots', (
 });
 
 test('copy-week write paths refresh source rows after ordered staff locks', () => {
-    assert.match(hrRoute, /router\.post\('\/shifts\/copy-week'[^]*?lockHrShiftStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?for \(const row of freshSourceRows\)/);
+    assert.match(hrRoute, /router\.post\('\/shifts\/copy-week'[^]*?lockHrShiftStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?hydrateHrShiftDayPlans\(client, freshSourceRows\)/);
     assert.match(staffRoute, /router\.post\('\/schedule\/copy-week'[^]*?lockScheduleStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?for \(const row of freshSourceRows\)/);
 });
 

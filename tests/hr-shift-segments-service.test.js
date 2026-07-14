@@ -8,6 +8,7 @@ const {
     durationAcrossMidnight,
     hydrateHrShiftDayPlans,
     loadHrShiftDayPlan,
+    loadHrShiftDayPlansForStaffDates,
     normalizeHrShiftDayPlan,
     normalizeShiftTime,
     replaceHrShiftSegments,
@@ -35,6 +36,9 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
     let currentShiftType = shiftType;
     let currentNotes = 'Original note';
     let nextSegmentId = 200;
+    let version = 1;
+    const planUpdatedAt = () => `2026-07-13T10:00:00.${String(version).padStart(6, '0')}Z`;
+    const bumpVersion = () => { version += 1; };
     const parent = () => ({
         id: 42,
         staff_id: 17,
@@ -45,13 +49,15 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
         break_minutes: 0,
         shift_type: currentShiftType,
         notes: currentNotes,
-        original_staff_id: null
+        original_staff_id: null,
+        updated_at: new Date('2026-07-13T10:00:00.000Z'),
+        plan_updated_at_token: planUpdatedAt()
     });
     const client = {
         async query(sql, params = []) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ text, params });
-            if (/^SELECT \* FROM hr_shifts WHERE id = \$1(?: FOR UPDATE)?$/.test(text)) {
+            if (/^SELECT .* FROM hr_shifts WHERE id = \$1(?: FOR UPDATE)?$/.test(text)) {
                 return { rows: [parent()] };
             }
             if (/FROM hr_shift_segments hss/.test(text)) {
@@ -96,9 +102,11 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
             if (/^UPDATE hr_shifts SET shift_type/.test(text)) {
                 currentShiftType = params[0];
                 currentNotes = params[1];
+                bumpVersion();
                 return { rows: [parent()] };
             }
             if (/^UPDATE hr_shifts SET planned_start/.test(text)) {
+                bumpVersion();
                 return {
                     rows: [{
                         ...parent(),
@@ -110,6 +118,8 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
                 };
             }
             if (/^DELETE FROM hr_shift_segments/.test(text)) return { rows: [] };
+            if (/^UPDATE hr_shift_segments SET/.test(text)) return { rows: [] };
+            if (/^DELETE FROM hr_shift_segment_roles/.test(text)) return { rows: [] };
             if (/^INSERT INTO hr_shift_segments/.test(text)) {
                 nextSegmentId += 1;
                 return { rows: [{ id: nextSegmentId }] };
@@ -118,7 +128,7 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };
-    return { client, calls };
+    return { client, calls, planUpdatedAt };
 }
 
 test('normalizes PostgreSQL times and calculates duration across midnight', () => {
@@ -205,7 +215,22 @@ test('does not infer a separate post-midnight segment without a day offset', () 
                 segment('reception', '02:00', '03:00')
             ]
         }),
-        error => error.code === 'HR_SHIFT_PLAN_ENVELOPE_TOO_LONG'
+        error => error.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT'
+            && error.details.policy === 'single_overnight_segment_only'
+    );
+});
+
+test('rejects every multi-segment day containing an overnight block until day offsets exist', () => {
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '10:00', '14:00'),
+                segment('manager', '22:00', '02:00')
+            ]
+        }),
+        error => error.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT'
+            && error.details.segmentCount === 2
     );
 });
 
@@ -311,7 +336,14 @@ test('requires the day primary profession to be a main segment profession', () =
     );
 });
 
-test('rejects a break longer than the segment and a zero-length segment', () => {
+test('rejects a break equal to or longer than the segment and a zero-length segment', () => {
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '09:00', '10:00', { breakMinutes: 60 })]
+        }),
+        error => error.code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION'
+    );
     assert.throws(
         () => normalize({
             primaryProfessionKey: 'reception',
@@ -485,7 +517,7 @@ test('locking hydration acquires the parent lock before reading child segments',
         async query(sql, params) {
             queries.push(String(sql));
             if (queries.length === 1) {
-                assert.match(String(sql), /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
+                assert.match(String(sql), /SELECT [^]* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
                 assert.deepEqual(params, [42]);
                 return {
                     rows: [{
@@ -542,7 +574,7 @@ test('update by hrShiftId cannot validate against a different staff card', async
                     }]
                 };
             }
-            assert.match(text, /SELECT \* FROM hr_shifts WHERE id = \$1/);
+            assert.match(text, /SELECT [^]* FROM hr_shifts WHERE id = \$1/);
             assert.deepEqual(params, [42]);
             return { rows: [{
                 id: 42,
@@ -692,11 +724,126 @@ test('metadata-only updates preserve an existing multi-segment plan', async () =
     assert.equal(professionSaved.plan.segments[0].professionKey, 'manager');
 
     const lockOrder = noteUpdate.calls.map(call => call.text);
-    const observedParentIndex = lockOrder.findIndex(text => /^SELECT \* FROM hr_shifts WHERE id = \$1$/.test(text));
+    const observedParentIndex = lockOrder.findIndex(text => /^SELECT .* FROM hr_shifts WHERE id = \$1$/.test(text));
     const staffLockIndex = lockOrder.findIndex(text => /FROM staff/.test(text) && /FOR SHARE/.test(text));
-    const parentLockIndex = lockOrder.findIndex(text => /^SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE$/.test(text));
+    const parentLockIndex = lockOrder.findIndex(text => /^SELECT .* FROM hr_shifts WHERE id = \$1 FOR UPDATE$/.test(text));
     assert.ok(observedParentIndex >= 0 && observedParentIndex < staffLockIndex);
     assert.ok(staffLockIndex < parentLockIndex);
+});
+
+test('staff/date plan loader hydrates many source days with one query', async () => {
+    let queries = 0;
+    const db = {
+        async query(sql, params) {
+            queries += 1;
+            assert.match(String(sql), /UNNEST\(\$1::int\[\], \$2::date\[\]\)/);
+            assert.deepEqual(params, [[17, 17], ['2026-07-13', '2026-07-14']]);
+            return {
+                rows: [{
+                    shift_row: {
+                        id: 42,
+                        staff_id: 17,
+                        shift_date: '2026-07-13',
+                        profession_key: 'reception',
+                        planned_start: '09:00',
+                        planned_end: '13:00',
+                        break_minutes: 0,
+                        shift_type: 'regular'
+                    },
+                    segment_id: 71,
+                    profession_key: 'reception',
+                    planned_start: '09:00',
+                    planned_end: '13:00',
+                    break_minutes: 0,
+                    notes: null,
+                    sort_order: 0,
+                    additional_profession_keys: []
+                }]
+            };
+        }
+    };
+
+    const plans = await loadHrShiftDayPlansForStaffDates(db, [
+        { staffId: 17, date: '2026-07-14' },
+        { staffId: 17, date: '2026-07-13' },
+        { staffId: 17, date: '2026-07-13' }
+    ]);
+    assert.equal(queries, 1);
+    assert.equal(plans.get('17:2026-07-13')?.plan?.segments?.[0]?.id, 71);
+});
+
+test('two managers reading one plan version cannot silently overwrite each other', async () => {
+    const state = createExistingMultiSegmentClient('regular');
+    const firstClientVersion = state.planUpdatedAt();
+    const secondClientVersion = firstClientVersion;
+
+    const firstSave = await saveHrShiftDayPlan(state.client, {
+        hrShiftId: 42,
+        expectedUpdatedAt: firstClientVersion,
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '09:00', '13:00'),
+                segment('manager', '13:00', '19:00')
+            ]
+        }
+    }, { actor: 'manager-one', requireExpectedUpdatedAt: true });
+    assert.notEqual(firstSave.shift.plan_updated_at_token, firstClientVersion);
+    const replacementsAfterFirstSave = state.calls.filter(call => /^DELETE FROM hr_shift_segments/.test(call.text)).length;
+
+    await assert.rejects(
+        saveHrShiftDayPlan(state.client, {
+            hrShiftId: 42,
+            expectedUpdatedAt: secondClientVersion,
+            payload: {
+                primaryProfessionKey: 'reception',
+                segments: [
+                    segment('reception', '10:00', '14:00'),
+                    segment('manager', '14:00', '20:00')
+                ]
+            }
+        }, { actor: 'manager-two', requireExpectedUpdatedAt: true }),
+        error => error.code === 'HR_SHIFT_PLAN_STALE'
+            && error.statusCode === 409
+            && error.details.expectedUpdatedAt === secondClientVersion
+            && error.details.currentUpdatedAt === firstSave.shift.plan_updated_at_token
+    );
+
+    const replacementsAfterStaleSave = state.calls.filter(call => /^DELETE FROM hr_shift_segments/.test(call.text)).length;
+    assert.equal(replacementsAfterStaleSave, replacementsAfterFirstSave, 'stale save must fail before child replacement');
+});
+
+test('version-aware segment updates require a token while legacy metadata payloads remain compatible', async () => {
+    const state = createExistingMultiSegmentClient('regular');
+    await assert.rejects(
+        saveHrShiftDayPlan(state.client, {
+            hrShiftId: 42,
+            payload: {
+                primaryProfessionKey: 'reception',
+                segments: [segment('reception', '09:00', '20:00')]
+            }
+        }, { requireExpectedUpdatedAt: true }),
+        error => error.code === 'HR_SHIFT_PLAN_VERSION_REQUIRED' && error.statusCode === 409
+    );
+    assert.equal(state.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
+
+    const legacyState = createExistingMultiSegmentClient('regular');
+    const saved = await saveHrShiftDayPlan(legacyState.client, {
+        hrShiftId: 42,
+        payload: { notes: 'Legacy metadata update' }
+    }, { requireExpectedUpdatedAt: true });
+    assert.equal(saved.shift.notes, 'Legacy metadata update');
+
+    const freshLockedBatchState = createExistingMultiSegmentClient('regular');
+    const batchSaved = await saveHrShiftDayPlan(freshLockedBatchState.client, {
+        hrShiftId: 42,
+        expectedUpdatedAt: 'stale-browser-token-that-bulk-must-ignore',
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '09:00', '20:00')]
+        }
+    }, { ignoreExpectedUpdatedAt: true });
+    assert.equal(batchSaved.plan.segments.length, 1);
 });
 
 test('direct full replacement still validates roles against the locked shift owner', async () => {
@@ -742,7 +889,7 @@ test('direct full replacement still validates roles against the locked shift own
     assert.equal(calls.some(text => /^DELETE FROM hr_shift_segments/.test(text)), false);
 });
 
-test('full replacement locks parent, updates envelope, then replaces children and roles', async () => {
+test('new-plan persistence locks parent, updates envelope, then inserts children and roles', async () => {
     const calls = [];
     let nextSegmentId = 100;
     const client = {
@@ -769,6 +916,7 @@ test('full replacement locks parent, updates envelope, then replaces children an
             if (/^UPDATE hr_shifts SET/.test(text)) {
                 return { rows: [{ id: 42, planned_start: params[0], planned_end: params[1], break_minutes: params[2], profession_key: params[3] }] };
             }
+            if (/FROM hr_shift_segments hss/.test(text)) return { rows: [] };
             if (/^DELETE FROM hr_shift_segments/.test(text)) return { rows: [] };
             if (/^INSERT INTO hr_shift_segments/.test(text)) {
                 nextSegmentId += 1;
@@ -794,12 +942,46 @@ test('full replacement locks parent, updates envelope, then replaces children an
     const observedIndex = calls.findIndex(call => /^SELECT id, staff_id FROM hr_shifts/.test(call.text));
     const staffLockIndex = calls.findIndex(call => /FROM staff/.test(call.text) && /FOR SHARE/.test(call.text));
     const lockIndex = calls.findIndex(call => /^SELECT \* FROM hr_shifts/.test(call.text));
-    const deleteIndex = calls.findIndex(call => /^DELETE FROM hr_shift_segments/.test(call.text));
+    const childLoadIndex = calls.findIndex(call => /FROM hr_shift_segments hss/.test(call.text));
     const segmentInsertIndex = calls.findIndex(call => /^INSERT INTO hr_shift_segments/.test(call.text));
     const roleInsertIndex = calls.findIndex(call => /^INSERT INTO hr_shift_segment_roles/.test(call.text));
     assert.ok(observedIndex >= 0 && observedIndex < staffLockIndex);
     assert.ok(staffLockIndex < lockIndex);
-    assert.ok(lockIndex < deleteIndex);
-    assert.ok(deleteIndex < segmentInsertIndex);
+    assert.ok(lockIndex < childLoadIndex);
+    assert.ok(childLoadIndex < segmentInsertIndex);
     assert.ok(segmentInsertIndex < roleInsertIndex);
+});
+
+test('diff persistence keeps an unchanged segment id and rejects a foreign segment id', async () => {
+    const state = createExistingMultiSegmentClient('regular');
+    const saved = await saveHrShiftDayPlan(state.client, {
+        hrShiftId: 42,
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '09:00', '13:00', { id: 71 }),
+                segment('manager', '16:00', '20:00', { id: 72 })
+            ]
+        }
+    }, { actor: 'unit-test' });
+
+    assert.deepEqual(saved.plan.segments.map(item => Number(item.id)), [71, 72]);
+    const childUpdates = state.calls.filter(call => /^UPDATE hr_shift_segments SET/.test(call.text));
+    assert.equal(childUpdates.length, 1);
+    assert.equal(Number(childUpdates[0].params[7]), 72);
+    assert.equal(state.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
+    assert.equal(state.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
+
+    const foreign = createExistingMultiSegmentClient('regular');
+    await assert.rejects(
+        saveHrShiftDayPlan(foreign.client, {
+            hrShiftId: 42,
+            payload: {
+                primaryProfessionKey: 'reception',
+                segments: [segment('reception', '09:00', '13:00', { id: 999 })]
+            }
+        }, { actor: 'unit-test' }),
+        error => error.code === 'HR_SHIFT_SEGMENT_ID_NOT_ON_PARENT' && error.statusCode === 409
+    );
+    assert.equal(foreign.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
 });

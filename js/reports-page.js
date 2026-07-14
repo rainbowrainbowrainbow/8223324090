@@ -552,6 +552,58 @@ const ReportsPage = (() => {
         return Math.round((diff / 60) * 100) / 100;
     }
 
+    function nonNegativeMinutes(value) {
+        if (value === null || value === undefined || String(value).trim() === '') return null;
+        const minutes = Number(value);
+        return Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
+    }
+
+    function segmentPlannedMinutes(segment = {}) {
+        const startMinutes = timeToMinutes(
+            segment.shiftStart || segment.shift_start || segment.plannedStart || segment.planned_start
+        );
+        const endMinutes = timeToMinutes(
+            segment.shiftEnd || segment.shift_end || segment.plannedEnd || segment.planned_end
+        );
+        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || startMinutes === endMinutes) return 0;
+        let duration = endMinutes - startMinutes;
+        if (duration < 0) duration += 24 * 60;
+        const breakMinutes = nonNegativeMinutes(segment.breakMinutes ?? segment.break_minutes) || 0;
+        return Math.max(0, duration - breakMinutes);
+    }
+
+    function schedulePlannedTime(entry = {}) {
+        if (!entry || !['working', 'work'].includes(String(entry.status || 'working'))) {
+            return { minutes: 0, hours: 0, source: 'non_working_status' };
+        }
+
+        const snakeCaseMinutes = nonNegativeMinutes(entry.planned_minutes);
+        const camelCaseMinutes = nonNegativeMinutes(entry.plannedMinutes);
+        let minutes;
+        let source;
+        if (snakeCaseMinutes !== null) {
+            minutes = snakeCaseMinutes;
+            source = 'schedule_planned_minutes';
+        } else if (camelCaseMinutes !== null) {
+            minutes = camelCaseMinutes;
+            source = 'schedule_planned_minutes';
+        } else if (Array.isArray(entry.segments)) {
+            minutes = entry.segments.reduce((sum, segment) => sum + segmentPlannedMinutes(segment), 0);
+            source = 'schedule_segments';
+        } else {
+            minutes = hoursBetween(
+                entry.shift_start || entry.planned_start || entry.shiftStart || entry.plannedStart,
+                entry.shift_end || entry.planned_end || entry.shiftEnd || entry.plannedEnd
+            ) * 60;
+            source = 'legacy_envelope';
+        }
+        return {
+            minutes: Math.round(minutes),
+            hours: Math.round((minutes / 60) * 100) / 100,
+            source
+        };
+    }
+
     function diffDateHours(start, end) {
         if (!start || !end) return 0;
         const startTime = new Date(start).getTime();
@@ -561,8 +613,26 @@ const ReportsPage = (() => {
     }
 
     function schedulePlannedHours(entry = {}) {
-        if (!entry || !['working', 'work'].includes(String(entry.status || 'working'))) return 0;
-        return hoursBetween(entry.shift_start || entry.planned_start, entry.shift_end || entry.planned_end);
+        return schedulePlannedTime(entry).hours;
+    }
+
+    function scheduleSegmentRefs(entry = {}) {
+        if (!Array.isArray(entry.segments)) return [];
+        return [...new Set(entry.segments
+            .map(segment => segment?.id ?? segment?.segmentId ?? segment?.segment_id)
+            .filter(id => id !== null && id !== undefined && String(id).trim() !== '')
+            .map(id => Number(id))
+            .filter(Number.isFinite))];
+    }
+
+    function schedulePrimaryProfession(entry = {}) {
+        return String(
+            entry.primary_profession_key
+            || entry.primaryProfessionKey
+            || entry.profession_key
+            || entry.professionKey
+            || ''
+        ).trim();
     }
 
     function attendanceActualHours(record = {}) {
@@ -675,12 +745,13 @@ const ReportsPage = (() => {
             if (staffId && _staffOptionsAvailable && !staff) payrollIssue('staff_not_active_or_missing', issues);
             if (String(next.staff_status || '').toLowerCase() === 'offboarded') payrollIssue('offboarded_staff', issues);
 
+            const plannedTime = schedule ? schedulePlannedTime(schedule) : null;
             const plannedHours = schedule ? schedulePlannedHours(schedule) : parseNumber(next.planned_hours);
             const actualHours = attendance ? attendanceActualHours(attendance) : parseNumber(next.actual_hours);
             const paidHours = parseNumber(next.hours || next.paid_hours);
             const amount = parseNumber(next.total || next.amount);
 
-            next.planned_hours = plannedHours || next.planned_hours || '';
+            next.planned_hours = schedule ? plannedHours : (plannedHours || next.planned_hours || '');
             next.actual_hours = actualHours || next.actual_hours || '';
             next.paid_hours = paidHours || '';
             next.manual_amount = parseNumber(next.manual_amount) || 0;
@@ -689,14 +760,23 @@ const ReportsPage = (() => {
             next.notes = next.notes || '';
 
             if (schedule) {
+                const primaryProfessionKey = schedulePrimaryProfession(schedule);
+                next.segment_refs = scheduleSegmentRefs(schedule);
+                next.primary_profession_key = primaryProfessionKey;
+                next.planned_allocation_source = plannedTime.source;
+                next.allocation_source = attendance?.allocation_source
+                    || attendance?.allocationSource
+                    || next.allocation_source
+                    || plannedTime.source;
+                next.reconciliation_source = 'reports_rawData_payroll_reconciliation_v1';
                 next.planned_shift_ref = {
                     source: 'staff_schedule',
                     id: schedule.id || null,
                     hr_shift_id: schedule.hr_shift_id || null,
                     date,
                     status: schedule.status || null,
-                    start: schedule.shift_start || null,
-                    end: schedule.shift_end || null
+                    start: schedule.shift_start || schedule.planned_start || null,
+                    end: schedule.shift_end || schedule.planned_end || null
                 };
             } else if (staffId && date) {
                 next.planned_shift_ref = next.planned_shift_ref || null;

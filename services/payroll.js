@@ -1,7 +1,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { hydrateAttendanceRecords } = require('./hrAttendance');
-const { buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
+const { buildPayrollRateUnitWarnings, buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
 const { normalizeProfessionKey } = require('./professions');
 
 const log = createLogger('Payroll');
@@ -631,25 +631,46 @@ function schemeRateFallback(scheme, rateUnit) {
     const config = parseConfig(scheme?.config || scheme?.config_json);
     if (rateUnit === 'month') return toNumber(config.monthlyAmount ?? config.fixedAmount ?? config.amount, 0);
     if (rateUnit === 'day') return toNumber(config.perShiftRate ?? config.rate ?? config.amount, 0);
-    return toNumber(config.hourlyRate ?? config.rate, 0);
+    return toNumber(config.hourlyRate ?? config.rate ?? config.amount, 0);
 }
 
 function resolveProfessionPayRate(staff, professionKey, scheme, professionRateMap, rateUnit) {
     const staffId = Number(staff.id ?? staff.staff_id);
     const normalizedKey = normalizeProfessionKey(professionKey || staff.roleType || staff.role_type);
-    const professionRate = professionRateMap.get(`${staffId}:${normalizedKey}`);
-    if (professionRate > 0) return { rate: professionRate, source: 'staff_profession_rates' };
-    const schemeRate = schemeRateFallback(scheme, rateUnit);
-    if (schemeRate > 0) return { rate: schemeRate, source: 'payroll_scheme' };
+    const normalizedRateUnit = normalizeStaffRateUnit(rateUnit);
+    if (normalizedRateUnit === 'hour') {
+        const professionRate = professionRateMap.get(`${staffId}:${normalizedKey}`);
+        if (professionRate > 0) {
+            return { rate: professionRate, source: 'staff_profession_rates.hourly_rate', rateUnit: 'hour' };
+        }
+    }
+    const schemeRate = schemeRateFallback(scheme, normalizedRateUnit);
+    if (schemeRate > 0) {
+        return {
+            rate: schemeRate,
+            source: scheme?.isFallback ? 'staff.hourly_rate' : 'payroll_scheme',
+            rateUnit: normalizedRateUnit
+        };
+    }
+    const staffRateUnit = normalizeStaffRateUnit(staff.rateUnit ?? staff.rate_unit);
+    if (staffRateUnit === normalizedRateUnit) {
+        return {
+            rate: toNumber(staff.hourlyRate ?? staff.hourly_rate, 0),
+            source: 'staff.hourly_rate',
+            rateUnit: normalizedRateUnit
+        };
+    }
     return {
-        rate: toNumber(staff.hourlyRate ?? staff.hourly_rate, 0),
-        source: 'staff.hourly_rate'
+        rate: 0,
+        source: 'unresolved',
+        rateUnit: normalizedRateUnit
     };
 }
 
 function professionSummaryRow({ professionKey, minutes, days = 0, rate, amount, rateUnit, sources, rateSource, kind = 'base' }) {
     const allocationSources = [...new Set((sources || []).filter(Boolean))].sort();
     return {
+        profession: professionKey || null,
         profession_key: professionKey || null,
         professionKey: professionKey || null,
         actual_minutes: Math.max(0, Math.round(minutes || 0)),
@@ -713,7 +734,14 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 rateSource: resolved.source
             }));
         }
-        for (const overtime of metrics.overtimeAllocations) {
+        const overtimeAllocations = metrics.overtimeAllocations.length
+            ? metrics.overtimeAllocations
+            : (metrics.overtimeMinutes > 0 ? [{
+                professionKey: metrics.primaryDays[0]?.professionKey || fallbackProfessionKey,
+                minutes: metrics.overtimeMinutes,
+                allocationSources: ['legacy_primary_profession']
+            }] : []);
+        for (const overtime of overtimeAllocations) {
             const professionKey = normalizeProfessionKey(overtime.professionKey || fallbackProfessionKey);
             const resolved = resolveProfessionPayRate(staff, professionKey, activeScheme, professionRateMap, rateUnit);
             const amount = roundMoney((overtime.minutes / 60) * resolved.rate * OVERTIME_MULTIPLIER);
@@ -742,6 +770,12 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
             dayMap.get(professionKey).days += 1;
             dayMap.get(professionKey).dates.push(day.date);
         }
+        if (!dayMap.size && metrics.daysWorked > 0) {
+            dayMap.set(fallbackProfessionKey, {
+                days: metrics.daysWorked,
+                dates: metrics.attendanceDays.map(day => day.date).filter(Boolean)
+            });
+        }
         for (const [professionKey, dayData] of dayMap) {
             const resolved = resolveProfessionPayRate(staff, professionKey, activeScheme, professionRateMap, rateUnit);
             const amount = roundMoney(dayData.days * resolved.rate);
@@ -766,28 +800,51 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
             }));
         }
     } else {
-        const monthlyRate = schemeRateFallback(activeScheme, 'month') || toNumber(staff.hourlyRate ?? staff.hourly_rate, 0);
-        const amount = roundMoney(monthlyRate);
+        const resolved = resolveProfessionPayRate(staff, fallbackProfessionKey, activeScheme, professionRateMap, rateUnit);
+        const amount = roundMoney(resolved.rate);
         baseLines.push(line('base', 'profession_month', 'Місячний оклад', amount, {
             quantity: 1,
-            rate: monthlyRate,
-            source: activeScheme?.isFallback ? 'staff.hourly_rate' : 'payroll_scheme',
+            rate: resolved.rate,
+            source: resolved.source,
             meta: { professionKey: fallbackProfessionKey }
         }));
         professionRateSummary.push(professionSummaryRow({
             professionKey: fallbackProfessionKey,
             minutes: metrics.allocatedMinutes,
             days: metrics.daysWorked,
-            rate: monthlyRate,
+            rate: resolved.rate,
             amount,
             rateUnit,
             sources: metrics.attendanceDays.map(day => day.allocationSource),
-            rateSource: activeScheme?.isFallback ? 'staff.hourly_rate' : 'payroll_scheme'
+            rateSource: resolved.source
         }));
     }
 
     const baseAmount = baseLines.reduce((sum, item) => sum + item.amount, 0);
     const overtimeAmount = overtimeLines.reduce((sum, item) => sum + item.amount, 0);
+    const allocationIssues = compactAllocationIssues([...(metrics.allocationIssues || [])]);
+    if (metrics.overtimeMinutes > 0 && !allocationIssues.some(issue => issue.code === 'PAYROLL_OVERTIME_RECONCILIATION_REQUIRED')) {
+        allocationIssues.push({
+            code: 'PAYROLL_OVERTIME_RECONCILIATION_REQUIRED',
+            professionKey: metrics.primaryDays[0]?.professionKey || fallbackProfessionKey || null,
+            overtimeMinutes: metrics.overtimeMinutes,
+            message: 'Overtime застосовано один раз до основної професії; потрібна звірка'
+        });
+    }
+    allocationIssues.push(...buildPayrollRateUnitWarnings(professionRateSummary));
+    const reconciliation = {
+        ...(metrics.reconciliation || {}),
+        days: [...(metrics.reconciliation?.days || [])],
+        warnings: [...(metrics.reconciliation?.warnings || [])]
+    };
+    for (const issue of allocationIssues) {
+        const exists = reconciliation.warnings.some(warning => (
+            warning.code === issue.code
+            && String(warning.date || '') === String(issue.date || '')
+            && String(warning.professionKey || '') === String(issue.professionKey || '')
+        ));
+        if (!exists) reconciliation.warnings.push(issue);
+    }
     return {
         applies: true,
         rateUnit,
@@ -797,8 +854,8 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         overtimeAmount,
         totalAmount: baseAmount + overtimeAmount,
         professionRateSummary,
-        allocationIssues: metrics.allocationIssues,
-        reconciliation: metrics.reconciliation
+        allocationIssues,
+        reconciliation
     };
 }
 
@@ -878,11 +935,11 @@ async function fetchPeriodIncome(month) {
     }
 }
 
-async function fetchActiveSchemes(staffIds, month) {
+async function loadActivePayrollSchemeMap(staffIds, month, db = pool) {
     if (!staffIds.length) return new Map();
     const bounds = getMonthBounds(month);
     try {
-        const result = await pool.query(`
+        const result = await db.query(`
             SELECT DISTINCT ON (staff_id) *
             FROM payroll_schemes
             WHERE staff_id = ANY($1::int[])
@@ -969,7 +1026,7 @@ async function buildPayrollContext(month) {
         fetchTimeMetrics(normalizedMonth),
         fetchAdjustments(normalizedMonth),
         fetchPayrollEntries(normalizedMonth),
-        fetchActiveSchemes(staffIds, normalizedMonth),
+        loadActivePayrollSchemeMap(staffIds, normalizedMonth),
         fetchReportsByMonth(normalizedMonth),
         fetchPeriodIncome(normalizedMonth),
         fetchAllSchemes(),
@@ -995,6 +1052,8 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         schemeTitle: scheme.title || schemeTypeLabel(scheme.schemeType),
         isFallbackScheme: !!scheme.isFallback,
         hourlyRate: staff.hourlyRate,
+        rateUnit: calculation.professionPay?.rateUnit || staff.rateUnit,
+        rate_unit: calculation.professionPay?.rateUnit || staff.rateUnit,
         totalMinutes: metrics.totalMinutes || 0,
         totalHours: metrics.hoursWorked || 0,
         hoursWorked: metrics.hoursWorked || 0,
@@ -1338,8 +1397,10 @@ module.exports = {
     REPORT_STATUSES,
     calculateProfessionPay,
     calculatePayroll,
+    loadActivePayrollSchemeMap,
     loadPayrollAttendanceMetrics,
     loadProfessionRateMap,
+    resolveProfessionPayRate,
     normalizePayrollMonth,
     getSalaryReport,
     getPayrollWorkspace,

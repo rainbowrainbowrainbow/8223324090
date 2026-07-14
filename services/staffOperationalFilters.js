@@ -36,7 +36,10 @@ function scheduleableStaffWhere(alias = 's', options = {}) {
 
 function normalizeScheduleDateValue(value) {
     if (!value) return null;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        return `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    }
     const raw = String(value).trim();
     if (!raw) return null;
     const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
@@ -83,6 +86,57 @@ function staffScheduleabilityFailure(row, date, options = {}) {
         return scheduleabilityFailure('STAFF_TERMINATED', 'Staff is terminated for this date', 400, details);
     }
     return scheduleabilityFailure('STAFF_NOT_SCHEDULEABLE', 'Staff is not scheduleable for this date', 400, details);
+}
+
+function validateStaffScheduleabilityCardForDate(row, date, options = {}) {
+    const safeDate = normalizeScheduleDateValue(date);
+    if (!safeDate) {
+        return scheduleabilityFailure('INVALID_SCHEDULE_DATE', 'Invalid schedule date', 400, {
+            staff_id: Number(row?.id) || null,
+            date: null
+        });
+    }
+    if (!row) return staffScheduleabilityFailure(null, safeDate, options);
+    const isScheduleable = row.is_active === true
+        && String(row.hr_pool_status || 'core') === 'core'
+        && (options.includeFreelance === true || row.is_freelance !== true)
+        && (!normalizeScheduleDateValue(row.termination_date)
+            || normalizeScheduleDateValue(row.termination_date) > safeDate);
+    if (isScheduleable) {
+        return {
+            ok: true,
+            code: 'STAFF_SCHEDULEABLE',
+            status: 200,
+            staff: row,
+            staff_id: Number(row.id),
+            date: safeDate
+        };
+    }
+    return staffScheduleabilityFailure(row, safeDate, options);
+}
+
+async function loadStaffScheduleabilityCards(db, staffIds = [], options = {}) {
+    const ids = [...new Set(staffIds
+        .map(Number)
+        .filter(id => Number.isInteger(id) && id > 0))]
+        .sort((left, right) => left - right);
+    if (!ids.length) return new Map();
+    const result = await db.query(
+        `SELECT s.id, s.name, s.role_type,
+                COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                s.is_active,
+                COALESCE(s.hr_pool_status, 'core') AS hr_pool_status,
+                COALESCE(s.is_freelance, false) AS is_freelance,
+                s.termination_date,
+                s.hourly_rate,
+                s.rate_unit
+         FROM staff s
+         WHERE s.id = ANY($1::int[])
+         ORDER BY s.id
+         ${options.forUpdate === true ? 'FOR UPDATE OF s' : ''}`,
+        [ids]
+    );
+    return new Map(result.rows.map(row => [Number(row.id), row]));
 }
 
 async function validateStaffScheduleableForDate(db, staffId, date, options = {}) {
@@ -143,8 +197,10 @@ function scheduleableStaffErrorPayload(validation = {}, extra = {}) {
 module.exports = {
     activeStaffWhere,
     assertStaffScheduleableForDate,
+    loadStaffScheduleabilityCards,
     scheduleableStaffErrorPayload,
     scheduleableStaffWhere,
     terminationDateWhere,
+    validateStaffScheduleabilityCardForDate,
     validateStaffScheduleableForDate
 };

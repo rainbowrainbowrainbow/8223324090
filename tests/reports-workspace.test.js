@@ -41,6 +41,7 @@ async function setupReportsDom(setupOptions = {}) {
     window.showAuthenticatedPageShell = () => {};
     window.confirmModal = async () => true;
     window.promptModal = async () => 'Нова колонка';
+    window.finishBlobDownload = () => {};
     window.localStorage.setItem('pzp_token', 'test-token');
     window.fetch = async (url, fetchOptions = {}) => {
         const target = String(url);
@@ -61,15 +62,35 @@ async function setupReportsDom(setupOptions = {}) {
         if (target.startsWith('/api/staff/schedule')) {
             return jsonResponse({
                 success: true,
-                data: [
+                data: setupOptions.scheduleData ?? [
                     {
                         id: 700,
                         staff_id: 42,
                         date: '2026-06-28',
                         status: 'working',
-                        shift_start: '10:00',
-                        shift_end: '18:00',
-                        hr_shift_id: 701
+                        shift_start: '09:00',
+                        shift_end: '20:00',
+                        hr_shift_id: 701,
+                        primary_profession_key: 'reception',
+                        planned_minutes: 510,
+                        segments: [
+                            {
+                                id: 7101,
+                                professionKey: 'reception',
+                                shiftStart: '09:00',
+                                shiftEnd: '13:00',
+                                breakMinutes: 30,
+                                additionalProfessionKeys: ['manager']
+                            },
+                            {
+                                id: 7102,
+                                professionKey: 'manager',
+                                shiftStart: '15:00',
+                                shiftEnd: '20:00',
+                                breakMinutes: 0,
+                                additionalProfessionKeys: []
+                            }
+                        ]
                     }
                 ]
             });
@@ -77,7 +98,7 @@ async function setupReportsDom(setupOptions = {}) {
         if (target.startsWith('/api/staff/attendance')) {
             return jsonResponse({
                 success: true,
-                data: [
+                data: setupOptions.attendanceData ?? [
                     {
                         staff_id: 42,
                         date: '2026-06-28',
@@ -87,7 +108,8 @@ async function setupReportsDom(setupOptions = {}) {
                         late_minutes: 30,
                         total_worked_minutes: 450,
                         time_status: 'late',
-                        attendance_source: 'hr_time_records'
+                        attendance_source: 'hr_time_records',
+                        allocation_source: 'clock_interval'
                     }
                 ]
             });
@@ -168,6 +190,31 @@ async function setupReportsDom(setupOptions = {}) {
     window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
     await waitFor(() => window.document.querySelectorAll('.rpt-sheet-input').length > 0, 'reports workspace init');
     return { window, requests };
+}
+
+async function createPayrollReportForSchedule(scheduleData, date = '2026-06-28') {
+    const context = await setupReportsDom({ scheduleData, attendanceData: [] });
+    const { window, requests } = context;
+    const document = window.document;
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll fixture template switch');
+
+    const dateInput = document.querySelector('[data-row-index="0"][data-column-key="date"]');
+    dateInput.value = date;
+    dateInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
+    staffSelect.value = '42';
+    staffSelect.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
+    total.value = '100';
+    total.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'payroll fixture create request');
+    const request = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    return { ...context, body: JSON.parse(request.options.body) };
 }
 
 test('reports workspace protects dirty table state and manages rows/columns', async () => {
@@ -340,6 +387,13 @@ test('payroll report template stores canonical staff id with display snapshot', 
     [hours, total].forEach(input => input.dispatchEvent(new window.Event('input', { bubbles: true })));
     await waitFor(() => document.getElementById('reportSheetSummary').textContent.includes('Review'), 'payroll review summary');
 
+    document.getElementById('reportTemplateExportCsvBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports/table/export-csv'), 'payroll CSV export request');
+    const exportRequest = requests.find(req => req.url === '/api/reports/table/export-csv');
+    const exportBody = JSON.parse(exportRequest.options.body);
+    assert.equal(exportBody.reportTableTemplate.rows[0].planned_hours, 8.5);
+    assert.equal(exportBody.reportTableTemplate.payrollReconciliation.totals.planned, 8.5);
+
     document.getElementById('reportTemplateSaveBtn').click();
     await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'payroll report create request');
 
@@ -352,7 +406,7 @@ test('payroll report template stores canonical staff id with display snapshot', 
     assert.equal(row.display_snapshot, 'Оля Коваленко');
     assert.equal(row.role_snapshot, 'animator');
     assert.equal(row.role, 'animator');
-    assert.equal(row.planned_hours, 8);
+    assert.equal(row.planned_hours, 8.5);
     assert.equal(row.actual_hours, 7.5);
     assert.equal(row.paid_hours, 7);
     assert.deepEqual(row.planned_shift_ref, {
@@ -361,9 +415,14 @@ test('payroll report template stores canonical staff id with display snapshot', 
         hr_shift_id: 701,
         date: '2026-06-28',
         status: 'working',
-        start: '10:00',
-        end: '18:00'
+        start: '09:00',
+        end: '20:00'
     });
+    assert.deepEqual(row.segment_refs, [7101, 7102]);
+    assert.equal(row.primary_profession_key, 'reception');
+    assert.equal(row.planned_allocation_source, 'schedule_planned_minutes');
+    assert.equal(row.allocation_source, 'clock_interval');
+    assert.equal(row.reconciliation_source, 'reports_rawData_payroll_reconciliation_v1');
     assert.equal(row.attendance_ref.time_record_id, 800);
     assert.equal(row.attendance_status, 'late');
     assert.equal(row.reconciliation_status, 'needs_review');
@@ -373,12 +432,96 @@ test('payroll report template stores canonical staff id with display snapshot', 
     assert.equal(body.rawData.reportTableTemplate.reportQuality.blockingPolicy, 'informational_only_until_policy_confirmed');
     assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.payroll_actual_hours_mismatch, 1);
     assert.deepEqual(body.rawData.reportTableTemplate.payrollReconciliation.totals, {
-        planned: 8,
+        planned: 8.5,
         actual: 7.5,
         paid: 7,
         amount: 1200
     });
     assert.equal(body.amount, 1200);
+});
+
+test('payroll planned hours prefer segments over envelope and keep legacy fallback', async t => {
+    await t.test('adjacent segments sum without duplicating an additional role', async () => {
+        const context = await createPayrollReportForSchedule([{
+            id: 720,
+            staff_id: 42,
+            date: '2026-06-28',
+            status: 'working',
+            shift_start: '09:00',
+            shift_end: '20:00',
+            hr_shift_id: 721,
+            primaryProfessionKey: 'reception',
+            segments: [
+                { id: 7201, professionKey: 'reception', shiftStart: '09:00', shiftEnd: '13:00', breakMinutes: 0, additionalProfessionKeys: ['manager'] },
+                { id: 7202, professionKey: 'manager', shiftStart: '13:00', shiftEnd: '20:00', breakMinutes: 0, additionalProfessionKeys: [] }
+            ]
+        }]);
+        const row = context.body.rawData.reportTableTemplate.rows[0];
+        assert.equal(row.planned_hours, 11);
+        assert.deepEqual(row.segment_refs, [7201, 7202]);
+        assert.equal(row.planned_allocation_source, 'schedule_segments');
+        context.window.close();
+    });
+
+    await t.test('gap and segment break are excluded from paid planned hours', async () => {
+        const context = await createPayrollReportForSchedule([{
+            id: 730,
+            staff_id: 42,
+            date: '2026-06-28',
+            status: 'working',
+            shift_start: '09:00',
+            shift_end: '20:00',
+            hr_shift_id: 731,
+            profession_key: 'reception',
+            segments: [
+                { id: 7301, profession_key: 'reception', planned_start: '09:00', planned_end: '13:00', break_minutes: 30, additional_profession_keys: ['manager'] },
+                { id: 7302, profession_key: 'manager', planned_start: '15:00', planned_end: '20:00', break_minutes: 0 }
+            ]
+        }]);
+        const reconciliation = context.body.rawData.reportTableTemplate.payrollReconciliation;
+        assert.equal(reconciliation.rows[0].planned_hours, 8.5);
+        assert.equal(reconciliation.totals.planned, 8.5);
+        context.window.close();
+    });
+
+    await t.test('camelCase planned minutes take priority over segment and envelope fallbacks', async () => {
+        const context = await createPayrollReportForSchedule([{
+            id: 735,
+            staff_id: 42,
+            date: '2026-06-28',
+            status: 'working',
+            shift_start: '09:00',
+            shift_end: '20:00',
+            hr_shift_id: 736,
+            plannedMinutes: 420,
+            segments: [
+                { id: 7351, professionKey: 'reception', shiftStart: '09:00', shiftEnd: '13:00', breakMinutes: 0 },
+                { id: 7352, professionKey: 'manager', shiftStart: '15:00', shiftEnd: '20:00', breakMinutes: 0 }
+            ]
+        }]);
+        const row = context.body.rawData.reportTableTemplate.rows[0];
+        assert.equal(row.planned_hours, 7);
+        assert.equal(row.planned_allocation_source, 'schedule_planned_minutes');
+        context.window.close();
+    });
+
+    await t.test('legacy single shift without segment data still uses envelope', async () => {
+        const context = await createPayrollReportForSchedule([{
+            id: 740,
+            staff_id: 42,
+            date: '2026-06-28',
+            status: 'working',
+            shift_start: '10:00',
+            shift_end: '18:00',
+            hr_shift_id: 741,
+            profession_key: 'animator'
+        }]);
+        const row = context.body.rawData.reportTableTemplate.rows[0];
+        assert.equal(row.planned_hours, 8);
+        assert.deepEqual(row.segment_refs, []);
+        assert.equal(row.planned_allocation_source, 'legacy_envelope');
+        context.window.close();
+    });
 });
 
 test('payroll report workspace keeps working when staff options API is unavailable', async () => {
@@ -423,6 +566,9 @@ test('reports API keeps payroll reconciliation inside rawData without a new repo
     assert.match(reportsRoute, /display_snapshot/);
     assert.match(reportsRoute, /role_snapshot/);
     assert.match(reportsRoute, /planned_shift_ref/);
+    assert.match(reportsRoute, /normalizeSegmentRefs/);
+    assert.match(reportsRoute, /primary_profession_key/);
+    assert.match(reportsRoute, /planned_allocation_source/);
     assert.match(reportsRoute, /attendance_ref/);
     assert.match(reportsRoute, /actual_paid_hours_mismatch/);
     assert.match(reportsRoute, /duplicate_payroll_row/);

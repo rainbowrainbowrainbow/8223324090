@@ -149,7 +149,10 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
 
     it('rolls back an overlapping full replacement without changing the saved plan', async () => {
         requireFixture();
+        const currentRows = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
+        const current = currentRows.find(shift => Number(shift.id) === segmentedShiftId);
         const response = await authRequest('PUT', `/api/hr/shifts/${segmentedShiftId}`, {
+            expectedUpdatedAt: current?.planUpdatedAt,
             primaryProfessionKey: 'reception',
             segments: [
                 { professionKey: 'reception', shiftStart: '09:00', shiftEnd: '15:00', breakMinutes: 0 },
@@ -161,6 +164,52 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
 
         const refreshed = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
         assertSegmentedPlan(refreshed.find(shift => Number(shift.id) === segmentedShiftId), fixtureStaffId);
+    });
+
+    it('rejects the second manager save when both clients read the same plan version', async () => {
+        requireFixture();
+        const [firstRead, secondRead] = await Promise.all([
+            readShifts('2099-01-13', '2099-01-13', fixtureStaffId),
+            readShifts('2099-01-13', '2099-01-13', fixtureStaffId)
+        ]);
+        const firstSnapshot = firstRead.find(shift => Number(shift.id) === segmentedShiftId);
+        const secondSnapshot = secondRead.find(shift => Number(shift.id) === segmentedShiftId);
+        assert.ok(firstSnapshot?.planUpdatedAt);
+        assert.equal(secondSnapshot?.planUpdatedAt, firstSnapshot.planUpdatedAt);
+
+        const firstSave = await authRequest('PUT', `/api/hr/shifts/${segmentedShiftId}`, {
+            expectedUpdatedAt: firstSnapshot.planUpdatedAt,
+            primaryProfessionKey: firstSnapshot.primaryProfessionKey,
+            segments: firstSnapshot.segments.map((item, index) => ({
+                ...item,
+                note: index === 1 ? 'Saved by first disposable client' : item.note
+            }))
+        });
+        assert.equal(firstSave.status, 200);
+        assert.equal(firstSave.data?.success, true);
+        assert.notEqual(firstSave.data?.data?.planUpdatedAt, firstSnapshot.planUpdatedAt);
+
+        const staleSave = await authRequest('PUT', `/api/hr/shifts/${segmentedShiftId}`, {
+            expectedUpdatedAt: secondSnapshot.planUpdatedAt,
+            primaryProfessionKey: secondSnapshot.primaryProfessionKey,
+            segments: secondSnapshot.segments.map((item, index) => ({
+                ...item,
+                note: index === 1 ? 'Must not overwrite first client' : item.note
+            }))
+        });
+        assert.equal(staleSave.status, 409);
+        assert.equal(staleSave.data?.success, false);
+        assert.equal(staleSave.data?.code, 'HR_SHIFT_PLAN_STALE');
+
+        const refreshed = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
+        const saved = refreshed.find(shift => Number(shift.id) === segmentedShiftId);
+        assert.equal(saved?.segments?.[1]?.note, 'Saved by first disposable client');
+        assert.deepEqual(
+            saved?.segments?.map(segment => Number(segment.id)),
+            firstSnapshot.segments.map(segment => Number(segment.id)),
+            'updating only the second segment must preserve existing segment ids'
+        );
+        assertSegmentedPlan(saved, fixtureStaffId);
     });
 
     it('moves the complete segmented plan to a qualified replacement worker', async () => {

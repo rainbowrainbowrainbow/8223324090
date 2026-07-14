@@ -2,6 +2,10 @@ const { hydrateHrShiftDayPlans } = require('./hrShiftSegments');
 
 const MINUTES_PER_DAY = 24 * 60;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
+// MVP policy: a segment's break is deducted only when the actual interval touches
+// that segment, and never by more than the touched minutes. Exact break windows
+// require a separate protected schema decision.
+const HR_ATTENDANCE_BREAK_POLICY = 'segment_minutes_mvp';
 const kyivDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: KYIV_TIME_ZONE,
     year: 'numeric',
@@ -143,6 +147,12 @@ function normalizeAttendanceSegments(input = {}) {
     ));
 }
 
+function paidMinutesAfterSegmentBreak(overlapMinutes, breakMinutes) {
+    const overlap = normalizeNonNegativeMinutes(overlapMinutes);
+    const segmentBreak = normalizeNonNegativeMinutes(breakMinutes);
+    return Math.max(0, overlap - Math.min(overlap, segmentBreak));
+}
+
 function allocateIntegerProportion(totalMinutes, segments) {
     const total = normalizeNonNegativeMinutes(totalMinutes);
     const weightTotal = segments.reduce((sum, segment) => sum + segment.plannedMinutes, 0);
@@ -189,6 +199,7 @@ function emptyAttendanceAllocation(segments, primaryProfessionKey, source = 'non
         lateMinutes: 0,
         earlyLeaveMinutes: 0,
         allocationSource: source,
+        breakPolicy: HR_ATTENDANCE_BREAK_POLICY,
         allocationIssues: [],
         overtimeAllocation: null,
         primaryProfessionKey: primaryProfessionKey || null
@@ -229,7 +240,7 @@ function allocateAttendanceToSegments(input = {}) {
                 Math.min(actualEnd, segment.endMinutes) - Math.max(actualStart, segment.startMinutes)
             ));
             const paidAllocations = rawOverlaps.map((overlap, index) => (
-                Math.max(0, overlap - Math.min(overlap, segments[index].breakMinutes))
+                paidMinutesAfterSegmentBreak(overlap, segments[index].breakMinutes)
             ));
             const allocatedMinutes = paidAllocations.reduce((sum, value) => sum + value, 0);
             const envelopeStart = segments[0]?.startMinutes ?? null;
@@ -285,6 +296,7 @@ function allocateAttendanceToSegments(input = {}) {
                 lateMinutes,
                 earlyLeaveMinutes,
                 allocationSource: 'clock_interval',
+                breakPolicy: HR_ATTENDANCE_BREAK_POLICY,
                 allocationIssues,
                 overtimeAllocation: overtimeMinutes > 0 ? {
                     professionKey: primaryProfessionKey,
@@ -325,6 +337,7 @@ function allocateAttendanceToSegments(input = {}) {
             lateMinutes: 0,
             earlyLeaveMinutes: 0,
             allocationSource: 'proportional_fallback',
+            breakPolicy: HR_ATTENDANCE_BREAK_POLICY,
             allocationIssues,
             overtimeAllocation: overtimeMinutes > 0 ? {
                 professionKey: primaryProfessionKey,
@@ -356,6 +369,8 @@ function attendanceAllocationFields(allocation) {
         unallocated_gap_minutes: allocation.unallocatedGapMinutes,
         allocationSource: allocation.allocationSource,
         allocation_source: allocation.allocationSource,
+        breakPolicy: allocation.breakPolicy,
+        break_policy: allocation.breakPolicy,
         allocationIssues: allocation.allocationIssues,
         allocation_issues: allocation.allocationIssues,
         overtimeAllocation: allocation.overtimeAllocation,
@@ -504,6 +519,7 @@ function calculateHrClockOutPayroll(record = {}, options = {}) {
 }
 
 module.exports = {
+    HR_ATTENDANCE_BREAK_POLICY,
     allocateAttendanceToSegments,
     actualWorkedMinutes,
     attendanceAllocationFields,
@@ -511,6 +527,7 @@ module.exports = {
     decorateAttendanceRecord,
     hydrateAttendanceRecords,
     normalizeHrSettlementMode,
+    paidMinutesAfterSegmentBreak,
     plannedShiftWorkedMinutes,
     timeToMinutes
 };

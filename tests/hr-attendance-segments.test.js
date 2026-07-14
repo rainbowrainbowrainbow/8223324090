@@ -95,6 +95,44 @@ test('a break is capped by the minutes actually touching its segment', () => {
     assert.equal(untouched.breakPolicy, 'segment_minutes_mvp');
 });
 
+test('partial attendance before or after an unspecified break uses the same deterministic MVP deduction', () => {
+    const beforeUnknownBreak = allocate({
+        clockIn: '2026-07-13T06:00:00.000Z', // 09:00 Europe/Kyiv
+        clockOut: '2026-07-13T08:00:00.000Z', // 11:00 Europe/Kyiv
+        segments: [segment('reception', '09:00', '13:00', 30)]
+    });
+    const afterUnknownBreak = allocate({
+        clockIn: '2026-07-13T08:00:00.000Z', // 11:00 Europe/Kyiv
+        clockOut: '2026-07-13T10:00:00.000Z', // 13:00 Europe/Kyiv
+        segments: [segment('reception', '09:00', '13:00', 30)]
+    });
+
+    for (const result of [beforeUnknownBreak, afterUnknownBreak]) {
+        assert.equal(result.breakPolicy, 'segment_minutes_mvp');
+        assert.equal(result.segmentAllocations[0].overlapMinutes, 120);
+        assert.equal(result.segmentAllocations[0].actualMinutes, 90);
+        assert.equal(result.actualMinutes, 90);
+    }
+});
+
+test('late arrival and early leave each deduct the break only from the touched segment', () => {
+    const late = allocate({
+        clockIn: '2026-07-13T07:00:00.000Z', // 10:00 Europe/Kyiv
+        clockOut: '2026-07-13T10:00:00.000Z', // 13:00 Europe/Kyiv
+        segments: [segment('reception', '09:00', '13:00', 30)]
+    });
+    const early = allocate({
+        clockIn: '2026-07-13T06:00:00.000Z', // 09:00 Europe/Kyiv
+        clockOut: '2026-07-13T09:00:00.000Z', // 12:00 Europe/Kyiv
+        segments: [segment('reception', '09:00', '13:00', 30)]
+    });
+
+    assert.equal(late.segmentAllocations[0].actualMinutes, 150);
+    assert.equal(late.lateMinutes, 60);
+    assert.equal(early.segmentAllocations[0].actualMinutes, 150);
+    assert.equal(early.earlyLeaveMinutes, 60);
+});
+
 test('additional simultaneous professions do not receive duplicate actual minutes', () => {
     const result = allocate({
         clockIn: '2026-07-13T06:00:00.000Z',
@@ -152,6 +190,20 @@ test('night segments are allocated on the next-day timeline in Europe/Kyiv', () 
 
     assert.equal(result.segmentAllocations[0].actualMinutes, 120);
     assert.equal(result.actualMinutes, 120);
+    assert.equal(result.overtimeMinutes, 0);
+});
+
+test('a partial overnight attendance deducts its segment break once across midnight', () => {
+    const result = allocate({
+        clockIn: '2026-07-13T20:30:00.000Z', // 23:30 Europe/Kyiv
+        clockOut: '2026-07-13T22:30:00.000Z', // 01:30 next day Europe/Kyiv
+        segments: [segment('security', '22:00', '02:00', 30)],
+        primaryProfessionKey: 'security'
+    });
+
+    assert.equal(result.segmentAllocations[0].overlapMinutes, 120);
+    assert.equal(result.segmentAllocations[0].actualMinutes, 90);
+    assert.equal(result.actualMinutes, 90);
     assert.equal(result.overtimeMinutes, 0);
 });
 
@@ -215,7 +267,8 @@ test('HR, face checkout and attendance UI reuse the shared allocation contract',
     assert.match(staffRoute, /data: attendanceRows/);
     assert.match(staffRoute, /segment_allocations: payroll\.allocation\.segmentAllocations/);
     assert.match(attendanceService, /break_policy: allocation\.breakPolicy/);
-    assert.match(attendanceService, /segment_minutes_mvp/);
+    assert.match(attendanceService, /HR_SHIFT_BREAK_POLICY/);
+    assert.match(attendanceService, /const HR_ATTENDANCE_BREAK_POLICY = HR_SHIFT_BREAK_POLICY/);
     assert.match(staffPage, /segmentAllocations/);
     assert.match(staffPage, /allocationIssues/);
     assert.match(staffPage, /timeZone: 'Europe\/Kyiv'/);

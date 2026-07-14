@@ -453,6 +453,7 @@ function payrollMetricBucket(staffId) {
         overtimeAllocations: [],
         primaryDays: [],
         attendanceDays: [],
+        breakPolicies: [],
         allocationIssues: [],
         reconciliation: { days: [], warnings: [] }
     };
@@ -514,6 +515,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const overtimeMap = overtimeMaps.get(staffId);
         const date = String(row.date || row.record_date || '').slice(0, 10);
         const source = row.allocation_source || row.allocationSource || 'none';
+        const breakPolicy = row.break_policy || row.breakPolicy || null;
         const segmentAllocations = Array.isArray(row.segment_allocations)
             ? row.segment_allocations
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
@@ -580,6 +582,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             actualMinutes,
             overtimeMinutes,
             allocationSource: source,
+            breakPolicy,
             primaryProfessionKey,
             segmentAllocations
         });
@@ -605,6 +608,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             .sort((left, right) => String(left.professionKey || '').localeCompare(String(right.professionKey || '')));
         bucket.primaryDays = [...new Map(bucket.primaryDays.map(day => [day.date, day])).values()]
             .sort((left, right) => left.date.localeCompare(right.date));
+        bucket.breakPolicies = [...new Set(bucket.attendanceDays.map(day => day.breakPolicy).filter(Boolean))].sort();
         bucket.allocationIssues = compactAllocationIssues(bucket.allocationIssues);
         bucket.reconciliation = buildPayrollSourceReconciliation(bucket.attendanceDays);
         bucket.reconciliation.warnings.push(...bucket.allocationIssues);

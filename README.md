@@ -127,6 +127,10 @@ npm run cleanup:inventory
 npm run test:unit
 npm run test:ui
 npm run test:api
+npm run test:api:isolated
+npm run test:integration:hr-disposable:isolated
+npm run test:integration:live-multi-segment-qa:isolated
+npm run test:db:isolated
 npm run test:integration
 npm run release:gate
 npm run smoke:live -- https://<live-crm-host>
@@ -154,6 +158,8 @@ Notes:
 - `npm run test:unit` runs self-contained Node tests that do not need a live server.
 - `npm run test:ui` runs the jsdom static/UI smoke check for key pages, critical JS syntax, navigation exports, and shared page structure.
 - `npm run test:api` runs `tests/api.test.js` and expects a configured local app/database.
+- `npm run test:api:isolated`, `npm run test:integration:hr-disposable:isolated`, `npm run test:integration:live-multi-segment-qa:isolated`, and `npm run test:db:isolated` reset an explicitly confirmed disposable PostgreSQL database before and after each suite; see [docs/ISOLATED_POSTGRES_TESTING.md](docs/ISOLATED_POSTGRES_TESTING.md).
+- `npm run qa:live:multi-segment -- https://<crm-host>` runs the opt-in disposable live acceptance flow documented in [docs/LIVE_MULTI_SEGMENT_QA.md](docs/LIVE_MULTI_SEGMENT_QA.md).
 - `npm run test:integration` runs the broader `tests/*.test.js` suite and also expects a configured local app/database.
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
 - `npm run release:gate` is the pre-deploy gate: it checks current version/branch state and runs the full local verification baseline; with a live URL it also runs live smoke/proof.

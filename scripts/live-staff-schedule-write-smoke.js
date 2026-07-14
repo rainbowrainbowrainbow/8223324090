@@ -32,6 +32,7 @@ const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
 const BUSINESS_CONTEXT = readEnv('LIVE_STAFF_SCHEDULE_BUSINESS_CONTEXT', 'LIVE_SMOKE_BUSINESS_CONTEXT') || 'event_genix';
 const HEADLESS = readEnv('LIVE_STAFF_SCHEDULE_WRITE_HEADLESS', 'LIVE_SMOKE_HEADLESS') !== 'false';
 const TIMEOUT_MS = Number(readEnv('LIVE_STAFF_SCHEDULE_WRITE_TIMEOUT_MS', 'LIVE_SMOKE_TIMEOUT_MS') || 30000);
+const OVERALL_TIMEOUT_MS = Number(readEnv('LIVE_STAFF_SCHEDULE_WRITE_OVERALL_TIMEOUT_MS') || 120000);
 const CONFIRM_TOKEN = 'I_CONFIRM_STAFF_SCHEDULE_QA_WRITES';
 const QA_STAFF_ID = parsePositiveInt(readEnv('LIVE_STAFF_SCHEDULE_QA_STAFF_ID', 'STAFF_SCHEDULE_QA_STAFF_ID'));
 const QA_REPLACEMENT_STAFF_ID = parsePositiveInt(readEnv('LIVE_STAFF_SCHEDULE_QA_REPLACEMENT_STAFF_ID', 'STAFF_SCHEDULE_QA_REPLACEMENT_STAFF_ID'));
@@ -71,6 +72,9 @@ function assertConfigured() {
     }
     if (!QA_STAFF_ID) fail('set LIVE_STAFF_SCHEDULE_QA_STAFF_ID to an explicit QA staff id');
     if (!QA_DATE) fail('set LIVE_STAFF_SCHEDULE_QA_DATE as YYYY-MM-DD');
+    if (!Number.isFinite(OVERALL_TIMEOUT_MS) || OVERALL_TIMEOUT_MS < TIMEOUT_MS) {
+        fail('LIVE_STAFF_SCHEDULE_WRITE_OVERALL_TIMEOUT_MS must be a finite number greater than or equal to the action timeout');
+    }
 }
 
 function normalizeBase(url) {
@@ -251,9 +255,60 @@ function firstProfessionKey(staff = {}) {
     return String(staff.role_type || staff.position || 'animator');
 }
 
+function planUpdatedAt(entry = {}) {
+    const value = entry.planUpdatedAt ?? entry.plan_updated_at ?? entry.hr_plan_updated_at;
+    return String(value || '').trim();
+}
+
+function normalizeSegmentSnapshot(segment = {}, index = 0) {
+    const id = Number(segment.id);
+    assert.ok(Number.isInteger(id) && id > 0, `segment ${index + 1}: stable id is required for safe restore`);
+    const professionKey = String(segment.professionKey ?? segment.profession_key ?? '').trim();
+    const shiftStart = time5(segment.shiftStart ?? segment.shift_start ?? segment.planned_start);
+    const shiftEnd = time5(segment.shiftEnd ?? segment.shift_end ?? segment.planned_end);
+    assert.ok(professionKey, `segment ${index + 1}: profession is required`);
+    assert.match(String(shiftStart || ''), /^\d{2}:\d{2}$/, `segment ${index + 1}: start time is required`);
+    assert.match(String(shiftEnd || ''), /^\d{2}:\d{2}$/, `segment ${index + 1}: end time is required`);
+    const additionalProfessionKeys = segment.additionalProfessionKeys
+        ?? segment.additional_profession_keys
+        ?? [];
+    assert.ok(Array.isArray(additionalProfessionKeys), `segment ${index + 1}: additional roles must be an array`);
+    return {
+        id,
+        professionKey,
+        shiftStart,
+        shiftEnd,
+        breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
+        note: segment.note ?? segment.notes ?? null,
+        additionalProfessionKeys: [...new Set(additionalProfessionKeys.map(value => String(value || '').trim()).filter(Boolean))].sort()
+    };
+}
+
+function segmentDurationMinutes(segment = {}) {
+    const [startHour, startMinute] = String(segment.shiftStart || '').split(':').map(Number);
+    const [endHour, endMinute] = String(segment.shiftEnd || '').split(':').map(Number);
+    let duration = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+    if (duration <= 0) duration += 24 * 60;
+    return duration - Number(segment.breakMinutes || 0);
+}
+
+function plannedMinutesForSegments(segments = []) {
+    return segments.reduce((total, segment) => total + segmentDurationMinutes(segment), 0);
+}
+
 function schedulePayloadFromEntry(entry, staff) {
     const status = normalizeStatus(entry.status);
     const workLike = status === 'working' || status === 'remote';
+    const segments = workLike
+        ? (Array.isArray(entry.segments) ? entry.segments.map(normalizeSegmentSnapshot) : [])
+        : [];
+    if (workLike) {
+        assert.ok(segments.length > 0, 'working schedule snapshot requires canonical segments[] before any mutation');
+        assert.ok(planUpdatedAt(entry), 'working schedule snapshot requires planUpdatedAt before any mutation');
+    }
+    const primaryProfessionKey = workLike
+        ? String(entry.primary_profession_key ?? entry.primaryProfessionKey ?? entry.profession_key ?? firstProfessionKey(staff)).trim()
+        : null;
     return {
         staffId: Number(entry.staff_id),
         date: normalizeDate(String(entry.date || '').slice(0, 10)),
@@ -261,19 +316,56 @@ function schedulePayloadFromEntry(entry, staff) {
         shiftStart: workLike ? time5(entry.shift_start) : null,
         shiftEnd: workLike ? time5(entry.shift_end) : null,
         note: entry.note || null,
-        professionKey: workLike ? (entry.profession_key || firstProfessionKey(staff)) : null
+        professionKey: primaryProfessionKey,
+        primaryProfessionKey,
+        segments,
+        expectedUpdatedAt: workLike ? planUpdatedAt(entry) : undefined,
+        plannedMinutes: workLike ? plannedMinutesForSegments(segments) : 0
     };
 }
 
 function schedulePayloadForWrite(staff, date, options = {}) {
+    const basePayload = options.basePayload || null;
+    const status = options.status || basePayload?.status || 'working';
+    const workLike = status === 'working' || status === 'remote';
+    const baseSegments = Array.isArray(basePayload?.segments)
+        ? basePayload.segments.map(segment => ({
+            ...segment,
+            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+        }))
+        : [];
+    const professionKey = options.professionKey
+        || basePayload?.primaryProfessionKey
+        || firstProfessionKey(staff);
+    const segments = workLike
+        ? (baseSegments.length ? baseSegments : [{
+            professionKey,
+            shiftStart: options.shiftStart || '09:15',
+            shiftEnd: options.shiftEnd || '18:45',
+            breakMinutes: 0,
+            note: null,
+            additionalProfessionKeys: []
+        }])
+        : [];
+    if (segments[0]) {
+        if (options.shiftStart) segments[0].shiftStart = options.shiftStart;
+        if (options.shiftEnd) segments[0].shiftEnd = options.shiftEnd;
+        if (options.professionKey) segments[0].professionKey = options.professionKey;
+    }
+    const shiftStart = workLike ? segments[0]?.shiftStart || null : null;
+    const shiftEnd = workLike ? segments[segments.length - 1]?.shiftEnd || null : null;
     return {
         staffId: Number(staff.id),
         date,
-        status: options.status || 'working',
-        shiftStart: options.shiftStart || '09:15',
-        shiftEnd: options.shiftEnd || '18:45',
+        status,
+        shiftStart,
+        shiftEnd,
         note: options.note || `Codex staff schedule write smoke ${RUN_ID}`,
-        professionKey: options.professionKey || firstProfessionKey(staff)
+        professionKey,
+        primaryProfessionKey: professionKey,
+        segments,
+        expectedUpdatedAt: basePayload?.expectedUpdatedAt,
+        plannedMinutes: workLike ? plannedMinutesForSegments(segments) : 0
     };
 }
 
@@ -286,8 +378,29 @@ function assertScheduleMatches(entry, payload, label) {
         assert.equal(time5(entry.shift_start), payload.shiftStart, `${label}: shift start matches`);
         assert.equal(time5(entry.shift_end), payload.shiftEnd, `${label}: shift end matches`);
         assert.equal(String(entry.profession_key || ''), String(payload.professionKey || ''), `${label}: profession matches`);
+        assert.equal(
+            String(entry.primary_profession_key || entry.primaryProfessionKey || entry.profession_key || ''),
+            String(payload.primaryProfessionKey || ''),
+            `${label}: primary profession matches`
+        );
+        const actualSegments = (Array.isArray(entry.segments) ? entry.segments : []).map(normalizeSegmentSnapshot);
+        assert.deepEqual(actualSegments, payload.segments, `${label}: complete segment snapshot matches`);
+        assert.equal(
+            Number(entry.planned_minutes ?? entry.plannedMinutes),
+            Number(payload.plannedMinutes),
+            `${label}: planned minutes match`
+        );
     }
     assert.equal(entry.note || null, payload.note || null, `${label}: note matches`);
+}
+
+function scheduleMatches(entry, payload) {
+    try {
+        assertScheduleMatches(entry, payload, 'safe restore comparison');
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 async function getScheduleEntry(base, token, staffId, date) {
@@ -304,6 +417,31 @@ async function putSchedule(base, token, payload) {
     });
     if (!data.success) throw new Error(data.error || 'schedule PUT failed');
     return data.data;
+}
+
+function restorePayloadFromSnapshot(snapshot, expectedUpdatedAt) {
+    assert.ok(snapshot && Array.isArray(snapshot.segments), 'restore requires a complete segment snapshot');
+    const status = normalizeStatus(snapshot.status);
+    const workLike = status === 'working' || status === 'remote';
+    if (workLike) assert.ok(expectedUpdatedAt, 'restore requires the version created by this smoke run');
+    return {
+        ...snapshot,
+        segments: snapshot.segments.map(segment => ({
+            ...segment,
+            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+        })),
+        expectedUpdatedAt
+    };
+}
+
+async function restoreSchedule(base, token, snapshot, expectedUpdatedAt, label) {
+    const currentEntry = await getScheduleEntry(base, token, snapshot.staffId, snapshot.date);
+    assert.ok(currentEntry, `${label}: current schedule entry exists before restore`);
+    const restorePayload = restorePayloadFromSnapshot(snapshot, expectedUpdatedAt);
+    await putSchedule(base, token, restorePayload);
+    const restoredEntry = await getScheduleEntry(base, token, snapshot.staffId, snapshot.date);
+    assertScheduleMatches(restoredEntry, snapshot, label);
+    return restoredEntry;
 }
 
 async function fetchHistory(base, token, staffId, date) {
@@ -353,14 +491,18 @@ async function saveScheduleViaUi(page, base, staff, payload) {
     await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
     await page.locator('#schStatus').selectOption(payload.status);
 
-    let professionKey = payload.professionKey;
+    const firstSegment = payload.segments?.[0] || null;
+    let professionKey = firstSegment?.professionKey || payload.professionKey;
     if (payload.status === 'working' || payload.status === 'remote') {
-        await page.locator('#schStart').fill(payload.shiftStart);
-        await page.locator('#schEnd').fill(payload.shiftEnd);
+        assert.ok(firstSegment, 'UI save requires the canonical first segment');
+        await page.locator('#schStart').fill(firstSegment.shiftStart);
+        await page.locator('#schEnd').fill(firstSegment.shiftEnd);
         const optionValues = await page.locator('#schProfession option').evaluateAll(options => options.map(option => option.value).filter(Boolean));
         if (!optionValues.includes(professionKey)) {
             professionKey = optionValues[0] || professionKey;
             payload.professionKey = professionKey;
+            payload.primaryProfessionKey = professionKey;
+            firstSegment.professionKey = professionKey;
         }
         if (professionKey) await page.locator('#schProfession').selectOption(professionKey);
     }
@@ -436,9 +578,7 @@ async function clearActiveReplacementIfPresent(base, token, replacementStaffId, 
 async function runBulkCoverage(base, token, staff, previousPayload) {
     const beforeHistory = await fetchHistory(base, token, staff.id, QA_DATE);
     const bulkPayload = schedulePayloadForWrite(staff, QA_DATE, {
-        shiftStart: previousPayload.shiftStart === '09:30' ? '10:30' : '09:30',
-        shiftEnd: previousPayload.shiftEnd === '18:30' ? '19:30' : '18:30',
-        professionKey: previousPayload.professionKey,
+        basePayload: previousPayload,
         note: `Codex bulk schedule smoke ${RUN_ID}`
     });
     const bulk = await fetchJson(base, '/api/staff/schedule/bulk', {
@@ -452,6 +592,7 @@ async function runBulkCoverage(base, token, staff, previousPayload) {
     assertScheduleMatches(afterBulk, bulkPayload, 'bulk');
     const afterHistory = await fetchHistory(base, token, staff.id, QA_DATE);
     assertNewHistoryAction(beforeHistory, afterHistory, 'staff_schedule_bulk_update', 'bulk history');
+    return afterBulk;
 }
 
 async function runDryRunCopyWeekCoverage(base, token, staff) {
@@ -485,7 +626,7 @@ async function runAttendanceReadCoverage(base, token) {
     assert.ok(attendance.summary && typeof attendance.summary === 'object', 'attendance: summary returned');
 }
 
-(async () => {
+async function main() {
     assertConfigured();
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     const base = normalizeBase(TARGET_URL);
@@ -495,9 +636,20 @@ async function runAttendanceReadCoverage(base, token) {
     let restored = false;
     let previousPayload = null;
     let primaryStaff = null;
+    let session = null;
+    let failure = null;
+    let restoreFailure = null;
+    let ownedUpdatedAt = null;
+    let pendingPayload = null;
+    let timedOut = false;
+    const watchdog = setTimeout(() => {
+        timedOut = true;
+        if (context) context.close().catch(() => {});
+        if (browser) browser.close().catch(() => {});
+    }, OVERALL_TIMEOUT_MS);
 
     try {
-        const session = await login(base);
+        session = await login(base);
         const staffRows = await loadStaff(base, session.token);
         primaryStaff = staffRows.find(row => Number(row.id) === QA_STAFF_ID);
         assertQaStaff(primaryStaff, 'primary');
@@ -506,6 +658,7 @@ async function runAttendanceReadCoverage(base, token) {
         assert.ok(previousEntry, 'primary: existing schedule entry is required for safe restore');
         previousPayload = schedulePayloadFromEntry(previousEntry, primaryStaff);
         assert.equal(previousPayload.date, QA_DATE, 'primary: previous payload date is valid');
+        restored = true;
 
         browser = await chromium.launch({ headless: HEADLESS });
         const opened = await openAuthenticatedContext(browser, session, { width: 1440, height: 900 });
@@ -514,34 +667,47 @@ async function runAttendanceReadCoverage(base, token) {
 
         const beforeUpdateHistory = await fetchHistory(base, session.token, QA_STAFF_ID, QA_DATE);
         const uiPayload = schedulePayloadForWrite(primaryStaff, QA_DATE, {
-            shiftStart: previousPayload.shiftStart === '09:15' ? '10:15' : '09:15',
-            shiftEnd: previousPayload.shiftEnd === '18:45' ? '19:45' : '18:45',
-            professionKey: previousPayload.professionKey,
+            basePayload: previousPayload,
             note: `Codex UI schedule smoke ${RUN_ID}`
         });
+        restored = false;
+        pendingPayload = uiPayload;
+        ownedUpdatedAt = null;
         await saveScheduleViaUi(page, base, primaryStaff, uiPayload);
         const afterUiEntry = await getScheduleEntry(base, session.token, QA_STAFF_ID, QA_DATE);
         assertScheduleMatches(afterUiEntry, uiPayload, 'UI save');
+        ownedUpdatedAt = planUpdatedAt(afterUiEntry);
+        assert.ok(ownedUpdatedAt, 'UI save returned a restorable plan version');
         const afterUpdateHistory = await fetchHistory(base, session.token, QA_STAFF_ID, QA_DATE);
         assertNewHistoryAction(beforeUpdateHistory, afterUpdateHistory, 'staff_schedule_update', 'UI save history');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'after-ui-save.png'), fullPage: true });
 
-        await putSchedule(base, session.token, previousPayload);
+        await restoreSchedule(base, session.token, previousPayload, ownedUpdatedAt, 'restore after UI save');
         restored = true;
-        assertScheduleMatches(await getScheduleEntry(base, session.token, QA_STAFF_ID, QA_DATE), previousPayload, 'restore after UI save');
+        pendingPayload = null;
+        ownedUpdatedAt = null;
 
-        await runBulkCoverage(base, session.token, primaryStaff, previousPayload);
-        await putSchedule(base, session.token, previousPayload);
-        assertScheduleMatches(await getScheduleEntry(base, session.token, QA_STAFF_ID, QA_DATE), previousPayload, 'restore after bulk');
+        restored = false;
+        pendingPayload = schedulePayloadForWrite(primaryStaff, QA_DATE, {
+            basePayload: previousPayload,
+            note: `Codex bulk schedule smoke ${RUN_ID}`
+        });
+        const afterBulk = await runBulkCoverage(base, session.token, primaryStaff, previousPayload);
+        ownedUpdatedAt = planUpdatedAt(afterBulk);
+        assert.ok(ownedUpdatedAt, 'bulk save returned a restorable plan version');
+        await restoreSchedule(base, session.token, previousPayload, ownedUpdatedAt, 'restore after bulk');
+        restored = true;
+        pendingPayload = null;
+        ownedUpdatedAt = null;
 
         await runDryRunCopyWeekCoverage(base, session.token, primaryStaff);
         await runAttendanceReadCoverage(base, session.token);
 
         if (QA_REPLACEMENT_STAFF_ID) {
             const replacementStaff = staffRows.find(row => Number(row.id) === QA_REPLACEMENT_STAFF_ID);
+            restored = false;
             await runReplacementCoverage(base, session.token, primaryStaff, replacementStaff, previousPayload);
-            await putSchedule(base, session.token, previousPayload);
-            assertScheduleMatches(await getScheduleEntry(base, session.token, QA_STAFF_ID, QA_DATE), previousPayload, 'restore after replacement');
+            restored = true;
         }
 
         console.log(`Live staff schedule write smoke OK: ${base}`);
@@ -554,24 +720,60 @@ async function runAttendanceReadCoverage(base, token) {
         console.log(QA_REPLACEMENT_STAFF_ID ? '  OK replacement set/clear -> restore' : '  SKIP replacement: LIVE_STAFF_SCHEDULE_QA_REPLACEMENT_STAFF_ID not set');
         console.log(`  OK screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
     } catch (err) {
-        if (previousPayload) {
-            try {
-                const base = normalizeBase(TARGET_URL);
-                const session = await login(base);
-                await clearActiveReplacementIfPresent(base, session.token, QA_REPLACEMENT_STAFF_ID, QA_DATE);
-                await putSchedule(base, session.token, previousPayload);
-                restored = true;
-                console.error('Restore attempted after failure: OK');
-            } catch (restoreErr) {
-                console.error(`Restore attempted after failure: FAILED (${restoreErr.message})`);
-            }
-        }
-        fail(err.stack || err.message || String(err));
+        failure = err;
     } finally {
+        clearTimeout(watchdog);
         if (context) await context.close().catch(() => {});
         if (browser) await browser.close().catch(() => {});
         if (previousPayload && !restored) {
-            console.error('WARNING: previous schedule state may need manual verification.');
+            try {
+                session = session || await login(base);
+                await clearActiveReplacementIfPresent(base, session.token, QA_REPLACEMENT_STAFF_ID, QA_DATE);
+                const currentEntry = await getScheduleEntry(base, session.token, previousPayload.staffId, previousPayload.date);
+                if (currentEntry && scheduleMatches(currentEntry, previousPayload)) {
+                    restored = true;
+                    console.error('Restore in finally was not needed: original plan is already intact');
+                } else {
+                    if (!ownedUpdatedAt && pendingPayload && currentEntry && scheduleMatches(currentEntry, pendingPayload)) {
+                        ownedUpdatedAt = planUpdatedAt(currentEntry);
+                    }
+                    if (!ownedUpdatedAt) {
+                        throw new Error('refusing restore because the current plan is neither the original snapshot nor a verified smoke mutation');
+                    }
+                    await restoreSchedule(base, session.token, previousPayload, ownedUpdatedAt, 'restore in finally');
+                    restored = true;
+                    console.error('Restore attempted in finally: OK');
+                }
+            } catch (restoreErr) {
+                restoreFailure = restoreErr;
+                console.error(`Restore attempted in finally: FAILED (${restoreErr.message})`);
+            }
         }
     }
-})();
+
+    if (failure || restoreFailure) {
+        const reason = failure?.stack || failure?.message || String(failure || 'write smoke restore failed');
+        const timeoutReason = timedOut ? `overall timeout after ${OVERALL_TIMEOUT_MS}ms\n${reason}` : reason;
+        const restoreReason = restoreFailure
+            ? `\nRestore failure: ${restoreFailure.stack || restoreFailure.message || restoreFailure}`
+            : '';
+        throw new Error(`${timeoutReason}${restoreReason}`);
+    }
+}
+
+if (require.main === module) {
+    main().catch(err => {
+        console.error(`Live staff schedule write smoke failed: ${err.stack || err.message || err}`);
+        process.exitCode = 1;
+    });
+}
+
+module.exports = {
+    assertScheduleMatches,
+    normalizeSegmentSnapshot,
+    plannedMinutesForSegments,
+    restorePayloadFromSnapshot,
+    scheduleMatches,
+    schedulePayloadForWrite,
+    schedulePayloadFromEntry
+};

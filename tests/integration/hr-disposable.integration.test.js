@@ -3,20 +3,19 @@
  *
  * Not part of tests/*.test.js or CI. Run only against an isolated environment:
  *   RUN_HR_DISPOSABLE_INTEGRATION=true
- *   HR_DISPOSABLE_STAFF_ID=<fixture id>
- *   HR_DISPOSABLE_REPLACEMENT_STAFF_ID=<second fixture id>
  *   node --test tests/integration/hr-disposable.integration.test.js
  */
 'use strict';
 
-const { describe, it, after } = require('node:test');
+const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { authRequest } = require('../helpers');
 
 const enabled = process.env.RUN_HR_DISPOSABLE_INTEGRATION === 'true';
-const fixtureStaffId = Number.parseInt(String(process.env.HR_DISPOSABLE_STAFF_ID || ''), 10);
-const replacementStaffId = Number.parseInt(String(process.env.HR_DISPOSABLE_REPLACEMENT_STAFF_ID || ''), 10);
+let fixtureStaffId = null;
+let replacementStaffId = null;
 const createdShiftIds = [];
+const createdStaffIds = [];
 const sourceWeek = '2099-01-12';
 const targetWeek = '2099-01-19';
 const bulkDate = '2099-01-26';
@@ -47,8 +46,10 @@ const segmentedPlan = {
 
 function requireFixture() {
     assert.equal(enabled, true, 'set RUN_HR_DISPOSABLE_INTEGRATION=true');
-    assert.ok(Number.isInteger(fixtureStaffId) && fixtureStaffId > 0, 'set HR_DISPOSABLE_STAFF_ID');
-    assert.ok(Number.isInteger(replacementStaffId) && replacementStaffId > 0, 'set HR_DISPOSABLE_REPLACEMENT_STAFF_ID');
+    assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true', 'HR disposable integration requires the isolated local test runner');
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true', 'HR disposable integration requires verified disposable database setup');
+    assert.ok(Number.isInteger(fixtureStaffId) && fixtureStaffId > 0, 'primary disposable staff fixture was created');
+    assert.ok(Number.isInteger(replacementStaffId) && replacementStaffId > 0, 'replacement disposable staff fixture was created');
     assert.notEqual(replacementStaffId, fixtureStaffId, 'replacement fixture must be a different staff row');
 }
 
@@ -85,8 +86,39 @@ function assertSegmentedPlan(shift, expectedStaffId = null) {
 }
 
 describe('HR disposable fixture integration', { skip: !enabled }, () => {
+    before(async () => {
+        const suffix = `${process.pid}-${Date.now()}`;
+        for (const label of ['Primary', 'Replacement']) {
+            const response = await authRequest('POST', '/api/staff', {
+                name: `Disposable QA ${label} ${suffix}`,
+                department: 'admin',
+                position: 'Disposable integration fixture',
+                role_type: 'reception',
+                secondaryProfessions: ['manager']
+            });
+            const staffId = Number(response.data?.data?.id);
+            if (Number.isInteger(staffId) && staffId > 0) createdStaffIds.push(staffId);
+            assert.equal(response.status, 200, `create ${label.toLowerCase()} fixture staff`);
+            assert.equal(response.data?.success, true);
+            assert.ok(Number.isInteger(staffId) && staffId > 0);
+            if (label === 'Primary') fixtureStaffId = staffId;
+            else replacementStaffId = staffId;
+        }
+        requireFixture();
+    });
+
     after(async () => {
         const failures = [];
+
+        for (const staffId of createdStaffIds) {
+            try {
+                const rows = await readShifts(sourceWeek, bulkDate, staffId);
+                rows.forEach(shift => trackShift(shift.id));
+            } catch (error) {
+                failures.push(`discover shifts for staff #${staffId}: ${error.message || error}`);
+            }
+        }
+
         for (const shiftId of [...new Set(createdShiftIds.splice(0))].reverse()) {
             try {
                 const response = await authRequest('DELETE', `/api/hr/shifts/${shiftId}`);
@@ -95,18 +127,16 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
                 failures.push(`shift #${shiftId}: ${error.message || error}`);
             }
         }
-        assert.deepEqual(failures, [], `fixture cleanup failures: ${failures.join('; ')}`);
-    });
 
-    it('reads the explicitly named disposable staff fixture', async () => {
-        requireFixture();
-        for (const staffId of [fixtureStaffId, replacementStaffId]) {
-            const response = await authRequest('GET', `/api/hr/staff/${staffId}`);
-            assert.equal(response.status, 200);
-            assert.equal(response.data?.success, true);
-            assert.equal(Number(response.data?.data?.id), staffId);
-            assert.match([response.data?.data?.name, response.data?.data?.display_name].filter(Boolean).join(' '), /QA|Test|Smoke|Disposable/i);
+        for (const staffId of [...createdStaffIds].reverse()) {
+            try {
+                const response = await authRequest('DELETE', `/api/staff/${staffId}`);
+                if (response.status !== 200 || response.data?.success !== true) failures.push(`staff #${staffId}: HTTP ${response.status}`);
+            } catch (error) {
+                failures.push(`staff #${staffId}: ${error.message || error}`);
+            }
         }
+        assert.deepEqual(failures, [], `fixture cleanup failures: ${failures.join('; ')}`);
     });
 
     it('keeps the legacy single-shift payload as one equivalent segment', async () => {
@@ -121,13 +151,26 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
             profession_key: 'reception',
             notes: 'Disposable HR integration fixture'
         });
+        legacyShiftId = trackShift(response.data?.data?.id);
         assert.ok([200, 201].includes(response.status), `unexpected create status ${response.status}`);
         assert.equal(response.data?.success, true);
-        legacyShiftId = trackShift(response.data?.data?.id);
         assert.ok(Number.isInteger(legacyShiftId) && legacyShiftId > 0, 'created shift id is returned for cleanup');
         assert.equal(response.data?.data?.segments?.length, 1);
         assert.equal(response.data?.data?.segments?.[0]?.professionKey, 'reception');
         assert.equal(response.data?.data?.plannedMinutes, 60);
+
+        const legacyUpdate = await authRequest('PUT', `/api/hr/shifts/${legacyShiftId}`, {
+            planned_start: '09:00',
+            planned_end: '10:30',
+            shift_type: 'full',
+            break_minutes: 0,
+            profession_key: 'reception',
+            notes: 'Disposable legacy update remains compatible'
+        });
+        assert.equal(legacyUpdate.status, 200);
+        assert.equal(legacyUpdate.data?.success, true);
+        assert.equal(legacyUpdate.data?.data?.segments?.length, 1);
+        assert.equal(legacyUpdate.data?.data?.plannedMinutes, 90);
     });
 
     it('persists multiple segments, breaks and concurrent roles after refresh', async () => {
@@ -138,13 +181,36 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
             shift_type: 'regular',
             ...segmentedPlan
         });
+        segmentedShiftId = trackShift(response.data?.data?.id);
         assert.ok([200, 201].includes(response.status), `unexpected create status ${response.status}`);
         assert.equal(response.data?.success, true);
-        segmentedShiftId = trackShift(response.data?.data?.id);
         assertSegmentedPlan(response.data?.data, fixtureStaffId);
 
         const refreshed = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
         assertSegmentedPlan(refreshed.find(shift => Number(shift.id) === segmentedShiftId), fixtureStaffId);
+    });
+
+    it('rejects a legacy payload before it can flatten a multi-segment plan', async () => {
+        requireFixture();
+        const beforeRows = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
+        const before = beforeRows.find(shift => Number(shift.id) === segmentedShiftId);
+        const beforeSegmentIds = before.segments.map(segment => Number(segment.id));
+
+        const response = await authRequest('PUT', `/api/hr/shifts/${segmentedShiftId}`, {
+            planned_start: '09:00',
+            planned_end: '20:00',
+            break_minutes: 0,
+            profession_key: 'reception',
+            notes: 'Legacy client must not flatten this plan'
+        });
+        assert.equal(response.status, 409);
+        assert.equal(response.data?.success, false);
+        assert.equal(response.data?.code, 'HR_SHIFT_SEGMENTS_REQUIRED');
+
+        const afterRows = await readShifts('2099-01-13', '2099-01-13', fixtureStaffId);
+        const after = afterRows.find(shift => Number(shift.id) === segmentedShiftId);
+        assert.deepEqual(after.segments.map(segment => Number(segment.id)), beforeSegmentIds);
+        assertSegmentedPlan(after, fixtureStaffId);
     });
 
     it('rolls back an overlapping full replacement without changing the saved plan', async () => {
@@ -232,18 +298,24 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
 
     it('copies legacy and segmented shifts with fresh child ids', async () => {
         requireFixture();
+        const source = [
+            ...await readShifts(sourceWeek, '2099-01-18', fixtureStaffId),
+            ...await readShifts(sourceWeek, '2099-01-18', replacementStaffId)
+        ];
         const response = await authRequest('POST', '/api/hr/shifts/copy-week', {
             source_week: sourceWeek,
             target_week: targetWeek
         });
+        const copied = response.status === 200 && response.data?.success === true
+            ? [
+                ...await readShifts(targetWeek, '2099-01-25', fixtureStaffId),
+                ...await readShifts(targetWeek, '2099-01-25', replacementStaffId)
+            ]
+            : [];
+        copied.forEach(shift => trackShift(shift.id));
         assert.equal(response.status, 200);
         assert.equal(response.data?.success, true);
-        assert.equal(response.data?.count, 2);
-
-        const copied = await readShifts(targetWeek, '2099-01-25');
-        copied.forEach(shift => trackShift(shift.id));
-        const source = await readShifts(sourceWeek, '2099-01-18');
-        assert.equal(copied.length, 2, 'copy-week must not create previous-day mirror rows');
+        assert.equal(copied.length, source.length, 'fixture source and target row counts must match');
         const copiedLegacy = copied.find(shift => Number(shift.staff_id) === fixtureStaffId
             && String(shift.shift_date).slice(0, 10) === '2099-01-19');
         const copiedSegmented = copied.find(shift => Number(shift.staff_id) === replacementStaffId
@@ -269,12 +341,16 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
             shift_type: 'regular',
             ...segmentedPlan
         });
+        const rows = response.status === 200 && response.data?.success === true
+            ? [
+                ...await readShifts(bulkDate, bulkDate, fixtureStaffId),
+                ...await readShifts(bulkDate, bulkDate, replacementStaffId)
+            ]
+            : [];
+        rows.forEach(shift => trackShift(shift.id));
         assert.equal(response.status, 200);
         assert.equal(response.data?.success, true);
         assert.equal(response.data?.count, 2);
-
-        const rows = await readShifts(bulkDate, bulkDate);
-        rows.forEach(shift => trackShift(shift.id));
         assert.equal(rows.length, 2);
         rows.forEach(shift => assertSegmentedPlan(shift, shift.staff_id));
     });

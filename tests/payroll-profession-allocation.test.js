@@ -16,6 +16,7 @@ const {
     loadPayrollAttendanceMetrics,
     resolveProfessionPayRate
 } = require('../services/payroll');
+const { allocateAttendanceToSegments } = require('../services/hrAttendance');
 
 function staff(overrides = {}) {
     return {
@@ -115,6 +116,43 @@ test('an internal gap and concurrent additional role cannot create paid allocati
     assert.equal(result.professionRateSummary.length, 2);
     assert.equal(result.professionRateSummary.some(row => row.profession_key === 'animator'), false);
     assert.equal(result.professionRateSummary.reduce((sum, row) => sum + row.actual_minutes, 0), 540);
+});
+
+test('hourly payroll consumes attendance minutes after the segment break without paying an additional role', () => {
+    const allocation = allocateAttendanceToSegments({
+        recordDate: '2026-07-13',
+        clockIn: '2026-07-13T06:00:00.000Z',
+        clockOut: '2026-07-13T10:00:00.000Z',
+        primaryProfessionKey: 'reception',
+        segments: [{
+            professionKey: 'reception',
+            shiftStart: '09:00',
+            shiftEnd: '13:00',
+            breakMinutes: 30,
+            additionalProfessionKeys: ['animator']
+        }]
+    });
+    const result = calculateProfessionPay(
+        staff(),
+        { schemeType: 'hourly', config: {}, isFallback: true },
+        metrics({
+            totalMinutes: allocation.actualMinutes,
+            allocatedMinutes: allocation.allocatedMinutes,
+            plannedMinutes: allocation.plannedMinutes,
+            professionAllocations: allocation.segmentAllocations.map(item => ({
+                professionKey: item.professionKey,
+                minutes: item.actualMinutes,
+                allocationSources: [allocation.allocationSource]
+            }))
+        }),
+        rateMap({ reception: 100, animator: 999 })
+    );
+
+    assert.equal(allocation.breakPolicy, 'segment_minutes_mvp');
+    assert.equal(allocation.actualMinutes, 210);
+    assert.equal(result.baseAmount, 350);
+    assert.deepEqual(result.professionRateSummary.map(row => row.profession_key), ['reception']);
+    assert.equal(result.professionRateSummary[0].actual_minutes, 210);
 });
 
 test('day rate is paid once per staff date using the primary profession', () => {
@@ -404,6 +442,8 @@ test('attendance metrics keep one staff day and allocate only paid segment profe
 
     assert.equal(row.daysWorked, 1);
     assert.equal(row.attendanceDays.length, 1);
+    assert.equal(row.attendanceDays[0].breakPolicy, 'segment_minutes_mvp');
+    assert.deepEqual(row.breakPolicies, ['segment_minutes_mvp']);
     assert.equal(row.allocatedMinutes, 660);
     assert.deepEqual(row.professionAllocations, [
         { professionKey: 'manager', minutes: 420, allocationSources: ['proportional_fallback'] },

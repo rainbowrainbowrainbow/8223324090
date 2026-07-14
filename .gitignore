@@ -10,3 +10,4 @@ uploads/sounds/
 tmp/
 .codex-temp/
 output/
+.playwright-cli/

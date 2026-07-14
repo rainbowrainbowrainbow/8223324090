@@ -2469,7 +2469,10 @@ function legacyHrShiftMutationErrorMessage(result = {}, fallback = 'Не вда�
         return 'План дня вже змінив інший менеджер. Відкрийте його у «Графіку команди» та оновіть дані.';
     }
     if (result?.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT') {
-        return 'Нічний блок без day offsets може бути лише єдиним блоком дня.';
+        return 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня';
+    }
+    if (result?.code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION') {
+        return 'Перерва має бути коротшою за тривалість сегмента';
     }
     return hrScheduleableStaffErrorMessage(result, result?.error || fallback);
 }

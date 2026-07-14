@@ -8,6 +8,7 @@ const page = fs.readFileSync(path.join(root, 'js', 'staff-page.js'), 'utf8');
 const hrPage = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
 const shell = fs.readFileSync(path.join(root, 'js', 'staff-schedule-shell.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css', 'pages-hr-staff.css'), 'utf8');
+const liveWriteSmoke = require('../scripts/live-staff-schedule-write-smoke');
 
 test('staff schedule exposes one day status and reusable segment editors', () => {
     assert.match(shell, /<label for="schStatus">Статус дня<\/label>/);
@@ -38,13 +39,18 @@ test('segment cards cover role, time, break, note, simultaneous roles and keyboa
 test('client validation blocks invalid and overlapping paid plans before save', () => {
     assert.match(page, /function validateSchedulePlan/);
     assert.match(page, /початок і завершення не можуть збігатися/);
-    assert.match(page, /перерва має бути коротшою за тривалість блоку/);
-    assert.match(page, /Нічний блок без day offsets можна зберігати лише як єдиний блок дня/);
+    assert.match(page, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
+    assert.match(page, /Перерва має бути коротшою за тривалість сегмента/);
+    assert.match(page, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
+    assert.match(page, /Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня/);
+    assert.match(page, /errorCodes: \[\.\.\.new Set\(errorCodes\)\]/);
     assert.match(page, /current\.startMinutes < previous\.endMinutes/);
     assert.match(page, /перетинаються/);
     assert.match(page, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
     assert.match(page, /Основна роль дня має бути основною професією одного з блоків/);
     assert.match(page, /saveButton\.disabled = pending \|\| readOnly \|\| !validation\.valid/);
+    assert.match(hrPage, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
+    assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
 });
 
 test('single and fill-week saves send the normalized segment contract', () => {
@@ -107,4 +113,69 @@ test('schedule health and forecast use segment roles and time windows', () => {
     assert.match(page, /function staffingForecastScheduledCounts\(date, staffList = \[\], atMinutes = null\)/);
     assert.match(page, /coverageSlots/);
     assert.match(page, /bookings_timeline_windows_v2/);
+});
+
+test('live write smoke snapshots and restores the complete versioned segment plan', () => {
+    const entry = {
+        staff_id: 17,
+        date: '2026-07-14',
+        status: 'working',
+        shift_start: '09:00',
+        shift_end: '20:00',
+        note: 'Original day note',
+        profession_key: 'reception',
+        primary_profession_key: 'reception',
+        planUpdatedAt: '2026-07-14T10:00:00.000000Z',
+        planned_minutes: 630,
+        segments: [
+            {
+                id: 71,
+                professionKey: 'reception',
+                shiftStart: '09:00',
+                shiftEnd: '13:00',
+                breakMinutes: 0,
+                note: 'Front desk',
+                additionalProfessionKeys: ['manager']
+            },
+            {
+                id: 72,
+                professionKey: 'manager',
+                shiftStart: '13:00',
+                shiftEnd: '20:00',
+                breakMinutes: 30,
+                note: 'Manager block',
+                additionalProfessionKeys: []
+            }
+        ]
+    };
+
+    const snapshot = liveWriteSmoke.schedulePayloadFromEntry(entry, { id: 17, role_type: 'reception' });
+    assert.equal(snapshot.expectedUpdatedAt, entry.planUpdatedAt);
+    assert.equal(snapshot.plannedMinutes, 630);
+    assert.deepEqual(snapshot.segments.map(segment => segment.id), [71, 72]);
+    assert.deepEqual(snapshot.segments[0].additionalProfessionKeys, ['manager']);
+
+    const restore = liveWriteSmoke.restorePayloadFromSnapshot(
+        snapshot,
+        '2026-07-14T10:05:00.000000Z'
+    );
+    assert.equal(restore.expectedUpdatedAt, '2026-07-14T10:05:00.000000Z');
+    assert.deepEqual(restore.segments, snapshot.segments);
+    assert.notEqual(restore.segments, snapshot.segments);
+});
+
+test('live write smoke refuses an incomplete working snapshot before mutation', () => {
+    assert.throws(
+        () => liveWriteSmoke.schedulePayloadFromEntry({
+            staff_id: 17,
+            date: '2026-07-14',
+            status: 'working',
+            shift_start: '09:00',
+            shift_end: '18:00',
+            profession_key: 'reception',
+            planUpdatedAt: '2026-07-14T10:00:00.000000Z',
+            segments: [{ professionKey: 'reception', shiftStart: '09:00', shiftEnd: '18:00' }]
+        }, { id: 17, role_type: 'reception' }),
+        /stable id is required for safe restore/
+    );
 });

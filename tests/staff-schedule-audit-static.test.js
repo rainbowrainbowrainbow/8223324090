@@ -127,7 +127,10 @@ test('schedule write paths reject non-scheduleable staff before writes and mirro
     assert.match(hrRoute, /validateStaffScheduleabilityCardForDate\(staffRow, d\)/);
     assert.match(hrRoute, /loadStaffScheduleabilityCards\(client, sourceStaffIds\)/);
     assert.match(hrRoute, /validateStaffScheduleabilityCardForDate\(staffRow, targetDate\)/);
-    assert.match(hrRoute, /validateStaffScheduleableForDate\(db, shift\.staff_id, date, \{ forUpdate: false \}\)/);
+    assert.match(
+        hrRoute,
+        /options\.staffValidation \|\| await validateStaffScheduleableForDate\(\s*db,\s*shift\.staff_id,\s*date,\s*\{ forUpdate: false \}\s*\)/
+    );
     assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'hs\.shift_date' \}\)/);
 });
 
@@ -179,7 +182,14 @@ test('live staff schedule write smoke is explicit QA-only and restorative', () =
     assert.match(script, /assertQaStaff/);
     assert.match(script, /existing schedule entry is required for safe restore/);
     assert.match(script, /finally/);
-    assert.match(script, /putSchedule\(base, session\.token, previousPayload\)/);
+    assert.match(script, /working schedule snapshot requires canonical segments\[\]/);
+    assert.match(script, /stable id is required for safe restore/);
+    assert.match(script, /function restorePayloadFromSnapshot/);
+    assert.match(script, /expectedUpdatedAt/);
+    assert.match(script, /await restoreSchedule\(base, session\.token, previousPayload, ownedUpdatedAt, 'restore in finally'\)/);
+    assert.match(script, /refusing restore because the current plan is neither the original snapshot nor a verified smoke mutation/);
+    assert.match(script, /LIVE_STAFF_SCHEDULE_WRITE_OVERALL_TIMEOUT_MS/);
+    assert.doesNotMatch(script, /putSchedule\(base, session\.token, previousPayload\)/);
     assert.match(script, /\/api\/staff\/schedule\/\$\{currentOriginal\.id\}\/replace/);
     assert.match(script, /\/api\/staff\/schedule\/\$\{replacementAfterReplace\.id\}\/replacement-clear/);
     assert.match(script, /async function clearActiveReplacementIfPresent/);

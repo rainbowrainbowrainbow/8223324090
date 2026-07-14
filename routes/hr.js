@@ -102,9 +102,19 @@ const {
     validateHrShiftDayPlanProfessions
 } = require('../services/hrShiftSegments');
 const {
+    lockScheduleStaffRows,
     normalizeScheduleDate,
     scheduleDateSequence
 } = require('../services/staffScheduleMutations');
+const {
+    LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_VERSION,
+    assertLiveQaConfirmation,
+    assertLiveQaStaff,
+    liveQaMarker,
+    normalizeLiveQaRunId,
+    normalizeLiveQaTime
+} = require('../services/liveMultiSegmentQa');
 const {
     archiveStaffDocument,
     createStaffDocument,
@@ -1320,21 +1330,6 @@ async function validateShiftWriteStaff(client, staffId, date, options = {}) {
     });
 }
 
-async function lockHrShiftStaffRows(client, staffIds = []) {
-    const ids = [...new Set(staffIds
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))]
-        .sort((a, b) => a - b);
-    if (!ids.length) return;
-    await client.query(
-        `SELECT id FROM staff
-         WHERE id = ANY($1::int[])
-         ORDER BY id
-         FOR UPDATE`,
-        [ids]
-    );
-}
-
 // Helper: get current Kyiv time as Date object
 function nowKyiv() {
     return getKyivDate();
@@ -1387,6 +1382,77 @@ function sendHrMutationFailure(res, error) {
         error: error.message
     });
     return true;
+}
+
+function liveQaConfirmationFromRequest(req) {
+    return req.get('x-eventgenix-live-qa-confirmation') || req.body?.confirmation || '';
+}
+
+function sendLiveQaError(res, error) {
+    const status = Number(error?.status || error?.statusCode || 500);
+    if (status >= 500) log.error('Live multi-segment QA helper error', error);
+    return res.status(status).json({
+        success: false,
+        code: error?.code || 'LIVE_QA_HELPER_FAILED',
+        error: error?.message || 'Live QA helper failed',
+        ...(error?.details ? { data: error.details } : {})
+    });
+}
+
+async function loadLiveQaStaff(db, staffId, runId, options = {}) {
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error('valid disposable QA staffId is required');
+        error.code = 'LIVE_QA_STAFF_ID_INVALID';
+        error.status = 400;
+        throw error;
+    }
+    const lock = options.forUpdate === true ? ' FOR UPDATE' : '';
+    const result = await db.query(
+        `SELECT id, name, is_active, hr_pool_status, notes
+         FROM staff
+         WHERE id = $1${lock}`,
+        [id]
+    );
+    return assertLiveQaStaff(result.rows[0], runId);
+}
+
+async function loadLiveQaFixtureStatus(db, staffId, runId) {
+    const staff = await loadLiveQaStaff(db, staffId, runId);
+    const [shiftResult, scheduleResult, attendanceResult, checkinResult, lineResult] = await Promise.all([
+        db.query('SELECT id, shift_date::text AS date FROM hr_shifts WHERE staff_id = $1 ORDER BY shift_date, id', [staff.id]),
+        db.query('SELECT id, date::text AS date FROM staff_schedule WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
+        db.query('SELECT id, record_date::text AS date FROM hr_time_records WHERE staff_id = $1 ORDER BY record_date, id', [staff.id]),
+        db.query('SELECT id, date::text AS date FROM staff_checkins WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
+        db.query(
+            `SELECT id, date::text AS date
+             FROM lines_by_date
+             WHERE line_id = $1::text
+               AND from_sheet IS TRUE
+             ORDER BY date, id`,
+            [staff.id]
+        )
+    ]);
+    const rows = {
+        shifts: shiftResult.rows,
+        schedule: scheduleResult.rows,
+        attendance: attendanceResult.rows,
+        checkins: checkinResult.rows,
+        timelineLines: lineResult.rows
+    };
+    const counts = Object.fromEntries(Object.entries(rows).map(([key, value]) => [key, value.length]));
+    return {
+        runId: normalizeLiveQaRunId(runId),
+        staffId: Number(staff.id),
+        active: staff.is_active !== false,
+        archived: staff.is_active === false,
+        counts,
+        fixtureIds: Object.fromEntries(Object.entries(rows).map(([key, value]) => [
+            key,
+            value.map(row => Number(row.id)).filter(Number.isInteger)
+        ])),
+        confirmedClean: staff.is_active === false && Object.values(counts).every(count => count === 0)
+    };
 }
 
 async function activeProfessionKeySet(db = pool) {
@@ -2147,10 +2213,15 @@ function buildStaffProfileChanges(before = {}, after = {}, fields = []) {
     return changes;
 }
 
-async function mirrorHrShiftToStaffSchedule(shift, db = pool) {
+async function mirrorHrShiftToStaffSchedule(shift, db = pool, options = {}) {
     const date = toDateOnly(shift?.shift_date);
     if (!shift?.staff_id || !date) return;
-    const validation = await validateStaffScheduleableForDate(db, shift.staff_id, date, { forUpdate: false });
+    const validation = options.staffValidation || await validateStaffScheduleableForDate(
+        db,
+        shift.staff_id,
+        date,
+        { forUpdate: false }
+    );
     if (!validation.ok) return;
     await db.query(
         `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
@@ -2185,9 +2256,9 @@ async function removeMirroredStaffSchedule(staffId, shiftDate, db = pool) {
     );
 }
 
-async function mirrorHrDayPlanToStaffSchedule(saved, staffId, shiftDate, note = null, db = pool) {
+async function mirrorHrDayPlanToStaffSchedule(saved, staffId, shiftDate, note = null, db = pool, options = {}) {
     if (saved?.shift) {
-        await mirrorHrShiftToStaffSchedule(saved.shift, db);
+        await mirrorHrShiftToStaffSchedule(saved.shift, db, options);
         return;
     }
     const date = toDateOnly(shiftDate);
@@ -3914,7 +3985,7 @@ router.delete('/shifts/:id', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
-        await lockHrShiftStaffRows(client, [observed.rows[0].staff_id]);
+        await lockScheduleStaffRows(client, [observed.rows[0].staff_id]);
         const existing = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
         if (existing.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -3973,7 +4044,7 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             return res.status(409).json({ success: false, error: 'Підміна на того самого співробітника не потрібна' });
         }
 
-        await lockHrShiftStaffRows(client, [observedShift.staff_id, replacementStaffId]);
+        await lockScheduleStaffRows(client, [observedShift.staff_id, replacementStaffId]);
         const loaded = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id }, { forUpdate: true });
         if (!loaded || Number(loaded.shift.staff_id) !== Number(observedShift.staff_id)) {
             await client.query('ROLLBACK');
@@ -4107,7 +4178,7 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await lockHrShiftStaffRows(client, orderedStaffIds);
+            await lockScheduleStaffRows(client, orderedStaffIds);
             const targetEntries = orderedStaffIds.flatMap(staffId => orderedDates.map(date => ({ staffId, date })));
             const staffCards = await loadStaffScheduleabilityCards(client, orderedStaffIds);
             const previousPlans = await loadHrShiftDayPlansForStaffDates(client, targetEntries);
@@ -4144,7 +4215,8 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
                         sid,
                         d,
                         payload.note ?? payload.notes ?? null,
-                        client
+                        client,
+                        { staffValidation: shiftValidation }
                     );
                     auditEntries.push({
                         staff_id: Number(sid),
@@ -4230,7 +4302,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                     error: `Copy-week підтримує максимум ${HR_SHIFT_COPY_WEEK_MAX_STAFF} працівників`
                 });
             }
-            await lockHrShiftStaffRows(client, sourceStaffIds);
+            await lockScheduleStaffRows(client, sourceStaffIds);
             const freshSource = await client.query(
                 `SELECT hs.*, hs.shift_date::text AS shift_date FROM hr_shifts hs
                  JOIN staff s ON s.id = hs.staff_id
@@ -4284,7 +4356,9 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                     ignoreExpectedUpdatedAt: true,
                     professionCard: professionCardFromStaff(staffRow)
                 });
-                await mirrorHrShiftToStaffSchedule(saved.shift, client);
+                await mirrorHrShiftToStaffSchedule(saved.shift, client, {
+                    staffValidation: shiftValidation
+                });
                 auditEntries.push({
                     staff_id: Number(row.staff_id),
                     source_date: sourceDate,
@@ -4428,6 +4502,213 @@ router.get('/today', async (req, res) => {
     } catch (err) {
         log.error('GET /hr/today error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/qa/multi-segment/capabilities — read-only preflight for the explicit live QA runner.
+router.get('/qa/multi-segment/capabilities', requireRole('creator', 'director'), (req, res) => {
+    res.json({
+        success: true,
+        fixtureVersion: LIVE_MULTI_SEGMENT_QA_VERSION,
+        confirmationRequired: true,
+        confirmationHeader: 'x-eventgenix-live-qa-confirmation',
+        createsBookings: false,
+        createsFinanceTransactions: false,
+        payrollMode: 'preview_only'
+    });
+});
+
+// GET /api/hr/qa/multi-segment/:runId — read-only cleanup verification for one disposable staff fixture.
+router.get('/qa/multi-segment/:runId', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        const runId = normalizeLiveQaRunId(req.params.runId);
+        if (!runId) {
+            return res.status(400).json({ success: false, code: 'LIVE_QA_RUN_ID_INVALID', error: 'valid runId is required' });
+        }
+        const status = await loadLiveQaFixtureStatus(pool, req.query.staffId ?? req.query.staff_id, runId);
+        res.json({ success: true, data: status });
+    } catch (error) {
+        return sendLiveQaError(res, error);
+    }
+});
+
+// POST /api/hr/qa/multi-segment/attendance — create one marker-bound attendance row for a disposable QA staff member.
+router.post('/qa/multi-segment/attendance', requireRole('creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        assertLiveQaConfirmation(liveQaConfirmationFromRequest(req));
+        const runId = normalizeLiveQaRunId(req.body?.runId ?? req.body?.run_id);
+        if (!runId) {
+            return res.status(400).json({ success: false, code: 'LIVE_QA_RUN_ID_INVALID', error: 'valid runId is required' });
+        }
+        const staffId = Number(req.body?.staffId ?? req.body?.staff_id);
+        const date = normalizeScheduleDate(req.body?.date);
+        const clockInTime = normalizeLiveQaTime(req.body?.clockInTime ?? req.body?.clock_in_time);
+        const clockOutTime = normalizeLiveQaTime(req.body?.clockOutTime ?? req.body?.clock_out_time);
+        if (!date || !clockInTime || !clockOutTime) {
+            return res.status(400).json({
+                success: false,
+                code: 'LIVE_QA_ATTENDANCE_INVALID',
+                error: 'valid date, clockInTime and clockOutTime are required'
+            });
+        }
+
+        await client.query('BEGIN');
+        const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });
+        if (staff.is_active === false) {
+            const error = new Error('disposable QA staff is already archived');
+            error.code = 'LIVE_QA_STAFF_ARCHIVED';
+            error.status = 409;
+            throw error;
+        }
+        const loadedShift = await loadHrShiftDayPlan(client, { staffId: staff.id, shiftDate: date }, { forUpdate: true });
+        if (!loadedShift?.plan?.segments?.length) {
+            const error = new Error('a canonical segment plan is required before attendance fixture creation');
+            error.code = 'LIVE_QA_PLAN_REQUIRED';
+            error.status = 409;
+            throw error;
+        }
+        const existing = await client.query(
+            'SELECT id FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+            [staff.id, date]
+        );
+        if (existing.rows.length) {
+            const error = new Error('attendance fixture already exists for this staff/date');
+            error.code = 'LIVE_QA_ATTENDANCE_EXISTS';
+            error.status = 409;
+            throw error;
+        }
+        const timestamps = await client.query(
+            `SELECT (($1::date + $2::time) AT TIME ZONE 'Europe/Kyiv') AS clock_in,
+                    (($1::date + $3::time) AT TIME ZONE 'Europe/Kyiv') AS clock_out`,
+            [date, clockInTime, clockOutTime]
+        );
+        const clockIn = timestamps.rows[0]?.clock_in;
+        const clockOut = timestamps.rows[0]?.clock_out;
+        if (!(clockIn instanceof Date) || !(clockOut instanceof Date) || clockOut <= clockIn) {
+            const error = new Error('attendance interval must end after it starts');
+            error.code = 'LIVE_QA_ATTENDANCE_INTERVAL_INVALID';
+            error.status = 400;
+            throw error;
+        }
+        const payroll = calculateHrClockOutPayroll({ status: 'present', clock_in: clockIn }, {
+            clockIn,
+            clockOut,
+            plannedStart: loadedShift.plan.plannedStart,
+            plannedEnd: loadedShift.plan.plannedEnd,
+            scheduledWorkedMinutes: loadedShift.plan.plannedMinutes,
+            plan: loadedShift.plan,
+            primaryProfessionKey: loadedShift.plan.primaryProfessionKey,
+            recordDate: date,
+            settlementMode: 'actual_time'
+        });
+        const marker = liveQaMarker(runId);
+        const inserted = await client.query(
+            `INSERT INTO hr_time_records
+                (business_context, staff_id, record_date, clock_in, clock_out, planned_start, planned_end,
+                 late_minutes, early_leave_minutes, overtime_minutes, total_worked_minutes, status,
+                 notes, corrected_by, correction_reason, ip_address, user_agent)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             RETURNING *`,
+            [
+                hrBusinessContextFromRequest(req),
+                staff.id,
+                date,
+                clockIn,
+                clockOut,
+                loadedShift.plan.plannedStart,
+                loadedShift.plan.plannedEnd,
+                payroll.allocation.lateMinutes,
+                payroll.earlyLeaveMinutes,
+                payroll.overtimeMinutes,
+                payroll.totalWorkedMinutes,
+                payroll.status,
+                marker,
+                req.user?.username || null,
+                marker,
+                req.ip,
+                req.headers['user-agent'] || null
+            ]
+        );
+        await auditLog('live_multi_segment_qa_attendance_create', staff.id, req.user?.username, {
+            run_id: runId,
+            attendance_id: Number(inserted.rows[0]?.id) || null,
+            date,
+            planned_minutes: payroll.allocation.plannedMinutes,
+            actual_minutes: payroll.allocation.actualMinutes,
+            allocation_source: payroll.allocation.allocationSource
+        }, req.ip, client);
+        await client.query('COMMIT');
+        res.status(201).json({
+            success: true,
+            data: decorateAttendanceRecord(inserted.rows[0], loadedShift)
+        });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        return sendLiveQaError(res, error);
+    } finally {
+        client.release();
+    }
+});
+
+// DELETE /api/hr/qa/multi-segment/:runId — transactional cleanup restricted to the exact disposable staff marker.
+router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
+    let affectedDates = [];
+    try {
+        assertLiveQaConfirmation(liveQaConfirmationFromRequest(req));
+        const runId = normalizeLiveQaRunId(req.params.runId);
+        if (!runId) {
+            return res.status(400).json({ success: false, code: 'LIVE_QA_RUN_ID_INVALID', error: 'valid runId is required' });
+        }
+        const staffId = Number(req.body?.staffId ?? req.body?.staff_id);
+        await client.query('BEGIN');
+        const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });
+        const before = await loadLiveQaFixtureStatus(client, staff.id, runId);
+        affectedDates = [...new Set([
+            ...(await client.query('SELECT shift_date::text AS date FROM hr_shifts WHERE staff_id = $1', [staff.id])).rows.map(row => row.date),
+            ...(await client.query('SELECT date::text AS date FROM staff_schedule WHERE staff_id = $1', [staff.id])).rows.map(row => row.date)
+        ])].filter(Boolean).sort();
+
+        await client.query('DELETE FROM hr_time_records WHERE staff_id = $1', [staff.id]);
+        await client.query('DELETE FROM staff_checkins WHERE staff_id = $1', [staff.id]);
+        await client.query('DELETE FROM hr_shifts WHERE staff_id = $1', [staff.id]);
+        await client.query('DELETE FROM staff_schedule WHERE staff_id = $1', [staff.id]);
+        await reconcileRosterDates(client, affectedDates);
+        await client.query(
+            `UPDATE staff
+             SET is_active = false,
+                 hr_pool_status = CASE WHEN hr_pool_status = 'blacklisted' THEN 'blacklisted' ELSE 'reserve' END,
+                 termination_date = COALESCE(termination_date, CURRENT_DATE),
+                 termination_recorded_at = COALESCE(termination_recorded_at, NOW()),
+                 termination_recorded_by = COALESCE(termination_recorded_by, $2),
+                 termination_reason = COALESCE(termination_reason, $3)
+             WHERE id = $1`,
+            [staff.id, req.user?.username || null, `Disposable live QA cleanup ${runId}`]
+        );
+        await auditLog('live_multi_segment_qa_cleanup', staff.id, req.user?.username, {
+            run_id: runId,
+            before_counts: before.counts,
+            fixture_ids: before.fixtureIds,
+            affected_dates: affectedDates,
+            staff_archived: true
+        }, req.ip, client);
+        await client.query('COMMIT');
+        broadcastRosterDates(affectedDates, req.user?.id);
+        const after = await loadLiveQaFixtureStatus(pool, staff.id, runId);
+        if (!after.confirmedClean) {
+            const error = new Error('cleanup verification failed; inspect returned fixture IDs');
+            error.code = 'LIVE_QA_CLEANUP_UNCONFIRMED';
+            error.status = 500;
+            error.details = after;
+            throw error;
+        }
+        res.json({ success: true, data: { before, after } });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        return sendLiveQaError(res, error);
+    } finally {
+        client.release();
     }
 });
 

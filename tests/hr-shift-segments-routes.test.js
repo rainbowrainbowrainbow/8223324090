@@ -124,6 +124,14 @@ test('single-save routes enforce optimistic plan versions while bulk and copy us
     assert.match(staffScheduleMutations, /changes: \{\}/);
 });
 
+test('legacy plan fields cannot mutate an existing multi-segment day through Staff or HR APIs', () => {
+    assert.match(service, /if \(rows\.length > 1\)/);
+    assert.match(service, /HR_SHIFT_SEGMENTS_REQUIRED/);
+    assert.match(service, /409/);
+    assert.match(staffRoute, /if \(isHrShiftPlanError\(err\)\)[^]*?hrShiftPlanErrorPayload\(err\)/);
+    assert.match(hrRoute, /if \(isHrShiftPlanError\(err\)\)[^]*?sendHrShiftPlanError\(res, err/);
+});
+
 test('replacement validates every plan profession before moving the parent shift', () => {
     assert.match(hrRoute, /validateHrShiftDayPlanProfessions\(client, replacementStaffId, loaded\.plan\)/);
     assert.match(staffRoute, /validateHrShiftDayPlanProfessions\(client, replacementStaffId, sourcePlan\.plan\)/);
@@ -165,12 +173,11 @@ test('schedule Telegram notifications render all segment blocks in one message',
 });
 
 test('schedule writers acquire staff locks in stable order before parent and mirror rows', () => {
-    for (const route of [hrRoute, staffScheduleMutations]) {
-        assert.match(route, /WHERE id = ANY\(\$1::int\[\]\)[^]*?ORDER BY id[^]*?FOR UPDATE/);
-    }
+    assert.match(staffScheduleMutations, /WHERE id = ANY\(\$1::int\[\]\)[^]*?ORDER BY id[^]*?FOR UPDATE/);
+    assert.match(hrRoute, /lockScheduleStaffRows,[^]*?require\('\.\.\/services\/staffScheduleMutations'\)/);
     assert.match(staffRoute, /lockScheduleStaffRows\(client, orderedEntries\.map\(entry => entry\.staffId\)\)/);
-    assert.match(hrRoute, /lockHrShiftStaffRows\(client, orderedStaffIds\)/);
-    assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?SELECT \* FROM hr_shifts WHERE id = \$1[^]*?lockHrShiftStaffRows[^]*?SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
+    assert.match(hrRoute, /lockScheduleStaffRows\(client, orderedStaffIds\)/);
+    assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?SELECT \* FROM hr_shifts WHERE id = \$1[^]*?lockScheduleStaffRows[^]*?SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
     assert.match(staffScheduleMutations, /syncHrShiftFromScheduleEntry\(client[^]*?loadScheduleEntryForUpdate\(client, staffId, date\)/);
 });
 
@@ -178,11 +185,11 @@ test('replacement and direct HR mutation routes reject stale owner snapshots', (
     assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replace'[^]*?lockScheduleStaffRows[^]*?const freshScheduleResult = await client\.query[^]*?loadHrShiftDayPlan\(client[^]*?FOR UPDATE/);
     assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replacement-clear'[^]*?lockScheduleStaffRows[^]*?const freshScheduleResult = await client\.query[^]*?currentPlan\.shift\.original_staff_id[^]*?FOR UPDATE/);
     assert.match(hrRoute, /router\.put\('\/shifts\/:id'[^]*?validateShiftWriteStaff[^]*?loadHrShiftDayPlan\(client, \{ hrShiftId: req\.params\.id \}, \{ forUpdate: true \}\)[^]*?lockedCurrent\.shift\.staff_id[^]*?observedShift\.staff_id/);
-    assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?lockHrShiftStaffRows[^]*?FOR UPDATE[^]*?existing\.rows\[0\]\.staff_id[^]*?observed\.rows\[0\]\.staff_id/);
+    assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?lockScheduleStaffRows[^]*?FOR UPDATE[^]*?existing\.rows\[0\]\.staff_id[^]*?observed\.rows\[0\]\.staff_id/);
 });
 
 test('copy-week write paths refresh source rows after ordered staff locks', () => {
-    assert.match(hrRoute, /router\.post\('\/shifts\/copy-week'[^]*?lockHrShiftStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?hydrateHrShiftDayPlans\(client, freshSourceRows\)/);
+    assert.match(hrRoute, /router\.post\('\/shifts\/copy-week'[^]*?lockScheduleStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?hydrateHrShiftDayPlans\(client, freshSourceRows\)/);
     assert.match(staffRoute, /router\.post\('\/schedule\/copy-week'[^]*?lockScheduleStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?for \(const row of freshSourceRows\)/);
 });
 

@@ -3078,7 +3078,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('22:00');
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('02:00');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, `${label} rejects multi-segment plans containing an overnight block without day offsets`);
-        assert.match(await page.locator('#schPlanSummary').innerText(), /Нічний блок без day offsets/, `${label} explains the overnight ambiguity`);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /Нічний часовий блок без day offsets/, `${label} explains the overnight ambiguity`);
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('14:00');
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('20:00');
         if (options.screenshot) {

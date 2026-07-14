@@ -7,6 +7,11 @@ const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
 const TEST_USER = process.env.TEST_USER;
 const TEST_PASS = process.env.TEST_PASS;
 
+if (process.env.REQUIRE_ISOLATED_TEST_TARGET === 'true') {
+    const { assertSafeIsolatedTestUrl } = require('../scripts/test-db-safety');
+    assertSafeIsolatedTestUrl(BASE_URL);
+}
+
 let cachedToken = null;
 
 async function getToken() {

@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+    HR_SHIFT_BREAK_POLICY,
+    HR_SHIFT_OVERNIGHT_POLICY,
+    HR_SHIFT_PLAN_MESSAGES,
     MAX_HR_SHIFT_SEGMENTS_PER_DAY,
     durationAcrossMidnight,
     hydrateHrShiftDayPlans,
@@ -216,7 +219,8 @@ test('does not infer a separate post-midnight segment without a day offset', () 
             ]
         }),
         error => error.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT'
-            && error.details.policy === 'single_overnight_segment_only'
+            && error.message === HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT
+            && error.details.policy === HR_SHIFT_OVERNIGHT_POLICY
     );
 });
 
@@ -343,6 +347,8 @@ test('rejects a break equal to or longer than the segment and a zero-length segm
             segments: [segment('reception', '09:00', '10:00', { breakMinutes: 60 })]
         }),
         error => error.code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION'
+            && error.message === HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION
+            && error.details.policy === HR_SHIFT_BREAK_POLICY
     );
     assert.throws(
         () => normalize({
@@ -602,84 +608,46 @@ test('update by hrShiftId cannot validate against a different staff card', async
     );
 });
 
-test('metadata-only updates preserve an existing multi-segment plan', async () => {
-    const noteUpdate = createExistingMultiSegmentClient('regular');
-    const noteSaved = await saveHrShiftDayPlan(noteUpdate.client, {
-        hrShiftId: 42,
-        payload: { notes: 'Updated note' }
-    }, { actor: 'unit-test' });
-    assert.deepEqual(noteSaved.plan.segments.map(item => item.professionKey), ['reception', 'manager']);
-    assert.equal(noteSaved.shift.notes, 'Updated note');
-
-    const remoteUpdate = createExistingMultiSegmentClient('regular');
-    const remoteSaved = await saveHrShiftDayPlan(remoteUpdate.client, {
-        hrShiftId: 42,
-        payload: { shift_type: 'remote' }
-    }, { actor: 'unit-test' });
-    assert.equal(remoteSaved.plan.status, 'remote');
-    assert.equal(remoteSaved.shift.shift_type, 'remote');
-    assert.deepEqual(remoteSaved.plan.segments.map(item => item.professionKey), ['reception', 'manager']);
-
-    const regularUpdate = createExistingMultiSegmentClient('remote');
-    const regularSaved = await saveHrShiftDayPlan(regularUpdate.client, {
-        hrShiftId: 42,
-        payload: { shift_type: 'regular' }
-    }, { actor: 'unit-test' });
-    assert.equal(regularSaved.plan.status, 'working');
-    assert.equal(regularSaved.shift.shift_type, 'regular');
-    assert.deepEqual(regularSaved.plan.segments.map(item => item.professionKey), ['reception', 'manager']);
-
-    const workingStatusUpdate = createExistingMultiSegmentClient('remote');
-    const workingStatusSaved = await saveHrShiftDayPlan(workingStatusUpdate.client, {
-        hrShiftId: 42,
-        payload: { status: 'working' }
-    }, { actor: 'unit-test' });
-    assert.equal(workingStatusSaved.plan.status, 'working');
-    assert.equal(workingStatusSaved.shift.shift_type, 'regular');
-
-    const contradictoryStatusUpdate = createExistingMultiSegmentClient('regular');
-    const contradictoryStatusSaved = await saveHrShiftDayPlan(contradictoryStatusUpdate.client, {
-        hrShiftId: 42,
-        payload: { status: 'working', shift_type: 'remote' }
-    }, { actor: 'unit-test' });
-    assert.equal(contradictoryStatusSaved.plan.status, 'working');
-    assert.equal(contradictoryStatusSaved.shift.shift_type, 'regular');
-
-    const primaryUpdate = createExistingMultiSegmentClient('regular');
-    const primarySaved = await saveHrShiftDayPlan(primaryUpdate.client, {
-        hrShiftId: 42,
-        payload: { primaryProfessionKey: 'manager' }
-    }, { actor: 'unit-test' });
-    assert.equal(primarySaved.plan.primaryProfessionKey, 'manager');
-    assert.deepEqual(primarySaved.plan.segments.map(item => item.professionKey), ['reception', 'manager']);
-
-    const legacyEcho = createExistingMultiSegmentClient('regular');
-    const legacyEchoSaved = await saveHrShiftDayPlan(legacyEcho.client, {
-        hrShiftId: 42,
-        payload: {
+test('every legacy mutation rejects an existing multi-segment plan before parent writes', async () => {
+    const legacyPayloads = [
+        { notes: 'Updated note' },
+        { shift_type: 'remote' },
+        { status: 'working' },
+        { status: 'dayoff' },
+        { primaryProfessionKey: 'manager' },
+        {
             professionKey: 'reception',
             shiftStart: '09:00',
             shiftEnd: '20:00',
             breakMinutes: 0,
             notes: 'Legacy UI note'
+        },
+        {
+            professionKey: 'reception',
+            shiftStart: '10:00',
+            shiftEnd: '20:00',
+            breakMinutes: 0
         }
-    }, { actor: 'unit-test' });
-    assert.deepEqual(legacyEchoSaved.plan.segments.map(item => item.professionKey), ['reception', 'manager']);
-
-    const destructiveLegacyEdit = createExistingMultiSegmentClient('regular');
-    await assert.rejects(
-        saveHrShiftDayPlan(destructiveLegacyEdit.client, {
-            hrShiftId: 42,
-            payload: {
-                professionKey: 'reception',
-                shiftStart: '10:00',
-                shiftEnd: '20:00',
-                breakMinutes: 0
-            }
-        }),
-        error => error.code === 'HR_SHIFT_PLAN_SEGMENTS_REQUIRED_FOR_MULTI_UPDATE'
-            && error.statusCode === 409
-    );
+    ];
+    const rejectedStates = [];
+    for (const payload of legacyPayloads) {
+        const state = createExistingMultiSegmentClient('regular');
+        rejectedStates.push(state);
+        await assert.rejects(
+            saveHrShiftDayPlan(state.client, {
+                hrShiftId: 42,
+                payload
+            }, { actor: 'unit-test' }),
+            error => error.code === 'HR_SHIFT_SEGMENTS_REQUIRED'
+                && error.statusCode === 409
+                && error.details.hrShiftId === 42
+        );
+        assert.equal(
+            state.calls.some(call => /^UPDATE hr_shifts SET/.test(call.text)),
+            false,
+            'legacy rejection must happen before any parent write'
+        );
+    }
 
     const richSingleSegment = createExistingMultiSegmentClient('regular', [{
         id: 81,
@@ -723,7 +691,7 @@ test('metadata-only updates preserve an existing multi-segment plan', async () =
     assert.equal(professionSaved.plan.primaryProfessionKey, 'manager');
     assert.equal(professionSaved.plan.segments[0].professionKey, 'manager');
 
-    const lockOrder = noteUpdate.calls.map(call => call.text);
+    const lockOrder = rejectedStates[0].calls.map(call => call.text);
     const observedParentIndex = lockOrder.findIndex(text => /^SELECT .* FROM hr_shifts WHERE id = \$1$/.test(text));
     const staffLockIndex = lockOrder.findIndex(text => /FROM staff/.test(text) && /FOR SHARE/.test(text));
     const parentLockIndex = lockOrder.findIndex(text => /^SELECT .* FROM hr_shifts WHERE id = \$1 FOR UPDATE$/.test(text));
@@ -813,7 +781,7 @@ test('two managers reading one plan version cannot silently overwrite each other
     assert.equal(replacementsAfterStaleSave, replacementsAfterFirstSave, 'stale save must fail before child replacement');
 });
 
-test('version-aware segment updates require a token while legacy metadata payloads remain compatible', async () => {
+test('version-aware segment updates require a token and legacy multi-segment updates are rejected', async () => {
     const state = createExistingMultiSegmentClient('regular');
     await assert.rejects(
         saveHrShiftDayPlan(state.client, {
@@ -828,11 +796,13 @@ test('version-aware segment updates require a token while legacy metadata payloa
     assert.equal(state.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
 
     const legacyState = createExistingMultiSegmentClient('regular');
-    const saved = await saveHrShiftDayPlan(legacyState.client, {
-        hrShiftId: 42,
-        payload: { notes: 'Legacy metadata update' }
-    }, { requireExpectedUpdatedAt: true });
-    assert.equal(saved.shift.notes, 'Legacy metadata update');
+    await assert.rejects(
+        saveHrShiftDayPlan(legacyState.client, {
+            hrShiftId: 42,
+            payload: { notes: 'Legacy metadata update' }
+        }, { requireExpectedUpdatedAt: true }),
+        error => error.code === 'HR_SHIFT_SEGMENTS_REQUIRED' && error.statusCode === 409
+    );
 
     const freshLockedBatchState = createExistingMultiSegmentClient('regular');
     const batchSaved = await saveHrShiftDayPlan(freshLockedBatchState.client, {

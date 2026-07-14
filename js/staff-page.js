@@ -559,6 +559,8 @@ function scheduleableStaffErrorMessage(result = {}, fallback = 'Помилка �
     if (code === 'STAFF_FREELANCE_NOT_ALLOWED') return 'Фріланс-працівник не може бути доданий без explicit режиму.';
     if (code === 'STAFF_TERMINATED') return 'Працівник звільнений на дату цієї зміни.';
     if (code === 'STAFF_NOT_SCHEDULEABLE') return 'Працівник не доступний для активного графіка на цю дату.';
+    if (code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION') return STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION;
+    if (code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT') return STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT;
     return result?.error || fallback;
 }
 
@@ -4528,6 +4530,11 @@ function schedulePlanMetrics(segments = []) {
     };
 }
 
+const STAFF_SCHEDULE_PLAN_ERROR_MESSAGES = Object.freeze({
+    HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION: 'Перерва має бути коротшою за тривалість сегмента',
+    HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT: 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня'
+});
+
 function validateSchedulePlan(scope, options = {}) {
     const config = schedulePlanScopeConfig(scope);
     const status = document.getElementById(config.statusId)?.value || 'working';
@@ -4537,6 +4544,11 @@ function validateSchedulePlan(scope, options = {}) {
         ? normalizeProfessionKey(document.getElementById(config.primaryId)?.value || segments[0]?.professionKey)
         : null;
     const errors = [];
+    const errorCodes = [];
+    const addCodedError = (code, message) => {
+        errorCodes.push(code);
+        errors.push(message);
+    };
     if (working && !segments.length) errors.push('Додайте хоча б один часовий блок.');
     if (segments.length > STAFF_SCHEDULE_MAX_SEGMENTS) errors.push(`Максимум ${STAFF_SCHEDULE_MAX_SEGMENTS} блоків на день.`);
     const qualifiedStaff = options.staff || schedulePlanStaff(scope);
@@ -4547,7 +4559,12 @@ function validateSchedulePlan(scope, options = {}) {
         if (!segment.shiftStart || !segment.shiftEnd) errors.push(`${label}: задайте коректний початок і завершення.`);
         const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
         if (segment.shiftStart && segment.shiftStart === segment.shiftEnd) errors.push(`${label}: початок і завершення не можуть збігатися.`);
-        if (duration !== null && Number(segment.breakMinutes || 0) >= duration) errors.push(`${label}: перерва має бути коротшою за тривалість блоку.`);
+        if (duration !== null && Number(segment.breakMinutes || 0) >= duration) {
+            addCodedError(
+                'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION',
+                `${label}: ${STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION}.`
+            );
+        }
         if (Number(segment.breakMinutes || 0) < 0) errors.push(`${label}: перерва не може бути від'ємною.`);
         const additional = segment.additionalProfessionKeys || [];
         if (additional.includes(segment.professionKey)) errors.push(`${label}: основну професію не можна дублювати як додаткову.`);
@@ -4564,7 +4581,10 @@ function validateSchedulePlan(scope, options = {}) {
         return start !== null && end !== null && end < start;
     });
     if (segments.length > 1 && overnightSegments.length > 0) {
-        errors.push('Нічний блок без day offsets можна зберігати лише як єдиний блок дня. Окреме продовження після 00:00 поки не підтримується.');
+        addCodedError(
+            'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
+            `${STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT}.`
+        );
     }
     const metrics = schedulePlanMetrics(segments);
     for (let index = 1; index < metrics.timeline.length; index += 1) {
@@ -4578,7 +4598,15 @@ function validateSchedulePlan(scope, options = {}) {
     if (working && (!primaryProfessionKey || !segments.some(segment => segment.professionKey === primaryProfessionKey))) {
         errors.push('Основна роль дня має бути основною професією одного з блоків.');
     }
-    return { valid: errors.length === 0, errors: [...new Set(errors)], segments, primaryProfessionKey, metrics, status };
+    return {
+        valid: errors.length === 0,
+        errors: [...new Set(errors)],
+        errorCodes: [...new Set(errorCodes)],
+        segments,
+        primaryProfessionKey,
+        metrics,
+        status
+    };
 }
 
 function updateSchedulePlanPrimaryOptions(scope, preferredValue = '') {

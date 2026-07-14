@@ -1,11 +1,14 @@
-const { hydrateHrShiftDayPlans } = require('./hrShiftSegments');
+const {
+    HR_SHIFT_BREAK_POLICY,
+    hydrateHrShiftDayPlans
+} = require('./hrShiftSegments');
 
 const MINUTES_PER_DAY = 24 * 60;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
 // MVP policy: a segment's break is deducted only when the actual interval touches
 // that segment, and never by more than the touched minutes. Exact break windows
 // require a separate protected schema decision.
-const HR_ATTENDANCE_BREAK_POLICY = 'segment_minutes_mvp';
+const HR_ATTENDANCE_BREAK_POLICY = HR_SHIFT_BREAK_POLICY;
 const kyivDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: KYIV_TIME_ZONE,
     year: 'numeric',

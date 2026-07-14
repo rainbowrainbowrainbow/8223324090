@@ -387,13 +387,13 @@ async function loadScheduleEntriesForUpdate(client, entries = []) {
     ));
     if (!pairs.length) return new Map();
     const result = await client.query(
-        `SELECT *, date::text AS date
-         FROM staff_schedule
-         WHERE (staff_id, date) IN (
+        `SELECT ss.*, ss.date::text AS date
+         FROM staff_schedule ss
+         WHERE (ss.staff_id, ss.date::text) IN (
              SELECT pair.staff_id, pair.date
-             FROM UNNEST($1::int[], $2::date[]) AS pair(staff_id, date)
+             FROM UNNEST($1::int[], $2::text[]) AS pair(staff_id, date)
          )
-         ORDER BY staff_id, date, id
+         ORDER BY ss.staff_id, ss.date, ss.id
          FOR UPDATE`,
         [pairs.map(pair => pair.staffId), pairs.map(pair => pair.date)]
     );

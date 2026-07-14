@@ -197,7 +197,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /router\.delete\('\/shifts\/:id', requireHrManage/);
         assert.match(shiftSegmentsService, /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
         assert.match(shiftSegmentsService, /resolveStaffProfessionAssignments\(client, staffId/);
-        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(saved\.shift, client\)/);
+        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(saved\.shift, client, \{[^]*?staffValidation: shiftValidation/);
         assert.match(hrRoute, /mirrorHrDayPlanToStaffSchedule\([\s\S]*?currentShift\.staff_id,[\s\S]*?currentShift\.shift_date/);
         assert.match(hrRoute, /dayPlanPayload\(loaded\.plan/);
 

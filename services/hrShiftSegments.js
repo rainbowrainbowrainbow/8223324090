@@ -14,6 +14,12 @@ const MAX_HR_SHIFT_SEGMENTS_PER_DAY = 12;
 const MINUTES_PER_DAY = 24 * 60;
 const WORKING_DAY_STATUSES = new Set(['working', 'remote']);
 const NON_WORKING_DAY_STATUSES = new Set(['dayoff', 'vacation', 'sick']);
+const HR_SHIFT_BREAK_POLICY = 'segment_minutes_mvp';
+const HR_SHIFT_OVERNIGHT_POLICY = 'single_overnight_segment_only';
+const HR_SHIFT_PLAN_MESSAGES = Object.freeze({
+    HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION: 'Перерва має бути коротшою за тривалість сегмента',
+    HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT: 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня'
+});
 
 function professionCardFromStaff(staff = null, options = {}) {
     if (!staff) return null;
@@ -230,10 +236,11 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
     const durationMinutes = endMinutes - startMinutes;
     const breakMinutes = normalizeBreakMinutes(firstDefined(segment.breakMinutes, segment.break_minutes), segmentIndex);
     if (breakMinutes >= durationMinutes) {
-        fail('HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION', 'Перерва має бути коротшою за тривалість сегмента', {
+        fail('HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION', HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION, {
             segmentIndex,
             breakMinutes,
-            durationMinutes
+            durationMinutes,
+            policy: HR_SHIFT_BREAK_POLICY
         });
     }
 
@@ -421,9 +428,9 @@ function normalizeHrShiftDayPlan(payload = {}, options = {}) {
     if (normalizedSegments.length > 1 && overnightSegments.length > 0) {
         fail(
             'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
-            'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня',
+            HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT,
             {
-                policy: 'single_overnight_segment_only',
+                policy: HR_SHIFT_OVERNIGHT_POLICY,
                 overnightSegmentIndexes: overnightSegments.map(segment => segment.inputIndex),
                 segmentCount: normalizedSegments.length
             }
@@ -517,7 +524,10 @@ async function validateHrShiftDayPlanProfessions(db, staffId, plan, options = {}
 }
 
 function normalizeShiftDate(value) {
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        return `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    }
     const match = String(value || '').trim().match(/^(\d{4}-\d{2}-\d{2})/);
     return match ? match[1] : null;
 }
@@ -1054,31 +1064,8 @@ function hasLegacyProfessionFields(payload = {}) {
     return LEGACY_PROFESSION_FIELDS.some(field => hasOwn(payload, field));
 }
 
-function legacyEnvelopeDiffersFromParent(payload = {}, currentShift = {}) {
-    const requestedStart = firstDefined(
-        payload.shiftStart,
-        payload.shift_start,
-        payload.plannedStart,
-        payload.planned_start
-    );
-    const requestedEnd = firstDefined(
-        payload.shiftEnd,
-        payload.shift_end,
-        payload.plannedEnd,
-        payload.planned_end
-    );
-    const requestedBreak = firstDefined(payload.breakMinutes, payload.break_minutes);
-    if (requestedStart !== undefined
-        && normalizeShiftTime(requestedStart) !== normalizeShiftTime(currentShift.planned_start)) return true;
-    if (requestedEnd !== undefined
-        && normalizeShiftTime(requestedEnd) !== normalizeShiftTime(currentShift.planned_end)) return true;
-    if (requestedBreak !== undefined
-        && Number(requestedBreak) !== Number(currentShift.break_minutes ?? 0)) return true;
-    return false;
-}
-
 async function preserveExistingSegmentsForMetadataUpdate(client, payload, currentShift, status) {
-    if (!currentShift || !WORKING_DAY_STATUSES.has(status) || hasOwn(payload, 'segments')) {
+    if (!currentShift || hasOwn(payload, 'segments')) {
         return payload;
     }
 
@@ -1087,17 +1074,22 @@ async function preserveExistingSegmentsForMetadataUpdate(client, payload, curren
         Boolean(normalizeSegmentNote(row.notes))
         || parseJsonArray(row.additional_profession_keys, []).length > 0
     );
-    if (hasNonLegacySegmentData && hasLegacyTimeFields(payload)
-        && legacyEnvelopeDiffersFromParent(payload, currentShift)) {
+    const hasLegacyPlanFields = hasLegacyTimeFields(payload) || hasLegacyProfessionFields(payload);
+    if (rows.length > 1) {
         fail(
-            'HR_SHIFT_PLAN_SEGMENTS_REQUIRED_FOR_MULTI_UPDATE',
-            'Зміну з кількома сегментами можна змінювати лише через payload segments',
-            { hrShiftId: currentShift.id },
+            'HR_SHIFT_SEGMENTS_REQUIRED',
+            'План із кількома сегментами можна змінювати лише через payload segments',
+            {
+                hrShiftId: currentShift.id,
+                staffId: Number(currentShift.staff_id),
+                shiftDate: normalizeShiftDate(currentShift.shift_date)
+            },
             409
         );
     }
+    if (!WORKING_DAY_STATUSES.has(status)) return payload;
     if (!hasNonLegacySegmentData && rows.length <= 1
-        && (hasLegacyTimeFields(payload) || hasLegacyProfessionFields(payload))) return payload;
+        && hasLegacyPlanFields) return payload;
 
     return {
         ...payload,
@@ -1316,6 +1308,9 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
 
 module.exports = {
     HrShiftPlanError,
+    HR_SHIFT_BREAK_POLICY,
+    HR_SHIFT_OVERNIGHT_POLICY,
+    HR_SHIFT_PLAN_MESSAGES,
     MAX_HR_SHIFT_SEGMENTS_PER_DAY,
     WORKING_DAY_STATUSES,
     NON_WORKING_DAY_STATUSES,

@@ -276,7 +276,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.doesNotMatch(hrPage, /s\.position \? `<span>\$\{escapeHtml\(s\.position\)\}<\/span>` : ''/);
     });
 
-    it('links HR team search, profession rates, structure nodes, and drag-drop moves', () => {
+    it('links HR team category-local search, profession rates, structure nodes, and drag-drop moves', () => {
         assert.match(priorityMigration, /MIGRATION_KIND:\s*mixed/);
         assert.match(priorityMigration, /ADD COLUMN IF NOT EXISTS company_structure_node_id VARCHAR\(64\)/);
         assert.match(priorityMigration, /ADD COLUMN IF NOT EXISTS structure_node_id VARCHAR\(64\)/);
@@ -303,10 +303,16 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function renderStaffReadinessBadges/);
         assert.match(hrPage, /function staffHasProfilePhoto/);
         assert.match(hrPage, /function staffHasFaceDescriptor/);
-        assert.match(hrPage, /HR_TEAM_SETUP_FILTERS/);
-        assert.match(hrPage, /missing_profile_photo/);
-        assert.match(hrPage, /missing_face/);
-        assert.match(hrPage, /window\.setTeamSetupFilter/);
+        assert.match(hrPage, /function staffHasCrmAccount/);
+        assert.match(hrPage, /function staffHasStructureLink/);
+        assert.match(hrPage, /function renderTeamCardStatusChips/);
+        assert.match(hrPage, /function renderTeamTrainingCompact/);
+        assert.match(hrPage, /function renderTeamOnboardingCompact/);
+        assert.match(hrPage, /function clearTeamSearchOnBucketChange/);
+        assert.match(hrPage, /const activeStaff = teamStaff\.filter\(item => bucketForStaff\(item\) === activePeopleBucket\);/);
+        assert.match(hrPage, /activeStaff\.filter\(item => teamSearchHaystack\(item\)\.includes\(query\)\)/);
+        assert.doesNotMatch(hrPage, /HR_TEAM_SETUP_FILTERS/);
+        assert.doesNotMatch(hrPage, /window\.setTeamSetupFilter/);
         assert.match(hrPage, /Фото профілю/);
         assert.match(hrPage, /Камера \/ Face ID/);
         assert.doesNotMatch(hrPage, /Фото є/);
@@ -330,8 +336,9 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /baseUpdatedAt: companyStructureUpdatedAt/);
 
         assert.match(hrHtml, /id="teamSearch"/);
-        assert.match(hrHtml, /id="teamArchiveSearch"/);
-        assert.match(hrHtml, /Шукати в архіві/);
+        assert.doesNotMatch(hrHtml, /id="teamArchiveSearch"/);
+        assert.doesNotMatch(hrHtml, /Шукати в архіві/);
+        assert.doesNotMatch(hrHtml, /id="teamMissingBanner"/);
         assert.doesNotMatch(hrHtml, /id="teamRoleFilter"/);
         assert.match(hrHtml, /id="editProfessionRates"/);
         assert.match(hrHtml, /id="editStaffShiftPreferences"/);

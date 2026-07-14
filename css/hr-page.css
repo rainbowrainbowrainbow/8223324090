@@ -2645,115 +2645,6 @@ button.hr-team-onboarding-compact:focus-visible {
     font-size: 14px;
     color: var(--gray-700);
 }
-.hr-setup-banner {
-    display: grid;
-    gap: 10px;
-    margin-bottom: 16px;
-    padding: 12px;
-    border: 1px solid rgba(20, 184, 166, 0.22);
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(59, 130, 246, 0.06));
-    color: var(--gray-700);
-}
-.hr-setup-banner-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-.hr-setup-banner-head > div {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-}
-.hr-setup-banner-head strong {
-    color: var(--gray-800);
-    font-size: 13px;
-    font-weight: 950;
-}
-.hr-setup-banner-head span {
-    color: var(--gray-500);
-    font-size: 12px;
-    font-weight: 800;
-}
-.hr-setup-filter-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-.hr-setup-filter-chip,
-.hr-setup-filter-reset {
-    min-height: 34px;
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.72);
-    color: var(--gray-700);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 900;
-    cursor: pointer;
-}
-.hr-setup-filter-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 6px 9px 6px 10px;
-}
-.hr-setup-filter-chip b,
-.hr-setup-filter-chip i {
-    font-style: normal;
-}
-.hr-setup-filter-chip i {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 6px;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.08);
-    color: var(--gray-600);
-    font-size: 11px;
-    font-weight: 950;
-}
-.hr-setup-filter-chip:hover,
-.hr-setup-filter-chip:focus-visible,
-.hr-setup-filter-chip.is-active {
-    outline: none;
-    border-color: rgba(20, 184, 166, 0.44);
-    background: rgba(20, 184, 166, 0.14);
-    color: #0f766e;
-}
-.hr-setup-filter-chip.is-active i {
-    background: rgba(20, 184, 166, 0.20);
-    color: #0f766e;
-}
-.hr-setup-filter-reset {
-    flex: 0 0 auto;
-    padding: 6px 10px;
-    color: #0f766e;
-}
-.hr-setup-metrics-help {
-    color: var(--gray-500);
-    font-size: 12px;
-    font-weight: 750;
-}
-.hr-setup-metrics-help summary {
-    width: fit-content;
-    cursor: pointer;
-    color: #0f766e;
-    font-weight: 900;
-}
-.hr-setup-metrics-help p {
-    margin: 7px 0 0;
-    line-height: 1.45;
-}
-.hr-setup-metrics-help code {
-    padding: 1px 4px;
-    border-radius: 5px;
-    background: rgba(15, 23, 42, 0.06);
-    color: inherit;
-}
 .hr-team-stats {
     font-size: 11px;
     color: var(--gray-500);
@@ -5416,46 +5307,6 @@ body.dark-mode .hr-missing-banner {
     border-color: rgba(245, 158, 11, 0.2);
     color: #CBD5E1;
 }
-body.dark-mode .hr-setup-banner {
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.10), rgba(59, 130, 246, 0.08));
-    border-color: rgba(45, 212, 191, 0.20);
-    color: #CBD5E1;
-}
-body.dark-mode .hr-setup-banner-head strong {
-    color: #F8FAFC;
-}
-body.dark-mode .hr-setup-banner-head span,
-body.dark-mode .hr-setup-metrics-help {
-    color: #94A3B8;
-}
-body.dark-mode .hr-setup-filter-chip,
-body.dark-mode .hr-setup-filter-reset {
-    background: rgba(15, 23, 42, 0.46);
-    border-color: rgba(148, 163, 184, 0.20);
-    color: #CBD5E1;
-}
-body.dark-mode .hr-setup-filter-chip i {
-    background: rgba(255, 255, 255, 0.08);
-    color: #E2E8F0;
-}
-body.dark-mode .hr-setup-filter-chip:hover,
-body.dark-mode .hr-setup-filter-chip:focus-visible,
-body.dark-mode .hr-setup-filter-chip.is-active {
-    background: rgba(45, 212, 191, 0.14);
-    border-color: rgba(45, 212, 191, 0.32);
-    color: #5EEAD4;
-}
-body.dark-mode .hr-setup-filter-chip.is-active i {
-    background: rgba(45, 212, 191, 0.18);
-    color: #99F6E4;
-}
-body.dark-mode .hr-setup-filter-reset,
-body.dark-mode .hr-setup-metrics-help summary {
-    color: #5EEAD4;
-}
-body.dark-mode .hr-setup-metrics-help code {
-    background: rgba(255, 255, 255, 0.08);
-}
 body.dark-mode .hr-badge--ok { background: rgba(34, 197, 94, 0.1); }
 body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
@@ -5635,28 +5486,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-staff-photo-actions {
         align-items: flex-start;
         flex-direction: column;
-    }
-    .hr-setup-banner {
-        padding: 10px;
-        border-radius: 14px;
-    }
-    .hr-setup-banner-head {
-        align-items: stretch;
-        flex-direction: column;
-    }
-    .hr-setup-filter-row {
-        gap: 6px;
-    }
-    .hr-setup-filter-chip {
-        flex: 1 1 140px;
-        justify-content: space-between;
-        min-width: 0;
-    }
-    .hr-setup-filter-chip b {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
     .hr-today-hero {
         min-height: 0;

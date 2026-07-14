@@ -325,59 +325,6 @@ const PEOPLE_BUCKETS = [
     }
 ];
 
-const HR_TEAM_SETUP_FILTERS = [
-    {
-        id: 'needs_setup',
-        label: 'Потребує налаштування',
-        shortLabel: 'Налаштування',
-        icon: '⚠️',
-        description: 'Будь-який профіль, де бракує базових HR/операційних налаштувань.'
-    },
-    {
-        id: 'missing_profile_photo',
-        label: 'Без фото профілю',
-        shortLabel: 'Фото профілю',
-        icon: '🖼️',
-        description: 'Поле photo_url порожнє. Це аватар/фото у картці та пульсі, не Face ID.'
-    },
-    {
-        id: 'missing_face',
-        label: 'Без камери / Face ID',
-        shortLabel: 'Face ID',
-        icon: '📷',
-        description: 'Немає запису у staff_face_descriptors. Face ID реєструється через модуль Камера / check-in.'
-    },
-    {
-        id: 'missing_crm',
-        label: 'Без CRM',
-        shortLabel: 'CRM',
-        icon: '🔑',
-        description: 'CRM-акаунт не привʼязано. Це setup-ознака, не критичний блокер без окремого бізнес-правила.'
-    },
-    {
-        id: 'missing_structure',
-        label: 'Без структури',
-        shortLabel: 'Структура',
-        icon: '🏢',
-        description: 'Профіль не привʼязаний до вузла структури компанії.'
-    },
-    {
-        id: 'training_zero',
-        label: 'Навчання 0%',
-        shortLabel: 'Навчання',
-        icon: '🎓',
-        description: 'Готовність навчання має 0% або ще не має чеклістів/прогресу.'
-    },
-    {
-        id: 'missing_onboarding_owner',
-        label: 'Без відповідального за онбординг',
-        shortLabel: 'Онбординг',
-        icon: '👤',
-        description: 'Немає відповідального за онбординг.'
-    }
-];
-const HR_TEAM_SETUP_FILTER_IDS = new Set(['all', ...HR_TEAM_SETUP_FILTERS.map(filter => filter.id)]);
-
 const HR_TEAM_MOVE_TARGETS = [
     {
         id: 'workers',
@@ -468,7 +415,6 @@ let pollTimer = null;
 let hrProfessions = [];
 let activePeopleBucket = null;
 let pendingPeopleBucket = null;
-let activeTeamSetupFilter = 'all';
 let draggedTeamStaffId = null;
 let staffFoundationLoadSeq = 0;
 let staffWorkspaceSectionLoadSeq = new Map();
@@ -826,112 +772,6 @@ function staffHasStructureLink(staff = {}) {
         staff.structureNodeId ||
         staffStructureNodeTitle(staff)
     );
-}
-
-function staffHasOnboardingOwner(staff = {}) {
-    const assignment = staffOnboardingAssignment(staff);
-    return Boolean(assignment?.responsibleUserId || assignment?.responsible_user_id || assignment?.responsibleName);
-}
-
-function staffHasZeroTrainingReadiness(staff = {}) {
-    const readiness = staffTrainingReadiness(staff);
-    return !readiness.total || readiness.completed <= 0 || readiness.percent <= 0;
-}
-
-function teamSetupFilterById(filterId = 'all') {
-    const id = String(filterId || 'all').trim();
-    return HR_TEAM_SETUP_FILTERS.find(filter => filter.id === id) || null;
-}
-
-function normalizeTeamSetupFilter(filterId = 'all') {
-    const id = String(filterId || 'all').trim();
-    return HR_TEAM_SETUP_FILTER_IDS.has(id) ? id : 'all';
-}
-
-function staffMatchesTeamSetupFilter(staff = {}, filterId = 'all') {
-    const id = normalizeTeamSetupFilter(filterId);
-    if (id === 'all') return true;
-    if (id === 'missing_profile_photo') return !staffHasProfilePhoto(staff);
-    if (id === 'missing_face') return !staffHasFaceDescriptor(staff);
-    if (id === 'missing_crm') return !staffHasCrmAccount(staff);
-    if (id === 'missing_structure') return !staffHasStructureLink(staff);
-    if (id === 'training_zero') return staffHasZeroTrainingReadiness(staff);
-    if (id === 'missing_onboarding_owner') return !staffHasOnboardingOwner(staff);
-    if (id === 'needs_setup') {
-        return HR_TEAM_SETUP_FILTERS
-            .filter(filter => filter.id !== 'needs_setup')
-            .some(filter => staffMatchesTeamSetupFilter(staff, filter.id));
-    }
-    return true;
-}
-
-function teamSetupFilterCounts(staffList = []) {
-    return HR_TEAM_SETUP_FILTERS.reduce((acc, filter) => {
-        acc[filter.id] = staffList.filter(staff => staffMatchesTeamSetupFilter(staff, filter.id)).length;
-        return acc;
-    }, {});
-}
-
-function teamSetupFilterSource() {
-    const visibleBucketIds = new Set(visiblePeopleBuckets().map(bucket => bucket.id));
-    const archiveSearch = document.getElementById('teamArchiveSearch')?.checked === true;
-    return teamStaff.filter(staff => {
-        const bucket = bucketForStaff(staff);
-        if (!visibleBucketIds.has(bucket)) return false;
-        if (bucket === 'dismissed' && !archiveSearch && activePeopleBucket !== 'dismissed') return false;
-        return true;
-    });
-}
-
-function shouldExposeOnboardingSetupOnCard() {
-    return activeTeamSetupFilter === 'needs_setup' || activeTeamSetupFilter === 'missing_onboarding_owner';
-}
-
-function renderTeamSetupBanner() {
-    const banner = document.getElementById('teamMissingBanner');
-    if (!banner) return;
-    activeTeamSetupFilter = normalizeTeamSetupFilter(activeTeamSetupFilter);
-    const source = teamSetupFilterSource();
-    const counts = teamSetupFilterCounts(source);
-    const activeFilter = teamSetupFilterById(activeTeamSetupFilter);
-    const hasAnyIssue = HR_TEAM_SETUP_FILTERS.some(filter => Number(counts[filter.id] || 0) > 0);
-    if (!hasAnyIssue && !activeFilter) {
-        banner.innerHTML = '';
-        banner.style.display = 'none';
-        return;
-    }
-    const buttons = HR_TEAM_SETUP_FILTERS.map(filter => {
-        const count = Number(counts[filter.id] || 0);
-        const active = activeTeamSetupFilter === filter.id;
-        return `<button type="button"
-            class="hr-setup-filter-chip ${active ? 'is-active' : ''}"
-            aria-pressed="${active ? 'true' : 'false'}"
-            title="${escapeHtml(filter.description)}"
-            onclick="setTeamSetupFilter('${escapeHtml(filter.id)}')">
-                <span>${escapeHtml(filter.icon)}</span>
-                <b>${escapeHtml(filter.label)}</b>
-                <i>${count}</i>
-        </button>`;
-    }).join('');
-    const reset = activeFilter
-        ? '<button type="button" class="hr-setup-filter-reset" onclick="setTeamSetupFilter(\'all\')">Скинути фільтр</button>'
-        : '';
-    banner.innerHTML = `<section class="hr-setup-banner" aria-label="Фільтри налаштування HR-профілів">
-        <div class="hr-setup-banner-head">
-            <div>
-                <strong>Операційні фільтри налаштування</strong>
-                <span>${activeFilter ? `Активно: ${escapeHtml(activeFilter.label)}.` : 'Клік по показнику одразу відкриває відповідний список.'}</span>
-            </div>
-            ${reset}
-        </div>
-        <div class="hr-setup-filter-row">${buttons}</div>
-        <details class="hr-setup-metrics-help">
-            <summary>Що означають метрики?</summary>
-            <p><b>Фото профілю</b> — поле <code>photo_url</code> для аватара/пульсу. <b>Камера / Face ID</b> — окремий запис у <code>staff_face_descriptors</code>, який додається через модуль Камера / check-in.</p>
-            <p><b>Заповнення профілю</b>, <b>навчання</b> і <b>життєвий цикл</b> — різні метрики: поля картки, прогрес чеклістів і операційна готовність процесу.</p>
-        </details>
-    </section>`;
-    banner.style.display = '';
 }
 
 function renderStaffReadinessBadges(staff = {}) {
@@ -1978,19 +1818,27 @@ async function activateHrTab(target, options = {}) {
         return;
     }
     target = resolved.tab;
-    let requestedBucket = options.bucket || resolved.bucket || null;
-    if (target === 'team' && requestedBucket) {
+    let requestedBucket = target === 'team'
+        ? (options.bucket || resolved.bucket || pendingPeopleBucket || activePeopleBucket || firstVisiblePeopleBucketId())
+        : (options.bucket || resolved.bucket || null);
+    if (target === 'team') {
         requestedBucket = normalizeVisiblePeopleBucket(requestedBucket);
+        clearTeamSearchOnBucketChange(requestedBucket);
+        activePeopleBucket = requestedBucket;
     }
     if (requestedBucket) pendingPeopleBucket = requestedBucket;
     const panel = document.getElementById(`tab-${target}`);
     if (!panel) return;
     if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
+    const shouldRestoreNavFocus = document.getElementById('hrNav')?.contains(document.activeElement) === true;
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
     renderHrNav(target);
     updateHrPageTitle(target);
     setHrNavTeamMode(target);
     syncHrNavActive(target, requestedBucket);
+    if (shouldRestoreNavFocus) {
+        document.querySelector('#hrNav .hr-tab.active')?.focus({ preventScroll: true });
+    }
     panel.classList.add('active');
     if (options.updateHash || resolved.alias) {
         const hashTarget = hashForHrTarget(target, requestedBucket);
@@ -3709,60 +3557,30 @@ async function loadTeam() {
         return;
     }
     teamStaff = data.data || [];
-    renderTeamSetupBanner();
     filterAndRenderTeam();
     // Attach filter listeners (idempotent)
     const searchEl = document.getElementById('teamSearch');
-    const archiveEl = document.getElementById('teamArchiveSearch');
     if (searchEl) searchEl.oninput = filterAndRenderTeam;
-    if (archiveEl) archiveEl.onchange = filterAndRenderTeam;
+}
+
+function clearTeamSearchOnBucketChange(nextBucket) {
+    const normalizedNextBucket = normalizeVisiblePeopleBucket(nextBucket);
+    if (!activePeopleBucket || normalizedNextBucket === activePeopleBucket) return;
+    const search = document.getElementById('teamSearch');
+    if (search) search.value = '';
 }
 
 function filterAndRenderTeam() {
-    const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
-    const archiveSearch = document.getElementById('teamArchiveSearch')?.checked === true;
-    activeTeamSetupFilter = normalizeTeamSetupFilter(activeTeamSetupFilter);
-    const hasSetupFilter = activeTeamSetupFilter !== 'all';
     const buckets = visiblePeopleBuckets();
-    const visibleBucketIds = new Set(buckets.map(bucket => bucket.id));
     const grouped = buckets.map(bucket => ({
         ...bucket,
         totalCount: teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
     }));
     updatePeopleNavCounts(grouped);
-    renderTeamSetupBanner();
 
     if (!buckets.length) {
         updateTeamFilterInfo({ mode: 'empty', resultCount: 0, totalCount: 0 });
         renderPeopleBucketState('Немає доступних списків команди для цієї ролі', 'empty');
-        return;
-    }
-
-    if (query || hasSetupFilter) {
-        const searchableStaff = teamStaff.filter(item => {
-            const bucket = bucketForStaff(item);
-            return visibleBucketIds.has(bucket) && (archiveSearch || bucket !== 'dismissed');
-        });
-        const filteredBySetup = hasSetupFilter
-            ? searchableStaff.filter(item => staffMatchesTeamSetupFilter(item, activeTeamSetupFilter))
-            : searchableStaff;
-        const results = query
-            ? filteredBySetup.filter(item => teamSearchHaystack(item).includes(query))
-            : filteredBySetup;
-        updateTeamFilterInfo({
-            mode: hasSetupFilter ? 'setup' : 'search',
-            resultCount: results.length,
-            totalCount: filteredBySetup.length,
-            results,
-            archiveSearch,
-            setupFilter: activeTeamSetupFilter
-        });
-        renderTeamSearchResults(results, {
-            setupFilter: activeTeamSetupFilter,
-            emptyText: hasSetupFilter
-                ? 'За цим фільтром налаштування нічого не знайдено. Скиньте фільтр або увімкніть “Шукати в архіві”.'
-                : undefined
-        });
         return;
     }
 
@@ -3772,74 +3590,43 @@ function filterAndRenderTeam() {
     }
     activePeopleBucket = normalizeVisiblePeopleBucket(activePeopleBucket);
     const activeStaff = teamStaff.filter(item => bucketForStaff(item) === activePeopleBucket);
+    const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
+
+    if (query) {
+        const results = activeStaff.filter(item => teamSearchHaystack(item).includes(query));
+        updateTeamFilterInfo({
+            mode: 'search',
+            resultCount: results.length,
+            totalCount: activeStaff.length,
+            bucket: activePeopleBucket
+        });
+        renderTeamSearchResults(results);
+        return;
+    }
+
     updateTeamFilterInfo({
         mode: 'bucket',
         resultCount: activeStaff.length,
-        totalCount: teamStaff.filter(item => visibleBucketIds.has(bucketForStaff(item))).length,
+        totalCount: activeStaff.length,
         bucket: activePeopleBucket
     });
     renderTeamBucket(activePeopleBucket, activeStaff);
 }
 
-window.setTeamSetupFilter = function(filterId) {
-    activeTeamSetupFilter = normalizeTeamSetupFilter(filterId);
-    const hashTarget = activePeopleBucket ? hashForHrTarget('team', activePeopleBucket) : 'team';
-    history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
-    filterAndRenderTeam();
-};
-
-function peopleBucketSearchLabel(bucketId) {
-    const labels = {
-        workers: 'Робітниках',
-        interns: 'Стажерах',
-        blacklist: 'Чорному списку',
-        reserve: 'Резерві',
-        dismissed: 'Звільнених'
-    };
-    return labels[bucketId] || peopleBucketTitle(bucketId);
-}
-
 function updateTeamFilterInfo(context = {}) {
     const info = document.getElementById('teamFilterInfo');
     if (!info) return;
-    const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
-    const totalCount = Number(context.totalCount || 0);
-    if (context.mode === 'search') {
-        const results = Array.isArray(context.results) ? context.results : [];
-        const count = Number(context.resultCount || 0);
-        if (!count) {
-            info.textContent = context.archiveSearch ? '0 знайдено в команді та архіві' : '0 знайдено без архіву';
-            return;
-        }
-        const buckets = new Set(results.map(item => bucketForStaff(item)));
-        info.textContent = buckets.size === 1
-            ? `${count} знайдено у ${peopleBucketSearchLabel(Array.from(buckets)[0])}`
-            : `${count} знайдено у ${buckets.size} категоріях`;
+    if (context.mode === 'empty') {
+        info.textContent = 'Список порожній';
         return;
     }
-    if (context.mode === 'setup') {
-        const setupFilter = teamSetupFilterById(context.setupFilter);
-        const label = setupFilter?.label || 'фільтр налаштування';
-        const count = Number(context.resultCount || 0);
-        if (!count) {
-            info.textContent = `0 знайдено: ${label}`;
-            return;
-        }
-        const results = Array.isArray(context.results) ? context.results : [];
-        const buckets = new Set(results.map(item => bucketForStaff(item)));
-        info.textContent = buckets.size === 1
-            ? `${count} знайдено: ${label} у ${peopleBucketSearchLabel(Array.from(buckets)[0])}`
-            : `${count} знайдено: ${label} у ${buckets.size} категоріях`;
-        return;
-    }
-    if (!totalCount) {
-        info.textContent = query ? '0 знайдено' : 'Список порожній';
-        return;
-    }
-    const dismissedCount = teamStaff.filter(item => bucketForStaff(item) === 'dismissed').length;
-    const activeCount = Math.max(0, teamStaff.length - dismissedCount);
+    const count = Number(context.resultCount || 0);
     const bucketTitle = peopleBucketTitle(context.bucket || activePeopleBucket);
-    info.textContent = `${bucketTitle}: ${Number(context.resultCount || 0)} · ${activeCount} активних · ${dismissedCount} звільнених`;
+    if (context.mode === 'search') {
+        info.textContent = `${bucketTitle}: ${count} знайдено`;
+        return;
+    }
+    info.textContent = `${bucketTitle}: ${count}`;
 }
 
 function renderTeamBucket(bucketId, staff) {
@@ -3855,15 +3642,15 @@ function renderTeamBucket(bucketId, staff) {
     syncHrNavActive('team', bucketId);
 }
 
-function renderTeamSearchResults(staff, options = {}) {
+function renderTeamSearchResults(staff) {
     const grid = document.getElementById('teamGrid');
     if (!grid) return;
     grid.className = 'hr-people-results hr-people-results--search';
-    grid.dataset.peopleMode = options.setupFilter && options.setupFilter !== 'all' ? 'setup' : 'search';
-    delete grid.dataset.activeBucket;
+    grid.dataset.peopleMode = 'search';
+    grid.dataset.activeBucket = activePeopleBucket || '';
     grid.innerHTML = staff.length
-        ? `<div class="hr-people-results-grid">${renderTeamCards(staff, { showBucketBadge: true, showOnboardingSetup: shouldExposeOnboardingSetupOnCard() })}</div>`
-        : `<div class="hr-people-empty">${escapeHtml(options.emptyText || 'Нічого не знайдено. Увімкніть “Шукати в архіві” або змініть запит.')}</div>`;
+        ? `<div class="hr-people-results-grid">${renderTeamCards(staff, { showBucketBadge: true })}</div>`
+        : '<div class="hr-people-empty">Нічого не знайдено в цій категорії. Змініть запит.</div>';
     initTeamDragAndDrop();
     syncHrNavActive('team', activePeopleBucket);
 }
@@ -3981,6 +3768,8 @@ function renderPeopleBucketState(message, state = 'empty') {
 
 window.setPeopleBucket = function(bucketId) {
     const nextBucket = normalizeVisiblePeopleBucket(bucketId);
+    clearTeamSearchOnBucketChange(nextBucket);
+    pendingPeopleBucket = null;
     activePeopleBucket = nextBucket;
     const hashTarget = activePeopleBucket ? hashForHrTarget('team', activePeopleBucket) : 'team';
     history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
@@ -4031,9 +3820,9 @@ function renderTeamTrainingCompact(staff = {}) {
     </button>`;
 }
 
-function renderTeamOnboardingCompact(staff = {}, options = {}) {
+function renderTeamOnboardingCompact(staff = {}) {
     const assignment = staffOnboardingAssignment(staff);
-    if (!assignment && !options.showOnboardingSetup) return '';
+    if (!assignment) return '';
     const hasResponsible = Boolean(assignment?.responsibleUserId);
     const status = assignment ? onboardingStatusLabel(assignment.trainingStatus) : 'не призначено';
     const label = hasResponsible ? assignment.responsibleName : 'Відповідального немає';
@@ -4149,7 +3938,7 @@ function renderTeamCards(staff, options = {}) {
         const overflowMenu = renderTeamCardOverflowMenu(s);
         const cardActions = [profileTopAction, overflowMenu].filter(Boolean).join('');
         const statusChips = renderTeamCardStatusChips(s, bucketBadge);
-        const onboardingCompact = renderTeamOnboardingCompact(s, options);
+        const onboardingCompact = renderTeamOnboardingCompact(s);
 
         return `<article class="hr-team-card ${s.is_active ? '' : 'inactive'}" data-staff-id="${Number(s.id)}" data-current-bucket="${escapeHtml(bucketId)}" draggable="${canManage ? 'true' : 'false'}">
             <div class="hr-team-card-head">

@@ -198,10 +198,8 @@ const HARNESS_CODE = String.raw`
             '<main id="tab-team" class="hr-tab-content active">',
             '<div class="hr-team-controls"><div class="hr-team-filter-row">',
             '<input id="teamSearch" class="hr-team-search" aria-label="Пошук">',
-            '<label class="hr-team-active-toggle"><input type="checkbox" id="teamArchiveSearch"> Шукати в архіві</label>',
             '<div id="teamFilterInfo" class="hr-team-filter-info" aria-live="polite"></div>',
             '</div></div>',
-            '<div id="teamMissingBanner"></div>',
             '<div id="teamGrid" class="hr-team-grid"></div>',
             '</main>',
             window.__hrTeamBrowserModalMarkup,
@@ -363,6 +361,7 @@ const HARNESS_CODE = String.raw`
     };
 
     const productionConfirmModal = confirmModal;
+    loadTeam = async () => filterAndRenderTeam();
 
     window.__hrTeamBrowserSmoke = {
         setup({ dark = false } = {}) {
@@ -383,15 +382,44 @@ const HARNESS_CODE = String.raw`
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
             activePeopleBucket = 'workers';
             pendingPeopleBucket = null;
-            activeTeamSetupFilter = 'all';
             filterAndRenderTeam();
+            const search = document.getElementById('teamSearch');
+            if (search) search.oninput = filterAndRenderTeam;
         },
         render: filterAndRenderTeam,
         setBucket: bucket => window.setPeopleBucket(bucket),
-        setSetupFilter: filter => window.setTeamSetupFilter(filter),
-        search(value, archive = false) {
+        activateBucket: bucket => activateHrTab('team', { bucket, updateHash: true }),
+        async navigateHash(bucket) {
+            window.location.hash = '#' + bucket;
+            const target = getInitialHrTab();
+            await activateHrTab(target, { updateHash: false });
+        },
+        search(value) {
             document.getElementById('teamSearch').value = value;
-            document.getElementById('teamArchiveSearch').checked = archive;
+            filterAndRenderTeam();
+        },
+        searchValue: () => document.getElementById('teamSearch').value,
+        activeBucket: () => activePeopleBucket,
+        classifications: () => teamStaff.map(staff => String(staff.id) + ':' + bucketForStaff(staff)),
+        visibleBuckets: () => visiblePeopleBuckets().map(bucket => bucket.id),
+        normalizeBucket: bucket => normalizeVisiblePeopleBucket(bucket),
+        setRoleVisibility(role, bucketIds) {
+            const allowed = new Set(bucketIds);
+            AppState.currentUser = { ...AppState.currentUser, role };
+            window.HrTeamBucketAccess = {
+                canSeeBucket: (bucket, user) => user?.role === role ? allowed.has(bucket) : true,
+                canManage: () => false
+            };
+            activePeopleBucket = normalizeVisiblePeopleBucket(activePeopleBucket);
+            pendingPeopleBucket = null;
+            filterAndRenderTeam();
+        },
+        resetRoleVisibility() {
+            window.HrTeamBucketAccess = null;
+            AppState.currentUser = { ...AppState.currentUser, role: 'creator' };
+            activePeopleBucket = 'workers';
+            pendingPeopleBucket = null;
+            document.getElementById('teamSearch').value = '';
             filterAndRenderTeam();
         },
         open: id => openStaffEdit(id),
@@ -481,13 +509,24 @@ async function installHarness(page, options = {}) {
         window.__notifications = [];
         window.showNotification = (message, type = 'info') => window.__notifications.push({ message, type });
         window.requestAnimationFrame = callback => window.setTimeout(callback, 0);
+        window.HrPulseSwitcher = {
+            items: () => [],
+            renderTab(item, options = {}) {
+                const attrs = options.attrs?.(item) || {};
+                const attrText = Object.entries(attrs)
+                    .filter(([, value]) => value)
+                    .map(([name, value]) => `${name}="${value}"`)
+                    .join(' ');
+                const count = item.bucket ? `<span data-nav-count="${item.bucket}">0</span>` : '';
+                return `<button type="button" class="${options.className || ''}" ${attrText}>${item.label || ''}${count}</button>`;
+            }
+        };
         window.__originalReplaceState = history.replaceState.bind(history);
         history.replaceState = (state, title, url) => {
+            window.__lastReplaceStateUrl = String(url || '');
             try {
                 window.__originalReplaceState(state, title, url);
-            } catch {
-                window.__lastReplaceStateUrl = String(url || '');
-            }
+            } catch {}
         };
         window.__originalAddEventListener = document.addEventListener.bind(document);
         document.addEventListener = (type, listener, listenerOptions) => {
@@ -508,60 +547,100 @@ function cardNames(page) {
     return page.locator('#teamGrid .hr-team-name').allTextContents().then(rows => rows.map(text => text.trim()));
 }
 
+const CATEGORY_LOCAL_SEARCH_CASES = [
+    { bucket: 'workers', title: 'Робітники', ownName: 'QA Codex Schedule Replacement', neighborName: 'QA Blacklist Delta' },
+    { bucket: 'interns', title: 'Стажери', ownName: 'QA Intern Gamma', neighborName: 'QA Dismissed Epsilon' },
+    { bucket: 'blacklist', title: 'Чорний список', ownName: 'QA Blacklist Delta', neighborName: 'QA Reserve Beta' },
+    { bucket: 'reserve', title: 'Резерв', ownName: 'QA Reserve Beta', neighborName: 'QA Codex Schedule Replacement' },
+    { bucket: 'dismissed', title: 'Звільнені', ownName: 'QA Dismissed Epsilon', neighborName: 'QA Intern Gamma' }
+];
+
 async function assertTeamNavigation(page) {
     assert.deepEqual(await cardNames(page), ['QA Codex Schedule Replacement'], 'active workers bucket renders only worker card');
     assert.equal(await page.locator('#teamGrid .hr-team-card').count(), 1, 'closed bucket cards are not left in DOM');
     assert.equal(await page.locator('.hr-tab[data-bucket="workers"]').getAttribute('aria-pressed'), 'true', 'workers nav has active aria state');
     assert.equal(await page.locator('.hr-tab[data-bucket="reserve"]').getAttribute('aria-pressed'), 'false', 'reserve nav has inactive aria state');
 
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('Reserve Beta'));
-    assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'search finds profile outside current bucket');
-    assert.match(await page.locator('#teamFilterInfo').textContent(), /Резерв/, 'search result explains found bucket');
-    assert.equal(await page.locator('[data-card-bucket="reserve"]').count(), 1, 'search result shows bucket badge');
+    assert.equal(await page.locator('#teamArchiveSearch').count(), 0, 'dismissed search does not expose an archive checkbox');
+    const search = page.locator('#teamSearch');
+    for (const current of CATEGORY_LOCAL_SEARCH_CASES) {
+        await page.evaluate(bucket => window.__hrTeamBrowserSmoke.setBucket(bucket), current.bucket);
+        await search.fill(current.ownName);
+        assert.deepEqual(await cardNames(page), [current.ownName], `${current.bucket} finds its own profile`);
+        for (const candidate of CATEGORY_LOCAL_SEARCH_CASES) {
+            assert.equal(
+                await page.locator(`.hr-tab[data-bucket="${candidate.bucket}"]`).getAttribute('aria-pressed'),
+                candidate.bucket === current.bucket ? 'true' : 'false',
+                `${current.bucket} owns the only active aria state`
+            );
+        }
 
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('Dismissed Epsilon', false));
-    assert.deepEqual(await cardNames(page), [], 'archive profile is excluded from global search by default');
-    assert.match(await page.locator('#teamFilterInfo').textContent(), /0 знайдено без архіву/, 'archive-off search explains the empty result');
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('Dismissed Epsilon', true));
-    assert.deepEqual(await cardNames(page), ['QA Dismissed Epsilon'], 'archive toggle includes dismissed profiles');
-    assert.equal(await page.locator('[data-card-bucket="dismissed"]').count(), 1, 'archive result carries a dismissed bucket badge');
-
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('', false));
-
-    for (const filterId of ['needs_setup', 'missing_profile_photo', 'missing_face', 'missing_crm', 'missing_structure', 'training_zero', 'missing_onboarding_owner']) {
-        await page.evaluate(id => window.__hrTeamBrowserSmoke.setSetupFilter(id), filterId);
-        const activeChip = page.locator(`.hr-setup-filter-chip[onclick="setTeamSetupFilter('${filterId}')"]`);
-        assert.equal(await activeChip.getAttribute('aria-pressed'), 'true', `${filterId} exposes its active aria state`);
-        assert.equal(await page.locator('#teamGrid').evaluate(el => el.dataset.peopleMode), 'setup', `${filterId} uses setup result mode`);
-        const shownCount = await page.locator('#teamGrid .hr-team-card').count();
-        const metricCount = Number(await activeChip.locator('i').textContent());
-        assert.equal(shownCount, metricCount, `${filterId} counter matches rendered results`);
-        await page.evaluate(() => window.__hrTeamBrowserSmoke.setSetupFilter('all'));
-        assert.equal(await activeChip.getAttribute('aria-pressed'), 'false', `${filterId} clear action resets aria state`);
+        await search.fill(current.neighborName);
+        assert.deepEqual(await cardNames(page), [], `${current.bucket} excludes a neighboring category`);
+        assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'search');
+        assert.equal(
+            (await page.locator('#teamGrid .hr-people-empty').textContent())?.trim(),
+            'Нічого не знайдено в цій категорії. Змініть запит.',
+            `${current.bucket} renders the category-local empty state`
+        );
+        assert.equal((await page.locator('#teamFilterInfo').textContent())?.trim(), `${current.title}: 0 знайдено`);
     }
 
-    assert.equal(
-        await page.locator('.hr-setup-filter-chip').filter({ hasText: 'Без камери / Face ID' }).count(),
-        1,
-        'Face ID setup filter exposes its complete user-facing meaning'
-    );
-
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.setSetupFilter('missing_face'));
-    assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'setup filter Без камери / Face ID filters to matching card');
-    assert.equal(await page.locator('#teamGrid').evaluate(el => el.dataset.peopleMode), 'setup', 'setup filter uses global setup render mode');
-    assert.equal(await page.locator('.hr-setup-filter-chip[aria-pressed="true"]').filter({ hasText: 'Без камери' }).count(), 1, 'active setup filter has aria-pressed');
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.search('not-a-real-profile'));
-    assert.equal(await page.locator('#teamGrid .hr-people-empty').count(), 1, 'empty setup result renders one explicit empty state');
-    assert.equal(await page.locator('.hr-setup-filter-reset').isVisible(), true, 'empty setup result keeps a visible reset action');
-
-    await page.evaluate(() => {
-        window.__hrTeamBrowserSmoke.setSetupFilter('all');
-        window.__hrTeamBrowserSmoke.search('');
-        window.__hrTeamBrowserSmoke.setBucket('reserve');
-    });
-    assert.deepEqual(await cardNames(page), ['QA Reserve Beta'], 'bucket switch renders selected bucket only');
-    assert.equal(await page.locator('.hr-tab[data-bucket="reserve"]').getAttribute('aria-pressed'), 'true', 'reserve bucket has aria active state after switch');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('workers'));
+    await search.fill('QA Codex Schedule Replacement');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('reserve'));
+    assert.equal(await search.inputValue(), '', 'search input clears before rendering a different bucket');
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'bucket');
+    assert.deepEqual(await cardNames(page), ['QA Reserve Beta']);
+    assert.equal(await page.locator('.hr-tab[data-bucket="reserve"]').getAttribute('aria-pressed'), 'true');
     assert.match(await page.evaluate(() => window.__lastReplaceStateUrl || ''), /#reserve$/, 'bucket navigation writes the canonical reserve hash');
+
+    await search.fill('QA Reserve Beta');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('reserve'));
+    assert.equal(await search.inputValue(), 'QA Reserve Beta', 'reselecting the active category keeps the query');
+    assert.deepEqual(await cardNames(page), ['QA Reserve Beta']);
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('workers'));
+    await search.fill('QA Codex Schedule Replacement');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.activateBucket('blacklist'));
+    assert.equal(await search.inputValue(), '', 'activateHrTab clears the query before rendering a different category');
+    assert.deepEqual(await cardNames(page), ['QA Blacklist Delta']);
+    assert.equal(await page.locator('.hr-tab[data-bucket="blacklist"]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.evaluate(() => window.__lastReplaceStateUrl || ''), /#blacklist$/);
+
+    await search.fill('QA Blacklist Delta');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.navigateHash('dismissed'));
+    assert.equal(await search.inputValue(), '', 'hash navigation clears the query before rendering a different category');
+    assert.deepEqual(await cardNames(page), ['QA Dismissed Epsilon']);
+    assert.equal(await page.locator('.hr-tab[data-bucket="dismissed"]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.evaluate(() => window.location.hash), /#dismissed$/);
+
+    const roleVisibility = await page.evaluate(() => {
+        const api = window.__hrTeamBrowserSmoke;
+        const classifications = api.classifications();
+        api.search('');
+        api.setRoleVisibility('instructor', ['workers', 'interns']);
+        const visibleBuckets = api.visibleBuckets();
+        const normalizedHiddenBucket = api.normalizeBucket('blacklist');
+        api.setBucket('blacklist');
+        api.search('QA Blacklist Delta');
+        const result = {
+            classifications,
+            visibleBuckets,
+            normalizedHiddenBucket,
+            activeBucket: api.activeBucket(),
+            cardNames: Array.from(document.querySelectorAll('#teamGrid .hr-team-name')).map(node => node.textContent.trim()),
+            pressedBucket: document.querySelector('.hr-tab[aria-pressed="true"]')?.dataset.bucket || ''
+        };
+        api.resetRoleVisibility();
+        return result;
+    });
+    assert.deepEqual(roleVisibility.classifications, ['1:workers', '2:reserve', '3:interns', '4:blacklist', '5:dismissed']);
+    assert.deepEqual(roleVisibility.visibleBuckets, ['workers', 'interns']);
+    assert.equal(roleVisibility.normalizedHiddenBucket, 'workers');
+    assert.equal(roleVisibility.activeBucket, 'workers');
+    assert.deepEqual(roleVisibility.cardNames, [], 'restricted role cannot search a hidden bucket');
+    assert.equal(roleVisibility.pressedBucket, 'workers');
 }
 
 async function assertCardLayoutAndOverflow(page, options = {}) {

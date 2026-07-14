@@ -262,6 +262,18 @@ function createTeamBucketHarness() {
     window.showNotification = () => {};
     window.AppState = { currentUser: { id: 1, role: 'creator', name: 'Tester' } };
     window.requestAnimationFrame = callback => callback();
+    window.HrPulseSwitcher = {
+        items: () => [],
+        renderTab(item, options = {}) {
+            const attrs = options.attrs?.(item) || {};
+            const attrText = Object.entries(attrs)
+                .filter(([, value]) => value)
+                .map(([name, value]) => `${name}="${value}"`)
+                .join(' ');
+            const count = item.bucket ? `<span data-nav-count="${item.bucket}">0</span>` : '';
+            return `<button type="button" class="${options.className || ''}" ${attrText}>${item.label || ''}${count}</button>`;
+        }
+    };
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
@@ -284,11 +296,11 @@ function createTeamBucketHarness() {
                         '<button type="button" class="hr-tab" data-tab="team" data-bucket="reserve">Reserve <span data-nav-count="reserve">0</span></button>',
                         '<button type="button" class="hr-tab" data-tab="team" data-bucket="dismissed">Dismissed <span data-nav-count="dismissed">0</span></button>',
                         '</nav>',
+                        '<main id="tab-team" class="hr-tab-content active">',
                         '<input id="teamSearch">',
-                        '<label><input type="checkbox" id="teamArchiveSearch"> Шукати в архіві</label>',
                         '<div id="teamFilterInfo"></div>',
-                        '<div id="teamMissingBanner"></div>',
-                        '<div id="teamGrid"></div>'
+                        '<div id="teamGrid"></div>',
+                        '</main>'
                     ].join('');
                 }
 
@@ -309,20 +321,43 @@ function createTeamBucketHarness() {
                     { id: 4, name: 'Blacklist Delta', role_type: 'animator', secondary_professions: [], phone: '444', is_active: true, hr_pool_status: 'blacklisted', photo_url: '', has_face_descriptor: true, has_account: false, company_structure_node_id: null, training_readiness: { total: 2, completed: 1, percent: 50 } },
                     { id: 5, name: 'Intern Epsilon', role_type: 'intern', secondary_professions: [], phone: '555', is_active: true, hr_pool_status: 'core', photo_url: '/uploads/intern.jpg', has_face_descriptor: true, has_account: true, company_structure_node_id: 'interns', training_readiness: { total: 1, completed: 0, percent: 0 } }
                 ];
+                loadTeam = async () => filterAndRenderTeam();
 
                 return {
                     setupDom,
                     render: filterAndRenderTeam,
                     setBucket: bucket => window.setPeopleBucket(bucket),
-                    setSetupFilter: filter => window.setTeamSetupFilter(filter),
-                    search(value, archive = false) {
+                    activateBucket: bucket => activateHrTab('team', { bucket, updateHash: true }),
+                    async navigateHash(bucket) {
+                        window.location.hash = '#' + bucket;
+                        const target = getInitialHrTab();
+                        await activateHrTab(target, { updateHash: false });
+                    },
+                    search(value) {
                         document.getElementById('teamSearch').value = value;
-                        document.getElementById('teamArchiveSearch').checked = archive;
                         filterAndRenderTeam();
                     },
                     grid: () => document.getElementById('teamGrid'),
                     info: () => document.getElementById('teamFilterInfo').textContent,
-                    bannerText: () => document.getElementById('teamMissingBanner')?.textContent || '',
+                    searchValue: () => document.getElementById('teamSearch').value,
+                    emptyText: () => document.querySelector('#teamGrid .hr-people-empty')?.textContent || '',
+                    activeBucket: () => activePeopleBucket,
+                    hash: () => window.location.hash,
+                    hasArchiveSearch: () => Boolean(document.getElementById('teamArchiveSearch')),
+                    classifications: () => teamStaff.map(staff => String(staff.id) + ':' + bucketForStaff(staff)),
+                    visibleBuckets: () => visiblePeopleBuckets().map(bucket => bucket.id),
+                    normalizeBucket: bucket => normalizeVisiblePeopleBucket(bucket),
+                    setRoleVisibility(role, bucketIds) {
+                        const allowed = new Set(bucketIds);
+                        AppState.currentUser = { ...AppState.currentUser, role };
+                        window.HrTeamBucketAccess = {
+                            canSeeBucket: (bucket, user) => user?.role === role ? allowed.has(bucket) : true,
+                            canManage: () => false
+                        };
+                        activePeopleBucket = normalizeVisiblePeopleBucket(activePeopleBucket);
+                        pendingPeopleBucket = null;
+                        filterAndRenderTeam();
+                    },
                     cardIds: () => Array.from(document.querySelectorAll('#teamGrid .hr-team-card')).map(card => card.dataset.staffId),
                     cardNames: () => Array.from(document.querySelectorAll('#teamGrid .hr-team-name')).map(node => node.textContent.trim()),
                     toggleMenu: button => toggleTeamCardMenu(null, button),
@@ -351,7 +386,7 @@ test('HR org/profession editor ignores accidental backdrop clicks', () => {
     assert.equal(overlay.querySelector('.hr-org-node-modal')?.classList.contains('is-dismiss-attention'), true);
 });
 
-test('HR team bucket navigation renders one bucket and searches globally with archive semantics', () => {
+test('HR team bucket navigation searches only within each active category', async () => {
     const { window, api } = createTeamBucketHarness();
 
     api.render();
@@ -380,41 +415,89 @@ test('HR team bucket navigation renders one bucket and searches globally with ar
     assert.equal(api.count('blacklist'), '1');
     assert.equal(api.count('reserve'), '1');
     assert.equal(api.count('dismissed'), '1');
-    assert.match(api.bannerText(), /Без фото профілю/);
-    assert.match(api.bannerText(), /Без камери/);
-    assert.match(api.bannerText(), /Без CRM/);
 
-    api.setSetupFilter('missing_face');
+    const categoryCases = [
+        { bucket: 'workers', title: 'Робітники', ownName: 'Worker Alpha', neighborName: 'Blacklist Delta' },
+        { bucket: 'interns', title: 'Стажери', ownName: 'Intern Epsilon', neighborName: 'Dismissed Gamma' },
+        { bucket: 'blacklist', title: 'Чорний список', ownName: 'Blacklist Delta', neighborName: 'Reserve Beta' },
+        { bucket: 'reserve', title: 'Резерв', ownName: 'Reserve Beta', neighborName: 'Worker Alpha' },
+        { bucket: 'dismissed', title: 'Звільнені', ownName: 'Dismissed Gamma', neighborName: 'Intern Epsilon' }
+    ];
+
+    for (const current of categoryCases) {
+        api.setBucket(current.bucket);
+        api.search(current.ownName);
+        assert.deepEqual([...api.cardNames()], [current.ownName], `${current.bucket} finds its own profile`);
+        for (const candidate of categoryCases) {
+            assert.equal(
+                api.nav(candidate.bucket).getAttribute('aria-pressed'),
+                candidate.bucket === current.bucket ? 'true' : 'false',
+                `${current.bucket} owns the only active aria state`
+            );
+        }
+
+        api.search(current.neighborName);
+        assert.deepEqual([...api.cardNames()], [], `${current.bucket} excludes a neighboring category`);
+        assert.equal(api.grid().dataset.peopleMode, 'search');
+        assert.equal(api.emptyText(), 'Нічого не знайдено в цій категорії. Змініть запит.');
+        assert.equal(api.info(), `${current.title}: 0 знайдено`);
+    }
+
+    assert.equal(api.hasArchiveSearch(), false, 'dismissed search must not require an archive checkbox');
+    api.setBucket('dismissed');
+    api.search('Dismissed Gamma');
+    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
+
+    api.setBucket('workers');
+    api.search('Worker Alpha');
+    assert.equal(api.searchValue(), 'Worker Alpha');
+    api.setBucket('reserve');
+    assert.equal(api.searchValue(), '', 'switching category clears the previous query');
+    assert.equal(api.grid().dataset.peopleMode, 'bucket');
     assert.deepEqual([...api.cardNames()], ['Reserve Beta']);
-    assert.equal(api.grid().dataset.peopleMode, 'setup');
-    assert.equal(api.grid().querySelector('[data-card-bucket="reserve"]')?.textContent.includes('Резерв'), true);
-    assert.match(api.info(), /Без камери/);
-
-    api.setSetupFilter('missing_crm');
-    assert.deepEqual([...api.cardNames()], ['Blacklist Delta']);
-    assert.equal(api.grid().querySelector('[data-card-bucket="blacklist"]')?.textContent.includes('Чорний список'), true);
-    assert.match(api.info(), /Без CRM/);
-
-    api.setSetupFilter('all');
-    assert.deepEqual([...api.cardIds()], ['1']);
+    assert.equal(api.hash(), '#reserve');
 
     api.search('Reserve Beta');
+    api.setBucket('reserve');
+    assert.equal(api.searchValue(), 'Reserve Beta', 'reselecting the active category keeps the query');
     assert.deepEqual([...api.cardNames()], ['Reserve Beta']);
-    assert.equal(api.grid().querySelector('[data-card-bucket="reserve"]')?.textContent.includes('Резерв'), true);
-    assert.match(api.info(), /1 .*Резерв/);
 
-    api.search('Dismissed Gamma', false);
-    assert.deepEqual([...api.cardIds()], []);
-    assert.match(api.info(), /0/);
+    api.setBucket('workers');
+    api.search('Worker Alpha');
+    await api.activateBucket('blacklist');
+    assert.equal(api.searchValue(), '', 'activateHrTab clears the query before rendering a different category');
+    assert.equal(api.activeBucket(), 'blacklist');
+    assert.equal(api.hash(), '#blacklist');
+    assert.equal(api.nav('blacklist').getAttribute('aria-pressed'), 'true');
+    assert.deepEqual([...api.cardNames()], ['Blacklist Delta']);
 
-    api.search('Dismissed Gamma', true);
-    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
-    assert.equal(api.grid().querySelector('[data-card-bucket="dismissed"]')?.textContent.includes('Звільнені'), true);
-
-    api.search('', false);
-    api.setBucket('dismissed');
-    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
+    api.search('Blacklist Delta');
+    await api.navigateHash('dismissed');
+    assert.equal(api.searchValue(), '', 'hash navigation clears the query before rendering a different category');
+    assert.equal(api.activeBucket(), 'dismissed');
+    assert.equal(api.hash(), '#dismissed');
     assert.equal(api.nav('dismissed').getAttribute('aria-pressed'), 'true');
+    assert.deepEqual([...api.cardNames()], ['Dismissed Gamma']);
+});
+
+test('HR role visibility stays separate from staff bucket classification', () => {
+    const { api } = createTeamBucketHarness();
+
+    api.render();
+    const classifications = ['1:workers', '2:reserve', '3:dismissed', '4:blacklist', '5:interns'];
+    assert.deepEqual([...api.classifications()], classifications);
+
+    api.setRoleVisibility('instructor', ['workers', 'interns']);
+    assert.deepEqual([...api.visibleBuckets()], ['workers', 'interns']);
+    assert.equal(api.normalizeBucket('blacklist'), 'workers');
+    assert.deepEqual([...api.classifications()], classifications, 'visibility policy must not change bucket classification');
+
+    api.setBucket('blacklist');
+    assert.equal(api.activeBucket(), 'workers');
+    assert.equal(api.nav('workers').getAttribute('aria-pressed'), 'true');
+    assert.equal(api.nav('blacklist').getAttribute('aria-pressed'), 'false');
+    api.search('Blacklist Delta');
+    assert.deepEqual([...api.cardNames()], [], 'restricted roles cannot search a hidden category');
 });
 
 test('HR staff profile opens from fresh data and marks clean only after hydration', async () => {

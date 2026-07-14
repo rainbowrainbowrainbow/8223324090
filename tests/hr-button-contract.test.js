@@ -532,13 +532,12 @@ test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
     assert.ok(HR_JS.includes("return { tab: 'today', alias: requested !== 'today' };"));
 });
 
-test('HR people bucket navigation uses one rendered result surface and global search contracts', () => {
+test('HR people bucket navigation uses one rendered result surface and category-local search contracts', () => {
     for (const token of [
         'hr-people-results',
         'hr-people-results-grid',
         'hr-team-bucket-badge',
         'aria-pressed',
-        'teamArchiveSearch',
         "id: 'dismissed'",
         "title: 'Звільнені'",
         "if (staff.is_active === false) return 'dismissed';",
@@ -548,12 +547,18 @@ test('HR people bucket navigation uses one rendered result surface and global se
         'teamFilterInfo',
         'totalCount',
         'let activePeopleBucket = null',
+        'activePeopleBucket = requestedBucket',
         'activePeopleBucket = nextBucket',
+        'function visiblePeopleBuckets',
+        'function normalizeVisiblePeopleBucket',
+        'function canSeeHrTeamBucket',
+        'function clearTeamSearchOnBucketChange',
+        'const activeStaff = teamStaff.filter(item => bucketForStaff(item) === activePeopleBucket);',
+        'activeStaff.filter(item => teamSearchHaystack(item).includes(query))',
         'updatePeopleNavCounts(grouped)',
         'renderPeopleBucketState',
         'renderTeamBucket',
         'renderTeamSearchResults',
-        'peopleBucketSearchLabel',
         'renderTeamCardStatusChips',
         'renderTeamTrainingCompact',
         'renderTeamOnboardingCompact',
@@ -563,15 +568,21 @@ test('HR people bucket navigation uses one rendered result surface and global se
         'closeTeamCardMenus',
         'hr-people-empty--loading',
         'hr-people-empty--error',
-        'Шукати в архіві',
-        'знайдено у',
+        'Нічого не знайдено в цій категорії',
         'window.setPeopleBucket'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
+    for (const removedToken of [
+        'teamArchiveSearch',
+        'teamMissingBanner',
+        'HR_TEAM_SETUP_FILTERS',
+        'window.setTeamSetupFilter'
+    ]) {
+        assert.equal(HR_JS.includes(removedToken) || HR_HTML.includes(removedToken), false, `removed HR Team token returned: ${removedToken}`);
+    }
     assert.equal(HR_HTML.includes('teamRoleFilter'), false);
     assert.equal(HR_HTML.includes('Показувати звільнених'), false);
-    assert.equal(HR_JS.includes('Нікого не знайдено'), false);
 });
 
 test('HR scheduled clock-out excludes gaps between normalized shift segments', () => {

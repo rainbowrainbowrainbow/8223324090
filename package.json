@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.17",
+  "version": "0.79.18",
   "eventGenix": {
-    "releaseLabel": "Hermes OCR графіка"
+    "releaseLabel": "Безпечні multi-segment плани"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

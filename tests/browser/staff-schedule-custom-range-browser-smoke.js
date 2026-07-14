@@ -1471,6 +1471,46 @@ async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
     await activateScheduleDepartment(page, 'all');
 }
 
+async function assertScheduleGroupLabelsReadable(page, label, { simulatedTechCount = null, maxLines = 2 } = {}) {
+    const metrics = await page.locator('#scheduleBody').evaluate((tbody, options) => {
+        const techCount = tbody.querySelector('tr.dept-row[data-dept="tech"] .dept-count');
+        const originalTechCount = techCount?.textContent;
+        if (techCount && Number.isFinite(options.simulatedTechCount)) {
+            techCount.textContent = String(options.simulatedTechCount);
+        }
+
+        try {
+            return Array.from(tbody.querySelectorAll('tr.dept-row .schedule-group-label')).map(element => {
+                const style = getComputedStyle(element);
+                const fontSize = Number.parseFloat(style.fontSize) || 14;
+                const lineHeight = Number.parseFloat(style.lineHeight) || (fontSize * 1.2);
+                const box = element.getBoundingClientRect();
+                const toggleBox = element.closest('.schedule-group-toggle')?.getBoundingClientRect();
+                const countBox = element.closest('.schedule-group-toggle')?.querySelector('.dept-count')?.getBoundingClientRect();
+                return {
+                    text: element.textContent?.trim() || 'unknown',
+                    horizontalOverflow: element.scrollWidth > element.clientWidth + 1,
+                    verticalOverflow: element.scrollHeight > element.clientHeight + 1,
+                    lineCount: box.height / lineHeight,
+                    overlapsCount: Boolean(countBox && box.right > countBox.left + 1),
+                    outsideToggle: Boolean(toggleBox && (box.left < toggleBox.left - 1 || box.right > toggleBox.right + 1))
+                };
+            });
+        } finally {
+            if (techCount && originalTechCount != null) techCount.textContent = originalTechCount;
+        }
+    }, { simulatedTechCount });
+
+    assert.ok(metrics.length > 0, `${label}: department group labels are measurable`);
+    for (const metric of metrics) {
+        assert.equal(metric.horizontalOverflow, false, `${label}: ${metric.text} has no horizontal clipping`);
+        assert.equal(metric.verticalOverflow, false, `${label}: ${metric.text} has no vertical clipping`);
+        assert.ok(metric.lineCount <= maxLines + 0.2, `${label}: ${metric.text} uses no more than ${maxLines} lines`);
+        assert.equal(metric.overlapsCount, false, `${label}: ${metric.text} does not overlap its count`);
+        assert.equal(metric.outsideToggle, false, `${label}: ${metric.text} stays inside its group control`);
+    }
+}
+
 async function captureFixtureDepartmentScheduleSurfaces(page) {
     const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(chips => chips
         .map(chip => ({
@@ -1482,6 +1522,7 @@ async function captureFixtureDepartmentScheduleSurfaces(page) {
     for (const filter of filters) {
         await activateScheduleDepartment(page, filter.key);
         await expandScheduleGroup(page, filter.key);
+        await assertScheduleGroupLabelsReadable(page, `${filter.key}: desktop department header`, { simulatedTechCount: 3 });
         const geometry = await page.locator('#scheduleBody').evaluate(tbody => {
             const containmentIssues = [];
             for (const cell of tbody.querySelectorAll('td.schedule-day-cell')) {
@@ -3448,6 +3489,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await assertNoControlOverlap(page, `${label} month`);
         await assertDepartmentChipsFit(page, `${label} month`);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthDays, minDayWidth: 40 });
+        await assertScheduleGroupLabelsReadable(page, `${label} month department headers`, { simulatedTechCount: 3 });
         await assertDepartmentRerenderPreservesPageScroll(page, `${label} departments`);
         await assertDepartmentScrollCue(page, `${label} departments`);
         await assertRealScheduleWheelScroll(page, `${label} month`);
@@ -3609,7 +3651,7 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
                     base,
                     viewport,
                     `mobile-${viewport.width}-${theme}`,
-                    { darkMode, screenshot: viewport.width === 320 }
+                    { darkMode, screenshot: true }
                 );
             }
         }

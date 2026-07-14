@@ -432,6 +432,37 @@ async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
     await page.waitForFunction(() => document.querySelector('#deptFilter .dept-chip[data-dept="all"]')?.getAttribute('aria-pressed') === 'true');
 }
 
+async function assertScheduleGroupLabelsReadable(page, label, maxLines = 2) {
+    const metrics = await page.locator('#scheduleBody').evaluate(tbody => (
+        Array.from(tbody.querySelectorAll('tr.dept-row .schedule-group-label')).map(element => {
+            const style = getComputedStyle(element);
+            const fontSize = Number.parseFloat(style.fontSize) || 14;
+            const lineHeight = Number.parseFloat(style.lineHeight) || (fontSize * 1.2);
+            const box = element.getBoundingClientRect();
+            const toggle = element.closest('.schedule-group-toggle');
+            const toggleBox = toggle?.getBoundingClientRect();
+            const countBox = toggle?.querySelector('.dept-count')?.getBoundingClientRect();
+            return {
+                text: element.textContent?.trim() || 'unknown',
+                horizontalOverflow: element.scrollWidth > element.clientWidth + 1,
+                verticalOverflow: element.scrollHeight > element.clientHeight + 1,
+                lineCount: box.height / lineHeight,
+                overlapsCount: Boolean(countBox && box.right > countBox.left + 1),
+                outsideToggle: Boolean(toggleBox && (box.left < toggleBox.left - 1 || box.right > toggleBox.right + 1))
+            };
+        })
+    ));
+
+    assert.ok(metrics.length > 0, `${label}: department group labels are measurable`);
+    for (const metric of metrics) {
+        assert.equal(metric.horizontalOverflow, false, `${label}: ${metric.text} has no horizontal clipping`);
+        assert.equal(metric.verticalOverflow, false, `${label}: ${metric.text} has no vertical clipping`);
+        assert.ok(metric.lineCount <= maxLines + 0.2, `${label}: ${metric.text} uses no more than ${maxLines} lines`);
+        assert.equal(metric.overlapsCount, false, `${label}: ${metric.text} does not overlap its count`);
+        assert.equal(metric.outsideToggle, false, `${label}: ${metric.text} stays inside its group control`);
+    }
+}
+
 async function captureDepartmentScheduleSurfaces(page) {
     const departmentKeys = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(chips => chips
         .filter(chip => Number(chip.querySelector('.dept-chip-count')?.textContent?.trim() || 0) > 0)
@@ -442,6 +473,7 @@ async function captureDepartmentScheduleSurfaces(page) {
         await activateDepartmentFilter(page, key);
         const toggle = page.locator(`[data-schedule-group-toggle="${key}"]`);
         if (await toggle.count() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+        await assertScheduleGroupLabelsReadable(page, `desktop ${key} department header`);
         await captureStableScheduleScreenshot(page, `desktop-department-${key.replace(/[^a-z0-9_-]/gi, '-')}.png`);
     }
     await activateDepartmentFilter(page, 'all');
@@ -1250,6 +1282,7 @@ async function runMobileFlow(browser, base, session, viewport = VIEWPORTS.mobile
         const monthRange = await readRangeState(page);
         await assertMobileLayout(page);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthRange.dayCount, minDayWidth: 40 });
+        await assertScheduleGroupLabelsReadable(page, `${label} month department headers`);
         await captureStableScheduleScreenshot(page, `${label}-month.png`);
         assertNoForbiddenStaffWrites(forbidden, label);
 

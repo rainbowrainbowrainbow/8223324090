@@ -4858,11 +4858,13 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
 }
 
 .schedule-group-label {
+    flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
     overflow-wrap: normal;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-overflow: clip;
+    white-space: normal;
+    line-height: 1.15;
 }
 
 .dept-row[data-dept="animators"] .schedule-group-sticky-cell { border-left: 4px solid #059669; }
@@ -4909,6 +4911,7 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex: 0 0 auto;
     background: var(--gray-200);
     color: var(--gray-600);
     font-size: 11px;
@@ -5993,6 +5996,32 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     }
     .schedule-table td:first-child {
         min-width: 140px;
+    }
+    .dept-row .schedule-category-sticky-cell {
+        padding-inline: 6px;
+    }
+    .dept-row .schedule-group-toggle {
+        gap: 3px;
+    }
+    .dept-row .dept-icon {
+        display: none;
+    }
+    .dept-row .schedule-group-caret {
+        width: 18px;
+        height: 18px;
+        flex-basis: 18px;
+        border-radius: 6px;
+    }
+    .dept-row .dept-count {
+        box-sizing: border-box;
+        min-width: 18px;
+        height: 18px;
+        padding-inline: 4px;
+        margin-left: 0;
+        font-size: 10px;
+    }
+    .dept-row .schedule-group-label {
+        font-size: 12px;
     }
     .sch-shift-preference-options {
         grid-template-columns: 1fr;

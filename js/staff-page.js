@@ -3819,7 +3819,8 @@ function renderDeptFilter() {
     }
     const renderChip = ({ value, label, count }) => {
         const active = StaffState.activeDept === value;
-        return `<button type="button" class="dept-chip ${active ? 'active' : ''}" data-dept="${escapeHtml(value)}" aria-pressed="${active ? 'true' : 'false'}">
+        const accessibleLabel = `${label}: ${Number(count || 0)}`;
+        return `<button type="button" class="dept-chip ${active ? 'active' : ''}" data-dept="${escapeHtml(value)}" aria-pressed="${active ? 'true' : 'false'}" aria-label="${escapeHtml(accessibleLabel)}" title="${escapeHtml(label)}">
             <span class="dept-chip-label">${escapeHtml(label)}</span>
             <strong class="dept-chip-count">${Number(count || 0)}</strong>
         </button>`;
@@ -3845,7 +3846,47 @@ function renderDeptFilter() {
         });
         container.dataset.scheduleDeptFilterBound = 'true';
     }
+    bindScheduleDepartmentFilterScrollCue(container);
+    requestAnimationFrame(() => {
+        keepScheduleDepartmentChipVisible(
+            container,
+            container.querySelector('.dept-chip[aria-pressed="true"]')
+        );
+        syncScheduleDepartmentFilterScrollCue(container);
+    });
     updateScheduleHeaderMetrics();
+}
+
+function keepScheduleDepartmentChipVisible(container, chip) {
+    if (!container || !chip) return;
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    if (maxScrollLeft <= 2) return;
+    const containerBox = container.getBoundingClientRect();
+    const chipBox = chip.getBoundingClientRect();
+    const edgeInset = 24;
+    let delta = 0;
+    if (chipBox.left < containerBox.left + edgeInset) {
+        delta = chipBox.left - containerBox.left - edgeInset;
+    } else if (chipBox.right > containerBox.right - edgeInset) {
+        delta = chipBox.right - containerBox.right + edgeInset;
+    }
+    if (Math.abs(delta) <= 1) return;
+    container.scrollLeft = Math.max(0, Math.min(maxScrollLeft, container.scrollLeft + delta));
+}
+
+function syncScheduleDepartmentFilterScrollCue(container = document.getElementById('deptFilter')) {
+    if (!container) return;
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    container.dataset.canScrollLeft = container.scrollLeft > 2 ? 'true' : 'false';
+    container.dataset.canScrollRight = container.scrollLeft < maxScrollLeft - 2 ? 'true' : 'false';
+}
+
+function bindScheduleDepartmentFilterScrollCue(container = document.getElementById('deptFilter')) {
+    if (!container || container.dataset.scheduleScrollCueBound === 'true') return;
+    const sync = () => syncScheduleDepartmentFilterScrollCue(container);
+    container.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync, { passive: true });
+    container.dataset.scheduleScrollCueBound = 'true';
 }
 
 function renderScheduleStaffFilterInfo(filteredStaff = null) {
@@ -4073,8 +4114,8 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
              aria-label="Відкрити HR профіль: ${escapeHtml(employeeName)}">
             ${renderStaffCardAvatar(emp, initials, avatarColor)}
             <div class="emp-info">
-                <span class="emp-name"><span class="emp-name-text">${escapeHtml(employeeName)}</span>${hrLink}</span>
-                <span class="emp-position">${escapeHtml(roleSummary)} ${linkBadge}</span>
+                <span class="emp-name"><span class="emp-name-text" title="${escapeHtml(employeeName)}">${escapeHtml(employeeName)}</span>${hrLink}</span>
+                <span class="emp-position" title="${escapeHtml(roleSummary)}">${escapeHtml(roleSummary)} ${linkBadge}</span>
                 <span class="emp-readiness">${cardBadges}${rowHealthBadges}</span>
                 <span class="emp-hours">${hoursLabel}</span>
             </div>
@@ -4257,7 +4298,7 @@ function renderSchedule() {
 
         // Department header
         bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td class="schedule-category-sticky-cell schedule-group-sticky-cell">
-            <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}">
+            <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}" title="${escapeHtml(deptLabel)}">
                 <span class="schedule-group-caret" aria-hidden="true"></span>
                 ${icon}
                 <span class="schedule-group-label">${escapeHtml(deptLabel)}</span>
@@ -4276,7 +4317,7 @@ function renderSchedule() {
             const subGroupIcon = renderScheduleCrmIcon(sg.icon, 'sub-group-icon schedule-crm-icon');
 
             bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
-                ${subGroupIcon}<span class="sub-group-label">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
+                ${subGroupIcon}<span class="sub-group-label" title="${escapeHtml(sg.label)}">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
             </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
 
             for (const emp of sgStaff) {

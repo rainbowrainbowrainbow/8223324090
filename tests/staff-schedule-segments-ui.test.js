@@ -108,6 +108,17 @@ test('cells, role sections, export and print use segments instead of envelope du
     assert.match(css, /td\.schedule-day-cell\.status-working/);
     assert.match(css, /\.schedule-health-badge\.is-critical\s*\{[\s\S]*background:\s*#DC2626;/);
     assert.match(css, /tr\.is-schedule-focus td\s*\{[\s\S]*box-shadow:\s*inset 0 -2px 0 #2563EB;/);
+    assert.match(css, /td\.schedule-day-cell\.today-col::before\s*\{\s*content:\s*none;/);
+    assert.doesNotMatch(css, /td\.schedule-day-cell\.today-col::before\s*\{[\s\S]{0,240}height:\s*2px/);
+    assert.match(css, /td\.schedule-day-cell\.today-col\s*\{[\s\S]*background-image:\s*linear-gradient/);
+    assert.match(css, /schedule-table thead th:first-child\s*\{[\s\S]*background:\s*linear-gradient\(180deg, #F8FAFC, #F1F5F9\)/);
+    assert.match(css, /dark-mode\[data-page-group="hr"\] \.schedule-table thead th:first-child,[\s\S]*background:\s*linear-gradient\(180deg, #0F172A, #111827\)/);
+    assert.match(page, /function syncScheduleDepartmentFilterScrollCue/);
+    assert.match(page, /function keepScheduleDepartmentChipVisible/);
+    assert.match(page, /dataset\.canScrollRight/);
+    assert.doesNotMatch(page, /dept-chip\[aria-pressed="true"\][\s\S]{0,160}scrollIntoView/);
+    assert.match(page, /title="\$\{escapeHtml\(label\)\}"/);
+    assert.match(css, /dept-filter\[data-can-scroll-left="true"\]\[data-can-scroll-right="false"\][\s\S]*mask-image:\s*linear-gradient/);
 });
 
 test('segment editor keeps dark and 320-390px layouts explicit', () => {

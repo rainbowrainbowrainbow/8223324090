@@ -268,6 +268,34 @@ async function waitForStaffSchedule(page, base) {
     }
 }
 
+async function captureStableScheduleScreenshot(page, filename, selector = '#scheduleWrapper') {
+    await page.waitForFunction(() => {
+        const region = document.getElementById('scheduleDataRegion');
+        return ['ready', 'empty'].includes(region?.dataset.scheduleState || '')
+            && region?.getAttribute('aria-busy') !== 'true';
+    });
+    await page.evaluate(async () => {
+        await document.fonts?.ready;
+        document.activeElement?.blur?.();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    await page.mouse.move(1, 1);
+    const screenshotStyle = await page.addStyleTag({
+        content: '.toast-container, #mainApp > .header { visibility: hidden !important; }'
+    });
+    try {
+        const target = page.locator(selector);
+        await target.scrollIntoViewIfNeeded();
+        await target.screenshot({
+            path: path.join(OUTPUT_DIR, filename),
+            animations: 'disabled',
+            caret: 'hide'
+        });
+    } finally {
+        await screenshotStyle.evaluate(element => element.remove()).catch(() => {});
+    }
+}
+
 async function waitForDayColumns(page, expected) {
     await page.waitForFunction(count => {
         return document.querySelectorAll('#scheduleHead th').length === count + 1;
@@ -402,6 +430,22 @@ async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
 
     await page.evaluate(() => document.querySelector('#deptFilter .dept-chip[data-dept="all"]')?.click());
     await page.waitForFunction(() => document.querySelector('#deptFilter .dept-chip[data-dept="all"]')?.getAttribute('aria-pressed') === 'true');
+}
+
+async function captureDepartmentScheduleSurfaces(page) {
+    const departmentKeys = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(chips => chips
+        .filter(chip => Number(chip.querySelector('.dept-chip-count')?.textContent?.trim() || 0) > 0)
+        .map(chip => chip.getAttribute('data-dept') || '')
+        .filter(Boolean));
+
+    for (const key of departmentKeys) {
+        await activateDepartmentFilter(page, key);
+        const toggle = page.locator(`[data-schedule-group-toggle="${key}"]`);
+        if (await toggle.count() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+        await captureStableScheduleScreenshot(page, `desktop-department-${key.replace(/[^a-z0-9_-]/gi, '-')}.png`);
+    }
+    await activateDepartmentFilter(page, 'all');
+    await expandAllScheduleGroups(page);
 }
 
 async function scheduleEmployeeRowCount(page) {
@@ -937,6 +981,13 @@ async function assertWideScheduleLayout(page, label, options = {}) {
             return box.left >= wrapperBox.left - 1 && box.right <= wrapperBox.right + 1;
         }).length;
         wrapper.scrollLeft = Math.min(260, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
+        const firstHeaderStyle = getComputedStyle(firstHeader);
+        const backgroundAlpha = (() => {
+            const value = String(firstHeaderStyle.backgroundColor || '').trim().toLowerCase();
+            if (!value || value === 'transparent') return 0;
+            const rgba = value.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/);
+            return rgba ? Number(rgba[1]) : 1;
+        })();
         return {
             isLongRange: wrapper.classList.contains('is-long-range'),
             isFullRange: wrapper.classList.contains('is-full-range'),
@@ -951,6 +1002,7 @@ async function assertWideScheduleLayout(page, label, options = {}) {
             expectedDays,
             expectedHeaderCount,
             firstHeaderPosition: getComputedStyle(firstHeader).position,
+            firstHeaderBackgroundAlpha: backgroundAlpha,
             firstBodyPosition: getComputedStyle(firstBodyCell).position,
             firstHeaderLeft: firstHeaderBox.left,
             firstBodyLeft: firstBodyBox.left,
@@ -974,6 +1026,7 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     assert.ok(metrics.minDayWidth >= minDayWidth, `${label}: date columns remain readable`);
     assert.ok(metrics.maxDayWidth - metrics.minDayWidth <= 2, `${label}: date columns stay aligned`);
     assert.equal(metrics.firstHeaderPosition, 'sticky', `${label}: header first column is sticky`);
+    assert.ok(metrics.firstHeaderBackgroundAlpha >= 0.99, `${label}: sticky header has an opaque fallback surface`);
     assert.equal(metrics.firstBodyPosition, 'sticky', `${label}: body first column is sticky`);
     assert.ok(Math.abs(metrics.firstHeaderLeft - metrics.wrapperLeft) <= 3, `${label}: sticky header column stays pinned after scroll`);
     assert.ok(Math.abs(metrics.firstBodyLeft - metrics.wrapperLeft) <= 3, `${label}: sticky body column stays pinned after scroll`);
@@ -1113,6 +1166,7 @@ async function runDesktopFlow(browser, base, session) {
         await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
         await expandAllScheduleGroups(page);
+        await captureDepartmentScheduleSurfaces(page);
         const commercialContracts = await assertCommercialStaffSetContracts(page);
         assert.equal(await dayColumnCount(page), 9, 'default schedule range is 9 days');
 
@@ -1123,7 +1177,7 @@ async function runDesktopFlow(browser, base, session) {
         assert.equal(firstHalf.to.endsWith('-15'), true, '1-15 preset ends on day 15');
         assert.equal(firstHalf.dayCount, 15, '1-15 preset renders 15 day columns');
         assert.match(firstHalf.label, /1[\s\S]+15[\s\S]+20\d{2}/, 'period label reflects 1-15 range');
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-first-half.png'), fullPage: true });
+        await captureStableScheduleScreenshot(page, 'desktop-first-half.png');
         await assertCompactHeaderActions(page);
         await assertScheduleExtraViewsRemoved(page);
 
@@ -1137,7 +1191,7 @@ async function runDesktopFlow(browser, base, session) {
         assert.match(secondHalf.label, /16[\s\S]+20\d{2}/, 'period label reflects 16-last-day range');
         await assertFittedScheduleLayout(page, 'desktop second-half schedule', { expectedDays: secondHalfDays });
         await assertScheduleExtraViewsRemoved(page);
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-second-half.png'), fullPage: true });
+        await captureStableScheduleScreenshot(page, 'desktop-second-half.png');
 
         await assertInvalidRangesStayPut(page, secondHalf.from, secondHalf.to);
 
@@ -1147,7 +1201,7 @@ async function runDesktopFlow(browser, base, session) {
         await waitForColumnsToMatchInputs(page);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 28, shouldFit: true });
         await assertScheduleExtraViewsRemoved(page);
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month-search.png'), fullPage: true });
+        await captureStableScheduleScreenshot(page, 'desktop-month-search.png');
 
         await assertExportFilename(page, monthRange);
         await assertPrintStub(page);
@@ -1196,7 +1250,7 @@ async function runMobileFlow(browser, base, session, viewport = VIEWPORTS.mobile
         const monthRange = await readRangeState(page);
         await assertMobileLayout(page);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthRange.dayCount, minDayWidth: 40 });
-        await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
+        await captureStableScheduleScreenshot(page, `${label}-month.png`);
         assertNoForbiddenStaffWrites(forbidden, label);
 
         return {

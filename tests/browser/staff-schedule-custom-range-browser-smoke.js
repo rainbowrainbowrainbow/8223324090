@@ -957,9 +957,34 @@ async function waitForCommittedScheduleRange(page, from, to, expectedState = ['r
 }
 
 async function settleScheduleDom(page) {
-    await page.evaluate(() => new Promise(resolve => {
-        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)));
-    }));
+    await page.evaluate(async () => {
+        await document.fonts?.ready;
+        document.activeElement?.blur?.();
+        await new Promise(resolve => {
+            requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        });
+    });
+}
+
+async function captureStableScheduleScreenshot(page, filename, selector = '#scheduleWrapper', beforeCapture = null) {
+    await waitForScheduleState(page, ['ready', 'empty']);
+    await settleScheduleDom(page);
+    await page.mouse.move(1, 1);
+    const screenshotStyle = await page.addStyleTag({
+        content: '.toast-container, #mainApp > .header { visibility: hidden !important; }'
+    });
+    try {
+        const target = page.locator(selector);
+        await target.scrollIntoViewIfNeeded();
+        if (typeof beforeCapture === 'function') await beforeCapture(page);
+        await target.screenshot({
+            path: path.join(OUTPUT_DIR, filename),
+            animations: 'disabled',
+            caret: 'hide'
+        });
+    } finally {
+        await screenshotStyle.evaluate(element => element.remove()).catch(() => {});
+    }
 }
 
 async function openStaffPage(browser, base, viewport, options = {}) {
@@ -1446,6 +1471,56 @@ async function assertDepartmentFiltersRenderOnlyActiveGroup(page) {
     await activateScheduleDepartment(page, 'all');
 }
 
+async function captureFixtureDepartmentScheduleSurfaces(page) {
+    const filters = await page.locator('#deptFilter .dept-chip:not([data-dept="all"])').evaluateAll(chips => chips
+        .map(chip => ({
+            key: chip.getAttribute('data-dept') || '',
+            count: Number(chip.querySelector('.dept-chip-count')?.textContent?.trim() || 0)
+        }))
+        .filter(filter => filter.key && filter.count > 0));
+
+    for (const filter of filters) {
+        await activateScheduleDepartment(page, filter.key);
+        await expandScheduleGroup(page, filter.key);
+        const geometry = await page.locator('#scheduleBody').evaluate(tbody => {
+            const containmentIssues = [];
+            for (const cell of tbody.querySelectorAll('td.schedule-day-cell')) {
+                const content = cell.querySelector(':scope > .sch-cell');
+                if (!content) continue;
+                const outer = cell.getBoundingClientRect();
+                const inner = content.getBoundingClientRect();
+                if (inner.left < outer.left - 1 || inner.right > outer.right + 1 || inner.top < outer.top - 1 || inner.bottom > outer.bottom + 1) {
+                    containmentIssues.push(content.getAttribute('data-date') || 'unknown');
+                }
+            }
+            const group = tbody.querySelector('tr.dept-row');
+            const stickyBackground = group?.children[0] ? getComputedStyle(group.children[0]).backgroundColor : '';
+            const fillBackground = group?.children[1] ? getComputedStyle(group.children[1]).backgroundColor : '';
+            return {
+                containmentIssues,
+                stickyBackground,
+                fillBackground,
+                employeeRows: tbody.querySelectorAll('tr[data-schedule-staff-row]').length,
+                truncatedGroupLabels: Array.from(tbody.querySelectorAll('.schedule-group-label'))
+                    .filter(element => element.scrollWidth > element.clientWidth + 1)
+                    .map(element => element.textContent?.trim() || 'unknown'),
+                labelsMissingTitles: Array.from(tbody.querySelectorAll('.schedule-group-toggle, .sub-group-label, .emp-name-text, .emp-position'))
+                    .filter(element => !String(element.getAttribute('title') || '').trim())
+                    .length
+            };
+        });
+        assert.ok(geometry.employeeRows > 0, `${filter.key}: department renders employee rows`);
+        assert.deepEqual(geometry.containmentIssues, [], `${filter.key}: schedule cell content stays inside its row`);
+        assert.equal(geometry.stickyBackground, geometry.fillBackground, `${filter.key}: department header has no sticky/fill seam`);
+        assert.deepEqual(geometry.truncatedGroupLabels, [], `${filter.key}: desktop department label remains fully readable`);
+        assert.equal(geometry.labelsMissingTitles, 0, `${filter.key}: truncated schedule labels expose their full text`);
+        await captureStableScheduleScreenshot(page, `desktop-department-${filter.key}.png`);
+    }
+
+    await activateScheduleDepartment(page, 'all');
+    await expandAllScheduleGroups(page);
+}
+
 async function assertScheduleShiftPreferenceQuickLabels(page) {
     await page.locator('.sch-cell[data-staff="101"]').first().click();
     await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
@@ -1753,6 +1828,76 @@ async function assertDepartmentChipsFit(page, label) {
     }
 }
 
+async function assertDepartmentScrollCue(page, label) {
+    const readState = async scrollToEnd => page.locator('#deptFilter').evaluate((host, shouldScrollToEnd) => {
+        host.scrollLeft = shouldScrollToEnd ? host.scrollWidth : 0;
+        host.dispatchEvent(new Event('scroll'));
+        const last = host.querySelector(':scope > .dept-chip:last-child');
+        const hostBox = host.getBoundingClientRect();
+        const lastBox = last?.getBoundingClientRect();
+        return new Promise(resolve => requestAnimationFrame(() => {
+            const style = getComputedStyle(host);
+            resolve({
+                canScrollLeft: host.dataset.canScrollLeft,
+                canScrollRight: host.dataset.canScrollRight,
+                maskImage: style.maskImage || style.webkitMaskImage || 'none',
+                scrollLeft: host.scrollLeft,
+                maxScrollLeft: Math.max(0, host.scrollWidth - host.clientWidth),
+                lastReachable: Boolean(lastBox && lastBox.left >= hostBox.left - 2 && lastBox.right <= hostBox.right + 2)
+            });
+        }));
+    }, scrollToEnd);
+
+    const start = await readState(false);
+    assert.equal(start.canScrollLeft, 'false', `${label}: department cue knows it is at the start`);
+    assert.equal(start.canScrollRight, 'true', `${label}: department cue advertises trailing filters`);
+    assert.notEqual(start.maskImage, 'none', `${label}: trailing department filters have a visible fade cue`);
+
+    const end = await readState(true);
+    assert.ok(end.scrollLeft >= end.maxScrollLeft - 2, `${label}: department rail reaches its end`);
+    assert.equal(end.canScrollLeft, 'true', `${label}: department cue records trailing navigation`);
+    assert.equal(end.canScrollRight, 'false', `${label}: department cue clears at the end`);
+    assert.notEqual(end.maskImage, 'none', `${label}: department rail keeps a cue to return left`);
+    assert.equal(end.lastReachable, true, `${label}: the last department chip remains fully readable`);
+}
+
+async function assertDepartmentRerenderPreservesPageScroll(page, label) {
+    const result = await page.evaluate(async () => {
+        const root = document.scrollingElement || document.documentElement;
+        const maxScrollTop = Math.max(0, root.scrollHeight - window.innerHeight);
+        window.scrollTo(0, Math.min(420, maxScrollTop));
+        const before = window.scrollY;
+        await window.StaffSchedulePage.refresh();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return { before, after: window.scrollY, maxScrollTop };
+    });
+    assert.ok(result.maxScrollTop > 0 && result.before > 0, `${label}: fixture page can reproduce a scrolled manager view`);
+    assert.ok(Math.abs(result.after - result.before) <= 1, `${label}: department rerender preserves vertical page position`);
+}
+
+async function assertRealScheduleWheelScroll(page, label) {
+    const wrapper = page.locator('#scheduleWrapper');
+    await wrapper.scrollIntoViewIfNeeded();
+    await wrapper.evaluate(host => {
+        host.scrollLeft = 0;
+        (document.scrollingElement || document.documentElement).scrollLeft = 0;
+    });
+    const box = await wrapper.boundingBox();
+    assert.ok(box, `${label}: schedule wrapper is available for wheel scrolling`);
+    const viewport = page.viewportSize();
+    const mouseX = Math.max(2, Math.min((viewport?.width || 390) - 2, box.x + Math.min(48, box.width / 2)));
+    const mouseY = Math.max(2, Math.min((viewport?.height || 844) - 2, box.y + Math.min(48, box.height / 2)));
+    await page.mouse.move(mouseX, mouseY);
+    await page.mouse.wheel(480, 0);
+    await page.waitForFunction(() => document.getElementById('scheduleWrapper')?.scrollLeft > 0);
+    const result = await wrapper.evaluate(host => ({
+        scrollLeft: host.scrollLeft,
+        documentScrollLeft: (document.scrollingElement || document.documentElement).scrollLeft
+    }));
+    assert.ok(result.scrollLeft > 0, `${label}: a real horizontal wheel gesture moves the schedule`);
+    assert.equal(result.documentScrollLeft, 0, `${label}: schedule wheel scrolling does not move the page`);
+}
+
 async function assertNarrowMobileContract(page, label, options) {
     const metrics = await page.evaluate(() => {
         const rect = element => {
@@ -1796,6 +1941,12 @@ async function assertNarrowMobileContract(page, label, options) {
             if (parts.length !== 3) return null;
             return (parts[0] * 299 + parts[1] * 587 + parts[2] * 114) / 1000;
         };
+        const colorAlpha = value => {
+            const normalized = String(value || '').trim().toLowerCase();
+            if (!normalized || normalized === 'transparent') return 0;
+            const rgba = normalized.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/);
+            return rgba ? Number(rgba[1]) : 1;
+        };
         const styleSnapshot = element => {
             if (!element) return null;
             const style = getComputedStyle(element);
@@ -1803,6 +1954,7 @@ async function assertNarrowMobileContract(page, label, options) {
                 position: style.position,
                 backgroundColor: style.backgroundColor,
                 backgroundImage: style.backgroundImage,
+                backgroundAlpha: colorAlpha(style.backgroundColor),
                 brightness: colorBrightness(style.backgroundColor),
                 box: rect(element)
             };
@@ -1974,6 +2126,7 @@ async function assertNarrowMobileContract(page, label, options) {
         assert.ok(Math.abs(sticky.box.left - metrics.wrapper.box.left) <= 3, `${label}: ${name} remains pinned after table scroll`);
         assert.ok(sticky.backgroundImage !== 'none' || sticky.backgroundColor !== 'rgba(0, 0, 0, 0)', `${label}: ${name} paints an opaque reading surface`);
     }
+    assert.ok(metrics.firstHeader.backgroundAlpha >= 0.99, `${label}: sticky employee header has an opaque fallback surface`);
     assert.ok(
         Math.abs(metrics.firstHeader.box.width - metrics.firstEmployeeCell.box.width) <= 3,
         `${label}: header and employee sticky columns stay aligned`
@@ -2959,7 +3112,11 @@ async function runSegmentCellPresentationFlow(browser, base) {
                 '#scheduleBody [data-schedule-staff-row="108"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-11"]'
             );
             const dayCell = cell?.closest('td');
-            return Boolean(dayCell && getComputedStyle(dayCell, '::before').height === '2px');
+            return Boolean(
+                dayCell
+                && getComputedStyle(dayCell, '::before').content === 'none'
+                && getComputedStyle(dayCell).backgroundImage !== 'none'
+            );
         });
         await assertFittedScheduleLayout(page, 'desktop two-day schedule', 2);
 
@@ -2985,9 +3142,9 @@ async function runSegmentCellPresentationFlow(browser, base) {
                 cellBoxShadow: cellStyle?.boxShadow || '',
                 cellBackground: cellStyle?.backgroundColor || '',
                 dayCellBackground: dayCellStyle?.backgroundColor || '',
+                dayCellBackgroundImage: dayCellStyle?.backgroundImage || '',
                 dayCellBoxShadow: dayCellStyle?.boxShadow || '',
-                todayAccentHeight: todayAccentStyle?.height || '',
-                todayAccentBackground: todayAccentStyle?.backgroundColor || '',
+                todayAccentContent: todayAccentStyle?.content || '',
                 replacementAccentWidth: replacementAccentStyle?.width || '',
                 replacementAccentBackground: replacementAccentStyle?.backgroundColor || '',
                 criticalBadgeCount: dayCell?.querySelectorAll('.schedule-health-badge.is-critical').length || 0,
@@ -3009,8 +3166,8 @@ async function runSegmentCellPresentationFlow(browser, base) {
         assert.equal(presentation.cellBackground, 'rgba(0, 0, 0, 0)', 'inner schedule cell stays transparent');
         assert.notEqual(presentation.dayCellBackground, 'rgba(0, 0, 0, 0)', 'the full table cell owns the working status surface');
         assert.match(presentation.dayCellBoxShadow, /rgb\(147, 197, 253\)/, 'focused row keeps a distinct dark-mode bottom accent');
-        assert.equal(presentation.todayAccentHeight, '2px', 'today uses one restrained top accent');
-        assert.notEqual(presentation.todayAccentBackground, 'rgba(0, 0, 0, 0)', 'today accent remains visible');
+        assert.equal(presentation.todayAccentContent, 'none', 'today no longer renders a broken per-cell top line');
+        assert.notEqual(presentation.dayCellBackgroundImage, 'none', 'today keeps a subtle full-cell column wash');
         assert.equal(presentation.replacementAccentWidth, '3px', 'replacement uses one narrow side accent');
         assert.notEqual(presentation.replacementAccentBackground, 'rgba(0, 0, 0, 0)', 'replacement remains visible without a competing frame');
         assert.equal(presentation.criticalBadgeCount, 1, 'critical schedule health keeps one compact marker');
@@ -3027,9 +3184,7 @@ async function runSegmentCellPresentationFlow(browser, base) {
         }));
         assert.equal(groupBackgrounds.sticky, groupBackgrounds.fill, 'dark department header has no sticky/fill seam');
 
-        await page.locator('#scheduleWrapper').screenshot({
-            path: path.join(OUTPUT_DIR, 'desktop-dark-segment-cells.png')
-        });
+        await captureStableScheduleScreenshot(page, 'desktop-dark-segment-cells.png');
     } finally {
         SCHEDULE_FIXTURE_ENTRIES[fixtureIndex] = originalFixture;
         await context.close();
@@ -3133,6 +3288,7 @@ async function runDesktopFlow(browser, base) {
         await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
         await expandAllScheduleGroups(page);
+        await captureFixtureDepartmentScheduleSurfaces(page);
         await assertScheduleShiftPreferenceQuickLabels(page);
 
         await applyPreset(page, 'first-half');
@@ -3260,7 +3416,7 @@ async function runDesktopFlow(browser, base) {
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 28, shouldFit: true });
         await assertDepartmentChipsFit(page, 'desktop month');
         assert.equal(await page.locator('#loadViewWrapper').isHidden(), true, 'month schedule keeps removed load view hidden');
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month.png'), fullPage: true });
+        await captureStableScheduleScreenshot(page, 'desktop-month.png');
 
         await page.locator('#todayWeekBtn').click();
         await waitForDayColumns(page, 9);
@@ -3292,12 +3448,20 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await assertNoControlOverlap(page, `${label} month`);
         await assertDepartmentChipsFit(page, `${label} month`);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthDays, minDayWidth: 40 });
+        await assertDepartmentRerenderPreservesPageScroll(page, `${label} departments`);
+        await assertDepartmentScrollCue(page, `${label} departments`);
+        await assertRealScheduleWheelScroll(page, `${label} month`);
         await assertNarrowMobileContract(page, `${label} month`, {
             width: viewport.width,
             darkMode: Boolean(options.darkMode)
         });
         if (options.screenshot) {
-            await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
+            await page.locator('#deptFilter').evaluate(host => {
+                host.scrollLeft = 0;
+                host.dispatchEvent(new Event('scroll'));
+            });
+            await captureStableScheduleScreenshot(page, `${label}-command-bar.png`, '.staff-schedule-command-bar');
+            await captureStableScheduleScreenshot(page, `${label}-month.png`);
         }
 
         const editableCell = page.locator('#scheduleBody .sch-cell[data-schedule-id]:visible').first();
@@ -3336,6 +3500,84 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
     }
 }
 
+async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMode) {
+    const { context, page } = await openStaffPage(browser, base, viewport, { darkMode });
+    try {
+        const identityName = page.locator('#sidebarCommandDeck .sidebar-identity-name');
+        await identityName.waitFor({ state: 'visible' });
+        await identityName.evaluate(name => new Promise(resolve => {
+            const deck = name.closest('#sidebarCommandDeck');
+            if (!deck) {
+                resolve();
+                return;
+            }
+            let timer = null;
+            const observer = new MutationObserver(() => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    observer.disconnect();
+                    resolve();
+                }, 250);
+            });
+            observer.observe(deck, { childList: true, characterData: true, subtree: true });
+            timer = setTimeout(() => {
+                observer.disconnect();
+                resolve();
+            }, 250);
+        }));
+        await settleScheduleDom(page);
+        const metrics = await page.evaluate(() => {
+            const name = document.querySelector('#sidebarCommandDeck .sidebar-identity-name');
+            const summary = document.querySelector('#sidebarIdentitySummary');
+            if (!name || !summary) return null;
+            name.textContent = 'codex_verifier';
+            summary.textContent = '\u0404 6 \u043a\u0440\u0438\u0442\u0438\u0447\u043d\u0438\u0445 \u0430\u043b\u0435\u0440\u0442\u0456\u0432';
+            const tokenLineCount = (element, token) => {
+                const node = element.firstChild;
+                const start = String(node?.data || '').indexOf(token);
+                if (!node || start < 0) return 0;
+                const tops = new Set();
+                for (let index = start; index < start + token.length; index += 1) {
+                    const range = document.createRange();
+                    range.setStart(node, index);
+                    range.setEnd(node, index + 1);
+                    const box = range.getBoundingClientRect();
+                    if (box.width || box.height) tops.add(Math.round(box.top * 2) / 2);
+                }
+                return tops.size;
+            };
+            return {
+                nameLines: tokenLineCount(name, 'codex_verifier'),
+                criticalLines: tokenLineCount(summary, '\u043a\u0440\u0438\u0442\u0438\u0447\u043d\u0438\u0445'),
+                nameOverflowWrap: getComputedStyle(name).overflowWrap,
+                nameWordBreak: getComputedStyle(name).wordBreak,
+                summaryOverflowWrap: getComputedStyle(summary).overflowWrap,
+                summaryWordBreak: getComputedStyle(summary).wordBreak
+            };
+        });
+        assert.ok(metrics, `${label}: sidebar identity metrics are available`);
+        assert.equal(metrics.nameLines, 1, `${label}: codex_verifier does not split mid-word`);
+        assert.equal(metrics.criticalLines, 1, `${label}: critical alert copy does not split mid-word`);
+        assert.equal(metrics.nameOverflowWrap, 'break-word', `${label}: profile name uses safe emergency wrapping`);
+        assert.equal(metrics.nameWordBreak, 'normal', `${label}: profile name keeps normal word boundaries`);
+        assert.equal(metrics.summaryOverflowWrap, 'break-word', `${label}: alert summary uses safe emergency wrapping`);
+        assert.equal(metrics.summaryWordBreak, 'normal', `${label}: alert summary keeps normal word boundaries`);
+        await captureStableScheduleScreenshot(
+            page,
+            `${label}-sidebar-identity.png`,
+            '#sidebarCommandDeck',
+            async currentPage => currentPage.evaluate(() => {
+                const name = document.querySelector('#sidebarCommandDeck .sidebar-identity-name');
+                const summary = document.querySelector('#sidebarIdentitySummary');
+                if (name) name.textContent = 'codex_verifier';
+                if (summary) summary.textContent = '\u0404 6 \u043a\u0440\u0438\u0442\u0438\u0447\u043d\u0438\u0445 \u0430\u043b\u0435\u0440\u0442\u0456\u0432';
+            })
+        );
+    } finally {
+        await context.close();
+    }
+}
+
 (async () => {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES);
@@ -3352,6 +3594,8 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await runSegmentCellPresentationFlow(browser, base);
         await runMultiSegmentPersistenceFlow(browser, base);
         await runDesktopFlow(browser, base);
+        await runSidebarIdentityWrapFlow(browser, base, { width: 1440, height: 900 }, 'desktop-light', false);
+        await runSidebarIdentityWrapFlow(browser, base, { width: 1024, height: 768 }, 'laptop-dark', true);
         const mobileViewports = [
             { width: 320, height: 760 },
             { width: 360, height: 800 },

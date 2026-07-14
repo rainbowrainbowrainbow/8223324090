@@ -703,7 +703,8 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /renderStaffCardReadinessBadge\(staff\)/);
         assert.match(staffPage, /staff\.is_freelance[\s\S]*staff-card-badge neutral freelance/);
         assert.match(staffPage, /String\(emp\.display_name \|\| emp\.name \|\| ''\)/);
-        assert.match(staffPage, /class="emp-name"><span class="emp-name-text">/);
+        assert.match(staffPage, /class="emp-name"><span class="emp-name-text" title="\$\{escapeHtml\(employeeName\)\}">/);
+        assert.match(staffPage, /class="emp-position" title="\$\{escapeHtml\(roleSummary\)\}">/);
         assert.match(staffPage, /class="emp-readiness"/);
         assert.match(staffPage, /href="\/hr\?employee=\$\{encodeURIComponent\(staffId\)\}"/);
         assert.match(staffPage, /data-hr-profile="\$\{emp\.id\}"/);
@@ -1455,6 +1456,13 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(browserFlow, /receptionSession|receptionPage/);
         assert.match(liveStaffScheduleSmoke, /assertWorkbookStaffPlacementParity/);
         assert.match(liveStaffScheduleSmoke, /serviceWorkers:\s*'block'/);
+        assert.match(staffScheduleBrowserSmoke, /function captureStableScheduleScreenshot/);
+        assert.match(liveStaffScheduleSmoke, /function captureStableScheduleScreenshot/);
+        assert.match(staffScheduleBrowserSmoke, /animations:\s*'disabled'/);
+        assert.match(liveStaffScheduleSmoke, /caret:\s*'hide'/);
+        assert.match(liveStaffScheduleSmoke, /captureDepartmentScheduleSurfaces/);
+        assert.doesNotMatch(staffScheduleBrowserSmoke, /fullPage:\s*true/);
+        assert.doesNotMatch(liveStaffScheduleSmoke, /fullPage:\s*true/);
         assert.match(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
         assert.match(liveStaffScheduleSmoke, /const sharedStaffIds = sharedSectionStates\.animators\.ids/);
         assert.match(liveStaffScheduleSmoke, /for \(const sharedStaffId of sharedStaffIds\)/);

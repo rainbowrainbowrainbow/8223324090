@@ -740,6 +740,7 @@
   grid-area: identity-aux !important;
   grid-column: 1 / 2 !important;
   display: flex !important;
+  flex-wrap: wrap;
   align-items: center !important;
   justify-content: flex-start !important;
   justify-self: stretch !important;
@@ -957,9 +958,10 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 .sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  width: max-content;
   min-width: 0 !important;
-  max-width: calc(100% - 72px) !important;
+  max-width: 100% !important;
   overflow: visible !important;
 }
 
@@ -974,7 +976,9 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-name,
   line-height: 1.05 !important;
   max-width: 100% !important;
   overflow: visible !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: break-word !important;
+  word-break: normal;
+  hyphens: none;
   text-overflow: clip !important;
   white-space: normal !important;
 }
@@ -1095,17 +1099,20 @@ body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
 .sidebar-nav:not(.collapsed) .sidebar-identity-summary {
   display: flex !important;
-  align-items: center !important;
+  align-items: center;
   min-height: 40px !important;
-  padding: 8px 9px !important;
+  padding: 7px 6px !important;
   border: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 70%, transparent) !important;
   border-radius: 8px !important;
   background: color-mix(in srgb, var(--sb-enterprise-panel) 72%, transparent) !important;
   color: var(--sb-enterprise-text) !important;
-  font-size: 11px !important;
+  font-size: 10.5px !important;
   font-weight: 900 !important;
   line-height: 1.18 !important;
   overflow: visible !important;
+  overflow-wrap: break-word !important;
+  word-break: normal;
+  hyphens: none;
 }
 
 .sidebar-command-deck[data-tone="critical"] .sidebar-identity-summary {

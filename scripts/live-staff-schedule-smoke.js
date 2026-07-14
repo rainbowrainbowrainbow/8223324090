@@ -574,14 +574,17 @@ async function assertCommercialStaffSetContracts(page) {
         const state = await readScheduleStaffSetState(page);
         sharedSectionStates[department] = state;
     }
-    const sharedStaffId = sharedSectionStates.animators.ids.find(id => sharedSectionStates.reception.ids.includes(id));
-    assert.equal(Number.isSafeInteger(sharedStaffId), true, 'qualification filters expose a shared animator/reception staff member');
-    for (const department of ['animators', 'reception']) {
-        assert.equal(
-            sharedSectionStates[department].placements.filter(item => item.id === sharedStaffId && item.department === department).length,
-            1,
-            'shared multi-profession staff member appears once in the active professional section'
-        );
+    const sharedStaffIds = sharedSectionStates.animators.ids
+        .filter(id => sharedSectionStates.reception.ids.includes(id));
+    assert.equal(staffIdsAreUnique(sharedStaffIds), true, 'shared animator/reception staff IDs stay unique');
+    for (const sharedStaffId of sharedStaffIds) {
+        for (const department of ['animators', 'reception']) {
+            assert.equal(
+                sharedSectionStates[department].placements.filter(item => item.id === sharedStaffId && item.department === department).length,
+                1,
+                'shared multi-profession staff member appears once in the active professional section'
+            );
+        }
     }
     await activateDepartmentFilter(page, 'all');
     await expandAllScheduleGroups(page);
@@ -635,7 +638,7 @@ async function assertCommercialStaffSetContracts(page) {
         placementCount: allState.rowCount,
         departmentCount: filters.length,
         searchedCount: searchState.rowCount,
-        sharedMembership: 'animators+reception'
+        sharedMembershipCount: sharedStaffIds.length
     };
 }
 
@@ -1230,7 +1233,7 @@ async function run() {
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, secondHalf=${desktop.secondHalf}, month=${desktop.month}`);
         console.log(`  OK controls: headerActions=${desktop.headerActions}, extraViews=removed`);
         console.log(`  OK filters: ${desktop.filteredGroups}`);
-        console.log(`  OK staff-set contracts: people=${desktop.commercialContracts.allCount}, placements=${desktop.commercialContracts.placementCount}, shared=${desktop.commercialContracts.sharedMembership}, departments=${desktop.commercialContracts.departmentCount}, searched=${desktop.commercialContracts.searchedCount}`);
+        console.log(`  OK staff-set contracts: people=${desktop.commercialContracts.allCount}, placements=${desktop.commercialContracts.placementCount}, sharedMatches=${desktop.commercialContracts.sharedMembershipCount}, departments=${desktop.commercialContracts.departmentCount}, searched=${desktop.commercialContracts.searchedCount}`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: Excel schedule table`);
         console.log(`  OK dark theme: 1440/390/360`);

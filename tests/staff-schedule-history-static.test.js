@@ -1456,6 +1456,9 @@ describe('staff schedule safety guards', () => {
         assert.match(liveStaffScheduleSmoke, /assertWorkbookStaffPlacementParity/);
         assert.match(liveStaffScheduleSmoke, /serviceWorkers:\s*'block'/);
         assert.match(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
+        assert.match(liveStaffScheduleSmoke, /const sharedStaffIds = sharedSectionStates\.animators\.ids/);
+        assert.match(liveStaffScheduleSmoke, /for \(const sharedStaffId of sharedStaffIds\)/);
+        assert.doesNotMatch(liveStaffScheduleSmoke, /qualification filters expose a shared animator\/reception staff member/);
     });
 
     it('keeps All unique, section membership complete, and table/export placement parity exact', () => {

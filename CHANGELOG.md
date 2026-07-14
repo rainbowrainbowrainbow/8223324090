@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.16 - Стабільний payroll preview
+
+### Release / Versioning / (14.07.2026) [codex]
+- **Payroll preview без падіння** — працівники без attendance у вибраному місяці тепер отримують коректний нульовий розрахунок замість HTTP 500.
+- **Без зміни формул** — професійні ставки, overtime, day/month rate та захист від подвійної оплати залишилися без змін; виправлено лише порожній набір метрик.
+- **Production read-only QA** — графік, attendance allocations, timeline availability windows і payroll preview перевіряються без approve, виплат або зміни робочих записів.
+
+---
+
 ## v0.79.15 - Кілька ролей і часових блоків у зміні
 
 ### Release / Versioning / (14.07.2026) [codex]

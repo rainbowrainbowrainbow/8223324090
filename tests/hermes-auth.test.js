@@ -396,10 +396,28 @@ describe('Hermes capabilities route auth', () => {
                 'notification_outbox.fail',
                 'notification_outbox.skip',
                 'notification_outbox.stats',
-                'notification_outbox.debug'
+                'notification_outbox.debug',
+                'staff.read',
+                'staff_schedule.read',
+                'staff_schedule.preview',
+                'staff_schedule.apply'
             ]);
             assert.equal(res.data.mutationActionsAvailable, true);
             assert.deepEqual(res.data.plannedMutationActions, []);
+            assert.deepEqual(res.data.endpoints.staffSchedule, {
+                list: 'GET /api/hermes/staff-schedule',
+                preview: 'POST /api/hermes/staff-schedule/preview',
+                apply: 'POST /api/hermes/staff-schedule/apply',
+                maxDateRangeDays: 31,
+                maxPreviewRows: 100,
+                previewTtlMinutes: 30,
+                businessContext: 'event_genix',
+                stateHash: 'sha256',
+                previewScheduleWrites: 0,
+                applyRequiresConfirmation: true,
+                applyRequiresIdempotencyKey: true,
+                applyRequiresManageStaff: true
+            });
         });
     });
 });

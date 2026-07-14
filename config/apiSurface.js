@@ -13,6 +13,16 @@ const GENERIC_API_ROUTE_MOUNTS = [
     }
 ];
 
+const NESTED_API_ROUTE_MOUNTS = [
+    {
+        mount: '/api/hermes',
+        routeFile: 'routes/hermes-schedule.js',
+        parentRouteFile: 'routes/hermes.js',
+        owner: 'hermes-schedule',
+        reason: 'Hermes staff and schedule reads are mounted inside routes/hermes.js after Hermes API-key authentication.'
+    }
+];
+
 const SERVER_LEVEL_API_ROUTES = [
     {
         method: 'GET',
@@ -39,6 +49,7 @@ const SERVER_LEVEL_API_MOUNTS = [
 
 module.exports = {
     GENERIC_API_ROUTE_MOUNTS,
+    NESTED_API_ROUTE_MOUNTS,
     SERVER_LEVEL_API_ROUTES,
     SERVER_LEVEL_API_MOUNTS
 };

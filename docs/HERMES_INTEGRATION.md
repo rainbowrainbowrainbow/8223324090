@@ -32,6 +32,8 @@ The integration is intentionally narrow:
   confirmation.
 - Read, create, claim, update, and return results for durable Hermes jobs.
 - Store Hermes job assets, event history, and human approval decisions.
+- Read a sanitized, cursor-paginated scheduleable staff directory.
+- Read existing staff schedule cells for a bounded date range.
 
 The integration must not expose generic CRM access, raw database rows, delete
 operations, bulk operations, auth/session management, finance actions, admin
@@ -79,6 +81,10 @@ draft endpoints, and CRM-owned Hermes job endpoints are implemented.
 | `POST` | `/api/hermes/menu-photos/:productId/reject` | Reject a photo draft | Yes |
 | `GET` | `/api/hermes/jobs/queue` | Queued durable Hermes jobs | No |
 | `GET` | `/api/hermes/jobs/:id` | Job detail with assets, history, and decisions | No |
+| `GET` | `/api/hermes/staff` | Sanitized scheduleable staff directory | No |
+| `GET` | `/api/hermes/staff-schedule` | Existing schedule cells for up to 31 days | No |
+| `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and persist a read-only schedule diff | No schedule writes |
+| `POST` | `/api/hermes/staff-schedule/apply` | Atomically apply confirmed rows from an immutable preview | Yes, gated and idempotent |
 | `POST` | `/api/hermes/jobs` | Create a durable Hermes job | Yes |
 | `POST` | `/api/hermes/jobs/:id/claim` | Claim a queued job for a worker | Yes |
 | `POST` | `/api/hermes/jobs/:id/status` | Post worker status | Yes |
@@ -257,7 +263,11 @@ Example:
     "hermes_jobs.claim",
     "hermes_jobs.status",
     "hermes_jobs.result",
-    "hermes_jobs.decision"
+    "hermes_jobs.decision",
+    "staff.read",
+    "staff_schedule.read",
+    "staff_schedule.preview",
+    "staff_schedule.apply"
   ],
   "mutationActionsAvailable": true,
   "plannedMutationActions": [],
@@ -468,6 +478,236 @@ Response shape:
 
 Phone numbers and email addresses should be excluded from v1 unless a later
 privacy review explicitly approves those fields.
+
+## Staff And Schedule Read Contract
+
+These endpoints use the same Hermes API-key middleware as every other
+`/api/hermes` endpoint. A CRM JWT or session cookie is not accepted as an
+alternative credential. The configured Hermes actor must have access to
+`event_genix`; schedule reads do not grant or require `manage_staff`.
+
+Until staff schedules become business-context-aware, both endpoints support
+only `event_genix`.
+
+Sanitized staff directory:
+
+```http
+GET /api/hermes/staff?scheduleable=true&includeFreelance=false&limit=50&cursor=<opaque>&q=<exact-name>
+```
+
+`scheduleable` defaults to `true`, `includeFreelance` defaults to `false`, and
+`limit` is clamped to `50`. The optional `q` comparison is exact after Unicode,
+case, surrounding-space, and repeated-whitespace normalization. Default reads
+exclude inactive, blacklisted, non-core, freelance, and terminated staff.
+
+Only these staff fields are returned:
+
+```json
+{
+  "staffId": 746,
+  "name": "Славицька Анна",
+  "displayName": "Славицька Анна",
+  "department": "admin",
+  "position": "Адміністратор",
+  "professions": ["administrator"],
+  "scheduleable": true
+}
+```
+
+Phone numbers, Telegram identifiers, documents, payroll, rates, attendance,
+account links, HR status details, and raw staff rows are not returned.
+
+Bounded schedule read:
+
+```http
+GET /api/hermes/staff-schedule?dateFrom=2026-07-14&dateTo=2026-07-15&staffIds=746,748
+```
+
+`dateFrom` and `dateTo` are required and inclusive. The range may not exceed
+31 days. `staffIds` is optional and accepts at most 50 unique positive ids.
+Only existing cells belonging to staff who are scheduleable on that cell date
+are returned. Legacy `day_off` is normalized to `dayoff`.
+
+Each cell includes `staffId`, `date`, normalized `status`, `startTime`,
+`endTime`, `note`, `professionKey`, and `stateHash`. `stateHash` is a SHA-256
+hash of the canonical cell state and can be stored in an import preview for a
+later stale-state check. The read endpoint itself never creates or updates an
+import or schedule row.
+
+### OCR Schedule Preview
+
+Hermes performs OCR and sends JSON rows only. The CRM does not accept photo or
+image binary on this endpoint:
+
+```http
+POST /api/hermes/staff-schedule/preview
+Content-Type: application/json
+X-API-Key: <hermes-key>
+```
+
+```json
+{
+  "documentDate": "2026-07-13",
+  "sourceReference": {
+    "telegram": {
+      "chatId": "-100123",
+      "messageId": "456",
+      "fileUniqueId": "schedule-photo-1"
+    }
+  },
+  "rows": [
+    {
+      "employeeName": "Славицька Анна",
+      "date": "2026-07-14",
+      "startTime": "10:00",
+      "endTime": "19:00",
+      "status": "working",
+      "note": null,
+      "confidence": 0.98,
+      "issues": []
+    }
+  ]
+}
+```
+
+The endpoint accepts at most 100 rows and supports `working`, `remote`,
+`dayoff`, `vacation`, and `sick`. `working` requires a valid `HH:MM` time pair;
+overnight shifts are allowed, but equal start and end times are invalid.
+Non-working statuses must not include times.
+
+Staff matching uses CRM data as the source of truth. Exact matching has
+priority over normalized exact matching. Normalization covers Unicode, case,
+outer spaces, and repeated whitespace. Fuzzy matching is never automatic, and
+OCR confidence never authorizes a guessed match. Only scheduleable staff can
+be selected. A non-scheduleable exact match may be returned as a sanitized,
+read-only candidate.
+
+Every row is classified as `create`, `update`, `no_change`, `conflict`,
+`staff_not_found`, `ambiguous_staff`, or `invalid`. Transitions between working
+and non-working states, changes between different non-working states, duplicate
+staff/date targets, and unexpected duplicate current cells are conflicts.
+
+For matched rows, the preview stores the proposed state, expected current
+state, a stable `rowId`, and a SHA-256 `stateHash`. Import metadata expires in
+30 minutes. Repeating the same `sourceReference` returns the same import
+session. The response always contains `scheduleWrites: 0`; this endpoint never
+updates `staff_schedule` or `hr_shifts`.
+
+### Confirmed Schedule Apply
+
+Apply accepts only row identifiers from a stored immutable preview. Hermes
+must not rebuild or send the proposed schedule payload:
+
+```http
+POST /api/hermes/staff-schedule/apply
+Content-Type: application/json
+X-API-Key: <hermes-key>
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <unique-key>
+```
+
+```json
+{
+  "previewId": "hsi_01J...",
+  "selectedRowIds": ["row_01", "row_02"],
+  "conflictConfirmed": ["row_02"]
+}
+```
+
+The body may contain only `previewId`, `selectedRowIds`, and
+`conflictConfirmed`. The last field is an array of selected conflict row IDs
+that the user confirmed separately. Supplying `proposedMutationPayload` or any
+other body key is rejected.
+
+The authenticated Hermes actor must already have the current `manage_staff`
+action permission. Hermes authentication never grants this permission. Apply
+is currently limited to the `event_genix` business context.
+
+Before any schedule write, CRM locks the import, selected staff rows, and
+current schedule cells. It then rechecks preview status and TTL, scheduleable
+staff eligibility, conflict confirmation, and each expected current-state
+hash. Any stale or invalid selected row returns `409` with zero schedule
+writes.
+
+All selected writable rows are applied in one database transaction through
+the shared schedule mutation service. `staff_schedule`, `hr_shifts`, schedule
+audit, and animator roster reconciliation therefore succeed or roll back as a
+single batch. After commit, CRM sends one bulk notification summary and emits
+roster updates for the unique affected dates; it does not notify once per row.
+
+An import is one-shot: a successful subset apply marks the whole import as
+`applied`, so remaining rows require a new preview. Reusing the same
+`Idempotency-Key` with the same request returns the stored result without new
+writes. Reusing it with a different request is rejected.
+
+Successful apply response:
+
+```json
+{
+  "success": true,
+  "previewId": "hsi_01J...",
+  "status": "applied",
+  "selectedCount": 2,
+  "appliedCount": 1,
+  "noChangeCount": 1,
+  "scheduleWrites": 1,
+  "dates": ["2026-07-15"],
+  "results": [
+    {
+      "rowId": "hsr_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "previewAction": "update",
+      "result": "applied",
+      "staffId": 123,
+      "date": "2026-07-15",
+      "status": "working"
+    }
+  ]
+}
+```
+
+### Schedule Error Contract
+
+Errors use `{ "success": false, "error": "...", "code": "..." }` and may
+include a sanitized `meta` object. Hermes must branch on `code`, not translated
+error text.
+
+| HTTP | Code | Worker action |
+| --- | --- | --- |
+| `400` | `HERMES_SCHEDULE_PREVIEW_BINARY_FORBIDDEN` | Run OCR in Hermes and resend JSON rows only. |
+| `400` | `HERMES_SCHEDULE_IMPORT_DATE_INVALID` | Ask for a valid document date. |
+| `400` | `HERMES_SCHEDULE_PREVIEW_ROWS_LIMIT` | Split input into previews of at most 100 rows. |
+| `400` | `HERMES_INTEGRATION_ID_REQUIRED` / `HERMES_INTEGRATION_ID_INVALID` | Fix the integration header; do not retry unchanged. |
+| `400` | `HERMES_CONFIRMATION_REQUIRED` | Obtain explicit user approval before apply. |
+| `400` | `IDEMPOTENCY_KEY_REQUIRED` | Generate one key for this logical apply. |
+| `401` | `HERMES_AUTH_REQUIRED` / `HERMES_AUTH_INVALID` | Stop and repair Hermes credentials without logging them. |
+| `403` | `HERMES_MANAGE_STAFF_REQUIRED` | Stop; an operator must grant the configured actor permission in CRM. |
+| `403` | `HERMES_SCHEDULE_BUSINESS_CONTEXT_UNAVAILABLE` | Stop; schedule integration currently supports only `event_genix`. |
+| `404` | `HERMES_SCHEDULE_IMPORT_NOT_FOUND` | Create a new preview from the OCR rows. |
+| `409` | `HERMES_SCHEDULE_APPLY_PREVIEW_EXPIRED` | Create a new preview and ask for approval again. |
+| `409` | `HERMES_SCHEDULE_IMPORT_ALREADY_APPLIED` | Treat as already completed only if local correlation confirms the same operation. |
+| `409` | `HERMES_SCHEDULE_APPLY_CONFLICT_CONFIRMATION_REQUIRED` | Ask the user to confirm the specific conflict row. |
+| `409` | `HERMES_SCHEDULE_APPLY_ROW_BLOCKED` | Remove invalid, missing, or ambiguous rows and create a new preview if needed. |
+| `409` | `HERMES_SCHEDULE_APPLY_STALE` | Never overwrite; fetch current schedule, create a new preview, and ask again. |
+| `409` | `IDEMPOTENCY_KEY_CONFLICT` | The key was reused with a different request; generate a new key only for a new logical operation. |
+| `5xx` | `HERMES_INTERNAL_ERROR` or transaction failure | Retry the exact same body with the exact same idempotency key after backoff. |
+
+### End-To-End Schedule Flow
+
+1. Read `/api/hermes/capabilities` and require all four schedule actions.
+2. OCR the attached form inside Hermes; never send the image binary to CRM.
+3. Optionally read sanitized staff and the bounded current schedule for worker
+   diagnostics. Do not decide matches locally.
+4. Send OCR rows to preview and assert `scheduleWrites === 0`.
+5. Present CRM classifications to the user. Never auto-select `invalid`,
+   `staff_not_found`, or `ambiguous_staff` rows.
+6. Collect selected `rowId` values and separate confirmation for each selected
+   `conflict` row.
+7. Apply once with all required headers. Do not send a reconstructed mutation
+   payload.
+8. On a lost response, retry the identical apply request with the same
+   `Idempotency-Key`.
+9. On stale or expired preview, restart from preview and request approval again.
 
 ## Task History Contract
 

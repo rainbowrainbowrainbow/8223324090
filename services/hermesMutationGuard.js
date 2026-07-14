@@ -31,9 +31,18 @@ function isConfirmedHeader(value) {
 
 function createHermesMutationGuard(options = {}) {
     const integrationId = options.integrationId || HERMES_INTEGRATION_ID;
+    const requireIntegrationId = options.requireIntegrationId === true;
 
     return function hermesMutationGuard(req, res, next) {
         const providedIntegrationId = String(requestHeader(req, 'x-integration-id') || '').trim();
+        if (requireIntegrationId && !providedIntegrationId) {
+            return sendHermesMutationError(
+                res,
+                400,
+                'HERMES_INTEGRATION_ID_REQUIRED',
+                'X-Integration-Id header is required'
+            );
+        }
         if (providedIntegrationId && providedIntegrationId !== integrationId) {
             return sendHermesMutationError(
                 res,

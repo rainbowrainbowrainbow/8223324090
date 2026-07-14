@@ -242,7 +242,11 @@ describe('API auth boundary middleware', () => {
             'notification_outbox.fail',
             'notification_outbox.skip',
             'notification_outbox.stats',
-            'notification_outbox.debug'
+            'notification_outbox.debug',
+            'staff.read',
+            'staff_schedule.read',
+            'staff_schedule.preview',
+            'staff_schedule.apply'
         ]);
         assert.equal(ok.data.mutationActionsAvailable, true);
         assert.deepEqual(ok.data.plannedMutationActions, []);

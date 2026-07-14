@@ -4,8 +4,9 @@ This document records the intended backend route-file surface. The structural
 guard is `npm run check:api-surface`, backed by `config/apiSurface.js`.
 
 The check is not a behavior test. It verifies that every `routes/*.js` file is
-mounted from `server.js`, that broad `/api` route mounts are explicit
-exceptions, and that direct server-level API routes are documented.
+mounted directly from `server.js` or registered as a nested route, that broad
+`/api` route mounts are explicit exceptions, and that direct server-level API
+routes are documented.
 
 ## Why This Exists
 
@@ -109,6 +110,15 @@ focused route tests in the same pack.
 | `/api/work-queue` | `routes/work-queue.js` | work-queue |
 | `/api/workers` | `routes/workers.js` | workers |
 
+## Nested Route Files
+
+These routers are mounted by another route file because their middleware order
+is owned by the parent router.
+
+| Public Mount | Route File | Parent Route File | Owner |
+| --- | --- | --- | --- |
+| `/api/hermes` | `routes/hermes-schedule.js` | `routes/hermes.js` | Hermes staff and schedule reads after Hermes API-key authentication |
+
 ## Generic `/api` Route Mount Exceptions
 
 Most routers must mount under a specific prefix such as `/api/tasks`. These are
@@ -135,7 +145,8 @@ a file under `routes/`:
 This pack is considered done when all of these remain true:
 
 - `npm run check:api-surface` passes.
-- Every `routes/*.js` file is mounted from `server.js`.
+- Every `routes/*.js` file is mounted from `server.js` or explicitly registered
+  as a nested route in `config/apiSurface.js`.
 - Any broad `/api` route mount is listed in `config/apiSurface.js` and this
   document.
 - Any direct server-level API route is listed in `config/apiSurface.js` and this

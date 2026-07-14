@@ -1,7 +1,7 @@
 # Hermes Worker Contract And Operating Packet
 
 This document is the worker-facing contract and daily operating packet for
-Hermes integration with EventGenix CRM Hermes job endpoints.
+Hermes integration with EventGenix CRM job and staff-schedule endpoints.
 
 Production impact: yes for the paired CRM implementation; this document only
 describes the worker contract and approval gates.
@@ -12,6 +12,11 @@ CRM is the source of truth for durable Hermes jobs. Hermes is a worker that can
 read the queue, claim jobs, post status, return results, and record decisions.
 Generated output is always review-first: the job contract does not auto-apply or
 auto-publish assets.
+
+CRM is also the source of truth for staff matching, current schedule state,
+conflict classification, and schedule writes. Hermes owns photo intake and OCR,
+but must never guess a staff match or write a schedule without CRM preview and
+explicit user approval.
 
 Supported job types:
 
@@ -91,13 +96,13 @@ X-Hermes-Run-Id: <stable-worker-run-id>
 Header rules:
 
 - `x-api-key` is required for Hermes auth.
-- `X-Integration-Id` is optional in code, but if present it must be
-  `hermes-event-genix-crm`.
+- `X-Integration-Id` is optional for existing low-risk routes, but schedule
+  apply requires the exact value `hermes-event-genix-crm`.
 - `X-Hermes-Run-Id` is a non-secret correlation header for worker logs and
   incident review. It is not currently an auth gate.
 - Do not log or echo `x-api-key`, bearer tokens, cookies, or secrets.
 
-All mutation endpoints also require:
+All endpoints that change CRM business state also require:
 
 ```http
 Idempotency-Key: <fresh-unique-key>
@@ -111,6 +116,8 @@ Mutation idempotency rules:
   the first attempt may have reached CRM.
 - Never reuse a failed validation/auth key for a changed body.
 - Never reuse keys across different jobs, endpoints, assets, or decisions.
+- Schedule preview is preview-only and does not require confirmation or an
+  idempotency key; schedule apply requires both.
 
 ## Endpoints
 
@@ -123,6 +130,290 @@ Mutation idempotency rules:
 | `POST` | `/api/hermes/jobs/:id/status` | Post worker status. | Yes |
 | `POST` | `/api/hermes/jobs/:id/result` | Post worker result and assets. | Yes |
 | `POST` | `/api/hermes/jobs/:id/decision` | Record a human or operator decision. | Yes |
+| `GET` | `/api/hermes/staff` | Read sanitized scheduleable staff. | No |
+| `GET` | `/api/hermes/staff-schedule` | Read current schedule cells for at most 31 days. | No |
+| `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and create an immutable 30-minute preview. | No schedule writes |
+| `POST` | `/api/hermes/staff-schedule/apply` | Apply selected preview rows atomically. | Yes, plus exact integration id and `manage_staff` |
+
+## Staff Schedule OCR Skill And Router Handoff
+
+Hermes should implement this as a dedicated skill/router, for example
+`eventgenix_staff_schedule_ocr`. The skill needs four CRM capabilities:
+
+```json
+{
+  "requiredActions": [
+    "staff.read",
+    "staff_schedule.read",
+    "staff_schedule.preview",
+    "staff_schedule.apply"
+  ],
+  "businessContext": "event_genix",
+  "maxPreviewRows": 100,
+  "previewTtlMinutes": 30,
+  "applyRequiresHumanConfirmation": true
+}
+```
+
+### Router States
+
+```text
+photo_received
+  -> ocr_extracted
+  -> crm_preview_created
+  -> user_review_required
+  -> user_confirmed
+  -> crm_apply_completed
+```
+
+Terminal or restart states:
+
+```text
+needs_input, cancelled, preview_expired, preview_stale, permission_blocked,
+apply_failed_retryable
+```
+
+Persist only non-secret correlation data required to resume the conversation:
+
+- CRM `previewId` and `expiresAt`;
+- CRM preview `rowId` values and classifications;
+- selected row IDs and separately confirmed conflict row IDs;
+- the apply `Idempotency-Key` after confirmation;
+- a stable Telegram update/file reference without image binary.
+
+Do not persist the Hermes API key, cookies, raw headers, Telegram bot token, or
+photo binary in the skill state.
+
+### OCR Input To CRM Preview
+
+Optional sanitized reads return these wrappers:
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "staffId": 123,
+      "name": "CRM Staff Name",
+      "displayName": "CRM Staff Name",
+      "department": "operations",
+      "position": "Staff",
+      "professions": ["animator"],
+      "scheduleable": true
+    }
+  ],
+  "pagination": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 50
+  }
+}
+```
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "staffId": 123,
+      "date": "2026-07-15",
+      "status": "working",
+      "startTime": "10:00",
+      "endTime": "19:00",
+      "note": null,
+      "professionKey": "animator",
+      "stateHash": "<sha256>"
+    }
+  ],
+  "meta": {
+    "businessContext": "event_genix",
+    "dateFrom": "2026-07-15",
+    "dateTo": "2026-07-15",
+    "days": 1
+  }
+}
+```
+
+Hermes sends OCR JSON, not the photographed file:
+
+```http
+POST /api/hermes/staff-schedule/preview
+X-API-Key: <secret>
+Content-Type: application/json
+```
+
+```json
+{
+  "documentDate": "2026-07-14",
+  "sourceReference": {
+    "telegram": {
+      "chatId": "<chat-reference>",
+      "messageId": "<message-reference>",
+      "fileUniqueId": "<file-reference>"
+    }
+  },
+  "rows": [
+    {
+      "employeeName": "Employee Name From Form",
+      "date": "2026-07-15",
+      "startTime": "10:00",
+      "endTime": "19:00",
+      "status": "working",
+      "note": null,
+      "confidence": 0.96,
+      "issues": []
+    }
+  ]
+}
+```
+
+Accepted statuses are `working`, `remote`, `dayoff`, `vacation`, and `sick`.
+Times use `HH:MM`. `working` requires both times; `dayoff`, `vacation`, and
+`sick` must not include times. Maximum input is 100 rows.
+
+CRM returns one classification per row:
+
+- `create`, `update`, `no_change`: selectable;
+- `conflict`: selectable only after separate user confirmation;
+- `invalid`, `staff_not_found`, `ambiguous_staff`: never selectable.
+
+Hermes must assert `scheduleWrites === 0` before presenting a preview. CRM
+matching is authoritative even when OCR confidence is high. Do not fuzzy-match
+or replace CRM classifications locally.
+
+Preview response wrapper:
+
+```json
+{
+  "success": true,
+  "importId": "hsi_01J...",
+  "status": "ready",
+  "created": true,
+  "replayed": false,
+  "documentDate": "2026-07-14",
+  "expiresAt": "2026-07-14T12:30:00.000Z",
+  "previewHash": "<sha256>",
+  "rows": [
+    {
+      "rowId": "hsr_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "action": "create",
+      "employeeName": "Employee Name From Form",
+      "matchedStaff": {
+        "staffId": 123,
+        "name": "CRM Staff Name",
+        "scheduleable": true
+      },
+      "proposedState": {
+        "staffId": 123,
+        "date": "2026-07-15",
+        "status": "working",
+        "startTime": "10:00",
+        "endTime": "19:00",
+        "note": null
+      },
+      "expectedCurrentState": null,
+      "stateHash": "<sha256>",
+      "issues": []
+    }
+  ],
+  "summary": {
+    "create": 1,
+    "update": 0,
+    "no_change": 0,
+    "conflict": 0,
+    "staff_not_found": 0,
+    "ambiguous_staff": 0,
+    "invalid": 0
+  },
+  "scheduleWrites": 0
+}
+```
+
+### User Review Message
+
+Show a compact summary grouped by classification. For every conflict show the
+current and proposed status/time. For missing, ambiguous, or invalid rows show
+the CRM issue and ask the user to correct the form or choose a CRM-recognized
+name. Never expose hidden HR fields or raw CRM rows.
+
+The confirmation event must identify the exact `previewId`, selected `rowId`
+values, and conflict row IDs the user explicitly accepted. A generic earlier
+message such as "yes" must not approve a different or regenerated preview.
+
+### Confirmed Apply
+
+```http
+POST /api/hermes/staff-schedule/apply
+X-API-Key: <secret>
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <one-key-for-this-logical-apply>
+Content-Type: application/json
+```
+
+```json
+{
+  "previewId": "hsi_01J...",
+  "selectedRowIds": ["hsr_aaaaaaaaaaaaaaaaaaaaaaaa"],
+  "conflictConfirmed": []
+}
+```
+
+The body must contain only those three keys. Never send employee names, times,
+statuses, `stateHash`, or a `proposedMutationPayload` to apply; CRM reloads the
+immutable states saved by preview.
+
+The configured Hermes actor must already have `manage_staff`. The skill must
+not attempt to grant, simulate, or bypass that permission.
+
+Successful apply returns `status: "applied"`, `selectedCount`, `appliedCount`,
+`noChangeCount`, `scheduleWrites`, affected `dates`, and a result for every
+selected row. The worker should persist this response as the terminal result of
+the logical apply.
+
+### Retry And Error Decisions
+
+| Result | Hermes behavior |
+| --- | --- |
+| Preview `scheduleWrites` is not `0` | Stop and raise an integration safety incident. |
+| `invalid`, `staff_not_found`, `ambiguous_staff` | Do not apply the row; ask for correction. |
+| `HERMES_SCHEDULE_APPLY_CONFLICT_CONFIRMATION_REQUIRED` | Ask for explicit confirmation of that conflict row. |
+| `HERMES_SCHEDULE_APPLY_PREVIEW_EXPIRED` | Create a new preview and ask again. |
+| `HERMES_SCHEDULE_APPLY_STALE` | Never overwrite; read current state, create a new preview, and ask again. |
+| `HERMES_SCHEDULE_IMPORT_ALREADY_APPLIED` | Do not issue another apply; reconcile with the stored local operation. |
+| `HERMES_MANAGE_STAFF_REQUIRED` | Stop and hand off to a CRM administrator. |
+| Network loss or `5xx` after apply was sent | Retry the identical body with the same idempotency key. |
+| `IDEMPOTENCY_KEY_CONFLICT` | Stop; the key was reused with a different request. |
+
+All errors use this stable wrapper; branch on `code`, never on `error` text:
+
+```json
+{
+  "success": false,
+  "error": "Human-readable message",
+  "code": "HERMES_SCHEDULE_APPLY_STALE",
+  "meta": {
+    "rowId": "hsr_aaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
+```
+
+### Minimal End-To-End Sequence
+
+```text
+GET  /api/hermes/capabilities
+GET  /api/hermes/staff?limit=50
+GET  /api/hermes/staff-schedule?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+POST /api/hermes/staff-schedule/preview
+-- present preview and wait for explicit user approval --
+POST /api/hermes/staff-schedule/apply
+```
+
+The first three requests are read-only. Preview stores import metadata but must
+return `scheduleWrites: 0`. Only the final confirmed apply changes the schedule.
+
+This schedule skill is independent of EventGenix warehouse photo intake. Do
+not change, reroute, or reuse warehouse photo endpoints for schedule forms.
 
 ## Creative Material Job
 

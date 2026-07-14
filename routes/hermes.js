@@ -6,6 +6,7 @@ const {
     HERMES_INTEGRATION_ID,
     hermesAuth
 } = require('../middleware/hermesAuth');
+const { createHermesScheduleRouter } = require('./hermes-schedule');
 const {
     buildTaskVisibilityScope,
     canMutateTask,
@@ -143,7 +144,11 @@ const SUPPORTED_ACTIONS = [
     'notification_outbox.fail',
     'notification_outbox.skip',
     'notification_outbox.stats',
-    'notification_outbox.debug'
+    'notification_outbox.debug',
+    'staff.read',
+    'staff_schedule.read',
+    'staff_schedule.preview',
+    'staff_schedule.apply'
 ];
 
 const PLANNED_MUTATION_ACTIONS = [];
@@ -1971,6 +1976,27 @@ function buildCapabilitiesPayload(env = process.env) {
                 defaultLimit: 20,
                 mutationsRequireConfirmation: false,
                 mutationsRequireIdempotencyKey: false
+            },
+            staff: {
+                list: 'GET /api/hermes/staff',
+                maxLimit: 50,
+                pagination: 'cursor',
+                defaultScheduleable: true,
+                defaultIncludeFreelance: false
+            },
+            staffSchedule: {
+                list: 'GET /api/hermes/staff-schedule',
+                preview: 'POST /api/hermes/staff-schedule/preview',
+                apply: 'POST /api/hermes/staff-schedule/apply',
+                maxDateRangeDays: 31,
+                maxPreviewRows: 100,
+                previewTtlMinutes: 30,
+                businessContext: 'event_genix',
+                stateHash: 'sha256',
+                previewScheduleWrites: 0,
+                applyRequiresConfirmation: true,
+                applyRequiresIdempotencyKey: true,
+                applyRequiresManageStaff: true
             }
         },
         supportedActions: SUPPORTED_ACTIONS,
@@ -2001,6 +2027,7 @@ function createHermesRouter(options = {}) {
         router.use(rateLimiter);
     }
     router.use(authMiddleware);
+    router.use('/', createHermesScheduleRouter({ pool: query }));
 
     router.get('/capabilities', (req, res) => {
         res.json(buildCapabilitiesPayload(env));

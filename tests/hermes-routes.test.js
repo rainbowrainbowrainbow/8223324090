@@ -1324,6 +1324,17 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('hermes_jobs.create'));
         assert.ok(res.data.supportedActions.includes('hermes_jobs.result'));
         assert.ok(res.data.supportedActions.includes('hermes_jobs.decision'));
+        assert.ok(res.data.supportedActions.includes('staff.read'));
+        assert.ok(res.data.supportedActions.includes('staff_schedule.read'));
+        assert.ok(res.data.supportedActions.includes('staff_schedule.preview'));
+        assert.ok(res.data.supportedActions.includes('staff_schedule.apply'));
+        assert.equal(res.data.endpoints.staff.list, 'GET /api/hermes/staff');
+        assert.equal(res.data.endpoints.staffSchedule.list, 'GET /api/hermes/staff-schedule');
+        assert.equal(res.data.endpoints.staffSchedule.preview, 'POST /api/hermes/staff-schedule/preview');
+        assert.equal(res.data.endpoints.staffSchedule.apply, 'POST /api/hermes/staff-schedule/apply');
+        assert.equal(res.data.endpoints.staffSchedule.applyRequiresConfirmation, true);
+        assert.equal(res.data.endpoints.staffSchedule.applyRequiresIdempotencyKey, true);
+        assert.equal(res.data.endpoints.staffSchedule.applyRequiresManageStaff, true);
         assert.equal(res.data.endpoints.menuPhotos.createJobs, 'POST /api/hermes/menu-photos/jobs');
         assert.equal(res.data.endpoints.menuPhotos.createJobsLimit, 5);
         assert.deepEqual(res.data.endpoints.jobs.jobTypes, ['menu_photo_job', 'creative_material_job']);

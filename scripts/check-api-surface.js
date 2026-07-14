@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     GENERIC_API_ROUTE_MOUNTS,
+    NESTED_API_ROUTE_MOUNTS,
     SERVER_LEVEL_API_ROUTES,
     SERVER_LEVEL_API_MOUNTS
 } = require('../config/apiSurface');
@@ -191,7 +192,10 @@ const doc = fs.existsSync(DOC_PATH) ? fs.readFileSync(DOC_PATH, 'utf8') : '';
 
 if (!doc) fail('docs/API_SURFACE.md is required');
 
-const mountedRouteFiles = new Set(mounts.map(mount => mount.routeFile));
+const mountedRouteFiles = new Set([
+    ...mounts.map(mount => mount.routeFile),
+    ...NESTED_API_ROUTE_MOUNTS.map(mount => mount.routeFile)
+]);
 compareSets('routes directory vs server.js route mounts', mountedRouteFiles, routeFiles);
 
 for (const mount of mounts) {
@@ -229,6 +233,25 @@ for (const mount of GENERIC_API_ROUTE_MOUNTS) {
     }
 }
 
+for (const mount of NESTED_API_ROUTE_MOUNTS) {
+    if (!mount.mount || !mount.routeFile || !mount.parentRouteFile || !mount.owner || !mount.reason) {
+        fail(`nested API mount is incomplete: ${JSON.stringify(mount)}`);
+        continue;
+    }
+    if (!routeFiles.includes(mount.routeFile)) {
+        fail(`nested API mount ${mount.routeFile}: route file does not exist`);
+    }
+    if (!routeFiles.includes(mount.parentRouteFile)) {
+        fail(`nested API mount ${mount.routeFile}: parent route file ${mount.parentRouteFile} does not exist`);
+    }
+    if (!mount.mount.startsWith('/api')) {
+        fail(`nested API mount ${mount.routeFile}: mount must start with /api, got ${mount.mount}`);
+    }
+    if (!doc.includes(`\`${mount.routeFile}\``) || !doc.includes(`\`${mount.parentRouteFile}\``) || !doc.includes(`\`${mount.mount}\``)) {
+        fail(`nested API mount ${mount.routeFile}: missing from docs/API_SURFACE.md`);
+    }
+}
+
 compareSets(
     'server-level API routes',
     serverApiRoutes.map(keyFor),
@@ -256,4 +279,4 @@ if (failures.length) {
     process.exit(1);
 }
 
-console.log(`API surface check passed: ${routeFiles.length} route files, ${mounts.length} route mounts, ${serverApiRoutes.length} server-level API routes.`);
+console.log(`API surface check passed: ${routeFiles.length} route files, ${mounts.length} direct route mounts, ${NESTED_API_ROUTE_MOUNTS.length} nested route mounts, ${serverApiRoutes.length} server-level API routes.`);

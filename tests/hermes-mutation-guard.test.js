@@ -49,6 +49,9 @@ describe('Hermes mutation guard', () => {
                 integration: req.integration
             });
         });
+        app.post('/strict-mutation', createHermesMutationGuard({ requireIntegrationId: true }), (req, res) => {
+            res.json({ success: true });
+        });
         ({ server, baseUrl } = await listen(app));
     });
 
@@ -85,6 +88,16 @@ describe('Hermes mutation guard', () => {
 
         assert.equal(res.status, 400);
         assert.equal(res.data.code, 'HERMES_INTEGRATION_ID_INVALID');
+    });
+
+    it('can require the integration id header for higher-risk mutations', async () => {
+        const res = await request(baseUrl, 'POST', '/strict-mutation', {}, {
+            'Idempotency-Key': 'mutation-strict-1',
+            'X-Hermes-User-Confirmed': 'true'
+        });
+
+        assert.equal(res.status, 400);
+        assert.equal(res.data.code, 'HERMES_INTEGRATION_ID_REQUIRED');
     });
 
     it('attaches Hermes mutation metadata when required safety headers are present', async () => {

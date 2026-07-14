@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.20 - Безпечний multi-segment графік
+
+### Release / Versioning / (14.07.2026) [codex]
+- **Legacy-записи більше не сплющують день** — старий single-shift payload дозволений лише для нового або односегментного плану; multi-segment план захищений контрольованим `409`.
+- **Атомарні bulk і copy-week** — календарні дати обробляються як Europe/Kyiv date-only, невалідні та дубльовані entries відхиляються до запису, а сегменти й додаткові ролі копіюються разом.
+- **Стабільні ID та конкурентне редагування** — незмінені сегменти зберігають ID, stale-вкладка не перезаписує новіший план, audit залишається атомарним із mutation.
+- **Єдині правила годин і ставок** — Reports не включає прогалини, attendance/payroll однаково трактують breaks, hourly/day/monthly ставки не змішуються, simultaneous roles не створюють double pay.
+- **Перевірюваний реліз** — додані isolated PostgreSQL suites, query budgets, browser save/refresh coverage і safe live QA runner із гарантованим cleanup disposable fixtures.
+
+---
+
 ## v0.79.19 - Hermes графік hotfix
 
 ### Hermes / Графік персоналу / (14.07.2026) [codex]

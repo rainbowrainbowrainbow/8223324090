@@ -14,6 +14,7 @@ describe('backoffice foundation v1 contracts', () => {
     const hrRoute = readRepoFile('routes', 'hr.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
+    const staffScheduleMutations = readRepoFile('services', 'staffScheduleMutations.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = readRepoFile('hr.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
@@ -53,9 +54,9 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replacement-clear'/);
         assert.match(staffRoute, /original_staff\.name AS original_staff_name/);
         assert.match(staffRoute, /function replacementNote/);
-        assert.match(staffRoute, /async function loadEnrichedScheduleEntry/);
-        assert.match(staffRoute, /function syncHrShiftFromScheduleEntry/);
-        assert.match(staffRoute, /saveHrShiftDayPlan\(client/);
+        assert.match(staffScheduleMutations, /async function loadEnrichedScheduleEntry/);
+        assert.match(staffScheduleMutations, /function syncHrShiftFromScheduleEntry/);
+        assert.match(staffScheduleMutations, /saveHrShiftDayPlan\(client/);
         assert.doesNotMatch(staffRoute, /INSERT INTO hr_shifts/);
         assert.match(shiftSegmentsService, /INSERT INTO hr_shifts/);
         assert.match(shiftSegmentsService, /ON CONFLICT \(staff_id, shift_date\) DO UPDATE/);
@@ -63,7 +64,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.doesNotMatch(staffRoute, /router\.get\('\/schedule'[\s\S]*await backfillStaffScheduleFromHrShifts\(from, to\)/);
         assert.match(staffRoute, /hs\.shift_date::text = LEFT\(ss\.date::text, 10\)/);
         assert.match(staffRoute, /router\.get\('\/schedule\/history\/:staffId\/:date'/);
-        assert.match(staffRoute, /function recordScheduleAudit/);
+        assert.match(staffScheduleMutations, /function recordScheduleAudit/);
         assert.match(staffRoute, /staff_schedule_update/);
         assert.match(staffPage, /async function replaceScheduleEntry/);
         assert.match(staffPage, /async function clearScheduleReplacement/);

@@ -8,6 +8,7 @@ const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
 const hrRoute = fs.readFileSync('routes/hr.js', 'utf8');
 const staffDisplayGroupService = fs.readFileSync('services/staffDisplayGroups.js', 'utf8');
 const staffOperationalFilters = fs.readFileSync('services/staffOperationalFilters.js', 'utf8');
+const staffScheduleMutations = fs.readFileSync('services/staffScheduleMutations.js', 'utf8');
 const hrPage = fs.readFileSync('js/hr-page.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const uiPage = fs.readFileSync('js/ui.js', 'utf8');
@@ -657,12 +658,12 @@ describe('staff schedule safety guards', () => {
 
     it('logs schedule write history into existing HR audit log', () => {
         assert.match(staffRoute, /router\.get\('\/schedule\/history\/:staffId\/:date'/);
-        assert.match(staffRoute, /INSERT INTO hr_audit_log \(action, staff_id, performed_by, details, ip_address\)/);
+        assert.match(staffScheduleMutations, /INSERT INTO hr_audit_log \(action, staff_id, performed_by, details, ip_address\)/);
         assert.match(staffRoute, /staff_schedule_update/);
         assert.match(staffRoute, /staff_schedule_bulk_update/);
         assert.match(staffRoute, /staff_schedule_copy_week/);
         assert.match(staffRoute, /staff_schedule_replacement_set/);
-        assert.match(staffRoute, /changes\.dayPlan = \{ from: beforePlan, to: afterPlan \}/);
+        assert.match(staffScheduleMutations, /changes\.dayPlan = \{ from: beforePlan, to: afterPlan \}/);
     });
 
     it('does not treat empty schedule cells as working in UI summaries and export', () => {
@@ -1525,14 +1526,14 @@ describe('staff schedule safety guards', () => {
     it('keeps one persisted schedule row per staff member and date', () => {
         const putScheduleRoute = routePutBlock('/schedule');
         const bulkScheduleRoute = routePostBlock('/schedule/bulk');
-        const mirrorBlock = namedFunctionBlock(staffRoute, 'upsertScheduleMirrorFromPlan');
+        const mirrorBlock = namedFunctionBlock(staffScheduleMutations, 'upsertScheduleMirrorFromPlan');
 
         assert.match(mirrorBlock, /ON CONFLICT \(staff_id, date\)/);
         assert.match(mirrorBlock, /DO UPDATE SET shift_start = EXCLUDED\.shift_start/);
         assert.match(mirrorBlock, /profession_key = EXCLUDED\.profession_key/);
         assert.match(mirrorBlock, /RETURNING \*/);
-        assert.match(putScheduleRoute, /upsertScheduleMirrorFromPlan\(client/);
-        assert.match(bulkScheduleRoute, /upsertScheduleMirrorFromPlan\(client/);
+        assert.match(putScheduleRoute, /mutateStaffScheduleEntry\(client/);
+        assert.match(bulkScheduleRoute, /mutateStaffScheduleEntry\(client/);
         assert.match(staffScheduleBrowserSmoke, /assertSingleScheduleEntryPerStaffDate\(SCHEDULE_FIXTURE_ENTRIES/);
     });
 

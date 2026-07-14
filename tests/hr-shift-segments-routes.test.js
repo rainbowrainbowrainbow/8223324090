@@ -11,15 +11,21 @@ const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8'
 const hrRoute = read('routes', 'hr.js');
 const staffRoute = read('routes', 'staff.js');
 const service = read('services', 'hrShiftSegments.js');
+const staffScheduleMutations = read('services', 'staffScheduleMutations.js');
 
 test('HR and Staff routes delegate canonical HR-shift writes to the shared service', () => {
-    for (const route of [hrRoute, staffRoute]) {
+    for (const route of [hrRoute]) {
         assert.match(route, /require\('\.\.\/services\/hrShiftSegments'\)/);
         assert.match(route, /saveHrShiftDayPlan\(client/);
         assert.match(route, /hrShiftPlanErrorPayload/);
         assert.doesNotMatch(route, /INSERT INTO hr_shifts/);
         assert.doesNotMatch(route, /DELETE FROM hr_shift_segments/);
     }
+
+    assert.match(staffRoute, /require\('\.\.\/services\/staffScheduleMutations'\)/);
+    assert.match(staffScheduleMutations, /require\('\.\/hrShiftSegments'\)/);
+    assert.match(staffScheduleMutations, /saveHrShiftDayPlan\(client/);
+    assert.doesNotMatch(staffScheduleMutations, /client\.query\('BEGIN'\)|client\.query\('COMMIT'\)/);
 
     assert.match(service, /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
     assert.match(service, /DELETE FROM hr_shift_segments WHERE hr_shift_id = \$1/);
@@ -30,8 +36,8 @@ test('HR and Staff routes delegate canonical HR-shift writes to the shared servi
 test('all multi-write route flows retain explicit transaction ownership', () => {
     assert.match(hrRoute, /router\.post\('\/shifts'[^]*?await client\.query\('BEGIN'\)[^]*?saveHrShiftDayPlan\(client[^]*?await client\.query\('COMMIT'\)/);
     assert.match(hrRoute, /router\.put\('\/shifts\/:id'[^]*?await client\.query\('BEGIN'\)[^]*?saveHrShiftDayPlan\(client[^]*?await client\.query\('COMMIT'\)/);
-    assert.match(staffRoute, /router\.put\('\/schedule'[^]*?await client\.query\('BEGIN'\)[^]*?syncHrShiftFromScheduleEntry\(client[^]*?await client\.query\('COMMIT'\)/);
-    assert.match(staffRoute, /router\.post\('\/schedule\/bulk'[^]*?await client\.query\('BEGIN'\)[^]*?syncHrShiftFromScheduleEntry\(client[^]*?await client\.query\('COMMIT'\)/);
+    assert.match(staffRoute, /router\.put\('\/schedule'[^]*?await client\.query\('BEGIN'\)[^]*?mutateStaffScheduleEntry\(client[^]*?await client\.query\('COMMIT'\)/);
+    assert.match(staffRoute, /router\.post\('\/schedule\/bulk'[^]*?await client\.query\('BEGIN'\)[^]*?mutateStaffScheduleEntry\(client[^]*?await client\.query\('COMMIT'\)/);
 });
 
 test('legacy read-side backfill refreshes eligible rows under ordered staff locks', () => {
@@ -78,15 +84,15 @@ test('non-working HR plans remain persisted in the legacy staff schedule', () =>
 });
 
 test('Staff schedule audit includes normalized segment-plan changes', () => {
-    assert.match(staffRoute, /function normalizeScheduleAuditPlan/);
-    assert.match(staffRoute, /changes\.dayPlan = \{ from: beforePlan, to: afterPlan \}/);
-    assert.match(staffRoute, /function schedulePlanAuditChanges/);
-    assert.match(staffRoute, /'segmentTimes'/);
-    assert.match(staffRoute, /'segmentProfessions'/);
-    assert.match(staffRoute, /'segmentAdditionalRoles'/);
-    assert.match(staffRoute, /'segmentBreaks'/);
-    assert.match(staffRoute, /beforePlan: previousPlan\?\.plan \|\| null/);
-    assert.match(staffRoute, /afterPlan: hrSync\.plan/);
+    assert.match(staffScheduleMutations, /function normalizeScheduleAuditPlan/);
+    assert.match(staffScheduleMutations, /changes\.dayPlan = \{ from: beforePlan, to: afterPlan \}/);
+    assert.match(staffScheduleMutations, /function schedulePlanAuditChanges/);
+    assert.match(staffScheduleMutations, /'segmentTimes'/);
+    assert.match(staffScheduleMutations, /'segmentProfessions'/);
+    assert.match(staffScheduleMutations, /'segmentAdditionalRoles'/);
+    assert.match(staffScheduleMutations, /'segmentBreaks'/);
+    assert.match(staffScheduleMutations, /beforePlan: previousPlan\?\.plan \|\| null/);
+    assert.match(staffScheduleMutations, /afterPlan: hrSync\.plan/);
     assert.match(staffRoute, /staff_schedule_replacement_removed'[^]*?beforePlan: sourcePlan\.plan[^]*?afterPlan: null/);
     assert.match(staffRoute, /staff_schedule_replacement_set'[^]*?beforePlan: null[^]*?afterPlan: sourcePlan\.plan/);
     assert.match(hrRoute, /before_plan: auditHrDayPlan\(lockedCurrent\.plan\)/);
@@ -99,18 +105,18 @@ test('schedule Telegram notifications render all segment blocks in one message',
     assert.match(staffRoute, /segment\.shiftStart[^]*?segment\.shiftEnd[^]*?segment\.professionKey/);
     assert.match(staffRoute, /additionalProfessionKeys/);
     assert.match(staffRoute, /const timeInfo = blocks\.length \? `\\n⏱ \$\{blocks\.join\('\\n⏱ '\)\}` : ''/);
-    assert.match(staffRoute, /notifyScheduleChange\(staffId, date,[^]*?hrSync\.plan\)/);
+    assert.match(staffRoute, /notifyScheduleChange\(staffId, date,[^]*?mutation\.plan\)/);
     assert.match(staffRoute, /notifyBulkScheduleChange\(affectedStaff, count, notificationChanges\)/);
 });
 
 test('schedule writers acquire staff locks in stable order before parent and mirror rows', () => {
-    for (const route of [hrRoute, staffRoute]) {
+    for (const route of [hrRoute, staffScheduleMutations]) {
         assert.match(route, /WHERE id = ANY\(\$1::int\[\]\)[^]*?ORDER BY id[^]*?FOR UPDATE/);
     }
     assert.match(staffRoute, /lockScheduleStaffRows\(client, orderedEntries\.map\(entry => entry\.staffId\)\)/);
     assert.match(hrRoute, /lockHrShiftStaffRows\(client, orderedStaffIds\)/);
     assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?SELECT \* FROM hr_shifts WHERE id = \$1[^]*?lockHrShiftStaffRows[^]*?SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
-    assert.match(staffRoute, /router\.put\('\/schedule'[^]*?syncHrShiftFromScheduleEntry\(client[^]*?loadScheduleEntryForUpdate\(client, staffId, date\)/);
+    assert.match(staffScheduleMutations, /syncHrShiftFromScheduleEntry\(client[^]*?loadScheduleEntryForUpdate\(client, staffId, date\)/);
 });
 
 test('replacement and direct HR mutation routes reject stale owner snapshots', () => {

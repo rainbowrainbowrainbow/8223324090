@@ -42,8 +42,7 @@ const { broadcast, broadcastLineEvent } = require('../services/websocket');
 const {
     getKyivDate,
     getKyivDateStr,
-    getScheduledAnimatorLines,
-    reconcileScheduledAnimatorLines
+    getScheduledAnimatorLines
 } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const {
@@ -57,7 +56,6 @@ const {
     staffProfessionKeys
 } = require('../services/professions');
 const {
-    saveHrShiftDayPlan,
     loadHrShiftDayPlan,
     hydrateHrShiftDayPlans,
     normalizeHrShiftDayPlan,
@@ -71,6 +69,21 @@ const {
     scheduleableStaffWhere,
     validateStaffScheduleableForDate
 } = require('../services/staffOperationalFilters');
+const {
+    loadEnrichedScheduleEntry,
+    loadScheduleEntryForUpdate,
+    lockScheduleStaffRows,
+    mutateStaffScheduleEntry,
+    normalizeScheduleDate,
+    normalizeScheduleStatus,
+    reconcileAnimatorRosterDates,
+    recordScheduleAudit,
+    rosterMutationDates,
+    scheduleStatusNeedsProfession,
+    syncHrShiftFromScheduleEntry,
+    upsertScheduleMirrorFromPlan,
+    validateScheduleWriteStaff
+} = require('../services/staffScheduleMutations');
 const {
     buildStaffDisplayGroupOptions,
     decorateStaffRowsWithDisplayGroups,
@@ -102,19 +115,6 @@ const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoli
 const STAFF_COPY_WEEK_MAX_STAFF_IDS = 500;
 const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
 const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
-
-function rosterMutationDates(values = []) {
-    return [...new Set(values.map(normalizeScheduleDate).filter(Boolean))].sort();
-}
-
-async function reconcileAnimatorRosterDates(client, values = []) {
-    const dates = rosterMutationDates(values);
-    const results = [];
-    for (const date of dates) {
-        results.push({ date, ...(await reconcileScheduledAnimatorLines(date, client)) });
-    }
-    return results;
-}
 
 function broadcastAnimatorRosterDates(values = [], userId = null) {
     rosterMutationDates(values).forEach(date => {
@@ -224,8 +224,6 @@ function linkedStaffAccountMeta(row = {}, currentUserId = null) {
 }
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', day_off: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
-const SCHEDULE_STATUS_VALUES = new Set(['working', 'remote', 'dayoff', 'vacation', 'sick']);
-
 function activeOperationalStaffWhere(alias = 's', options = {}) {
     return activeStaffWhere(alias, {
         poolMode: 'not_blacklisted',
@@ -248,39 +246,6 @@ function activeOperationalStaffForDateWhere(alias = 's') {
 async function rejectUnscheduleableStaff(res, client, validation, extra = {}) {
     await client.query('ROLLBACK').catch(() => {});
     return res.status(validation.status || 400).json(scheduleableStaffErrorPayload(validation, extra));
-}
-
-async function validateScheduleWriteStaff(client, staffId, date, options = {}) {
-    return validateStaffScheduleableForDate(client, staffId, date, {
-        ...options,
-        forUpdate: options.forUpdate !== false
-    });
-}
-
-async function lockScheduleStaffRows(client, staffIds = []) {
-    const ids = [...new Set(staffIds
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))]
-        .sort((a, b) => a - b);
-    if (!ids.length) return;
-    await client.query(
-        `SELECT id FROM staff
-         WHERE id = ANY($1::int[])
-         ORDER BY id
-         FOR UPDATE`,
-        [ids]
-    );
-}
-
-function normalizeScheduleStatus(status, fallback = 'working') {
-    const raw = String(status ?? fallback ?? '').trim().toLowerCase();
-    if (!raw) return fallback;
-    if (raw === 'day_off') return 'dayoff';
-    return SCHEDULE_STATUS_VALUES.has(raw) ? raw : null;
-}
-
-function scheduleStatusNeedsProfession(status) {
-    return ['working', 'remote'].includes(normalizeScheduleStatus(status, 'working'));
 }
 
 const STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS = ['weekday', 'weekend'];
@@ -475,12 +440,6 @@ async function loadStaffShiftPreferences(db, staffId, options = {}) {
     return result.rows.map(mapStaffShiftPreferenceRow);
 }
 
-function normalizeScheduleDate(value) {
-    if (!value) return null;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    return String(value).slice(0, 10);
-}
-
 function normalizeCopyWeekStaffIds(value) {
     if (!Array.isArray(value)) return [];
     const seen = new Set();
@@ -495,130 +454,12 @@ function normalizeCopyWeekStaffIds(value) {
     return ids;
 }
 
-function normalizeScheduleAuditEntry(entry = null) {
-    if (!entry) return null;
-    return {
-        scheduleId: entry.id || null,
-        staffId: Number(entry.staff_id ?? entry.staffId) || null,
-        date: normalizeScheduleDate(entry.date),
-        status: normalizeScheduleStatus(entry.status, null),
-        shiftStart: entry.shift_start ? String(entry.shift_start).slice(0, 5) : null,
-        shiftEnd: entry.shift_end ? String(entry.shift_end).slice(0, 5) : null,
-        note: entry.note || null,
-        professionKey: entry.profession_key || entry.professionKey || null,
-        originalStaffId: entry.original_staff_id || null,
-        replacementReason: entry.replacement_reason || null
-    };
-}
-
-function scheduleAuditChanges(beforeEntry, afterEntry) {
-    const before = beforeEntry || {};
-    const after = afterEntry || {};
-    const fields = ['status', 'shiftStart', 'shiftEnd', 'note', 'professionKey', 'originalStaffId', 'replacementReason'];
-    return fields.reduce((changes, field) => {
-        if ((before[field] ?? null) !== (after[field] ?? null)) {
-            changes[field] = { from: before[field] ?? null, to: after[field] ?? null };
-        }
-        return changes;
-    }, {});
-}
-
-function normalizeScheduleAuditPlan(plan = null) {
-    if (!plan) return null;
-    return {
-        primaryProfessionKey: plan.primaryProfessionKey || null,
-        segments: (plan.segments || []).map(segment => ({
-            professionKey: segment.professionKey || null,
-            shiftStart: segment.shiftStart || null,
-            shiftEnd: segment.shiftEnd || null,
-            breakMinutes: Number(segment.breakMinutes || 0),
-            note: segment.note || null,
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])].sort()
-        }))
-    };
-}
-
-function schedulePlanAuditChanges(beforePlan, afterPlan) {
-    const changes = {};
-    const before = beforePlan || { primaryProfessionKey: null, segments: [] };
-    const after = afterPlan || { primaryProfessionKey: null, segments: [] };
-    const addChange = (key, from, to) => {
-        if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
-    };
-
-    addChange('primaryProfessionKey', before.primaryProfessionKey || null, after.primaryProfessionKey || null);
-    addChange('segments', before.segments || [], after.segments || []);
-    addChange(
-        'segmentTimes',
-        (before.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd })),
-        (after.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd }))
-    );
-    addChange(
-        'segmentProfessions',
-        (before.segments || []).map(segment => segment.professionKey || null),
-        (after.segments || []).map(segment => segment.professionKey || null)
-    );
-    addChange(
-        'segmentAdditionalRoles',
-        (before.segments || []).map(segment => segment.additionalProfessionKeys || []),
-        (after.segments || []).map(segment => segment.additionalProfessionKeys || [])
-    );
-    addChange(
-        'segmentBreaks',
-        (before.segments || []).map(segment => Number(segment.breakMinutes || 0)),
-        (after.segments || []).map(segment => Number(segment.breakMinutes || 0))
-    );
-    return changes;
-}
-
 async function insertHrAuditLog(client, action, staffId, performedBy, details, ipAddress) {
     await client.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
          VALUES ($1, $2, $3, $4, $5)`,
         [action, staffId || null, performedBy || null, details ? JSON.stringify(details) : null, ipAddress || null]
     );
-}
-
-async function recordScheduleAudit(client, action, staffId, date, beforeEntry, afterEntry, req, extraDetails = {}) {
-    const before = normalizeScheduleAuditEntry(beforeEntry);
-    const after = normalizeScheduleAuditEntry(afterEntry);
-    const changes = scheduleAuditChanges(before, after);
-    const {
-        beforePlan: rawBeforePlan,
-        afterPlan: rawAfterPlan,
-        ...auditExtraDetails
-    } = extraDetails;
-    const beforePlan = normalizeScheduleAuditPlan(rawBeforePlan);
-    const afterPlan = normalizeScheduleAuditPlan(rawAfterPlan);
-    if (JSON.stringify(beforePlan) !== JSON.stringify(afterPlan)) {
-        changes.dayPlan = { from: beforePlan, to: afterPlan };
-        Object.assign(changes, schedulePlanAuditChanges(beforePlan, afterPlan));
-    }
-    const force = Boolean(auditExtraDetails.force);
-    if (!force && Object.keys(changes).length === 0) return false;
-    const details = {
-        ...auditExtraDetails,
-        force: undefined,
-        source: auditExtraDetails.source || 'staff.schedule',
-        date: normalizeScheduleDate(date),
-        staffId: Number(staffId) || null,
-        before,
-        after,
-        changes
-    };
-    await insertHrAuditLog(client, action, Number(staffId) || null, req?.user?.username || null, details, req?.ip || null);
-    return true;
-}
-
-async function loadScheduleEntryForUpdate(client, staffId, date) {
-    const result = await client.query(
-        `SELECT *, date::text AS date
-         FROM staff_schedule
-         WHERE staff_id = $1 AND date = $2
-         FOR UPDATE`,
-        [staffId, date]
-    );
-    return result.rows[0] || null;
 }
 
 function timeToMinutes(value) {
@@ -753,27 +594,6 @@ function replacementNote(originalName, reason) {
     return `Заміна за ${safeName}${safeReason ? `: ${safeReason}` : ''}`;
 }
 
-async function loadEnrichedScheduleEntry(client, scheduleId) {
-    const result = await client.query(
-        `SELECT ss.*, ss.date::text AS date,
-                s.name, s.department, s.position, s.color, s.is_active,
-                s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
-                hs.id AS hr_shift_id,
-                hs.original_staff_id,
-                original_staff.name AS original_staff_name,
-                hs.replacement_reason,
-                hs.replaced_by,
-                hs.replaced_at
-         FROM staff_schedule ss
-         JOIN staff s ON s.id = ss.staff_id
-         LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
-         LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
-         WHERE ss.id = $1`,
-        [scheduleId]
-    );
-    return result.rows[0] || null;
-}
-
 async function removeScheduleMirror(client, staffId, date) {
     await client.query(
         `DELETE FROM staff_schedule
@@ -810,34 +630,6 @@ async function upsertScheduleMirror(client, shift, note = null) {
         ]
     );
     return result.rows[0]?.id || null;
-}
-
-async function upsertScheduleMirrorFromPlan(client, entry, plan) {
-    const staffId = Number(entry?.staffId ?? entry?.staff_id);
-    const date = normalizeScheduleDate(entry?.date);
-    if (!staffId || !date || !plan) return null;
-    const isWorkingDay = scheduleStatusNeedsProfession(plan.status);
-    const result = await client.query(
-        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (staff_id, date)
-         DO UPDATE SET shift_start = EXCLUDED.shift_start,
-                       shift_end = EXCLUDED.shift_end,
-                       status = EXCLUDED.status,
-                       note = EXCLUDED.note,
-                       profession_key = EXCLUDED.profession_key
-         RETURNING *`,
-        [
-            staffId,
-            date,
-            isWorkingDay ? plan.plannedStart : null,
-            isWorkingDay ? plan.plannedEnd : null,
-            plan.status,
-            entry?.note ?? entry?.notes ?? null,
-            isWorkingDay ? plan.primaryProfessionKey : null
-        ]
-    );
-    return result.rows[0] || null;
 }
 
 function sendHrShiftSyncError(res, result, extra = {}) {
@@ -968,45 +760,6 @@ async function attachScheduleDayPlans(rows = [], db = pool) {
         }
         return scheduleEntryWithDayPlan(row, plan);
     });
-}
-
-async function syncHrShiftFromScheduleEntry(client, entry, actor = null) {
-    const staffId = Number(entry?.staffId ?? entry?.staff_id);
-    const date = normalizeScheduleDate(entry?.date);
-    const status = normalizeScheduleStatus(entry?.status, 'working') || 'working';
-    if (!staffId || !date) return null;
-    const validation = await validateScheduleWriteStaff(client, staffId, date, { forUpdate: false });
-    if (!validation.ok) {
-        return {
-            ok: false,
-            status: validation.status || 400,
-            error: validation.error,
-            code: validation.code,
-            validation
-        };
-    }
-    try {
-        const saved = await saveHrShiftDayPlan(client, {
-            staffId,
-            shiftDate: date,
-            status,
-            payload: {
-                ...entry,
-                status
-            }
-        }, { actor: actor || null });
-        return { ok: true, shift: saved.shift || null, plan: saved.plan };
-    } catch (error) {
-        if (!isHrShiftPlanError(error)) throw error;
-        const payload = hrShiftPlanErrorPayload(error);
-        return {
-            ok: false,
-            status: error.statusCode || error.status || 400,
-            code: payload.code,
-            error: payload.error,
-            details: payload.details
-        };
-    }
 }
 
 async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
@@ -1218,38 +971,27 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
             return res.status(400).json({ success: false, error: 'Невідомий статус графіка' });
         }
         await client.query('BEGIN');
-        const scheduleValidation = await validateScheduleWriteStaff(client, staffId, date);
-        if (!scheduleValidation.ok) {
-            return rejectUnscheduleableStaff(res, client, scheduleValidation, {
-                entry: { staffId, date }
-            });
-        }
-        const previousPlan = await loadHrShiftDayPlan(client, { staffId, shiftDate: date });
-        const hrSync = await syncHrShiftFromScheduleEntry(client, {
+        const mutation = await mutateStaffScheduleEntry(client, {
             ...req.body,
             staffId,
             date,
             status: scheduleStatus,
             note
-        }, req.user?.username || null);
-        if (hrSync?.ok === false) {
-            await client.query('ROLLBACK');
-            return sendHrShiftSyncError(res, hrSync, { entry: { staffId, date } });
-        }
-        const previous = await loadScheduleEntryForUpdate(client, staffId, date);
-        const result = await upsertScheduleMirrorFromPlan(client, { staffId, date, note }, hrSync.plan);
-        const enriched = result?.id ? await loadEnrichedScheduleEntry(client, result.id) : null;
-        await recordScheduleAudit(client, 'staff_schedule_update', staffId, date, previous, enriched || result, req, {
+        }, {
+            actor: { user: req.user, ip: req.ip },
             source: 'staff.schedule.put',
-            beforePlan: previousPlan?.plan || null,
-            afterPlan: hrSync.plan
+            auditAction: 'staff_schedule_update'
         });
+        if (!mutation.ok) {
+            await client.query('ROLLBACK');
+            return sendHrShiftSyncError(res, mutation, { entry: { staffId, date } });
+        }
         await reconcileAnimatorRosterDates(client, [date]);
         await client.query('COMMIT');
         // Fire-and-forget Telegram notification
-        notifyScheduleChange(staffId, date, hrSync.plan.status, hrSync.plan.plannedStart, hrSync.plan.plannedEnd, hrSync.plan);
+        notifyScheduleChange(staffId, date, mutation.plan.status, mutation.plan.plannedStart, mutation.plan.plannedEnd, mutation.plan);
         broadcastAnimatorRosterDates([date], req.user?.id);
-        res.json({ success: true, data: scheduleEntryWithDayPlan(enriched || result, hrSync.plan) });
+        res.json({ success: true, data: scheduleEntryWithDayPlan(mutation.entry, mutation.plan) });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (isHrShiftPlanError(err)) {
@@ -1715,54 +1457,32 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
             await lockScheduleStaffRows(client, orderedEntries.map(entry => entry.staffId));
             for (const e of orderedEntries) {
                 if (!e.staffId || !e.date) continue;
-                const entryStatus = normalizeScheduleStatus(e.status, 'working');
-                if (!entryStatus) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Невідомий статус графіка',
-                        entry: { staffId: e.staffId, date: e.date }
-                    });
-                }
-                const scheduleValidation = await validateScheduleWriteStaff(client, e.staffId, e.date, {
-                    forUpdate: false
-                });
-                if (!scheduleValidation.ok) {
-                    return rejectUnscheduleableStaff(res, client, scheduleValidation, {
-                        entry: { staffId: e.staffId, date: e.date }
-                    });
-                }
-                const previousPlan = await loadHrShiftDayPlan(client, {
-                    staffId: e.staffId,
-                    shiftDate: e.date
-                });
-                const hrSync = await syncHrShiftFromScheduleEntry(client, {
+                const mutation = await mutateStaffScheduleEntry(client, {
                     ...e,
                     staffId: e.staffId,
                     date: e.date,
-                    status: entryStatus,
                     note: e.note || null
-                }, req.user?.username || null);
-                if (hrSync?.ok === false) {
+                }, {
+                    actor: { user: req.user, ip: req.ip },
+                    source: 'staff.schedule.bulk',
+                    auditAction: 'staff_schedule_bulk_update',
+                    sourceMetadata: { batchSize: entries.length },
+                    loadEnriched: false,
+                    auditWithEnriched: false,
+                    forUpdate: false
+                });
+                if (!mutation.ok) {
                     await client.query('ROLLBACK');
-                    return sendHrShiftSyncError(res, hrSync, {
+                    return sendHrShiftSyncError(res, mutation, {
                         entry: { staffId: e.staffId, date: e.date }
                     });
                 }
-                const previous = await loadScheduleEntryForUpdate(client, e.staffId, e.date);
-                const upserted = await upsertScheduleMirrorFromPlan(client, e, hrSync.plan);
-                await recordScheduleAudit(client, 'staff_schedule_bulk_update', e.staffId, e.date, previous, upserted, req, {
-                    source: 'staff.schedule.bulk',
-                    batchSize: entries.length,
-                    beforePlan: previousPlan?.plan || null,
-                    afterPlan: hrSync.plan
-                });
                 affectedStaff.add(e.staffId);
-                affectedDates.add(normalizeScheduleDate(e.date));
+                affectedDates.add(mutation.date);
                 notificationChanges.push({
                     staffId: e.staffId,
-                    date: normalizeScheduleDate(e.date),
-                    plan: hrSync.plan
+                    date: mutation.date,
+                    plan: mutation.plan
                 });
                 count++;
             }

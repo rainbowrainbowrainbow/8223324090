@@ -25,6 +25,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const hrRoute = readRepoFile('routes', 'hr.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
+    const staffScheduleMutations = readRepoFile('services', 'staffScheduleMutations.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
@@ -200,9 +201,9 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /mirrorHrDayPlanToStaffSchedule\([\s\S]*?currentShift\.staff_id,[\s\S]*?currentShift\.shift_date/);
         assert.match(hrRoute, /dayPlanPayload\(loaded\.plan/);
 
-        assert.match(staffRoute, /function scheduleStatusNeedsProfession/);
+        assert.match(staffScheduleMutations, /function scheduleStatusNeedsProfession/);
         assert.match(staffRoute, /require\('\.\.\/services\/hrShiftSegments'\)/);
-        assert.match(staffRoute, /saveHrShiftDayPlan\(client/);
+        assert.match(staffScheduleMutations, /saveHrShiftDayPlan\(client/);
         assert.match(staffRoute, /validateHrShiftDayPlanProfessions\(client, replacementStaffId, sourcePlan\.plan\)/);
         assert.doesNotMatch(staffRoute, /resolveScheduleProfession/);
         assert.match(staffRoute, /INSERT INTO staff_schedule \(staff_id, date, shift_start, shift_end, status, note, profession_key\)/);

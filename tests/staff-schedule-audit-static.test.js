@@ -96,6 +96,7 @@ test('active schedule read paths use the shared scheduleable staff filter', () =
 test('schedule write paths reject non-scheduleable staff before writes and mirrors', () => {
     const filters = read('services', 'staffOperationalFilters.js');
     const staffRoute = read('routes', 'staff.js');
+    const staffScheduleMutations = read('services', 'staffScheduleMutations.js');
     const hrRoute = read('routes', 'hr.js');
 
     assert.match(filters, /async function validateStaffScheduleableForDate/);
@@ -106,10 +107,11 @@ test('schedule write paths reject non-scheduleable staff before writes and mirro
     assert.match(filters, /STAFF_FREELANCE_NOT_ALLOWED/);
     assert.match(filters, /STAFF_TERMINATED/);
 
-    assert.match(staffRoute, /async function validateScheduleWriteStaff/);
+    assert.match(staffScheduleMutations, /async function validateScheduleWriteStaff/);
     assert.match(staffRoute, /async function rejectUnscheduleableStaff/);
-    assert.match(staffRoute, /validateScheduleWriteStaff\(client, staffId, date\)/);
-    assert.match(staffRoute, /validateScheduleWriteStaff\(client, e\.staffId, e\.date, \{\s*forUpdate: false\s*\}\)/);
+    assert.match(staffScheduleMutations, /validateScheduleWriteStaff\(client, staffId, date/);
+    assert.match(staffRoute, /mutateStaffScheduleEntry\(client/);
+    assert.match(staffRoute, /forUpdate: false/);
     assert.match(staffRoute, /validateScheduleWriteStaff\(client, row\.staff_id, targetDate, \{\s*forUpdate: false\s*\}\)/);
     assert.match(staffRoute, /validateScheduleWriteStaff\(client, replacementStaffId, date, \{\s*forUpdate: false\s*\}\)/);
     assert.match(staffRoute, /validateScheduleWriteStaff\(client, originalStaffId, date, \{\s*forUpdate: false\s*\}\)/);

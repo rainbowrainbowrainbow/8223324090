@@ -667,6 +667,14 @@ function professionSummaryRow({ professionKey, minutes, days = 0, rate, amount, 
 }
 
 function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(staff?.id), professionRateMap = new Map()) {
+    const metricDefaults = payrollMetricBucket(staff?.id);
+    metrics = { ...metricDefaults, ...(metrics || {}) };
+    for (const key of ['professionAllocations', 'overtimeAllocations', 'primaryDays', 'attendanceDays', 'allocationIssues']) {
+        if (!Array.isArray(metrics[key])) metrics[key] = metricDefaults[key];
+    }
+    if (!metrics.reconciliation || typeof metrics.reconciliation !== 'object') {
+        metrics.reconciliation = metricDefaults.reconciliation;
+    }
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
     const schemeType = activeScheme?.schemeType || activeScheme?.scheme_type || 'hourly';
     const standardType = ['hourly', 'per_shift', 'monthly_fixed'].includes(schemeType);

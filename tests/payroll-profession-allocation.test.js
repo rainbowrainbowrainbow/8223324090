@@ -179,6 +179,22 @@ test('single-role hourly payroll keeps the legacy amount', () => {
     assert.equal(result.professionRateSummary.length, 1);
 });
 
+test('hourly payroll returns an empty result for staff without attendance metrics', () => {
+    const result = calculateProfessionPay(
+        staff(),
+        { schemeType: 'hourly', config: {}, isFallback: true },
+        { totalMinutes: 0, hoursWorked: 0, daysWorked: 0 },
+        new Map()
+    );
+
+    assert.equal(result.baseAmount, 0);
+    assert.equal(result.overtimeAmount, 0);
+    assert.equal(result.totalAmount, 0);
+    assert.deepEqual(result.professionRateSummary, []);
+    assert.deepEqual(result.allocationIssues, []);
+    assert.deepEqual(result.reconciliation, { days: [], warnings: [] });
+});
+
 test('payroll source reconciliation keeps one shift and attendance ref with many segment refs', () => {
     const reconciliation = buildPayrollSourceReconciliation([
         {

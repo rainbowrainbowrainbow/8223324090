@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.17 - Hermes OCR графіка
+
+### Release / Versioning / (14.07.2026) [codex]
+- **Preview графіка з фото** — Hermes передає розпізнані рядки, а CRM точно зіставляє працівників, показує create/update/conflict та гарантує `scheduleWrites: 0` до підтвердження.
+- **Безпечне атомарне застосування** — вибрані зміни записуються однією транзакцією з idempotency, stale-state захистом, аудитом і синхронізацією HR shifts та animator roster.
+- **Обмежений інтеграційний доступ** — Hermes отримує лише санітизований staff/schedule API, а apply вимагає `manage_staff`, явне підтвердження та незмінний preview.
+
+---
+
 ## v0.79.16 - Стабільний payroll preview
 
 ### Release / Versioning / (14.07.2026) [codex]

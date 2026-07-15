@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 const crypto = require('crypto');
 
 const { logAdminAction } = require('../services/adminAudit');
+const { lockAttendanceWriteMaintenance } = require('../services/attendanceWriteLock');
 const { requireRole } = require('../middleware/auth');
 const { safeTableName } = require('../utils/sqlSafe');
 const log = createLogger('Backup');
@@ -20,6 +21,13 @@ router.use(requireRole('creator', 'director'));
 
 // Whitelist of allowed table names for restore statements
 const ALLOWED_TABLES = new Set(BACKUP_TABLES);
+const ATTENDANCE_MAINTENANCE_TABLES = new Set([
+    'staff',
+    'staff_schedule',
+    'hr_shifts',
+    'hr_time_records',
+    'staff_checkins'
+]);
 
 router.post('/create', async (req, res) => {
     try {
@@ -80,6 +88,13 @@ function validateRestoreStatement(stmt) {
     return { ok: false, reason: `Statement must be INSERT INTO or DELETE FROM, got: ${upper.slice(0, 50)}` };
 }
 
+function restoreTouchesAttendanceState(statements) {
+    return statements.some(stmt => {
+        const validated = validateRestoreStatement(stmt);
+        return validated.ok && ATTENDANCE_MAINTENANCE_TABLES.has(validated.table);
+    });
+}
+
 router.post('/restore', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -116,6 +131,9 @@ router.post('/restore', async (req, res) => {
         }
 
         await client.query('BEGIN');
+        if (restoreTouchesAttendanceState(validated)) {
+            await lockAttendanceWriteMaintenance(client);
+        }
 
         // Reset sequence counters after restore for tables with serial PKs
         const tablesWithData = new Set();
@@ -263,6 +281,9 @@ router.post('/restore-encrypted', async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            if (restoreTouchesAttendanceState(statements)) {
+                await lockAttendanceWriteMaintenance(client);
+            }
             let executed = 0;
             for (const stmt of statements) {
                 await client.query(stmt);

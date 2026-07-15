@@ -401,7 +401,9 @@ describe('Hermes capabilities route auth', () => {
                 'staff.create',
                 'staff_schedule.read',
                 'staff_schedule.preview',
-                'staff_schedule.apply'
+                'staff_schedule.apply',
+                'attendance.preview',
+                'attendance.apply'
             ]);
             assert.equal(res.data.mutationActionsAvailable, true);
             assert.deepEqual(res.data.plannedMutationActions, []);
@@ -418,6 +420,21 @@ describe('Hermes capabilities route auth', () => {
                 applyRequiresConfirmation: true,
                 applyRequiresIdempotencyKey: true,
                 applyRequiresManageStaff: true
+            });
+            assert.deepEqual(res.data.endpoints.attendance, {
+                preview: 'POST /api/hermes/attendance/preview',
+                apply: 'POST /api/hermes/attendance/apply',
+                businessContext: 'event_genix',
+                maxPreviewRows: 100,
+                previewTtlMinutes: 30,
+                previewRequiresManageStaff: true,
+                previewAttendanceWrites: 0,
+                previewScheduleWrites: 0,
+                scheduleWrites: 0,
+                applyRequiresConfirmation: true,
+                applyRequiresIdempotencyKey: true,
+                applyRequiresManageStaff: true,
+                applyScheduleWrites: 0
             });
         });
     });

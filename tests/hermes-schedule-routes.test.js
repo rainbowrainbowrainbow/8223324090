@@ -281,6 +281,8 @@ describe('Hermes staff and schedule read routes', () => {
         assert.ok(response.data.supportedActions.includes('staff_schedule.read'));
         assert.ok(response.data.supportedActions.includes('staff_schedule.preview'));
         assert.ok(response.data.supportedActions.includes('staff_schedule.apply'));
+        assert.ok(response.data.supportedActions.includes('attendance.preview'));
+        assert.ok(response.data.supportedActions.includes('attendance.apply'));
         assert.equal(response.data.supportedActions.includes('manage_staff'), false);
         assert.equal(response.data.endpoints.staff.list, 'GET /api/hermes/staff');
         assert.equal(response.data.endpoints.staff.create, 'POST /api/hermes/staff');
@@ -295,6 +297,15 @@ describe('Hermes staff and schedule read routes', () => {
         assert.equal(response.data.endpoints.staffSchedule.applyRequiresConfirmation, true);
         assert.equal(response.data.endpoints.staffSchedule.applyRequiresIdempotencyKey, true);
         assert.equal(response.data.endpoints.staffSchedule.applyRequiresManageStaff, true);
+        assert.equal(response.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
+        assert.equal(response.data.endpoints.attendance.previewAttendanceWrites, 0);
+        assert.equal(response.data.endpoints.attendance.previewScheduleWrites, 0);
+        assert.equal(response.data.endpoints.attendance.scheduleWrites, 0);
+        assert.equal(response.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
+        assert.equal(response.data.endpoints.attendance.applyRequiresConfirmation, true);
+        assert.equal(response.data.endpoints.attendance.applyRequiresIdempotencyKey, true);
+        assert.equal(response.data.endpoints.attendance.applyRequiresManageStaff, true);
+        assert.equal(response.data.endpoints.attendance.applyScheduleWrites, 0);
     });
 
     it('creates a staff member through Hermes with clear no-schedule side effects', async () => {

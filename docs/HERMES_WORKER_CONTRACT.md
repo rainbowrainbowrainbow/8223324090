@@ -18,6 +18,11 @@ conflict classification, and schedule writes. Hermes owns photo intake and OCR,
 but must never guess a staff match or write a schedule without CRM preview and
 explicit user approval.
 
+For paper arrival sheets, CRM is also the source of truth for actual attendance
+duplicates and the final arrival write. Attendance import is not a schedule
+mutation: Hermes must preview first and may apply only the safe row identifiers
+confirmed by the owner.
+
 Supported job types:
 
 - `creative_material_job`
@@ -79,6 +84,7 @@ explicit approval:
 - Enable auto-worker/gateway live mode.
 - Deploy application changes.
 - Run migrations.
+- Apply actual arrivals from an attendance preview.
 
 ## Auth And Headers
 
@@ -96,8 +102,8 @@ X-Hermes-Run-Id: <stable-worker-run-id>
 Header rules:
 
 - `x-api-key` is required for Hermes auth.
-- `X-Integration-Id` is optional for existing low-risk routes, but schedule
-  apply requires the exact value `hermes-event-genix-crm`.
+- `X-Integration-Id` is optional for existing low-risk routes, but schedule and
+  attendance apply require the exact value `hermes-event-genix-crm`.
 - `X-Hermes-Run-Id` is a non-secret correlation header for worker logs and
   incident review. It is not currently an auth gate.
 - Do not log or echo `x-api-key`, bearer tokens, cookies, or secrets.
@@ -116,8 +122,9 @@ Mutation idempotency rules:
   the first attempt may have reached CRM.
 - Never reuse a failed validation/auth key for a changed body.
 - Never reuse keys across different jobs, endpoints, assets, or decisions.
-- Schedule preview is preview-only and does not require confirmation or an
-  idempotency key; staff create and schedule apply require both.
+- Schedule and attendance preview are metadata-only and do not require
+  confirmation or an idempotency key; staff create, schedule apply, and
+  attendance apply require both.
 
 ## Endpoints
 
@@ -135,6 +142,8 @@ Mutation idempotency rules:
 | `GET` | `/api/hermes/staff-schedule` | Read current schedule cells for at most 31 days. | No |
 | `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and create an immutable 30-minute preview. | No schedule writes |
 | `POST` | `/api/hermes/staff-schedule/apply` | Apply selected preview rows atomically. | Yes, plus exact integration id and `manage_staff` |
+| `POST` | `/api/hermes/attendance/preview` | Match arrival-sheet OCR rows and create an immutable 30-minute preview. | No attendance or schedule writes; requires `manage_staff` |
+| `POST` | `/api/hermes/attendance/apply` | Apply only selected safe actual-arrival rows. | Yes, plus exact integration id and `manage_staff` |
 
 ### Staff Create Command UX
 
@@ -453,6 +462,248 @@ return `scheduleWrites: 0`. Only the final confirmed apply changes the schedule.
 
 This schedule skill is independent of EventGenix warehouse photo intake. Do
 not change, reroute, or reuse warehouse photo endpoints for schedule forms.
+
+## Attendance Arrival-Sheet OCR Skill And Router Handoff
+
+Use a separate router/skill, for example `eventgenix_attendance_arrival_sheet`,
+for the natural flow “photo of paper arrival sheet -> OCR -> CRM preview ->
+owner says `внось` -> CRM applies safe arrivals”. It records actual arrival
+time and must never be routed through staff-schedule apply.
+
+Before starting, require these deployed capabilities:
+
+```json
+{
+  "requiredActions": [
+    "staff.read",
+    "attendance.preview",
+    "attendance.apply"
+  ],
+  "endpoints": {
+    "attendance": {
+      "preview": "POST /api/hermes/attendance/preview",
+      "apply": "POST /api/hermes/attendance/apply",
+      "businessContext": "event_genix",
+      "maxPreviewRows": 100,
+      "previewTtlMinutes": 30,
+      "previewRequiresManageStaff": true,
+      "previewAttendanceWrites": 0,
+      "previewScheduleWrites": 0,
+      "scheduleWrites": 0,
+      "applyRequiresConfirmation": true,
+      "applyRequiresIdempotencyKey": true,
+      "applyRequiresManageStaff": true,
+      "applyScheduleWrites": 0
+    }
+  }
+}
+```
+
+Both calls require Hermes API-key authentication and the configured actor's
+existing `manage_staff` permission. The skill must not try to grant or bypass
+that permission. All examples below use fictional test identities.
+
+### Attendance Router States
+
+```text
+photo_received
+  -> ocr_extracted_locally
+  -> crm_attendance_preview_created
+  -> owner_review_required
+  -> owner_confirmed_selected_rows
+  -> crm_attendance_apply_completed
+```
+
+Restart or terminal states are `needs_date`, `needs_input`, `cancelled`,
+`preview_expired`, `permission_blocked`, and `apply_failed_retryable`. Persist
+only the CRM `previewId`, expiry, preview row IDs/classifications, selected row
+IDs, stable non-secret source reference, and the post-confirmation idempotency
+key. Do not persist or send photo binary, API keys, cookies, raw headers, bot
+tokens, or hidden CRM fields.
+
+### OCR Rows To Attendance Preview
+
+Hermes runs OCR before calling CRM and sends JSON only:
+
+```http
+POST /api/hermes/attendance/preview
+X-API-Key: <secret>
+X-Integration-Id: hermes-event-genix-crm
+Content-Type: application/json
+```
+
+```json
+{
+  "businessContext": "event_genix",
+  "documentDate": "2026-07-15",
+  "source": {
+    "type": "arrival_sheet_photo",
+    "rowSet": "TEST-ARRIVAL-PAGE-1"
+  },
+  "rows": [
+    {
+      "sourceRowId": "TEST-C03",
+      "ocrName": "Приклад Тестовий",
+      "arrivalTime": "11:00",
+      "signatureVisible": false,
+      "confidence": 0.9
+    }
+  ]
+}
+```
+
+Maximum input is 100 rows; `sourceRowId` values must be unique and arrival
+times use `HH:mm`. Preview does not require confirmation or an idempotency key.
+It stores only immutable import metadata and returns
+`attendanceWrites: 0`, `scheduleWrites: 0`, and `scheduleTouched: false`.
+Treat any other write counts as a safety incident.
+
+CRM matching is authoritative. Do not replace its decision based on OCR
+confidence or local fuzzy matching. Handle classifications as follows:
+
+| Classification | Hermes behavior |
+| --- | --- |
+| `ready_to_apply` | May be selected and presented for owner confirmation. |
+| `staff_not_found` | Skip; ask for a CRM-recognized name. Do not create staff. |
+| `ambiguous_staff` | Skip; ask the owner to disambiguate and create a new preview. |
+| `schedule_conflict` | Skip by default; never edit the schedule from this skill. |
+| `duplicate_attendance` | Skip; never overwrite the existing arrival. |
+| `invalid_time` | Skip; ask for a valid `HH:mm` time and create a new preview. |
+| `date_missing` | Block apply; ask for the sheet date and create a new preview. |
+
+Preview response shape:
+
+```json
+{
+  "success": true,
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "status": "ready",
+  "documentDate": "2026-07-15",
+  "expiresAt": "2026-07-15T11:30:00.000Z",
+  "summary": {
+    "ready_to_apply": 1,
+    "staff_not_found": 0,
+    "ambiguous_staff": 0,
+    "schedule_conflict": 0,
+    "duplicate_attendance": 0,
+    "invalid_time": 0,
+    "date_missing": 0
+  },
+  "rows": [
+    {
+      "previewRowId": "har_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceRowId": "TEST-C03",
+      "ocrName": "Приклад Тестовий",
+      "matchedStaff": {
+        "staffId": 900001,
+        "name": "Приклад Тестовий"
+      },
+      "arrivalTime": "11:00",
+      "classification": "ready_to_apply",
+      "issues": []
+    }
+  ],
+  "attendanceWrites": 0,
+  "scheduleWrites": 0,
+  "scheduleTouched": false,
+  "sanitized": true
+}
+```
+
+After preview, show a compact owner message such as:
+
+`Знайдено 5 рядків для внесення, 2 не знайдено, 1 конфлікт. Якщо пишеш «внось» — внесу тільки 5 безпечних, проблемні пропущу.`
+
+Bind that approval to the exact `previewId` and displayed
+`ready_to_apply` row IDs. A generic old confirmation must not approve a new or
+regenerated preview.
+
+### Confirmed Attendance Apply
+
+```http
+POST /api/hermes/attendance/apply
+X-API-Key: <secret>
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <one-key-for-this-logical-apply>
+Content-Type: application/json
+```
+
+```json
+{
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "selectedRowIds": ["har_aaaaaaaaaaaaaaaaaaaaaaaa"]
+}
+```
+
+The body must contain only `previewId` and `selectedRowIds` (or their
+snake_case aliases). Never send raw employee names, dates, arrival times,
+schedule fields, or reconstructed mutations. CRM reloads the immutable
+preview and rechecks every selected row. Blockers are returned in `skipped`;
+only still-safe rows previously classified as `ready_to_apply` are inserted.
+
+The canonical operational destination is `hr_time_records`. Attendance apply
+uses `staff_checkins` only as a read-only duplicate source and never writes
+`staff_schedule`, `hr_shifts`, `staff_checkins`, or `staff`. It does not
+overwrite an existing staff/date arrival. `scheduleWrites` and
+`scheduleTouched` must remain zero/false for every response.
+
+CRM serializes normal attendance mutations with one shared transaction lock
+per `(staffId, date)`. Hermes apply, face check-in/out, manual HR mutations,
+approved leave writes, and attendance cron jobs therefore recheck current
+state in a deterministic order before committing. Hermes must still treat a
+returned duplicate or conflict as authoritative and must not retry it with
+reconstructed raw mutation data. A global shared/exclusive maintenance gate
+also keeps backup restore and disposable QA cleanup from crossing normal
+attendance writes.
+
+```json
+{
+  "success": true,
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "status": "applied",
+  "documentDate": "2026-07-15",
+  "selectedCount": 1,
+  "applied": [
+    {
+      "sourceRowId": "TEST-C03",
+      "staffId": 900001,
+      "name": "Приклад Тестовий",
+      "arrivalTime": "11:00",
+      "attendanceRecordId": 800001,
+      "status": "present",
+      "lateMinutes": 0
+    }
+  ],
+  "skipped": [],
+  "attendanceWrites": 1,
+  "scheduleWrites": 0,
+  "scheduleTouched": false,
+  "sanitized": true
+}
+```
+
+After apply, report both outcomes, for example:
+
+`Внесено 5 фактів приходу. Не внесено: Приклад Тестовий — не знайдено; Тестовий Конфлікт — у CRM неробочий день.`
+
+On network loss or `5xx`, retry the identical body with the same idempotency
+key. On an expired preview, missing date, changed source, or current-state
+conflict, create a new preview and request approval again. Never repair a
+blocked row by creating staff, editing schedule, or overwriting attendance.
+
+Minimal sequence:
+
+```text
+GET  /api/hermes/capabilities
+POST /api/hermes/attendance/preview
+-- present CRM classifications and wait for exact owner approval --
+POST /api/hermes/attendance/apply
+```
+
+The first request is read-only. Preview writes only technical import metadata.
+Only the final confirmed apply may insert safe actual-arrival rows into
+`hr_time_records`.
 
 ## Creative Material Job
 

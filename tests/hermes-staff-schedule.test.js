@@ -32,6 +32,8 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
     assert.ok(capabilities.supportedActions.includes('staff_schedule.read'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.preview'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.apply'));
+    assert.ok(capabilities.supportedActions.includes('attendance.preview'));
+    assert.ok(capabilities.supportedActions.includes('attendance.apply'));
     assert.deepEqual(capabilities.endpoints.staff, {
         list: 'GET /api/hermes/staff',
         create: 'POST /api/hermes/staff',
@@ -57,6 +59,21 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         applyRequiresConfirmation: true,
         applyRequiresIdempotencyKey: true,
         applyRequiresManageStaff: true
+    });
+    assert.deepEqual(capabilities.endpoints.attendance, {
+        preview: 'POST /api/hermes/attendance/preview',
+        apply: 'POST /api/hermes/attendance/apply',
+        businessContext: 'event_genix',
+        maxPreviewRows: 100,
+        previewTtlMinutes: 30,
+        previewRequiresManageStaff: true,
+        previewAttendanceWrites: 0,
+        previewScheduleWrites: 0,
+        scheduleWrites: 0,
+        applyRequiresConfirmation: true,
+        applyRequiresIdempotencyKey: true,
+        applyRequiresManageStaff: true,
+        applyScheduleWrites: 0
     });
 });
 

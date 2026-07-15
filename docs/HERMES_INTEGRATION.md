@@ -35,6 +35,9 @@ The integration is intentionally narrow:
 - Read a sanitized, cursor-paginated scheduleable staff directory.
 - Create a single staff directory record through a confirmed, idempotent Hermes endpoint.
 - Read existing staff schedule cells for a bounded date range.
+- Preview OCR rows from a paper arrival sheet without writing operational
+  attendance or schedule data.
+- Apply only confirmed safe arrival rows to the canonical attendance model.
 
 The integration must not expose generic CRM access, raw database rows, delete
 operations, bulk operations, auth/session management, finance actions, admin
@@ -86,6 +89,8 @@ draft endpoints, and CRM-owned Hermes job endpoints are implemented.
 | `GET` | `/api/hermes/staff-schedule` | Existing schedule cells for up to 31 days | No |
 | `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and persist a read-only schedule diff | No schedule writes |
 | `POST` | `/api/hermes/staff-schedule/apply` | Atomically apply confirmed rows from an immutable preview | Yes, gated and idempotent |
+| `POST` | `/api/hermes/attendance/preview` | Match arrival-sheet OCR rows and persist immutable technical preview metadata | No attendance or schedule writes |
+| `POST` | `/api/hermes/attendance/apply` | Apply selected safe arrival rows from an immutable preview | Yes, attendance only; gated and idempotent |
 | `POST` | `/api/hermes/jobs` | Create a durable Hermes job | Yes |
 | `POST` | `/api/hermes/jobs/:id/claim` | Claim a queued job for a worker | Yes |
 | `POST` | `/api/hermes/jobs/:id/status` | Post worker status | Yes |
@@ -269,7 +274,9 @@ Example:
     "staff.create",
     "staff_schedule.read",
     "staff_schedule.preview",
-    "staff_schedule.apply"
+    "staff_schedule.apply",
+    "attendance.preview",
+    "attendance.apply"
   ],
   "mutationActionsAvailable": true,
   "plannedMutationActions": [],
@@ -280,6 +287,23 @@ Example:
   },
   "webhooks": {
     "crmToHermesEnabled": false
+  },
+  "endpoints": {
+    "attendance": {
+      "preview": "POST /api/hermes/attendance/preview",
+      "apply": "POST /api/hermes/attendance/apply",
+      "businessContext": "event_genix",
+      "maxPreviewRows": 100,
+      "previewTtlMinutes": 30,
+      "previewRequiresManageStaff": true,
+      "previewAttendanceWrites": 0,
+      "previewScheduleWrites": 0,
+      "scheduleWrites": 0,
+      "applyRequiresConfirmation": true,
+      "applyRequiresIdempotencyKey": true,
+      "applyRequiresManageStaff": true,
+      "applyScheduleWrites": 0
+    }
   }
 }
 ```
@@ -771,6 +795,221 @@ error text.
 8. On a lost response, retry the identical apply request with the same
    `Idempotency-Key`.
 9. On stale or expired preview, restart from preview and request approval again.
+
+## Attendance Arrival-Sheet Import Contract
+
+Attendance import records actual arrival time. It is separate from
+`staff_schedule.preview`/`staff_schedule.apply`, which plan future or current
+schedule cells. Hermes performs OCR locally and sends sanitized JSON rows; CRM
+remains authoritative for staff matching, schedule conflicts, duplicate
+attendance, and writes.
+
+Both attendance endpoints require the normal Hermes API-key authentication,
+the `event_genix` business context, and an actor with `manage_staff`. A CRM JWT
+or session cookie is not an alternative Hermes credential. Examples below use
+the fictional name `Приклад Тестовий` only.
+
+### Attendance Preview
+
+```http
+POST /api/hermes/attendance/preview
+Accept: application/json
+Content-Type: application/json
+X-API-Key: <hermes-key>
+X-Integration-Id: hermes-event-genix-crm
+```
+
+Preview does not require `X-Hermes-User-Confirmed` or an `Idempotency-Key`:
+
+```json
+{
+  "businessContext": "event_genix",
+  "documentDate": "2026-07-15",
+  "source": {
+    "type": "arrival_sheet_photo",
+    "rowSet": "TEST-ARRIVAL-PAGE-1"
+  },
+  "rows": [
+    {
+      "sourceRowId": "TEST-C03",
+      "ocrName": "Приклад Тестовий",
+      "arrivalTime": "11:00",
+      "signatureVisible": false,
+      "confidence": 0.9
+    }
+  ]
+}
+```
+
+`source.type` must be `arrival_sheet_photo`; `source.rowSet` is a stable,
+non-secret source reference. The endpoint accepts between 1 and 100 unique
+`sourceRowId` rows. Times use 24-hour `HH:mm`. Photo/file binary, base64,
+credentials, raw headers, cookies, and provider secrets are rejected. OCR
+confidence and signature visibility are informational and never authorize a
+staff match or write.
+
+CRM first checks an exact normalized full name, then a unique whole-token
+match. Multiple candidates are ambiguous; fuzzy, edit-distance, and
+transliteration guesses are not used. CRM also reads the date's
+`staff_schedule`, `hr_time_records`, and `staff_checkins` before classifying
+each row:
+
+| Classification | Meaning |
+| --- | --- |
+| `ready_to_apply` | Unique active staff match, valid time, no blocking schedule status, and no attendance duplicate. |
+| `staff_not_found` | No eligible CRM staff member matched. |
+| `ambiguous_staff` | More than one CRM staff member matched. |
+| `schedule_conflict` | CRM has `dayoff`/legacy `day_off`, `vacation`, `sick`, or another non-working/unknown schedule state. |
+| `duplicate_attendance` | The staff/date already exists in `hr_time_records` or `staff_checkins`, or another preview row targets the same staff/date. |
+| `invalid_time` | Arrival time is absent or is not valid `HH:mm`. |
+| `date_missing` | `documentDate` is absent; apply remains blocked. |
+
+`working` and `remote` schedule states are eligible. No schedule cell is also
+eligible and is later recorded as `unscheduled`. Missing `documentDate` may
+still produce a `needs_review` preview whose rows are `date_missing`; it can
+never be applied.
+
+Preview persists only immutable technical correlation and classification
+metadata in `hermes_attendance_imports` for 30 minutes. It does not write
+`hr_time_records`, `staff_checkins`, `staff_schedule`, `hr_shifts`, or `staff`.
+Therefore every preview response must report `attendanceWrites: 0`,
+`scheduleWrites: 0`, and `scheduleTouched: false`:
+
+```json
+{
+  "success": true,
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "status": "ready",
+  "documentDate": "2026-07-15",
+  "expiresAt": "2026-07-15T11:30:00.000Z",
+  "created": true,
+  "replayed": false,
+  "summary": {
+    "ready_to_apply": 1,
+    "staff_not_found": 0,
+    "ambiguous_staff": 0,
+    "schedule_conflict": 0,
+    "duplicate_attendance": 0,
+    "invalid_time": 0,
+    "date_missing": 0
+  },
+  "rows": [
+    {
+      "previewRowId": "har_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceRowId": "TEST-C03",
+      "ocrName": "Приклад Тестовий",
+      "matchedStaff": {
+        "staffId": 900001,
+        "name": "Приклад Тестовий"
+      },
+      "arrivalTime": "11:00",
+      "signatureVisible": false,
+      "confidence": 0.9,
+      "classification": "ready_to_apply",
+      "issues": []
+    }
+  ],
+  "attendanceWrites": 0,
+  "scheduleWrites": 0,
+  "scheduleTouched": false,
+  "sanitized": true
+}
+```
+
+Repeating the same active source and immutable content replays the stored
+preview. Reusing that source identity with different content returns a source
+conflict instead of replacing the preview.
+
+### Confirmed Attendance Apply
+
+```http
+POST /api/hermes/attendance/apply
+Accept: application/json
+Content-Type: application/json
+X-API-Key: <hermes-key>
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <fresh-unique-key>
+```
+
+```json
+{
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "selectedRowIds": ["har_aaaaaaaaaaaaaaaaaaaaaaaa"]
+}
+```
+
+The apply body may contain only `previewId` and `selectedRowIds` (their
+snake_case aliases are also accepted). Raw names, dates, arrival times,
+schedule values, or reconstructed mutation data are rejected. CRM reloads the
+immutable preview, verifies its status, expiry, and integrity, then rechecks
+staff eligibility, the current schedule, and both duplicate sources. Selected
+blockers are returned in `skipped`; only rows still safe and stored as
+`ready_to_apply` can be written.
+
+The canonical operational write is one `hr_time_records` row per safe
+staff/date. CRM constructs `clock_in` in the `Europe/Kyiv` timezone and uses
+the existing unique staff/date constraint without overwriting a concurrent or
+previous record. A scheduled `working`/`remote` arrival is `late` only when it
+is more than five minutes after planned start; otherwise it is `present`. An
+arrival without a schedule cell is `unscheduled`. `staff_checkins` remains a
+read-only duplicate source for this flow. Apply never creates staff and never
+writes `staff_schedule`, `hr_shifts`, or `staff_checkins`. Import state and the
+sanitized HR audit record are updated
+in the same transaction; `attendanceWrites` counts only inserted
+`hr_time_records` rows.
+
+All normal attendance writers use the same transaction-scoped advisory lock
+for a `(staffId, date)` target before reading or mutating that day. This
+serializes Hermes apply with face check-in/out, manual HR actions, approved
+leave materialization, and no-show/auto-close jobs. After the lock is acquired,
+each path rechecks authoritative state; the database unique constraint remains
+the final duplicate guard. Normal writers also hold a shared global attendance
+gate, while backup restore and disposable QA cleanup take its exclusive mode
+before any row lock. This prevents wholesale maintenance from crossing an
+in-flight staff/day mutation.
+
+```json
+{
+  "success": true,
+  "previewId": "hai_00000000-0000-4000-8000-000000000001",
+  "status": "applied",
+  "documentDate": "2026-07-15",
+  "selectedCount": 1,
+  "applied": [
+    {
+      "previewRowId": "har_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceRowId": "TEST-C03",
+      "staffId": 900001,
+      "name": "Приклад Тестовий",
+      "arrivalTime": "11:00",
+      "attendanceRecordId": 800001,
+      "status": "present",
+      "lateMinutes": 0
+    }
+  ],
+  "skipped": [],
+  "attendanceWrites": 1,
+  "scheduleWrites": 0,
+  "scheduleTouched": false,
+  "sanitized": true
+}
+```
+
+Retry an uncertain apply only with the identical path, JSON body, and
+`Idempotency-Key`; replay returns the stored response without new writes. A
+fresh key is required for a different logical apply. The owner phrase
+`внось` means: apply the explicitly reviewed `ready_to_apply` row IDs and
+return every blocker without trying to repair, create staff, or edit schedule.
+
+Suggested owner-facing messages:
+
+- Preview: `Знайдено 5 рядків для внесення, 2 не знайдено, 1 конфлікт. Якщо пишеш «внось» — внесу тільки 5 безпечних, проблемні пропущу.`
+- Apply: `Внесено 5 фактів приходу. Не внесено: Приклад Тестовий — не знайдено; Тестовий Конфлікт — у CRM неробочий день.`
+- Missing date: `Не бачу дати листа. Напиши дату, після цього створю новий перегляд і попрошу окреме підтвердження.`
+
+These messages are examples only; never include hidden HR data, raw CRM rows,
+or credentials.
 
 ## Task History Contract
 

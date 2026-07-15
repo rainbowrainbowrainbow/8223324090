@@ -20,6 +20,11 @@ const {
     businessContextFromRequest
 } = require('../services/businessContext');
 const {
+    lockAttendanceWriteMaintenance,
+    lockAttendanceWriteTarget,
+    lockAttendanceWriteTargets
+} = require('../services/attendanceWriteLock');
+const {
     calculateHrClockOutPayroll,
     decorateAttendanceRecord
 } = require('../services/hrAttendance');
@@ -4581,6 +4586,7 @@ router.post('/qa/multi-segment/attendance', requireRole('creator', 'director'), 
         }
 
         await client.query('BEGIN');
+        await lockAttendanceWriteTarget(client, { staffId, date });
         const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });
         if (staff.is_active === false) {
             const error = new Error('disposable QA staff is already archived');
@@ -4690,6 +4696,7 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
         }
         const staffId = Number(req.body?.staffId ?? req.body?.staff_id);
         await client.query('BEGIN');
+        await lockAttendanceWriteMaintenance(client);
         const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });
         const before = await loadLiveQaFixtureStatus(client, staff.id, runId);
         affectedDates = [...new Set([
@@ -4741,24 +4748,29 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
 
 // POST /api/hr/clock-in
 router.post('/clock-in', requireHrManage, async (req, res) => {
+    const staffId = Number(req.body?.staff_id);
+    if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
+        return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
+    }
+    const client = await pool.connect();
     try {
-        const { staff_id } = req.body;
-        if (!staff_id) return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
-
         const today = todayKyiv();
-        const now = nowKyiv();
         const businessContext = hrBusinessContextFromRequest(req);
+        await client.query('BEGIN');
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
 
         // Check existing
-        const existing = await pool.query(
-            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2', [staff_id, today]
+        const existing = await client.query(
+            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+            [staffId, today]
         );
         if (existing.rows.length > 0 && existing.rows[0].clock_in) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'Вже відмічений сьогодні' });
         }
 
         // Find planned shift
-        const loadedShift = await loadHrShiftDayPlan(pool, { staffId: staff_id, shiftDate: today });
+        const loadedShift = await loadHrShiftDayPlan(client, { staffId, shiftDate: today });
         const shift = loadedShift?.shift || null;
         const hasShift = Boolean(shift);
         let plannedStart = null, plannedEnd = null, lateMin = 0, status = 'unscheduled';
@@ -4776,7 +4788,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         let result;
         if (existing.rows.length > 0) {
             // Update existing absent record
-            result = await pool.query(
+            result = await client.query(
                 `UPDATE hr_time_records SET
                     clock_in = $1, planned_start = $2, planned_end = $3,
                     late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
@@ -4785,42 +4797,63 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
                 [clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent'], businessContext, existing.rows[0].id]
             );
         } else {
-            result = await pool.query(
+            result = await client.query(
                 `INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in, planned_start, planned_end, late_minutes, status, ip_address, user_agent)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-                [businessContext, staff_id, today, clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent']]
+                [businessContext, staffId, today, clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent']]
             );
         }
 
-        await auditLog('clock_in', staff_id, req.user?.username, { clock_in: clockIn, late_minutes: lateMin, status }, req.ip);
+        await auditLog(
+            'clock_in',
+            staffId,
+            req.user?.username,
+            { clock_in: clockIn, late_minutes: lateMin, status },
+            req.ip,
+            client
+        );
+        await client.query('COMMIT');
         res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-in error', err);
+        if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 // POST /api/hr/clock-out
 router.post('/clock-out', requireHrManage, async (req, res) => {
+    const staffId = Number(req.body?.staff_id);
+    if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
+        return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
+    }
+    const client = await pool.connect();
     try {
-        const { staff_id, settlement_mode, settlementMode } = req.body;
-        if (!staff_id) return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
+        const { settlement_mode, settlementMode } = req.body;
 
         const today = todayKyiv();
-        const record = await pool.query(
-            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2', [staff_id, today]
+        await client.query('BEGIN');
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        const record = await client.query(
+            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+            [staffId, today]
         );
         if (record.rows.length === 0 || !record.rows[0].clock_in) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Спочатку відмітьте прихід' });
         }
         if (record.rows[0].clock_out) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'Вже завершено' });
         }
 
         const rec = record.rows[0];
         const clockOut = new Date().toISOString();
 
-        const loadedShift = await loadHrShiftDayPlan(pool, { staffId: staff_id, shiftDate: today });
+        const loadedShift = await loadHrShiftDayPlan(client, { staffId, shiftDate: today });
         const shiftRow = loadedShift?.shift || {};
         const payroll = calculateHrClockOutPayroll(rec, {
             clockOut,
@@ -4835,7 +4868,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
             kyivNow: nowKyiv()
         });
 
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE hr_time_records SET
                 clock_out = $1, total_worked_minutes = $2, early_leave_minutes = $3,
                 overtime_minutes = $4, status = $5, updated_at = NOW()
@@ -4850,7 +4883,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
             ]
         );
 
-        await auditLog('clock_out', staff_id, req.user?.username,
+        await auditLog('clock_out', staffId, req.user?.username,
             {
                 clock_out: clockOut,
                 total_worked_minutes: payroll.totalWorkedMinutes,
@@ -4862,40 +4895,53 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
                 segment_allocations: payroll.allocation.segmentAllocations,
                 allocation_issues: payroll.allocation.allocationIssues,
                 status: payroll.status
-            }, req.ip);
+            }, req.ip, client);
+        await client.query('COMMIT');
         res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-out error', err);
+        if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 // POST /api/hr/mark-absent — mark sick/vacation/day_off
 router.post('/mark-absent', requireHrManage, async (req, res) => {
+    const staffId = Number(req.body?.staff_id);
+    const { status, notes } = req.body || {};
+    if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647 || !status) {
+        return res.status(400).json({ success: false, error: 'Потрібні staff_id та status' });
+    }
+    const validStatuses = ['sick', 'vacation', 'day_off'];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, error: 'Невалідний статус' });
+    }
+    const client = await pool.connect();
     try {
-        const { staff_id, status, notes } = req.body;
-        if (!staff_id || !status) {
-            return res.status(400).json({ success: false, error: 'Потрібні staff_id та status' });
-        }
-        const validStatuses = ['sick', 'vacation', 'day_off'];
-        if (!validStatuses.includes(status)) {
-            return res.status(400).json({ success: false, error: 'Невалідний статус' });
-        }
-
         const today = todayKyiv();
-        const result = await pool.query(
+        await client.query('BEGIN');
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        const result = await client.query(
             `INSERT INTO hr_time_records (staff_id, record_date, status, notes)
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (staff_id, record_date) DO UPDATE SET status = $3, notes = $4, updated_at = NOW()
              RETURNING *`,
-            [staff_id, today, status, notes]
+            [staffId, today, status, notes]
         );
 
-        await auditLog('mark_absent', staff_id, req.user?.username, { status, notes }, req.ip);
+        await auditLog('mark_absent', staffId, req.user?.username, { status, notes }, req.ip, client);
+        await client.query('COMMIT');
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/mark-absent error', err);
+        if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -4904,16 +4950,41 @@ router.post('/mark-absent', requireHrManage, async (req, res) => {
 // ==========================================
 
 router.put('/records/:id/correct', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { clock_in, clock_out, notes } = req.body;
-        const rec = await pool.query('SELECT * FROM hr_time_records WHERE id = $1', [req.params.id]);
-        if (rec.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        await client.query('BEGIN');
+
+        // Resolve the advisory-lock target before taking the row lock so all
+        // attendance writers keep the same lock ordering.
+        const target = await client.query(
+            'SELECT staff_id, record_date::text AS record_date FROM hr_time_records WHERE id = $1',
+            [req.params.id]
+        );
+        if (target.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+
+        await lockAttendanceWriteTarget(client, {
+            staffId: target.rows[0].staff_id,
+            date: target.rows[0].record_date
+        });
+
+        const rec = await client.query(
+            'SELECT * FROM hr_time_records WHERE id = $1 FOR UPDATE',
+            [req.params.id]
+        );
+        if (rec.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
 
         const original = rec.rows[0];
         const newClockIn = clock_in ? new Date(clock_in).toISOString() : original.clock_in;
         const newClockOut = clock_out ? new Date(clock_out).toISOString() : original.clock_out;
 
-        const loadedShift = await loadHrShiftDayPlan(pool, {
+        const loadedShift = await loadHrShiftDayPlan(client, {
             staffId: original.staff_id,
             shiftDate: original.record_date
         });
@@ -4944,7 +5015,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         let status = lateMin > 5 ? 'late' : 'present';
         if (earlyLeave > 0) status = 'early_leave';
 
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE hr_time_records SET
                 clock_in = $1, clock_out = $2,
                 total_worked_minutes = $3, late_minutes = $4, early_leave_minutes = $5, overtime_minutes = $6,
@@ -4959,11 +5030,15 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         );
 
         await auditLog('correction', original.staff_id, req.user?.username,
-            { old_clock_in: original.clock_in, old_clock_out: original.clock_out, new_clock_in: newClockIn, new_clock_out: newClockOut, notes }, req.ip);
+            { old_clock_in: original.clock_in, old_clock_out: original.clock_out, new_clock_in: newClockIn, new_clock_out: newClockOut, notes }, req.ip, client);
+        await client.query('COMMIT');
         res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/records/:id/correct error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -5284,39 +5359,58 @@ router.post('/leave-requests', requireHrManage, async (req, res) => {
 
 // PUT /api/hr/leave-requests/:id/review — approve/reject
 router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
+    const { status, comment } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ success: false, error: 'Статус: approved або rejected' });
+    }
+
+    const client = await pool.connect();
     try {
-        const { status, comment } = req.body;
-        if (!['approved', 'rejected'].includes(status)) {
-            return res.status(400).json({ success: false, error: 'Статус: approved або rejected' });
-        }
-        const result = await pool.query(
+        await client.query('BEGIN');
+        const result = await client.query(
             `UPDATE leave_requests SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_comment = $3
              WHERE id = $4 RETURNING *`,
             [status, req.user?.id, comment, req.params.id]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
 
         const lr = result.rows[0];
         // If approved, mark days as vacation/sick/day_off in time records
         if (status === 'approved') {
             const d = new Date(lr.date_from);
             const end = new Date(lr.date_to);
+            const attendanceDates = [];
             while (d <= end) {
-                const dateStr = d.toISOString().split('T')[0];
-                await pool.query(
+                attendanceDates.push(d.toISOString().split('T')[0]);
+                d.setDate(d.getDate() + 1);
+            }
+
+            await lockAttendanceWriteTargets(
+                client,
+                attendanceDates.map(date => ({ staffId: lr.staff_id, date }))
+            );
+
+            for (const dateStr of attendanceDates) {
+                await client.query(
                     `INSERT INTO hr_time_records (staff_id, record_date, status, notes)
                      VALUES ($1, $2, $3, $4)
                      ON CONFLICT (staff_id, record_date) DO UPDATE SET status = $3, notes = $4`,
                     [lr.staff_id, dateStr, lr.type === 'vacation' ? 'vacation' : lr.type === 'sick' ? 'sick' : 'day_off', `Заявка #${lr.id}`]
                 );
-                d.setDate(d.getDate() + 1);
             }
         }
-        await auditLog('leave_request_review', lr.staff_id, req.user?.username, { status, comment }, req.ip);
+        await auditLog('leave_request_review', lr.staff_id, req.user?.username, { status, comment }, req.ip, client);
+        await client.query('COMMIT');
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/leave-requests/:id/review error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 

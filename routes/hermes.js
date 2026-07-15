@@ -149,7 +149,9 @@ const SUPPORTED_ACTIONS = [
     'staff.create',
     'staff_schedule.read',
     'staff_schedule.preview',
-    'staff_schedule.apply'
+    'staff_schedule.apply',
+    'attendance.preview',
+    'attendance.apply'
 ];
 
 const PLANNED_MUTATION_ACTIONS = [];
@@ -2003,6 +2005,21 @@ function buildCapabilitiesPayload(env = process.env) {
                 applyRequiresConfirmation: true,
                 applyRequiresIdempotencyKey: true,
                 applyRequiresManageStaff: true
+            },
+            attendance: {
+                preview: 'POST /api/hermes/attendance/preview',
+                apply: 'POST /api/hermes/attendance/apply',
+                businessContext: 'event_genix',
+                maxPreviewRows: 100,
+                previewTtlMinutes: 30,
+                previewRequiresManageStaff: true,
+                previewAttendanceWrites: 0,
+                previewScheduleWrites: 0,
+                scheduleWrites: 0,
+                applyRequiresConfirmation: true,
+                applyRequiresIdempotencyKey: true,
+                applyRequiresManageStaff: true,
+                applyScheduleWrites: 0
             }
         },
         supportedActions: SUPPORTED_ACTIONS,

@@ -18,10 +18,14 @@ const {
     normalizeHermesScheduleStatus,
     previewHermesScheduleImport
 } = require('../services/hermesScheduleImport');
+const {
+    applyHermesAttendanceImport,
+    previewHermesAttendanceImport
+} = require('../services/hermesAttendanceImport');
 const { createHermesMutationGuard } = require('../services/hermesMutationGuard');
 const { withHermesIdempotency } = require('../services/hermesIdempotency');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
-const { broadcastLineEvent } = require('../services/websocket');
+const { broadcast, broadcastLineEvent } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('HermesSchedule');
@@ -437,6 +441,21 @@ function broadcastHermesRosterDates(dates = [], actorUserId = null, options = {}
     return uniqueDates;
 }
 
+function broadcastHermesAttendanceChanges(changes = [], actorUserId = null, options = {}) {
+    if (!changes.length) return 0;
+    const broadcastAttendance = options.broadcast || broadcast;
+    const dates = [...new Set(changes.map(change => change.date).filter(Boolean))].sort();
+    return broadcastAttendance('hr:attendance-updated', {
+        businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT,
+        dates,
+        staffIds: [...new Set(changes.map(change => Number(change.staffId)).filter(Boolean))].sort((a, b) => a - b),
+        attendanceRecordIds: [...new Set(changes
+            .map(change => Number(change.attendanceRecordId))
+            .filter(Boolean))].sort((a, b) => a - b),
+        source: 'hermes_attendance_import'
+    }, actorUserId, dates[0] || null);
+}
+
 function createHermesScheduleRouter(options = {}) {
     const router = express.Router();
     const db = options.pool;
@@ -449,8 +468,11 @@ function createHermesScheduleRouter(options = {}) {
     });
     const runWithIdempotency = options.withIdempotency || withHermesIdempotency;
     const applyScheduleImport = options.applyScheduleImport || applyHermesScheduleImport;
+    const previewAttendanceImport = options.previewAttendanceImport || previewHermesAttendanceImport;
+    const applyAttendanceImport = options.applyAttendanceImport || applyHermesAttendanceImport;
     const notifyScheduleBatch = options.notifyScheduleBatch || notifyHermesScheduleApplySummary;
     const broadcastRosterDates = options.broadcastRosterDates || broadcastHermesRosterDates;
+    const broadcastAttendanceChanges = options.broadcastAttendanceChanges || broadcastHermesAttendanceChanges;
 
     const requireHermesScheduleAccess = (req, res, next) => {
         try {
@@ -678,6 +700,119 @@ function createHermesScheduleRouter(options = {}) {
         }
     });
 
+    router.post(
+        '/attendance/preview',
+        requireHermesScheduleAccess,
+        (req, res, next) => {
+            if (!canUseAction(req.user, 'manage_staff')) {
+                return sendHermesScheduleError(
+                    res,
+                    403,
+                    'HERMES_MANAGE_STAFF_REQUIRED',
+                    'Hermes actor does not have manage_staff permission'
+                );
+            }
+            return next();
+        },
+        async (req, res) => {
+            try {
+                const preview = await previewAttendanceImport(db, req.body || {}, {
+                    actorUserId: req.integration?.actorUserId || req.user?.id,
+                    businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT
+                });
+                return res.status(preview.created ? 201 : 200).json(preview);
+            } catch (error) {
+                if (error.statusCode && error.statusCode < 500) {
+                    return sendHermesScheduleError(
+                        res,
+                        error.statusCode,
+                        error.code || 'HERMES_ATTENDANCE_PREVIEW_INVALID',
+                        error.message,
+                        error.details
+                    );
+                }
+                log.error('POST /api/hermes/attendance/preview failed', error);
+                return sendHermesScheduleError(
+                    res,
+                    500,
+                    'HERMES_INTERNAL_ERROR',
+                    'Failed to create Hermes attendance preview'
+                );
+            }
+        }
+    );
+
+    router.post(
+        '/attendance/apply',
+        requireHermesScheduleAccess,
+        applyMutationGuard,
+        (req, res, next) => {
+            if (!canUseAction(req.user, 'manage_staff')) {
+                return sendHermesScheduleError(
+                    res,
+                    403,
+                    'HERMES_MANAGE_STAFF_REQUIRED',
+                    'Hermes actor does not have manage_staff permission'
+                );
+            }
+            return next();
+        },
+        async (req, res) => {
+            if (typeof db.connect !== 'function') {
+                return sendHermesScheduleError(
+                    res,
+                    503,
+                    'HERMES_ATTENDANCE_TRANSACTION_UNAVAILABLE',
+                    'Hermes attendance apply requires a transactional database pool'
+                );
+            }
+            try {
+                return await runWithIdempotency(req, res, async context => {
+                    const applied = await applyAttendanceImport(context.pool, req.body || {}, {
+                        actor: { user: req.user, ip: req.ip },
+                        actorUserId: req.integration?.actorUserId || req.user?.id,
+                        businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT,
+                        integrationId: HERMES_INTEGRATION_ID
+                    });
+                    if (applied.changes.length) {
+                        context.afterCommit.push(() => {
+                            try {
+                                broadcastAttendanceChanges(
+                                    applied.changes,
+                                    null
+                                );
+                            } catch (error) {
+                                log.error('Hermes attendance broadcast failed', error);
+                            }
+                        });
+                    }
+                    return { status: 200, body: applied.response };
+                }, {
+                    pool: db,
+                    transactional: true,
+                    requestPath: '/api/hermes/attendance/apply'
+                });
+            } catch (error) {
+                if (error.statusCode && error.statusCode < 500) {
+                    return sendHermesScheduleError(
+                        res,
+                        error.statusCode,
+                        error.code || 'HERMES_ATTENDANCE_APPLY_INVALID',
+                        error.message,
+                        error.details
+                    );
+                }
+                log.error('POST /api/hermes/attendance/apply failed', error);
+                return sendHermesScheduleError(
+                    res,
+                    500,
+                    'HERMES_INTERNAL_ERROR',
+                    'Failed to apply Hermes attendance preview'
+                );
+            }
+        }
+    );
+
     router.post('/staff-schedule/preview', requireHermesScheduleAccess, async (req, res) => {
         try {
             const preview = await previewHermesScheduleImport(db, req.body || {}, {
@@ -772,6 +907,7 @@ module.exports.encodeStaffCursor = encodeStaffCursor;
 module.exports.mapHermesScheduleCell = mapHermesScheduleCell;
 module.exports.mapHermesStaff = mapHermesStaff;
 module.exports.broadcastHermesRosterDates = broadcastHermesRosterDates;
+module.exports.broadcastHermesAttendanceChanges = broadcastHermesAttendanceChanges;
 module.exports.notifyHermesScheduleApplySummary = notifyHermesScheduleApplySummary;
 module.exports.parseScheduleDateRange = parseScheduleDateRange;
 module.exports.parseStaffIds = parseStaffIds;

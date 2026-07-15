@@ -45,6 +45,7 @@ const {
     getScheduledAnimatorLines
 } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
+const { lockAttendanceWriteTarget } = require('../services/attendanceWriteLock');
 const {
     calculateHrClockOutPayroll,
     decorateAttendanceRecord,
@@ -2394,8 +2395,11 @@ router.post('/:id/face-descriptor', requireAction('manage_staff'), async (req, r
 // POST /api/staff/checkin — record face-based check-in
 router.post('/checkin', async (req, res) => {
     try {
-        const { staffId, method } = req.body;
-        if (!staffId) return res.status(400).json({ error: 'staffId required' });
+        const staffId = Number(req.body?.staffId);
+        const { method } = req.body || {};
+        if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
+            return res.status(400).json({ error: 'valid staffId required' });
+        }
 
         const today = getKyivDateStr();
         let result;
@@ -2403,6 +2407,7 @@ router.post('/checkin', async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await lockAttendanceWriteTarget(client, { staffId, date: today });
             result = await client.query(
                 `INSERT INTO staff_checkins (staff_id, date, check_in, method)
                  VALUES ($1, $2, NOW(), $3)
@@ -2457,8 +2462,10 @@ router.post('/checkin', async (req, res) => {
 // POST /api/staff/checkout — record check-out
 router.post('/checkout', async (req, res) => {
     try {
-        const { staffId } = req.body;
-        if (!staffId) return res.status(400).json({ error: 'staffId required' });
+        const staffId = Number(req.body?.staffId);
+        if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
+            return res.status(400).json({ error: 'valid staffId required' });
+        }
 
         const today = getKyivDateStr();
         let result;
@@ -2466,6 +2473,7 @@ router.post('/checkout', async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await lockAttendanceWriteTarget(client, { staffId, date: today });
             result = await client.query(
                 `UPDATE staff_checkins SET check_out = NOW()
                  WHERE staff_id = $1 AND date = $2

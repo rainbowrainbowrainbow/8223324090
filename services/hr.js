@@ -10,6 +10,7 @@ const { sendTelegramMessage, getConfiguredChatId } = require('./telegram');
 const { getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
+const { lockAttendanceWriteTarget } = require('./attendanceWriteLock');
 
 const log = createLogger('HR');
 
@@ -69,39 +70,90 @@ async function checkHrAutoClose() {
 
         const names = [];
         for (const rec of open.rows) {
-            // Auto-close: planned_end + 30min, or clock_in + 10h
-            let closeTime;
-            if (rec.planned_end) {
-                const [h, m] = rec.planned_end.split(':').map(Number);
-                const d = new Date();
-                d.setHours(h, m + 30, 0, 0);
-                closeTime = d.toISOString();
-            } else {
-                const ci = new Date(rec.clock_in);
-                ci.setHours(ci.getHours() + 10);
-                closeTime = ci.toISOString();
+            let client;
+            try {
+                client = await pool.connect();
+                await client.query('BEGIN');
+                await lockAttendanceWriteTarget(client, { staffId: rec.staff_id, date: todayStr });
+
+                const currentResult = await client.query(
+                    `SELECT id, staff_id, clock_in, clock_out, planned_end,
+                            COALESCE(business_context, 'event_genix') AS business_context
+                     FROM hr_time_records
+                     WHERE staff_id = $1
+                       AND record_date = $2::date
+                     FOR UPDATE`,
+                    [rec.staff_id, todayStr]
+                );
+                const current = currentResult.rows[0];
+                if (
+                    !current
+                    || current.business_context !== DEFAULT_BUSINESS_CONTEXT
+                    || !current.clock_in
+                    || current.clock_out
+                ) {
+                    await client.query('COMMIT');
+                    continue;
+                }
+
+                // Auto-close: planned_end + 30min, or clock_in + 10h.
+                let closeTime;
+                if (current.planned_end) {
+                    const [h, m] = current.planned_end.split(':').map(Number);
+                    const d = new Date();
+                    d.setHours(h, m + 30, 0, 0);
+                    closeTime = d.toISOString();
+                } else {
+                    const ci = new Date(current.clock_in);
+                    ci.setHours(ci.getHours() + 10);
+                    closeTime = ci.toISOString();
+                }
+
+                const clockInDate = new Date(current.clock_in);
+                const clockOutDate = new Date(closeTime);
+                const totalWorked = Math.max(0, Math.round((clockOutDate - clockInDate) / 60000));
+                const updated = await client.query(
+                    `UPDATE hr_time_records SET
+                        clock_out = $1, total_worked_minutes = $2,
+                        auto_closed = TRUE, status = 'auto_closed', updated_at = NOW()
+                     WHERE id = $3
+                       AND staff_id = $4
+                       AND record_date = $5::date
+                       AND COALESCE(business_context, 'event_genix') = $6
+                       AND clock_in IS NOT NULL
+                       AND clock_out IS NULL
+                     RETURNING id`,
+                    [
+                        closeTime,
+                        totalWorked,
+                        current.id,
+                        rec.staff_id,
+                        todayStr,
+                        DEFAULT_BUSINESS_CONTEXT
+                    ]
+                );
+                if (!updated.rows[0]) {
+                    await client.query('COMMIT');
+                    continue;
+                }
+
+                await client.query(
+                    `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)
+                     VALUES ('auto_close', $1, 'system', $2)`,
+                    [rec.staff_id, JSON.stringify({ clock_out: closeTime, total_worked_minutes: totalWorked })]
+                );
+                await client.query('COMMIT');
+                names.push(rec.staff_name);
+            } catch (err) {
+                if (client) {
+                    await client.query('ROLLBACK').catch(rollbackErr => {
+                        log.error(`checkHrAutoClose rollback error for record ${rec.id}`, rollbackErr);
+                    });
+                }
+                log.error(`checkHrAutoClose record ${rec.id} error`, err);
+            } finally {
+                client?.release();
             }
-
-            const clockInDate = new Date(rec.clock_in);
-            const clockOutDate = new Date(closeTime);
-            const totalWorked = Math.max(0, Math.round((clockOutDate - clockInDate) / 60000));
-
-            await pool.query(
-                `UPDATE hr_time_records SET
-                    clock_out = $1, total_worked_minutes = $2,
-                    auto_closed = TRUE, status = 'auto_closed', updated_at = NOW()
-                 WHERE id = $3
-                   AND COALESCE(business_context, 'event_genix') = $4`,
-                [closeTime, totalWorked, rec.id, DEFAULT_BUSINESS_CONTEXT]
-            );
-
-            await pool.query(
-                `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)
-                 VALUES ('auto_close', $1, 'system', $2)`,
-                [rec.staff_id, JSON.stringify({ clock_out: closeTime, total_worked_minutes: totalWorked })]
-            );
-
-            names.push(rec.staff_name);
         }
 
         // Telegram alert
@@ -160,23 +212,66 @@ async function checkHrNoShow() {
             // Only if planned_start was > 2 hours ago
             if (nowMin - shiftMin < 120) continue;
 
-            // Upsert no_show status
-            await pool.query(
-                `INSERT INTO hr_time_records (business_context, staff_id, record_date, status)
-                 VALUES ($1, $2, $3, 'no_show')
-                 ON CONFLICT (staff_id, record_date) DO UPDATE SET status = 'no_show', updated_at = NOW()
-                 WHERE hr_time_records.clock_in IS NULL
-                   AND COALESCE(hr_time_records.business_context, 'event_genix') = $1`,
-                [DEFAULT_BUSINESS_CONTEXT, row.staff_id, todayStr]
-            );
+            let client;
+            try {
+                client = await pool.connect();
+                await client.query('BEGIN');
+                await lockAttendanceWriteTarget(client, { staffId: row.staff_id, date: todayStr });
 
-            await pool.query(
-                `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)
-                 VALUES ('no_show', $1, 'system', $2)`,
-                [row.staff_id, JSON.stringify({ planned_start: row.planned_start })]
-            );
+                const currentResult = await client.query(
+                    `SELECT id, clock_in, status,
+                            COALESCE(business_context, 'event_genix') AS business_context
+                     FROM hr_time_records
+                     WHERE staff_id = $1
+                       AND record_date = $2::date
+                     FOR UPDATE`,
+                    [row.staff_id, todayStr]
+                );
+                const current = currentResult.rows[0];
+                if (
+                    current
+                    && (
+                        current.business_context !== DEFAULT_BUSINESS_CONTEXT
+                        || current.clock_in
+                        || current.status !== 'absent'
+                    )
+                ) {
+                    await client.query('COMMIT');
+                    continue;
+                }
 
-            alerts.push(`• ${row.staff_name} — зміна з ${row.planned_start}`);
+                const upserted = await client.query(
+                    `INSERT INTO hr_time_records (business_context, staff_id, record_date, status)
+                     VALUES ($1, $2, $3, 'no_show')
+                     ON CONFLICT (staff_id, record_date) DO UPDATE SET status = 'no_show', updated_at = NOW()
+                     WHERE hr_time_records.clock_in IS NULL
+                       AND hr_time_records.status = 'absent'
+                       AND COALESCE(hr_time_records.business_context, 'event_genix') = $1
+                     RETURNING id`,
+                    [DEFAULT_BUSINESS_CONTEXT, row.staff_id, todayStr]
+                );
+                if (!upserted.rows[0]) {
+                    await client.query('COMMIT');
+                    continue;
+                }
+
+                await client.query(
+                    `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)
+                     VALUES ('no_show', $1, 'system', $2)`,
+                    [row.staff_id, JSON.stringify({ planned_start: row.planned_start })]
+                );
+                await client.query('COMMIT');
+                alerts.push(`• ${row.staff_name} — зміна з ${row.planned_start}`);
+            } catch (err) {
+                if (client) {
+                    await client.query('ROLLBACK').catch(rollbackErr => {
+                        log.error(`checkHrNoShow rollback error for staff ${row.staff_id}`, rollbackErr);
+                    });
+                }
+                log.error(`checkHrNoShow staff ${row.staff_id} error`, err);
+            } finally {
+                client?.release();
+            }
         }
 
         if (alerts.length > 0) {

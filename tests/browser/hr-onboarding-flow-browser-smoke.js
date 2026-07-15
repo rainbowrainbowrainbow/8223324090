@@ -148,7 +148,7 @@ async function run() {
         vacancies: [{ id: 91, title: 'Кухар у команду', role_type: 'cook', department: 'kitchen', status: 'open', priority: 'normal', target_hires: 2, hired_count: 1, active_candidates: 1 }],
         applications: [{ id: 501, vacancy_id: 91, name: 'Browser Candidate', status: 'offer', vacancy_role_type: 'cook', vacancy_title: 'Кухар у команду', vacancy_department: 'kitchen', vacancy_target_hires: 2 }],
         processes: [
-            { id: 101, staff_id: 1, staff_name: 'Browser QA Worker', profession_key: null, responsible_name: 'HR Lead', status: 'in_progress', total_items: 1, completed_items: 0, items: [{ id: 1, title: 'Корпоративні правила', done: false }] },
+            { id: 101, staff_id: 1, staff_name: 'Browser QA Worker', profession_key: null, responsible_name: 'HR Lead', status: 'in_progress', training_status: 'not_started', generated_task_count: 4, active_task_count: 4, total_items: 1, completed_items: 0, items: [{ id: 1, title: 'Корпоративні правила', done: false }] },
             { id: 102, staff_id: 1, staff_name: 'Browser QA Worker', profession_key: 'animator', profession_title: 'Аніматор', is_primary: true, responsible_name: 'Animator Mentor', status: 'completed', admission_status: 'approved', internship_status: 'completed', total_items: 1, completed_items: 1, items: [{ id: 1, checklist_key: 'item_1', title: 'Основи анімації', done: true }] },
             { id: 103, staff_id: 1, staff_name: 'Browser QA Worker', profession_key: 'barista', profession_title: 'Бариста', is_primary: false, responsible_name: 'Barista Mentor', status: 'in_progress', admission_status: 'pending', internship_status: 'in_progress', total_items: 1, completed_items: 0, items: [{ id: 1, checklist_key: 'item_1', title: 'Кавова практика', done: false }] }
         ],
@@ -160,6 +160,13 @@ async function run() {
 
     try {
         await installApi(page, state);
+        await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1200);
+        assert.equal(
+            state.requests.filter(item => item.includes('/api/settings/timeline-visibility')).length,
+            0,
+            'unauthenticated timeline does not poll protected visibility settings'
+        );
         await seedAuth(page);
 
         await page.goto(`${baseUrl}/hr.html#vacancies`, { waitUntil: 'domcontentloaded' });
@@ -213,6 +220,9 @@ async function run() {
         await page.locator('[data-tab="onboarding"]').click();
         await page.locator('#trainingOnboardingList .training-onboarding-card').nth(3).waitFor();
         assert.equal(await page.locator('#trainingOnboardingList .training-onboarding-card').count(), 4);
+        const corporateCard = page.locator('.training-onboarding-card').filter({ hasText: 'Корпоративні правила' });
+        await corporateCard.getByText('у процесі', { exact: true }).waitFor();
+        assert.equal(await corporateCard.getByText('не стартував', { exact: true }).count(), 0);
         await page.getByText('Кухар', { exact: true }).waitFor();
         const cookCard = page.locator('.training-onboarding-card').filter({ hasText: 'Кухар' });
         const checklistUpdated = page.waitForResponse(response => response.url().includes('/api/hr/staff/1/profession-checklist') && response.request().method() === 'PUT');

@@ -620,7 +620,7 @@
             const total = Number(process.total_items || items.length || 0);
             const completed = Number(process.completed_items || items.filter(item => item?.done || item?.completed_at).length || 0);
             const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-            const statusText = onboardingStatusLabel(process.training_status || process.status);
+            const statusText = onboardingStatusLabel(process.status || process.training_status);
             const responsible = process.responsible_name || process.responsible_username || 'відповідального не призначено';
             const totalTasks = Number(process.generated_task_count || process.task_summary?.total || 0);
             const activeTasks = Number(process.active_task_count || process.task_summary?.active || 0);

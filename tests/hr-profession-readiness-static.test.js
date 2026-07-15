@@ -263,6 +263,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(trainingPage, /scope\.professionKey/);
         assert.match(trainingPage, /\/profession-checklist/);
         assert.match(trainingPage, /Корпоративний setup/);
+        assert.match(trainingPage, /onboardingStatusLabel\(process\.status \|\| process\.training_status\)/);
+        assert.doesNotMatch(trainingPage, /onboardingStatusLabel\(process\.training_status \|\| process\.status\)/);
         assert.match(trainingSurface, /aria-live="polite" aria-busy="true"/);
         assert.match(trainingSurface, /training-onboarding-scope-grid/);
         assert.match(hrHtml, /Корпоративний setup та допуск кожної професії показуються незалежно/);

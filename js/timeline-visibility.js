@@ -202,6 +202,10 @@
         return headers;
     }
 
+    function hasAuthenticatedTimelineUser() {
+        return Boolean(window.AppState?.currentUser);
+    }
+
     function canConfigure() {
         const api = contextApi();
         if (!api?.canUseAction) return false;
@@ -330,6 +334,7 @@
     }
 
     async function loadServerSettings() {
+        if (!hasAuthenticatedTimelineUser()) return null;
         const contextKey = visibilityScopeKey();
         if (state.serverLoadPromise && state.serverLoadKey === contextKey) return state.serverLoadPromise;
         state.serverLoadKey = contextKey;
@@ -998,12 +1003,19 @@
 
     function refreshAccess() {
         removeBusinessSwitcher();
-        const allowed = canConfigure();
+        const authenticated = hasAuthenticatedTimelineUser();
+        const allowed = authenticated && canConfigure();
         if (state.toggleBtn) {
             state.toggleBtn.classList.remove('hidden');
             state.toggleBtn.dataset.timelineSettingsAllowed = allowed ? 'true' : 'false';
         }
         if (!allowed && state.constructorActive) toggleConstructorMode(false);
+        if (!authenticated) {
+            state.serverSettings = new Map();
+            state.serverLoadPromise = null;
+            state.serverLoadKey = null;
+            return;
+        }
         loadServerSettings().then(data => {
             if (!data) return;
             applyVisibility();
@@ -1036,13 +1048,6 @@
         createPanel();
         markConfigurableElements();
         applyVisibility();
-        loadServerSettings().then(data => {
-            if (!data) return;
-            applyVisibility();
-            renderPanelList();
-            renderBlockEditor();
-            renderBlockDetails();
-        });
         refreshAccess();
         window.addEventListener('app:user-changed', refreshAccess);
         window.addEventListener('timeline:visibility-refresh', applyVisibility);
@@ -1055,11 +1060,10 @@
             });
         });
         state.accessTimer = window.setInterval(() => {
+            if (!hasAuthenticatedTimelineUser()) return;
             refreshAccess();
-            if (window.AppState?.currentUser) {
-                window.clearInterval(state.accessTimer);
-                state.accessTimer = null;
-            }
+            window.clearInterval(state.accessTimer);
+            state.accessTimer = null;
         }, 500);
     }
 

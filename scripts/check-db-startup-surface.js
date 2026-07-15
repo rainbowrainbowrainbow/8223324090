@@ -85,19 +85,25 @@ function extractMatches(code, regex, mapper) {
 }
 
 function checkStartupFlow(serverCode) {
-    const flowSliceStart = serverCode.indexOf('initDatabase().then(() =>');
+    const flowSliceStart = serverCode.indexOf('async function initializeDatabaseWithSchemaFence()');
     if (flowSliceStart === -1) {
-        fail('server.js: two-phase initDatabase startup chain missing');
+        fail('server.js: schema-fenced two-phase initDatabase startup flow missing');
         return;
     }
-    const flowSlice = serverCode.slice(flowSliceStart, flowSliceStart + 260);
+    const flowSlice = serverCode.slice(flowSliceStart, flowSliceStart + 900);
     const positions = [
-        flowSlice.indexOf('initDatabase().then(() =>'),
-        flowSlice.indexOf('runMigrations(pool)'),
-        flowSlice.lastIndexOf('initDatabase()')
+        flowSlice.indexOf('lockSchemaMigrations(guardClient)'),
+        flowSlice.indexOf('await initDatabase()'),
+        flowSlice.indexOf('runMigrations(pool, { schemaLockAlreadyHeld: true })'),
+        flowSlice.lastIndexOf('await initDatabase()'),
+        flowSlice.indexOf('unlockSchemaMigrations(guardClient)')
     ];
-    if (positions.some(pos => pos === -1) || !(positions[0] < positions[1] && positions[1] < positions[2])) {
-        fail('server.js: expected startup flow initDatabase -> runMigrations(pool) -> initDatabase');
+    if (positions.some(pos => pos === -1)
+        || !(positions[0] < positions[1]
+            && positions[1] < positions[2]
+            && positions[2] < positions[3]
+            && positions[3] < positions[4])) {
+        fail('server.js: expected schema lock -> initDatabase -> runMigrations -> initDatabase -> unlock flow');
     }
     if (!INIT_DATABASE_FLOW.reason) {
         fail('INIT_DATABASE_FLOW requires a reason');

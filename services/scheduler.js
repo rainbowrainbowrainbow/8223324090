@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
+const { skipSchedulerTracking } = require('./schedulerGuard');
 const { formatAfishaBlock } = require('./templates');
 const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 const { createLogger } = require('../utils/logger');
@@ -507,18 +508,19 @@ async function checkAutoBackup() {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'backup_time'");
         const backupTime = result.rows[0]?.value || '03:00';
-        if (!/^\d{2}:\d{2}$/.test(backupTime)) return;
+        if (!/^\d{2}:\d{2}$/.test(backupTime)) return skipSchedulerTracking();
 
         const nowTime = getKyivTimeStr();
         const todayStr = getKyivDateStr();
 
-        if (backupSentToday === todayStr) return;
-        if (nowTime !== backupTime) return;
+        if (backupSentToday === todayStr) return skipSchedulerTracking();
+        if (nowTime !== backupTime) return skipSchedulerTracking();
         const dbLast = await getLastSent('backup');
-        if (dbLast === todayStr) { backupSentToday = todayStr; return; }
+        if (dbLast === todayStr) {
+            backupSentToday = todayStr;
+            return skipSchedulerTracking();
+        }
 
-        backupSentToday = todayStr;
-        await setLastSent('backup', todayStr);
         log.info(`Running daily backup at ${backupTime}`);
         const backupResult = await sendBackupToTelegram();
 
@@ -536,18 +538,31 @@ async function checkAutoBackup() {
                     `Перевірте: GET /api/backup/verify`
                 );
             }
+            const failure = new Error('Scheduled backup failed');
+            failure.code = /^[A-Z0-9_]{1,80}$/.test(String(reason))
+                ? String(reason)
+                : 'BACKUP_DELIVERY_FAILED';
+            failure.backupAlertSent = true;
+            throw failure;
         }
+        backupSentToday = todayStr;
+        await setLastSent('backup', todayStr);
     } catch (err) {
-        log.error('AutoBackup error', err);
+        log.error('AutoBackup failed', { code: err?.code || 'BACKUP_SCHEDULER_FAILED' });
         // v17.10.0: Alert on unhandled backup error
         try {
             const chatId = await getConfiguredChatId();
-            if (chatId) {
+            if (chatId && !err?.backupAlertSent) {
                 await sendTelegramMessage(chatId,
-                    `🚨 <b>БЕКАП — КРИТИЧНА ПОМИЛКА</b>\n\n❌ ${err.message}`
+                    `🚨 <b>БЕКАП — КРИТИЧНА ПОМИЛКА</b>\n\n❌ Код: ${err?.code || 'BACKUP_SCHEDULER_FAILED'}`
                 );
             }
         } catch { /* prevent infinite loop */ }
+        const failure = new Error('Scheduled backup failed');
+        failure.code = /^[A-Z0-9_]{1,80}$/.test(String(err?.code || ''))
+            ? err.code
+            : 'BACKUP_SCHEDULER_FAILED';
+        throw failure;
     }
 }
 

@@ -14,7 +14,7 @@ loadLocalEnv(__dirname);
 
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
-const { authenticateToken } = require('./middleware/auth');
+const { authenticateToken, requireRole } = require('./middleware/auth');
 const { apiAuthBoundary } = require('./middleware/apiAuthBoundary');
 const { businessScopeWriteGuard } = require('./middleware/businessScopeGuard');
 const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
@@ -41,6 +41,14 @@ const { apiAudit } = require('./middleware/apiAudit');
 const { guardScheduler } = require('./services/schedulerGuard');
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
+const {
+    BACKUP_HTTP_BODY_LIMIT,
+    isBackupRestoreRequestPath
+} = require('./config/backupRestorePolicy');
+const {
+    lockSchemaMigrations,
+    unlockSchemaMigrations
+} = require('./services/backupSchemaLock');
 
 const log = createLogger('Server');
 
@@ -92,14 +100,33 @@ app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
 app.set('trust proxy', 1);   // v20.9.27: Trust first proxy (Railway) — req.ip returns real client IP
 const PORT = process.env.PORT || 3000;
 const HERMES_JOB_RESULT_JSON_LIMIT = '20mb';
-const BACKUP_RESTORE_JSON_LIMIT = '50mb';
-const BACKUP_RESTORE_JSON_PATHS = new Set([
-    '/api/backup/restore',
-    '/api/backup/restore-encrypted',
-    '/api/v1/backup/restore',
-    '/api/v1/backup/restore-encrypted'
+const BACKUP_RESTORE_JSON_LIMIT = BACKUP_HTTP_BODY_LIMIT;
+const BACKUP_RECOVERY_MODE = process.env.BACKUP_RECOVERY_MODE === 'true';
+const BACKUP_OUTBOUND_HOLD = process.env.BACKUP_OUTBOUND_HOLD === 'true';
+const BACKUP_RECOVERY_ALLOWED_REQUESTS = new Set([
+    'GET /api/health',
+    'GET /api/ready',
+    'GET /api/version',
+    'GET /api/backup/tables',
+    'GET /api/backup/verify',
+    'POST /api/backup/restore',
+    'POST /api/backup/restore-encrypted',
+    'POST /api/auth/login',
+    'GET /api/v1/health',
+    'GET /api/v1/ready',
+    'GET /api/v1/version',
+    'GET /api/v1/backup/tables',
+    'GET /api/v1/backup/verify',
+    'POST /api/v1/backup/restore',
+    'POST /api/v1/backup/restore-encrypted',
+    'POST /api/v1/auth/login'
 ]);
 const defaultJsonParser = express.json({ limit: '1mb' });
+
+function isBackupRestoreRequest(req) {
+    const requestPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+    return isBackupRestoreRequestPath(requestPath);
+}
 
 // Global middleware
 app.use(cors({
@@ -116,10 +143,16 @@ app.use(cors({
     }
 }));
 app.use(compression());
+app.use((req, res, next) => {
+    if (!BACKUP_RECOVERY_MODE) return next();
+    const method = req.method === 'HEAD' ? 'GET' : req.method;
+    if (BACKUP_RECOVERY_ALLOWED_REQUESTS.has(`${method} ${req.path}`)) return next();
+    return res.status(503).json({ error: 'BACKUP_RECOVERY_MODE_ACTIVE' });
+});
 app.use(['/api/hermes/jobs/:id/result', '/api/v1/hermes/jobs/:id/result'], express.json({ limit: HERMES_JOB_RESULT_JSON_LIMIT }));
 app.use((req, res, next) => {
     // Backup restore payloads are parsed only after API authentication below.
-    if (BACKUP_RESTORE_JSON_PATHS.has(req.path)) return next();
+    if (isBackupRestoreRequest(req)) return next();
     return defaultJsonParser(req, res, next);
 });
 app.use(requestIdMiddleware);
@@ -165,6 +198,10 @@ app.use((req, res, next) => {
 
 // v19.17: Request timeout — 30s for API endpoints
 app.use('/api', (req, res, next) => {
+    // A database recovery may legitimately run longer than the generic API
+    // timeout. Its route owns disconnect/abort handling and checks the signal
+    // before COMMIT, so it must not receive an early 408 while still mutating.
+    if (isBackupRestoreRequest(req)) return next();
     req.setTimeout(30000, () => {
         if (!res.headersSent) {
             res.status(408).json({ error: 'Запит перевищив ліміт часу (30с)' });
@@ -184,8 +221,10 @@ app.use('/api/leads/landing', landingLeadLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', apiAuthBoundary(authenticateToken));
+const backupRestorePreParserGuard = requireRole('creator', 'director');
 app.use(
     ['/api/backup/restore', '/api/backup/restore-encrypted'],
+    backupRestorePreParserGuard,
     express.json({ limit: BACKUP_RESTORE_JSON_LIMIT })
 );
 
@@ -626,16 +665,35 @@ const schedulerIntervals = [];
 
 // v22.20.1: Two-phase init — initDatabase creates base tables (indexes are safe via safeQuery),
 // then migrations add columns/constraints, then initDatabase again for remaining indexes/seeds.
-initDatabase().then(() => {
-    return runMigrations(pool);
-}).then(() => {
-    return initDatabase();
-}).catch(err => {
+async function initializeDatabaseWithSchemaFence() {
+    const guardClient = await pool.connect();
+    let schemaLockHeld = false;
+    try {
+        await lockSchemaMigrations(guardClient);
+        schemaLockHeld = true;
+        await initDatabase();
+        await runMigrations(pool, { schemaLockAlreadyHeld: true });
+        await initDatabase();
+    } finally {
+        if (schemaLockHeld) await unlockSchemaMigrations(guardClient);
+        guardClient.release();
+    }
+}
+
+initializeDatabaseWithSchemaFence().catch(err => {
     log.error('Failed to initialize database, exiting', err);
     process.exit(1);
 }).then(() => {
     server = app.listen(PORT, async () => {
         log.info(`Server running on port ${PORT}`);
+        if (BACKUP_RECOVERY_MODE) {
+            log.warn('Backup recovery mode active: ordinary routes and background side effects are disabled');
+            return;
+        }
+        if (BACKUP_OUTBOUND_HOLD) {
+            log.warn('Backup outbound hold active: web requests stay available while background and provider side effects remain disabled');
+            return;
+        }
         log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
         log.info(`Report bot token: ${REPORT_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
@@ -692,7 +750,7 @@ initDatabase().then(() => {
         // v19.10: Schedulers wrapped with guardScheduler for dedup + error tracking
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoDigest', checkAutoDigest, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReminder', checkAutoReminder, { dedup: 'daily' }), 60000));
-        schedulerIntervals.push(setInterval(guardScheduler('checkAutoBackup', checkAutoBackup, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoBackup', checkAutoBackup, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringTasks', checkRecurringTasks, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringAfisha', checkRecurringAfisha, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkScheduledDeletions', checkScheduledDeletions, { dedup: 'daily' }), 60000));

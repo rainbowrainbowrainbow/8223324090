@@ -13,11 +13,13 @@ describe('Backup', () => {
         const res = await authRequest('GET', '/api/backup/verify');
         assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
         assert.ok(typeof res.data.ok === 'boolean', 'Should return ok flag');
-        assert.ok(typeof res.data.tables_backed_up === 'number', 'Should return table count');
-        assert.ok(typeof res.data.total_rows === 'number', 'Should return row count');
+        assert.ok(typeof res.data.tableCount === 'number', 'Should return table count');
+        assert.ok(typeof res.data.totalRows === 'number', 'Should return row count');
+        assert.equal(res.data.format, 'eventgenix.backup');
+        assert.equal(res.data.formatVersion, 2);
     });
 
-    it('GET /api/backup/download — download SQL backup', async () => {
+    it('GET /api/backup/download — download structured backup', async () => {
         const res = await authRequest('GET', '/api/backup/download');
         assert.equal(res.status, 200);
     });
@@ -29,17 +31,17 @@ describe('Backup', () => {
         assert.ok(res.data.tables.length > 0, 'Should have at least one table');
     });
 
-    it('POST /api/backup/restore — reject without SQL', async () => {
+    it('POST /api/backup/restore — reject without artifact', async () => {
         const res = await authRequest('POST', '/api/backup/restore', {});
         assert.equal(res.status, 400);
     });
 
-    it('POST /api/backup/restore — reject invalid statements', async () => {
+    it('POST /api/backup/restore — reject legacy SQL', async () => {
         const res = await authRequest('POST', '/api/backup/restore', {
             sql: 'DROP TABLE users;'
         });
         assert.equal(res.status, 400);
-        assert.ok(res.data.rejected, 'Should list rejected statements');
+        assert.equal(res.data.error, 'BACKUP_RAW_SQL_FORBIDDEN');
     });
 
     it('GET /api/backup/download-encrypted — reject without key', async () => {

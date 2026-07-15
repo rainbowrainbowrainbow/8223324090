@@ -240,24 +240,20 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
 });
 
 test('backup restore takes the exclusive attendance gate before maintenance mutations', () => {
-    const source = read('routes', 'backup.js');
-    assert.match(source, /require\('\.\.\/services\/attendanceWriteLock'\)/);
-
-    assertInOrder(routeBlock(source, 'post', '/restore'), [
+    const source = read('services', 'backupRecovery.js');
+    assert.match(source, /require\('\.\/attendanceWriteLock'\)/);
+    assertInOrder(source, [
         /await client\.query\('BEGIN'\)/,
-        /restoreTouchesAttendanceState\(validated, sequenceTables\)/,
+        /plan\.selectedTables\.some\(table => ATTENDANCE_TABLES\.has\(table\)\)/,
         /await lockAttendanceWriteMaintenance\(client\)/,
-        /executeRestoreStatements\([\s\S]*client,[\s\S]*validated,[\s\S]*sequenceTables/,
+        /await lockRestoreTables\(client, plan\.selectedTables\)/,
+        /TRUNCATE TABLE|DELETE FROM/,
         /await client\.query\('COMMIT'\)/
-    ], 'POST /api/backup/restore');
+    ], 'structured backup recovery executor');
 
-    assertInOrder(routeBlock(source, 'post', '/restore-encrypted'), [
-        /await client\.query\('BEGIN'\)/,
-        /restoreTouchesAttendanceState\(statements, sequenceTables\)/,
-        /await lockAttendanceWriteMaintenance\(client\)/,
-        /executeRestoreStatements\([\s\S]*client,[\s\S]*statements,[\s\S]*sequenceTables/,
-        /await client\.query\('COMMIT'\)/
-    ], 'POST /api/backup/restore-encrypted');
+    const routeSource = read('routes', 'backup.js');
+    assert.match(routeBlock(routeSource, 'post', '/restore'), /runRestoreRequest\(req, res, req\.body\.artifact\)/);
+    assert.match(routeBlock(routeSource, 'post', '/restore-encrypted'), /decryptBackupArtifact[\s\S]*runRestoreRequest\(req, res, artifact\)/);
 });
 
 test('approved leave and HR scheduler writers share the transaction-scoped day locks', () => {

@@ -11,6 +11,11 @@ Runtime startup currently runs:
 
 ```text
 initDatabase() -> runMigrations(pool) -> initDatabase()
+
+`server.js` wraps this complete two-phase flow in the Event Genix exclusive
+schema-maintenance advisory lock. Backup export and structured restore take the
+matching shared transaction lock, so a deploy migration cannot race a recovery
+snapshot or restore.
 ```
 
 Current responsibilities are split:

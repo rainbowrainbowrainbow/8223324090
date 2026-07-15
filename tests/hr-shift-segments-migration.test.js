@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { BACKUP_TABLES } = require('../services/backup');
+const { buildRestoreOrder } = require('../services/backupCatalog');
 
 const ROOT = path.join(__dirname, '..');
 const MIGRATIONS_DIR = path.join(ROOT, 'db', 'migrations');
@@ -27,7 +27,6 @@ const migration = readMigration();
 const migrationSql = stripSqlComments(migration);
 const initialSchema = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
 const hrModuleSchema = fs.readFileSync(path.join(MIGRATIONS_DIR, '007_hr_module.sql'), 'utf8');
-const backupService = fs.readFileSync(path.join(ROOT, 'services', 'backup.js'), 'utf8');
 
 test('HR shift segments migration is additive and governed', () => {
     assert.match(migration, /-- MIGRATION_KIND: mixed/);
@@ -103,16 +102,30 @@ test('migration preserves canonical one-row-per-person-day definitions', () => {
 });
 
 test('backup inventory orders shift segments parent-first', () => {
-    const shiftsIndex = BACKUP_TABLES.indexOf('hr_shifts');
-    const segmentsIndex = BACKUP_TABLES.indexOf('hr_shift_segments');
-    const rolesIndex = BACKUP_TABLES.indexOf('hr_shift_segment_roles');
+    const table = name => ({
+        name,
+        columns: [{ name: 'id', notNull: true }],
+        columnMap: new Map([['id', { name: 'id', notNull: true }]]),
+        primaryKey: ['id']
+    });
+    const foreignKey = (child, parent) => ({
+        key: `${child}:${parent}`,
+        name: `${child}_${parent}_fkey`,
+        table: child,
+        columns: ['id'],
+        referencedTable: parent,
+        matchType: 's'
+    });
+    const result = buildRestoreOrder([
+        table('hr_shift_segment_roles'),
+        table('hr_shift_segments'),
+        table('hr_shifts')
+    ], [
+        foreignKey('hr_shift_segments', 'hr_shifts'),
+        foreignKey('hr_shift_segment_roles', 'hr_shift_segments')
+    ]);
 
-    assert.ok(shiftsIndex >= 0, 'hr_shifts must remain in backup inventory');
-    assert.ok(segmentsIndex > shiftsIndex, 'hr_shift_segments must restore after hr_shifts');
-    assert.ok(rolesIndex > segmentsIndex, 'hr_shift_segment_roles must restore after hr_shift_segments');
-    assert.equal(BACKUP_TABLES.filter(table => table === 'hr_shift_segments').length, 1);
-    assert.equal(BACKUP_TABLES.filter(table => table === 'hr_shift_segment_roles').length, 1);
-    assert.match(backupService, /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
-    assert.match(backupService, /SAVEPOINT backup_table_read/);
-    assert.match(backupService, /pg_get_serial_sequence\('\$\{table\}', 'id'\)/);
+    assert.ok(result.order.indexOf('hr_shifts') < result.order.indexOf('hr_shift_segments'));
+    assert.ok(result.order.indexOf('hr_shift_segments') < result.order.indexOf('hr_shift_segment_roles'));
+    assert.deepEqual(result.deferredForeignKeys, []);
 });

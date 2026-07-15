@@ -11,6 +11,10 @@ The current startup flow is still split:
 
 ```text
 initDatabase() -> runMigrations(pool) -> initDatabase()
+
+`server.js` holds the exclusive Event Genix schema-maintenance advisory lock
+around this complete flow. Backup export and structured restore use the
+matching shared transaction lock.
 ```
 
 `DB_MIGRATION_GOVERNANCE.md` remains the authority for migration rules.

@@ -1261,58 +1261,45 @@ describe('Telegram Animator Status', () => {
 // ==========================================
 
 describe('Backup Download', () => {
-    it('GET /api/backup/download — returns SQL content', async () => {
+    it('GET /api/backup/download — returns structured v2 content', async () => {
         const token = await getToken();
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/api/backup/download`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         assert.equal(fetchRes.status, 200);
-        const contentType = fetchRes.headers.get('content-type');
-        assert.ok(contentType.includes('sql') || contentType.includes('text'), `Content-Type should be SQL, got: ${contentType}`);
-        const body = await fetchRes.text();
-        assert.ok(body.length > 0, 'Backup should not be empty');
-        assert.ok(body.includes('DELETE') || body.includes('INSERT'), 'Backup should contain SQL statements');
+        assert.match(
+            fetchRes.headers.get('content-type') || '',
+            /application\/vnd\.eventgenix\.backup\+json/
+        );
+        assert.match(fetchRes.headers.get('cache-control') || '', /no-store/);
+        const body = await fetchRes.json();
+        assert.equal(body.format, 'eventgenix.backup');
+        assert.equal(body.version, 2);
+        assert.equal(body.manifest?.complete, true);
+        assert.ok(body.manifest?.tableCount > 0);
+        assert.equal(typeof body.payload, 'string');
     });
 });
 
 describe('Backup Restore Validation', () => {
-    it('POST /api/backup/restore — missing body returns 400', async () => {
+    it('POST /api/backup/restore — missing artifact returns 400', async () => {
         const res = await authRequest('POST', '/api/backup/restore', {});
         assert.equal(res.status, 400);
-        assert.ok(res.data.error);
+        assert.equal(res.data.error, 'BACKUP_ARTIFACT_REQUIRED');
     });
 
-    it('POST /api/backup/restore — non-string sql returns 400', async () => {
-        const res = await authRequest('POST', '/api/backup/restore', { sql: 123 });
-        assert.equal(res.status, 400);
-    });
-
-    it('POST /api/backup/restore — forbidden statements (DROP) returns 400', async () => {
-        const res = await authRequest('POST', '/api/backup/restore', {
-            sql: 'DROP TABLE bookings;'
+    for (const sql of [
+        123,
+        'DROP TABLE bookings;',
+        "UPDATE users SET role = 'admin' WHERE id = 1;",
+        "INSERT INTO settings (key, value) VALUES ('forbidden_restore_write', '1');"
+    ]) {
+        it('POST /api/backup/restore — rejects every legacy SQL body', async () => {
+            const res = await authRequest('POST', '/api/backup/restore', { sql });
+            assert.equal(res.status, 400);
+            assert.equal(res.data.error, 'BACKUP_RAW_SQL_FORBIDDEN');
         });
-        assert.equal(res.status, 400);
-        assert.ok(res.data.error.includes('Invalid statements'));
-    });
-
-    it('POST /api/backup/restore — forbidden statements (UPDATE) returns 400', async () => {
-        const res = await authRequest('POST', '/api/backup/restore', {
-            sql: "UPDATE users SET role = 'admin' WHERE id = 1;"
-        });
-        assert.equal(res.status, 400);
-    });
-
-    it('POST /api/backup/restore — valid INSERT executes', async () => {
-        const res = await authRequest('POST', '/api/backup/restore', {
-            sql: "INSERT INTO settings (key, value) VALUES ('restore_test_key', 'restore_test_val') ON CONFLICT (key) DO UPDATE SET value = 'restore_test_val';"
-        });
-        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
-        assert.ok(res.data.success);
-        assert.equal(res.data.executed, 1);
-
-        const check = await authRequest('GET', '/api/settings/restore_test_key');
-        assert.equal(check.data.value, 'restore_test_val');
-    });
+    }
 });
 
 // ==========================================
@@ -1871,7 +1858,7 @@ describe('Backup Create', () => {
 // ==========================================
 
 describe('Backup Download Headers', () => {
-    it('GET /api/backup/download — has correct content-disposition', async () => {
+    it('GET /api/backup/download — has structured artifact disposition', async () => {
         const token = await getToken();
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/api/backup/download`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1879,19 +1866,23 @@ describe('Backup Download Headers', () => {
         assert.equal(fetchRes.status, 200);
         const disposition = fetchRes.headers.get('content-disposition');
         assert.ok(disposition, 'Should have Content-Disposition header');
-        assert.ok(disposition.includes('backup_'), 'Filename should contain backup_');
-        assert.ok(disposition.includes('.sql'), 'Filename should end with .sql');
+        assert.ok(disposition.includes('eventgenix_'), 'Filename should use Event Genix prefix');
+        assert.ok(disposition.includes('.egbackup.json'), 'Filename should use recovery extension');
+        assert.match(fetchRes.headers.get('cache-control') || '', /no-store/);
         await fetchRes.text();
     });
 
-    it('GET /api/backup/download — backup SQL contains all table names', async () => {
+    it('GET /api/backup/download — manifest contains current table names', async () => {
         const token = await getToken();
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/api/backup/download`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const body = await fetchRes.text();
-        assert.ok(body.includes('bookings') || body.includes('Backup'), 'Should contain table references');
-        assert.ok(body.includes('-- Backup:'), 'Should have backup header comment');
+        const body = await fetchRes.json();
+        assert.equal(body.format, 'eventgenix.backup');
+        assert.ok(
+            body.manifest?.tables?.some(table => table.name === 'bookings'),
+            'Structured manifest should include bookings'
+        );
     });
 });
 

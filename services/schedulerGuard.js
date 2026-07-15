@@ -8,6 +8,11 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('SchedulerGuard');
 
 const MAX_CONSECUTIVE_FAILURES = 10;
+const SCHEDULER_SKIP_TRACKING = Symbol('scheduler-skip-tracking');
+
+function skipSchedulerTracking() {
+    return SCHEDULER_SKIP_TRACKING;
+}
 const SUPPORTED_DEDUP = new Set(['daily', 'hourly', '5min', null]);
 const SCHEDULER_TIME_ZONE = 'Europe/Kyiv';
 const SCHEDULER_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
@@ -105,7 +110,8 @@ function guardScheduler(name, fn, opts = {}) {
             }
 
             // Execute the scheduler function
-            await fn();
+            const outcome = await fn();
+            if (outcome === SCHEDULER_SKIP_TRACKING) return;
 
             const durationMs = Date.now() - startMs;
             const dateKey = schedulerTrackingKey(dedup);
@@ -146,4 +152,4 @@ function guardScheduler(name, fn, opts = {}) {
     };
 }
 
-module.exports = { guardScheduler, schedulerDedupKey };
+module.exports = { guardScheduler, schedulerDedupKey, skipSchedulerTracking };

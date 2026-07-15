@@ -1,7 +1,7 @@
 const INIT_DATABASE_FLOW = {
     serverFile: 'server.js',
     steps: ['initDatabase', 'runMigrations', 'initDatabase'],
-    reason: 'Legacy two-phase startup keeps old environments bootable while SQL migrations remain the durable schema history.'
+    reason: 'Schema-fenced legacy two-phase startup keeps old environments bootable while SQL migrations remain the durable schema history.'
 };
 
 const STARTUP_SCHEMA_TABLES = [

@@ -2052,33 +2052,96 @@ const swaggerSpec = {
     '/backup/create': {
       post: {
         tags: ['Backup'],
-        summary: 'Create and send backup to Telegram',
+        summary: 'Create and send an encrypted recovery bundle to Telegram',
+        description: 'Creator/director only. Delivery is AES-256-GCM encrypted and fails closed when no backup encryption key of at least 16 UTF-8 bytes is available.',
+        parameters: [
+          { name: 'X-Backup-Encryption-Key', in: 'header', required: false, schema: { type: 'string', format: 'password' }, description: 'Optional when BACKUP_ENCRYPTION_KEY is configured server-side. Never put this value in a URL or log.' }
+        ],
         responses: {
-          200: { description: 'Backup result', content: { 'application/json': { schema: { type: 'object' } } } }
+          200: { description: 'Encrypted bundle delivered', content: { 'application/json': { schema: { type: 'object' } } } },
+          503: { description: 'Delivery configuration, encryption key, generation, or Telegram delivery failed' }
         }
       }
     },
     '/backup/download': {
       get: {
         tags: ['Backup'],
-        summary: 'Download backup as SQL file',
+        summary: 'Download structured database recovery bundle',
+        description: 'Creator/director only. The artifact contains sensitive database values and must be protected as a credential-bearing backup.',
         responses: {
-          200: { description: 'SQL backup file', content: { 'application/sql': { schema: { type: 'string' } } } }
+          200: { description: 'eventgenix.backup version 2 artifact', content: { 'application/vnd.eventgenix.backup+json': { schema: { type: 'object' } } } }
+        }
+      }
+    },
+    '/backup/download-encrypted': {
+      get: {
+        tags: ['Backup'],
+        summary: 'Download authenticated encrypted recovery bundle',
+        parameters: [
+          { name: 'X-Backup-Encryption-Key', in: 'header', required: false, schema: { type: 'string', format: 'password' }, description: 'Required unless BACKUP_ENCRYPTION_KEY is configured server-side.' }
+        ],
+        responses: {
+          200: { description: 'AES-256-GCM eventgenix.backup.encrypted version 2 envelope', content: { 'application/vnd.eventgenix.backup.encrypted+json': { schema: { type: 'object' } } } },
+          400: { description: 'Encryption key is unavailable' }
+        }
+      }
+    },
+    '/backup/verify': {
+      get: {
+        tags: ['Backup'],
+        summary: 'Generate and validate read-only recovery metadata',
+        description: 'Generates a consistent snapshot and validates its manifest. This is not a restore drill.',
+        responses: {
+          200: { description: 'Validated backup metadata', content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' }, format: { type: 'string' }, formatVersion: { type: 'integer' }, tableCount: { type: 'integer' }, totalRows: { type: 'integer' }, complete: { type: 'boolean' } } } } } }
         }
       }
     },
     '/backup/restore': {
       post: {
         tags: ['Backup'],
-        summary: 'Restore from SQL (INSERT/DELETE only)',
-        description: 'Executes SQL statements from body. Only INSERT and DELETE are allowed.',
+        summary: 'Restore a structured version 2 recovery bundle',
+        description: 'Creator/director only. Raw SQL is forbidden. Full restore additionally requires BACKUP_FULL_RESTORE_ENABLED=true, BACKUP_RECOVERY_MODE=true, and a matching fresh schema.',
+        parameters: [
+          { name: 'X-Backup-Restore-Confirmed', in: 'header', required: true, schema: { type: 'string', enum: ['true'] } }
+        ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['sql'], properties: { sql: { type: 'string', description: 'SQL statements (INSERT/DELETE only, separated by ;)' } } } } }
+          content: { 'application/json': { schema: { type: 'object', required: ['artifact'], properties: { artifact: { type: 'object' }, mode: { type: 'string', enum: ['full', 'selective'] }, restoreSet: { type: 'string', enum: ['attendance-v1'] } } } } }
         },
         responses: {
-          200: { description: 'Restore complete', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, executed: { type: 'integer' } } } } } },
-          400: { description: 'Forbidden statements or missing SQL body' }
+          200: { description: 'Restore completed and table digests verified', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, mode: { type: 'string' }, insertedRows: { type: 'integer' }, sequencesRestored: { type: 'integer' }, verified: { type: 'boolean' } } } } } },
+          400: { description: 'Invalid, unconfirmed, unsupported, corrupt, or raw-SQL request' },
+          403: { description: 'Full restore runtime gate is disabled' },
+          409: { description: 'Artifact and target schema/inventory do not match' }
+        }
+      }
+    },
+    '/backup/restore-encrypted': {
+      post: {
+        tags: ['Backup'],
+        summary: 'Decrypt and restore an authenticated recovery envelope',
+        parameters: [
+          { name: 'X-Backup-Restore-Confirmed', in: 'header', required: true, schema: { type: 'string', enum: ['true'] } },
+          { name: 'X-Backup-Encryption-Key', in: 'header', required: false, schema: { type: 'string', format: 'password' }, description: 'Required unless BACKUP_ENCRYPTION_KEY is configured server-side.' }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['envelope'], properties: { envelope: { type: 'object' }, mode: { type: 'string', enum: ['full', 'selective'] }, restoreSet: { type: 'string', enum: ['attendance-v1'] } } } } }
+        },
+        responses: {
+          200: { description: 'Encrypted restore completed and verified' },
+          400: { description: 'Missing key/envelope, failed authentication, invalid artifact, or missing confirmation' },
+          403: { description: 'Full restore runtime gate is disabled' },
+          409: { description: 'Artifact and target schema/inventory do not match' }
+        }
+      }
+    },
+    '/backup/tables': {
+      get: {
+        tags: ['Backup'],
+        summary: 'Inspect dynamic backup inventory and restore policy',
+        responses: {
+          200: { description: 'Current public-table inventory, exclusions, registered restore sets, and runtime gates', content: { 'application/json': { schema: { type: 'object', properties: { tables: { type: 'array', items: { type: 'string' } }, excludedTables: { type: 'object' }, restoreSets: { type: 'object' }, fullRestoreSupported: { type: 'boolean' }, fullRestoreRuntimeEnabled: { type: 'boolean' }, recoveryMode: { type: 'boolean' }, outboundHold: { type: 'boolean' }, outboundSideEffectsSuppressed: { type: 'boolean' }, encryptedDeliveryKeyConfigured: { type: 'boolean' }, legacyRawSqlRestoreSupported: { type: 'boolean' } } } } } }
         }
       }
     },

@@ -189,6 +189,19 @@ describe('schedulerGuard dedup contract', () => {
         assert.equal(state.successWrites[1].params[1], '2026-06-28T15:07');
     });
 
+    it('does not record a polling no-op as scheduler success', async () => {
+        const { guardScheduler, skipSchedulerTracking } = loadGuard();
+
+        await guardScheduler(
+            'pollingJob',
+            async () => skipSchedulerTracking(),
+            { dedup: null }
+        )();
+
+        assert.equal(state.successWrites.length, 0);
+        assert.equal(state.errorWrites.length, 0);
+    });
+
     it('skips paused scheduler rows without writing success', async () => {
         state.rows.set('pausedJob', { last_run_date: '2026-06-27', is_paused: true, consecutive_failures: 3 });
         const { guardScheduler } = loadGuard();

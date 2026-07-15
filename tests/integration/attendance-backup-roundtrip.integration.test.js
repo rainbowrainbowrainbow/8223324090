@@ -6,12 +6,11 @@
  */
 'use strict';
 
-const crypto = require('node:crypto');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
-const { BASE_URL, authRequest, getToken } = require('../helpers');
+const { BASE_URL, getToken } = require('../helpers');
 
 const enabled = process.env.RUN_ATTENDANCE_BACKUP_INTEGRATION === 'true';
 const FIXTURE_DATE = '2099-07-15';
@@ -62,19 +61,44 @@ async function downloadCanonicalBackup() {
         signal: AbortSignal.timeout(60_000)
     });
     assert.equal(response.status, 200, `backup download returned HTTP ${response.status}`);
-    return response.text();
+    return response.json();
 }
 
-function encryptBackup(sql, passphrase) {
-    const key = crypto.scryptSync(passphrase, 'park-booking-salt', 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    const encrypted = Buffer.concat([cipher.update(sql, 'utf8'), cipher.final()]);
-    return Buffer.concat([iv, encrypted]).toString('base64');
+async function downloadEncryptedBackup(passphrase) {
+    const token = await getToken();
+    const response = await fetch(`${BASE_URL}/api/backup/download-encrypted`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Backup-Encryption-Key': passphrase
+        },
+        signal: AbortSignal.timeout(60_000)
+    });
+    assert.equal(response.status, 200, `encrypted backup download returned HTTP ${response.status}`);
+    return response.json();
 }
 
-async function expectRestoreOk(path, body) {
-    const response = await authRequest('POST', path, body);
+async function restoreRequest(path, body, { passphrase, confirmed = true } = {}) {
+    const token = await getToken();
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+    if (confirmed) headers['X-Backup-Restore-Confirmed'] = 'true';
+    if (passphrase) headers['X-Backup-Encryption-Key'] = passphrase;
+    const response = await fetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000)
+    });
+    return {
+        status: response.status,
+        data: await response.json().catch(() => null)
+    };
+}
+
+async function expectRestoreOk(path, body, options) {
+    const response = await restoreRequest(path, body, options);
     assert.equal(
         response.status,
         200,
@@ -85,7 +109,7 @@ async function expectRestoreOk(path, body) {
 }
 
 async function expectRestoreRejected(path, body) {
-    const response = await authRequest('POST', path, body);
+    const response = await restoreRequest(path, body);
     assert.equal(response.status, 400, `${path} must reject unsafe selective restore input`);
     return response.data;
 }
@@ -230,13 +254,12 @@ test(
             );
             const timeRecordId = Number(timeRecordResult.rows[0].id);
 
-            const backupSql = await downloadCanonicalBackup();
-            assert.match(backupSql, new RegExp(`INSERT INTO staff_checkins \\(id, staff_id, date, check_in, check_out, method, created_at\\) VALUES \\(${checkinId},`));
-            assert.match(backupSql, new RegExp(`INSERT INTO hr_time_records \\(.*\\) VALUES \\(${timeRecordId},`));
-            assert.match(backupSql, /'qa;roundtrip'/);
-            assert.match(backupSql, /'Fictional; -- attendance round-trip'/);
-            assert.match(backupSql, /'2099-07-15 08:01:02\.123456'/);
-            assert.match(backupSql, /'2099-07-15'/);
+            const backupArtifact = await downloadCanonicalBackup();
+            assert.equal(backupArtifact.format, 'eventgenix.backup');
+            assert.equal(backupArtifact.version, 2);
+            const passphrase = 'disposable-attendance-recovery-passphrase';
+            const encryptedBackup = await downloadEncryptedBackup(passphrase);
+            assert.equal(encryptedBackup.cipher, 'aes-256-gcm');
 
             await pool.query(
                 `INSERT INTO settings (key, value)
@@ -258,8 +281,8 @@ test(
             ]);
 
             const plainRestore = await expectRestoreOk('/api/backup/restore', {
-                sql: backupSql,
-                tables: ['staff_checkins', 'hr_time_records']
+                artifact: backupArtifact,
+                restoreSet: 'attendance-v1'
             });
             assert.deepEqual(
                 new Set(plainRestore.tablesRestored),
@@ -279,14 +302,79 @@ test(
             const plainSentinel = await pool.query('SELECT value FROM settings WHERE key = $1', [sentinelKey]);
             assert.equal(plainSentinel.rows[0]?.value, 'non_target_sentinel');
 
+            await pool.query(
+                `UPDATE staff_checkins SET check_in = '2099-07-15 01:01:01'::timestamp WHERE id = $1`,
+                [checkinId]
+            );
             await expectRestoreRejected('/api/backup/restore', {
-                sql: backupSql,
+                artifact: backupArtifact,
+                mode: 'selective',
                 tables: []
             });
+            let rejectedAttendance = await pool.query(
+                `SELECT to_char(check_in, 'YYYY-MM-DD HH24:MI:SS') AS check_in
+                 FROM staff_checkins WHERE id = $1`,
+                [checkinId]
+            );
+            assert.equal(rejectedAttendance.rows[0]?.check_in, '2099-07-15 01:01:01');
+
+            await pool.query(
+                `UPDATE staff_checkins SET check_in = '2099-07-15 02:02:02'::timestamp WHERE id = $1`,
+                [checkinId]
+            );
             await expectRestoreRejected('/api/backup/restore', {
-                sql: backupSql,
+                artifact: backupArtifact,
+                restoreSet: 'attendance-v1',
                 tables: ['staff']
             });
+            rejectedAttendance = await pool.query(
+                `SELECT to_char(check_in, 'YYYY-MM-DD HH24:MI:SS') AS check_in
+                 FROM staff_checkins WHERE id = $1`,
+                [checkinId]
+            );
+            assert.equal(rejectedAttendance.rows[0]?.check_in, '2099-07-15 02:02:02');
+
+            await pool.query(
+                `UPDATE staff_checkins SET check_in = '2099-07-15 03:03:03'::timestamp WHERE id = $1`,
+                [checkinId]
+            );
+            const withoutConfirmation = await restoreRequest('/api/backup/restore', {
+                artifact: backupArtifact,
+                restoreSet: 'attendance-v1'
+            }, { confirmed: false });
+            assert.equal(withoutConfirmation.status, 400);
+            assert.equal(withoutConfirmation.data?.error, 'BACKUP_RESTORE_CONFIRMATION_REQUIRED');
+            rejectedAttendance = await pool.query(
+                `SELECT to_char(check_in, 'YYYY-MM-DD HH24:MI:SS') AS check_in
+                 FROM staff_checkins WHERE id = $1`,
+                [checkinId]
+            );
+            assert.equal(rejectedAttendance.rows[0]?.check_in, '2099-07-15 03:03:03');
+
+            await pool.query(
+                `UPDATE hr_time_records
+                 SET notes = 'encrypted_missing_confirmation_sentinel'
+                 WHERE id = $1`,
+                [timeRecordId]
+            );
+            const encryptedWithoutConfirmation = await restoreRequest(
+                '/api/backup/restore-encrypted',
+                { envelope: encryptedBackup, restoreSet: 'attendance-v1' },
+                { confirmed: false, passphrase }
+            );
+            assert.equal(encryptedWithoutConfirmation.status, 400);
+            assert.equal(
+                encryptedWithoutConfirmation.data?.error,
+                'BACKUP_RESTORE_CONFIRMATION_REQUIRED'
+            );
+            const rejectedEncryptedAttendance = await pool.query(
+                'SELECT notes FROM hr_time_records WHERE id = $1',
+                [timeRecordId]
+            );
+            assert.equal(
+                rejectedEncryptedAttendance.rows[0]?.notes,
+                'encrypted_missing_confirmation_sentinel'
+            );
             const rejectedPlainSentinel = await pool.query(
                 'SELECT value FROM settings WHERE key = $1',
                 [sentinelKey]
@@ -306,9 +394,9 @@ test(
                 '2099-07-16'
             ));
 
-            // Encrypted restore receives the same complete canonical SQL but selects
+            // Encrypted restore receives the same complete canonical bundle but selects
             // only the two attendance children. Parent and settings sentinels prove
-            // encrypted body.tables has the same filtering boundary as plain restore.
+            // the registered restoreSet has the same filtering boundary as plain restore.
             await pool.query(
                 `UPDATE staff SET position = 'encrypted_restore_staff_mutation' WHERE id = $1`,
                 [fixtureStaffId]
@@ -331,18 +419,10 @@ test(
                 resetSerial(pool, 'hr_time_records')
             ]);
 
-            const passphrase = crypto.randomBytes(24).toString('base64url');
-            const encryptedBackup = encryptBackup(backupSql, passphrase);
-            await expectRestoreRejected('/api/backup/restore-encrypted', {
-                key: passphrase,
-                data: encryptedBackup,
-                tables: 'staff_checkins'
-            });
             const encryptedRestore = await expectRestoreOk('/api/backup/restore-encrypted', {
-                key: passphrase,
-                data: encryptedBackup,
-                tables: ['staff_checkins', 'hr_time_records']
-            });
+                envelope: encryptedBackup,
+                restoreSet: 'attendance-v1'
+            }, { passphrase });
             assert.deepEqual(
                 new Set(encryptedRestore.tablesRestored),
                 new Set(['staff_checkins', 'hr_time_records'])

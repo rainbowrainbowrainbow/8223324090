@@ -254,6 +254,7 @@ function isAuthCompatibilityMiss(error) {
 
 async function loadAuthenticatedUserAccess(user, options = {}) {
     const requireFresh = options.requireFresh === true;
+    const requireIdentityMatch = options.requireIdentityMatch === true;
     const includeStaffProfile = options.includeStaffProfile === true || requireFresh;
     const userId = user?.id || user?.userId || user?.sub;
     if (!userId) {
@@ -290,6 +291,13 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         if (!freshUser) {
             if (requireFresh) throw authSessionError('User not found or deactivated', 'auth_user_missing');
             return user;
+        }
+        if (requireIdentityMatch) {
+            const tokenUsername = String(user?.username || '').trim().toLowerCase();
+            const freshUsername = String(freshUser.username || '').trim().toLowerCase();
+            if (!tokenUsername || tokenUsername !== freshUsername) {
+                throw authSessionError('Authenticated user identity changed', 'auth_identity_changed');
+            }
         }
         if (freshUser.is_active === false) {
             throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
@@ -336,11 +344,16 @@ async function authenticateToken(req, res, next) {
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
-        const requestUser = await loadAuthenticatedUserAccess(user);
+        const recoveryMode = process.env.BACKUP_RECOVERY_MODE === 'true';
+        const requestUser = await loadAuthenticatedUserAccess(user, {
+            requireFresh: recoveryMode,
+            requireIdentityMatch: recoveryMode
+        });
         req.user = requestUser;
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
-        if (user.id) {
+        // Recovery requests must not mutate the snapshot after a restore commit.
+        if (user.id && !recoveryMode) {
             const cacheKey = `activity_${user.id}`;
             const now = Date.now();
             if (!authenticateToken._activityCache) {

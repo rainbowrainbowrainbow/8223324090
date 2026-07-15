@@ -381,7 +381,7 @@ describe('scheduler notification jobs hardening', () => {
             mockSingleSetting('backup_time', '03:00');
             const scheduler = loadScheduler();
 
-            await scheduler.checkAutoBackup();
+            await assert.doesNotReject(scheduler.checkAutoBackup());
 
             assert.equal(state.backupCalls, 0);
             assert.equal(state.sends.length, 0);
@@ -394,7 +394,10 @@ describe('scheduler notification jobs hardening', () => {
             mockSetLastSent('backup');
             const scheduler = loadScheduler();
 
-            await scheduler.checkAutoBackup();
+            await assert.rejects(
+                scheduler.checkAutoBackup(),
+                error => error?.code === 'BACKUP_DELIVERY_FAILED'
+            );
 
             assert.equal(state.backupCalls, 1);
             assert.equal(state.sends.length, 1);
@@ -408,12 +411,15 @@ describe('scheduler notification jobs hardening', () => {
             mockSetLastSent('backup');
             const scheduler = loadScheduler();
 
-            await scheduler.checkAutoBackup();
+            await assert.rejects(
+                scheduler.checkAutoBackup(),
+                error => error?.code === 'BACKUP_SCHEDULER_FAILED'
+            );
 
             assert.equal(state.backupCalls, 1);
             assert.equal(state.sends.length, 2);
             assert.equal(state.logs.some(entry => entry.level === 'error' && String(entry.args[0]).startsWith('Backup FAILED')), true);
-            assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'AutoBackup error'), true);
+            assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'AutoBackup failed'), true);
         });
 
         it('contains backup settings DB failures', async () => {
@@ -423,10 +429,13 @@ describe('scheduler notification jobs hardening', () => {
             });
             const scheduler = loadScheduler();
 
-            await scheduler.checkAutoBackup();
+            await assert.rejects(
+                scheduler.checkAutoBackup(),
+                error => error?.code === 'BACKUP_SCHEDULER_FAILED'
+            );
 
             assert.equal(state.backupCalls, 0);
-            assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'AutoBackup error'), true);
+            assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'AutoBackup failed'), true);
         });
     });
 

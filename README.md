@@ -189,13 +189,19 @@ The CI gate covers:
 - DB startup surface ownership through `npm run check:db-startup-surface`;
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
-- static UI smoke through `npm run test:ui`.
+- static UI smoke through `npm run test:ui`;
+- an isolated PostgreSQL job for attendance advisory-lock concurrency,
+  selective attendance backup round-trip, and full structured recovery.
 
 The route smoke layer is intentionally shallow: it checks public/protected/custom-secret/API-key boundaries and cheap route contracts such as version, landing, packages, task permissions, user role metadata, and chat-adjacent auth fallback. It does not exercise full PostgreSQL-backed route behavior.
 
 The UI smoke is intentionally shallow: it checks key pages, critical script loading/static structure, navigation exports, and shared page wiring. It does not fully exercise browser rendering, loading/error/disabled states, keyboard behavior, or accessibility; those still need focused manual or browser automation checks when touched.
 
-CI does not run PostgreSQL-backed API/integration suites, production deploy verification, or live Railway health checks. Use `npm run test:api`, `npm run test:integration`, and manual health checks against a configured app/database for those scopes.
+CI does not run the general PostgreSQL-backed API/integration suites,
+production deploy verification, or live Railway health checks. Its dedicated
+PostgreSQL job is limited to attendance locking and backup/recovery. Use
+`npm run test:api`, `npm run test:integration`, and manual health checks against
+a configured app/database for other scopes.
 
 ## Version And Changelog Discipline
 

@@ -13,6 +13,10 @@
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../utils/logger');
+const {
+    lockSchemaMigrations,
+    unlockSchemaMigrations
+} = require('../services/backupSchemaLock');
 
 const log = createLogger('Migrate');
 const migrationsDir = path.join(__dirname, 'migrations');
@@ -42,9 +46,16 @@ async function runMigrationPreflight(client, version) {
  * @param {import('pg').Pool} pool - PostgreSQL connection pool
  * @returns {Promise<string[]>} - List of applied migration versions
  */
-async function runMigrations(pool) {
+async function runMigrations(pool, { schemaLockAlreadyHeld = false } = {}) {
+    const client = await pool.connect();
+    let schemaLockHeld = false;
+    try {
+        if (!schemaLockAlreadyHeld) {
+            await lockSchemaMigrations(client);
+            schemaLockHeld = true;
+        }
     // 1. Ensure schema_migrations tracking table exists
-    await pool.query(`
+    await client.query(`
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version VARCHAR(255) PRIMARY KEY,
             applied_at TIMESTAMP DEFAULT NOW()
@@ -67,7 +78,7 @@ async function runMigrations(pool) {
     }
 
     // 3. Get already-applied versions
-    const applied = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    const applied = await client.query('SELECT version FROM schema_migrations ORDER BY version');
     const appliedSet = new Set(applied.rows.map(r => r.version));
 
     // 4. Determine pending migrations
@@ -88,7 +99,6 @@ async function runMigrations(pool) {
         const filePath = path.join(migrationsDir, file);
         const sql = fs.readFileSync(filePath, 'utf-8');
 
-        const client = await pool.connect();
         try {
             await client.query('BEGIN');
             await runMigrationPreflight(client, version);
@@ -105,13 +115,21 @@ async function runMigrations(pool) {
             const msg = err.message + (err.detail ? ' | ' + err.detail : '') + (err.hint ? ' | hint: ' + err.hint : '');
             log.error('Migration failed: ' + version + ' — ' + msg);
             throw err;
-        } finally {
-            client.release();
         }
     }
 
     log.info('Migrations complete: ' + appliedNow.length + ' applied');
     return appliedNow;
+    } finally {
+        if (schemaLockHeld) {
+            await unlockSchemaMigrations(client).catch(error => {
+                log.error('Failed to release schema migration advisory lock', {
+                    code: error?.code || 'SCHEMA_LOCK_RELEASE_FAILED'
+                });
+            });
+        }
+        client.release();
+    }
 }
 
 // Allow standalone execution: node db/migrate.js

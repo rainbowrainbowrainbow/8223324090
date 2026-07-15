@@ -5,8 +5,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { pool } = require('../db');
-const { BACKUP_TABLES, generateBackupSQL } = require('../services/backup');
+const {
+    buildRestoreOrder,
+    compareBackupRows,
+    readTableBackupFootprint
+} = require('../services/backupCatalog');
+const {
+    BACKUP_GENERATION_ERROR_CODES,
+    preflightBackupPayload
+} = require('../services/backup');
+const {
+    BACKUP_EXCLUDED_TABLES,
+    LEGACY_SQL_RESTORE_SUPPORTED,
+    RESTORE_SETS
+} = require('../config/backupRestorePolicy');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -14,203 +26,244 @@ function read(...parts) {
     return fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 }
 
-function routeBlock(source, method, routePath) {
-    const marker = `router.${method}('${routePath}'`;
-    const start = source.indexOf(marker);
-    assert.notEqual(start, -1, `Missing ${method.toUpperCase()} ${routePath}`);
-    const nextRoute = source.indexOf('\nrouter.', start + marker.length);
-    return source.slice(start, nextRoute === -1 ? source.length : nextRoute);
+function table(name, columns, primaryKey = ['id']) {
+    const mapped = columns.map(column => ({
+        name: column.name,
+        notNull: Boolean(column.notNull)
+    }));
+    return {
+        name,
+        columns: mapped,
+        columnMap: new Map(mapped.map(column => [column.name, column])),
+        primaryKey
+    };
 }
 
-function namedFunctionBlock(source, functionName) {
-    const marker = new RegExp(`(?:async\\s+)?function\\s+${functionName}\\s*\\(`).exec(source);
-    assert.ok(marker, `Missing function ${functionName}`);
-    const start = marker.index;
-    const remainder = source.slice(start + marker[0].length);
-    const nextFunction = /\n(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(/.exec(remainder);
-    return source.slice(start, nextFunction ? start + marker[0].length + nextFunction.index : source.length);
+function foreignKey(tableName, name, columns, referencedTable, matchType = 's') {
+    return {
+        key: `${tableName}:${name}`,
+        table: tableName,
+        name,
+        columns,
+        referencedTable,
+        matchType
+    };
 }
 
-function assertInOrder(source, patterns, label) {
-    let cursor = 0;
-    for (const pattern of patterns) {
-        const remainder = source.slice(cursor);
-        const relativeIndex = typeof pattern === 'string'
-            ? remainder.indexOf(pattern)
-            : remainder.search(pattern);
-        assert.notEqual(relativeIndex, -1, `${label}: missing or out-of-order ${String(pattern)}`);
-        cursor += relativeIndex + 1;
-    }
-}
-
-test('backup inventory contains staff_checkins exactly once after its staff parent', () => {
-    const staffIndex = BACKUP_TABLES.indexOf('staff');
-    const checkinsIndex = BACKUP_TABLES.indexOf('staff_checkins');
-
-    assert.ok(staffIndex >= 0, 'staff must remain in backup inventory');
-    assert.equal(checkinsIndex, staffIndex + 1, 'staff_checkins must restore immediately after staff');
-    assert.equal(BACKUP_TABLES.filter(table => table === 'staff_checkins').length, 1);
+test('backup policy classifies the migration ledger and only allows the attendance restore set', () => {
+    assert.deepEqual(Object.keys(BACKUP_EXCLUDED_TABLES), ['schema_migrations']);
+    assert.equal(LEGACY_SQL_RESTORE_SUPPORTED, false);
+    assert.deepEqual(RESTORE_SETS['attendance-v1'].tables, [
+        'staff_checkins',
+        'hr_time_records'
+    ]);
+    assert.deepEqual(RESTORE_SETS['attendance-v1'].requiresExistingParents, ['staff']);
 });
 
-test('generated backup deletes staff_checkins before staff and inserts staff before staff_checkins', async t => {
-    const originalConnect = pool.connect;
-    const staffCreatedAt = new Date('2026-07-15T07:45:00.000Z');
-    const checkinCreatedAt = new Date('2026-07-15T08:01:02.000Z');
-    const checkinAt = new Date('2026-07-15T08:00:00.000Z');
-    const checkoutAt = new Date('2026-07-15T17:30:00.000Z');
-    const queries = [];
+test('catalog restore order keeps staff before both attendance children', () => {
+    const tables = [
+        table('staff', [{ name: 'id', notNull: true }]),
+        table('staff_checkins', [
+            { name: 'id', notNull: true },
+            { name: 'staff_id', notNull: true }
+        ]),
+        table('hr_time_records', [
+            { name: 'id', notNull: true },
+            { name: 'staff_id', notNull: true }
+        ])
+    ];
+    const result = buildRestoreOrder(tables, [
+        foreignKey('staff_checkins', 'staff_checkins_staff_id_fkey', ['staff_id'], 'staff'),
+        foreignKey('hr_time_records', 'hr_time_records_staff_id_fkey', ['staff_id'], 'staff')
+    ]);
 
-    pool.connect = async () => ({
-        async query(sql) {
-            const queryText = typeof sql === 'string' ? sql : sql?.text;
-            const normalized = String(queryText).replace(/\s+/g, ' ').trim();
-            queries.push(normalized);
-            if (normalized === 'SELECT * FROM staff') {
-                return {
-                    rows: [{
-                        id: 701,
-                        name: 'QA Backup Person',
-                        created_at: staffCreatedAt
-                    }]
-                };
-            }
-            if (normalized === 'SELECT * FROM staff_checkins') {
-                return {
-                    rows: [{
-                        id: 903,
-                        staff_id: 701,
-                        date: '2026-07-15',
-                        check_in: checkinAt,
-                        check_out: checkoutAt,
-                        method: 'qa_contract',
-                        created_at: checkinCreatedAt
-                    }]
-                };
-            }
-            return { rows: [] };
-        },
-        release() {}
-    });
-    t.after(() => {
-        pool.connect = originalConnect;
-    });
+    assert.ok(result.order.indexOf('staff') < result.order.indexOf('staff_checkins'));
+    assert.ok(result.order.indexOf('staff') < result.order.indexOf('hr_time_records'));
+    assert.deepEqual(result.deferredForeignKeys, []);
+});
 
-    const sql = await generateBackupSQL();
-    const deletePhase = sql.slice(
-        sql.indexOf('-- === PHASE 1: DELETE'),
-        sql.indexOf('-- === PHASE 2: INSERT')
+test('catalog breaks a real FK cycle only through a nullable edge', () => {
+    const tables = [
+        table('parent_a', [
+            { name: 'id', notNull: true },
+            { name: 'parent_b_id', notNull: false }
+        ]),
+        table('parent_b', [
+            { name: 'id', notNull: true },
+            { name: 'parent_a_id', notNull: true }
+        ])
+    ];
+    const result = buildRestoreOrder(tables, [
+        foreignKey('parent_a', 'a_to_b', ['parent_b_id'], 'parent_b'),
+        foreignKey('parent_b', 'b_to_a', ['parent_a_id'], 'parent_a')
+    ]);
+
+    assert.deepEqual(result.order, ['parent_a', 'parent_b']);
+    assert.deepEqual(result.deferredForeignKeys.map(item => item.constraint), ['a_to_b']);
+    assert.deepEqual(result.deferredForeignKeys[0].breakColumns, ['parent_b_id']);
+});
+
+test('catalog fails closed for a non-breakable FK cycle', () => {
+    const tables = [
+        table('a', [
+            { name: 'id', notNull: true },
+            { name: 'b_id', notNull: true }
+        ]),
+        table('b', [
+            { name: 'id', notNull: true },
+            { name: 'a_id', notNull: true }
+        ])
+    ];
+    assert.throws(
+        () => buildRestoreOrder(tables, [
+            foreignKey('a', 'a_to_b', ['b_id'], 'b'),
+            foreignKey('b', 'b_to_a', ['a_id'], 'a')
+        ]),
+        error => error?.code === 'BACKUP_NON_BREAKABLE_FK_CYCLE'
     );
-    const insertPhase = sql.slice(sql.indexOf('-- === PHASE 2: INSERT'));
-
-    assertInOrder(deletePhase, [
-        'DELETE FROM staff_checkins;',
-        'DELETE FROM staff;'
-    ], 'backup delete phase');
-    assertInOrder(insertPhase, [
-        'INSERT INTO staff ',
-        'INSERT INTO staff_checkins '
-    ], 'backup insert phase');
-    assert.match(sql, /INSERT INTO staff_checkins \(id, staff_id, date, check_in, check_out, method, created_at\)/);
-    assert.match(sql, /'2026-07-15T08:00:00\.000Z'/);
-    assert.match(sql, /'2026-07-15T17:30:00\.000Z'/);
-    assert.match(sql, /'2026-07-15T08:01:02\.000Z'/);
-    assert.equal(queries.indexOf('SELECT * FROM staff') < queries.indexOf('SELECT * FROM staff_checkins'), true);
 });
 
-test('backup routes derive restore whitelist and selectable tables from BACKUP_TABLES', () => {
+test('backup generation is one fail-closed repeatable-read catalog snapshot', () => {
+    const source = read('services', 'backup.js');
+    assert.match(source, /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
+    assert.match(source, /loadBackupCatalog\(client/);
+    assert.match(source, /preflightBackupPayload\(client, catalog, sequences\)/);
+    assert.match(source, /for \(const table of catalog\.tables\)/);
+    assert.match(source, /readTableRows\(client, table\)/);
+    assert.match(source, /readSequenceStates\(client, catalog\.sequences\)/);
+    assert.match(source, /lockBackupSchemaSnapshot\(client\)/);
+    assert.match(source, /validateBackupArtifact\(artifact\)/);
+    assert.match(source, /createRecoveryBundle/);
+    assert.doesNotMatch(source, /-- ERROR reading/);
+    assert.doesNotMatch(source, /SAVEPOINT backup_table_read/);
+    assert.doesNotMatch(source, /generateBackupSQL/);
+    assert.ok(
+        source.indexOf('preflightBackupPayload(client, catalog, sequences)')
+            < source.indexOf('const data = await readTableRows(client, table)'),
+        'size preflight must finish before the first table rows are loaded into JS memory'
+    );
+});
+
+test('catalog metadata queries stay sequential on the transaction client', () => {
+    const source = read('services', 'backupCatalog.js');
+    const start = source.indexOf('async function loadBackupCatalog');
+    const end = source.indexOf('async function configureBackupSession', start);
+    const catalogLoader = source.slice(start, end);
+
+    assert.match(source, /runCatalogQueriesSequentially/);
+    assert.match(catalogLoader, /await runCatalogQueriesSequentially/);
+    assert.doesNotMatch(catalogLoader, /Promise\.all/);
+});
+
+test('table size preflight stays in PostgreSQL and returns bigint counters only', async () => {
+    let statement = '';
+    const client = {
+        async query(sql) {
+            statement = sql;
+            return {
+                rowCount: 1,
+                rows: [{ row_count: '7', encoded_row_bytes: '321' }]
+            };
+        }
+    };
+    const result = await readTableBackupFootprint(client, table('staff', [
+        { name: 'id', notNull: true },
+        { name: 'name', notNull: true }
+    ]));
+
+    assert.deepEqual(result, { rowCount: 7n, encodedRowBytes: 321n });
+    assert.match(statement, /count\(\*\)::text AS row_count/);
+    assert.match(statement, /pg_column_size\(encoded\.row_json\)/);
+    assert.match(statement, /octet_length\(encoded\.row_json\)/);
+    assert.match(statement, /to_jsonb\(ARRAY\[/);
+    assert.doesNotMatch(statement, /SELECT \*/i);
+});
+
+test('oversized backup fails preflight before scanning later tables or loading rows', async () => {
+    const tables = [
+        table('large_table', [{ name: 'id', notNull: true }]),
+        table('never_scanned', [{ name: 'id', notNull: true }])
+    ];
+    const catalog = {
+        tables,
+        tableMap: new Map(tables.map(item => [item.name, item]))
+    };
+    let queryCount = 0;
+    const client = {
+        async query() {
+            queryCount += 1;
+            return {
+                rowCount: 1,
+                rows: [{ row_count: '2', encoded_row_bytes: '4096' }]
+            };
+        }
+    };
+
+    await assert.rejects(
+        preflightBackupPayload(client, catalog, [], { maxPayloadBytes: 1024 }),
+        error => (
+            error?.code === BACKUP_GENERATION_ERROR_CODES.SIZE_LIMIT_EXCEEDED
+            && error?.statusCode === 413
+        )
+    );
+    assert.equal(queryCount, 1, 'preflight must stop as soon as the lower bound exceeds the budget');
+});
+
+test('backup preflight includes payload metadata and row separators in its budget', async () => {
+    const tables = [table('staff', [
+        { name: 'id', notNull: true },
+        { name: 'name', notNull: true }
+    ])];
+    const catalog = {
+        tables,
+        tableMap: new Map(tables.map(item => [item.name, item]))
+    };
+    const client = {
+        async query() {
+            return {
+                rowCount: 1,
+                rows: [{ row_count: '3', encoded_row_bytes: '90' }]
+            };
+        }
+    };
+    const result = await preflightBackupPayload(client, catalog, [], {
+        maxPayloadBytes: 4096
+    });
+
+    assert.equal(result.tableStats[0].rowsDelta, 92n);
+    assert.equal(
+        result.estimatedPayloadBytes,
+        result.skeletonBytes + 92n
+    );
+    assert.ok(result.estimatedPayloadBytes > 92n, 'table metadata must consume the same budget');
+});
+
+test('backup row order uses UTF-8 bytes instead of host collation', () => {
+    const rows = [
+        ['Їжак'],
+        ['Єнот'],
+        ['Івась'],
+        ['їжак'],
+        ['Zebra']
+    ];
+    const expected = rows.slice().sort((left, right) => Buffer.compare(
+        Buffer.from(JSON.stringify(left), 'utf8'),
+        Buffer.from(JSON.stringify(right), 'utf8')
+    ));
+
+    assert.deepEqual(rows.slice().sort(compareBackupRows), expected);
+    assert.doesNotMatch(read('services', 'backupCatalog.js'), /localeCompare\(JSON\.stringify/);
+});
+
+test('restore endpoints use structured recovery and expose dynamic inventory policy', () => {
     const source = read('routes', 'backup.js');
-
-    assert.match(source, /const ALLOWED_TABLES = new Set\(BACKUP_TABLES\)/);
-    assert.match(source, /const ATTENDANCE_MAINTENANCE_TABLES = new Set\(\[[\s\S]*'staff_checkins'[\s\S]*\]\)/);
-    assert.match(source, /const SELECTIVE_RESTORE_BLOCKED_TABLES = new Set\(\['staff'\]\)/);
-    assertInOrder(routeBlock(source, 'post', '/restore'), [
-        /prepareRestoreStatements\(sql, targetTables\)/,
-        /rejected\.length > 0/,
-        /restoreTouchesAttendanceState\(validated, sequenceTables\)/,
-        /lockAttendanceWriteMaintenance\(client\)/,
-        /executeRestoreStatements\([\s\S]*client,[\s\S]*validated,[\s\S]*sequenceTables/,
-        /client\.query\('COMMIT'\)/
-    ], 'selective restore');
-    assertInOrder(routeBlock(source, 'post', '/restore-encrypted'), [
-        /prepareRestoreStatements\(sql, req\.body\.tables\)/,
-        /rejected\.length > 0/,
-        /restoreTouchesAttendanceState\(statements, sequenceTables\)/,
-        /lockAttendanceWriteMaintenance\(client\)/,
-        /executeRestoreStatements\([\s\S]*client,[\s\S]*statements,[\s\S]*sequenceTables/,
-        /client\.query\('COMMIT'\)/
-    ], 'encrypted restore');
-    assert.match(routeBlock(source, 'get', '/tables'), /res\.json\(\{ tables: BACKUP_TABLES \}\)/);
-});
-
-test('both restore endpoints share inserted-table collection and serial sequence repair', () => {
-    const source = read('routes', 'backup.js');
-
-    assertInOrder(namedFunctionBlock(source, 'collectInsertedRestoreTables'), [
-        /validateRestoreStatement\(statement\)/,
-        /validated\.type === 'INSERT'/,
-        /tables\.add\(validated\.table\)/
-    ], 'inserted table collection');
-    assertInOrder(namedFunctionBlock(source, 'restoreTouchesAttendanceState'), [
-        /sequenceTables/,
-        /ATTENDANCE_MAINTENANCE_TABLES\.has\(table\)/,
-        /statements\.some/
-    ], 'attendance maintenance detection');
-    assertInOrder(namedFunctionBlock(source, 'executeRestoreStatements'), [
-        /collectInsertedRestoreTables\(statements\)/,
-        /new Set\(\[\.\.\.tablesWithData, \.\.\.sequenceTables\]\)/,
-        /client\.query\(statement\)/,
-        /repairRestoredSequences\(client, tablesToRepair\)/
-    ], 'shared restore executor');
-    assertInOrder(namedFunctionBlock(source, 'repairRestoredSequences'), [
-        /safeTableName\(table, BACKUP_TABLES\)/,
-        /client\.query\('SAVEPOINT seq_fix'\)/,
-        /pg_get_serial_sequence\(\$1, 'id'\)/,
-        /\[table\]/,
-        /client\.query\('RELEASE SAVEPOINT seq_fix'\)/
-    ], 'shared sequence repair');
-
-    assert.match(routeBlock(source, 'post', '/restore'), /executeRestoreStatements\([\s\S]*validated,[\s\S]*sequenceTables/);
-    assert.match(routeBlock(source, 'post', '/restore-encrypted'), /executeRestoreStatements\([\s\S]*statements,[\s\S]*sequenceTables/);
-});
-
-test('backup restore parser preserves generated comments, quoted semicolons and temporal wire values', () => {
-    const routeSource = read('routes', 'backup.js');
-    const backupSource = read('services', 'backup.js');
-
-    assertInOrder(namedFunctionBlock(routeSource, 'splitRestoreStatements'), [
-        /inLineComment/,
-        /inString/,
-        /char === "'" && next === "'"/,
-        /char === ';'/,
-        /Unterminated SQL string literal/
-    ], 'restore SQL scanner');
-    assertInOrder(namedFunctionBlock(routeSource, 'prepareRestoreStatements'), [
-        /splitRestoreStatements\(sql\)/,
-        /targetTables !== undefined/,
-        /Selective restore tables must be a non-empty array/,
-        /ALLOWED_TABLES\.has\(table\)/,
-        /SELECTIVE_RESTORE_BLOCKED_TABLES\.has\(table\)/,
-        /validateRestoreStatement\(stmt\)/,
-        /selectedTables\.has\(result\.table\)/,
-        /result\.type === 'SEQUENCE_SYNC'/,
-        /sequenceTables\.add\(result\.table\)/
-    ], 'shared selective restore preparation');
-    assert.match(routeSource, /exact sequence-sync metadata emitted by generateBackupSQL/);
-    assert.match(backupSource, /RAW_BACKUP_TEMPORAL_OIDS = new Set\(\[1082, 1114, 1184\]\)/);
-    assert.match(backupSource, /types: BACKUP_QUERY_TYPES/);
-});
-
-test('large backup JSON is bypassed by the default parser and parsed only after API auth', () => {
-    const serverSource = read('server.js');
-
-    assert.match(serverSource, /BACKUP_RESTORE_JSON_LIMIT = '50mb'/);
-    assert.match(serverSource, /'\/api\/backup\/restore-encrypted'/);
-    assertInOrder(serverSource, [
-        /BACKUP_RESTORE_JSON_PATHS\.has\(req\.path\)/,
-        /app\.use\(apiVersionRewrite\)/,
-        /app\.use\('\/api', apiAuthBoundary\(authenticateToken\)\)/,
-        /express\.json\(\{ limit: BACKUP_RESTORE_JSON_LIMIT \}\)/,
-        /app\.use\('\/api', businessScopeWriteGuard\)/
-    ], 'authenticated large backup parser');
-    assert.doesNotMatch(serverSource, /app\.use\('\/api\/backup\/restore', express\.json/);
+    assert.match(source, /createRestorePlan/);
+    assert.match(source, /executeRestorePlan/);
+    assert.match(source, /assertRestoreConfirmation/);
+    assert.match(source, /loadBackupCatalog/);
+    assert.match(source, /legacyRawSqlRestoreSupported: LEGACY_SQL_RESTORE_SUPPORTED/);
+    assert.match(source, /restoreSets: RESTORE_SETS/);
+    assert.doesNotMatch(source, /aes-256-cbc/i);
+    assert.doesNotMatch(source, /req\.query\.key/);
+    assert.doesNotMatch(source, /client\.query\(statement\)/);
 });

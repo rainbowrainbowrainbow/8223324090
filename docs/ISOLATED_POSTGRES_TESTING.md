@@ -38,7 +38,11 @@ Available commands:
 
 ```text
 npm run test:api:isolated
+npm run test:integration:attendance-lock:isolated
+npm run test:integration:backup-recovery:isolated
 npm run test:integration:hr-disposable:isolated
+npm run test:integration:hr-onboarding:isolated
+npm run test:integration:hr-legacy-backfill:isolated
 npm run test:integration:live-multi-segment-qa:isolated
 npm run test:db:isolated
 ```
@@ -47,7 +51,10 @@ Each suite gets a clean schema. The runner starts the CRM on a random local port
 
 The live multi-segment QA mode first verifies the marker-bound attendance/cleanup helper and then runs the same end-to-end command used after deploy. It remains fully local and uses the disposable database; it does not contact production.
 
-Some legacy data migrations depend on schema added by a later-numbered migration. If the first standard startup leaves such a data migration pending, the runner performs one controlled second startup against the same disposable schema and verifies the complete `schema_migrations` inventory before tests. It never inserts migration markers manually and still fails if anything remains pending after the second pass.
+The runner verifies the complete `schema_migrations` inventory after the
+standard startup and fails immediately if any migration is still pending. It
+never inserts migration markers manually. The separate fresh-database startup
+suite covers restart/idempotency behavior where that proof is required.
 
 The default per-suite timeout is 15 minutes. For a slower local machine it can be changed explicitly with `ISOLATED_TEST_TIMEOUT_MS`.
 

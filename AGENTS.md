@@ -90,9 +90,9 @@ Notes:
 
 - GitHub Actions workflow: `.github/workflows/ci.yml`.
 - CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
-- CI installs with `npm ci` and runs `npm test`.
-- The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, and static UI smoke.
-- CI does not run PostgreSQL-backed API or integration tests.
+- CI installs with `npm ci`, runs `npm test`, and has a separate disposable PostgreSQL job for attendance locking and backup/recovery.
+- The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, static UI smoke, attendance advisory-lock concurrency, selective attendance recovery, and full structured database recovery.
+- CI does not run the general PostgreSQL-backed API or unrelated integration suites.
 - CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
 
 ## Standard Delivery Workflow

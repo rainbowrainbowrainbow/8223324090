@@ -21,8 +21,10 @@ const MODES = {
     api: ['tests/api.test.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
-        'tests/integration/attendance-backup-roundtrip.integration.test.js'
+        'tests/integration/attendance-backup-roundtrip.integration.test.js',
+        'tests/integration/full-backup-recovery.integration.test.js'
     ],
+    recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
@@ -37,7 +39,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|hr|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|recovery|hr|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -104,7 +106,10 @@ async function reservePort() {
 function buildServerEnvironment(testDb, port, credentials) {
     const env = { ...process.env };
     for (const key of Object.keys(env)) {
-        if (key.startsWith('RAILWAY_')) delete env[key];
+        if (key.startsWith('RAILWAY_')
+            || /(TOKEN|SECRET|API[_-]?KEY|WEBHOOK|SMTP|SENDGRID|TWILIO|STRIPE|OPENAI|ANTHROPIC|GEMINI|PINATA|CLOUDINARY|S3_|AWS_|OMNI|TELEGRAM|REPORT_BOT|KLESHNYA)/i.test(key)) {
+            delete env[key];
+        }
     }
 
     Object.assign(env, {
@@ -251,6 +256,7 @@ async function runSuite(testDb, testFile) {
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
+        RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
@@ -325,7 +331,7 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'recovery', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
         ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.onboarding, ...MODES.backfill]

@@ -1,7 +1,7 @@
 const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkAutoDigest', functionName: 'checkAutoDigest', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkAutoReminder', functionName: 'checkAutoReminder', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
-    { name: 'checkAutoBackup', functionName: 'checkAutoBackup', sourceFile: 'services/scheduler.js', owner: 'backup', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
+    { name: 'checkAutoBackup', functionName: 'checkAutoBackup', sourceFile: 'services/scheduler.js', owner: 'backup', interval: '60000', dedup: null, sideEffects: ['telegram', 'settings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkRecurringTasks', functionName: 'checkRecurringTasks', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
     { name: 'checkRecurringAfisha', functionName: 'checkRecurringAfisha', sourceFile: 'services/scheduler.js', owner: 'afisha', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
     { name: 'checkScheduledDeletions', functionName: 'checkScheduledDeletions', sourceFile: 'services/scheduler.js', owner: 'telegram', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },

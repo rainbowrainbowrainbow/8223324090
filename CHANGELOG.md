@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.28 - Hermes створення персоналу
+
+### Hermes / Staff / API safety / (15.07.2026) [codex]
+- **Hermes може створювати працівника штатним CRM endpoint** — `POST /api/hermes/staff` додає рівно один запис через Hermes API-key контур із підтвердженням та ідемпотентністю.
+- **Дублікати не створюються** — нормалізований збіг імені повертає санітизований наявний запис без повторного `INSERT`.
+- **Графік залишається окремою дією** — schedule-поля блокуються до створення працівника; endpoint не читає і не змінює `staff_schedule` або `hr_shifts`.
+- **Capabilities і worker contract оновлено** — Hermes router бачить `staff.create`, обов’язковий `manage_staff` і гарантований `createScheduleWrites: 0`.
+
+---
+
 ## v0.79.27 - Чистий HR онбординг
 
 ### HR / Training / Timeline / Production hygiene / (15.07.2026) [codex]

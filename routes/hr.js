@@ -2798,6 +2798,7 @@ async function handleStaffProfessionChecklistToggle(req, res) {
             staffId,
             professionKey,
             itemKey,
+            itemTitle: req.body?.title ?? req.body?.item_title ?? req.body?.itemTitle,
             completed: req.body?.completed,
             notes: req.body?.notes
         }, { actor });

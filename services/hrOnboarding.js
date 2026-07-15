@@ -879,7 +879,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                      assigned_at = COALESCE(assigned_at, NOW()),
                      reassigned_at = CASE WHEN $5 THEN NOW() ELSE reassigned_at END,
                      training_status = $6,
-                     status = $7,
+                     status = $7::text,
                      completed_at = CASE
                          WHEN profession_key IS NULL THEN completed_at
                          WHEN $7::text = 'completed' THEN COALESCE(completed_at, NOW())

@@ -1042,7 +1042,32 @@ async function validateStaffProfessionChecklistTarget(client, params = {}, optio
                AND item_key = $2${forWrite ? ' FOR UPDATE' : ''}`,
             [profession.id, key]
         );
-        const row = safeRows(itemResult)[0];
+        let row = safeRows(itemResult)[0];
+        if (!row && /^item_[1-9]\d*$/.test(key)) {
+            const rawLegacyTitle = params.itemTitle ?? params.item_title ?? params.title;
+            if (rawLegacyTitle !== undefined && rawLegacyTitle !== null && rawLegacyTitle !== '') {
+                const legacyTitle = normalizeChecklistItemTitle(rawLegacyTitle);
+                const legacyResult = await client.query(
+                    `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
+                            created_by, updated_by, created_at, updated_at
+                     FROM hr_profession_checklist_items
+                     WHERE profession_id = $1
+                       AND LOWER(BTRIM(title)) = LOWER(BTRIM($2))
+                     ORDER BY id${forWrite ? ' FOR UPDATE' : ''}`,
+                    [profession.id, legacyTitle]
+                );
+                const legacyMatches = safeRows(legacyResult);
+                if (legacyMatches.length > 1) {
+                    throw professionChecklistError(
+                        'Legacy item_N не можна однозначно зіставити з пунктом чекліста',
+                        409,
+                        'PROFESSION_CHECKLIST_LEGACY_ITEM_AMBIGUOUS',
+                        { legacyKey: key }
+                    );
+                }
+                row = legacyMatches[0];
+            }
+        }
         if (!row) {
             throw professionChecklistError(
                 'Пункт не належить цій професії або не існує',

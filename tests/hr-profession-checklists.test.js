@@ -167,6 +167,13 @@ function createChecklistDb() {
                 ));
                 return { rows: item ? [itemRow(item)] : [], rowCount: item ? 1 : 0 };
             }
+            if (/^SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position, created_by, updated_by, created_at, updated_at FROM hr_profession_checklist_items WHERE profession_id = \$1 AND LOWER\(BTRIM\(title\)\) = LOWER\(BTRIM\(\$2\)\)/.test(text)) {
+                const rows = state.items
+                    .filter(candidate => candidate.profession_id === Number(params[0])
+                        && candidate.title.trim().toLowerCase() === String(params[1]).trim().toLowerCase())
+                    .map(itemRow);
+                return { rows, rowCount: rows.length };
+            }
             if (/^INSERT INTO hr_profession_checklist_items /.test(text)) {
                 const item = {
                     id: state.nextItemId++,
@@ -559,6 +566,42 @@ describe('profession checklist progress', () => {
             error => error.code === 'PROFESSION_CHECKLIST_ITEM_ARCHIVED'
         );
         assert.deepEqual(db.state.progress[0], history);
+    });
+
+    it('resolves legacy item_N writes only through one exact canonical title match', async () => {
+        const db = createChecklistDb();
+
+        const saved = await toggleStaffProfessionChecklistProgress(db, {
+            staffId: 1,
+            professionKey: 'animator',
+            itemKey: 'item_2',
+            itemTitle: 'Second item',
+            completed: true
+        }, { actor: 'legacy-client' });
+
+        assert.equal(saved.progress.checklistItemId, 102);
+        assert.equal(saved.progress.checklistKey, 'chk_second');
+        assert.equal(saved.progress.title, 'Second item');
+
+        db.state.items.push({
+            id: 103,
+            profession_id: 10,
+            item_key: 'chk_second_duplicate',
+            title: 'Second item',
+            sort_order: 30,
+            is_active: true,
+            legacy_position: null
+        });
+        await assert.rejects(
+            toggleStaffProfessionChecklistProgress(db, {
+                staffId: 1,
+                professionKey: 'animator',
+                itemKey: 'item_2',
+                itemTitle: 'Second item',
+                completed: true
+            }, { actor: 'legacy-client' }),
+            error => error.code === 'PROFESSION_CHECKLIST_LEGACY_ITEM_AMBIGUOUS'
+        );
     });
 });
 

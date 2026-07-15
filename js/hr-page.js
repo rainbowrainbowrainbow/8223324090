@@ -431,6 +431,8 @@ let professionWorkspaceState = {
     returnContext: null,
     error: ''
 };
+const professionConditionRowStates = new Map();
+const professionConditionSavePromises = new Map();
 const professionWorkspacePeopleFilters = { query: '', status: 'all' };
 const professionCatalogFilters = {
     query: '',
@@ -440,6 +442,21 @@ const professionCatalogFilters = {
     staff: 'all',
     checklist: 'all'
 };
+let professionChecklistDashboardRequestSeq = 0;
+let professionChecklistDashboardState = {
+    loadState: 'idle',
+    data: null,
+    error: ''
+};
+const professionChecklistDashboardFilters = {
+    search: '',
+    professionKey: '',
+    department: '',
+    status: '',
+    staffId: ''
+};
+let professionChecklistShowArchived = false;
+let professionChecklistMutationPromise = null;
 let activePeopleBucket = null;
 let pendingPeopleBucket = null;
 let draggedTeamStaffId = null;
@@ -1562,7 +1579,20 @@ function initNewTabs() {
     document.getElementById('btnCopyVacancyTemplate')?.addEventListener('click', copyVacancyTemplateOutput);
     document.getElementById('vacancyTemplateSource')?.addEventListener('change', renderVacancyTemplateStudio);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
-    document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionWorkspace({ initialTab: 'main' }));
+    const addProfessionButton = document.getElementById('btnAddProfession');
+    if (addProfessionButton) {
+        addProfessionButton.addEventListener('click', () => {
+            if (canEditProfessionCatalog()) openProfessionWorkspace({ initialTab: 'main' });
+        });
+    }
+    const shiftPreferencesRoot = document.getElementById('editStaffShiftPreferences');
+    const markShiftPreferenceTouched = event => {
+        if (!event.target.matches('[data-shift-pref-start], [data-shift-pref-end]')) return;
+        const row = event.target.closest('[data-shift-pref-profession][data-shift-pref-day]');
+        if (row) row.dataset.shiftPrefTouched = 'true';
+    };
+    shiftPreferencesRoot?.addEventListener('input', markShiftPreferenceTouched);
+    shiftPreferencesRoot?.addEventListener('change', markShiftPreferenceTouched);
     bindProfessionWorkspaceControls();
     bindSecondaryProfessionPicker();
     document.getElementById('editRoleType')?.addEventListener('change', () => {
@@ -2848,7 +2878,6 @@ async function copyWeek() {
 // ==========================================
 
 const PROFESSION_WORKSPACE_TABS = new Set(['main', 'people', 'checklist', 'usage']);
-const PROFESSION_CATALOG_EDIT_ROLES = new Set(['creator', 'director', 'vice_director', 'hr']);
 
 function normalizeProfessionTextList(value) {
     if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean);
@@ -2856,8 +2885,16 @@ function normalizeProfessionTextList(value) {
 }
 
 function canEditProfessionCatalog() {
-    const user = typeof getHrCurrentUser === 'function' ? getHrCurrentUser() : AppState.currentUser;
-    return PROFESSION_CATALOG_EDIT_ROLES.has(String(user?.role || ''));
+    return typeof canAccess === 'function' && canAccess('manage_staff') === true;
+}
+
+function syncProfessionCatalogCapabilityUi() {
+    const button = document.getElementById('btnAddProfession');
+    if (!button) return;
+    const editable = canEditProfessionCatalog();
+    button.hidden = !editable;
+    button.disabled = !editable;
+    button.setAttribute('aria-hidden', editable ? 'false' : 'true');
 }
 
 function normalizeProfessionWorkspaceTab(value) {
@@ -2913,6 +2950,8 @@ async function restoreProfessionReturnContext(context = {}) {
 
 function closeProfessionWorkspaceUi() {
     professionWorkspaceRequestSeq += 1;
+    professionConditionRowStates.clear();
+    professionChecklistShowArchived = false;
     professionWorkspaceState = { open: false, loadState: 'idle', data: null, tab: 'main', isNew: false, returnContext: null, error: '' };
     const overlay = document.getElementById('professionWorkspaceOverlay');
     overlay?.classList.add('hidden');
@@ -2975,6 +3014,48 @@ function bindProfessionWorkspaceControls() {
         professionWorkspacePeopleFilters.status = event.target.value || 'all';
         renderProfessionWorkspacePeople(professionWorkspaceState.data?.people || []);
     });
+    document.getElementById('professionWorkspacePeople')?.addEventListener('input', event => {
+        const row = event.target.closest('[data-profession-condition-row]');
+        if (row) {
+            markProfessionConditionTimeTouched(row, event.target);
+            markProfessionConditionRowChanged(row);
+        }
+    });
+    document.getElementById('professionWorkspacePeople')?.addEventListener('change', event => {
+        const row = event.target.closest('[data-profession-condition-row]');
+        if (!row) return;
+        if (event.target.matches('[data-condition-rate-mode]')) {
+            const input = row.querySelector('[data-condition-rate]');
+            if (input) input.disabled = event.target.value !== 'explicit';
+        }
+        markProfessionConditionTimeTouched(row, event.target);
+        markProfessionConditionRowChanged(row);
+    });
+    document.getElementById('professionWorkspacePeople')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-condition-save]');
+        if (button) saveProfessionConditionRow(button.closest('[data-profession-condition-row]'));
+    });
+    document.getElementById('professionWorkspaceChecklistShowArchived')?.addEventListener('change', event => {
+        professionChecklistShowArchived = event.target.checked === true;
+        renderProfessionWorkspaceChecklist();
+    });
+    document.getElementById('professionWorkspaceChecklistItems')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-checklist-item-action]');
+        if (button) handleProfessionChecklistItemAction(button);
+    });
+    document.getElementById('professionWorkspaceChecklistItems')?.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || !event.target.matches('[data-checklist-item-title]')) return;
+        event.preventDefault();
+        const row = event.target.closest('[data-checklist-item-key]');
+        const button = row?.querySelector('[data-checklist-item-action="rename"]');
+        if (button) handleProfessionChecklistItemAction(button);
+    });
+    document.getElementById('professionWorkspaceChecklistAddButton')?.addEventListener('click', addProfessionChecklistItem);
+    document.getElementById('professionWorkspaceChecklistNewTitle')?.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        addProfessionChecklistItem();
+    });
     overlay.addEventListener('click', event => {
         if (event.target === overlay) document.getElementById('professionWorkspaceClose')?.focus();
     });
@@ -3020,6 +3101,7 @@ async function ensureProfessionsLoaded(options = {}) {
 
 async function loadProfessions() {
     bindProfessionWorkspaceControls();
+    syncProfessionCatalogCapabilityUi();
     await ensureProfessionsLoaded({ force: true });
     renderProfessions();
 }
@@ -3096,6 +3178,7 @@ function bindProfessionMasterRows(root) {
 }
 
 function renderProfessions() {
+    syncProfessionCatalogCapabilityUi();
     const root = document.getElementById('professionCatalogList');
     const stats = document.getElementById('professionCatalogStats');
     if (!root) return;
@@ -3120,27 +3203,204 @@ function renderProfessions() {
     bindProfessionMasterRows(root);
 }
 
-async function loadProfessionChecklists() {
-    await ensureProfessionsLoaded({ force: true });
+function bindProfessionChecklistDashboardControls() {
+    const root = document.getElementById('tab-checklists');
+    if (!root || root.dataset.checklistDashboardBound === 'true') return;
+    root.dataset.checklistDashboardBound = 'true';
+    const bindings = {
+        professionChecklistDashboardSearch: ['search', 'input'],
+        professionChecklistDashboardProfession: ['professionKey', 'change'],
+        professionChecklistDashboardDepartment: ['department', 'change'],
+        professionChecklistDashboardStatus: ['status', 'change'],
+        professionChecklistDashboardStaff: ['staffId', 'change']
+    };
+    Object.entries(bindings).forEach(([id, [key, eventName]]) => {
+        document.getElementById(id)?.addEventListener(eventName, event => {
+            professionChecklistDashboardFilters[key] = event.target.value || '';
+            loadProfessionChecklists({ preserveCatalog: true });
+        });
+    });
+    document.getElementById('professionChecklistDashboardSummary')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-checklist-dashboard-status]');
+        if (!button) return;
+        const status = button.dataset.checklistDashboardStatus || '';
+        professionChecklistDashboardFilters.status = professionChecklistDashboardFilters.status === status ? '' : status;
+        const select = document.getElementById('professionChecklistDashboardStatus');
+        if (select) select.value = professionChecklistDashboardFilters.status;
+        loadProfessionChecklists({ preserveCatalog: true });
+    });
+    document.getElementById('professionChecklistList')?.addEventListener('click', event => {
+        const professionButton = event.target.closest('[data-checklist-open-profession]');
+        if (professionButton) {
+            openProfessionWorkspace({
+                key: professionButton.dataset.checklistOpenProfession,
+                initialTab: 'checklist',
+                returnContext: captureProfessionReturnContext({ tab: 'checklists' })
+            });
+            return;
+        }
+        const staffButton = event.target.closest('[data-checklist-open-staff]');
+        const staffId = Number(staffButton?.dataset.checklistOpenStaff || 0);
+        if (!staffId) return;
+        if (typeof openStaffProfile === 'function') openStaffProfile(staffId);
+        else openStaffEdit(staffId, { tab: 'training' });
+    });
+}
+
+function renderProfessionChecklistDashboardFilterOptions() {
+    const professionSelect = document.getElementById('professionChecklistDashboardProfession');
+    const departmentSelect = document.getElementById('professionChecklistDashboardDepartment');
+    const staffSelect = document.getElementById('professionChecklistDashboardStaff');
+    const databaseProfessions = hrProfessions.filter(item => item.source !== 'system' && item.isVirtual !== true);
+    if (professionSelect) {
+        professionSelect.innerHTML = '<option value="">Усі професії</option>' + databaseProfessions
+            .map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.title || item.key)}</option>`)
+            .join('');
+        professionSelect.value = databaseProfessions.some(item => item.key === professionChecklistDashboardFilters.professionKey)
+            ? professionChecklistDashboardFilters.professionKey
+            : '';
+        professionChecklistDashboardFilters.professionKey = professionSelect.value;
+    }
+    if (departmentSelect) {
+        const departments = [...new Set(databaseProfessions.map(item => String(item.department || '').trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, 'uk'));
+        departmentSelect.innerHTML = '<option value="">Усі напрями</option>' + departments
+            .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+            .join('');
+        departmentSelect.value = departments.includes(professionChecklistDashboardFilters.department)
+            ? professionChecklistDashboardFilters.department
+            : '';
+        professionChecklistDashboardFilters.department = departmentSelect.value;
+    }
+    if (staffSelect) {
+        const peopleById = new Map();
+        databaseProfessions.forEach(profession => (profession.people || []).forEach(person => {
+            if (Number(person.id) > 0 && !peopleById.has(Number(person.id))) peopleById.set(Number(person.id), person);
+        }));
+        const people = [...peopleById.values()].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'uk'));
+        staffSelect.innerHTML = '<option value="">Усі працівники</option>' + people
+            .map(person => `<option value="${Number(person.id)}">${escapeHtml(person.name || `#${person.id}`)}${person.isActive === false ? ' · архів' : ''}</option>`)
+            .join('');
+        staffSelect.value = people.some(person => String(person.id) === professionChecklistDashboardFilters.staffId)
+            ? professionChecklistDashboardFilters.staffId
+            : '';
+        professionChecklistDashboardFilters.staffId = staffSelect.value;
+    }
+}
+
+function professionChecklistDashboardQuery() {
+    const params = new URLSearchParams();
+    if (professionChecklistDashboardFilters.search) params.set('search', professionChecklistDashboardFilters.search);
+    if (professionChecklistDashboardFilters.professionKey) params.set('professionKey', professionChecklistDashboardFilters.professionKey);
+    if (professionChecklistDashboardFilters.department) params.set('department', professionChecklistDashboardFilters.department);
+    if (professionChecklistDashboardFilters.status) params.set('status', professionChecklistDashboardFilters.status);
+    if (professionChecklistDashboardFilters.staffId) params.set('staffId', professionChecklistDashboardFilters.staffId);
+    return params.toString();
+}
+
+async function loadProfessionChecklists(options = {}) {
+    bindProfessionWorkspaceControls();
+    bindProfessionChecklistDashboardControls();
+    await ensureProfessionsLoaded({
+        force: options.preserveCatalog !== true && professionCatalogLoadState !== 'ready',
+        silent: true
+    });
+    renderProfessionChecklistDashboardFilterOptions();
+    const requestSeq = ++professionChecklistDashboardRequestSeq;
+    professionChecklistDashboardState = { loadState: 'loading', data: professionChecklistDashboardState.data, error: '' };
     renderProfessionChecklists();
+    const query = professionChecklistDashboardQuery();
+    const response = await hrFetch(`/checklists/dashboard${query ? `?${query}` : ''}`).catch(() => null);
+    if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+    if (!response?.success) {
+        professionChecklistDashboardState = {
+            loadState: 'error',
+            data: null,
+            error: response?.error || 'Не вдалося завантажити dashboard чеклістів'
+        };
+        renderProfessionChecklists();
+        return;
+    }
+    professionChecklistDashboardState = { loadState: 'ready', data: response.data || {}, error: '' };
+    renderProfessionChecklists();
+}
+
+function professionChecklistStatusLabel(status) {
+    return ({
+        without_template: 'Без шаблона',
+        not_started: 'Не розпочато',
+        in_progress: 'В процесі',
+        completed: 'Завершено',
+        archived: 'Архівні пункти',
+        orphaned: 'Потребує звірки'
+    })[status] || status;
+}
+
+function professionChecklistDashboardRowHtml(item, type) {
+    const professionKey = item.professionKey || item.key || item.progress?.professionKey || item.progress?.profession_key || '';
+    const professionTitle = item.professionTitle || item.title || professionKey || 'Професія';
+    const status = item.status || type;
+    const staffId = Number(item.staffId || item.progress?.staffId || item.progress?.staff_id || 0);
+    const staffName = item.staffName || '';
+    const progressText = Number.isFinite(Number(item.total))
+        ? `${Number(item.completed || 0)}/${Number(item.total || 0)} · ${Number(item.percent || 0)}%`
+        : (item.itemTitle || item.progress?.title || '');
+    return `<article class="hr-checklist-dashboard-row is-${escapeHtml(status)}">
+        <button type="button" class="hr-checklist-dashboard-profession" data-checklist-open-profession="${escapeHtml(professionKey)}">
+            <strong>${escapeHtml(professionTitle)}</strong>
+            <span>${escapeHtml(item.department || 'Без напряму')}</span>
+        </button>
+        <div class="hr-checklist-dashboard-person">
+            ${staffId ? `<button type="button" data-checklist-open-staff="${staffId}">${escapeHtml(staffName || `Працівник #${staffId}`)}</button>` : '<span>Шаблон професії</span>'}
+            <small>${escapeHtml(progressText)}</small>
+        </div>
+        <span class="hr-checklist-dashboard-status">${escapeHtml(professionChecklistStatusLabel(status))}</span>
+    </article>`;
 }
 
 function renderProfessionChecklists() {
     const root = document.getElementById('professionChecklistList');
+    const stateRoot = document.getElementById('professionChecklistDashboardState');
+    const summaryRoot = document.getElementById('professionChecklistDashboardSummary');
     if (!root) return;
-    if (professionCatalogLoadState === 'loading') {
-        root.innerHTML = '<div class="hr-account-empty">Завантаження чеклістів…</div>';
+    if (professionChecklistDashboardState.loadState === 'loading') {
+        if (stateRoot) {
+            stateRoot.textContent = 'Завантаження dashboard чеклістів…';
+            stateRoot.dataset.state = 'loading';
+        }
+        root.innerHTML = '<div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div><div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div>';
         return;
     }
-    if (professionCatalogLoadState === 'error') {
-        root.innerHTML = `<div class="hr-account-empty">${escapeHtml(professionCatalogLoadError)}</div>`;
+    if (professionChecklistDashboardState.loadState === 'error') {
+        if (stateRoot) {
+            stateRoot.textContent = professionChecklistDashboardState.error;
+            stateRoot.dataset.state = 'error';
+        }
+        root.innerHTML = '<div class="hr-account-empty">Не вдалося завантажити чеклісти. <button type="button" id="professionChecklistDashboardRetry" class="btn-secondary">Повторити</button></div>';
+        document.getElementById('professionChecklistDashboardRetry')?.addEventListener('click', () => loadProfessionChecklists({ preserveCatalog: true }));
+        if (summaryRoot) summaryRoot.innerHTML = '';
         return;
     }
-    const items = hrProfessions.filter(item => item.is_active !== false && item.isActive !== false);
-    root.innerHTML = items.length
-        ? items.map(item => professionMasterRowHtml(item, 'checklist')).join('')
-        : '<div class="hr-account-empty">Активних професій для чеклістів немає.</div>';
-    bindProfessionMasterRows(root);
+    const data = professionChecklistDashboardState.data || {};
+    const summary = data.summary || {};
+    if (stateRoot) {
+        stateRoot.textContent = '';
+        stateRoot.dataset.state = '';
+    }
+    if (summaryRoot) {
+        summaryRoot.innerHTML = ['without_template', 'not_started', 'in_progress', 'completed', 'archived', 'orphaned']
+            .map(status => `<button type="button" class="hr-checklist-dashboard-summary-card${professionChecklistDashboardFilters.status === status ? ' is-active' : ''}" data-checklist-dashboard-status="${status}"><strong>${Number(summary[status] || 0)}</strong><span>${escapeHtml(professionChecklistStatusLabel(status))}</span></button>`)
+            .join('');
+    }
+    const rows = [
+        ...(data.professionsWithoutTemplate || []).map(item => professionChecklistDashboardRowHtml({ ...item, status: 'without_template' }, 'without_template')),
+        ...(data.assignments || []).map(item => professionChecklistDashboardRowHtml(item, item.status)),
+        ...(data.archived || []).map(item => professionChecklistDashboardRowHtml(item, 'archived')),
+        ...(data.orphaned || []).map(item => professionChecklistDashboardRowHtml(item, 'orphaned'))
+    ];
+    root.innerHTML = rows.length
+        ? rows.join('')
+        : '<div class="hr-account-empty">За вибраними фільтрами записів немає.</div>';
 }
 
 function setProfessionWorkspaceBanner(message = '', state = '') {
@@ -3162,22 +3422,149 @@ function professionWorkspaceStructureOptions(selected = '') {
     return '<option value="">Без вузла</option>' + nodes.map(node => `<option value="${escapeHtml(node.id)}"${node.id === selected ? ' selected' : ''}>${escapeHtml(node.title)}</option>`).join('');
 }
 
+function canManageProfessionConditions(data = professionWorkspaceState.data) {
+    const profession = data?.profession || {};
+    if (profession.isReadonly === true || profession.is_readonly === true || profession.source === 'system') return false;
+    return typeof canAccess === 'function' && canAccess('manage_staff') === true;
+}
+
+function professionConditionSaveKey(professionKey, staffId) {
+    return `${normalizeProfessionKey(professionKey)}:${Number(staffId)}`;
+}
+
+function professionConditionPreference(person = {}, dayType = '', professionKey = professionWorkspaceState.data?.profession?.key) {
+    const row = (Array.isArray(person.shiftPreferences) ? person.shiftPreferences : [])
+        .find(item => String(item.dayType || item.day_type) === dayType && item.isActive !== false && item.is_active !== false);
+    if (!row) {
+        const fallback = defaultShiftPreferenceForProfession(professionKey, dayType);
+        return {
+            startTime: fallback.startTime,
+            endTime: fallback.endTime,
+            source: 'system_fallback'
+        };
+    }
+    return {
+        startTime: normalizeShiftPreferenceTimeForUi(row?.startTime || row?.start_time),
+        endTime: normalizeShiftPreferenceTimeForUi(row?.endTime || row?.end_time),
+        source: row.source || 'staff_shift_preferences'
+    };
+}
+
+function professionConditionDraftFromPerson(person = {}) {
+    const professionKey = professionWorkspaceState.data?.profession?.key;
+    const weekday = professionConditionPreference(person, 'weekday', professionKey);
+    const weekend = professionConditionPreference(person, 'weekend', professionKey);
+    const rateEditable = String(person.rateUnit || 'hour') === 'hour';
+    return {
+        rateMode: rateEditable
+            ? (person.rateMode === 'explicit' || person.rateSource === 'staff_profession_rates.hourly_rate' ? 'explicit' : 'fallback')
+            : 'unchanged',
+        rate: rateEditable
+            ? (person.explicitRate ?? (person.rateMode === 'explicit' ? person.hourlyRate : ''))
+            : (person.hourlyRate ?? person.fallbackRate ?? ''),
+        weekdayStart: weekday.startTime,
+        weekdayEnd: weekday.endTime,
+        weekdaySource: weekday.source,
+        weekdayTouched: false,
+        weekendStart: weekend.startTime,
+        weekendEnd: weekend.endTime,
+        weekendSource: weekend.source,
+        weekendTouched: false
+    };
+}
+
+function readProfessionConditionRowDraft(row) {
+    return {
+        rateMode: row.querySelector('[data-condition-rate-mode]')?.value || 'unchanged',
+        rate: row.querySelector('[data-condition-rate]')?.value || '',
+        weekdayStart: row.querySelector('[data-condition-weekday-start]')?.value || '',
+        weekdayEnd: row.querySelector('[data-condition-weekday-end]')?.value || '',
+        weekdaySource: row.dataset.conditionWeekdaySource || 'staff_shift_preferences',
+        weekdayTouched: row.dataset.conditionWeekdayTouched === 'true',
+        weekendStart: row.querySelector('[data-condition-weekend-start]')?.value || '',
+        weekendEnd: row.querySelector('[data-condition-weekend-end]')?.value || '',
+        weekendSource: row.dataset.conditionWeekendSource || 'staff_shift_preferences',
+        weekendTouched: row.dataset.conditionWeekendTouched === 'true'
+    };
+}
+
+function markProfessionConditionTimeTouched(row, target) {
+    if (target?.matches('[data-condition-weekday-start], [data-condition-weekday-end]')) {
+        row.dataset.conditionWeekdayTouched = 'true';
+    }
+    if (target?.matches('[data-condition-weekend-start], [data-condition-weekend-end]')) {
+        row.dataset.conditionWeekendTouched = 'true';
+    }
+}
+
+function setProfessionConditionRowFeedback(row, state = '', message = '') {
+    if (!row) return;
+    row.dataset.state = state || 'clean';
+    const feedback = row.querySelector('[data-condition-feedback]');
+    if (feedback) {
+        feedback.textContent = message;
+        feedback.setAttribute('role', state === 'error' ? 'alert' : 'status');
+    }
+    const save = row.querySelector('[data-condition-save]');
+    if (save) save.disabled = !['changed', 'error'].includes(state);
+}
+
+function markProfessionConditionRowChanged(row) {
+    const staffId = Number(row?.dataset.professionConditionRow);
+    const professionKey = professionWorkspaceState.data?.profession?.key;
+    if (!staffId || !professionKey) return;
+    const saveKey = professionConditionSaveKey(professionKey, staffId);
+    if (professionConditionSavePromises.has(saveKey)) return;
+    const previous = professionConditionRowStates.get(staffId) || {};
+    professionConditionRowStates.set(staffId, {
+        status: 'changed',
+        error: '',
+        revision: Number(previous.revision || 0) + 1,
+        draft: readProfessionConditionRowDraft(row)
+    });
+    setProfessionConditionRowFeedback(row, 'changed', 'Є незбережені зміни');
+}
+
 function professionPersonMatchesWorkspaceFilter(person = {}) {
     const query = normalizeSearchText(professionWorkspacePeopleFilters.query);
-    if (query && !normalizeSearchText([person.name, person.department, person.assignmentStatus].join(' ')).includes(query)) return false;
+    if (query && !normalizeSearchText([
+        person.name,
+        person.department,
+        person.assignmentStatus,
+        person.admissionStatus,
+        person.internshipStatus
+    ].join(' ')).includes(query)) return false;
     const status = professionWorkspacePeopleFilters.status;
     if (status === 'active' && person.isActive === false) return false;
     if (status === 'archived' && person.isActive !== false) return false;
+    if (status.startsWith('assignment:') && person.assignmentStatus !== status.split(':')[1]) return false;
+    if (status.startsWith('admission:') && person.admissionStatus !== status.split(':')[1]) return false;
+    if (status.startsWith('internship:') && person.internshipStatus !== status.split(':')[1]) return false;
     return true;
+}
+
+function professionConditionStatusLabel(kind, value) {
+    const labels = {
+        assignment: { active: 'Призначення активне', inactive: 'Призначення неактивне', suspended: 'Призначення призупинене' },
+        admission: { pending: 'Допуск очікується', approved: 'Допущено', blocked: 'Допуск заблоковано' },
+        internship: { none: 'Без стажування', in_progress: 'Стажування триває', completed: 'Стажування завершено' }
+    };
+    return labels[kind]?.[value] || value || '—';
+}
+
+function professionRateUnitLabel(unit = 'hour') {
+    return unit === 'month' ? 'грн/міс.' : unit === 'day' ? 'грн/день' : 'грн/год';
 }
 
 function renderProfessionWorkspacePeople(people = []) {
     const summary = document.getElementById('professionWorkspacePeopleSummary');
     const root = document.getElementById('professionWorkspacePeople');
+    const editable = canManageProfessionConditions();
+    const professionKey = professionWorkspaceState.data?.profession?.key || '';
     const filtered = people.filter(professionPersonMatchesWorkspaceFilter);
     if (summary) summary.textContent = people.length
-        ? `Показано ${filtered.length} із ${people.length} працівників.`
-        : 'До професії ще не прив’язано працівників.';
+        ? `Показано ${filtered.length} із ${people.length}. Ставка діє лише для зв’язку працівник ↔ професія. Типовий час / побажання не змінює фактичний графік.`
+        : 'До професії ще не привʼязано працівників.';
     if (!root) return;
     if (!people.length) {
         root.innerHTML = '<div class="hr-account-empty">0 працівників</div>';
@@ -3187,19 +3574,435 @@ function renderProfessionWorkspacePeople(people = []) {
         root.innerHTML = '<div class="hr-account-empty">За цими фільтрами працівників немає.</div>';
         return;
     }
-    root.innerHTML = filtered.map(person => `
-        <article class="hr-profession-person-row">
-            <div>
-                <strong>${escapeHtml(person.name || `#${person.id}`)}</strong>
-                <span>${escapeHtml(person.department || 'Без напряму')} · ${person.isPrimary ? 'основна професія' : 'додаткова професія'}</span>
+    root.innerHTML = filtered.map(person => {
+        const rowState = professionConditionRowStates.get(Number(person.id)) || {};
+        const saveKey = professionConditionSaveKey(professionKey, person.id);
+        const saving = rowState.status === 'saving' || professionConditionSavePromises.has(saveKey);
+        const draft = rowState.draft || professionConditionDraftFromPerson(person);
+        const hourlyUnit = String(person.rateUnit || 'hour') === 'hour';
+        const weekdayPreference = professionConditionPreference(person, 'weekday', professionKey);
+        const weekendPreference = professionConditionPreference(person, 'weekend', professionKey);
+        const explicit = draft.rateMode === 'explicit';
+        const controlsDisabled = !editable || saving;
+        const feedback = rowState.status === 'error'
+            ? rowState.error
+            : rowState.status === 'changed'
+                ? 'Є незбережені зміни'
+                : saving
+                    ? 'Збереження…'
+                    : rowState.status === 'saved'
+                        ? 'Збережено'
+                        : '';
+        const timeDisabled = controlsDisabled ? ' disabled' : '';
+        const rateModeControl = hourlyUnit
+            ? `<select data-condition-rate-mode aria-label="Джерело ставки для ${escapeHtml(person.name || '')}"${controlsDisabled ? ' disabled' : ''}>
+                    <option value="explicit"${explicit ? ' selected' : ''}>Індивідуальна</option>
+                    <option value="fallback"${explicit ? '' : ' selected'}>Базова зі staff</option>
+               </select>`
+            : '<select data-condition-rate-mode disabled><option value="unchanged">Ставка лише для перегляду</option></select>';
+        const rateDisabled = !hourlyUnit || controlsDisabled || !explicit ? ' disabled' : '';
+        const rateSource = hourlyUnit
+            ? (explicit ? 'staff_profession_rates' : `fallback staff.hourly_rate${person.fallbackRate == null ? '' : ` (${person.fallbackRate})`}`)
+            : (person.rateIgnored
+                ? `Одиниця ${professionRateUnitLabel(person.rateUnit)} успадковується зі staff. Збережений погодинний override ${person.ignoredExplicitRate} ігнорується payroll.`
+                : `Одиниця ${professionRateUnitLabel(person.rateUnit)} успадковується зі staff; profession override у цьому MVP не змінюється`);
+        return `<article class="hr-profession-person-condition" data-profession-condition-row="${Number(person.id)}" data-state="${escapeHtml(rowState.status || (saving ? 'saving' : 'clean'))}" data-condition-weekday-source="${escapeHtml(draft.weekdaySource || weekdayPreference.source)}" data-condition-weekday-touched="${draft.weekdayTouched ? 'true' : 'false'}" data-condition-weekend-source="${escapeHtml(draft.weekendSource || weekendPreference.source)}" data-condition-weekend-touched="${draft.weekendTouched ? 'true' : 'false'}">
+            <header class="hr-profession-person-condition__head">
+                <div><strong>${escapeHtml(person.name || `#${person.id}`)}</strong><span>${escapeHtml(person.department || 'Без напряму')} · ${person.isPrimary ? 'основна професія' : 'додаткова професія'}</span></div>
+                <span class="hr-profession-person-state${person.isActive === false ? ' is-archived' : ''}">${person.isActive === false ? 'Архівний працівник' : 'Активний працівник'}</span>
+            </header>
+            <div class="hr-profession-condition-statuses">
+                <span>${escapeHtml(professionConditionStatusLabel('assignment', person.assignmentStatus))}</span>
+                <span>${escapeHtml(professionConditionStatusLabel('admission', person.admissionStatus))}</span>
+                <span>${escapeHtml(professionConditionStatusLabel('internship', person.internshipStatus))}</span>
             </div>
-            <div class="hr-profession-person-row__meta">
-                <span>${escapeHtml(person.assignmentStatus || 'active')}</span>
-                <span class="${person.isActive === false ? 'is-archived' : ''}">${person.isActive === false ? 'Архівний' : 'Активний'}</span>
+            <div class="hr-profession-condition-grid">
+                <fieldset class="hr-profession-condition-rate"><legend>Ставка для цієї професії</legend>
+                    ${rateModeControl}
+                    <label><span>Сума</span><input type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" data-condition-rate value="${escapeHtml(draft.rate)}"${rateDisabled}></label>
+                    <small>${escapeHtml(professionRateUnitLabel(person.rateUnit))} · ${escapeHtml(rateSource)}</small>
+                </fieldset>
+                <fieldset><legend>Будні</legend><div class="hr-profession-condition-times"><label><span>Початок</span><input type="time" data-condition-weekday-start value="${escapeHtml(draft.weekdayStart)}"${timeDisabled}></label><label><span>Кінець</span><input type="time" data-condition-weekday-end value="${escapeHtml(draft.weekdayEnd)}"${timeDisabled}></label></div><small>${(draft.weekdaySource || weekdayPreference.source) === 'staff_shift_preferences' ? 'Збережено у staff_shift_preferences' : 'Системний fallback; буде записаний лише після явної зміни часу'}</small></fieldset>
+                <fieldset><legend>Вихідні</legend><div class="hr-profession-condition-times"><label><span>Початок</span><input type="time" data-condition-weekend-start value="${escapeHtml(draft.weekendStart)}"${timeDisabled}></label><label><span>Кінець</span><input type="time" data-condition-weekend-end value="${escapeHtml(draft.weekendEnd)}"${timeDisabled}></label></div><small>${(draft.weekendSource || weekendPreference.source) === 'staff_shift_preferences' ? 'Збережено у staff_shift_preferences' : 'Системний fallback; буде записаний лише після явної зміни часу'}</small></fieldset>
             </div>
-        </article>
-    `).join('');
+            <footer><span data-condition-feedback role="status">${escapeHtml(feedback || (!editable ? 'Лише перегляд: потрібна capability manage_staff' : ''))}</span>${editable ? `<button type="button" class="btn-add" data-condition-save${['changed', 'error'].includes(rowState.status) && !saving ? '' : ' disabled'}>Зберегти рядок</button>` : ''}</footer>
+        </article>`;
+    }).join('');
 }
+
+function validateProfessionConditionDraft(draft = {}) {
+    if (draft.rateMode === 'explicit') {
+        const rate = Number(draft.rate);
+        if (!Number.isFinite(rate) || rate <= 0 || rate > 1000000) return 'Вкажіть коректну індивідуальну ставку.';
+    }
+    for (const [label, start, end] of [
+        ['Будні', draft.weekdayStart, draft.weekdayEnd],
+        ['Вихідні', draft.weekendStart, draft.weekendEnd]
+    ]) {
+        if (Boolean(start) !== Boolean(end)) return `${label}: заповніть і початок, і кінець.`;
+        if (start && start === end) return `${label}: початок і кінець мають відрізнятися.`;
+    }
+    return '';
+}
+
+function professionConditionTimePayload(draft = {}, dayType) {
+    const prefix = dayType === 'weekend' ? 'weekend' : 'weekday';
+    const source = draft[`${prefix}Source`] || 'staff_shift_preferences';
+    const touched = draft[`${prefix}Touched`] === true;
+    if (source === 'system_fallback' && !touched) {
+        return { dayType, startTime: null, endTime: null };
+    }
+    return {
+        dayType,
+        startTime: draft[`${prefix}Start`] || null,
+        endTime: draft[`${prefix}End`] || null
+    };
+}
+
+function mergeSavedProfessionCondition(person = {}, condition = {}) {
+    return {
+        ...person,
+        isPrimary: condition.isPrimary,
+        assignmentStatus: condition.assignmentStatus,
+        admissionStatus: condition.admissionStatus,
+        internshipStatus: condition.internshipStatus,
+        rateMode: condition.rateMode,
+        explicitRate: condition.explicitRate,
+        storedExplicitRate: condition.storedExplicitRate,
+        ignoredExplicitRate: condition.ignoredExplicitRate,
+        rateIgnored: condition.rateIgnored === true,
+        fallbackRate: condition.fallbackRate,
+        hourlyRate: condition.effectiveRate,
+        rateSource: condition.rateSource,
+        rateUnit: condition.rateUnit,
+        shiftPreferences: condition.shiftPreferences.filter(item => item.isActive).map(item => ({
+            dayType: item.dayType,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            isActive: true,
+            source: item.source
+        }))
+    };
+}
+
+function syncSavedProfessionConditionCaches(condition) {
+    const professionKey = normalizeProfessionKey(condition.professionKey);
+    const staffId = Number(condition.staffId);
+    const currentWorkspaceKey = normalizeProfessionKey(professionWorkspaceState.data?.profession?.key);
+    if (currentWorkspaceKey === professionKey) {
+        const people = professionWorkspaceState.data?.people || [];
+        const index = people.findIndex(person => Number(person.id) === staffId);
+        if (index >= 0) people[index] = mergeSavedProfessionCondition(people[index], condition);
+    }
+    const catalogProfession = hrProfessions.find(item => normalizeProfessionKey(item.key) === professionKey);
+    if (catalogProfession?.people) {
+        const catalogIndex = catalogProfession.people.findIndex(person => Number(person.id) === staffId);
+        if (catalogIndex >= 0) catalogProfession.people[catalogIndex] = mergeSavedProfessionCondition(catalogProfession.people[catalogIndex], condition);
+    }
+    const staff = teamStaff.find(item => Number(item.id) === staffId);
+    if (staff) {
+        const rates = (Array.isArray(staff.profession_rates) ? staff.profession_rates : [])
+            .filter(item => normalizeProfessionKey(item.profession_key) !== professionKey);
+        if (condition.rateMode === 'explicit') rates.push({ profession_key: professionKey, hourly_rate: condition.explicitRate });
+        else if (condition.rateIgnored && condition.storedExplicitRate != null) {
+            rates.push({ profession_key: professionKey, hourly_rate: condition.storedExplicitRate, ignored: true });
+        }
+        staff.profession_rates = rates;
+    }
+    const cachedPreferences = (staffShiftPreferencesByStaffId.get(staffId) || [])
+        .filter(item => normalizeProfessionKey(item.profession_key || item.professionKey) !== professionKey);
+    condition.shiftPreferences.filter(item => item.isActive).forEach(item => cachedPreferences.push({
+        staff_id: staffId,
+        profession_key: professionKey,
+        day_type: item.dayType,
+        start_time: item.startTime,
+        end_time: item.endTime,
+        is_active: true
+    }));
+    staffShiftPreferencesByStaffId.set(staffId, cachedPreferences);
+    if (Number(activeEditStaffId?.()) === staffId) {
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffShiftPreferencesFromCurrentForm();
+    }
+}
+
+async function saveProfessionConditionRow(row) {
+    if (!row || !canManageProfessionConditions()) return false;
+    const staffId = Number(row.dataset.professionConditionRow);
+    const professionKey = professionWorkspaceState.data?.profession?.key;
+    const saveKey = professionConditionSaveKey(professionKey, staffId);
+    if (professionConditionSavePromises.has(saveKey)) return professionConditionSavePromises.get(saveKey);
+    const draft = readProfessionConditionRowDraft(row);
+    const validationError = validateProfessionConditionDraft(draft);
+    if (validationError) {
+        const previous = professionConditionRowStates.get(staffId) || {};
+        professionConditionRowStates.set(staffId, { status: 'error', error: validationError, draft, revision: Number(previous.revision || 0) + 1 });
+        setProfessionConditionRowFeedback(row, 'error', validationError);
+        return false;
+    }
+    const previous = professionConditionRowStates.get(staffId) || {};
+    const revision = Number(previous.revision || 0);
+    professionConditionRowStates.set(staffId, { status: 'saving', error: '', draft, revision });
+    row.querySelectorAll('input, select, button').forEach(control => { control.disabled = true; });
+    setProfessionConditionRowFeedback(row, 'saving', 'Збереження…');
+
+    const promise = (async () => {
+        const person = (professionWorkspaceState.data?.people || []).find(item => Number(item.id) === staffId) || {};
+        const response = await hrFetch(`/professions/${encodeURIComponent(professionKey)}/staff/${staffId}/conditions`, {
+            method: 'PUT',
+            body: {
+                rateMode: draft.rateMode,
+                rate: draft.rateMode === 'explicit' ? Number(draft.rate) : null,
+                rateUnit: person.rateUnit || 'hour',
+                shiftPreferences: [
+                    professionConditionTimePayload(draft, 'weekday'),
+                    professionConditionTimePayload(draft, 'weekend')
+                ]
+            },
+            allowForbiddenResponse: true
+        }).catch(() => null);
+        const stillCurrent = professionWorkspaceState.open
+            && normalizeProfessionKey(professionWorkspaceState.data?.profession?.key) === normalizeProfessionKey(professionKey);
+        if (!response?.success) {
+            if (stillCurrent) {
+                const error = response?.error || 'Не вдалося зберегти цей рядок.';
+                professionConditionRowStates.set(staffId, { status: 'error', error, draft, revision });
+            }
+            return false;
+        }
+        syncSavedProfessionConditionCaches(response.data);
+        if (stillCurrent) professionConditionRowStates.set(staffId, { status: 'saved', error: '', draft: null, revision });
+        return true;
+    })().finally(() => {
+        professionConditionSavePromises.delete(saveKey);
+        const stillCurrent = professionWorkspaceState.open
+            && normalizeProfessionKey(professionWorkspaceState.data?.profession?.key) === normalizeProfessionKey(professionKey);
+        if (stillCurrent) renderProfessionWorkspacePeople(professionWorkspaceState.data?.people || []);
+    });
+    professionConditionSavePromises.set(saveKey, promise);
+    return promise;
+}
+
+function professionChecklistTemplate(data = professionWorkspaceState.data) {
+    const template = data?.checklistTemplate || data?.profession?.checklistTemplate;
+    if (template && Array.isArray(template.items)) return template;
+    const fallback = Array.isArray(data?.checklist) ? data.checklist : [];
+    const items = fallback.map((title, index) => ({
+        itemKey: `legacy_readonly_${index + 1}`,
+        item_key: `legacy_readonly_${index + 1}`,
+        title,
+        sortOrder: (index + 1) * 10,
+        isActive: true,
+        is_active: true,
+        source: 'legacy_readonly'
+    }));
+    return {
+        items,
+        activeItems: items,
+        archivedItems: [],
+        checklist: fallback,
+        counts: { total: items.length, active: items.length, archived: 0 },
+        source: items.length ? 'legacy_readonly' : 'hr_profession_checklist_items'
+    };
+}
+
+function setProfessionChecklistState(message = '', state = '') {
+    const root = document.getElementById('professionWorkspaceChecklistState');
+    if (!root) return;
+    root.textContent = message;
+    root.dataset.state = state;
+}
+
+function updateProfessionChecklistCaches(template, expectedProfessionKey = '') {
+    if (!template) return;
+    const checklist = (template.activeItems || template.items?.filter(item => item.isActive !== false) || [])
+        .map(item => item.title);
+    const key = normalizeProfessionKey(
+        expectedProfessionKey
+        || template.profession?.key
+        || template.professionKey
+        || template.profession_key
+    );
+    const currentWorkspaceKey = normalizeProfessionKey(professionWorkspaceState.data?.profession?.key);
+    if (key && currentWorkspaceKey === key) {
+        professionWorkspaceState.data.checklistTemplate = template;
+        professionWorkspaceState.data.checklist = checklist;
+        professionWorkspaceState.data.profession.checklistTemplate = template;
+        professionWorkspaceState.data.profession.checklist = checklist;
+        professionWorkspaceState.data.profession.hasChecklist = checklist.length > 0;
+        professionWorkspaceState.data.profession.checklistCount = checklist.length;
+    }
+    const catalogProfession = hrProfessions.find(item => normalizeProfessionKey(item.key) === key);
+    if (catalogProfession) {
+        catalogProfession.checklistTemplate = template;
+        catalogProfession.checklist = checklist;
+        catalogProfession.hasChecklist = checklist.length > 0;
+        catalogProfession.checklistCount = checklist.length;
+    }
+}
+
+async function refreshProfessionChecklistTemplate(professionKey = professionWorkspaceState.data?.profession?.key) {
+    const key = normalizeProfessionKey(professionKey);
+    if (!key) return null;
+    const response = await hrFetch(`/professions/${encodeURIComponent(key)}/checklist?include_archived=true`).catch(() => null);
+    if (!response?.success) throw new Error(response?.error || 'Не вдалося оновити шаблон чекліста');
+    const template = response.data || response.template || null;
+    updateProfessionChecklistCaches(template, key);
+    return template;
+}
+
+function renderProfessionWorkspaceChecklist() {
+    const root = document.getElementById('professionWorkspaceChecklistItems');
+    const summary = document.getElementById('professionWorkspaceChecklistSummary');
+    const add = document.getElementById('professionWorkspaceChecklistAdd');
+    const showArchived = document.getElementById('professionWorkspaceChecklistShowArchived');
+    if (!root) return;
+    const template = professionChecklistTemplate();
+    const readOnly = professionWorkspaceReadOnly();
+    const isNew = professionWorkspaceState.isNew;
+    const activeItems = (template.items || []).filter(item => item.isActive !== false && item.is_active !== false);
+    const archivedItems = (template.items || []).filter(item => item.isActive === false || item.is_active === false);
+    const items = professionChecklistShowArchived ? [...activeItems, ...archivedItems] : activeItems;
+    if (summary) {
+        const progress = professionWorkspaceState.data?.checklistProgress || {};
+        summary.textContent = `${activeItems.length} активних пунктів · ${archivedItems.length} в архіві · активний progress: ${progress.activeCompleted ?? progress.completed ?? 0}/${progress.activeRecords ?? progress.records ?? 0} · історичних записів: ${progress.historicalRecords ?? progress.records ?? 0}`;
+    }
+    if (showArchived) {
+        showArchived.checked = professionChecklistShowArchived;
+        showArchived.disabled = archivedItems.length === 0;
+    }
+    add?.classList.toggle('hidden', readOnly || isNew);
+    if (isNew) {
+        root.innerHTML = '<div class="hr-account-empty">Спочатку створіть професію, після цього додайте її чекліст.</div>';
+        return;
+    }
+    if (!items.length) {
+        root.innerHTML = `<div class="hr-account-empty">${professionChecklistShowArchived ? 'Архівних пунктів немає.' : 'Шаблон ще порожній. Додайте перший пункт нижче.'}</div>`;
+        return;
+    }
+    root.innerHTML = items.map(item => {
+        const key = item.itemKey || item.item_key || item.checklistKey || item.checklist_key;
+        const archived = item.isActive === false || item.is_active === false;
+        const activeIndex = activeItems.findIndex(candidate => (candidate.itemKey || candidate.item_key) === key);
+        const controls = !readOnly && !archived && template.source !== 'legacy_readonly'
+            ? `<div class="hr-checklist-template-actions">
+                <button type="button" data-checklist-item-action="up" aria-label="Перемістити вгору"${activeIndex <= 0 ? ' disabled' : ''}>↑</button>
+                <button type="button" data-checklist-item-action="down" aria-label="Перемістити вниз"${activeIndex < 0 || activeIndex >= activeItems.length - 1 ? ' disabled' : ''}>↓</button>
+                <button type="button" data-checklist-item-action="rename">Зберегти назву</button>
+                <button type="button" data-checklist-item-action="archive" class="is-danger">Архівувати</button>
+            </div>`
+            : `<span class="hr-checklist-template-readonly">${archived ? 'Архівний · історію збережено' : 'Лише перегляд'}</span>`;
+        return `<article class="hr-checklist-template-item${archived ? ' is-archived' : ''}" data-checklist-item-key="${escapeHtml(key)}">
+            <span class="hr-checklist-template-order">${archived ? '—' : activeIndex + 1}</span>
+            <label><span class="sr-only">Назва пункту</span><input type="text" maxlength="500" value="${escapeHtml(item.title || '')}" data-checklist-item-title${readOnly || archived || template.source === 'legacy_readonly' ? ' readonly' : ''}></label>
+            <small>${escapeHtml(key)}${item.legacyPosition ? ` · legacy item_${Number(item.legacyPosition)}` : ''}</small>
+            ${controls}
+        </article>`;
+    }).join('');
+}
+
+async function runProfessionChecklistMutation(path, options, successMessage) {
+    if (professionChecklistMutationPromise || professionWorkspaceReadOnly() || professionWorkspaceState.isNew) return false;
+    const professionKey = normalizeProfessionKey(professionWorkspaceState.data?.profession?.key);
+    const isCurrentWorkspace = () => professionWorkspaceState.open
+        && normalizeProfessionKey(professionWorkspaceState.data?.profession?.key) === professionKey;
+    setProfessionChecklistState('Збереження…', 'saving');
+    document.getElementById('professionWorkspaceChecklistEditor')?.classList.add('is-saving');
+    const promise = (async () => {
+        const response = await hrFetch(path, { ...options, allowForbiddenResponse: true }).catch(() => null);
+        if (!response?.success) {
+            if (isCurrentWorkspace()) {
+                setProfessionChecklistState(response?.error || 'Не вдалося зберегти чекліст', 'error');
+            }
+            return false;
+        }
+        try {
+            await refreshProfessionChecklistTemplate(professionKey);
+        } catch (error) {
+            if (isCurrentWorkspace()) setProfessionChecklistState(error.message, 'error');
+            return false;
+        }
+        if (isCurrentWorkspace()) {
+            setProfessionChecklistState(successMessage, 'saved');
+            renderProfessionWorkspaceChecklist();
+        }
+        renderProfessions();
+        return true;
+    })().finally(() => {
+        professionChecklistMutationPromise = null;
+        document.getElementById('professionWorkspaceChecklistEditor')?.classList.remove('is-saving');
+    });
+    professionChecklistMutationPromise = promise;
+    return promise;
+}
+
+async function addProfessionChecklistItem() {
+    const input = document.getElementById('professionWorkspaceChecklistNewTitle');
+    const title = String(input?.value || '').trim();
+    const key = professionWorkspaceState.data?.profession?.key;
+    if (!title) {
+        setProfessionChecklistState('Введіть назву нового пункту.', 'error');
+        input?.focus();
+        return false;
+    }
+    const saved = await runProfessionChecklistMutation(
+        `/professions/${encodeURIComponent(key)}/checklist/items`,
+        { method: 'POST', body: { title } },
+        'Пункт додано.'
+    );
+    if (saved && input) {
+        input.value = '';
+        input.focus();
+    }
+    return saved;
+}
+
+async function handleProfessionChecklistItemAction(button) {
+    const row = button?.closest('[data-checklist-item-key]');
+    const itemKey = row?.dataset.checklistItemKey;
+    const action = button?.dataset.checklistItemAction;
+    const professionKey = professionWorkspaceState.data?.profession?.key;
+    if (!itemKey || !action || !professionKey) return false;
+    if (action === 'rename') {
+        const title = String(row.querySelector('[data-checklist-item-title]')?.value || '').trim();
+        if (!title) {
+            setProfessionChecklistState('Назва пункту не може бути порожньою.', 'error');
+            return false;
+        }
+        return runProfessionChecklistMutation(
+            `/professions/${encodeURIComponent(professionKey)}/checklist/items/${encodeURIComponent(itemKey)}`,
+            { method: 'PUT', body: { title } },
+            'Назву оновлено без зміни прогресу.'
+        );
+    }
+    if (action === 'archive') {
+        const title = row.querySelector('[data-checklist-item-title]')?.value || itemKey;
+        const confirmed = await confirmHrAction(`Архівувати пункт «${title}»? Історичний progress працівників залишиться збереженим.`, {
+            okText: 'Архівувати'
+        });
+        if (!confirmed) return false;
+        return runProfessionChecklistMutation(
+            `/professions/${encodeURIComponent(professionKey)}/checklist/items/${encodeURIComponent(itemKey)}/archive`,
+            { method: 'PUT', body: {} },
+            'Пункт архівовано, історію збережено.'
+        );
+    }
+    if (action === 'up' || action === 'down') {
+        const activeItems = professionChecklistTemplate().items.filter(item => item.isActive !== false && item.is_active !== false);
+        const keys = activeItems.map(item => item.itemKey || item.item_key);
+        const index = keys.indexOf(itemKey);
+        const target = action === 'up' ? index - 1 : index + 1;
+        if (index < 0 || target < 0 || target >= keys.length) return false;
+        [keys[index], keys[target]] = [keys[target], keys[index]];
+        return runProfessionChecklistMutation(
+            `/professions/${encodeURIComponent(professionKey)}/checklist/reorder`,
+            { method: 'PUT', body: { itemKeys: keys } },
+            'Порядок оновлено без зміни progress.'
+        );
+    }
+    return false;
+}
+
 function renderProfessionWorkspaceUsage(data = {}) {
     const root = document.getElementById('professionWorkspaceUsage');
     if (!root) return;
@@ -3208,8 +4011,9 @@ function renderProfessionWorkspaceUsage(data = {}) {
     const training = data.trainingUsage || {};
     root.innerHTML = [
         [profession.staffCount || 0, 'Працівників у професії'],
-        [progress.staffWithProgress || 0, 'Працівників із checklist progress'],
-        [`${progress.completed || 0}/${progress.records || 0}`, 'Виконаних пунктів'],
+        [progress.activeStaffWithProgress ?? progress.staffWithProgress ?? 0, 'Працівників з активним progress'],
+        [`${progress.activeCompleted ?? progress.completed ?? 0}/${progress.activeRecords ?? progress.records ?? 0}`, 'Активна готовність'],
+        [`${progress.historicalCompleted ?? progress.completed ?? 0}/${progress.historicalRecords ?? progress.records ?? 0}`, 'Історичний progress'],
         [training.activeCourses || 0, 'Активних навчальних курсів'],
         [data.structureNode?.title || 'Без вузла', 'Використання у структурі'],
         [profession.source === 'system' ? 'System' : 'DB', 'Джерело професії']
@@ -3286,12 +4090,10 @@ function renderProfessionWorkspace() {
     document.getElementById('professionWorkspaceColor').value = /^#[0-9a-f]{6}$/i.test(profession.color || '') ? profession.color : '#10b981';
     document.getElementById('professionWorkspaceSortOrder').value = profession.sortOrder ?? profession.sort_order ?? 100;
     document.getElementById('professionWorkspaceActive').value = active ? 'true' : 'false';
-    document.getElementById('professionWorkspaceChecklist').value = (data.checklist || profession.checklist || []).join('\n');
-    const checklistSummary = document.getElementById('professionWorkspaceChecklistSummary');
-    if (checklistSummary) checklistSummary.textContent = `${(data.checklist || profession.checklist || []).length} пунктів · progress: ${data.checklistProgress?.completed || 0}/${data.checklistProgress?.records || 0}`;
     renderProfessionWorkspacePeople(data.people || []);
+    renderProfessionWorkspaceChecklist();
     renderProfessionWorkspaceUsage(data);
-    workspace.querySelectorAll('[data-profession-workspace-panel="main"] input, [data-profession-workspace-panel="main"] select, [data-profession-workspace-panel="main"] textarea, [data-profession-workspace-panel="checklist"] textarea').forEach(control => {
+    workspace.querySelectorAll('[data-profession-workspace-panel="main"] input, [data-profession-workspace-panel="main"] select, [data-profession-workspace-panel="main"] textarea').forEach(control => {
         control.disabled = readOnly;
     });
     const archive = document.getElementById('professionWorkspaceArchive');
@@ -3305,6 +4107,8 @@ function renderProfessionWorkspace() {
 
 async function openProfessionWorkspace({ id = null, key = null, initialTab = 'main', returnContext = null, historyMode = 'push', defaults = {} } = {}) {
     bindProfessionWorkspaceControls();
+    professionConditionRowStates.clear();
+    professionChecklistShowArchived = false;
     const isNew = !id && !key;
     const context = returnContext || captureProfessionReturnContext();
     professionWorkspaceState = {
@@ -3326,7 +4130,23 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
         professionWorkspaceState.loadState = 'ready';
         professionWorkspaceState.data = {
             profession: { key: '', title: '', source: 'db', isActive: true, is_active: true, responsibilities: [], checklist: [], sortOrder: 100, structureNodeId: defaults.structureNodeId || null, structure_node_id: defaults.structureNodeId || null },
-            people: [], checklist: [], checklistProgress: { records: 0, completed: 0, staffWithProgress: 0 }, trainingUsage: { courses: 0, activeCourses: 0 }, structureNode: null
+            people: [],
+            checklist: [],
+            checklistTemplate: { items: [], activeItems: [], archivedItems: [], checklist: [], counts: { total: 0, active: 0, archived: 0 }, source: 'hr_profession_checklist_items' },
+            checklistProgress: {
+                records: 0,
+                completed: 0,
+                staffWithProgress: 0,
+                activeRecords: 0,
+                activeCompleted: 0,
+                activeStaffWithProgress: 0,
+                historicalRecords: 0,
+                historicalCompleted: 0,
+                archivedRecords: 0,
+                orphanedRecords: 0
+            },
+            trainingUsage: { courses: 0, activeCourses: 0 },
+            structureNode: null
         };
         renderProfessionWorkspace();
         document.getElementById('professionWorkspaceKey')?.focus();
@@ -3358,7 +4178,6 @@ async function saveProfessionWorkspace(options = {}) {
         department: document.getElementById('professionWorkspaceDepartment')?.value || null,
         shortInfo: document.getElementById('professionWorkspaceShortInfo')?.value || '',
         responsibilities: normalizeProfessionTextList(document.getElementById('professionWorkspaceResponsibilities')?.value),
-        checklist: normalizeProfessionTextList(document.getElementById('professionWorkspaceChecklist')?.value),
         structureNodeId: document.getElementById('professionWorkspaceStructureNode')?.value || null,
         color: document.getElementById('professionWorkspaceColor')?.value || null,
         sortOrder: parseInt(document.getElementById('professionWorkspaceSortOrder')?.value, 10) || 100,
@@ -5567,7 +6386,9 @@ function shiftPreferenceRowsByKey(preferences = []) {
             professionKey,
             dayType,
             startTime: normalizeShiftPreferenceTimeForUi(row.start_time || row.startTime),
-            endTime: normalizeShiftPreferenceTimeForUi(row.end_time || row.endTime)
+            endTime: normalizeShiftPreferenceTimeForUi(row.end_time || row.endTime),
+            source: 'staff_shift_preferences',
+            touched: false
         });
     });
     return map;
@@ -5585,7 +6406,12 @@ function readCurrentStaffShiftPreferenceInputs() {
         const startTime = normalizeShiftPreferenceTimeForUi(startInput?.value);
         const endTime = normalizeShiftPreferenceTimeForUi(endInput?.value);
         if (professionKey && dayType && startTime && endTime) {
-            map.set(shiftPreferenceDomKey(professionKey, dayType), { startTime, endTime });
+            map.set(shiftPreferenceDomKey(professionKey, dayType), {
+                startTime,
+                endTime,
+                source: row.dataset.shiftPrefSource || 'staff_shift_preferences',
+                touched: row.dataset.shiftPrefTouched === 'true'
+            });
         }
     });
     return map;
@@ -5605,10 +6431,15 @@ function renderStaffShiftPreferencesEditor(staff = {}, preferences = []) {
         const dayRows = STAFF_SHIFT_PREFERENCE_DAY_TYPES.map(dayType => {
             const domKey = shiftPreferenceDomKey(professionKey, dayType.key);
             const fallback = defaultShiftPreferenceForProfession(professionKey, dayType.key);
-            const source = currentRows.get(domKey) || apiRows.get(domKey) || fallback;
+            const source = currentRows.get(domKey) || apiRows.get(domKey) || {
+                ...fallback,
+                source: 'system_fallback',
+                touched: false
+            };
             const startTime = normalizeShiftPreferenceTimeForUi(source.startTime || source.start_time, fallback.startTime);
             const endTime = normalizeShiftPreferenceTimeForUi(source.endTime || source.end_time, fallback.endTime);
-            return `<div class="hr-shift-preference-day" data-shift-pref-profession="${escapeHtml(professionKey)}" data-shift-pref-day="${escapeHtml(dayType.key)}">
+            const sourceKey = source.source || 'staff_shift_preferences';
+            return `<div class="hr-shift-preference-day" data-shift-pref-profession="${escapeHtml(professionKey)}" data-shift-pref-day="${escapeHtml(dayType.key)}" data-shift-pref-source="${escapeHtml(sourceKey)}" data-shift-pref-touched="${source.touched ? 'true' : 'false'}">
                 <span>${escapeHtml(dayType.label)}</span>
                 <div class="hr-shift-preference-time-row">
                     <label>
@@ -5620,6 +6451,7 @@ function renderStaffShiftPreferencesEditor(staff = {}, preferences = []) {
                         <input type="time" data-shift-pref-end value="${escapeHtml(endTime)}" aria-label="${escapeHtml(professionTitle(professionKey))}: ${escapeHtml(dayType.label)} кінець">
                     </label>
                 </div>
+                <small>${sourceKey === 'system_fallback' ? 'Системний fallback · не записаний' : 'Збережено у staff_shift_preferences'}</small>
             </div>`;
         }).join('');
         return `<article class="hr-shift-preference-card" data-shift-pref-card="${escapeHtml(professionKey)}">
@@ -5673,6 +6505,9 @@ function readStaffShiftPreferences() {
         const startTime = normalizeShiftPreferenceTimeForUi(row.querySelector('[data-shift-pref-start]')?.value);
         const endTime = normalizeShiftPreferenceTimeForUi(row.querySelector('[data-shift-pref-end]')?.value);
         if (!professionKey || !STAFF_SHIFT_PREFERENCE_DAY_TYPES.some(item => item.key === dayType)) return;
+        const source = row.dataset.shiftPrefSource || 'staff_shift_preferences';
+        const touched = row.dataset.shiftPrefTouched === 'true';
+        if (source === 'system_fallback' && !touched) return;
         if (!startTime || !endTime) {
             row.classList.add('has-error');
             error = error || 'Заповніть початок і кінець для всіх типових змін.';

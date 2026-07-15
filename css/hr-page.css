@@ -4931,6 +4931,74 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     color: var(--gray-800);
     font: inherit;
 }
+.hr-profession-person-condition {
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    background: var(--white);
+}
+.hr-profession-person-condition[data-state="changed"] { border-color: rgba(245,158,11,.72); box-shadow: 0 0 0 3px rgba(245,158,11,.10); }
+.hr-profession-person-condition[data-state="saving"] { border-color: rgba(14,165,233,.62); box-shadow: 0 0 0 3px rgba(14,165,233,.09); }
+.hr-profession-person-condition[data-state="error"] { border-color: rgba(220,38,38,.68); box-shadow: 0 0 0 3px rgba(220,38,38,.09); }
+.hr-profession-person-condition[data-state="saved"] { border-color: rgba(16,185,129,.58); }
+.hr-profession-person-condition__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 14px 8px;
+}
+.hr-profession-person-condition__head div,
+.hr-profession-person-condition__head strong,
+.hr-profession-person-condition__head span { display: block; }
+.hr-profession-person-condition__head strong { color: var(--gray-900); font-size: 13px; }
+.hr-profession-person-condition__head div > span { margin-top: 3px; color: var(--gray-500); font-size: 10px; }
+.hr-profession-person-state {
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(16,185,129,.12);
+    color: #047857;
+    font-size: 9px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.hr-profession-person-state.is-archived { background: var(--gray-100); color: var(--gray-600); }
+.hr-profession-condition-statuses { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 14px 10px; }
+.hr-profession-condition-statuses span { padding: 4px 7px; border-radius: 999px; background: var(--gray-50); color: var(--gray-600); font-size: 9px; font-weight: 800; }
+.hr-profession-condition-grid {
+    display: grid;
+    grid-template-columns: minmax(210px,1.15fr) repeat(2,minmax(150px,.8fr));
+    gap: 10px;
+    padding: 0 14px 13px;
+}
+.hr-profession-condition-grid fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 9px 10px 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: 10px;
+}
+.hr-profession-condition-grid legend { padding: 0 5px; color: var(--gray-600); font-size: 10px; font-weight: 900; }
+.hr-profession-condition-grid label { gap: 4px; color: var(--gray-500); font-size: 9px; }
+.hr-profession-condition-grid input,
+.hr-profession-condition-grid select { min-height: 34px; padding: 6px 8px; }
+.hr-profession-condition-rate { display: grid; grid-template-columns: 1fr minmax(90px,.65fr); gap: 6px 8px; align-items: end; }
+.hr-profession-condition-rate small { grid-column: 1/-1; color: var(--gray-500); font-size: 9px; overflow-wrap: anywhere; }
+.hr-profession-condition-times { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.hr-profession-person-condition footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 42px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--gray-100);
+    background: var(--gray-50);
+}
+.hr-profession-person-condition footer span { color: var(--gray-500); font-size: 10px; font-weight: 750; }
+.hr-profession-person-condition[data-state="error"] footer span { color: #B91C1C; }
+.hr-profession-person-condition[data-state="changed"] footer span { color: #B45309; }
+.hr-profession-person-condition footer .btn-add { min-height: 32px; padding: 6px 12px; font-size: 10px; }
 .hr-profession-usage-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .hr-profession-usage-card { padding: 14px; border: 1px solid var(--gray-100); border-radius: 12px; background: var(--gray-50); }
 .hr-profession-usage-card strong,
@@ -6077,6 +6145,15 @@ body.dark-mode .hr-profession-people-toolbar select {
     border-color: #3D3D5C;
     color: #E2E8F0;
 }
+body.dark-mode .hr-profession-person-condition,
+body.dark-mode .hr-profession-condition-grid fieldset {
+    background: #2A2A4A;
+    border-color: #3D3D5C;
+    color: #E2E8F0;
+}
+body.dark-mode .hr-profession-person-condition footer,
+body.dark-mode .hr-profession-condition-statuses span { background: rgba(255,255,255,.045); }
+body.dark-mode .hr-profession-person-condition__head strong { color: #F8FAFC; }
 body.dark-mode .hr-profession-toolbar input,
 body.dark-mode .hr-profession-toolbar select {
     background: #22223D;
@@ -6108,6 +6185,8 @@ body.dark-mode .hr-profession-workspace.is-read-only .hr-profession-workspace-pa
     .hr-profession-master-row { grid-template-columns: minmax(180px,1.4fr) minmax(120px,1fr) 90px 90px; }
     .hr-profession-master-row > :nth-child(3),
     .hr-profession-master-row > :nth-child(6) { display: none; }
+    .hr-profession-condition-grid { grid-template-columns: 1fr 1fr; }
+    .hr-profession-condition-rate { grid-column: 1 / -1; }
 }
 
 @media (max-width: 680px) {
@@ -6121,6 +6200,10 @@ body.dark-mode .hr-profession-workspace.is-read-only .hr-profession-workspace-pa
     .hr-profession-workspace-grid,
     .hr-profession-usage-grid { grid-template-columns: 1fr; }
     .hr-profession-people-toolbar { grid-template-columns: 1fr; }
+    .hr-profession-condition-grid { grid-template-columns: 1fr; }
+    .hr-profession-condition-rate { grid-column: auto; }
+    .hr-profession-person-condition__head { align-items: stretch; flex-direction: column; }
+    .hr-profession-condition-times { grid-template-columns: 1fr 1fr; }
     .hr-profession-workspace-wide { grid-column: auto; }
     .hr-profession-person-row { grid-template-columns: minmax(0,1fr) 100px; }
     .hr-profession-person-row > :nth-child(2),
@@ -7563,4 +7646,204 @@ body.dark-mode .hr-org-node-menu button { color: var(--gray-200); }
     .hr-org-tree-row { grid-template-columns: 22px minmax(0, 1fr); }
     .hr-org-tree-row > .hr-org-node-quick-actions { display: none; }
     .hr-org-inspector-actions { grid-template-columns: 1fr; }
+}
+
+/* Profession checklist templates and dashboard */
+.hr-checklist-dashboard-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(150px, 1fr));
+    gap: 8px;
+    margin: 14px 0;
+}
+.hr-checklist-dashboard-toolbar input,
+.hr-checklist-dashboard-toolbar select {
+    min-width: 0;
+    height: 38px;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--white);
+    color: var(--gray-900);
+    padding: 0 10px;
+    font: inherit;
+}
+.hr-checklist-dashboard-summary {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    margin: 14px 0;
+}
+.hr-checklist-dashboard-summary-card {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--white);
+    color: var(--gray-800);
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+}
+.hr-checklist-dashboard-summary-card strong { font-size: 20px; line-height: 1; }
+.hr-checklist-dashboard-summary-card span { color: var(--gray-500); font-size: 11px; font-weight: 750; }
+.hr-checklist-dashboard-summary-card:hover,
+.hr-checklist-dashboard-summary-card:focus-visible,
+.hr-checklist-dashboard-summary-card.is-active {
+    border-color: var(--primary-500);
+    background: rgba(37,99,235,.06);
+    color: var(--primary-700);
+}
+.hr-checklist-dashboard-list { display: grid; gap: 7px; }
+.hr-checklist-dashboard-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.2fr) minmax(200px, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 10px;
+    background: var(--white);
+    padding: 9px 11px;
+}
+.hr-checklist-dashboard-profession,
+.hr-checklist-dashboard-person button {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.hr-checklist-dashboard-profession { display: grid; gap: 2px; }
+.hr-checklist-dashboard-profession strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-checklist-dashboard-profession span,
+.hr-checklist-dashboard-person small { color: var(--gray-500); font-size: 11px; }
+.hr-checklist-dashboard-person { min-width: 0; display: grid; gap: 2px; }
+.hr-checklist-dashboard-person button { overflow: hidden; color: var(--primary-700); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.hr-checklist-dashboard-status {
+    border-radius: 999px;
+    background: var(--gray-100);
+    color: var(--gray-700);
+    padding: 5px 8px;
+    font-size: 10px;
+    font-weight: 850;
+    white-space: nowrap;
+}
+.hr-checklist-dashboard-row.is-completed .hr-checklist-dashboard-status { background: rgba(16,185,129,.12); color: #047857; }
+.hr-checklist-dashboard-row.is-in_progress .hr-checklist-dashboard-status { background: rgba(245,158,11,.14); color: #b45309; }
+.hr-checklist-dashboard-row.is-orphaned .hr-checklist-dashboard-status { background: rgba(239,68,68,.12); color: #b91c1c; }
+.hr-checklist-dashboard-skeleton {
+    height: 58px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--gray-100), var(--gray-50), var(--gray-100));
+    background-size: 200% 100%;
+    animation: hrChecklistSkeleton 1.2s linear infinite;
+}
+@keyframes hrChecklistSkeleton { to { background-position: -200% 0; } }
+
+.hr-checklist-template-editor { display: grid; gap: 10px; }
+.hr-checklist-template-editor.is-saving { opacity: .62; pointer-events: none; }
+.hr-checklist-template-toolbar { display: flex; justify-content: flex-end; }
+.hr-checklist-archived-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--gray-600); font-size: 12px; font-weight: 750; }
+.hr-checklist-template-list { display: grid; gap: 7px; }
+.hr-checklist-template-item {
+    display: grid;
+    grid-template-columns: 28px minmax(180px, 1fr) minmax(130px, auto) auto;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--white);
+    padding: 8px;
+}
+.hr-checklist-template-item.is-archived { border-style: dashed; opacity: .68; }
+.hr-checklist-template-order {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    border-radius: 7px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 11px;
+    font-weight: 900;
+}
+.hr-checklist-template-item label { min-width: 0; }
+.hr-checklist-template-item input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--gray-900);
+    padding: 7px 8px;
+    font: inherit;
+    font-weight: 750;
+}
+.hr-checklist-template-item input:not([readonly]):hover,
+.hr-checklist-template-item input:not([readonly]):focus { border-color: var(--gray-300); background: var(--gray-50); outline: none; }
+.hr-checklist-template-item > small { overflow: hidden; color: var(--gray-500); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.hr-checklist-template-actions { display: flex; gap: 5px; }
+.hr-checklist-template-actions button {
+    min-height: 30px;
+    border: 1px solid var(--gray-200);
+    border-radius: 7px;
+    background: var(--white);
+    color: var(--gray-700);
+    padding: 4px 7px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+.hr-checklist-template-actions button:disabled { opacity: .35; cursor: default; }
+.hr-checklist-template-actions button.is-danger { color: var(--danger-600); }
+.hr-checklist-template-readonly { color: var(--gray-500); font-size: 11px; font-weight: 750; }
+.hr-checklist-template-state { min-height: 18px; color: var(--gray-500); font-size: 12px; }
+.hr-checklist-template-state[data-state="error"] { color: var(--danger-600); }
+.hr-checklist-template-state[data-state="saved"] { color: #047857; }
+.hr-checklist-template-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.hr-checklist-template-add input {
+    min-width: 0;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--white);
+    color: var(--gray-900);
+    padding: 9px 10px;
+    font: inherit;
+}
+
+body.dark-mode .hr-checklist-dashboard-toolbar input,
+body.dark-mode .hr-checklist-dashboard-toolbar select,
+body.dark-mode .hr-checklist-dashboard-summary-card,
+body.dark-mode .hr-checklist-dashboard-row,
+body.dark-mode .hr-checklist-template-item,
+body.dark-mode .hr-checklist-template-actions button,
+body.dark-mode .hr-checklist-template-add input {
+    border-color: rgba(255,255,255,.1);
+    background: var(--gray-900);
+    color: var(--gray-100);
+}
+body.dark-mode .hr-checklist-template-item input { color: var(--gray-100); }
+body.dark-mode .hr-checklist-template-item input:not([readonly]):hover,
+body.dark-mode .hr-checklist-template-item input:not([readonly]):focus { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.05); }
+
+@media (max-width: 1100px) {
+    .hr-checklist-dashboard-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .hr-checklist-dashboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .hr-checklist-template-item { grid-template-columns: 28px minmax(0, 1fr); }
+    .hr-checklist-template-item > small,
+    .hr-checklist-template-actions,
+    .hr-checklist-template-readonly { grid-column: 2; }
+}
+@media (max-width: 680px) {
+    .hr-checklist-dashboard-toolbar,
+    .hr-checklist-dashboard-summary { grid-template-columns: 1fr 1fr; }
+    .hr-checklist-dashboard-toolbar input { grid-column: 1 / -1; }
+    .hr-checklist-dashboard-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .hr-checklist-dashboard-person { grid-column: 1; }
+    .hr-checklist-dashboard-status { grid-column: 2; grid-row: 1 / span 2; }
+    .hr-checklist-template-actions { flex-wrap: wrap; }
+    .hr-checklist-template-add { grid-template-columns: 1fr; }
 }

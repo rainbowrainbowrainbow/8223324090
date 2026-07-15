@@ -1094,7 +1094,9 @@ test('HR onboarding assignment keeps routes thin and owns task sync in service',
         'const params = [ONBOARDING_TASK_SOURCE_TYPE]',
         'assignOnboardingResponsible(req.params.id, responsibleUserId, req.user',
         'loadActiveOnboardingProgress(staff.id, pool, { professionKey })',
-        'syncProfessionOnboardingProgress(req.params.id, professionKey, req.user',
+        'const onboarding = await syncProfessionOnboardingProgress(',
+        'result.context.staff.id,',
+        'result.context.profession.key,',
         'onboardingProgressMeta(progress)',
         'await attachOnboardingAssignments(result.rows)'
     ]) {

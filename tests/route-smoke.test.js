@@ -385,6 +385,73 @@ function createFakePool() {
         staffShiftPreferences: new Map([
             ['45:animator:weekday', { day_type: 'weekday', start_time: '10:00', end_time: '18:00', is_active: true }]
         ]),
+        professionChecklistItems: new Map([
+            [301, {
+                id: 301,
+                profession_id: 201,
+                item_key: 'chk_animator_intro',
+                title: 'Animator role introduction',
+                sort_order: 10,
+                is_active: true,
+                legacy_position: 1,
+                created_by: 'migration_294',
+                updated_by: 'migration_294',
+                created_at: '2099-06-06T11:00:00Z',
+                updated_at: '2099-06-06T11:00:00Z'
+            }],
+            [302, {
+                id: 302,
+                profession_id: 201,
+                item_key: 'chk_animator_trial',
+                title: 'Animator trial shift',
+                sort_order: 20,
+                is_active: true,
+                legacy_position: 2,
+                created_by: 'migration_294',
+                updated_by: 'migration_294',
+                created_at: '2099-06-06T11:00:00Z',
+                updated_at: '2099-06-06T11:00:00Z'
+            }],
+            [303, {
+                id: 303,
+                profession_id: 202,
+                item_key: 'chk_barista_intro',
+                title: 'Barista role introduction',
+                sort_order: 10,
+                is_active: true,
+                legacy_position: 1,
+                created_by: 'migration_294',
+                updated_by: 'migration_294',
+                created_at: '2099-06-06T11:00:00Z',
+                updated_at: '2099-06-06T11:00:00Z'
+            }],
+            [304, {
+                id: 304,
+                profession_id: 202,
+                item_key: 'chk_barista_trial',
+                title: 'Barista trial shift',
+                sort_order: 20,
+                is_active: true,
+                legacy_position: 2,
+                created_by: 'migration_294',
+                updated_by: 'migration_294',
+                created_at: '2099-06-06T11:00:00Z',
+                updated_at: '2099-06-06T11:00:00Z'
+            }],
+            [305, {
+                id: 305,
+                profession_id: 203,
+                item_key: 'chk_cook_intro',
+                title: 'Cook role introduction',
+                sort_order: 10,
+                is_active: true,
+                legacy_position: 1,
+                created_by: 'migration_294',
+                updated_by: 'migration_294',
+                created_at: '2099-06-06T11:00:00Z',
+                updated_at: '2099-06-06T11:00:00Z'
+            }]
+        ]),
         professionChecklistProgress: new Map(),
         jobVacancies: new Map([
             [56, { id: 56, title: 'Кухар', role_type: 'cook', department: 'cafe', status: 'open' }],
@@ -944,6 +1011,17 @@ function createFakePool() {
             completed_task_count: tasks.filter(task => ['done', 'completed'].includes(task.status || 'todo')).length
         };
     };
+    const professionById = professionId => Array.from(hrState.hrProfessions.values())
+        .find(profession => Number(profession.id) === Number(professionId)) || null;
+    const checklistItemsForProfession = (professionId, includeArchived = true) => Array.from(hrState.professionChecklistItems.values())
+        .filter(item => Number(item.profession_id) === Number(professionId))
+        .filter(item => includeArchived || item.is_active !== false)
+        .sort((left, right) => Number(right.is_active !== false) - Number(left.is_active !== false)
+            || Number(left.sort_order) - Number(right.sort_order)
+            || Number(left.id) - Number(right.id));
+    const checklistProgressKey = (staffId, checklistItemId) => `${Number(staffId)}:${Number(checklistItemId)}`;
+    const checklistProgressForProfession = professionKey => Array.from(hrState.professionChecklistProgress.values())
+        .filter(row => String(row.profession_key) === String(professionKey));
 
     return {
         totalCount: 1,
@@ -1654,6 +1732,296 @@ function createFakePool() {
                     hourly_rate: staff.hourly_rate ?? 140,
                     rate_unit: staff.rate_unit || 'hour'
                 }] : [], rowCount: staff ? 1 : 0 };
+            }
+            if (/SELECT id, key, title, department, is_active FROM hr_professions WHERE \(\$1::integer\[\] IS NULL OR id = ANY\(\$1::integer\[\]\)\)/i.test(text)) {
+                const professionIds = Array.isArray(params[0]) ? new Set(params[0].map(Number)) : null;
+                const professionKeys = Array.isArray(params[1]) ? new Set(params[1].map(String)) : null;
+                const includeInactive = params[2] === true;
+                const rows = Array.from(hrState.hrProfessions.values())
+                    .filter(profession => !professionIds || professionIds.has(Number(profession.id)))
+                    .filter(profession => !professionKeys || professionKeys.has(String(profession.key)))
+                    .filter(profession => includeInactive || profession.is_active !== false)
+                    .map(profession => ({
+                        id: profession.id,
+                        key: profession.key,
+                        title: profession.title,
+                        department: profession.department || 'Operations',
+                        is_active: profession.is_active
+                    }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/SELECT id, key, title, department, is_active FROM hr_professions WHERE (?:id|key) = \$1(?: FOR UPDATE)?$/i.test(text)) {
+                const byId = /WHERE id = \$1/i.test(text);
+                const profession = byId
+                    ? professionById(params[0])
+                    : hrState.hrProfessions.get(String(params[0]));
+                return {
+                    rows: profession ? [{
+                        id: profession.id,
+                        key: profession.key,
+                        title: profession.title,
+                        department: profession.department || 'Operations',
+                        is_active: profession.is_active
+                    }] : [],
+                    rowCount: profession ? 1 : 0
+                };
+            }
+            if (/FROM hr_profession_checklist_items WHERE profession_id = ANY\(\$1::integer\[\]\)/i.test(text)) {
+                const professionIds = new Set((params[0] || []).map(Number));
+                const includeArchived = params[1] === true;
+                const rows = Array.from(hrState.professionChecklistItems.values())
+                    .filter(item => professionIds.has(Number(item.profession_id)))
+                    .filter(item => includeArchived || item.is_active !== false)
+                    .sort((left, right) => Number(left.profession_id) - Number(right.profession_id)
+                        || Number(right.is_active !== false) - Number(left.is_active !== false)
+                        || Number(left.sort_order) - Number(right.sort_order)
+                        || Number(left.id) - Number(right.id))
+                    .map(item => ({ ...item }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/FROM hr_profession_checklist_items ORDER BY profession_id, is_active DESC, sort_order, id$/i.test(text)) {
+                const rows = Array.from(hrState.professionChecklistItems.values())
+                    .sort((left, right) => Number(left.profession_id) - Number(right.profession_id)
+                        || Number(right.is_active !== false) - Number(left.is_active !== false)
+                        || Number(left.sort_order) - Number(right.sort_order)
+                        || Number(left.id) - Number(right.id))
+                    .map(item => ({ ...item }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/FROM hr_profession_checklist_items WHERE profession_id = \$1 AND item_key = \$2(?: FOR UPDATE)?$/i.test(text)) {
+                const item = Array.from(hrState.professionChecklistItems.values()).find(row =>
+                    Number(row.profession_id) === Number(params[0]) && row.item_key === String(params[1])
+                );
+                return { rows: item ? [{ ...item }] : [], rowCount: item ? 1 : 0 };
+            }
+            if (/SELECT id, name, is_active FROM staff WHERE id = \$1(?: FOR UPDATE)?$/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [{ id: staff.id, name: staff.name, is_active: staff.is_active }] : [], rowCount: staff ? 1 : 0 };
+            }
+            if (/SELECT id, staff_id, profession_key, is_primary, status, admission_status, internship_status FROM staff_role_assignments WHERE staff_id = \$1 AND profession_key = \$2(?: FOR SHARE)?$/i.test(text)) {
+                const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
+                return { rows: assignment ? [{ id: assignment.id || 1, ...assignment }] : [], rowCount: assignment ? 1 : 0 };
+            }
+            if (/SELECT id AS progress_id, staff_id, profession_key, checklist_item_id AS progress_checklist_item_id,[\s\S]+FROM hr_staff_profession_checklist_progress WHERE staff_id = \$1 AND checklist_item_id = \$2 FOR UPDATE/i.test(text)) {
+                const row = hrState.professionChecklistProgress.get(checklistProgressKey(params[0], params[1]));
+                return {
+                    rows: row ? [{
+                        progress_id: row.id,
+                        staff_id: row.staff_id,
+                        profession_key: row.profession_key,
+                        progress_checklist_item_id: row.checklist_item_id,
+                        progress_checklist_key: row.checklist_key,
+                        legacy_checklist_key: row.legacy_checklist_key || null,
+                        progress_title: row.title,
+                        completed_at: row.completed_at,
+                        completed_by: row.completed_by,
+                        notes: row.notes,
+                        progress_created_at: row.created_at,
+                        progress_updated_at: row.updated_at
+                    }] : [],
+                    rowCount: row ? 1 : 0
+                };
+            }
+            if (/INSERT INTO hr_staff_profession_checklist_progress/i.test(text) && /ON CONFLICT \(staff_id, checklist_item_id\)/i.test(text)) {
+                const [staffId, professionKey, itemKey, checklistItemId, title, completed, completedBy, notes] = params;
+                const key = checklistProgressKey(staffId, checklistItemId);
+                const existing = hrState.professionChecklistProgress.get(key);
+                const row = {
+                    id: existing?.id || hrState.professionChecklistProgress.size + 1,
+                    staff_id: Number(staffId),
+                    profession_key: String(professionKey),
+                    checklist_item_id: Number(checklistItemId),
+                    checklist_key: String(itemKey),
+                    legacy_checklist_key: existing?.legacy_checklist_key || null,
+                    title: String(title),
+                    completed_at: completed ? (existing?.completed_at || '2099-06-06T12:45:00Z') : null,
+                    completed_by: completed ? (completedBy || null) : null,
+                    notes: notes || null,
+                    created_at: existing?.created_at || '2099-06-06T11:50:00Z',
+                    updated_at: '2099-06-06T12:45:00Z'
+                };
+                hrState.professionChecklistProgress.set(key, row);
+                return {
+                    rows: [{
+                        progress_id: row.id,
+                        staff_id: row.staff_id,
+                        profession_key: row.profession_key,
+                        progress_checklist_item_id: row.checklist_item_id,
+                        progress_checklist_key: row.checklist_key,
+                        legacy_checklist_key: row.legacy_checklist_key,
+                        progress_title: row.title,
+                        completed_at: row.completed_at,
+                        completed_by: row.completed_by,
+                        notes: row.notes,
+                        progress_created_at: row.created_at,
+                        progress_updated_at: row.updated_at
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/WITH requested AS \( SELECT staff_id, profession_key FROM jsonb_to_recordset\(\$1::jsonb\)/i.test(text)
+                && /JOIN hr_profession_checklist_items item ON item\.profession_id = profession\.id/i.test(text)) {
+                const assignments = JSON.parse(params[0] || '[]');
+                const includeArchived = params[1] === true;
+                const rows = [];
+                assignments.forEach(assignment => {
+                    const profession = hrState.hrProfessions.get(String(assignment.profession_key));
+                    if (!profession) return;
+                    checklistItemsForProfession(profession.id, includeArchived).forEach(item => {
+                        const progress = hrState.professionChecklistProgress.get(checklistProgressKey(assignment.staff_id, item.id));
+                        rows.push({
+                            staff_id: Number(assignment.staff_id),
+                            profession_id: profession.id,
+                            profession_key: profession.key,
+                            profession_title: profession.title,
+                            department: profession.department || 'Operations',
+                            profession_is_active: profession.is_active,
+                            item_id: item.id,
+                            item_key: item.item_key,
+                            item_title: item.title,
+                            sort_order: item.sort_order,
+                            item_is_active: item.is_active,
+                            legacy_position: item.legacy_position,
+                            progress_id: progress?.id || null,
+                            progress_checklist_item_id: progress?.checklist_item_id || null,
+                            progress_checklist_key: progress?.checklist_key || null,
+                            legacy_checklist_key: progress?.legacy_checklist_key || null,
+                            progress_title: progress?.title || null,
+                            completed_at: progress?.completed_at || null,
+                            completed_by: progress?.completed_by || null,
+                            notes: progress?.notes || null,
+                            progress_created_at: progress?.created_at || null,
+                            progress_updated_at: progress?.updated_at || null
+                        });
+                    });
+                });
+                return { rows, rowCount: rows.length };
+            }
+            if (/WITH requested AS \( SELECT staff_id, profession_key FROM jsonb_to_recordset\(\$1::jsonb\)/i.test(text)
+                && /JOIN hr_staff_profession_checklist_progress progress/i.test(text)
+                && /LEFT JOIN hr_profession_checklist_migration_issues issue/i.test(text)) {
+                const assignments = JSON.parse(params[0] || '[]');
+                const requested = new Set(assignments.map(row => `${Number(row.staff_id)}:${String(row.profession_key)}`));
+                const rows = Array.from(hrState.professionChecklistProgress.values())
+                    .filter(progress => requested.has(`${Number(progress.staff_id)}:${String(progress.profession_key)}`))
+                    .filter(progress => !progress.checklist_item_id || !hrState.professionChecklistItems.has(Number(progress.checklist_item_id)))
+                    .map(progress => ({
+                        progress_id: progress.id,
+                        staff_id: progress.staff_id,
+                        profession_key: progress.profession_key,
+                        progress_checklist_item_id: progress.checklist_item_id || null,
+                        progress_checklist_key: progress.checklist_key,
+                        legacy_checklist_key: progress.legacy_checklist_key || null,
+                        progress_title: progress.title,
+                        completed_at: progress.completed_at,
+                        completed_by: progress.completed_by,
+                        notes: progress.notes,
+                        progress_created_at: progress.created_at,
+                        progress_updated_at: progress.updated_at,
+                        issue_reason: 'unmapped_legacy_progress',
+                        candidate_item_keys: []
+                    }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/WITH requested AS \( SELECT staff_id, profession_key FROM jsonb_to_recordset\(\$1::jsonb\)/i.test(text)
+                && /LEFT JOIN hr_professions hp ON hp\.key = requested\.profession_key/i.test(text)) {
+                const assignments = JSON.parse(params[0] || '[]');
+                const rows = assignments.map(requested => {
+                    const profession = hrState.hrProfessions.get(String(requested.profession_key));
+                    const assignment = hrState.staffRoleAssignments.get(`${Number(requested.staff_id)}:${String(requested.profession_key)}`);
+                    return {
+                        staff_id: Number(requested.staff_id),
+                        profession_key: String(requested.profession_key),
+                        profession_title: profession?.title || null,
+                        profession_is_active: profession?.is_active ?? null,
+                        is_primary: assignment?.is_primary ?? null,
+                        assignment_status: assignment?.status || null,
+                        admission_status: assignment?.admission_status || null,
+                        internship_status: assignment?.internship_status || null
+                    };
+                });
+                return { rows, rowCount: rows.length };
+            }
+            if (/WITH item_counts AS \(/i.test(text) && /FROM hr_professions profession LEFT JOIN item_counts/i.test(text)) {
+                const includeInactiveProfessions = params[3] === true;
+                const rows = Array.from(hrState.hrProfessions.values())
+                    .filter(profession => includeInactiveProfessions || profession.is_active !== false)
+                    .map(profession => {
+                        const items = checklistItemsForProfession(profession.id, true);
+                        const assignedStaff = Array.from(hrState.staffRoleAssignments.values())
+                            .filter(assignment => assignment.profession_key === profession.key)
+                            .filter(assignment => hrState.staff.get(Number(assignment.staff_id))?.is_active !== false)
+                            .length;
+                        return {
+                            id: profession.id,
+                            key: profession.key,
+                            title: profession.title,
+                            department: profession.department || 'Operations',
+                            is_active: profession.is_active,
+                            active_items: items.filter(item => item.is_active !== false).length,
+                            archived_items: items.filter(item => item.is_active === false).length,
+                            assigned_staff: assignedStaff,
+                            orphaned_progress: checklistProgressForProfession(profession.key)
+                                .filter(progress => !progress.checklist_item_id).length
+                        };
+                    });
+                return { rows, rowCount: rows.length };
+            }
+            if (/WITH classified AS \(/i.test(text) && /AS checklist_status/i.test(text) && /FROM with_status/i.test(text)) {
+                const rows = Array.from(hrState.staffRoleAssignments.values())
+                    .map((assignment, index) => {
+                        const staff = hrState.staff.get(Number(assignment.staff_id));
+                        const profession = hrState.hrProfessions.get(String(assignment.profession_key));
+                        if (!staff || !profession || (params[3] !== true && profession.is_active === false)) return null;
+                        if (params[4] !== true && staff.is_active === false) return null;
+                        const items = checklistItemsForProfession(profession.id, false);
+                        const completedItems = items.filter(item =>
+                            hrState.professionChecklistProgress.get(checklistProgressKey(staff.id, item.id))?.completed_at
+                        ).length;
+                        const checklistStatus = items.length === 0
+                            ? 'without_template'
+                            : completedItems >= items.length
+                                ? 'completed'
+                                : completedItems > 0 ? 'in_progress' : 'not_started';
+                        return {
+                            assignment_id: assignment.id || index + 1,
+                            staff_id: staff.id,
+                            staff_name: staff.name,
+                            staff_is_active: staff.is_active,
+                            assignment_status: assignment.status,
+                            is_primary: assignment.is_primary,
+                            admission_status: assignment.admission_status,
+                            internship_status: assignment.internship_status,
+                            profession_id: profession.id,
+                            profession_key: profession.key,
+                            profession_title: profession.title,
+                            department: profession.department || 'Operations',
+                            total_items: items.length,
+                            completed_items: completedItems,
+                            checklist_status: checklistStatus
+                        };
+                    })
+                    .filter(Boolean);
+                const filtered = Array.isArray(params[7])
+                    ? rows.filter(row => params[7].includes(row.checklist_status))
+                    : rows;
+                const counts = {
+                    filtered_total: filtered.length,
+                    without_template_total: filtered.filter(row => row.checklist_status === 'without_template').length,
+                    not_started_total: filtered.filter(row => row.checklist_status === 'not_started').length,
+                    in_progress_total: filtered.filter(row => row.checklist_status === 'in_progress').length,
+                    completed_total: filtered.filter(row => row.checklist_status === 'completed').length
+                };
+                const offset = Number(params[9]) || 0;
+                const limit = Number(params[8]) || 200;
+                const page = filtered.slice(offset, offset + limit).map(row => ({ ...row, ...counts }));
+                return { rows: page, rowCount: page.length };
+            }
+            if (/FROM hr_staff_profession_checklist_progress progress JOIN hr_profession_checklist_items item[\s\S]+item\.is_active = false/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
+            if (/FROM hr_staff_profession_checklist_progress progress JOIN staff member[\s\S]+LEFT JOIN hr_profession_checklist_migration_issues issue/i.test(text)) {
+                return { rows: [], rowCount: 0 };
             }
             if (/SELECT id, key, title, is_active FROM hr_professions WHERE key = \$1/i.test(text)) {
                 const profession = hrState.hrProfessions.get(String(params[0]));
@@ -2873,8 +3241,17 @@ function createFakePool() {
             if (/FROM staff_shift_preferences[\s\S]+ORDER BY profession_key, staff_id, day_type/i.test(text)) {
                 return { rows: [{ staff_id: 45, profession_key: 'animator', day_type: 'weekday', start_time: '10:00', end_time: '18:00' }] };
             }
-            if (/FROM hr_staff_profession_checklist_progress[\s\S]+GROUP BY profession_key/i.test(text)) {
-                return { rows: [{ profession_key: 'animator', progress_records: 2, completed_records: 1, staff_with_progress: 1 }] };
+            if (/FROM hr_staff_profession_checklist_progress progress[\s\S]+GROUP BY progress\.profession_key/i.test(text)) {
+                return { rows: [{
+                    profession_key: 'animator',
+                    active_progress_records: 2,
+                    active_completed_records: 1,
+                    active_staff_with_progress: 1,
+                    historical_progress_records: 3,
+                    historical_completed_records: 2,
+                    archived_progress_records: 1,
+                    orphaned_progress_records: 0
+                }] };
             }
             if (/FROM training_courses[\s\S]+WHERE profession_key IS NOT NULL[\s\S]+GROUP BY profession_key/i.test(text)) {
                 return { rows: [{ profession_key: 'animator', course_count: 2, active_course_count: 1 }] };
@@ -4864,11 +5241,13 @@ describe('route-level API safety smoke', () => {
 
         const checked = await request('PUT', '/api/hr/staff/45/profession-checklist', {
             profession_key: 'animator',
-            checklist_key: 'item_1',
+            checklist_key: 'chk_animator_intro',
             title: 'Вступ у роль аніматора',
             completed: true
         }, withAuth());
         assert.equal(checked.status, 200, JSON.stringify(checked.data));
+        assert.equal(checked.data.item.itemKey, 'chk_animator_intro');
+        assert.equal(checked.data.item.title, 'Animator role introduction');
         assert.equal(checked.data.onboarding.profession_key, 'animator');
         assert.equal(checked.data.onboarding.completed_items, 1);
         assert.equal(checked.data.onboarding.status, 'in_progress');
@@ -4886,11 +5265,12 @@ describe('route-level API safety smoke', () => {
         queries.length = 0;
         const completed = await request('PUT', '/api/hr/staff/45/profession-checklist', {
             profession_key: 'animator',
-            checklist_key: 'item_2',
+            checklist_key: 'chk_animator_trial',
             title: 'Пробна зміна аніматора',
             completed: true
         }, withAuth());
         assert.equal(completed.status, 200, JSON.stringify(completed.data));
+        assert.equal(completed.data.item.itemKey, 'chk_animator_trial');
         assert.equal(completed.data.onboarding.status, 'completed');
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'profession_onboarding_completed'));
     });
@@ -5821,6 +6201,38 @@ describe('route-level API safety smoke', () => {
         assert.equal(system.status, 200, JSON.stringify(system.data));
         assert.equal(system.data.data.profession.source, 'system');
         assert.equal(system.data.data.profession.isReadonly, true);
+    });
+
+    it('serves normalized profession checklist reads while protecting mutations by manage_staff', async () => {
+        const readonlyHeaders = withAuth({}, 'security');
+        const template = await request('GET', '/api/hr/professions/animator/checklist', undefined, readonlyHeaders);
+        assert.equal(template.status, 200, JSON.stringify(template.data));
+        assert.deepEqual(
+            template.data.data.activeItems.map(item => item.itemKey),
+            ['chk_animator_intro', 'chk_animator_trial']
+        );
+        assert.equal(template.data.data.source, 'hr_profession_checklist_items');
+
+        const progress = await request(
+            'GET',
+            '/api/hr/professions/animator/staff/45/checklist',
+            undefined,
+            readonlyHeaders
+        );
+        assert.equal(progress.status, 200, JSON.stringify(progress.data));
+        assert.equal(progress.data.data.summary.total, 2);
+        assert.equal(progress.data.data.summary.completed, 2);
+
+        const dashboard = await request('GET', '/api/hr/checklists/dashboard', undefined, readonlyHeaders);
+        assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+        assert.equal(dashboard.data.data.summary.completed >= 1, true);
+        assert.equal(dashboard.data.data.professions.find(item => item.key === 'animator').activeItems, 2);
+
+        const deniedMutation = await request('POST', '/api/hr/professions/animator/checklist/items', {
+            title: 'Must stay blocked'
+        }, readonlyHeaders);
+        assert.equal(deniedMutation.status, 403, JSON.stringify(deniedMutation.data));
+        assert.equal(deniedMutation.data.error, 'Insufficient permissions');
     });
 
     it('persists HR company structure as editable org chart nodes', async () => {

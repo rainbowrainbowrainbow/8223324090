@@ -4,10 +4,101 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
+const { requireMinRole, authenticateToken, canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const {
+    isProfessionChecklistError,
+    normalizeChecklistProgressRow,
+    validateStaffProfessionChecklistTarget,
+    toggleStaffProfessionChecklistProgress
+} = require('../services/professionChecklists');
+const { syncProfessionOnboardingProgress } = require('../services/hrOnboarding');
 
 const log = createLogger('Training');
+const PROFESSION_SEED_SOURCE = 'hr_profession_seed';
+
+function isProfessionSeedCourse(course = {}) {
+    return String(course.source || '').trim() === PROFESSION_SEED_SOURCE;
+}
+
+function trainingUserId(req) {
+    const value = Number(req.user?.id || req.user?.userId);
+    return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function trainingCourseRequestError(message, status, code) {
+    const error = new Error(message);
+    error.status = status;
+    error.code = code;
+    return error;
+}
+
+async function loadLinkedStaffProfile(db, userId) {
+    if (!userId) return { status: 'missing', staffId: null, staff: null };
+    const result = await db.query(
+        `SELECT profile.staff_id, staff.name, staff.is_active
+         FROM employee_profiles profile
+         JOIN staff ON staff.id = profile.staff_id
+         WHERE profile.user_id = $1
+           AND COALESCE(profile.is_active, true) = true
+           AND profile.staff_id IS NOT NULL
+         ORDER BY profile.id
+         LIMIT 2`,
+        [userId]
+    );
+    if (result.rows.length !== 1) {
+        return {
+            status: result.rows.length > 1 ? 'ambiguous' : 'missing',
+            staffId: null,
+            staff: null
+        };
+    }
+    const row = result.rows[0];
+    return {
+        status: 'linked',
+        staffId: Number(row.staff_id),
+        staff: {
+            id: Number(row.staff_id),
+            name: row.name || '',
+            isActive: row.is_active !== false
+        }
+    };
+}
+
+function requireActiveLinkedStaffProfile(linkedProfile) {
+    if (linkedProfile.status !== 'linked') {
+        throw trainingCourseRequestError(
+            linkedProfile.status === 'ambiguous'
+                ? 'CRM-акаунт має неоднозначний зв’язок із працівником'
+                : 'CRM-акаунт не прив’язаний до HR-профілю',
+            409,
+            linkedProfile.status === 'ambiguous'
+                ? 'TRAINING_STAFF_LINK_AMBIGUOUS'
+                : 'TRAINING_STAFF_LINK_REQUIRED'
+        );
+    }
+    if (linkedProfile.staff?.isActive === false) {
+        throw trainingCourseRequestError(
+            'Прогрес не можна змінювати для архівного працівника',
+            409,
+            'TRAINING_STAFF_INACTIVE'
+        );
+    }
+    return linkedProfile;
+}
+
+function sendTrainingCourseError(res, error, context) {
+    const status = Number(error?.status || error?.statusCode || 0);
+    if (isProfessionChecklistError(error) || (status >= 400 && status < 500)) {
+        return res.status(status || 400).json({
+            success: false,
+            error: error.message,
+            code: error.code || 'TRAINING_COURSE_REQUEST_FAILED'
+        });
+    }
+    log.error(context, error);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+}
 
 // Auto-categorize training input by keywords
 function categorizeContent(text) {
@@ -752,18 +843,94 @@ router.post('/courses', requireMinRole('manager'), async (req, res) => {
 // GET /api/training/courses — list courses
 router.get('/courses', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const result = await pool.query(`
-            SELECT c.*, u.name AS instructor_name,
-                   e.current_lecture, e.completed_at,
-                   (SELECT COUNT(*) FROM training_course_lectures WHERE course_id = c.id) AS total_lectures
-            FROM training_courses c
-            LEFT JOIN users u ON u.id = c.instructor_id
-            LEFT JOIN training_course_enrollment e ON e.course_id = c.id AND e.staff_id = $1
-            WHERE c.is_active = true
-            ORDER BY c.created_at DESC
-        `, [userId]);
-        res.json({ success: true, courses: result.rows });
+        const userId = trainingUserId(req);
+        if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+        const linkedProfile = await loadLinkedStaffProfile(pool, userId);
+        const [courseResult, metricResult] = await Promise.all([
+            pool.query(
+                `SELECT course.*, instructor.name AS instructor_name,
+                        enrollment.current_lecture, enrollment.completed_at
+                 FROM training_courses course
+                 LEFT JOIN users instructor ON instructor.id = course.instructor_id
+                 LEFT JOIN training_course_enrollment enrollment
+                   ON enrollment.course_id = course.id
+                  AND enrollment.staff_id = $1
+                  AND course.source IS DISTINCT FROM $2
+                 WHERE course.is_active = true
+                 ORDER BY course.created_at DESC`,
+                [linkedProfile.staffId, PROFESSION_SEED_SOURCE]
+            ),
+            pool.query(
+                `SELECT course.id AS course_id,
+                        COUNT(lecture.id) FILTER (
+                            WHERE lecture.is_published = true
+                        )::integer AS published_total,
+                        COUNT(lecture.id) FILTER (
+                            WHERE course.source = $2
+                              AND lecture.is_published = true
+                              AND item.is_active = true
+                              AND profession.key = course.profession_key
+                        )::integer AS canonical_total,
+                        COUNT(progress.id) FILTER (
+                            WHERE course.source = $2
+                              AND lecture.is_published = true
+                              AND item.is_active = true
+                              AND profession.key = course.profession_key
+                              AND progress.completed_at IS NOT NULL
+                        )::integer AS canonical_completed,
+                        MAX(progress.completed_at) FILTER (
+                            WHERE course.source = $2
+                              AND lecture.is_published = true
+                              AND item.is_active = true
+                              AND profession.key = course.profession_key
+                        ) AS canonical_last_completed_at
+                 FROM training_courses course
+                 LEFT JOIN training_course_lectures lecture ON lecture.course_id = course.id
+                 LEFT JOIN hr_profession_checklist_items item ON item.id = lecture.checklist_item_id
+                 LEFT JOIN hr_professions profession ON profession.id = item.profession_id
+                 LEFT JOIN hr_staff_profession_checklist_progress progress
+                   ON progress.staff_id = $1::integer
+                  AND progress.checklist_item_id = item.id
+                 WHERE course.is_active = true
+                 GROUP BY course.id`,
+                [linkedProfile.staffId, PROFESSION_SEED_SOURCE]
+            )
+        ]);
+        const metricsByCourse = new Map(metricResult.rows.map(row => [Number(row.course_id), row]));
+        const canManageSeedProgress = canUseAction(req.user, 'manage_staff');
+        const courses = courseResult.rows.map(row => {
+            const metrics = metricsByCourse.get(Number(row.id)) || {};
+            if (isProfessionSeedCourse(row)) {
+                const total = Number(metrics.canonical_total || 0);
+                const completed = Math.min(total, Number(metrics.canonical_completed || 0));
+                return {
+                    ...row,
+                    current_lecture: null,
+                    completed_at: total > 0 && completed >= total ? metrics.canonical_last_completed_at || null : null,
+                    total_lectures: total,
+                    completed_lectures: completed,
+                    progress_mode: 'canonical_checklist',
+                    canonical_staff_id: linkedProfile.staffId,
+                    canonical_staff_link_status: linkedProfile.status,
+                    can_complete: canManageSeedProgress
+                        && linkedProfile.status === 'linked'
+                        && linkedProfile.staff?.isActive !== false
+                };
+            }
+            const total = Number(metrics.published_total || 0);
+            const current = Math.max(0, Math.min(total, Number(row.current_lecture || 0)));
+            return {
+                ...row,
+                current_lecture: current,
+                total_lectures: total,
+                completed_lectures: row.completed_at ? total : current,
+                progress_mode: 'legacy_enrollment',
+                enrollment_staff_id: linkedProfile.staffId,
+                staff_link_status: linkedProfile.status,
+                can_complete: linkedProfile.status === 'linked' && linkedProfile.staff?.isActive !== false
+            };
+        });
+        res.json({ success: true, courses });
     } catch (err) {
         log.error('Get courses error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -773,20 +940,85 @@ router.get('/courses', async (req, res) => {
 // GET /api/training/courses/:id — course details with lectures
 router.get('/courses/:id', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = trainingUserId(req);
+        if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
         const course = await pool.query('SELECT * FROM training_courses WHERE id = $1', [req.params.id]);
         if (course.rows.length === 0) return res.status(404).json({ error: 'Курс не знайдено' });
+        const courseRow = course.rows[0];
+        const linkedProfile = await loadLinkedStaffProfile(pool, userId);
+        if (isProfessionSeedCourse(courseRow)) {
+            const lectures = await pool.query(
+                `SELECT lecture.id, lecture.course_id, lecture.title, lecture.description,
+                        item.sort_order, lecture.article_id, lecture.resource_urls,
+                        lecture.duration_minutes, lecture.is_published, lecture.scheduled_date,
+                        lecture.created_at, profession.key AS profession_key,
+                        item.item_key AS checklist_key, item.title AS checklist_item,
+                        item.id AS checklist_item_id,
+                        progress.completed_at, progress.completed_by, progress.notes,
+                        progress.updated_at AS progress_updated_at
+                 FROM training_course_lectures lecture
+                 JOIN hr_profession_checklist_items item
+                   ON item.id = lecture.checklist_item_id
+                  AND item.is_active = true
+                 JOIN hr_professions profession
+                   ON profession.id = item.profession_id
+                  AND profession.key = $2
+                 LEFT JOIN hr_staff_profession_checklist_progress progress
+                   ON progress.staff_id = $3::integer
+                  AND progress.checklist_item_id = item.id
+                 WHERE lecture.course_id = $1
+                   AND lecture.is_published = true
+                 ORDER BY item.sort_order, item.id, lecture.id`,
+                [req.params.id, courseRow.profession_key, linkedProfile.staffId]
+            );
+            const completed = lectures.rows.filter(row => row.completed_at).length;
+            const total = lectures.rows.length;
+            return res.json({
+                course: {
+                    ...courseRow,
+                    total_lectures: total,
+                    completed_lectures: completed,
+                    progress_mode: 'canonical_checklist',
+                    canonical_staff_id: linkedProfile.staffId,
+                    canonical_staff_link_status: linkedProfile.status,
+                    can_complete: canUseAction(req.user, 'manage_staff')
+                        && linkedProfile.status === 'linked'
+                        && linkedProfile.staff?.isActive !== false
+                },
+                lectures: lectures.rows,
+                enrollment: null,
+                canonicalProgress: {
+                    staffId: linkedProfile.staffId,
+                    staffLinkStatus: linkedProfile.status,
+                    completed,
+                    total
+                }
+            });
+        }
 
-        const lectures = await pool.query(
-            `SELECT * FROM training_course_lectures WHERE course_id = $1 ORDER BY sort_order ASC`,
-            [req.params.id]
-        );
-        const enrollment = await pool.query(
-            `SELECT * FROM training_course_enrollment WHERE course_id = $1 AND staff_id = $2`,
-            [req.params.id, userId]
-        );
+        const [lectures, enrollment] = await Promise.all([
+            pool.query(
+                `SELECT *
+                 FROM training_course_lectures
+                 WHERE course_id = $1
+                   AND is_published = true
+                 ORDER BY sort_order, id`,
+                [req.params.id]
+            ),
+            pool.query(
+                `SELECT * FROM training_course_enrollment WHERE course_id = $1 AND staff_id = $2`,
+                [req.params.id, linkedProfile.staffId]
+            )
+        ]);
         res.json({
-            course: course.rows[0],
+            course: {
+                ...courseRow,
+                total_lectures: lectures.rows.length,
+                progress_mode: 'legacy_enrollment',
+                enrollment_staff_id: linkedProfile.staffId,
+                staff_link_status: linkedProfile.status,
+                can_complete: linkedProfile.status === 'linked' && linkedProfile.staff?.isActive !== false
+            },
             lectures: lectures.rows,
             enrollment: enrollment.rows[0] || null
         });
@@ -801,6 +1033,19 @@ router.post('/courses/:id/lectures', requireMinRole('manager'), async (req, res)
     try {
         const { title, description, articleId, resourceUrls, durationMinutes, scheduledDate } = req.body;
         if (!title) return res.status(400).json({ error: 'Назва лекції обов\'язкова' });
+
+        const course = await pool.query(
+            'SELECT id, source FROM training_courses WHERE id = $1',
+            [req.params.id]
+        );
+        if (!course.rows.length) return res.status(404).json({ error: 'Курс не знайдено' });
+        if (isProfessionSeedCourse(course.rows[0])) {
+            return res.status(409).json({
+                success: false,
+                error: 'Лекції цього курсу керуються шаблоном професійного чекліста',
+                code: 'PROFESSION_CHECKLIST_CANONICAL_TEMPLATE'
+            });
+        }
 
         // Get next sort_order
         const orderResult = await pool.query(
@@ -818,7 +1063,14 @@ router.post('/courses/:id/lectures', requireMinRole('manager'), async (req, res)
 
         // Update lectures_count
         await pool.query(
-            'UPDATE training_courses SET lectures_count = (SELECT COUNT(*) FROM training_course_lectures WHERE course_id = $1) WHERE id = $1',
+            `UPDATE training_courses
+             SET lectures_count = (
+                 SELECT COUNT(*)
+                 FROM training_course_lectures
+                 WHERE course_id = $1
+                   AND is_published = true
+             )
+             WHERE id = $1`,
             [req.params.id]
         );
 
@@ -832,52 +1084,283 @@ router.post('/courses/:id/lectures', requireMinRole('manager'), async (req, res)
 // POST /api/training/courses/:id/enroll — enroll in course
 router.post('/courses/:id/enroll', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = trainingUserId(req);
+        if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+        const course = await pool.query(
+            'SELECT id, source, is_active FROM training_courses WHERE id = $1',
+            [req.params.id]
+        );
+        if (!course.rows.length) return res.status(404).json({ error: 'Курс не знайдено' });
+        if (isProfessionSeedCourse(course.rows[0])) {
+            return res.status(409).json({
+                success: false,
+                error: 'Прогрес цього курсу ведеться професійним чеклістом без enrollment',
+                code: 'PROFESSION_CHECKLIST_CANONICAL_PROGRESS'
+            });
+        }
+        if (course.rows[0].is_active === false) {
+            return res.status(409).json({ success: false, error: 'Курс неактивний', code: 'TRAINING_COURSE_INACTIVE' });
+        }
+        const linkedProfile = requireActiveLinkedStaffProfile(
+            await loadLinkedStaffProfile(pool, userId)
+        );
         const result = await pool.query(
             `INSERT INTO training_course_enrollment (course_id, staff_id)
              VALUES ($1, $2)
              ON CONFLICT (course_id, staff_id) DO NOTHING
              RETURNING *`,
-            [req.params.id, userId]
+            [req.params.id, linkedProfile.staffId]
         );
-        res.json({ success: true, enrolled: result.rows.length > 0 });
+        res.json({
+            success: true,
+            enrolled: result.rows.length > 0,
+            staffId: linkedProfile.staffId
+        });
     } catch (err) {
-        log.error('Enroll error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        return sendTrainingCourseError(res, err, 'Enroll error');
     }
 });
 
 // POST /api/training/courses/:courseId/lectures/:lectureId/complete — mark lecture complete
 router.post('/courses/:courseId/lectures/:lectureId/complete', async (req, res) => {
+    let client = null;
+    let inTransaction = false;
     try {
-        const userId = req.user.id || req.user.userId;
+        client = await pool.connect();
+        const userId = trainingUserId(req);
+        if (!userId) throw trainingCourseRequestError('Authentication required', 401, 'TRAINING_AUTH_REQUIRED');
         const { courseId, lectureId } = req.params;
+        await client.query('BEGIN');
+        inTransaction = true;
 
-        // Get lecture sort_order
-        const lecture = await pool.query(
-            'SELECT sort_order FROM training_course_lectures WHERE id = $1 AND course_id = $2',
-            [lectureId, courseId]
-        );
-        if (lecture.rows.length === 0) return res.status(404).json({ error: 'Лекцію не знайдено' });
-
-        const nextLecture = lecture.rows[0].sort_order + 1;
-        const totalLectures = await pool.query(
-            'SELECT COUNT(*) AS cnt FROM training_course_lectures WHERE course_id = $1',
+        const courseResult = await client.query(
+            `SELECT id, source, profession_key, is_active
+             FROM training_courses
+             WHERE id = $1`,
             [courseId]
         );
-        const isComplete = nextLecture >= parseInt(totalLectures.rows[0].cnt);
-
-        await pool.query(
-            `UPDATE training_course_enrollment SET current_lecture = $1,
-             completed_at = CASE WHEN $2 THEN NOW() ELSE NULL END
-             WHERE course_id = $3 AND staff_id = $4`,
-            [nextLecture, isComplete, courseId, userId]
+        const course = courseResult.rows[0];
+        if (!course) throw trainingCourseRequestError('Курс не знайдено', 404, 'TRAINING_COURSE_NOT_FOUND');
+        if (course.is_active === false) {
+            throw trainingCourseRequestError('Курс неактивний', 409, 'TRAINING_COURSE_INACTIVE');
+        }
+        const seededCourse = isProfessionSeedCourse(course);
+        if (seededCourse && !canUseAction(req.user, 'manage_staff')) {
+            throw trainingCourseRequestError(
+                'Професійний чекліст доступний лише для перегляду',
+                403,
+                'PROFESSION_CHECKLIST_READ_ONLY'
+            );
+        }
+        const linkedProfile = requireActiveLinkedStaffProfile(
+            await loadLinkedStaffProfile(client, userId)
         );
 
-        res.json({ success: true, currentLecture: nextLecture, courseCompleted: isComplete });
+        if (seededCourse) {
+            const lectureResult = await client.query(
+                `SELECT lecture.id, lecture.checklist_item_id,
+                        item.item_key, item.title, profession.key AS profession_key
+                 FROM training_course_lectures lecture
+                 JOIN hr_profession_checklist_items item
+                   ON item.id = lecture.checklist_item_id
+                  AND item.is_active = true
+                 JOIN hr_professions profession
+                   ON profession.id = item.profession_id
+                  AND profession.key = $3
+                  AND profession.is_active = true
+                 WHERE lecture.id = $1
+                   AND lecture.course_id = $2
+                   AND lecture.is_published = true`,
+                [lectureId, courseId, course.profession_key]
+            );
+            const lecture = lectureResult.rows[0];
+            if (!lecture) {
+                throw trainingCourseRequestError(
+                    'Лекцію не знайдено або пункт чекліста вже архівний',
+                    404,
+                    'TRAINING_LECTURE_NOT_PUBLISHED'
+                );
+            }
+
+            const context = await validateStaffProfessionChecklistTarget(client, {
+                staffId: linkedProfile.staffId,
+                professionKey: course.profession_key,
+                itemKey: lecture.item_key
+            }, {
+                forWrite: true,
+                requireActiveProfession: true,
+                requireActiveItem: true,
+                requireActiveStaff: true,
+                requireAssignment: true,
+                requireActiveAssignment: true
+            });
+            if (Number(context.item?.id) !== Number(lecture.checklist_item_id)) {
+                throw trainingCourseRequestError(
+                    'Лекція більше не відповідає актуальному пункту чекліста',
+                    409,
+                    'TRAINING_CHECKLIST_LINK_CHANGED'
+                );
+            }
+
+            const existingResult = await client.query(
+                `SELECT id AS progress_id, staff_id, profession_key,
+                        checklist_item_id AS progress_checklist_item_id,
+                        checklist_key AS progress_checklist_key,
+                        legacy_checklist_key, title AS progress_title,
+                        completed_at, completed_by, notes,
+                        created_at AS progress_created_at, updated_at AS progress_updated_at
+                 FROM hr_staff_profession_checklist_progress
+                 WHERE staff_id = $1
+                   AND checklist_item_id = $2
+                 FOR UPDATE`,
+                [linkedProfile.staffId, context.item.id]
+            );
+            const existing = normalizeChecklistProgressRow(existingResult.rows[0]);
+            let completion;
+            if (existing?.completed) {
+                completion = {
+                    context,
+                    before: existing,
+                    after: existing,
+                    progress: existing,
+                    changed: false
+                };
+            } else {
+                completion = await toggleStaffProfessionChecklistProgress(client, {
+                    staffId: linkedProfile.staffId,
+                    professionKey: course.profession_key,
+                    itemKey: context.item.itemKey,
+                    completed: true,
+                    notes: existing?.notes ?? null
+                }, {
+                    actor: req.user?.username || null
+                });
+            }
+            const onboarding = await syncProfessionOnboardingProgress(
+                linkedProfile.staffId,
+                course.profession_key,
+                req.user,
+                { db: client, lock: true, ipAddress: req.ip }
+            );
+            const summaryResult = await client.query(
+                `SELECT COUNT(item.id)::integer AS total_items,
+                        COUNT(progress.id) FILTER (
+                            WHERE progress.completed_at IS NOT NULL
+                        )::integer AS completed_items
+                 FROM training_course_lectures lecture
+                 JOIN hr_profession_checklist_items item
+                   ON item.id = lecture.checklist_item_id
+                  AND item.is_active = true
+                 JOIN hr_professions profession
+                   ON profession.id = item.profession_id
+                  AND profession.key = $3
+                 LEFT JOIN hr_staff_profession_checklist_progress progress
+                   ON progress.staff_id = $2
+                  AND progress.checklist_item_id = item.id
+                 WHERE lecture.course_id = $1
+                   AND lecture.is_published = true`,
+                [courseId, linkedProfile.staffId, course.profession_key]
+            );
+            const summary = summaryResult.rows[0] || {};
+            const totalItems = Number(summary.total_items || 0);
+            const completedItems = Number(summary.completed_items || 0);
+            if (completion.changed) {
+                await client.query(
+                    `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+                     VALUES ($1, $2, $3, $4::jsonb, $5)`,
+                    [
+                        'staff_profession_checklist_update',
+                        linkedProfile.staffId,
+                        req.user?.username || null,
+                        JSON.stringify({
+                            source: 'training.profession_seed',
+                            profession_key: course.profession_key,
+                            checklist_item_id: Number(context.item.id),
+                            checklist_key: context.item.itemKey,
+                            completed: true
+                        }),
+                        req.ip
+                    ]
+                );
+            }
+            await client.query('COMMIT');
+            inTransaction = false;
+            return res.json({
+                success: true,
+                progressMode: 'canonical_checklist',
+                checklistItemId: Number(context.item.id),
+                progress: completion.after,
+                onboarding,
+                completedItems,
+                totalItems,
+                courseCompleted: totalItems > 0 && completedItems >= totalItems
+            });
+        }
+
+        const enrollmentResult = await client.query(
+            `WITH published AS (
+                 SELECT lecture.id,
+                        ROW_NUMBER() OVER (ORDER BY lecture.sort_order, lecture.id)::integer AS ordinal,
+                        COUNT(*) OVER ()::integer AS total
+                 FROM training_course_lectures lecture
+                 WHERE lecture.course_id = $1
+                   AND lecture.is_published = true
+             ), selected AS (
+                 SELECT ordinal, total
+                 FROM published
+                 WHERE id = $2
+             ), upserted AS (
+                 INSERT INTO training_course_enrollment
+                     (course_id, staff_id, current_lecture, completed_at)
+                 SELECT $1, $3, selected.ordinal,
+                        CASE WHEN selected.ordinal >= selected.total THEN NOW() ELSE NULL END
+                 FROM selected
+                 ON CONFLICT (course_id, staff_id) DO UPDATE SET
+                    current_lecture = GREATEST(
+                        COALESCE(training_course_enrollment.current_lecture, 0),
+                        EXCLUDED.current_lecture
+                    ),
+                    completed_at = CASE
+                        WHEN training_course_enrollment.completed_at IS NOT NULL
+                            THEN training_course_enrollment.completed_at
+                        WHEN GREATEST(
+                            COALESCE(training_course_enrollment.current_lecture, 0),
+                            EXCLUDED.current_lecture
+                        ) >= (SELECT total FROM selected)
+                            THEN NOW()
+                        ELSE NULL
+                    END
+                 RETURNING current_lecture, completed_at
+             )
+             SELECT upserted.current_lecture, upserted.completed_at,
+                    selected.ordinal, selected.total
+             FROM upserted
+             CROSS JOIN selected`,
+            [courseId, lectureId, linkedProfile.staffId]
+        );
+        const enrollment = enrollmentResult.rows[0];
+        if (!enrollment) {
+            throw trainingCourseRequestError(
+                'Лекцію не знайдено або вона не опублікована',
+                404,
+                'TRAINING_LECTURE_NOT_PUBLISHED'
+            );
+        }
+        await client.query('COMMIT');
+        inTransaction = false;
+        return res.json({
+            success: true,
+            progressMode: 'legacy_enrollment',
+            currentLecture: Number(enrollment.current_lecture || 0),
+            completedLectureOrdinal: Number(enrollment.ordinal || 0),
+            totalLectures: Number(enrollment.total || 0),
+            courseCompleted: Boolean(enrollment.completed_at)
+        });
     } catch (err) {
-        log.error('Complete lecture error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        if (inTransaction && client) await client.query('ROLLBACK').catch(() => {});
+        return sendTrainingCourseError(res, err, 'Complete lecture error');
+    } finally {
+        client?.release();
     }
 });
 

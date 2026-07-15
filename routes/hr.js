@@ -38,7 +38,8 @@ const {
     loadOnboardingProcessesForStaff,
     loadStaffForOnboarding,
     onboardingProgressMeta,
-    syncProfessionOnboardingProgress
+    syncProfessionOnboardingProgress,
+    syncProfessionOnboardingProgressForProfession
 } = require('../services/hrOnboarding');
 const {
     parseTextList,
@@ -48,11 +49,23 @@ const {
     isHiddenProfessionKey,
     loadProfessionWorkspaceCatalog,
     loadProfessionWorkspace,
+    saveStaffProfessionCondition,
     professionCatalogActiveKeySet,
     validateProfessionKeys,
-    staffProfessionKeys,
-    resolveStaffProfessionAssignment
+    staffProfessionKeys
 } = require('../services/professions');
+const {
+    isProfessionChecklistError,
+    loadProfessionChecklistTemplate,
+    createProfessionChecklistItem,
+    renameProfessionChecklistItem,
+    reorderProfessionChecklistItems,
+    archiveProfessionChecklistItem,
+    loadStaffProfessionChecklistProgress,
+    loadProfessionChecklistProgressBatch,
+    toggleStaffProfessionChecklistProgress,
+    loadProfessionChecklistDashboard
+} = require('../services/professionChecklists');
 const {
     activeStaffWhere,
     loadStaffScheduleabilityCards,
@@ -1407,6 +1420,43 @@ function sendHrMutationFailure(res, error) {
     return true;
 }
 
+function sendProfessionChecklistFailure(res, error, logContext) {
+    if (sendHrMutationFailure(res, error)) return true;
+    if (isProfessionChecklistError(error)) {
+        const status = Number(error?.statusCode || error?.status || 400);
+        const responseStatus = status >= 400 && status < 600 ? status : 400;
+        if (responseStatus >= 500) log.error(logContext, error);
+        res.status(responseStatus).json({
+            success: false,
+            code: error.code || 'PROFESSION_CHECKLIST_ERROR',
+            error: responseStatus < 500 ? error.message : 'Помилка роботи з чеклістом професії',
+            ...(error.details !== undefined ? { details: error.details } : {})
+        });
+        return true;
+    }
+    log.error(logContext, error);
+    res.status(500).json({
+        success: false,
+        code: 'PROFESSION_CHECKLIST_REQUEST_FAILED',
+        error: 'Помилка роботи з чеклістом професії'
+    });
+    return true;
+}
+
+function professionChecklistProgressAuditSnapshot(progress) {
+    if (!progress) return null;
+    return {
+        id: progress.id || null,
+        checklist_item_id: progress.checklistItemId || progress.checklist_item_id || null,
+        checklist_key: progress.checklistKey || progress.checklist_key || null,
+        completed: progress.completed === true,
+        completed_at: progress.completedAt || progress.completed_at || null,
+        completed_by: progress.completedBy || progress.completed_by || null,
+        has_notes: Boolean(progress.notes),
+        updated_at: progress.updatedAt || progress.updated_at || null
+    };
+}
+
 function liveQaConfirmationFromRequest(req) {
     return req.get('x-eventgenix-live-qa-confirmation') || req.body?.confirmation || '';
 }
@@ -1527,30 +1577,40 @@ async function validateStaffProfessionInput(roleType, secondaryProfessions, opti
     return { secondaryProfessions: normalizedSecondary };
 }
 
-function checklistKeyForIndex(index) {
-    return `item_${Number(index) + 1}`;
-}
-
-function checklistItemsForProfession(row = {}) {
-    const source = Array.isArray(row.checklist) ? row.checklist : parseTextList(row.checklist, 32);
-    return source.map((title, index) => ({
-        key: checklistKeyForIndex(index),
-        title
-    })).filter(item => item.title);
-}
-
 async function attachTrainingReadiness(staffRows = []) {
     if (!Array.isArray(staffRows) || !staffRows.length) return staffRows;
     const staffIds = staffRows.map(row => Number(row.id)).filter(Number.isFinite);
-    const professionKeys = [...new Set(staffRows.flatMap(row => staffProfessionKeys(row)))];
-    if (!staffIds.length || !professionKeys.length) {
+    if (!staffIds.length) {
+        staffRows.forEach(row => { row.training_readiness = { percent: 0, completed: 0, total: 0, professions: [] }; });
+        return staffRows;
+    }
+    const assignmentResult = await pool.query(
+        `SELECT staff_id, profession_key
+         FROM staff_role_assignments
+         WHERE staff_id = ANY($1::int[])
+         ORDER BY staff_id, is_primary DESC, profession_key`,
+        [staffIds]
+    );
+    const professionKeysByStaffId = new Map(staffRows.map(row => [Number(row.id), new Set(staffProfessionKeys(row))]));
+    assignmentResult.rows.forEach(assignment => {
+        const key = normalizeProfessionKey(assignment.profession_key);
+        if (key && professionKeysByStaffId.has(Number(assignment.staff_id))) {
+            professionKeysByStaffId.get(Number(assignment.staff_id)).add(key);
+        }
+    });
+    const professionKeys = [...new Set([...professionKeysByStaffId.values()].flatMap(keys => [...keys]))];
+    if (!professionKeys.length) {
         staffRows.forEach(row => { row.training_readiness = { percent: 0, completed: 0, total: 0, professions: [] }; });
         return staffRows;
     }
 
-    const [professionRows, courseRows, enrollmentRows, checklistProgressRows] = await Promise.all([
+    const progressAssignments = staffRows.flatMap(row => [...(professionKeysByStaffId.get(Number(row.id)) || [])].map(professionKey => ({
+        staffId: Number(row.id),
+        professionKey
+    })));
+    const [professionRows, courseRows, enrollmentRows, checklistProgress] = await Promise.all([
         pool.query(
-            `SELECT key, title, checklist
+            `SELECT key, title
              FROM hr_professions
              WHERE key = ANY($1::text[]) AND is_active = true`,
             [professionKeys]
@@ -1571,13 +1631,10 @@ async function attachTrainingReadiness(staffRows = []) {
              WHERE staff_id = ANY($1::int[])`,
             [staffIds]
         ),
-        pool.query(
-            `SELECT staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes
-             FROM hr_staff_profession_checklist_progress
-             WHERE staff_id = ANY($1::int[])
-               AND profession_key = ANY($2::text[])`,
-            [staffIds, professionKeys]
-        )
+        loadProfessionChecklistProgressBatch(pool, progressAssignments, {
+            includeArchived: false,
+            includeOrphaned: true
+        })
     ]);
 
     const professionsByKey = new Map(professionRows.rows.map(row => [normalizeProfessionKey(row.key), row]));
@@ -1593,27 +1650,21 @@ async function attachTrainingReadiness(staffRows = []) {
         });
     });
     const enrollmentByStaffCourse = new Map(enrollmentRows.rows.map(row => [`${row.staff_id}:${row.course_id}`, row]));
-    const checklistProgressByStaffProfession = new Map();
-    checklistProgressRows.rows.forEach(row => {
-        const key = `${row.staff_id}:${normalizeProfessionKey(row.profession_key)}`;
-        if (!checklistProgressByStaffProfession.has(key)) checklistProgressByStaffProfession.set(key, new Map());
-        checklistProgressByStaffProfession.get(key).set(row.checklist_key, row);
-    });
-
     staffRows.forEach(row => {
-        const entries = staffProfessionKeys(row).map(professionKey => {
-            const profession = professionsByKey.get(professionKey) || { key: professionKey, title: professionKey, checklist: [] };
-            const checklist = checklistItemsForProfession(profession);
-            const progressMap = checklistProgressByStaffProfession.get(`${row.id}:${professionKey}`) || new Map();
-            const checklistItems = checklist.map(item => {
-                const progress = progressMap.get(item.key);
-                return {
-                    ...item,
-                    completed_at: progress?.completed_at || null,
-                    completed_by: progress?.completed_by || null,
-                    notes: progress?.notes || null
-                };
-            });
+        const entries = [...(professionKeysByStaffId.get(Number(row.id)) || [])].map(professionKey => {
+            const profession = professionsByKey.get(professionKey) || { key: professionKey, title: professionKey };
+            const progressGroup = checklistProgress.byAssignment[`${Number(row.id)}:${professionKey}`];
+            const checklistItems = (progressGroup?.items || []).map(item => ({
+                id: item.id,
+                key: item.itemKey,
+                item_key: item.itemKey,
+                checklist_key: item.itemKey,
+                title: item.title,
+                done: Boolean(item.progress?.completed),
+                completed_at: item.progress?.completedAt || null,
+                completed_by: item.progress?.completedBy || null,
+                notes: item.progress?.notes || null
+            }));
             const checklistCompleted = checklistItems.filter(item => item.completed_at).length;
             const courses = (coursesByProfession.get(professionKey) || [])
                 .filter(course => !(course.source === 'hr_profession_seed' && checklistItems.length))
@@ -2420,7 +2471,7 @@ router.get('/professions', async (req, res) => {
     }
 });
 
-router.post('/professions', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+router.post('/professions', requireHrManage, async (req, res) => {
     try {
         const payload = normalizeProfessionPayload(req.body);
         if (!payload.key || !payload.title) {
@@ -2442,7 +2493,7 @@ router.post('/professions', requireRole('creator', 'director', 'vice_director', 
                 payload.department,
                 payload.shortInfo,
                 JSON.stringify(payload.responsibilities),
-                JSON.stringify(payload.checklist),
+                JSON.stringify([]),
                 payload.color,
                 payload.structureNodeId,
                 payload.sortOrder,
@@ -2460,7 +2511,7 @@ router.post('/professions', requireRole('creator', 'director', 'vice_director', 
     }
 });
 
-router.put('/professions/:id', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+router.put('/professions/:id', requireHrManage, async (req, res) => {
     try {
         const current = await pool.query('SELECT * FROM hr_professions WHERE id = $1', [req.params.id]);
         if (!current.rows.length) return res.status(404).json({ success: false, error: 'Професію не знайдено' });
@@ -2481,20 +2532,18 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
                 department = $2,
                 short_info = $3,
                 responsibilities = $4::jsonb,
-                checklist = $5::jsonb,
-                color = $6,
-                structure_node_id = $7,
-                sort_order = $8,
-                is_active = $9,
+                color = $5,
+                structure_node_id = $6,
+                sort_order = $7,
+                is_active = $8,
                 updated_at = NOW()
-             WHERE id = $10
+             WHERE id = $9
              RETURNING *`,
             [
                 payload.title,
                 payload.department,
                 payload.shortInfo,
                 JSON.stringify(payload.responsibilities),
-                JSON.stringify(payload.checklist),
                 payload.color,
                 payload.structureNodeId,
                 payload.sortOrder,
@@ -2512,6 +2561,286 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
+
+router.get('/checklists/dashboard', async (req, res) => {
+    try {
+        const dashboard = await loadProfessionChecklistDashboard(pool, req.query || {});
+        res.json({ success: true, data: dashboard });
+    } catch (err) {
+        sendProfessionChecklistFailure(res, err, 'GET /hr/checklists/dashboard error');
+    }
+});
+
+router.get('/professions/:professionKey/checklist', async (req, res) => {
+    try {
+        const includeArchivedItems = req.query.include_archived === 'true'
+            || req.query.includeArchived === 'true';
+        const template = await loadProfessionChecklistTemplate(
+            pool,
+            { key: req.params.professionKey },
+            { includeArchivedItems }
+        );
+        res.json({ success: true, data: template });
+    } catch (err) {
+        sendProfessionChecklistFailure(res, err, 'GET /hr/professions/:professionKey/checklist error');
+    }
+});
+
+router.post('/professions/:professionKey/checklist/items', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    let inTransaction = false;
+    try {
+        await client.query('BEGIN');
+        inTransaction = true;
+        const actor = req.user?.username || null;
+        const result = await createProfessionChecklistItem(
+            client,
+            { key: req.params.professionKey },
+            req.body || {},
+            { actor }
+        );
+        const onboardingSync = await syncProfessionOnboardingProgressForProfession(
+            result.profession.key,
+            req.user,
+            { db: client, ipAddress: req.ip }
+        );
+        await auditLog('profession_checklist_item_create', null, actor, {
+            profession_key: result.profession.key,
+            before: result.audit.before,
+            after: result.audit.after,
+            onboarding_sync: onboardingSync.audit
+        }, req.ip, client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        res.status(201).json({
+            success: true,
+            data: {
+                profession: result.profession,
+                item: result.item,
+                position: result.position,
+                onboardingSync
+            }
+        });
+    } catch (err) {
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+        sendProfessionChecklistFailure(res, err, 'POST /hr/professions/:professionKey/checklist/items error');
+    } finally {
+        client.release();
+    }
+});
+
+router.put('/professions/:professionKey/checklist/reorder', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    let inTransaction = false;
+    try {
+        await client.query('BEGIN');
+        inTransaction = true;
+        const actor = req.user?.username || null;
+        const result = await reorderProfessionChecklistItems(
+            client,
+            { key: req.params.professionKey },
+            req.body || {},
+            { actor }
+        );
+        const onboardingSync = await syncProfessionOnboardingProgressForProfession(
+            result.profession.key,
+            req.user,
+            { db: client, ipAddress: req.ip }
+        );
+        await auditLog('profession_checklist_items_reorder', null, actor, {
+            profession_key: result.profession.key,
+            before: result.audit.before,
+            after: result.audit.after,
+            onboarding_sync: onboardingSync.audit
+        }, req.ip, client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        res.json({
+            success: true,
+            data: {
+                profession: result.profession,
+                items: result.items,
+                changed: result.changed,
+                onboardingSync
+            }
+        });
+    } catch (err) {
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+        sendProfessionChecklistFailure(res, err, 'PUT /hr/professions/:professionKey/checklist/reorder error');
+    } finally {
+        client.release();
+    }
+});
+
+router.put('/professions/:professionKey/checklist/items/:itemKey', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    let inTransaction = false;
+    try {
+        await client.query('BEGIN');
+        inTransaction = true;
+        const actor = req.user?.username || null;
+        const result = await renameProfessionChecklistItem(
+            client,
+            { key: req.params.professionKey },
+            req.params.itemKey,
+            req.body || {},
+            { actor }
+        );
+        const onboardingSync = await syncProfessionOnboardingProgressForProfession(
+            result.profession.key,
+            req.user,
+            { db: client, ipAddress: req.ip }
+        );
+        await auditLog('profession_checklist_item_rename', null, actor, {
+            profession_key: result.profession.key,
+            item_key: result.item.itemKey,
+            before: result.audit.before,
+            after: result.audit.after,
+            onboarding_sync: onboardingSync.audit
+        }, req.ip, client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        res.json({
+            success: true,
+            data: {
+                profession: result.profession,
+                item: result.item,
+                changed: result.changed,
+                onboardingSync
+            }
+        });
+    } catch (err) {
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+        sendProfessionChecklistFailure(res, err, 'PUT /hr/professions/:professionKey/checklist/items/:itemKey error');
+    } finally {
+        client.release();
+    }
+});
+
+router.put('/professions/:professionKey/checklist/items/:itemKey/archive', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    let inTransaction = false;
+    try {
+        await client.query('BEGIN');
+        inTransaction = true;
+        const actor = req.user?.username || null;
+        const result = await archiveProfessionChecklistItem(
+            client,
+            { key: req.params.professionKey },
+            req.params.itemKey,
+            { actor }
+        );
+        const onboardingSync = await syncProfessionOnboardingProgressForProfession(
+            result.profession.key,
+            req.user,
+            { db: client, ipAddress: req.ip }
+        );
+        await auditLog('profession_checklist_item_archive', null, actor, {
+            profession_key: result.profession.key,
+            item_key: result.item.itemKey,
+            before: result.audit.before,
+            after: result.audit.after,
+            impact: result.impact,
+            onboarding_sync: onboardingSync.audit
+        }, req.ip, client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        res.json({
+            success: true,
+            data: {
+                profession: result.profession,
+                item: result.item,
+                impact: result.impact,
+                changed: result.changed,
+                onboardingSync
+            }
+        });
+    } catch (err) {
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+        sendProfessionChecklistFailure(res, err, 'PUT /hr/professions/:professionKey/checklist/items/:itemKey/archive error');
+    } finally {
+        client.release();
+    }
+});
+
+router.get('/professions/:professionKey/staff/:staffId/checklist', async (req, res) => {
+    try {
+        const progress = await loadStaffProfessionChecklistProgress(pool, {
+            staffId: req.params.staffId,
+            professionKey: req.params.professionKey
+        }, {
+            includeArchived: req.query.include_archived === 'true' || req.query.includeArchived === 'true',
+            includeOrphaned: req.query.include_orphaned !== 'false' && req.query.includeOrphaned !== 'false'
+        });
+        res.json({ success: true, data: progress });
+    } catch (err) {
+        sendProfessionChecklistFailure(res, err, 'GET /hr/professions/:professionKey/staff/:staffId/checklist error');
+    }
+});
+
+async function handleStaffProfessionChecklistToggle(req, res) {
+    const client = await pool.connect();
+    let inTransaction = false;
+    try {
+        await client.query('BEGIN');
+        inTransaction = true;
+        const actor = req.user?.username || null;
+        const staffId = req.params.staffId || req.params.id;
+        const professionKey = req.params.professionKey
+            || req.body?.profession_key
+            || req.body?.professionKey;
+        const itemKey = req.params.itemKey
+            || req.body?.item_key
+            || req.body?.itemKey
+            || req.body?.checklist_key
+            || req.body?.checklistKey;
+        const result = await toggleStaffProfessionChecklistProgress(client, {
+            staffId,
+            professionKey,
+            itemKey,
+            completed: req.body?.completed,
+            notes: req.body?.notes
+        }, { actor });
+        const onboarding = await syncProfessionOnboardingProgress(
+            result.context.staff.id,
+            result.context.profession.key,
+            req.user,
+            {
+                db: client,
+                lock: true,
+                ipAddress: req.ip
+            }
+        );
+        await auditLog('staff_profession_checklist_update', result.context.staff.id, actor, {
+            profession_key: result.context.profession.key,
+            checklist_key: result.context.item.itemKey,
+            title: result.context.item.title,
+            before: professionChecklistProgressAuditSnapshot(result.before),
+            after: professionChecklistProgressAuditSnapshot(result.after),
+            notes_changed: (result.before?.notes || null) !== (result.after?.notes || null)
+        }, req.ip, client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        res.json({
+            success: true,
+            data: result.after,
+            progress: result.after,
+            item: result.context.item,
+            onboarding
+        });
+    } catch (err) {
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+        sendProfessionChecklistFailure(res, err, 'PUT /hr/staff/:id/profession-checklist error');
+    } finally {
+        client.release();
+    }
+}
+
+router.put(
+    '/professions/:professionKey/staff/:staffId/checklist/:itemKey',
+    requireHrManage,
+    handleStaffProfessionChecklistToggle
+);
 
 // ==========================================
 // STAFF HR DATA
@@ -2588,57 +2917,7 @@ router.get('/staff/:id/history', async (req, res) => {
     }
 });
 
-router.put('/staff/:id/profession-checklist', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'), async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const professionKey = normalizeProfessionKey(req.body.profession_key ?? req.body.professionKey);
-        const checklistKey = String(req.body.checklist_key ?? req.body.checklistKey ?? '').trim().slice(0, 128);
-        const title = String(req.body.title || '').replace(/\u0000/g, '').trim().slice(0, 500);
-        const completed = req.body.completed !== false && req.body.completed !== 'false';
-        const notes = String(req.body.notes || '').replace(/\u0000/g, '').trim().slice(0, 1000) || null;
-        if (!professionKey || !checklistKey || !title) {
-            return res.status(400).json({ success: false, error: 'Потрібні profession_key, checklist_key та title' });
-        }
-        await client.query('BEGIN');
-        const assignment = await resolveStaffProfessionAssignment(client, req.params.id, professionKey, { requireActive: false });
-        if (!assignment.ok) {
-            await client.query('ROLLBACK');
-            return res.status(assignment.status || 400).json({ success: false, error: assignment.error });
-        }
-        const result = await client.query(
-            `INSERT INTO hr_staff_profession_checklist_progress
-                (staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes, updated_at)
-             VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN NOW() ELSE NULL END, $6, $7, NOW())
-             ON CONFLICT (staff_id, profession_key, checklist_key) DO UPDATE SET
-                title = EXCLUDED.title,
-                completed_at = CASE WHEN $5 THEN COALESCE(hr_staff_profession_checklist_progress.completed_at, NOW()) ELSE NULL END,
-                completed_by = CASE WHEN $5 THEN $6 ELSE NULL END,
-                notes = EXCLUDED.notes,
-                updated_at = NOW()
-             RETURNING *`,
-            [req.params.id, professionKey, checklistKey, title, completed, req.user?.username || null, notes]
-        );
-        const onboarding = await syncProfessionOnboardingProgress(req.params.id, professionKey, req.user, {
-            db: client,
-            lock: true,
-            ipAddress: req.ip
-        });
-        await client.query('COMMIT');
-        await auditLog('staff_profession_checklist_update', parseInt(req.params.id), req.user?.username, {
-            profession_key: professionKey,
-            checklist_key: checklistKey,
-            title,
-            completed
-        }, req.ip);
-        res.json({ success: true, data: result.rows[0], onboarding });
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        log.error('PUT /hr/staff/:id/profession-checklist error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    } finally {
-        client.release();
-    }
-});
+router.put('/staff/:id/profession-checklist', requireHrManage, handleStaffProfessionChecklistToggle);
 
 router.get('/professions/workspace/:identity', async (req, res) => {
     try {
@@ -2652,6 +2931,55 @@ router.get('/professions/workspace/:identity', async (req, res) => {
     } catch (err) {
         log.error('GET /hr/professions/workspace/:identity error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження картки професії' });
+    }
+});
+
+router.put('/professions/:professionKey/staff/:staffId/conditions', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    let committed = false;
+    try {
+        await client.query('BEGIN');
+        const actor = req.user?.username || null;
+        const result = await saveStaffProfessionCondition(
+            client,
+            req.params.staffId,
+            req.params.professionKey,
+            req.body || {},
+            { actor }
+        );
+        const auditSnapshot = condition => ({
+            professionKey: condition.professionKey,
+            rateMode: condition.rateMode,
+            explicitRate: condition.explicitRate,
+            fallbackRate: condition.fallbackRate,
+            rateUnit: condition.rateUnit,
+            shiftPreferences: condition.shiftPreferences.map(item => ({
+                dayType: item.dayType,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                isActive: item.isActive
+            }))
+        });
+        await auditLog('staff_profession_conditions_update', result.after.staffId, actor, {
+            source: 'profession_workspace.people_conditions',
+            before: auditSnapshot(result.before),
+            after: auditSnapshot(result.after)
+        }, req.ip, client);
+        await client.query('COMMIT');
+        committed = true;
+        res.json({ success: true, data: result.after });
+    } catch (err) {
+        if (!committed) await client.query('ROLLBACK').catch(() => {});
+        if (sendHrMutationFailure(res, err)) return;
+        const status = Number(err?.statusCode || 500);
+        if (status >= 500) log.error('PUT /hr/professions/:professionKey/staff/:staffId/conditions error', err);
+        res.status(status >= 400 && status < 600 ? status : 500).json({
+            success: false,
+            code: err?.code || 'PROFESSION_CONDITIONS_UPDATE_FAILED',
+            error: status < 500 ? err.message : 'Помилка збереження умов професії'
+        });
+    } finally {
+        client.release();
     }
 });
 

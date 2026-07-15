@@ -22,6 +22,8 @@ function readRepoFile(...parts) {
 describe('HR profession readiness, schedule gating, and profile history', () => {
     const migration = readRepoFile('db', 'migrations', '247_hr_profession_training_readiness.sql');
     const priorityMigration = readRepoFile('db', 'migrations', '248_hr_team_search_rates_structure.sql');
+    const checklistMigration = readRepoFile('db', 'migrations', '294_hr_profession_checklist_templates.sql');
+    const checklistService = readRepoFile('services', 'professionChecklists.js');
     const hrRoute = readRepoFile('routes', 'hr.js');
     const hrOnboardingService = readRepoFile('services', 'hrOnboarding.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
@@ -39,6 +41,12 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const sidebarCode = readRepoFile('js', 'components', 'sidebar.js');
     const profileCode = readRepoFile('js', 'profile-page.js');
     const uiCode = readRepoFile('js', 'ui.js');
+    const professionWorkspaceSaveStart = hrPage.indexOf('async function saveProfessionWorkspace');
+    const professionWorkspaceSaveEnd = hrPage.indexOf('\nasync function toggleProfessionWorkspaceArchived', professionWorkspaceSaveStart);
+    const professionWorkspaceSaveBlock = hrPage.slice(professionWorkspaceSaveStart, professionWorkspaceSaveEnd);
+    const professionWorkspaceBodyStart = professionWorkspaceSaveBlock.indexOf('const body = {');
+    const professionWorkspaceBodyEnd = professionWorkspaceSaveBlock.indexOf('\n    };', professionWorkspaceBodyStart);
+    const professionWorkspaceBodyBlock = professionWorkspaceSaveBlock.slice(professionWorkspaceBodyStart, professionWorkspaceBodyEnd);
 
     it('normalizes staff profession assignments for primary and secondary roles', () => {
         const staff = {
@@ -167,6 +175,25 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(migration, /jsonb_array_elements_text\(\s*CASE/);
     });
 
+    it('normalizes profession checklist templates around immutable item keys without discarding legacy progress', () => {
+        assert.match(checklistMigration, /MIGRATION_KIND:\s*mixed/);
+        assert.match(checklistMigration, /CREATE TABLE IF NOT EXISTS hr_profession_checklist_items/);
+        assert.match(checklistMigration, /item_key VARCHAR\(128\) NOT NULL/);
+        assert.match(checklistMigration, /WITH ORDINALITY AS item\(value, ordinality\)/);
+        assert.match(checklistMigration, /ADD COLUMN IF NOT EXISTS checklist_item_id BIGINT/);
+        assert.match(checklistMigration, /ADD COLUMN IF NOT EXISTS legacy_checklist_key VARCHAR\(128\)/);
+        assert.match(checklistMigration, /CREATE TABLE IF NOT EXISTS hr_profession_checklist_migration_issues/);
+        assert.match(checklistMigration, /candidate_item_keys JSONB NOT NULL DEFAULT '\[\]'::jsonb/);
+        assert.match(checklistMigration, /WHERE progress\.checklist_item_id IS NULL[\s\S]*progress\.checklist_key ~ '\^item_\[1-9\]\[0-9\]\*\$'/);
+        assert.match(checklistMigration, /ALTER TABLE training_course_lectures[\s\S]*ADD COLUMN IF NOT EXISTS checklist_item_id BIGINT/);
+
+        assert.match(checklistService, /function generateChecklistItemKey/);
+        assert.match(checklistService, /function syncProfessionChecklistCompatibilityMirror/);
+        assert.match(checklistService, /ON CONFLICT \(staff_id, checklist_item_id\)[\s\S]*WHERE checklist_item_id IS NOT NULL/);
+        assert.match(checklistService, /function loadProfessionChecklistDashboard/);
+        assert.doesNotMatch(checklistService, /checklistKeyForIndex/);
+    });
+
     it('exposes HR APIs for readiness, checklist progress, schedule gating, and audit history', () => {
         assert.match(hrRoute, /const HR_VIEW_ROLES = \[[^\]]*'security'/);
         assert.match(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'hr'[^\]]*'admin'[^\]]*\]/);
@@ -179,6 +206,15 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /\.filter\(course => !\(course\.source === 'hr_profession_seed' && checklistItems\.length\)\)/);
         assert.match(hrRoute, /router\.get\('\/staff\/:id\/history'/);
         assert.match(hrRoute, /router\.put\('\/staff\/:id\/profession-checklist'/);
+        assert.match(hrRoute, /router\.get\('\/checklists\/dashboard'/);
+        assert.match(hrRoute, /router\.get\('\/professions\/:professionKey\/checklist'/);
+        assert.match(hrRoute, /router\.post\('\/professions\/:professionKey\/checklist\/items', requireHrManage/);
+        assert.match(hrRoute, /router\.put\('\/professions\/:professionKey\/checklist\/reorder', requireHrManage/);
+        assert.match(hrRoute, /router\.put\('\/professions\/:professionKey\/checklist\/items\/:itemKey', requireHrManage/);
+        assert.match(hrRoute, /router\.put\('\/professions\/:professionKey\/checklist\/items\/:itemKey\/archive', requireHrManage/);
+        assert.match(hrRoute, /'\/professions\/:professionKey\/staff\/:staffId\/checklist\/:itemKey'[\s\S]*requireHrManage[\s\S]*handleStaffProfessionChecklistToggle/);
+        assert.match(hrRoute, /syncProfessionOnboardingProgressForProfession/);
+        assert.match(hrRoute, /onboarding_sync: onboardingSync\.audit/);
         assert.match(hrRoute, /function loadStaffLifecycleChecklist/);
         assert.match(hrRoute, /router\.get\('\/staff\/:id\/lifecycle-checklist', requireHrManage/);
         assert.match(hrRoute, /candidate_approved/);
@@ -229,10 +265,33 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function professionOptionsFromCatalog/);
         assert.doesNotMatch(hrPage, /Object\.entries\(ROLE_LABELS\)\.forEach\(\(\[value, label\]\)/);
         assert.match(hrPage, /async function openProfessionWorkspace/);
+        assert.match(hrPage, /function syncProfessionCatalogCapabilityUi/);
+        assert.match(hrPage, /button\.hidden = !editable/);
+        assert.match(hrPage, /function professionConditionTimePayload/);
+        assert.match(hrPage, /source === 'system_fallback' && !touched/);
+        assert.match(hrPage, /function syncSavedProfessionConditionCaches\(condition\)[\s\S]*currentWorkspaceKey === professionKey/);
+        assert.match(hrPage, /async function refreshProfessionChecklistTemplate\(professionKey = professionWorkspaceState\.data\?\.profession\?\.key\)/);
+        assert.match(hrPage, /function updateProfessionChecklistCaches\(template, expectedProfessionKey = ''\)/);
+        assert.match(hrPage, /const isCurrentWorkspace = \(\) => professionWorkspaceState\.open[\s\S]*=== professionKey/);
         assert.match(hrPage, /key: isNew \? document\.getElementById\('professionWorkspaceKey'\)/);
         assert.match(hrPage, /profession\.source === 'system'/);
         assert.match(hrPage, /System profession · readonly/);
         assert.match(hrPage, /history\.back\(\)/);
+        assert.match(hrPage, /function professionChecklistDashboardQuery/);
+        assert.match(hrPage, /hrFetch\(`\/checklists\/dashboard\$\{query \? `\?\$\{query\}` : ''\}`\)/);
+        assert.match(hrPage, /function renderProfessionWorkspaceChecklist/);
+        assert.match(hrPage, /data-checklist-item-key/);
+        assert.match(hrPage, /\/checklist\/items\/\$\{encodeURIComponent\(itemKey\)\}/);
+        assert.match(hrHtml, /id="professionChecklistDashboardSummary"/);
+        assert.match(hrHtml, /id="professionChecklistDashboardStatus"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistEditor"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistItems"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistNewTitle"/);
+        assert.doesNotMatch(hrHtml, /<textarea[^>]+id="professionWorkspaceChecklist"/);
+        assert.notEqual(professionWorkspaceSaveStart, -1);
+        assert.notEqual(professionWorkspaceSaveEnd, -1);
+        assert.notEqual(professionWorkspaceBodyStart, -1);
+        assert.doesNotMatch(professionWorkspaceBodyBlock, /\bchecklist\s*:/);
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 

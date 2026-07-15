@@ -6,6 +6,10 @@ const { normalizeUserId } = require('./taskPolicy');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
 const { normalizeProfessionKey } = require('./professions');
+const {
+    loadProfessionChecklistTemplate,
+    loadProfessionChecklistProgressBatch
+} = require('./professionChecklists');
 
 const log = createLogger('HR Onboarding');
 
@@ -114,12 +118,17 @@ function normalizeOnboardingProfessionKey(value) {
 }
 
 function professionChecklistItems(value = []) {
-    return parseJsonArray(value).map((item, index) => {
+    return parseJsonArray(value).map(item => {
         const raw = item && typeof item === 'object' ? item : { title: item };
-        const key = cleanOnboardingText(raw.key || raw.id || `item_${index + 1}`, 128) || `item_${index + 1}`;
+        const key = cleanOnboardingText(
+            raw.itemKey || raw.item_key || raw.checklistKey || raw.checklist_key || raw.key,
+            128
+        );
         const title = cleanOnboardingText(raw.title || raw.name || raw.label, 500);
-        return title ? {
+        return key && title ? {
             key,
+            itemKey: key,
+            item_key: key,
             title,
             description: cleanOnboardingText(raw.description, 1000)
         } : null;
@@ -138,17 +147,35 @@ function professionReadinessMeta(value = {}) {
     };
 }
 
+function deriveProfessionOnboardingState(row = {}, readiness = {}) {
+    const normalizedReadiness = professionReadinessMeta(readiness);
+    const blocked = row.status === 'blocked' || row.training_status === 'blocked';
+    if (blocked) {
+        return {
+            status: 'blocked',
+            trainingStatus: 'blocked',
+            completed: false
+        };
+    }
+    const completed = normalizedReadiness.total > 0
+        && normalizedReadiness.completed >= normalizedReadiness.total;
+    return {
+        status: completed ? 'completed' : 'in_progress',
+        trainingStatus: completed
+            ? 'completed'
+            : (normalizedReadiness.completed > 0 ? 'in_progress' : 'not_started'),
+        completed
+    };
+}
+
 function professionTrainingStatus(row = {}, readiness = {}) {
-    if (row.status === 'completed') return 'completed';
-    if (row.status === 'blocked') return 'blocked';
-    if (readiness.total > 0 && readiness.completed >= readiness.total) return 'ready';
-    if (readiness.completed > 0) return 'in_progress';
-    return 'not_started';
+    return deriveProfessionOnboardingState(row, readiness).trainingStatus;
 }
 
 function onboardingProgressMeta(row = {}) {
     const professionKey = normalizeOnboardingProfessionKey(row.profession_key);
     const readiness = professionKey ? professionReadinessMeta(row.profession_readiness) : null;
+    const professionState = professionKey ? deriveProfessionOnboardingState(row, readiness) : null;
     const items = professionKey ? readiness.items : normalizeOnboardingTemplateItems(row.items || []);
     const total = professionKey ? readiness.total : Number(row.total_items || items.length || 0);
     const completed = professionKey ? readiness.completed : Number(row.completed_items || completedOnboardingItemCount(items));
@@ -175,12 +202,14 @@ function onboardingProgressMeta(row = {}) {
         admission_status: row.admission_status || null,
         internship_status: row.internship_status || null,
         checklist_template_key: row.checklist_template_key || (professionKey ? PROFESSION_ONBOARDING_TEMPLATE_KEY : RESPONSIBLE_ONBOARDING_TEMPLATE_KEY),
-        status: normalizeOnboardingStatus(row.status, row.training_status),
+        status: professionKey
+            ? professionState.status
+            : normalizeOnboardingStatus(row.status, row.training_status),
         training_status: professionKey
             ? professionTrainingStatus(row, readiness)
             : normalizeTrainingStatus(row.training_status, row.status === 'completed' ? 'completed' : 'not_started'),
         started_at: row.started_at || null,
-        completed_at: row.completed_at || null,
+        completed_at: professionKey && !professionState.completed ? null : (row.completed_at || null),
         assigned_at: row.assigned_at || null,
         reassigned_at: row.reassigned_at || null,
         assigned_by_user_id: row.assigned_by_user_id || null,
@@ -237,7 +266,6 @@ async function loadProfessionOnboardingContext(staffId, professionKey, db = pool
     const result = await db.query(
         `SELECT hp.key AS profession_key,
                 hp.title AS profession_title,
-                hp.checklist,
                 hp.is_active AS profession_is_active,
                 sra.is_primary,
                 sra.status AS assignment_status,
@@ -251,7 +279,22 @@ async function loadProfessionOnboardingContext(staffId, professionKey, db = pool
          LIMIT 1`,
         [staffId, key]
     );
-    return result.rows[0] || null;
+    const context = result.rows[0] || null;
+    if (!context) return null;
+    const template = await loadProfessionChecklistTemplate(db, key, {
+        includeInactiveProfessions: true,
+        includeArchivedItems: false
+    });
+    return {
+        ...context,
+        checklist: template.activeItems.map(item => ({
+            key: item.itemKey,
+            itemKey: item.itemKey,
+            item_key: item.itemKey,
+            title: item.title
+        })),
+        checklist_template: template
+    };
 }
 
 function professionOnboardingError(message, statusCode, code) {
@@ -281,59 +324,105 @@ function validateProfessionOnboardingContext(context, professionKey) {
     return { ...context, checklist };
 }
 
-async function ensureProfessionChecklistSnapshot(staffId, context, db = pool) {
-    const items = Array.isArray(context?.checklist) ? context.checklist : professionChecklistItems(context?.checklist);
-    for (const item of items) {
-        await db.query(
-            `INSERT INTO hr_staff_profession_checklist_progress
-                (staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes, updated_at)
-             VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NOW())
-             ON CONFLICT (staff_id, profession_key, checklist_key) DO NOTHING`,
-            [staffId, context.profession_key, item.key, item.title]
-        );
-    }
-    return items;
-}
-
 async function loadProfessionReadiness(staffId, professionKey, db = pool) {
     const key = normalizeOnboardingProfessionKey(professionKey);
     if (!key) return professionReadinessMeta();
-    const result = await db.query(
-        `SELECT checklist_key, title, completed_at, completed_by, notes
-         FROM hr_staff_profession_checklist_progress
-         WHERE staff_id = $1
-           AND profession_key = $2
-         ORDER BY created_at ASC, id ASC`,
-        [staffId, key]
-    );
-    const items = result.rows.map((row, index) => ({
-        id: index + 1,
-        key: row.checklist_key,
-        checklist_key: row.checklist_key,
-        title: row.title,
-        done: Boolean(row.completed_at),
-        completed_at: row.completed_at || null,
-        completed_by: row.completed_by || null,
-        notes: row.notes || null
+    const batch = await loadProfessionChecklistProgressBatch(db, [{ staffId, professionKey: key }], {
+        includeArchived: false,
+        includeOrphaned: true
+    });
+    const group = batch.groups[0];
+    if (!group) return professionReadinessMeta();
+    const items = group.items.map((item, index) => ({
+        id: item.id || index + 1,
+        key: item.itemKey,
+        item_key: item.itemKey,
+        checklist_key: item.itemKey,
+        title: item.title,
+        done: Boolean(item.progress?.completed),
+        completed_at: item.progress?.completedAt || null,
+        completed_by: item.progress?.completedBy || null,
+        notes: item.progress?.notes || null
     }));
-    return professionReadinessMeta({ items });
+    return professionReadinessMeta({
+        items,
+        total: group.summary.total,
+        completed: group.summary.completed,
+        orphaned: group.orphanedProgress
+    });
 }
 
 async function attachProfessionOnboardingContext(rows = [], db = pool) {
     const scopedRows = rows.filter(row => normalizeOnboardingProfessionKey(row.profession_key));
     if (!scopedRows.length) return rows;
-    await Promise.all(scopedRows.map(async row => {
-        const [context, readiness] = await Promise.all([
-            loadProfessionOnboardingContext(row.staff_id, row.profession_key, db),
-            loadProfessionReadiness(row.staff_id, row.profession_key, db)
-        ]);
+    const assignments = [...new Map(scopedRows.map(row => {
+        const staffId = Number(row.staff_id);
+        const professionKey = normalizeOnboardingProfessionKey(row.profession_key);
+        return [`${staffId}:${professionKey}`, { staffId, professionKey }];
+    })).values()];
+    const requestedJson = JSON.stringify(assignments.map(item => ({
+        staff_id: item.staffId,
+        profession_key: item.professionKey
+    })));
+    const [contextResult, progressBatch] = await Promise.all([
+        db.query(
+            `WITH requested AS (
+                 SELECT staff_id, profession_key
+                 FROM jsonb_to_recordset($1::jsonb) AS request(staff_id integer, profession_key text)
+             )
+             SELECT requested.staff_id,
+                    requested.profession_key,
+                    hp.title AS profession_title,
+                    hp.is_active AS profession_is_active,
+                    sra.is_primary,
+                    sra.status AS assignment_status,
+                    sra.admission_status,
+                    sra.internship_status
+             FROM requested
+             LEFT JOIN hr_professions hp ON hp.key = requested.profession_key
+             LEFT JOIN staff_role_assignments sra
+               ON sra.staff_id = requested.staff_id
+              AND sra.profession_key = requested.profession_key`,
+            [requestedJson]
+        ),
+        loadProfessionChecklistProgressBatch(db, assignments, {
+            includeArchived: false,
+            includeOrphaned: true
+        })
+    ]);
+    const contextByAssignment = new Map(contextResult.rows.map(context => [
+        `${Number(context.staff_id)}:${normalizeOnboardingProfessionKey(context.profession_key)}`,
+        context
+    ]));
+    scopedRows.forEach(row => {
+        const identity = `${Number(row.staff_id)}:${normalizeOnboardingProfessionKey(row.profession_key)}`;
+        const context = contextByAssignment.get(identity);
+        const group = progressBatch.byAssignment[identity];
+        const readiness = group
+            ? professionReadinessMeta({
+                items: group.items.map((item, index) => ({
+                    id: item.id || index + 1,
+                    key: item.itemKey,
+                    item_key: item.itemKey,
+                    checklist_key: item.itemKey,
+                    title: item.title,
+                    done: Boolean(item.progress?.completed),
+                    completed_at: item.progress?.completedAt || null,
+                    completed_by: item.progress?.completedBy || null,
+                    notes: item.progress?.notes || null
+                })),
+                total: group.summary.total,
+                completed: group.summary.completed,
+                orphaned: group.orphanedProgress
+            })
+            : professionReadinessMeta();
         row.profession_title = context?.profession_title || row.profession_key;
         row.is_primary = context?.is_primary === true;
         row.assignment_status = context?.assignment_status || null;
         row.admission_status = context?.admission_status || null;
         row.internship_status = context?.internship_status || null;
         row.profession_readiness = readiness;
-    }));
+    });
     return rows;
 }
 
@@ -682,7 +771,6 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                 await loadProfessionOnboardingContext(staff.id, professionKey, db),
                 professionKey
             );
-            await ensureProfessionChecklistSnapshot(staff.id, professionContext, db);
         }
 
         let responsible;
@@ -705,6 +793,9 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         const current = professionKey
             ? await loadLatestProfessionOnboardingProgressRecord(staff.id, professionKey, db, { lock: true })
             : await loadActiveOnboardingProgressRecord(staff.id, db, { lock: true });
+        const professionReadiness = professionKey
+            ? await loadProfessionReadiness(staff.id, professionKey, db)
+            : null;
         const actorId = normalizeUserId(actor);
         const actorUsername = actor?.username || null;
         const checklistTemplateKey = professionKey ? PROFESSION_ONBOARDING_TEMPLATE_KEY : RESPONSIBLE_ONBOARDING_TEMPLATE_KEY;
@@ -712,20 +803,23 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         let action = 'assigned';
         if (!current) {
             const items = professionKey ? [] : normalizeOnboardingTemplateItems(template.items);
+            const initialProfessionState = professionKey
+                ? deriveProfessionOnboardingState({}, professionReadiness)
+                : null;
             const inserted = await db.query(
                 `INSERT INTO onboarding_progress
                     (staff_id, template_id, profession_key, items, total_items, completed_items, status,
                      responsible_user_id, assigned_by_user_id, assigned_by_username, assigned_at,
                      training_status, assignment_history, checklist_template_key)
-                 VALUES ($1, $2, $3, $4::jsonb, $5, 0, 'in_progress',
-                         $6, $7, $8, NOW(), 'not_started', $9::jsonb, $10)
+                 VALUES ($1, $2, $3, $4::jsonb, $5, $11, $12,
+                         $6, $7, $8, NOW(), $13, $9::jsonb, $10)
                  RETURNING *`,
                 [
                     staff.id,
                     template?.id || null,
                     professionKey,
                     JSON.stringify(items),
-                    professionKey ? 0 : items.length,
+                    professionKey ? professionReadiness.total : items.length,
                     responsible.id,
                     actorId,
                     actorUsername,
@@ -738,7 +832,10 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                         byUserId: actorId,
                         byUsername: actorUsername
                     }]),
-                    checklistTemplateKey
+                    checklistTemplateKey,
+                    professionKey ? professionReadiness.completed : 0,
+                    professionKey ? initialProfessionState.status : 'in_progress',
+                    professionKey ? initialProfessionState.trainingStatus : 'not_started'
                 ]
             );
             progress = inserted.rows[0];
@@ -755,21 +852,25 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                 byUserId: actorId,
                 byUsername: actorUsername
             });
-            const readiness = professionKey ? await loadProfessionReadiness(staff.id, professionKey, db) : null;
             const completed = professionKey
-                ? 0
+                ? professionReadiness.completed
                 : Number(current.completed_items || completedOnboardingItemCount(current.items));
             const total = professionKey
-                ? 0
+                ? professionReadiness.total
                 : Number(current.total_items || normalizeOnboardingTemplateItems(current.items).length || 0);
+            const professionState = professionKey
+                ? deriveProfessionOnboardingState(current, professionReadiness)
+                : null;
             const nextTrainingStatus = professionKey
-                ? professionTrainingStatus(current, readiness)
+                ? professionState.trainingStatus
                 : (current.status === 'completed'
                     ? 'completed'
                     : normalizeTrainingStatus(current.training_status, completed > 0 ? 'in_progress' : 'not_started'));
-            const nextStatus = current.status === 'completed'
-                ? 'completed'
-                : normalizeOnboardingStatus(current.status, nextTrainingStatus);
+            const nextStatus = professionKey
+                ? professionState.status
+                : (current.status === 'completed'
+                    ? 'completed'
+                    : normalizeOnboardingStatus(current.status, nextTrainingStatus));
             const updated = await db.query(
                 `UPDATE onboarding_progress
                  SET responsible_user_id = $2,
@@ -779,10 +880,19 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                      reassigned_at = CASE WHEN $5 THEN NOW() ELSE reassigned_at END,
                      training_status = $6,
                      status = $7,
+                     completed_at = CASE
+                         WHEN profession_key IS NULL THEN completed_at
+                         WHEN $7::text = 'completed' THEN COALESCE(completed_at, NOW())
+                         ELSE NULL
+                     END,
                      assignment_history = $8::jsonb,
                      checklist_template_key = COALESCE(checklist_template_key, $9),
-                     total_items = CASE WHEN profession_key IS NULL AND (total_items IS NULL OR total_items = 0) THEN $10 ELSE total_items END,
-                     completed_items = CASE WHEN profession_key IS NULL THEN $11 ELSE completed_items END
+                     total_items = CASE
+                         WHEN profession_key IS NOT NULL THEN $10
+                         WHEN total_items IS NULL OR total_items = 0 THEN $10
+                         ELSE total_items
+                     END,
+                     completed_items = $11
                  WHERE id = $1
                  RETURNING *`,
                 [
@@ -857,20 +967,21 @@ async function syncProfessionOnboardingProgress(staffId, professionKey, actor, o
     const current = await loadLatestProfessionOnboardingProgressRecord(staffId, key, db, { lock: options.lock === true });
     if (!current) return null;
     const readiness = await loadProfessionReadiness(staffId, key, db);
-    const completed = readiness.total > 0 && readiness.completed >= readiness.total;
     const previousStatus = current.status;
-    const nextStatus = completed ? 'completed' : (previousStatus === 'blocked' ? 'blocked' : 'in_progress');
-    const nextTrainingStatus = completed
-        ? 'completed'
-        : (previousStatus === 'blocked' ? 'blocked' : (readiness.completed > 0 ? 'in_progress' : 'not_started'));
+    const previousTrainingStatus = current.training_status;
+    const nextState = deriveProfessionOnboardingState(current, readiness);
+    const nextStatus = nextState.status;
+    const nextTrainingStatus = nextState.trainingStatus;
     const result = await db.query(
         `UPDATE onboarding_progress
          SET status = $2::text,
              training_status = $3::text,
+             total_items = $4::integer,
+             completed_items = $5::integer,
              completed_at = CASE WHEN $2::text = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
          WHERE id = $1
          RETURNING *`,
-        [current.id, nextStatus, nextTrainingStatus]
+        [current.id, nextStatus, nextTrainingStatus, readiness.total, readiness.completed]
     );
     const progress = result.rows[0];
     const context = await loadProfessionOnboardingContext(staffId, key, db);
@@ -885,6 +996,10 @@ async function syncProfessionOnboardingProgress(staffId, professionKey, actor, o
         await insertHrAuditLog('profession_onboarding_completed', staffId, actor?.username || null, {
             onboarding_progress_id: progress.id,
             profession_key: key,
+            before_status: previousStatus,
+            after_status: nextStatus,
+            before_training_status: previousTrainingStatus,
+            after_training_status: nextTrainingStatus,
             completed_items: readiness.completed,
             total_items: readiness.total
         }, options.ipAddress, db);
@@ -892,11 +1007,213 @@ async function syncProfessionOnboardingProgress(staffId, professionKey, actor, o
         await insertHrAuditLog('profession_onboarding_reopened', staffId, actor?.username || null, {
             onboarding_progress_id: progress.id,
             profession_key: key,
+            before_status: previousStatus,
+            after_status: nextStatus,
+            before_training_status: previousTrainingStatus,
+            after_training_status: nextTrainingStatus,
             completed_items: readiness.completed,
             total_items: readiness.total
         }, options.ipAddress, db);
     }
     return onboardingProgressMeta(progress);
+}
+
+function emptyProfessionOnboardingSyncSummary(professionKey) {
+    return {
+        professionKey,
+        profession_key: professionKey,
+        processedCount: 0,
+        processed_count: 0,
+        updatedCount: 0,
+        updated_count: 0,
+        statusCounts: {
+            completed: 0,
+            inProgress: 0,
+            blocked: 0
+        },
+        transitionCounts: {
+            completed: 0,
+            reopened: 0
+        },
+        audit: {
+            profession_key: professionKey,
+            processed_count: 0,
+            updated_count: 0,
+            completed_count: 0,
+            in_progress_count: 0,
+            blocked_count: 0,
+            completed_transition_count: 0,
+            reopened_transition_count: 0
+        }
+    };
+}
+
+async function syncProfessionOnboardingProgressForProfession(professionKey, actor, options = {}) {
+    const key = normalizeOnboardingProfessionKey(professionKey);
+    if (!key) {
+        throw professionOnboardingError('Потрібен key професії', 400, 'PROFESSION_KEY_REQUIRED');
+    }
+    const synchronize = async db => {
+        const latestResult = await db.query(
+            `WITH latest AS (
+                 SELECT DISTINCT ON (staff_id) id
+                 FROM onboarding_progress
+                 WHERE profession_key = $1
+                 ORDER BY staff_id, started_at DESC, id DESC
+             )
+             SELECT progress.*
+             FROM onboarding_progress progress
+             JOIN latest ON latest.id = progress.id
+             ORDER BY progress.staff_id, progress.id
+             FOR UPDATE OF progress`,
+            [key]
+        );
+        const rows = latestResult.rows || [];
+        if (!rows.length) return emptyProfessionOnboardingSyncSummary(key);
+
+        const assignments = rows.map(row => ({
+            staffId: Number(row.staff_id),
+            professionKey: key
+        }));
+        const progressBatch = await loadProfessionChecklistProgressBatch(db, assignments, {
+            includeArchived: false,
+            includeOrphaned: false
+        });
+        const desired = rows.map(row => {
+            const identity = `${Number(row.staff_id)}:${key}`;
+            const group = progressBatch.byAssignment[identity];
+            const readiness = professionReadinessMeta(group?.summary || {});
+            const nextState = deriveProfessionOnboardingState(row, readiness);
+            const needsUpdate = row.status !== nextState.status
+                || row.training_status !== nextState.trainingStatus
+                || Number(row.total_items || 0) !== readiness.total
+                || Number(row.completed_items || 0) !== readiness.completed
+                || (nextState.completed ? !row.completed_at : Boolean(row.completed_at));
+            return {
+                id: Number(row.id),
+                staffId: Number(row.staff_id),
+                beforeStatus: row.status,
+                beforeTrainingStatus: row.training_status,
+                status: nextState.status,
+                trainingStatus: nextState.trainingStatus,
+                totalItems: readiness.total,
+                completedItems: readiness.completed,
+                needsUpdate
+            };
+        });
+        const updates = desired.filter(item => item.needsUpdate);
+        if (updates.length) {
+            await db.query(
+                `WITH requested AS (
+                     SELECT id, status, training_status, total_items, completed_items
+                     FROM jsonb_to_recordset($1::jsonb) AS update_row(
+                         id integer,
+                         status text,
+                         training_status text,
+                         total_items integer,
+                         completed_items integer
+                     )
+                 )
+                 UPDATE onboarding_progress progress
+                 SET status = requested.status,
+                     training_status = requested.training_status,
+                     total_items = requested.total_items,
+                     completed_items = requested.completed_items,
+                     completed_at = CASE
+                         WHEN requested.status = 'completed' THEN COALESCE(progress.completed_at, NOW())
+                         ELSE NULL
+                     END
+                 FROM requested
+                 WHERE progress.id = requested.id`,
+                [JSON.stringify(updates.map(item => ({
+                    id: item.id,
+                    status: item.status,
+                    training_status: item.trainingStatus,
+                    total_items: item.totalItems,
+                    completed_items: item.completedItems
+                })))]
+            );
+        }
+
+        const transitions = desired.flatMap(item => {
+            if (item.beforeStatus !== 'completed' && item.status === 'completed') {
+                return [{ ...item, action: 'profession_onboarding_completed' }];
+            }
+            if (item.beforeStatus === 'completed' && item.status !== 'completed') {
+                return [{ ...item, action: 'profession_onboarding_reopened' }];
+            }
+            return [];
+        });
+        if (transitions.length) {
+            const performedBy = cleanOnboardingText(
+                typeof actor === 'string' ? actor : actor?.username,
+                100
+            );
+            await db.query(
+                `WITH audit_rows AS (
+                     SELECT action, staff_id, details
+                     FROM jsonb_to_recordset($1::jsonb) AS audit_row(
+                         action text,
+                         staff_id integer,
+                         details jsonb
+                     )
+                 )
+                 INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+                 SELECT action, staff_id, $2, details, $3
+                 FROM audit_rows`,
+                [
+                    JSON.stringify(transitions.map(item => ({
+                        action: item.action,
+                        staff_id: item.staffId,
+                        details: {
+                            onboarding_progress_id: item.id,
+                            profession_key: key,
+                            before_status: item.beforeStatus,
+                            after_status: item.status,
+                            before_training_status: item.beforeTrainingStatus,
+                            after_training_status: item.trainingStatus,
+                            completed_items: item.completedItems,
+                            total_items: item.totalItems
+                        }
+                    }))),
+                    performedBy,
+                    options.ipAddress || null
+                ]
+            );
+        }
+
+        const statusCounts = {
+            completed: desired.filter(item => item.status === 'completed').length,
+            inProgress: desired.filter(item => item.status === 'in_progress').length,
+            blocked: desired.filter(item => item.status === 'blocked').length
+        };
+        const transitionCounts = {
+            completed: transitions.filter(item => item.action === 'profession_onboarding_completed').length,
+            reopened: transitions.filter(item => item.action === 'profession_onboarding_reopened').length
+        };
+        return {
+            professionKey: key,
+            profession_key: key,
+            processedCount: desired.length,
+            processed_count: desired.length,
+            updatedCount: updates.length,
+            updated_count: updates.length,
+            statusCounts,
+            transitionCounts,
+            audit: {
+                profession_key: key,
+                processed_count: desired.length,
+                updated_count: updates.length,
+                completed_count: statusCounts.completed,
+                in_progress_count: statusCounts.inProgress,
+                blocked_count: statusCounts.blocked,
+                completed_transition_count: transitionCounts.completed,
+                reopened_transition_count: transitionCounts.reopened
+            }
+        };
+    };
+    if (options.db) return synchronize(options.db);
+    return withOnboardingTransaction(async db => synchronize(db));
 }
 
 module.exports = {
@@ -909,5 +1226,6 @@ module.exports = {
     loadProfessionReadiness,
     loadStaffForOnboarding,
     onboardingProgressMeta,
-    syncProfessionOnboardingProgress
+    syncProfessionOnboardingProgress,
+    syncProfessionOnboardingProgressForProfession
 };

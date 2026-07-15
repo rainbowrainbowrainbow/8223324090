@@ -187,7 +187,24 @@
                     </div>
                     <button type="button" class="btn-secondary" onclick="loadProfessionChecklists()">Оновити</button>
                 </div>
-                <div id="professionChecklistList" class="hr-profession-master-list" aria-live="polite"></div>
+                <div id="professionChecklistDashboardState" class="hr-profession-workspace-state" role="status" aria-live="polite"></div>
+                <div id="professionChecklistDashboardSummary" class="hr-checklist-dashboard-summary" aria-label="Підсумок чеклістів"></div>
+                <div class="hr-checklist-dashboard-toolbar" aria-label="Фільтри чеклістів">
+                    <input type="search" id="professionChecklistDashboardSearch" placeholder="Професія або працівник…" aria-label="Пошук у чеклістах">
+                    <select id="professionChecklistDashboardProfession" aria-label="Професія"><option value="">Усі професії</option></select>
+                    <select id="professionChecklistDashboardDepartment" aria-label="Напрям"><option value="">Усі напрями</option></select>
+                    <select id="professionChecklistDashboardStatus" aria-label="Статус чекліста">
+                        <option value="">Усі статуси</option>
+                        <option value="without_template">Без шаблона</option>
+                        <option value="not_started">Не розпочато</option>
+                        <option value="in_progress">В процесі</option>
+                        <option value="completed">Завершено</option>
+                        <option value="archived">Архівні пункти</option>
+                        <option value="orphaned">Потребує звірки</option>
+                    </select>
+                    <select id="professionChecklistDashboardStaff" aria-label="Працівник"><option value="">Усі працівники</option></select>
+                </div>
+                <div id="professionChecklistList" class="hr-checklist-dashboard-list" aria-live="polite"></div>
             </div>
 
             <div id="professionWorkspaceOverlay" class="hr-profession-workspace-overlay hidden" aria-hidden="true">
@@ -243,7 +260,17 @@
                             </section>
                             <section data-profession-workspace-panel="checklist" class="hr-profession-workspace-panel" hidden>
                                 <div id="professionWorkspaceChecklistSummary" class="hr-profession-workspace-summary"></div>
-                                <label>Пункти чекліста<textarea id="professionWorkspaceChecklist" placeholder="Кожен пункт з нового рядка"></textarea></label>
+                                <div id="professionWorkspaceChecklistEditor" class="hr-checklist-template-editor">
+                                    <div class="hr-checklist-template-toolbar">
+                                        <label class="hr-checklist-archived-toggle"><input type="checkbox" id="professionWorkspaceChecklistShowArchived"> Показати архівні</label>
+                                    </div>
+                                    <div id="professionWorkspaceChecklistItems" class="hr-checklist-template-list" aria-live="polite"></div>
+                                    <div id="professionWorkspaceChecklistState" class="hr-checklist-template-state" role="status" aria-live="polite"></div>
+                                    <div id="professionWorkspaceChecklistAdd" class="hr-checklist-template-add">
+                                        <input type="text" id="professionWorkspaceChecklistNewTitle" maxlength="500" placeholder="Новий пункт чекліста" aria-label="Назва нового пункту">
+                                        <button type="button" id="professionWorkspaceChecklistAddButton" class="btn-add">Додати пункт</button>
+                                    </div>
+                                </div>
                             </section>
                             <section data-profession-workspace-panel="usage" class="hr-profession-workspace-panel" hidden>
                                 <div id="professionWorkspaceUsage" class="hr-profession-usage-grid"></div>

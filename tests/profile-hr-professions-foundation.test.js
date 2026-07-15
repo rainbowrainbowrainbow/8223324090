@@ -137,12 +137,21 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(hrPage, /id: 'checklists', label: 'Чеклисти'/);
         assert.match(hrHtml, /id="professionCatalogList"/);
         assert.match(hrHtml, /id="professionChecklistList"/);
+        assert.match(hrHtml, /id="professionChecklistDashboardSummary"/);
+        assert.match(hrHtml, /id="professionChecklistDashboardStatus"/);
         assert.match(hrHtml, /id="editSecondaryProfessions"/);
         assert.match(hrHtml, /\.hr-profession-master-row/);
         assert.match(hrHtml, /id="professionWorkspace"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistEditor"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistItems"/);
+        assert.match(hrHtml, /id="professionWorkspaceChecklistNewTitle"/);
+        assert.doesNotMatch(hrHtml, /<textarea[^>]+id="professionWorkspaceChecklist"/);
 
         assert.match(hrPage, /async function loadProfessions/);
+        assert.match(hrPage, /async function loadProfessionChecklists/);
         assert.match(hrPage, /function renderProfessionChecklists/);
+        assert.match(hrPage, /function renderProfessionWorkspaceChecklist/);
+        assert.match(hrPage, /async function runProfessionChecklistMutation/);
         assert.match(hrPage, /async function openProfessionWorkspace/);
         assert.match(hrPage, /function openProfessionEditor/);
         assert.match(hrPage, /history\.back\(\)/);
@@ -173,7 +182,22 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
                     ] };
                 }
                 if (/FROM staff_shift_preferences/i.test(sql)) return { rows: [{ staff_id: 10, profession_key: 'host', day_type: 'weekday', start_time: '10:00', end_time: '18:00' }] };
-                if (/FROM hr_staff_profession_checklist_progress/i.test(sql)) return { rows: [{ profession_key: 'animator', progress_records: 4, completed_records: 3, staff_with_progress: 2 }] };
+                if (/FROM hr_staff_profession_checklist_progress progress/i.test(sql)) return { rows: [{
+                    profession_key: 'animator',
+                    active_progress_records: 2,
+                    active_completed_records: 1,
+                    active_staff_with_progress: 1,
+                    historical_progress_records: 4,
+                    historical_completed_records: 3,
+                    archived_progress_records: 1,
+                    orphaned_progress_records: 1
+                }] };
+                if (/FROM hr_profession_checklist_items/i.test(sql)) return { rows: [
+                    { id: 101, profession_id: 2, item_key: 'host_script', title: 'Сценарій', sort_order: 10, is_active: true, legacy_position: 1 },
+                    { id: 201, profession_id: 3, item_key: 'animator_props', title: 'Реквізит', sort_order: 10, is_active: true, legacy_position: 1 },
+                    { id: 202, profession_id: 3, item_key: 'animator_program', title: 'Програма', sort_order: 20, is_active: true, legacy_position: 2 },
+                    { id: 203, profession_id: 3, item_key: 'animator_legacy_archived', title: 'Архівний пункт', sort_order: 30, is_active: false, legacy_position: null }
+                ] };
                 if (/FROM training_courses/i.test(sql)) return { rows: [{ profession_key: 'animator', course_count: 2, active_course_count: 1 }] };
                 if (/FROM settings WHERE key = 'hr_company_structure'/i.test(sql)) return { rows: [{ value: { nodes: [{ id: 'art', title: 'Арт' }] } }] };
                 throw new Error(`Unexpected profession workspace query: ${sql}`);
@@ -185,15 +209,29 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.equal(catalog.items.find(item => item.key === 'host').staffCount, 1);
         assert.equal(catalog.items.find(item => item.key === 'host').people[0].shiftPreferences[0].startTime, '10:00');
         assert.equal(catalog.items.find(item => item.key === 'host').people[0].rateSource, 'staff_profession_rates.hourly_rate');
+        assert.deepEqual(catalog.items.find(item => item.key === 'host').checklist, ['Сценарій']);
+        assert.equal(catalog.items.find(item => item.key === 'host').checklistTemplate.source, 'hr_profession_checklist_items');
         assert.equal(catalog.items.find(item => item.key === 'animator').people[0].rateSource, 'staff.hourly_rate');
         assert.equal(catalog.items.find(item => item.key === 'animator').people[1].assignmentStatus, 'inactive');
         assert.equal(catalog.items.find(item => item.key === 'animator').staffCount, 2);
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.completed, 1);
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.records, 2);
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.historicalRecords, 4);
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.archivedRecords, 1);
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.orphanedRecords, 1);
+        assert.deepEqual(
+            catalog.items.find(item => item.key === 'animator').checklistTemplate.activeItems.map(item => item.itemKey),
+            ['animator_props', 'animator_program']
+        );
+        assert.equal(catalog.items.find(item => item.key === 'animator').checklistTemplate.archivedItems[0].itemKey, 'animator_legacy_archived');
         assert.equal(catalog.items.find(item => item.key === 'archived_role').isActive, false);
         assert.equal(catalog.items.find(item => item.key === 'pizzaiolo').source, 'system');
         assert.equal(catalog.items.find(item => item.key === 'pizzaiolo').isReadonly, true);
 
         const workspace = await loadProfessionWorkspace(db, { key: 'animator' });
         assert.equal(workspace.people.length, 2);
+        assert.equal(workspace.checklistTemplate.counts.active, 2);
+        assert.equal(workspace.checklistTemplate.counts.archived, 1);
         assert.deepEqual(workspace.trainingUsage, { courses: 2, activeCourses: 1 });
         assert.equal(await loadProfessionWorkspace(db, { key: 'missing' }), null);
     });

@@ -74,19 +74,17 @@ describe('staff shift preferences contract', () => {
         assert.doesNotMatch(putBlock, /syncHrShiftFromScheduleEntry/);
     });
 
-    it('completes missing profession defaults without overwriting configured times', () => {
+    it('keeps system fallback values read-only until the user explicitly edits a time', () => {
         const putBlock = routeBlock('put', '/:id/shift-preferences');
-        const fallbackInsertIndex = putBlock.indexOf('for (const preference of fallbackPreferences)');
-        const explicitUpsertIndex = putBlock.indexOf('for (const preference of validation.preferences)');
 
-        assert.match(staffRoute, /function missingStaffShiftPreferenceDefaults/);
-        assert.match(staffRoute, /for \(const professionKey of allowedProfessions\)/);
-        assert.match(staffRoute, /for \(const dayType of STAFF_SHIFT_PREFERENCE_DAY_TYPE_KEYS\)/);
-        assert.match(putBlock, /missingStaffShiftPreferenceDefaults\([\s\S]*validation\.allowedProfessions,[\s\S]*validation\.preferences/);
-        assert.match(putBlock, /ON CONFLICT \(staff_id, profession_key, day_type\) DO NOTHING/);
-        assert.match(putBlock, /ensuredFallbackCount: createdFallbacks\.length/);
-        assert.ok(fallbackInsertIndex >= 0 && fallbackInsertIndex < explicitUpsertIndex, 'fallback rows are inserted before explicit values are upserted');
-        assert.match(staffRoute, /animator:\s*Object\.freeze\(\{[\s\S]*weekday:[\s\S]*12:00[\s\S]*weekend:[\s\S]*10:00/);
+        assert.doesNotMatch(staffRoute, /function missingStaffShiftPreferenceDefaults/);
+        assert.doesNotMatch(putBlock, /fallbackPreferences|createdFallbacks/);
+        assert.match(putBlock, /for \(const preference of validation\.preferences\)/);
+        assert.match(putBlock, /ensuredFallbackCount: 0/);
+        assert.match(hrPage, /data-shift-pref-source=/);
+        assert.match(hrPage, /data-shift-pref-touched=/);
+        assert.match(hrPage, /source === 'system_fallback' && !touched/);
+        assert.match(hrPage, /Системний fallback · не записаний/);
     });
 
     it('saves card times, refreshes the schedule, and exposes saved-versus-fallback sources', () => {

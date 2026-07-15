@@ -17,6 +17,23 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('Migrate');
 const migrationsDir = path.join(__dirname, 'migrations');
 
+const migrationPreflights = new Map([
+    ['261_leads_customer_card_canonical_customers', async (client) => {
+        // Migration 261 predates the additive 274 migration but already writes this
+        // column. Keep the historical files immutable and provide only the missing
+        // prerequisite inside the same transaction as 261.
+        await client.query(`
+            ALTER TABLE IF EXISTS leads
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ
+        `);
+    }]
+]);
+
+async function runMigrationPreflight(client, version) {
+    const preflight = migrationPreflights.get(version);
+    if (preflight) await preflight(client);
+}
+
 /**
  * Run all pending database migrations.
  * Each migration runs in its own transaction.
@@ -74,6 +91,7 @@ async function runMigrations(pool) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await runMigrationPreflight(client, version);
             await client.query(sql);
             await client.query(
                 'INSERT INTO schema_migrations (version) VALUES ($1)',
@@ -86,25 +104,7 @@ async function runMigrations(pool) {
             await client.query('ROLLBACK').catch(() => {});
             const msg = err.message + (err.detail ? ' | ' + err.detail : '') + (err.hint ? ' | hint: ' + err.hint : '');
             log.error('Migration failed: ' + version + ' — ' + msg);
-
-            // v39.8: Determine if migration failure should be fatal or skippable
-            // Fatal: schema creation (CREATE TABLE, ALTER TABLE ADD COLUMN)
-            // Skippable: data inserts, updates, deletes (won't break other migrations)
-            const sqlUpper = sql.toUpperCase();
-            const isSchemaChange = sqlUpper.includes('CREATE TABLE') || sqlUpper.includes('ALTER TABLE')
-                || sqlUpper.includes('CREATE INDEX') || sqlUpper.includes('DROP TABLE');
-
-            if (isSchemaChange) {
-                // Schema changes are critical — must stop to prevent cascading failures
-                log.error('FATAL: Schema migration failed — stopping to prevent data corruption');
-                throw err;
-            } else {
-                // v40.5: Data migration failed — log but DON'T mark as applied.
-                // Server continues starting, migration will retry on next restart.
-                // This prevents silent data loss from failed migrations.
-                log.warn('WARN: Data migration ' + version + ' failed — will retry on next restart. Server continues.');
-                continue;
-            }
+            throw err;
         } finally {
             client.release();
         }

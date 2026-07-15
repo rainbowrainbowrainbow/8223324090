@@ -6526,32 +6526,110 @@ router.post('/vacancies', requireHrManage, async (req, res) => {
 });
 
 router.patch('/vacancies/:id', requireHrManage, async (req, res) => {
-    const { status, priority, description, requirements, salary_from, salary_to, schedule, title } = req.body;
-    const sets = [], vals = [];
-    let i = 1;
-    if (title !== undefined)       { sets.push(`title=$${i++}`);       vals.push(title); }
-    if (status)                    { sets.push(`status=$${i++}`);      vals.push(status); }
-    if (priority)                  { sets.push(`priority=$${i++}`);    vals.push(priority); }
-    if (description !== undefined) { sets.push(`description=$${i++}`); vals.push(description); }
-    if (requirements !== undefined){ sets.push(`requirements=$${i++}`); vals.push(requirements); }
-    if (salary_from !== undefined) { sets.push(`salary_from=$${i++}`); vals.push(salary_from); }
-    if (salary_to !== undefined)   { sets.push(`salary_to=$${i++}`);   vals.push(salary_to); }
-    if (schedule !== undefined)    { sets.push(`schedule=$${i++}`);    vals.push(schedule); }
-    if (req.body.target_hires !== undefined || req.body.targetHires !== undefined) {
-        const targetHires = req.body.target_hires ?? req.body.targetHires;
-        if (targetHires !== null && targetHires !== '' && (!Number.isInteger(Number(targetHires)) || Number(targetHires) <= 0)) {
-            return res.status(400).json({ error: 'target_hires має бути додатним цілим числом або null' });
-        }
-        sets.push(`target_hires=$${i++}`);
-        vals.push(targetHires === null || targetHires === '' ? null : Number(targetHires));
+    const body = req.body || {};
+    const { status, priority, description, requirements, salary_from, salary_to, schedule, title } = body;
+    const vacancyId = Number(req.params.id);
+    const hasTargetHires = Object.prototype.hasOwnProperty.call(body, 'target_hires')
+        || Object.prototype.hasOwnProperty.call(body, 'targetHires');
+    const targetHiresInput = Object.prototype.hasOwnProperty.call(body, 'target_hires')
+        ? body.target_hires
+        : body.targetHires;
+    const targetHires = targetHiresInput === null || targetHiresInput === ''
+        ? null
+        : Number(targetHiresInput);
+    if (!Number.isInteger(vacancyId) || vacancyId <= 0) {
+        return res.status(400).json({ success: false, error: 'Некоректний id вакансії' });
     }
-    if (['filled','closed'].includes(status)) sets.push('closed_at=NOW()');
-    if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
-    vals.push(parseInt(req.params.id));
+    if (hasTargetHires && targetHires !== null && (!Number.isInteger(targetHires) || targetHires <= 0)) {
+        return res.status(400).json({ success: false, error: 'target_hires має бути додатним цілим числом або null' });
+    }
+    const hasUpdates = title !== undefined
+        || Boolean(status)
+        || Boolean(priority)
+        || description !== undefined
+        || requirements !== undefined
+        || salary_from !== undefined
+        || salary_to !== undefined
+        || schedule !== undefined
+        || hasTargetHires;
+    if (!hasUpdates) return res.status(400).json({ success: false, error: 'Нічого оновлювати' });
+
+    let client;
     try {
-        await pool.query(`UPDATE job_vacancies SET ${sets.join(',')} WHERE id=$${i}`, vals);
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const currentResult = await client.query(
+            'SELECT * FROM job_vacancies WHERE id = $1 FOR UPDATE',
+            [vacancyId]
+        );
+        if (!currentResult.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Вакансію не знайдено' });
+        }
+        const current = currentResult.rows[0];
+        const hiredResult = await client.query(
+            `SELECT COUNT(*)::int AS hired_count
+             FROM job_applications
+             WHERE vacancy_id = $1
+               AND status = 'hired'
+               AND staff_id IS NOT NULL`,
+            [vacancyId]
+        );
+        const hiredCount = Number(hiredResult.rows[0]?.hired_count || 0);
+        const nextTargetHires = hasTargetHires
+            ? targetHires
+            : (current.target_hires == null ? null : Number(current.target_hires));
+        let finalStatus = status || current.status;
+        const headcountReached = nextTargetHires !== null && hiredCount >= nextTargetHires;
+        const autoFilledByHeadcount = finalStatus === 'open' && headcountReached;
+        if (autoFilledByHeadcount) finalStatus = 'filled';
+
+        const updates = new Map();
+        if (title !== undefined) updates.set('title', title);
+        if (status || autoFilledByHeadcount) updates.set('status', finalStatus);
+        if (priority) updates.set('priority', priority);
+        if (description !== undefined) updates.set('description', description);
+        if (requirements !== undefined) updates.set('requirements', requirements);
+        if (salary_from !== undefined) updates.set('salary_from', salary_from);
+        if (salary_to !== undefined) updates.set('salary_to', salary_to);
+        if (schedule !== undefined) updates.set('schedule', schedule);
+        if (hasTargetHires) updates.set('target_hires', nextTargetHires);
+
+        const sets = [];
+        const vals = [];
+        for (const [column, value] of updates) {
+            vals.push(value);
+            sets.push(`${column}=$${vals.length}`);
+        }
+        if (['filled', 'closed'].includes(finalStatus) && (status || autoFilledByHeadcount)) {
+            sets.push('closed_at=NOW()');
+        }
+        vals.push(vacancyId);
+        const updatedResult = await client.query(
+            `UPDATE job_vacancies SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`,
+            vals
+        );
+        const vacancy = {
+            ...updatedResult.rows[0],
+            hired_count: hiredCount
+        };
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            vacancy,
+            target_hires: vacancy.target_hires == null ? null : Number(vacancy.target_hires),
+            hired_count: hiredCount,
+            headcount_reached: headcountReached,
+            status: vacancy.status,
+            auto_filled_by_headcount: autoFilledByHeadcount
+        });
+    } catch (err) {
+        try { await client?.query('ROLLBACK'); } catch {}
+        log.error('PATCH /vacancies/:id', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client?.release();
+    }
 });
 
 router.delete('/vacancies/:id', requireHrManage, async (req, res) => {

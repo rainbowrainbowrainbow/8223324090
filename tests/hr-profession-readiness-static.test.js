@@ -23,6 +23,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const migration = readRepoFile('db', 'migrations', '247_hr_profession_training_readiness.sql');
     const priorityMigration = readRepoFile('db', 'migrations', '248_hr_team_search_rates_structure.sql');
     const hrRoute = readRepoFile('routes', 'hr.js');
+    const hrOnboardingService = readRepoFile('services', 'hrOnboarding.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
     const staffScheduleMutations = readRepoFile('services', 'staffScheduleMutations.js');
@@ -265,6 +266,18 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(trainingSurface, /aria-live="polite" aria-busy="true"/);
         assert.match(trainingSurface, /training-onboarding-scope-grid/);
         assert.match(hrHtml, /Корпоративний setup та допуск кожної професії показуються незалежно/);
+    });
+
+    it('keeps the team summary corporate-scoped and reports profession processes separately', () => {
+        assert.match(hrOnboardingService, /profession_onboarding_summary/);
+        assert.match(hrOnboardingService, /op\.profession_key IS NOT NULL/);
+        assert.match(hrOnboardingService, /COUNT\(\*\) FILTER \(WHERE op\.status <> 'completed'\)::int AS active_count/);
+        assert.match(hrPage, /function staffProfessionOnboardingSummary/);
+        assert.match(hrPage, /Корпоративний онбординг/);
+        assert.match(hrPage, /Професійні процеси:/);
+        assert.match(hrPage, /if \(!assignment && !professionSummary\.activeCount\) return '';/);
+        assert.match(hrPage, /const percent = assignment \? assignment\.percent : 0/);
+        assert.doesNotMatch(hrPage, /professionSummary\.activeCount[\s\S]{0,120}percent/);
     });
 
     it('keeps HR team card profession display on canonical role fields', () => {

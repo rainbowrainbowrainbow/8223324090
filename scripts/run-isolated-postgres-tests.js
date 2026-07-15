@@ -20,7 +20,12 @@ const POLL_INTERVAL_MS = 500;
 const MODES = {
     api: ['tests/api.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
-    onboarding: ['tests/integration/hr-onboarding-hire.integration.test.js'],
+    onboarding: [
+        'tests/integration/fresh-db-startup.integration.test.js',
+        'tests/integration/hr-onboarding-hire.integration.test.js'
+    ],
+    backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -28,7 +33,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|hr|onboarding|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|hr|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -61,6 +66,20 @@ async function verifyAllMigrationsApplied(testDb) {
         const applied = new Set(result.rows.map(row => row.version));
         const missing = expected.filter(version => !applied.has(version));
         return missing;
+    } finally {
+        await pool.end();
+    }
+}
+
+async function loadMigrationLedger(testDb) {
+    const pool = createPool(testDb);
+    try {
+        const result = await pool.query(
+            `SELECT version, applied_at::text AS applied_at
+             FROM schema_migrations
+             ORDER BY version`
+        );
+        return result.rows;
     } finally {
         await pool.end();
     }
@@ -124,7 +143,14 @@ function buildServerEnvironment(testDb, port, credentials) {
 }
 
 function appendOutput(buffer, chunk) {
-    const lines = `${buffer.text}${chunk}`.split(/\r?\n/);
+    const rendered = String(chunk);
+    const dbErrors = rendered.split(/\r?\n/).filter(line => (
+        /\[Migrate\] Migration failed:/.test(line)
+        || /column "updated_at" of relation "leads" does not exist/.test(line)
+        || /relation "procurement_(?:items|lists)" does not exist/.test(line)
+    ));
+    buffer.dbErrors.push(...dbErrors);
+    const lines = `${buffer.text}${rendered}`.split(/\r?\n/);
     buffer.text = lines.slice(-80).join('\n');
 }
 
@@ -158,14 +184,9 @@ async function stopServer(child) {
     }
 }
 
-async function runNodeTest(testFile, env) {
+async function runNodeProcess(testFile, args, env) {
     return new Promise((resolve, reject) => {
         let settled = false;
-        const args = ['--test', '--test-concurrency=1'];
-        if (env.ISOLATED_TEST_NAME_PATTERN) {
-            args.push('--test-name-pattern', env.ISOLATED_TEST_NAME_PATTERN);
-        }
-        args.push(testFile);
         const child = spawn(process.execPath, args, {
             cwd: ROOT,
             env,
@@ -194,6 +215,19 @@ async function runNodeTest(testFile, env) {
     });
 }
 
+async function runNodeTest(testFile, env) {
+    const args = ['--test', '--test-concurrency=1'];
+    if (env.ISOLATED_TEST_NAME_PATTERN) {
+        args.push('--test-name-pattern', env.ISOLATED_TEST_NAME_PATTERN);
+    }
+    args.push(testFile);
+    return runNodeProcess(testFile, args, env);
+}
+
+async function runBrowserScript(testFile, env) {
+    return runNodeProcess(testFile, [testFile], env);
+}
+
 async function runSuite(testDb, testFile) {
     const port = await reservePort();
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -212,44 +246,59 @@ async function runSuite(testDb, testFile) {
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
+        RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
+        RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
+        RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'
     };
-    const output = { text: '' };
+    const output = { text: '', dbErrors: [] };
     let server;
     let serverSpawnError = null;
     let primaryError = null;
     let cleanupError = null;
 
-    try {
-        await resetPublicSchema(testDb);
-        let missingMigrations = [];
-        for (let startupPass = 1; startupPass <= 2; startupPass++) {
-            serverSpawnError = null;
-            server = spawn(process.execPath, ['server.js'], {
-                cwd: ROOT,
-                env: serverEnv,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                windowsHide: true
-            });
-            server.once('error', error => { serverSpawnError = error; });
-            server.stdout.on('data', chunk => appendOutput(output, chunk));
-            server.stderr.on('data', chunk => appendOutput(output, chunk));
-            await waitForServer(baseUrl, server, output, () => serverSpawnError);
-            missingMigrations = await verifyAllMigrationsApplied(testDb);
-            if (!missingMigrations.length) break;
-            if (startupPass === 1) {
-                appendOutput(output, `\n[isolated-db] Repeating startup for ${missingMigrations.length} pending legacy data migration(s)\n`);
-                await stopServer(server);
-                server = null;
-            }
-        }
+    const launchServerOnce = async () => {
+        serverSpawnError = null;
+        server = spawn(process.execPath, ['server.js'], {
+            cwd: ROOT,
+            env: serverEnv,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true
+        });
+        server.once('error', error => { serverSpawnError = error; });
+        server.stdout.on('data', chunk => appendOutput(output, chunk));
+        server.stderr.on('data', chunk => appendOutput(output, chunk));
+        await waitForServer(baseUrl, server, output, () => serverSpawnError);
+
+        const missingMigrations = await verifyAllMigrationsApplied(testDb);
         if (missingMigrations.length) {
             throw new Error(
-                `Server started without applying ${missingMigrations.length} migration(s): ${missingMigrations.slice(0, 5).join(', ')}\n`
-                + `Isolated server startup tail:\n${output.text}`
+                `Single fresh startup left ${missingMigrations.length} migration(s) pending: ${missingMigrations.slice(0, 5).join(', ')}`
             );
         }
-        await runNodeTest(testFile, testEnv);
+        if (output.dbErrors.length) {
+            throw new Error(`PostgreSQL startup errors detected:\n${output.dbErrors.join('\n')}`);
+        }
+    };
+
+    try {
+        await resetPublicSchema(testDb);
+        await launchServerOnce();
+
+        if (testFile.includes('fresh-db-startup')) {
+            const firstLedger = await loadMigrationLedger(testDb);
+            await stopServer(server);
+            server = null;
+            output.text = '';
+            output.dbErrors = [];
+            await launchServerOnce();
+            const secondLedger = await loadMigrationLedger(testDb);
+            if (JSON.stringify(secondLedger) !== JSON.stringify(firstLedger)) {
+                throw new Error('Migration ledger changed during idempotent initialized-DB restart');
+            }
+        }
+        if (testFile.startsWith('tests/browser/')) await runBrowserScript(testFile, testEnv);
+        else await runNodeTest(testFile, testEnv);
     } catch (error) {
         primaryError = new Error(`${error.message}\nIsolated server tail:\n${output.text}`);
     } finally {
@@ -270,9 +319,11 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'hr', 'onboarding', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
-    const files = mode === 'all' ? [...MODES.api, ...MODES.hr, ...MODES.onboarding] : MODES[mode];
+    const files = mode === 'all'
+        ? [...MODES.api, ...MODES.hr, ...MODES.onboarding, ...MODES.backfill]
+        : MODES[mode];
 
     for (const testFile of files) {
         process.stdout.write(`\n[isolated-db] Running ${testFile} against ${testDb.hostname}/${testDb.databaseName}\n`);

@@ -411,8 +411,9 @@ async function attachOnboardingAssignments(staffRows = []) {
     if (!Array.isArray(staffRows) || !staffRows.length) return staffRows;
     const staffIds = staffRows.map(row => Number(row.id)).filter(Number.isFinite);
     if (!staffIds.length) return staffRows;
-    const result = await pool.query(
-        `WITH active AS (
+    const [result, professionSummaryResult] = await Promise.all([
+        pool.query(
+            `WITH active AS (
             SELECT DISTINCT ON (op.staff_id)
                    op.*, ot.name AS template_name,
                    u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role
@@ -435,14 +436,30 @@ async function attachOnboardingAssignments(staffRows = []) {
                   active.profession_key,
                   active.responsible_user_id, active.assigned_by_user_id, active.assigned_by_username,
                   active.assigned_at, active.reassigned_at, active.training_status,
-                  active.assignment_history, active.checklist_template_key, active.last_task_sync_at,
-                  active.template_name, active.responsible_name, active.responsible_username, active.responsible_role`,
-        [staffIds, ONBOARDING_TASK_SOURCE_TYPE]
-    );
+                   active.assignment_history, active.checklist_template_key, active.last_task_sync_at,
+                   active.template_name, active.responsible_name, active.responsible_username, active.responsible_role`,
+            [staffIds, ONBOARDING_TASK_SOURCE_TYPE]
+        ),
+        pool.query(
+            `SELECT op.staff_id,
+                    COUNT(*) FILTER (WHERE op.status <> 'completed')::int AS active_count
+             FROM onboarding_progress op
+             WHERE op.staff_id = ANY($1::int[])
+               AND op.profession_key IS NOT NULL
+             GROUP BY op.staff_id`,
+            [staffIds]
+        )
+    ]);
     const byStaff = new Map(result.rows.map(row => [Number(row.staff_id), onboardingProgressMeta(row)]));
+    const professionSummaryByStaff = new Map(professionSummaryResult.rows.map(row => [
+        Number(row.staff_id),
+        { active_count: Number(row.active_count || 0) }
+    ]));
     staffRows.forEach(row => {
         row.onboarding_assignment = byStaff.get(Number(row.id)) || null;
         row.onboardingAssignment = row.onboarding_assignment;
+        row.profession_onboarding_summary = professionSummaryByStaff.get(Number(row.id)) || { active_count: 0 };
+        row.professionOnboardingSummary = row.profession_onboarding_summary;
     });
     return staffRows;
 }

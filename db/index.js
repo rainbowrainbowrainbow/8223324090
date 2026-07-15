@@ -30,11 +30,12 @@ pool.on('error', (err) => {
 async function safeQuery(sql) {
     try {
         await pool.query(sql);
+        return true;
     } catch (err) {
         // Ignore errors about missing columns/tables — they'll be created by migrations
         if (err.message.includes('does not exist') || err.message.includes('already exists')) {
             log.debug(`safeQuery ignored: ${err.message.slice(0, 120)}`);
-            return;
+            return false;
         }
         throw err;
     }
@@ -99,7 +100,6 @@ async function skipLegacyCredentialMigration(version, label) {
 }
 
 async function initDatabase() {
-    try {
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS bookings (
                 id VARCHAR(50) PRIMARY KEY,
@@ -1018,7 +1018,7 @@ async function initDatabase() {
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_budget_plans_year_month ON budget_plans(year, month)');
 
         // v17.0: Procurement lists
-        await safeQuery(`
+        const procurementListsReady = await safeQuery(`
             CREATE TABLE IF NOT EXISTS procurement_lists (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
@@ -1034,11 +1034,13 @@ async function initDatabase() {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_status ON procurement_lists(status)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_department ON procurement_lists(department)');
+        if (procurementListsReady) {
+            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_status ON procurement_lists(status)');
+            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_department ON procurement_lists(department)');
+        }
 
         // v17.0: Procurement items
-        await safeQuery(`
+        const procurementItemsReady = await safeQuery(`
             CREATE TABLE IF NOT EXISTS procurement_items (
                 id SERIAL PRIMARY KEY,
                 list_id INTEGER NOT NULL REFERENCES procurement_lists(id) ON DELETE CASCADE,
@@ -1053,14 +1055,12 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_list ON procurement_items(list_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_stock ON procurement_items(stock_id)');
+        if (procurementItemsReady) {
+            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_list ON procurement_items(list_id)');
+            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_stock ON procurement_items(stock_id)');
+        }
 
         log.info('Database initialized');
-    } catch (err) {
-        // In two-phase init, first pass may fail on missing tables from migrations — that's OK
-        log.warn('Database init partial (will retry after migrations)', err.message);
-    }
 }
 
 async function generateBookingNumber(client) {

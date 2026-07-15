@@ -174,4 +174,14 @@ describe('HR durable vacancy hire contract', () => {
         assert.match(pageCode, /target_hires:\s*parseInt\(result\.target_hires\) \|\| null/);
         assert.match(pageCode, /if \(!vacancyHasHeadcount\) payload\.vacancy_action/);
     });
+
+    it('edits vacancy headcount transactionally and reports the recalculated status', () => {
+        assert.match(routeCode, /SELECT \* FROM job_vacancies WHERE id = \$1 FOR UPDATE/);
+        assert.match(routeCode, /status = 'hired'[\s\S]*staff_id IS NOT NULL/);
+        assert.match(routeCode, /auto_filled_by_headcount: autoFilledByHeadcount/);
+        assert.match(routeCode, /headcount_reached: headcountReached/);
+        assert.match(pageCode, /function editVacancy\(id\)/);
+        assert.match(pageCode, /target_hires: rawTarget \? Number\(rawTarget\) : null/);
+        assert.match(pageCode, /Вакансію автоматично закрито/);
+    });
 });

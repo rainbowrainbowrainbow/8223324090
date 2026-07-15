@@ -73,6 +73,8 @@
     "test:integration:hr-disposable": "node --test tests/integration/hr-disposable.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
     "test:integration:hr-onboarding:isolated": "node scripts/run-isolated-postgres-tests.js onboarding",
+    "test:integration:hr-legacy-backfill:isolated": "node scripts/run-isolated-postgres-tests.js backfill",
+    "test:browser:hr-onboarding:fullstack:isolated": "npm exec --yes --package=playwright -c \"node scripts/run-isolated-postgres-tests.js fullstack\"",
     "test:integration:live-multi-segment-qa:isolated": "node scripts/run-isolated-postgres-tests.js qa",
     "test:db:isolated": "node scripts/run-isolated-postgres-tests.js all",
     "test:db-flow-contract": "node --test tests/isolated-postgres-test-flow.test.js",

@@ -1004,6 +1004,18 @@ function staffOnboardingAssignment(staff = {}) {
     };
 }
 
+function staffProfessionOnboardingSummary(staff = {}) {
+    const summary = staff.profession_onboarding_summary || staff.professionOnboardingSummary || {};
+    return {
+        activeCount: Math.max(0, Number(summary.active_count ?? summary.activeCount ?? 0) || 0)
+    };
+}
+
+function activeProfessionOnboardingLabel(count = 0) {
+    const value = Math.max(0, Number(count) || 0);
+    return `Професійні процеси: ${value} ${value === 1 ? 'активний' : 'активних'}`;
+}
+
 function renderStaffOnboardingAssignment(staff = {}) {
     const assignment = staffOnboardingAssignment(staff);
     const hasResponsible = Boolean(assignment?.responsibleUserId);
@@ -1018,7 +1030,7 @@ function renderStaffOnboardingAssignment(staff = {}) {
     return `<div class="hr-team-onboarding-assignment ${tone}">
         <div class="hr-team-onboarding-assignment-head">
             <div>
-                <b>Онбординг</b>
+                <b>Корпоративний онбординг</b>
                 <span>${escapeHtml(responsible)}</span>
             </div>
             ${canManage ? `<button type="button" onclick="openStaffOnboardingAssignment(${Number(staff.id)})">${action}</button>` : ''}
@@ -3822,14 +3834,18 @@ function renderTeamTrainingCompact(staff = {}) {
 
 function renderTeamOnboardingCompact(staff = {}) {
     const assignment = staffOnboardingAssignment(staff);
-    if (!assignment) return '';
+    const professionSummary = staffProfessionOnboardingSummary(staff);
+    if (!assignment && !professionSummary.activeCount) return '';
     const hasResponsible = Boolean(assignment?.responsibleUserId);
-    const status = assignment ? onboardingStatusLabel(assignment.trainingStatus) : 'не призначено';
-    const label = hasResponsible ? assignment.responsibleName : 'Відповідального немає';
+    const status = assignment ? onboardingStatusLabel(assignment.trainingStatus) : 'корпоративний процес не стартував';
+    const label = assignment
+        ? (hasResponsible ? assignment.responsibleName : 'Відповідального немає')
+        : 'Не стартував';
     const percent = assignment ? assignment.percent : 0;
-    const content = `<span>Онбординг</span><b>${escapeHtml(label)}</b><small>${escapeHtml(status)}</small><i aria-hidden="true"><em style="width:${percent}%"></em></i>`;
+    const professionLabel = activeProfessionOnboardingLabel(professionSummary.activeCount);
+    const content = `<span>Корпоративний онбординг</span><b>${escapeHtml(label)}</b><small>${escapeHtml(status)}</small><small class="hr-team-onboarding-profession-count">${escapeHtml(professionLabel)}</small><i aria-hidden="true"><em style="width:${percent}%"></em></i>`;
     if (!canManage) return `<div class="hr-team-onboarding-compact">${content}</div>`;
-    return `<button type="button" class="hr-team-onboarding-compact" onclick="openStaffOnboardingAssignment(${Number(staff.id)})" aria-label="Онбординг ${escapeHtml(staff.name || '')}: ${escapeHtml(label)}">${content}</button>`;
+    return `<button type="button" class="hr-team-onboarding-compact" onclick="openStaffOnboardingAssignment(${Number(staff.id)})" aria-label="Корпоративний онбординг ${escapeHtml(staff.name || '')}: ${escapeHtml(label)}; ${escapeHtml(professionLabel)}">${content}</button>`;
 }
 
 function renderTeamCardOverflowMenu(staff = {}) {
@@ -10818,6 +10834,7 @@ async function loadVacancies() {
             ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
             ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
             <div class="vac-actions" onclick="event.stopPropagation()">
+                <button type="button" class="btn-vac-action" onclick="editVacancy(${v.id})">Редагувати</button>
                 ${v.status === 'open' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">Призупинити</button>` : ''}
                 ${v.status !== 'filled' && v.status !== 'closed' ? `<button type="button" class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">Заповнено</button>` : ''}
                 ${v.status === 'paused' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">Відкрити</button>` : ''}
@@ -10830,8 +10847,73 @@ async function loadVacancies() {
 }
 
 async function patchVacancy(id, status) {
-    await hrFetch(`/vacancies/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    loadVacancies();
+    const data = await hrFetch(`/vacancies/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити вакансію', 'error');
+        return;
+    }
+    if (data.auto_filled_by_headcount) {
+        showNotification(`Вакансію закрито: найнято ${Number(data.hired_count || 0)} із ${Number(data.target_hires || 0)}`, 'success');
+    } else {
+        showNotification('Статус вакансії оновлено', 'success');
+    }
+    await loadVacancies();
+}
+
+async function editVacancy(id) {
+    const vacancy = currentVacancies.find(item => Number(item.id) === Number(id));
+    if (!vacancy) {
+        showNotification('Вакансію не знайдено. Оновіть список і повторіть дію.', 'error');
+        return;
+    }
+    const result = await formModal(`Редагувати вакансію · ${vacancy.title}`, [
+        { key: 'title', label: 'Назва вакансії', required: true, defaultValue: vacancy.title || '' },
+        { key: 'salary_from', label: 'Зарплата від (₴)', type: 'number', defaultValue: vacancy.salary_from ?? '' },
+        { key: 'salary_to', label: 'Зарплата до (₴)', type: 'number', defaultValue: vacancy.salary_to ?? '' },
+        {
+            key: 'target_hires',
+            label: 'Потрібно найняти людей',
+            type: 'number',
+            defaultValue: vacancy.target_hires ?? '',
+            hint: 'Залиште порожнім, щоб повернути вакансію в ручний режим.'
+        },
+        { key: 'schedule', label: 'Графік', defaultValue: vacancy.schedule || '', placeholder: 'Пн-Пт 10:00-18:00' }
+    ], {
+        icon: '✏️',
+        validate: values => {
+            const rawTarget = String(values.target_hires || '').trim();
+            if (!rawTarget) return null;
+            const target = Number(rawTarget);
+            if (!Number.isInteger(target) || target <= 0) {
+                return { key: 'target_hires', message: 'Headcount має бути додатним цілим числом' };
+            }
+            return null;
+        }
+    });
+    if (!result) return;
+    const rawTarget = String(result.target_hires || '').trim();
+    const data = await hrFetch(`/vacancies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+            title: result.title.trim(),
+            salary_from: String(result.salary_from || '').trim() ? Number(result.salary_from) : null,
+            salary_to: String(result.salary_to || '').trim() ? Number(result.salary_to) : null,
+            target_hires: rawTarget ? Number(rawTarget) : null,
+            schedule: result.schedule.trim() || null
+        })
+    });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося зберегти вакансію', 'error');
+        return;
+    }
+    if (data.auto_filled_by_headcount) {
+        showNotification(`Вакансію автоматично закрито: найнято ${Number(data.hired_count || 0)} із ${Number(data.target_hires || 0)}`, 'success');
+    } else if (data.target_hires == null) {
+        showNotification('Вакансію переведено в ручний режим закриття', 'success');
+    } else {
+        showNotification(`Headcount оновлено: найнято ${Number(data.hired_count || 0)} із ${Number(data.target_hires)}`, 'success');
+    }
+    await loadVacancies();
 }
 
 async function openCandidates(vacancyId, title) {

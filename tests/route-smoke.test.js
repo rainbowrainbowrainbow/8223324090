@@ -371,11 +371,15 @@ function createFakePool() {
         professionChecklistProgress: new Map(),
         jobVacancies: new Map([
             [56, { id: 56, title: 'Кухар', role_type: 'cook', department: 'cafe', status: 'open' }],
-            [57, { id: 57, title: 'Бариста', role_type: 'barista', department: 'cafe', status: 'open' }]
+            [57, { id: 57, title: 'Бариста', role_type: 'barista', department: 'cafe', status: 'open' }],
+            [58, { id: 58, title: 'Headcount smoke', role_type: 'animator', department: 'qa', status: 'open', target_hires: 2 }],
+            [59, { id: 59, title: 'Closed headcount smoke', role_type: 'animator', department: 'qa', status: 'filled', target_hires: 1 }]
         ]),
         jobApplications: new Map([
             [703, { id: 703, vacancy_id: 56, name: 'Кандидат на додаткову професію', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
-            [704, { id: 704, vacancy_id: 57, name: 'Новий кандидат вакансії', phone: '+380500000704', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }]
+            [704, { id: 704, vacancy_id: 57, name: 'Новий кандидат вакансії', phone: '+380500000704', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
+            [705, { id: 705, vacancy_id: 58, name: 'Durable headcount hire', status: 'hired', staff_id: 45, profession_key: 'animator', onboarding_progress_id: null }],
+            [706, { id: 706, vacancy_id: 59, name: 'Closed durable hire', status: 'hired', staff_id: 45, profession_key: 'animator', onboarding_progress_id: null }]
         ]),
         nextStaffId: 60,
         tasks: [],
@@ -2746,6 +2750,27 @@ function createFakePool() {
                     vacancy_target_hires: null
                 });
                 return { rows };
+            }
+            if (/SELECT \* FROM job_vacancies WHERE id = \$1 FOR UPDATE/i.test(text)) {
+                const vacancy = hrState.jobVacancies.get(Number(params[0]));
+                return { rows: vacancy ? [{ ...vacancy }] : [], rowCount: vacancy ? 1 : 0 };
+            }
+            if (/SELECT COUNT\(\*\)::int AS hired_count FROM job_applications WHERE vacancy_id = \$1 AND status = 'hired' AND staff_id IS NOT NULL/i.test(text)) {
+                const hiredCount = Array.from(hrState.jobApplications.values())
+                    .filter(row => Number(row.vacancy_id) === Number(params[0]) && row.status === 'hired' && row.staff_id != null)
+                    .length;
+                return { rows: [{ hired_count: hiredCount }], rowCount: 1 };
+            }
+            if (/UPDATE job_vacancies SET .+ WHERE id=\$\d+ RETURNING \*/i.test(text)) {
+                const idParam = Number(text.match(/WHERE id=\$(\d+) RETURNING \*/i)?.[1]);
+                const vacancyId = Number(params[idParam - 1]);
+                const vacancy = hrState.jobVacancies.get(vacancyId);
+                if (!vacancy) return { rows: [], rowCount: 0 };
+                for (const match of text.matchAll(/\b([a-z_]+)=\$(\d+)/gi)) {
+                    vacancy[match[1]] = params[Number(match[2]) - 1];
+                }
+                if (/closed_at=NOW\(\)/i.test(text)) vacancy.closed_at = '2099-06-06T14:00:00Z';
+                return { rows: [{ ...vacancy }], rowCount: 1 };
             }
             if (/SELECT a\.\*, v\.role_type, v\.department AS vacancy_department, v\.title AS vac_title, v\.status AS vacancy_status, v\.target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.id=\$1 FOR UPDATE OF a, v/i.test(text)) {
                 const application = hrState.jobApplications.get(Number(params[0]));
@@ -5592,6 +5617,47 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /INSERT INTO staff \(name, department, position/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE job_vacancies SET status = 'filled'/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'application_hired_new_staff'));
+    });
+
+    it('recalculates edited vacancy headcount atomically without reopening closed vacancies', async () => {
+        const reached = await request('PATCH', '/api/hr/vacancies/58', {
+            target_hires: 1
+        }, withAuth());
+        assert.equal(reached.status, 200, JSON.stringify(reached.data));
+        assert.equal(reached.data.success, true);
+        assert.equal(reached.data.target_hires, 1);
+        assert.equal(reached.data.hired_count, 1);
+        assert.equal(reached.data.headcount_reached, true);
+        assert.equal(reached.data.auto_filled_by_headcount, true);
+        assert.equal(reached.data.status, 'filled');
+        assert.ok(queries.some(q => /SELECT \* FROM job_vacancies WHERE id = \$1 FOR UPDATE/i.test(q.text)));
+        assert.ok(queries.some(q => /status = 'hired' AND staff_id IS NOT NULL/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+
+        queries.length = 0;
+        const increased = await request('PATCH', '/api/hr/vacancies/59', {
+            target_hires: 3
+        }, withAuth());
+        assert.equal(increased.status, 200, JSON.stringify(increased.data));
+        assert.equal(increased.data.target_hires, 3);
+        assert.equal(increased.data.headcount_reached, false);
+        assert.equal(increased.data.auto_filled_by_headcount, false);
+        assert.equal(increased.data.status, 'filled', 'increasing headcount never reopens a closed vacancy');
+
+        queries.length = 0;
+        const manual = await request('PATCH', '/api/hr/vacancies/59', {
+            target_hires: null
+        }, withAuth());
+        assert.equal(manual.status, 200, JSON.stringify(manual.data));
+        assert.equal(manual.data.target_hires, null);
+        assert.equal(manual.data.headcount_reached, false);
+        assert.equal(manual.data.auto_filled_by_headcount, false);
+        assert.equal(manual.data.status, 'filled', 'headcount edits never reopen a closed vacancy');
+
+        const invalid = await request('PATCH', '/api/hr/vacancies/58', {
+            target_hires: 0
+        }, withAuth());
+        assert.equal(invalid.status, 400, JSON.stringify(invalid.data));
     });
 
     it('prepares HR vacancy platform templates and AI formatting preview', async () => {

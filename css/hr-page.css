@@ -2056,6 +2056,9 @@ button.hr-team-onboarding-compact:focus-visible {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.hr-team-onboarding-compact small.hr-team-onboarding-profession-count {
+    color: #0F766E;
+}
 .hr-team-training-compact i,
 .hr-team-onboarding-compact i {
     grid-column: 1 / -1;
@@ -4914,6 +4917,9 @@ body.dark-mode .hr-team-training-compact span,
 body.dark-mode .hr-team-onboarding-compact span,
 body.dark-mode .hr-team-onboarding-compact small {
     color: #94A3B8;
+}
+body.dark-mode .hr-team-onboarding-compact small.hr-team-onboarding-profession-count {
+    color: #5EEAD4;
 }
 body.dark-mode .hr-ready-badge,
 body.dark-mode .hr-profession-rate-row {

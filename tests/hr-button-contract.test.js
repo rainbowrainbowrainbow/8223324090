@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
     PAYROLL_EVENT_LABELS,
@@ -663,6 +664,307 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
+});
+
+test('HR Salary and KPI expose independent local search and department filters', () => {
+    for (const token of [
+        'id="salarySearch"',
+        'id="salaryFilterInfo"',
+        'id="salaryFilterReset"',
+        'id="salaryDepartmentFilters"',
+        'id="kpiSearch"',
+        'id="kpiFilterInfo"',
+        'id="kpiFilterReset"',
+        'id="kpiDepartmentFilters"',
+        'aria-live="polite"',
+        'class="hr-payroll-dept-filter"',
+        'class="hr-payroll-filter-reset"',
+        '.hr-payroll-dept-chip.is-active',
+        '#tab-kpi .hr-payroll-dept-chip:focus-visible {\n    outline: 3px',
+        '.hr-payroll-empty-state',
+        '[data-theme="dark"] #tab-salary .hr-payroll-filters',
+        '@media (max-width: 480px)'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing Payroll filter surface token ${token}`);
+    }
+
+    const stateBlock = HR_JS.slice(
+        HR_JS.indexOf('const payrollViewState ='),
+        HR_JS.indexOf('let staffDisplayGroupsContract')
+    );
+    assert.match(stateBlock, /salary:\s*\{\s*allRows:\s*\[\],\s*query:\s*'',\s*department:\s*'all',\s*expandedGroups:\s*new Set\(\)/);
+    assert.match(stateBlock, /kpi:\s*\{\s*allRows:\s*\[\],\s*query:\s*'',\s*department:\s*'all',\s*expandedGroups:\s*new Set\(\)/);
+
+    for (const token of [
+        'function payrollRowSearchHaystack',
+        'normalizeSearchText(parts.filter(Boolean).join',
+        'payrollProfessionSearchParts(row)',
+        'profession_rate_summary',
+        'departmentLabel(department)',
+        'function payrollFilteredRows',
+        'data-payroll-department=',
+        'aria-pressed=',
+        'Знайдено ${currentRows.length} із ${state.allRows.length}',
+        "bindPayrollFilterControls('salary')",
+        "bindPayrollFilterControls('kpi')",
+        'nextChip?.focus()',
+        "renderPayrollVisibleRows('salary')",
+        "renderPayrollVisibleRows('kpi')",
+        'За поточними фільтрами працівників не знайдено'
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing Payroll filter behavior token ${token}`);
+    }
+
+    const loadSalaryBlock = HR_JS.slice(HR_JS.indexOf('async function loadSalary'), HR_JS.indexOf('function renderSalaryRateSummary'));
+    const loadKpiBlock = HR_JS.slice(HR_JS.indexOf('async function loadKpi'), HR_JS.indexOf('async function loadRatings'));
+    assert.ok(loadSalaryBlock.includes('hrFetch(`/salary?${query}`)'));
+    assert.ok(loadSalaryBlock.includes('ensureProfessionsLoaded({ silent: true })'));
+    assert.equal(loadSalaryBlock.includes('/staff?active=true'), false);
+    assert.ok(loadKpiBlock.includes('hrFetch(`/kpi?month=${month}`)'));
+    assert.equal(loadKpiBlock.includes('/staff?active=true'), false);
+
+    const renderSalaryBlock = HR_JS.slice(HR_JS.indexOf('function renderSalary(data)'), HR_JS.indexOf('function formatZrsDate'));
+    const renderKpiBlock = HR_JS.slice(HR_JS.indexOf('function renderKpi({'), HR_JS.indexOf('// TAB 9: ONBOARDING'));
+    assert.ok(renderSalaryBlock.includes('const totals = data.totals || {}'));
+    assert.ok(renderSalaryBlock.includes('payrollViewState.salary.allRows = Array.isArray(data.data)'));
+    assert.ok(renderSalaryBlock.includes("renderPayrollVisibleRows('salary')"));
+    assert.ok(renderKpiBlock.includes('renderKpiSources({ rows: allRows, sources })'));
+    assert.ok(renderKpiBlock.includes('const totals = allRows.reduce'));
+    assert.ok(renderKpiBlock.includes('totals.kpiScoreSum / allRows.length'));
+    assert.ok(renderKpiBlock.includes("renderPayrollVisibleRows('kpi')"));
+});
+
+test('HR Salary and KPI render persistent accessible department groups', () => {
+    for (const token of [
+        "storageKey: 'pzp_hr_payroll_salary_expanded_groups'",
+        "storageKey: 'pzp_hr_payroll_kpi_expanded_groups'",
+        "hydratePayrollExpandedGroups('salary')",
+        "hydratePayrollExpandedGroups('kpi')",
+        'function payrollGroupedRows',
+        'function payrollExpandedGroupKeysFromStorage',
+        'function persistPayrollExpandedGroups',
+        'function payrollSearchAutoExpandsGroups',
+        'return payrollSearchAutoExpandsGroups(view) || isPayrollGroupExpanded(view, groupKey)',
+        'function renderPayrollGroupedList',
+        'type="button" class="hr-payroll-group-toggle"',
+        'data-payroll-group-toggle=',
+        'aria-expanded=',
+        'hr-payroll-group-caret',
+        'hr-payroll-group-label',
+        'hr-payroll-group-count',
+        'nextButton?.focus()',
+        "renderPayrollGroupedList('salary'",
+        "renderPayrollGroupedList('kpi'"
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing Payroll group behavior token ${token}`);
+    }
+    for (const token of [
+        '#tab-salary .hr-payroll-group-header',
+        '#tab-kpi .hr-payroll-group-toggle:focus-visible',
+        '.hr-payroll-group-header.is-expanded .hr-payroll-group-caret',
+        '[data-theme="dark"] #tab-kpi .hr-payroll-group-header',
+        '#tab-kpi .hr-payroll-group-toggle {\n        min-height: 44px;'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing Payroll group CSS token ${token}`);
+    }
+
+    const groupHeaderBlock = HR_JS.slice(HR_JS.indexOf('function renderPayrollGroupHeader'), HR_JS.indexOf('function bindPayrollGroupToggles'));
+    assert.ok(groupHeaderBlock.includes('<button type="button"'), 'group toggle must stay a native button for mouse, Enter, and Space');
+    assert.ok(groupHeaderBlock.includes('aria-expanded='));
+    assert.ok(groupHeaderBlock.includes('group.rows.length'));
+});
+
+test('HR Salary and KPI use compact accessible master-detail lists', () => {
+    for (const token of [
+        'id="salaryList" class="hr-payroll-list"',
+        'id="kpiList" class="hr-payroll-list"',
+        'function bindPayrollDetailToggles',
+        'data-payroll-detail-toggle',
+        'data-payroll-detail-label',
+        'aria-controls=',
+        'class="hr-payroll-details" hidden',
+        'function renderSalaryEmployeeItem',
+        'function renderKpiEmployeeItem'
+    ]) {
+        assert.ok(`${HR_HTML}\n${HR_JS}`.includes(token), `missing compact Payroll token ${token}`);
+    }
+    for (const obsoleteId of ['salaryHead', 'salaryBody', 'kpiHead', 'kpiBody']) {
+        assert.ok(!HR_HTML.includes(`id="${obsoleteId}"`), `${obsoleteId} table mount must be removed`);
+        assert.ok(!HR_JS.includes(`getElementById('${obsoleteId}')`), `${obsoleteId} must not be used by the renderer`);
+    }
+
+    const salaryBlock = HR_JS.slice(HR_JS.indexOf('function renderSalaryEmployeeItem'), HR_JS.indexOf('function renderSalaryRows'));
+    const salaryContext = vm.createContext({
+        ROLE_LABELS: { animator: 'Аніматор' },
+        departmentLabel: value => value === 'animators' ? 'Аніматори' : 'Без відділу',
+        escapeHtml: value => String(value ?? ''),
+        fmtMoney: value => `${Number(value)} ₴`,
+        renderSalaryRateSummary: row => `MULTI_RATE:${row.profession_rate_summary.map(item => `${item.profession_key}/${item.rate_unit}/${item.amount}/${item.kind}/${item.allocation_source}`).join('|')}`
+    });
+    vm.runInContext(salaryBlock, salaryContext);
+    const salaryHtml = vm.runInContext(`renderSalaryEmployeeItem({
+        staff_name: 'Працівник без attendance', role_type: 'animator', department: 'animators',
+        days_worked: 0, hours_worked: 0, base_salary: 0, total_salary: 0,
+        overtime_pay: 0, bonuses: 0, tips: 0, deductions: 0, penalties: 0, advances: 0,
+        profession_rate_summary: [
+            { profession_key: 'host', rate_unit: 'hour', amount: 1200, kind: 'base', allocation_source: 'schedule' },
+            { profession_key: 'actor', rate_unit: 'day', amount: 800, kind: 'overtime', allocation_source: 'manual' }
+        ]
+    }, 0, 0)`, salaryContext);
+    assert.ok(salaryHtml.includes('Працівник без attendance'));
+    assert.ok(salaryHtml.includes('0 дн · 0 год'));
+    assert.ok(salaryHtml.includes('MULTI_RATE:host/hour/1200/base/schedule|actor/day/800/overtime/manual'));
+    for (const label of ['Переробки', 'Бонуси та чайові', 'Утримання та штрафи', 'ЗРС']) {
+        assert.ok(salaryHtml.includes(label), `salary details must include ${label}`);
+    }
+
+    const kpiBlock = HR_JS.slice(HR_JS.indexOf('function renderKpiEmployeeItem'), HR_JS.indexOf('function renderKpiRows'));
+    const kpiContext = vm.createContext({
+        ROLE_LABELS: { manager: 'Менеджер' },
+        departmentLabel: () => 'Адміністрація',
+        escapeHtml: value => String(value ?? ''),
+        num: value => Number(value || 0),
+        kpiSignal: value => `<span>${value}</span>`,
+        toneForPercent: () => 'good'
+    });
+    vm.runInContext(kpiBlock, kpiContext);
+    const kpiHtml = vm.runInContext("renderKpiEmployeeItem({ staff_name: 'KPI Zero', role_type: 'manager', days_scheduled: 0, kpi_score: 0 }, 0, 0)", kpiContext);
+    assert.ok(kpiHtml.includes('даних ще немає'));
+    for (const label of ['Загальний бал', 'Присутність', 'Надійність', 'Задачі', 'Внесок', 'Розвиток']) {
+        assert.ok(kpiHtml.includes(label), `KPI master-detail must include ${label}`);
+    }
+
+    for (const token of [
+        '@media (max-width: 1200px)',
+        '@media (max-width: 768px)',
+        '@media (max-width: 480px)',
+        '#tab-salary .hr-payroll-salary-summary',
+        '#tab-kpi .hr-payroll-kpi-summary',
+        '#tab-salary .hr-payroll-list',
+        '#tab-salary .hr-payroll-group-content[hidden]',
+        'min-height: 44px;'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing responsive Payroll token ${token}`);
+    }
+});
+
+test('HR Payroll local filter and group helpers preserve independent view state', () => {
+    const sourceSlices = [
+        HR_JS.slice(HR_JS.indexOf('function normalizeProfessionKey'), HR_JS.indexOf('function normalizeProfessionList')),
+        HR_JS.slice(HR_JS.indexOf('function professionTitle'), HR_JS.indexOf('function staffSecondaryProfessions')),
+        HR_JS.slice(HR_JS.indexOf('function normalizeSearchText'), HR_JS.indexOf('function normalizeDepartmentKey')),
+        HR_JS.slice(HR_JS.indexOf('function normalizeDepartmentKey'), HR_JS.indexOf('function normalizeStaffDisplayGroupKey')),
+        HR_JS.slice(HR_JS.indexOf('function departmentLabel'), HR_JS.indexOf('function companyStructureSelectOptions')),
+        HR_JS.slice(HR_JS.indexOf('function payrollProfessionSearchParts'), HR_JS.indexOf('function renderPayrollFilterControls'))
+    ];
+    const storage = new Map();
+    const localStorage = {
+        getItem: key => storage.has(key) ? storage.get(key) : null,
+        setItem: (key, value) => storage.set(key, String(value)),
+        removeItem: key => storage.delete(key)
+    };
+    const context = vm.createContext({
+        ROLE_LABELS: { animator: 'Аніматор', manager: 'Менеджер' },
+        STAFF_DEPARTMENT_LABELS: { animators: 'Аніматори', admin: 'Адміністрація' },
+        PAYROLL_DEPARTMENT_ORDER: ['animators', 'admin'],
+        PAYROLL_VIEW_CONFIG: {
+            salary: { storageKey: 'pzp_hr_payroll_salary_expanded_groups' },
+            kpi: { storageKey: 'pzp_hr_payroll_kpi_expanded_groups' }
+        },
+        localStorage,
+        hrProfessions: [{ key: 'party_host', title: 'Ведуча свят' }],
+        payrollViewState: {
+            salary: { allRows: [], query: '', department: 'all', expandedGroups: new Set() },
+            kpi: { allRows: [], query: '', department: 'all', expandedGroups: new Set() }
+        }
+    });
+    vm.runInContext(sourceSlices.join('\n'), context);
+
+    const salaryRows = [
+        {
+            staff_name: 'Атаманенко Анна Михайлівна',
+            role_type: 'animator',
+            department: 'animators',
+            profession_rate_summary: [{ profession_key: 'party_host' }]
+        },
+        {
+            staff_name: 'Бойко Олена',
+            role_type: 'manager',
+            department: 'admin',
+            profession_rate_summary: []
+        }
+    ];
+    context.payrollViewState.salary.allRows = salaryRows;
+    context.payrollViewState.kpi.allRows = salaryRows;
+
+    context.payrollViewState.salary.query = 'АННА';
+    assert.deepEqual(context.payrollFilteredRows('salary').map(row => row.staff_name), ['Атаманенко Анна Михайлівна']);
+    context.payrollViewState.salary.query = 'аніматор';
+    assert.deepEqual(context.payrollFilteredRows('salary').map(row => row.staff_name), ['Атаманенко Анна Михайлівна']);
+    context.payrollViewState.salary.query = 'ведуча свят';
+    assert.deepEqual(context.payrollFilteredRows('salary').map(row => row.staff_name), ['Атаманенко Анна Михайлівна']);
+
+    context.payrollViewState.salary.query = 'менеджер';
+    context.payrollViewState.salary.department = 'admin';
+    assert.deepEqual(context.payrollFilteredRows('salary').map(row => row.staff_name), ['Бойко Олена']);
+    context.payrollViewState.salary.allRows = [{
+        staff_name: 'Коваль Марія',
+        role_type: 'manager',
+        department: 'admin',
+        profession_rate_summary: []
+    }];
+    assert.equal(context.payrollViewState.salary.query, 'менеджер');
+    assert.equal(context.payrollViewState.salary.department, 'admin');
+    assert.deepEqual(context.payrollFilteredRows('salary').map(row => row.staff_name), ['Коваль Марія']);
+    context.payrollViewState.salary.allRows = [salaryRows[0]];
+    assert.equal(context.payrollViewState.salary.department, 'admin', 'an empty department must stay selected after period changes');
+    assert.equal(context.payrollFilteredRows('salary').length, 0);
+    const emptyDepartmentOption = context.payrollDepartmentOptions('salary').find(option => option.value === 'admin');
+    assert.equal(emptyDepartmentOption?.value, 'admin');
+    assert.equal(emptyDepartmentOption?.label, 'Адміністрація');
+    assert.equal(emptyDepartmentOption?.count, 0);
+    context.payrollViewState.salary.department = 'none';
+    const emptyNoDepartmentOption = context.payrollDepartmentOptions('salary').find(option => option.value === 'none');
+    assert.equal(emptyNoDepartmentOption?.label, 'Без відділу');
+    context.payrollViewState.salary.department = 'admin';
+
+    context.payrollViewState.kpi.query = 'ведуча свят';
+    assert.equal(context.payrollFilteredRows('kpi').length, 0, 'KPI must not search Salary profession summaries');
+    assert.equal(context.payrollViewState.salary.query, 'менеджер', 'KPI query must not overwrite Salary query');
+    assert.equal(context.payrollViewState.salary.department, 'admin', 'KPI department must not overwrite Salary department');
+
+    const groupedRows = context.payrollGroupedRows([
+        salaryRows[0],
+        salaryRows[1],
+        { staff_name: 'Без відділу', role_type: 'manager', department: null, profession_rate_summary: [] }
+    ]);
+    assert.deepEqual(Array.from(groupedRows, group => group.key), ['animators', 'admin', 'none']);
+    assert.equal(groupedRows[2]?.label, 'Без відділу');
+    assert.equal(groupedRows.reduce((total, group) => total + group.rows.length, 0), 3);
+
+    localStorage.setItem('pzp_hr_payroll_salary_expanded_groups', JSON.stringify(['animators', 'animators', 'all']));
+    localStorage.setItem('pzp_hr_payroll_kpi_expanded_groups', JSON.stringify(['admin']));
+    context.hydratePayrollExpandedGroups('salary');
+    context.hydratePayrollExpandedGroups('kpi');
+    assert.deepEqual(Array.from(context.payrollViewState.salary.expandedGroups), ['animators']);
+    assert.deepEqual(Array.from(context.payrollViewState.kpi.expandedGroups), ['admin']);
+
+    const persistedSalaryState = localStorage.getItem('pzp_hr_payroll_salary_expanded_groups');
+    context.payrollViewState.salary.query = 'анна';
+    assert.equal(context.isPayrollGroupExpandedForRender('salary', 'admin'), true, 'search must temporarily open matching groups');
+    assert.equal(context.isPayrollGroupExpanded('salary', 'admin'), false, 'search auto-expand must not mutate saved state');
+    assert.equal(localStorage.getItem('pzp_hr_payroll_salary_expanded_groups'), persistedSalaryState);
+
+    context.payrollViewState.salary.query = '';
+    context.setPayrollGroupExpanded('salary', 'admin', true);
+    assert.deepEqual(JSON.parse(localStorage.getItem('pzp_hr_payroll_salary_expanded_groups')), ['admin', 'animators']);
+    assert.deepEqual(JSON.parse(localStorage.getItem('pzp_hr_payroll_kpi_expanded_groups')), ['admin']);
+    context.setPayrollGroupExpanded('salary', 'admin', false);
+    assert.deepEqual(JSON.parse(localStorage.getItem('pzp_hr_payroll_salary_expanded_groups')), ['animators']);
+
+    localStorage.setItem('pzp_hr_payroll_salary_expanded_groups', '{broken');
+    context.hydratePayrollExpandedGroups('salary');
+    assert.equal(context.payrollViewState.salary.expandedGroups.size, 0, 'invalid storage must fail closed');
 });
 
 test('HR payroll workspace exposes ZRS salary advances and deducts them from payroll', () => {

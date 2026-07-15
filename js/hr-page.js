@@ -402,6 +402,10 @@ function peopleBucketTitle(bucketId) {
 let canManage = false;
 let todayData = null;
 let todayFilters = { query: '', department: 'all' };
+const payrollViewState = {
+    salary: { allRows: [], query: '', department: 'all', expandedGroups: new Set() },
+    kpi: { allRows: [], query: '', department: 'all', expandedGroups: new Set() }
+};
 let staffDisplayGroupsContract = [];
 let todayDisplayGroups = [];
 let scheduleWeekStart = null;
@@ -1508,6 +1512,10 @@ async function initPage() {
 function initNewTabs() {
     document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
     document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
+    hydratePayrollExpandedGroups('salary');
+    hydratePayrollExpandedGroups('kpi');
+    bindPayrollFilterControls('salary');
+    bindPayrollFilterControls('kpi');
     document.getElementById('salaryMonth')?.addEventListener('change', () => {
         syncSalaryPeriodInputsToMonth();
         loadSalary();
@@ -9506,6 +9514,347 @@ window.showNewLeaveForm = async function() {
 // TAB 7: SALARY (#7)
 // ==========================================
 
+const PAYROLL_VIEW_CONFIG = {
+    salary: {
+        searchId: 'salarySearch',
+        infoId: 'salaryFilterInfo',
+        resetId: 'salaryFilterReset',
+        departmentsId: 'salaryDepartmentFilters',
+        storageKey: 'pzp_hr_payroll_salary_expanded_groups'
+    },
+    kpi: {
+        searchId: 'kpiSearch',
+        infoId: 'kpiFilterInfo',
+        resetId: 'kpiFilterReset',
+        departmentsId: 'kpiDepartmentFilters',
+        storageKey: 'pzp_hr_payroll_kpi_expanded_groups'
+    }
+};
+const PAYROLL_DEPARTMENT_ORDER = [...STAFF_DISPLAY_GROUP_ORDER, 'security'];
+
+function payrollProfessionSearchParts(row = {}) {
+    const summaries = Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [];
+    return summaries.flatMap(segment => {
+        const key = normalizeProfessionKey(segment?.profession_key || segment?.professionKey || segment?.profession || segment?.key);
+        return [
+            key,
+            key ? professionTitle(key) : '',
+            segment?.profession_title,
+            segment?.professionTitle,
+            segment?.title
+        ];
+    });
+}
+
+function payrollRowSearchHaystack(view, row = {}) {
+    const roleKey = String(row.role_type || row.roleType || '').trim();
+    const department = String(row.department || '').trim();
+    const parts = [
+        row.staff_name,
+        row.staffName,
+        row.name,
+        roleKey,
+        ROLE_LABELS[roleKey],
+        roleKey ? professionTitle(roleKey) : '',
+        department,
+        departmentLabel(department)
+    ];
+    if (view === 'salary') parts.push(...payrollProfessionSearchParts(row));
+    return normalizeSearchText(parts.filter(Boolean).join(' '));
+}
+
+function payrollDepartmentOptions(view) {
+    const state = payrollViewState[view];
+    if (!state) return [];
+    const departments = new Map();
+    state.allRows.forEach(row => {
+        const key = normalizeDepartmentKey(row?.department);
+        const current = departments.get(key) || {
+            value: key,
+            label: departmentLabel(row?.department),
+            count: 0
+        };
+        current.count += 1;
+        departments.set(key, current);
+    });
+    if (state.department !== 'all' && !departments.has(state.department)) {
+        departments.set(state.department, {
+            value: state.department,
+            label: state.department === 'none' ? departmentLabel('') : departmentLabel(state.department),
+            count: 0
+        });
+    }
+    return Array.from(departments.values())
+        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+}
+
+function payrollGroupStateKey(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const key = normalizeDepartmentKey(raw);
+    return key === 'all' ? '' : key;
+}
+
+function payrollExpandedGroupKeysFromStorage(view) {
+    const storageKey = PAYROLL_VIEW_CONFIG[view]?.storageKey;
+    if (!storageKey) return [];
+    try {
+        const raw = localStorage.getItem(storageKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        const seen = new Set();
+        return parsed
+            .map(payrollGroupStateKey)
+            .filter(key => key && !seen.has(key) && seen.add(key));
+    } catch {
+        return [];
+    }
+}
+
+function hydratePayrollExpandedGroups(view) {
+    const state = payrollViewState[view];
+    if (!state) return;
+    state.expandedGroups = new Set(payrollExpandedGroupKeysFromStorage(view));
+}
+
+function persistPayrollExpandedGroups(view) {
+    const state = payrollViewState[view];
+    const storageKey = PAYROLL_VIEW_CONFIG[view]?.storageKey;
+    if (!state || !storageKey) return;
+    try {
+        const keys = Array.from(state.expandedGroups instanceof Set ? state.expandedGroups : [])
+            .map(payrollGroupStateKey)
+            .filter(Boolean)
+            .sort();
+        if (keys.length) localStorage.setItem(storageKey, JSON.stringify(keys));
+        else localStorage.removeItem(storageKey);
+    } catch {}
+}
+
+function payrollSearchAutoExpandsGroups(view) {
+    return Boolean(normalizeSearchText(payrollViewState[view]?.query));
+}
+
+function isPayrollGroupExpanded(view, groupKey = '') {
+    const key = payrollGroupStateKey(groupKey);
+    const expandedGroups = payrollViewState[view]?.expandedGroups;
+    return Boolean(key && expandedGroups instanceof Set && expandedGroups.has(key));
+}
+
+function isPayrollGroupExpandedForRender(view, groupKey = '') {
+    return payrollSearchAutoExpandsGroups(view) || isPayrollGroupExpanded(view, groupKey);
+}
+
+function setPayrollGroupExpanded(view, groupKey = '', expanded = true) {
+    const state = payrollViewState[view];
+    const key = payrollGroupStateKey(groupKey);
+    if (!state || !key) return false;
+    if (!(state.expandedGroups instanceof Set)) state.expandedGroups = new Set();
+    if (expanded) state.expandedGroups.add(key);
+    else state.expandedGroups.delete(key);
+    persistPayrollExpandedGroups(view);
+    return true;
+}
+
+function togglePayrollGroup(view, groupKey = '') {
+    const key = payrollGroupStateKey(groupKey);
+    if (!key) return false;
+    setPayrollGroupExpanded(view, key, !isPayrollGroupExpanded(view, key));
+    renderPayrollVisibleRows(view);
+    return true;
+}
+
+function payrollGroupedRows(rows = []) {
+    const groups = new Map();
+    rows.forEach(row => {
+        const key = normalizeDepartmentKey(row?.department);
+        if (!groups.has(key)) {
+            groups.set(key, {
+                key,
+                label: departmentLabel(row?.department),
+                rows: []
+            });
+        }
+        groups.get(key).rows.push(row);
+    });
+    const orderIndex = key => {
+        if (key === 'none') return PAYROLL_DEPARTMENT_ORDER.length + 1;
+        const index = PAYROLL_DEPARTMENT_ORDER.indexOf(key);
+        return index >= 0 ? index : PAYROLL_DEPARTMENT_ORDER.length;
+    };
+    return Array.from(groups.values()).sort((a, b) => {
+        return orderIndex(a.key) - orderIndex(b.key) || a.label.localeCompare(b.label, 'uk');
+    });
+}
+
+function payrollFilteredRows(view) {
+    const state = payrollViewState[view];
+    if (!state) return [];
+    const query = normalizeSearchText(state.query);
+    return state.allRows.filter(row => {
+        const departmentMatches = state.department === 'all'
+            || normalizeDepartmentKey(row?.department) === state.department;
+        if (!departmentMatches) return false;
+        return !query || payrollRowSearchHaystack(view, row).includes(query);
+    });
+}
+
+function renderPayrollFilterControls(view, visibleRows = null) {
+    const state = payrollViewState[view];
+    const config = PAYROLL_VIEW_CONFIG[view];
+    if (!state || !config) return;
+    const options = payrollDepartmentOptions(view);
+    const search = document.getElementById(config.searchId);
+    const info = document.getElementById(config.infoId);
+    const reset = document.getElementById(config.resetId);
+    const departments = document.getElementById(config.departmentsId);
+    const hasActiveFilters = Boolean(normalizeSearchText(state.query)) || state.department !== 'all';
+    const currentRows = Array.isArray(visibleRows) ? visibleRows : payrollFilteredRows(view);
+
+    if (search && search.value !== state.query) search.value = state.query;
+    if (info) {
+        info.textContent = hasActiveFilters
+            ? `Знайдено ${currentRows.length} із ${state.allRows.length}`
+            : `${state.allRows.length} працівників`;
+    }
+    if (reset) reset.hidden = !hasActiveFilters;
+    if (departments) {
+        const renderOption = option => {
+            const active = state.department === option.value;
+            const label = `${option.label}: ${option.count} працівників`;
+            return `<button type="button" class="hr-payroll-dept-chip${active ? ' is-active' : ''}" data-payroll-department="${escapeHtml(option.value)}" aria-pressed="${active ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" title="${escapeHtml(option.label)}">
+                <span class="hr-payroll-dept-label">${escapeHtml(option.label)}</span>
+                <strong class="hr-payroll-dept-count" aria-hidden="true">${option.count}</strong>
+            </button>`;
+        };
+        departments.innerHTML = [
+            { value: 'all', label: 'Всі', count: state.allRows.length },
+            ...options
+        ].map(renderOption).join('');
+    }
+}
+
+function renderPayrollGroupHeader(view, group, contentId) {
+    const expanded = isPayrollGroupExpandedForRender(view, group.key);
+    const stateClass = expanded ? 'is-expanded' : 'is-collapsed';
+    const actionLabel = expanded ? 'Згорнути групу' : 'Розгорнути групу';
+    const accessibleLabel = `${actionLabel} ${group.label}, ${group.rows.length} працівників`;
+    return `<header class="hr-payroll-group-header ${stateClass}">
+        <button type="button" class="hr-payroll-group-toggle" data-payroll-group-toggle="${escapeHtml(group.key)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="${escapeHtml(contentId)}" aria-label="${escapeHtml(accessibleLabel)}" title="${escapeHtml(group.label)}">
+            <span class="hr-payroll-group-caret" aria-hidden="true"></span>
+            <span class="hr-payroll-group-label">${escapeHtml(group.label)}</span>
+            <strong class="hr-payroll-group-count" aria-hidden="true">${group.rows.length}</strong>
+        </button>
+    </header>`;
+}
+
+function bindPayrollGroupToggles(view, root) {
+    if (!root || root.dataset.payrollGroupToggleBound === 'true') return;
+    root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-payroll-group-toggle]');
+        if (!button || !root.contains(button)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const groupKey = button.dataset.payrollGroupToggle || '';
+        if (!togglePayrollGroup(view, groupKey)) return;
+        const nextButton = Array.from(root.querySelectorAll('button[data-payroll-group-toggle]'))
+            .find(candidate => candidate.dataset.payrollGroupToggle === groupKey);
+        nextButton?.focus();
+    });
+    root.dataset.payrollGroupToggleBound = 'true';
+}
+
+function bindPayrollDetailToggles(root) {
+    if (!root || root.dataset.payrollDetailToggleBound === 'true') return;
+    root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-payroll-detail-toggle]');
+        if (!button || !root.contains(button)) return;
+        const detailsId = button.getAttribute('aria-controls') || '';
+        const details = detailsId ? document.getElementById(detailsId) : null;
+        if (!details || !root.contains(details)) return;
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        details.hidden = expanded;
+        const label = button.querySelector('[data-payroll-detail-label]');
+        if (label) label.textContent = expanded ? 'Деталі' : 'Сховати';
+    });
+    root.dataset.payrollDetailToggleBound = 'true';
+}
+
+function renderPayrollGroupedList(view, root, rows = [], options = {}) {
+    if (!root) return;
+    if (!rows.length) {
+        root.innerHTML = `<div class="hr-payroll-empty-state">${escapeHtml(options.emptyMessage || '')}</div>`;
+        bindPayrollGroupToggles(view, root);
+        bindPayrollDetailToggles(root);
+        return;
+    }
+    const renderItem = typeof options.renderItem === 'function' ? options.renderItem : () => '';
+    root.innerHTML = payrollGroupedRows(rows).map((group, groupIndex) => {
+        const expanded = isPayrollGroupExpandedForRender(view, group.key);
+        const contentId = `payroll-${view}-group-${groupIndex}`;
+        const header = renderPayrollGroupHeader(view, group, contentId);
+        const items = group.rows.map((row, itemIndex) => renderItem(row, itemIndex, groupIndex)).join('');
+        return `<section class="hr-payroll-group" data-payroll-group="${escapeHtml(group.key)}">
+            ${header}
+            <div id="${contentId}" class="hr-payroll-group-content"${expanded ? '' : ' hidden'}>${items}</div>
+        </section>`;
+    }).join('');
+    bindPayrollGroupToggles(view, root);
+    bindPayrollDetailToggles(root);
+}
+
+function renderPayrollVisibleRows(view) {
+    const visibleRows = payrollFilteredRows(view);
+    if (view === 'salary') renderSalaryRows(visibleRows);
+    if (view === 'kpi') renderKpiRows(visibleRows);
+    renderPayrollFilterControls(view, visibleRows);
+}
+
+function resetPayrollFilters(view) {
+    const state = payrollViewState[view];
+    if (!state) return;
+    state.query = '';
+    state.department = 'all';
+    renderPayrollVisibleRows(view);
+    document.getElementById(PAYROLL_VIEW_CONFIG[view]?.searchId)?.focus();
+}
+
+function bindPayrollFilterControls(view) {
+    const state = payrollViewState[view];
+    const config = PAYROLL_VIEW_CONFIG[view];
+    if (!state || !config) return;
+    const search = document.getElementById(config.searchId);
+    const reset = document.getElementById(config.resetId);
+    const departments = document.getElementById(config.departmentsId);
+
+    if (search && search.dataset.payrollFilterBound !== 'true') {
+        search.addEventListener('input', () => {
+            state.query = search.value;
+            renderPayrollVisibleRows(view);
+        });
+        search.dataset.payrollFilterBound = 'true';
+    }
+    if (reset && reset.dataset.payrollFilterBound !== 'true') {
+        reset.addEventListener('click', () => resetPayrollFilters(view));
+        reset.dataset.payrollFilterBound = 'true';
+    }
+    if (departments && departments.dataset.payrollFilterBound !== 'true') {
+        departments.addEventListener('click', event => {
+            const chip = event.target.closest('button[data-payroll-department]');
+            if (!chip || !departments.contains(chip)) return;
+            const nextDepartment = chip.dataset.payrollDepartment || 'all';
+            state.department = nextDepartment;
+            renderPayrollVisibleRows(view);
+            const nextChip = Array.from(departments.querySelectorAll('button[data-payroll-department]'))
+                .find(button => button.dataset.payrollDepartment === nextDepartment);
+            nextChip?.focus();
+        });
+        departments.dataset.payrollFilterBound = 'true';
+    }
+    renderPayrollFilterControls(view, []);
+}
+
 function ensurePayrollMonthOptions(monthSelect, preferredValue = '') {
     if (monthSelect && !monthSelect.options.length) {
         const now = new Date();
@@ -9589,7 +9938,10 @@ async function loadSalary() {
     if (zrsMonth) ensurePayrollMonthOptions(zrsMonth, month);
     const query = salaryPeriodQueryString();
     if (!query) return;
-    const data = await hrFetch(`/salary?${query}`);
+    const [data] = await Promise.all([
+        hrFetch(`/salary?${query}`),
+        ensureProfessionsLoaded({ silent: true })
+    ]);
     if (!data || !data.success) return;
     renderSalary(data);
 }
@@ -9739,8 +10091,70 @@ function renderSalaryPeriodControls(data = {}) {
     }
 }
 
+function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
+    const roleLabel = ROLE_LABELS[s.role_type] || s.role_type || '';
+    const department = departmentLabel(s.department);
+    const daysWorked = Number(s.days_worked || 0);
+    const hoursWorked = Number(s.hours_worked || 0);
+    const baseSalary = Number(s.base_salary || 0);
+    const overtimePay = Number(s.overtime_pay || 0);
+    const bonuses = Number(s.bonuses || 0) + Number(s.tips || 0);
+    const deductions = Number(s.deductions || 0) + Number(s.penalties || 0);
+    const advances = Number(s.advances || 0);
+    const totalSalary = Number(s.total_salary || 0);
+    const detailId = `payroll-salary-detail-${groupIndex}-${itemIndex}`;
+
+    return `<article class="hr-payroll-item hr-payroll-salary-item">
+        <div class="hr-payroll-item-summary hr-payroll-salary-summary">
+            <div class="hr-payroll-identity">
+                <strong>${escapeHtml(s.staff_name || 'Без імені')}</strong>
+                <span>${escapeHtml([roleLabel, department].filter(Boolean).join(' · '))}</span>
+            </div>
+            <div class="hr-payroll-primary-metric">
+                <span class="hr-payroll-field-label">Час</span>
+                <strong>${daysWorked} дн · ${hoursWorked} год</strong>
+            </div>
+            <div class="hr-payroll-primary-metric">
+                <span class="hr-payroll-field-label">Базова</span>
+                <strong>${fmtMoney(baseSalary)}</strong>
+            </div>
+            <div class="hr-payroll-primary-metric hr-payroll-primary-metric--total">
+                <span class="hr-payroll-field-label">До виплати</span>
+                <strong>${fmtMoney(totalSalary)}</strong>
+            </div>
+            <button type="button" class="hr-payroll-detail-toggle" data-payroll-detail-toggle aria-expanded="false" aria-controls="${detailId}">
+                <span data-payroll-detail-label>Деталі</span>
+                <span class="hr-payroll-detail-caret" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div id="${detailId}" class="hr-payroll-details" hidden>
+            <section class="hr-payroll-rate-detail">
+                <span class="hr-payroll-field-label">Професійні ставки та розподіл</span>
+                <div class="hr-payroll-rate-summary">${renderSalaryRateSummary(s)}</div>
+            </section>
+            <div class="hr-payroll-detail-grid">
+                <div class="hr-payroll-detail-card"><span>Переробки</span><strong>${overtimePay ? fmtMoney(overtimePay) : '—'}</strong></div>
+                <div class="hr-payroll-detail-card is-positive"><span>Бонуси та чайові</span><strong>${bonuses ? `+${fmtMoney(bonuses)}` : '—'}</strong></div>
+                <div class="hr-payroll-detail-card is-negative"><span>Утримання та штрафи</span><strong>${deductions ? `−${fmtMoney(deductions)}` : '—'}</strong></div>
+                <div class="hr-payroll-detail-card is-negative"><span>ЗРС</span><strong>${advances ? `−${fmtMoney(advances)}` : '—'}</strong></div>
+            </div>
+        </div>
+    </article>`;
+}
+
+function renderSalaryRows(rows = []) {
+    const message = payrollViewState.salary.allRows.length
+        ? 'За поточними фільтрами працівників не знайдено'
+        : 'Немає даних про зарплату за вибраний період';
+    renderPayrollGroupedList('salary', document.getElementById('salaryList'), rows, {
+        emptyMessage: message,
+        renderItem: renderSalaryEmployeeItem
+    });
+}
+
 function renderSalary(data) {
-    const totals = data.totals;
+    const totals = data.totals || {};
+    payrollViewState.salary.allRows = Array.isArray(data.data) ? data.data : [];
     renderSalaryPeriodControls(data);
     document.getElementById('salaryTotals').innerHTML = `
         <div class="hr-summary">
@@ -9753,24 +10167,7 @@ function renderSalary(data) {
         </div>
     `;
 
-    document.getElementById('salaryHead').innerHTML = `<tr>
-        <th>Співробітник</th><th>Роль</th><th>Ставка</th><th>Днів</th><th>Годин</th>
-        <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>ЗРС</th><th>Всього</th>
-    </tr>`;
-
-    document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
-        <td><strong>${escapeHtml(s.staff_name)}</strong></td>
-        <td>${ROLE_LABELS[s.role_type] || s.role_type || ''}</td>
-        <td>${renderSalaryRateSummary(s)}</td>
-        <td>${s.days_worked}</td>
-        <td>${s.hours_worked}</td>
-        <td>${s.base_salary.toLocaleString('uk-UA')} ₴</td>
-        <td>${s.overtime_pay ? s.overtime_pay.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
-        <td style="color:#10B981;">${(s.bonuses + s.tips) ? '+' + (s.bonuses + s.tips).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
-        <td style="color:#EF4444;">${(s.deductions + s.penalties) ? '-' + (s.deductions + s.penalties).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
-        <td style="color:#EF4444;">${s.advances ? '-' + s.advances.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
-        <td><strong>${s.total_salary.toLocaleString('uk-UA')} ₴</strong></td>
-    </tr>`).join('');
+    renderPayrollVisibleRows('salary');
 }
 
 function formatZrsDate(value) {
@@ -10168,9 +10565,11 @@ async function loadKpi() {
     const month = sel?.value || '';
     const snapshot = await hrFetch(`/kpi?month=${month}`);
     if (!snapshot?.success) {
-        const body = document.getElementById('kpiBody');
+        const list = document.getElementById('kpiList');
+        payrollViewState.kpi.allRows = [];
         renderKpiSources({ rows: [], sources: {} });
-        if (body) body.innerHTML = '<tr><td colspan="7" class="kpi-muted">Не вдалося завантажити KPI-зріз</td></tr>';
+        renderPayrollFilterControls('kpi', []);
+        if (list) list.innerHTML = '<div class="hr-payroll-empty-state" role="alert">Не вдалося завантажити KPI-зріз</div>';
         return;
     }
     renderKpi({
@@ -10184,14 +10583,86 @@ async function loadRatings() {
     return loadKpi();
 }
 
+function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
+    const attendanceRate = num(row.days_scheduled) > 0 ? num(row.attendance_rate) : null;
+    const taskAssigned = num(row.task_kpi?.tasks_assigned);
+    const taskDone = num(row.task_kpi?.tasks_done);
+    const taskDoneRate = taskAssigned > 0 ? num(row.task_completion_rate) : null;
+    const reliabilityIssues = num(row.late_count) + num(row.days_absent);
+    const contribution = row.contribution_kpi || {};
+    const development = row.development_kpi || {};
+    const kpiScore = num(row.kpi_score);
+    const roleLabel = ROLE_LABELS[row.role_type] || row.role_type || '';
+    const detailId = `payroll-kpi-detail-${groupIndex}-${itemIndex}`;
+    const attendance = attendanceRate !== null
+        ? `${kpiSignal(`${attendanceRate}%`, toneForPercent(attendanceRate))}<span class="kpi-muted">${num(row.days_worked)}/${num(row.days_scheduled)} змін</span>`
+        : '<span class="kpi-muted">даних ще немає</span>';
+
+    return `<article class="hr-payroll-item hr-payroll-kpi-item">
+        <div class="hr-payroll-item-summary hr-payroll-kpi-summary">
+            <div class="hr-payroll-identity">
+            <strong>${escapeHtml(row.staff_name)}</strong>
+                <span>${escapeHtml([roleLabel, departmentLabel(row.department)].filter(Boolean).join(' · '))}</span>
+            </div>
+            <div class="hr-payroll-primary-metric">
+                <span class="hr-payroll-field-label">Загальний бал</span>
+                <strong>${kpiSignal(`${kpiScore}%`, toneForPercent(kpiScore, 85, 65))}</strong>
+            </div>
+            <div class="hr-payroll-primary-metric hr-payroll-kpi-attendance">
+                <span class="hr-payroll-field-label">Присутність</span>
+                <strong>${attendance}</strong>
+            </div>
+            <button type="button" class="hr-payroll-detail-toggle" data-payroll-detail-toggle aria-expanded="false" aria-controls="${detailId}">
+                <span data-payroll-detail-label>Деталі</span>
+                <span class="hr-payroll-detail-caret" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div id="${detailId}" class="hr-payroll-details" hidden>
+            <div class="hr-payroll-detail-grid hr-payroll-kpi-detail-grid">
+                <section class="hr-payroll-detail-card">
+                    <span>Надійність</span>
+                    <strong>${kpiSignal(reliabilityIssues ? `${reliabilityIssues} сигналів` : 'без сигналів', reliabilityIssues === 0 ? 'good' : reliabilityIssues <= 2 ? 'warn' : 'bad')}</strong>
+                    <small>${num(row.late_count)} запізн. · ${num(row.days_absent)} відсутн.</small>
+                </section>
+                <section class="hr-payroll-detail-card">
+                    <span>Задачі</span>
+                    <strong>${taskDoneRate !== null ? kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65)) : '<span class="kpi-muted">даних ще немає</span>'}</strong>
+                    <small>${taskDone}/${taskAssigned} виконано · ${num(row.task_kpi?.tasks_overdue)} простр.</small>
+                </section>
+                <section class="hr-payroll-detail-card">
+                    <span>Внесок</span>
+                    <strong>${num(contribution.events_period) > 0 || num(contribution.total_ratings) > 0 ? kpiSignal(`${num(contribution.events_period)} за місяць`, num(contribution.events_period) > 0 ? 'good' : '') : '<span class="kpi-muted">даних ще немає</span>'}</strong>
+                    <small>${num(contribution.total_ratings)} оцінок · ${num(contribution.avg_rating).toFixed(1)} сер.</small>
+                </section>
+                <section class="hr-payroll-detail-card">
+                    <span>Розвиток</span>
+                    <strong>${num(development.total) > 0 ? kpiSignal(development.percent !== null && development.percent !== undefined ? `${num(development.percent)}%` : `${num(development.active)} активн.`, toneForPercent(development.percent, 90, 60)) : '<span class="kpi-muted">даних ще немає</span>'}</strong>
+                    <small>${num(development.completed)}/${num(development.total)} завершено в онбордингу</small>
+                </section>
+            </div>
+        </div>
+    </article>`;
+}
+
+function renderKpiRows(rows = []) {
+    const message = payrollViewState.kpi.allRows.length
+        ? 'За поточними фільтрами працівників не знайдено'
+        : 'Немає KPI-даних працівників за вибраний період';
+    renderPayrollGroupedList('kpi', document.getElementById('kpiList'), rows, {
+        emptyMessage: message,
+        renderItem: renderKpiEmployeeItem
+    });
+}
+
 function renderKpi({ rows = [], sources = {} }) {
     const summary = document.getElementById('kpiSummary');
-    const head = document.getElementById('kpiHead');
-    const body = document.getElementById('kpiBody');
-    if (!summary || !head || !body) return;
-    renderKpiSources({ rows, sources });
+    const list = document.getElementById('kpiList');
+    if (!summary || !list) return;
+    const allRows = Array.isArray(rows) ? rows : [];
+    payrollViewState.kpi.allRows = allRows;
+    renderKpiSources({ rows: allRows, sources });
 
-    const totals = rows.reduce((acc, row) => {
+    const totals = allRows.reduce((acc, row) => {
         acc.scheduled += num(row.days_scheduled);
         acc.worked += num(row.days_worked);
         acc.late += num(row.late_count);
@@ -10211,13 +10682,13 @@ function renderKpi({ rows = [], sources = {} }) {
     const attendance = kpiPercent(totals.worked, totals.scheduled);
     const taskRate = kpiPercent(totals.tasksDone, totals.tasksAssigned);
     const onboardingRate = kpiPercent(totals.onboardingDoneItems, totals.onboardingTotalItems);
-    const averageScore = rows.length ? Math.round(totals.kpiScoreSum / rows.length) : null;
+    const averageScore = allRows.length ? Math.round(totals.kpiScoreSum / allRows.length) : null;
 
     summary.innerHTML = [
         attendance !== null
             ? renderKpiCard('Зміни / присутність', `${attendance}%`, `${totals.worked}/${totals.scheduled} відпрацьованих змін`)
             : renderKpiCard('Зміни / присутність', 'даних ще немає', 'Немає запланованих змін у вибраному місяці', { placeholder: true }),
-        rows.length
+        allRows.length
             ? renderKpiCard('Надійність', `${totals.late + totals.absent}`, `${totals.late} запізнень · ${totals.absent} відсутностей`)
             : renderKpiCard('Надійність', 'даних ще немає', 'Потрібні записи присутності за період', { placeholder: true }),
         taskRate !== null
@@ -10234,45 +10705,7 @@ function renderKpi({ rows = [], sources = {} }) {
             : renderKpiCard('Підсумковий KPI', 'даних ще немає', 'Потрібен хоча б один KPI-сигнал', { placeholder: true })
     ].join('');
 
-    head.innerHTML = `<tr>
-        <th>Працівник</th>
-        <th>Бал</th>
-        <th>Зміни / присутність</th>
-        <th>Надійність</th>
-        <th>Активність</th>
-        <th>Внесок</th>
-        <th>Розвиток</th>
-    </tr>`;
-
-    if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="7" class="kpi-muted">Немає KPI-даних працівників за вибраний період</td></tr>';
-        return;
-    }
-
-    body.innerHTML = rows.map(row => {
-        const attendanceRate = num(row.days_scheduled) > 0 ? num(row.attendance_rate) : null;
-        const taskAssigned = num(row.task_kpi?.tasks_assigned);
-        const taskDone = num(row.task_kpi?.tasks_done);
-        const taskDoneRate = taskAssigned > 0 ? num(row.task_completion_rate) : null;
-        const reliabilityIssues = num(row.late_count) + num(row.days_absent);
-        const contribution = row.contribution_kpi || {};
-        const development = row.development_kpi || {};
-        const kpiScore = num(row.kpi_score);
-        const roleLabel = ROLE_LABELS[row.role_type] || row.role_type || '';
-
-        return `<tr>
-            <td>
-                <strong>${escapeHtml(row.staff_name)}</strong>
-                <div class="kpi-muted">${escapeHtml(roleLabel)}</div>
-            </td>
-            <td>${kpiSignal(`${kpiScore}%`, toneForPercent(kpiScore, 85, 65))}</td>
-            <td>${attendanceRate !== null ? `${kpiSignal(`${attendanceRate}%`, toneForPercent(attendanceRate))}<div class="kpi-muted">${num(row.days_worked)}/${num(row.days_scheduled)} змін</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${rows.length ? `${kpiSignal(reliabilityIssues ? `${reliabilityIssues} сигналів` : 'без сигналів', reliabilityIssues === 0 ? 'good' : reliabilityIssues <= 2 ? 'warn' : 'bad')}<div class="kpi-muted">${num(row.late_count)} запізн. · ${num(row.days_absent)} відсутн.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${taskDoneRate !== null ? `${kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65))}<div class="kpi-muted">${taskDone}/${taskAssigned} задач · ${num(row.task_kpi?.tasks_overdue)} простр.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${num(contribution.events_period) > 0 || num(contribution.total_ratings) > 0 ? `${kpiSignal(`${num(contribution.events_period)} за місяць`, num(contribution.events_period) > 0 ? 'good' : '')}<div class="kpi-muted">${num(contribution.total_ratings)} оцінок · ${num(contribution.avg_rating).toFixed(1)} сер.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${num(development.total) > 0 ? `${kpiSignal(development.percent !== null && development.percent !== undefined ? `${num(development.percent)}%` : `${num(development.active)} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${num(development.completed)}/${num(development.total)} завершено в онбордингу</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-        </tr>`;
-    }).join('');
+    renderPayrollVisibleRows('kpi');
 }
 
 // ==========================================

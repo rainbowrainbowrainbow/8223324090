@@ -1347,6 +1347,588 @@ body.dark-mode .hr-org-detail {
 .hr-salary-secondary { background: var(--gray-100); color: var(--gray-800); }
 .hr-salary-danger { background: #7F1D1D; color: #FEE2E2; }
 
+#tab-salary .hr-payroll-filters,
+#tab-kpi .hr-payroll-filters {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 12px;
+    border: 1px solid rgba(148,163,184,0.16);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.72), rgba(248,250,252,0.52));
+    box-shadow: 0 4px 14px rgba(15,23,42,0.04);
+}
+#tab-salary .hr-payroll-filter-row,
+#tab-kpi .hr-payroll-filter-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+#tab-salary .hr-payroll-search,
+#tab-kpi .hr-payroll-search {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid rgba(148,163,184,0.26);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.88);
+    color: var(--gray-800);
+    font-family: inherit;
+    font-size: var(--font-sm);
+    font-weight: 700;
+    line-height: 1;
+    outline: none;
+}
+#tab-salary .hr-payroll-search:focus-visible,
+#tab-kpi .hr-payroll-search:focus-visible {
+    border-color: rgba(20,184,166,0.54);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.12);
+}
+#tab-salary .hr-payroll-filter-info,
+#tab-kpi .hr-payroll-filter-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.05);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+#tab-salary .hr-payroll-filter-reset,
+#tab-kpi .hr-payroll-filter-reset {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid rgba(20,184,166,0.30);
+    border-radius: 10px;
+    background: rgba(20,184,166,0.09);
+    color: #0F766E;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+}
+#tab-salary .hr-payroll-filter-reset[hidden],
+#tab-kpi .hr-payroll-filter-reset[hidden] {
+    display: none;
+}
+#tab-salary .hr-payroll-filter-reset:hover,
+#tab-kpi .hr-payroll-filter-reset:hover {
+    background: rgba(20,184,166,0.15);
+}
+#tab-salary .hr-payroll-filter-reset:focus-visible,
+#tab-kpi .hr-payroll-filter-reset:focus-visible {
+    outline: 3px solid rgba(20,184,166,0.20);
+    outline-offset: 2px;
+}
+#tab-salary .hr-payroll-dept-filter,
+#tab-kpi .hr-payroll-dept-filter {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+    gap: 8px;
+    min-width: 0;
+}
+#tab-salary .hr-payroll-dept-chip,
+#tab-kpi .hr-payroll-dept-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 6px 10px;
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.58);
+    color: var(--gray-600);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.1;
+    cursor: pointer;
+}
+#tab-salary .hr-payroll-dept-chip:hover,
+#tab-kpi .hr-payroll-dept-chip:hover,
+#tab-salary .hr-payroll-dept-chip:focus-visible,
+#tab-kpi .hr-payroll-dept-chip:focus-visible {
+    border-color: rgba(20,184,166,0.42);
+    color: var(--gray-800);
+    outline: none;
+}
+#tab-salary .hr-payroll-dept-chip.is-active,
+#tab-kpi .hr-payroll-dept-chip.is-active {
+    border-color: rgba(20,184,166,0.48);
+    background: rgba(20,184,166,0.12);
+    color: var(--gray-900);
+}
+#tab-salary .hr-payroll-dept-chip:focus-visible,
+#tab-kpi .hr-payroll-dept-chip:focus-visible {
+    outline: 3px solid rgba(20,184,166,0.22);
+    outline-offset: 2px;
+}
+#tab-salary .hr-payroll-dept-label,
+#tab-kpi .hr-payroll-dept-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#tab-salary .hr-payroll-dept-count,
+#tab-kpi .hr-payroll-dept-count {
+    flex: 0 0 auto;
+    min-width: 22px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.06);
+    color: inherit;
+    text-align: center;
+}
+#tab-salary .hr-payroll-empty-state,
+#tab-kpi .hr-payroll-empty-state {
+    padding: 28px 16px;
+    color: var(--gray-500);
+    text-align: center;
+    white-space: normal;
+}
+#tab-salary .hr-payroll-list,
+#tab-kpi .hr-payroll-list {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible;
+}
+#tab-salary .hr-payroll-group,
+#tab-kpi .hr-payroll-group {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    border-left: 4px solid rgba(20,184,166,0.72);
+    border-radius: 14px;
+    background: #fff;
+}
+#tab-salary .hr-payroll-group-header,
+#tab-kpi .hr-payroll-group-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    color: var(--gray-700);
+}
+#tab-salary .hr-payroll-group-header.is-collapsed,
+#tab-kpi .hr-payroll-group-header.is-collapsed {
+    border-bottom: 0;
+}
+#tab-salary .hr-payroll-group-header:hover,
+#tab-kpi .hr-payroll-group-header:hover {
+    background: var(--gray-50);
+}
+#tab-salary .hr-payroll-group-content,
+#tab-kpi .hr-payroll-group-content {
+    display: grid;
+    min-width: 0;
+}
+#tab-salary .hr-payroll-group-content[hidden],
+#tab-kpi .hr-payroll-group-content[hidden],
+#tab-salary .hr-payroll-details[hidden],
+#tab-kpi .hr-payroll-details[hidden] {
+    display: none;
+}
+#tab-salary .hr-payroll-group-toggle,
+#tab-kpi .hr-payroll-group-toggle {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: left;
+    cursor: pointer;
+}
+#tab-salary .hr-payroll-group-toggle:hover .hr-payroll-group-label,
+#tab-kpi .hr-payroll-group-toggle:hover .hr-payroll-group-label,
+#tab-salary .hr-payroll-group-toggle:focus-visible .hr-payroll-group-label,
+#tab-kpi .hr-payroll-group-toggle:focus-visible .hr-payroll-group-label {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+#tab-salary .hr-payroll-group-toggle:focus-visible,
+#tab-kpi .hr-payroll-group-toggle:focus-visible {
+    border-radius: 8px;
+    outline: 3px solid rgba(20,184,166,0.24);
+    outline-offset: 2px;
+}
+#tab-salary .hr-payroll-group-caret,
+#tab-kpi .hr-payroll-group-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    background: rgba(15,23,42,0.06);
+    color: var(--gray-600);
+    transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+#tab-salary .hr-payroll-group-caret::before,
+#tab-kpi .hr-payroll-group-caret::before {
+    content: '›';
+    display: block;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+}
+#tab-salary .hr-payroll-group-header.is-expanded .hr-payroll-group-caret,
+#tab-kpi .hr-payroll-group-header.is-expanded .hr-payroll-group-caret {
+    transform: rotate(90deg);
+    background: rgba(20,184,166,0.14);
+    color: #0F766E;
+}
+#tab-salary .hr-payroll-group-label,
+#tab-kpi .hr-payroll-group-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+#tab-salary .hr-payroll-group-count,
+#tab-kpi .hr-payroll-group-count {
+    flex: 0 0 auto;
+    min-width: 26px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.07);
+    color: inherit;
+    text-align: center;
+}
+#tab-salary .hr-payroll-item,
+#tab-kpi .hr-payroll-item {
+    min-width: 0;
+    border-top: 1px solid var(--gray-200);
+    background: #fff;
+}
+#tab-salary .hr-payroll-item:first-child,
+#tab-kpi .hr-payroll-item:first-child {
+    border-top: 0;
+}
+#tab-salary .hr-payroll-item-summary,
+#tab-kpi .hr-payroll-item-summary {
+    display: grid;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px 16px;
+}
+#tab-salary .hr-payroll-salary-summary {
+    grid-template-columns: minmax(220px, 1.5fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(140px, 0.8fr) auto;
+}
+#tab-kpi .hr-payroll-kpi-summary {
+    grid-template-columns: minmax(240px, 1.6fr) minmax(130px, 0.7fr) minmax(170px, 0.9fr) auto;
+}
+#tab-salary .hr-payroll-identity,
+#tab-kpi .hr-payroll-identity,
+#tab-salary .hr-payroll-primary-metric,
+#tab-kpi .hr-payroll-primary-metric {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+#tab-salary .hr-payroll-identity strong,
+#tab-kpi .hr-payroll-identity strong,
+#tab-salary .hr-payroll-primary-metric strong,
+#tab-kpi .hr-payroll-primary-metric strong {
+    min-width: 0;
+    color: var(--gray-900);
+    overflow-wrap: anywhere;
+}
+#tab-salary .hr-payroll-identity span,
+#tab-kpi .hr-payroll-identity span,
+#tab-salary .hr-payroll-field-label,
+#tab-kpi .hr-payroll-field-label {
+    color: var(--gray-500);
+    font-size: 12px;
+    line-height: 1.35;
+}
+#tab-salary .hr-payroll-primary-metric--total strong {
+    color: #0F766E;
+}
+#tab-salary .hr-payroll-detail-toggle,
+#tab-kpi .hr-payroll-detail-toggle {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1px solid rgba(20,184,166,0.34);
+    border-radius: 10px;
+    background: rgba(20,184,166,0.08);
+    color: #0F766E;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+#tab-salary .hr-payroll-detail-toggle:hover,
+#tab-kpi .hr-payroll-detail-toggle:hover {
+    background: rgba(20,184,166,0.14);
+}
+#tab-salary .hr-payroll-detail-toggle:focus-visible,
+#tab-kpi .hr-payroll-detail-toggle:focus-visible {
+    outline: 3px solid rgba(20,184,166,0.24);
+    outline-offset: 2px;
+}
+#tab-salary .hr-payroll-detail-caret,
+#tab-kpi .hr-payroll-detail-caret {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform 0.16s ease;
+}
+#tab-salary .hr-payroll-detail-toggle[aria-expanded="true"] .hr-payroll-detail-caret,
+#tab-kpi .hr-payroll-detail-toggle[aria-expanded="true"] .hr-payroll-detail-caret {
+    transform: rotate(225deg) translate(-2px, -2px);
+}
+#tab-salary .hr-payroll-details,
+#tab-kpi .hr-payroll-details {
+    min-width: 0;
+    padding: 16px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+#tab-salary .hr-payroll-rate-detail,
+#tab-kpi .hr-payroll-rate-detail {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: #fff;
+}
+#tab-salary .hr-payroll-rate-summary,
+#tab-kpi .hr-payroll-rate-summary {
+    min-width: 0;
+    color: var(--gray-800);
+    font-size: 13px;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+}
+#tab-salary .hr-payroll-detail-grid,
+#tab-kpi .hr-payroll-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+#tab-salary .hr-payroll-detail-card,
+#tab-kpi .hr-payroll-detail-card {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: #fff;
+    overflow-wrap: anywhere;
+}
+#tab-salary .hr-payroll-detail-card > span,
+#tab-kpi .hr-payroll-detail-card > span,
+#tab-salary .hr-payroll-detail-card > small,
+#tab-kpi .hr-payroll-detail-card > small {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+#tab-salary .hr-payroll-detail-card.is-positive strong {
+    color: #047857;
+}
+#tab-salary .hr-payroll-detail-card.is-negative strong {
+    color: #DC2626;
+}
+
+body.dark-mode #tab-salary .hr-payroll-filters,
+body.dark-mode #tab-kpi .hr-payroll-filters,
+[data-theme="dark"] #tab-salary .hr-payroll-filters,
+[data-theme="dark"] #tab-kpi .hr-payroll-filters {
+    border-color: rgba(148,163,184,0.16);
+    background: linear-gradient(135deg, rgba(30,30,56,0.82), rgba(15,23,42,0.66));
+}
+body.dark-mode #tab-salary .hr-payroll-search,
+body.dark-mode #tab-kpi .hr-payroll-search,
+[data-theme="dark"] #tab-salary .hr-payroll-search,
+[data-theme="dark"] #tab-kpi .hr-payroll-search {
+    border-color: rgba(148,163,184,0.22);
+    background: rgba(15,23,42,0.62);
+    color: #F8FAFC;
+    color-scheme: dark;
+}
+body.dark-mode #tab-salary .hr-payroll-filter-info,
+body.dark-mode #tab-kpi .hr-payroll-filter-info,
+[data-theme="dark"] #tab-salary .hr-payroll-filter-info,
+[data-theme="dark"] #tab-kpi .hr-payroll-filter-info {
+    background: rgba(255,255,255,0.06);
+    color: #CBD5E1;
+}
+body.dark-mode #tab-salary .hr-payroll-filter-reset,
+body.dark-mode #tab-kpi .hr-payroll-filter-reset,
+[data-theme="dark"] #tab-salary .hr-payroll-filter-reset,
+[data-theme="dark"] #tab-kpi .hr-payroll-filter-reset {
+    border-color: rgba(94,234,212,0.30);
+    background: rgba(20,184,166,0.14);
+    color: #99F6E4;
+}
+body.dark-mode #tab-salary .hr-payroll-dept-chip,
+body.dark-mode #tab-kpi .hr-payroll-dept-chip,
+[data-theme="dark"] #tab-salary .hr-payroll-dept-chip,
+[data-theme="dark"] #tab-kpi .hr-payroll-dept-chip {
+    border-color: rgba(148,163,184,0.16);
+    background: rgba(255,255,255,0.035);
+    color: #CBD5E1;
+}
+body.dark-mode #tab-salary .hr-payroll-dept-chip.is-active,
+body.dark-mode #tab-kpi .hr-payroll-dept-chip.is-active,
+[data-theme="dark"] #tab-salary .hr-payroll-dept-chip.is-active,
+[data-theme="dark"] #tab-kpi .hr-payroll-dept-chip.is-active {
+    border-color: rgba(94,234,212,0.38);
+    background: rgba(20,184,166,0.16);
+    color: #F8FAFC;
+}
+body.dark-mode #tab-salary .hr-payroll-group,
+body.dark-mode #tab-kpi .hr-payroll-group,
+[data-theme="dark"] #tab-salary .hr-payroll-group,
+[data-theme="dark"] #tab-kpi .hr-payroll-group {
+    border-color: #3D3D5C;
+    border-left-color: rgba(94,234,212,0.62);
+    background: #1E1E38;
+}
+body.dark-mode #tab-salary .hr-payroll-group-header,
+body.dark-mode #tab-kpi .hr-payroll-group-header,
+[data-theme="dark"] #tab-salary .hr-payroll-group-header,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-header,
+body.dark-mode #tab-salary .hr-payroll-group-header:hover,
+body.dark-mode #tab-kpi .hr-payroll-group-header:hover,
+[data-theme="dark"] #tab-salary .hr-payroll-group-header:hover,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-header:hover {
+    border-bottom-color: #3D3D5C;
+    background: #1E1E38;
+    color: #E2E8F0;
+}
+body.dark-mode #tab-salary .hr-payroll-group-caret,
+body.dark-mode #tab-kpi .hr-payroll-group-caret,
+[data-theme="dark"] #tab-salary .hr-payroll-group-caret,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-caret {
+    background: rgba(255,255,255,0.08);
+    color: #CBD5E1;
+}
+body.dark-mode #tab-salary .hr-payroll-group-header.is-expanded .hr-payroll-group-caret,
+body.dark-mode #tab-kpi .hr-payroll-group-header.is-expanded .hr-payroll-group-caret,
+[data-theme="dark"] #tab-salary .hr-payroll-group-header.is-expanded .hr-payroll-group-caret,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-header.is-expanded .hr-payroll-group-caret {
+    background: rgba(20,184,166,0.18);
+    color: #5EEAD4;
+}
+body.dark-mode #tab-salary .hr-payroll-group-count,
+body.dark-mode #tab-kpi .hr-payroll-group-count,
+[data-theme="dark"] #tab-salary .hr-payroll-group-count,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-count {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode #tab-salary .hr-payroll-group-toggle:focus-visible,
+body.dark-mode #tab-kpi .hr-payroll-group-toggle:focus-visible,
+[data-theme="dark"] #tab-salary .hr-payroll-group-toggle:focus-visible,
+[data-theme="dark"] #tab-kpi .hr-payroll-group-toggle:focus-visible {
+    outline-color: rgba(94,234,212,0.48);
+}
+body.dark-mode #tab-salary .hr-payroll-item,
+body.dark-mode #tab-kpi .hr-payroll-item,
+[data-theme="dark"] #tab-salary .hr-payroll-item,
+[data-theme="dark"] #tab-kpi .hr-payroll-item {
+    border-top-color: #3D3D5C;
+    background: #252545;
+}
+body.dark-mode #tab-salary .hr-payroll-details,
+body.dark-mode #tab-kpi .hr-payroll-details,
+[data-theme="dark"] #tab-salary .hr-payroll-details,
+[data-theme="dark"] #tab-kpi .hr-payroll-details {
+    border-top-color: #3D3D5C;
+    background: rgba(15,23,42,0.34);
+}
+body.dark-mode #tab-salary .hr-payroll-rate-detail,
+body.dark-mode #tab-kpi .hr-payroll-rate-detail,
+body.dark-mode #tab-salary .hr-payroll-detail-card,
+body.dark-mode #tab-kpi .hr-payroll-detail-card,
+[data-theme="dark"] #tab-salary .hr-payroll-rate-detail,
+[data-theme="dark"] #tab-kpi .hr-payroll-rate-detail,
+[data-theme="dark"] #tab-salary .hr-payroll-detail-card,
+[data-theme="dark"] #tab-kpi .hr-payroll-detail-card {
+    border-color: #3D3D5C;
+    background: #1E1E38;
+}
+body.dark-mode #tab-salary .hr-payroll-identity strong,
+body.dark-mode #tab-kpi .hr-payroll-identity strong,
+body.dark-mode #tab-salary .hr-payroll-primary-metric strong,
+body.dark-mode #tab-kpi .hr-payroll-primary-metric strong,
+body.dark-mode #tab-salary .hr-payroll-rate-summary,
+body.dark-mode #tab-kpi .hr-payroll-rate-summary,
+[data-theme="dark"] #tab-salary .hr-payroll-identity strong,
+[data-theme="dark"] #tab-kpi .hr-payroll-identity strong,
+[data-theme="dark"] #tab-salary .hr-payroll-primary-metric strong,
+[data-theme="dark"] #tab-kpi .hr-payroll-primary-metric strong,
+[data-theme="dark"] #tab-salary .hr-payroll-rate-summary,
+[data-theme="dark"] #tab-kpi .hr-payroll-rate-summary {
+    color: #F8FAFC;
+}
+body.dark-mode #tab-salary .hr-payroll-detail-toggle,
+body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
+[data-theme="dark"] #tab-salary .hr-payroll-detail-toggle,
+[data-theme="dark"] #tab-kpi .hr-payroll-detail-toggle {
+    border-color: rgba(94,234,212,0.30);
+    background: rgba(20,184,166,0.14);
+    color: #99F6E4;
+}
+
+@media (max-width: 1200px) {
+    #tab-salary .hr-payroll-salary-summary,
+    #tab-kpi .hr-payroll-kpi-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    #tab-salary .hr-payroll-identity,
+    #tab-kpi .hr-payroll-identity {
+        grid-column: 1 / -1;
+    }
+    #tab-salary .hr-payroll-detail-toggle,
+    #tab-kpi .hr-payroll-detail-toggle {
+        justify-self: end;
+    }
+    #tab-salary .hr-payroll-detail-grid,
+    #tab-kpi .hr-payroll-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .hr-today-hero {
     position: relative;
     min-height: 126px;
@@ -5349,6 +5931,22 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 }
 
 @media (max-width: 768px) {
+    #tab-salary .hr-payroll-salary-summary,
+    #tab-kpi .hr-payroll-kpi-summary,
+    #tab-salary .hr-payroll-detail-grid,
+    #tab-kpi .hr-payroll-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    #tab-salary .hr-payroll-identity,
+    #tab-kpi .hr-payroll-identity {
+        grid-column: auto;
+    }
+    #tab-salary .hr-payroll-detail-toggle,
+    #tab-kpi .hr-payroll-detail-toggle {
+        justify-self: stretch;
+        width: 100%;
+    }
+
     .hr-staff-profile-overlay {
         align-items: stretch;
         justify-content: stretch;
@@ -5586,6 +6184,42 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-kpi-toolbar > div,
     .hr-kpi-toolbar select,
     .hr-kpi-toolbar button { width: 100%; }
+    #tab-salary .hr-payroll-filter-row,
+    #tab-kpi .hr-payroll-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+    #tab-salary .hr-payroll-search,
+    #tab-kpi .hr-payroll-search,
+    #tab-salary .hr-payroll-filter-reset,
+    #tab-kpi .hr-payroll-filter-reset {
+        min-height: 44px;
+    }
+    #tab-salary .hr-payroll-filter-info,
+    #tab-kpi .hr-payroll-filter-info,
+    #tab-salary .hr-payroll-filter-reset,
+    #tab-kpi .hr-payroll-filter-reset {
+        box-sizing: border-box;
+        width: 100%;
+    }
+    #tab-salary .hr-payroll-dept-filter,
+    #tab-kpi .hr-payroll-dept-filter {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    #tab-salary .hr-payroll-dept-chip,
+    #tab-kpi .hr-payroll-dept-chip {
+        min-height: 44px;
+    }
+    #tab-salary .hr-payroll-group-toggle,
+    #tab-kpi .hr-payroll-group-toggle {
+        min-height: 44px;
+    }
+    #tab-salary .hr-payroll-group-caret,
+    #tab-kpi .hr-payroll-group-caret {
+        flex-basis: 28px;
+        width: 28px;
+        height: 28px;
+    }
     .hr-team-card { padding: 10px; }
     .hr-team-card-head { grid-template-columns: 40px minmax(0, 1fr); gap: 9px; }
     .hr-team-avatar { width: 40px; height: 40px; font-size: 15px; }
@@ -5696,6 +6330,26 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 }
 
 @media (max-width: 480px) {
+    #tab-salary .hr-payroll-group-header,
+    #tab-kpi .hr-payroll-group-header {
+        padding: 7px 9px;
+    }
+    #tab-salary .hr-payroll-item-summary,
+    #tab-kpi .hr-payroll-item-summary,
+    #tab-salary .hr-payroll-details,
+    #tab-kpi .hr-payroll-details {
+        padding: 12px;
+    }
+    #tab-salary .hr-payroll-detail-toggle,
+    #tab-kpi .hr-payroll-detail-toggle {
+        min-height: 44px;
+    }
+
+    #tab-salary .hr-payroll-dept-filter,
+    #tab-kpi .hr-payroll-dept-filter {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .hr-nav--pulse {
         --pulse-switcher-card-width: 148px;
         --pulse-switcher-card-grid: 26px minmax(0, 1fr);

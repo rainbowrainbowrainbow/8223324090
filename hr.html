@@ -328,12 +328,15 @@
                 <div id="salaryReconciliation" class="hr-salary-reconciliation"></div>
                 <div id="salaryPeriodEvents" class="hr-salary-events"></div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
-                <div class="hr-report-table-wrap">
-                    <table class="hr-report-table">
-                        <thead id="salaryHead"></thead>
-                        <tbody id="salaryBody"></tbody>
-                    </table>
-                </div>
+                <section class="hr-payroll-filters" aria-label="Фільтри списку зарплати">
+                    <div class="hr-payroll-filter-row" role="search" aria-label="Пошук у списку зарплати">
+                        <input type="search" id="salarySearch" class="hr-payroll-search" aria-label="Пошук працівника за ПІБ, роллю, відділом або професією" placeholder="Пошук: ПІБ, роль, відділ, професія..." autocomplete="off">
+                        <div id="salaryFilterInfo" class="hr-payroll-filter-info" role="status" aria-live="polite" aria-atomic="true">0 працівників</div>
+                        <button type="button" id="salaryFilterReset" class="hr-payroll-filter-reset" hidden>Скинути</button>
+                    </div>
+                    <div id="salaryDepartmentFilters" class="hr-payroll-dept-filter" role="group" aria-label="Фільтр зарплати за відділом"></div>
+                </section>
+                <div id="salaryList" class="hr-payroll-list" aria-live="polite"></div>
             </div>
 
             <!-- TAB 7B: ZRS -->
@@ -372,12 +375,15 @@
                 </div>
                 <div id="kpiSources" class="hr-kpi-sources" aria-label="Джерела KPI"></div>
                 <div id="kpiSummary" class="hr-kpi-grid"></div>
-                <div class="hr-report-table-wrap">
-                    <table class="hr-report-table hr-kpi-table">
-                        <thead id="kpiHead"></thead>
-                        <tbody id="kpiBody"></tbody>
-                    </table>
-                </div>
+                <section class="hr-payroll-filters" aria-label="Фільтри списку KPI">
+                    <div class="hr-payroll-filter-row" role="search" aria-label="Пошук у списку KPI">
+                        <input type="search" id="kpiSearch" class="hr-payroll-search" aria-label="Пошук працівника за ПІБ, роллю або відділом" placeholder="Пошук: ПІБ, роль, відділ..." autocomplete="off">
+                        <div id="kpiFilterInfo" class="hr-payroll-filter-info" role="status" aria-live="polite" aria-atomic="true">0 працівників</div>
+                        <button type="button" id="kpiFilterReset" class="hr-payroll-filter-reset" hidden>Скинути</button>
+                    </div>
+                    <div id="kpiDepartmentFilters" class="hr-payroll-dept-filter" role="group" aria-label="Фільтр KPI за відділом"></div>
+                </section>
+                <div id="kpiList" class="hr-payroll-list" aria-live="polite"></div>
             </div>
 
             <!-- TAB 9: ONBOARDING -->

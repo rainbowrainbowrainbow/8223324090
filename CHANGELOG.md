@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.29 - Hermes імпорт фактичних приходів
+
+### Hermes / Attendance / API safety / (15.07.2026) [codex]
+- **Фото паперового листа проходить безпечний preview** — CRM самостійно звіряє працівників, графік і наявні відмітки, не змінюючи attendance чи schedule.
+- **Команда «внось» застосовує лише підтверджені безпечні рядки** — `POST /api/hermes/attendance/apply` приймає тільки immutable preview IDs, працює ідемпотентно та пише фактичний прихід у `hr_time_records`.
+- **Графік і персонал залишаються недоторканими** — attendance import не створює працівників, не перезаписує дублікати та гарантує `scheduleWrites: 0`.
+- **Конкурентні записи серіалізовані** — Hermes, camera/manual HR, leave/cron writers і maintenance restore використовують спільні transaction locks та повторну перевірку стану перед commit.
+
+---
+
 ## v0.79.28 - Hermes створення персоналу
 
 ### Hermes / Staff / API safety / (15.07.2026) [codex]

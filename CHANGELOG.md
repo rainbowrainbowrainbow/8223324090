@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.30 - Надійність attendance і backup
+
+### Attendance / Backup / PostgreSQL reliability / (15.07.2026) [codex]
+- **Advisory locks доведено реальними PostgreSQL-транзакціями** — однакові `staff/date` серіалізуються, різні ключі не блокують одне одного, а maintenance restore отримує ексклюзивне вікно без гонок.
+- **`staff_checkins` тепер входить у канонічний backup** — plain та encrypted restore зберігають FK, точні timestamps із мікросекундами й коректний стан sequences.
+- **Restore-контур став безпечнішим** — quote-aware SQL parser, allowlisted sequence repair і строгі selective-restore параметри працюють однаково для обох endpoint-ів.
+
+---
+
 ## v0.79.29 - Hermes імпорт фактичних приходів
 
 ### Hermes / Attendance / API safety / (15.07.2026) [codex]

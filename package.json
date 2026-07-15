@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.29",
+  "version": "0.79.30",
   "eventGenix": {
-    "releaseLabel": "Hermes імпорт фактичних приходів"
+    "releaseLabel": "Надійність attendance і backup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

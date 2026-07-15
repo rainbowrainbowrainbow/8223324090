@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.27 - Чистий HR онбординг
+
+### HR / Training / Timeline / Production hygiene / (15.07.2026) [codex]
+- **Timeline більше не опитує protected settings до авторизації** — прибрано повторні pre-auth 401 та дубльоване завантаження visibility settings.
+- **Training показує фактичний статус процесу** — активний корпоративний онбординг більше не виглядає як «не стартував» через застаріле поле `training_status`.
+- **Додано browser regression** — перевіряється нуль pre-auth запитів до timeline visibility і правильний статус активного корпоративного процесу.
+- **Production очищено від disposable HR QA-записів** — тестові працівники, їхні onboarding-задачі та графік прибрані транзакційно, а audit trail збережено.
+
+---
+
 ## v0.79.26 - Надійний професійний онбординг
 
 ### HR / Vacancies / Onboarding / PostgreSQL / CI / (15.07.2026) [codex]

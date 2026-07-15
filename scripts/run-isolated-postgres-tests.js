@@ -19,6 +19,10 @@ const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_
 const POLL_INTERVAL_MS = 500;
 const MODES = {
     api: ['tests/api.test.js'],
+    attendance: [
+        'tests/integration/attendance-lock-concurrency.integration.test.js',
+        'tests/integration/attendance-backup-roundtrip.integration.test.js'
+    ],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
@@ -33,7 +37,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|hr|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|hr|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -245,6 +249,8 @@ async function runSuite(testDb, testFile) {
         REQUIRE_ISOLATED_TEST_TARGET: 'true',
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
+        RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
+        RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
@@ -319,10 +325,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.hr, ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

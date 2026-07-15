@@ -92,6 +92,14 @@ app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
 app.set('trust proxy', 1);   // v20.9.27: Trust first proxy (Railway) — req.ip returns real client IP
 const PORT = process.env.PORT || 3000;
 const HERMES_JOB_RESULT_JSON_LIMIT = '20mb';
+const BACKUP_RESTORE_JSON_LIMIT = '50mb';
+const BACKUP_RESTORE_JSON_PATHS = new Set([
+    '/api/backup/restore',
+    '/api/backup/restore-encrypted',
+    '/api/v1/backup/restore',
+    '/api/v1/backup/restore-encrypted'
+]);
+const defaultJsonParser = express.json({ limit: '1mb' });
 
 // Global middleware
 app.use(cors({
@@ -109,7 +117,11 @@ app.use(cors({
 }));
 app.use(compression());
 app.use(['/api/hermes/jobs/:id/result', '/api/v1/hermes/jobs/:id/result'], express.json({ limit: HERMES_JOB_RESULT_JSON_LIMIT }));
-app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+    // Backup restore payloads are parsed only after API authentication below.
+    if (BACKUP_RESTORE_JSON_PATHS.has(req.path)) return next();
+    return defaultJsonParser(req, res, next);
+});
 app.use(requestIdMiddleware);
 app.use(errorResponseMetadata);
 app.use(securityHeaders);
@@ -172,6 +184,10 @@ app.use('/api/leads/landing', landingLeadLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', apiAuthBoundary(authenticateToken));
+app.use(
+    ['/api/backup/restore', '/api/backup/restore-encrypted'],
+    express.json({ limit: BACKUP_RESTORE_JSON_LIMIT })
+);
 
 // Aggregate business scopes are overview-only; write actions must pick one active business first.
 app.use('/api', businessScopeWriteGuard);
@@ -199,7 +215,6 @@ app.use('/api/timeline', require('./routes/timeline-resources'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
 app.use('/api/telegram', require('./routes/telegram'));
-app.use('/api/backup/restore', express.json({ limit: '50mb' }));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));

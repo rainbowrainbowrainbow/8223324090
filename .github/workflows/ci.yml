@@ -107,6 +107,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run attendance lock and backup integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:attendance-lock:isolated
+
       - name: Run disposable onboarding and hire integration
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test

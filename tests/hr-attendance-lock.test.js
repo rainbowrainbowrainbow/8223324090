@@ -245,19 +245,17 @@ test('backup restore takes the exclusive attendance gate before maintenance muta
 
     assertInOrder(routeBlock(source, 'post', '/restore'), [
         /await client\.query\('BEGIN'\)/,
-        /restoreTouchesAttendanceState\(validated\)/,
+        /restoreTouchesAttendanceState\(validated, sequenceTables\)/,
         /await lockAttendanceWriteMaintenance\(client\)/,
-        /for \(const stmt of validated\)/,
-        /await client\.query\(stmt\)/,
+        /executeRestoreStatements\([\s\S]*client,[\s\S]*validated,[\s\S]*sequenceTables/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/backup/restore');
 
     assertInOrder(routeBlock(source, 'post', '/restore-encrypted'), [
         /await client\.query\('BEGIN'\)/,
-        /restoreTouchesAttendanceState\(statements\)/,
+        /restoreTouchesAttendanceState\(statements, sequenceTables\)/,
         /await lockAttendanceWriteMaintenance\(client\)/,
-        /for \(const stmt of statements\)/,
-        /await client\.query\(stmt\)/,
+        /executeRestoreStatements\([\s\S]*client,[\s\S]*statements,[\s\S]*sequenceTables/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/backup/restore-encrypted');
 });

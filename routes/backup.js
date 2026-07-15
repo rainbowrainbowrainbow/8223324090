@@ -28,6 +28,9 @@ const ATTENDANCE_MAINTENANCE_TABLES = new Set([
     'hr_time_records',
     'staff_checkins'
 ]);
+// Deleting the staff parent cascades into staff child tables that may not be selected.
+// Keep staff restoration full-backup-only until selective dependency closure exists.
+const SELECTIVE_RESTORE_BLOCKED_TABLES = new Set(['staff']);
 
 router.post('/create', async (req, res) => {
     try {
@@ -58,12 +61,14 @@ router.get('/download', async (req, res) => {
 });
 
 /**
- * Validate a SQL statement: must be INSERT INTO <table> or DELETE FROM <table>
- * where <table> is in the ALLOWED_TABLES whitelist.
+ * Validate a SQL statement: must be INSERT INTO <table>, DELETE FROM <table>,
+ * or the exact sequence-sync metadata emitted by generateBackupSQL().
+ * Every referenced table must be in the ALLOWED_TABLES whitelist.
  * Returns { ok, type, table } or { ok: false, reason }.
  */
 function validateRestoreStatement(stmt) {
-    const upper = stmt.toUpperCase().replace(/\s+/g, ' ').trim();
+    const normalized = stmt.replace(/\s+/g, ' ').trim();
+    const upper = normalized.toUpperCase();
 
     // Match INSERT INTO <table>
     const insertMatch = upper.match(/^INSERT\s+INTO\s+(\w+)/);
@@ -85,14 +90,181 @@ function validateRestoreStatement(stmt) {
         return { ok: true, type: 'DELETE', table };
     }
 
-    return { ok: false, reason: `Statement must be INSERT INTO or DELETE FROM, got: ${upper.slice(0, 50)}` };
+    // This is metadata, not arbitrary SELECT support. The route never executes the
+    // supplied statement; it performs its own allowlisted sequence repair instead.
+    const sequenceMatch = normalized.match(
+        /^SELECT setval\(pg_get_serial_sequence\('(\w+)', 'id'\), COALESCE\(\(SELECT MAX\(id\) FROM \1\), 1\), EXISTS \(SELECT 1 FROM \1\)\)$/i
+    );
+    if (sequenceMatch) {
+        const table = sequenceMatch[1].toLowerCase();
+        if (!ALLOWED_TABLES.has(table)) {
+            return { ok: false, reason: 'Sequence metadata references an invalid table' };
+        }
+        return { ok: true, type: 'SEQUENCE_SYNC', table };
+    }
+
+    return {
+        ok: false,
+        reason: `Statement must be an allowlisted INSERT, DELETE, or backup sequence sync, got: ${upper.slice(0, 50)}`
+    };
 }
 
-function restoreTouchesAttendanceState(statements) {
+/**
+ * Split generated restore SQL without treating comments or quoted semicolons as
+ * statement boundaries. The backup generator uses standard single-quoted SQL
+ * strings and doubles embedded quotes, so no broader SQL grammar is needed here.
+ */
+function splitRestoreStatements(sql) {
+    const statements = [];
+    let current = '';
+    let inString = false;
+    let inLineComment = false;
+
+    for (let index = 0; index < sql.length; index++) {
+        const char = sql[index];
+        const next = sql[index + 1];
+
+        if (inLineComment) {
+            if (char === '\n' || char === '\r') {
+                inLineComment = false;
+                current += '\n';
+            }
+            continue;
+        }
+
+        if (inString) {
+            current += char;
+            if (char === "'" && next === "'") {
+                current += next;
+                index++;
+            } else if (char === "'") {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (char === "'") {
+            inString = true;
+            current += char;
+        } else if (char === '-' && next === '-') {
+            inLineComment = true;
+            current += ' ';
+            index++;
+        } else if (char === ';') {
+            const statement = current.trim();
+            if (statement) statements.push(statement);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+
+    const trailing = current.trim();
+    if (trailing) statements.push(trailing);
+    return {
+        statements,
+        error: inString ? 'Unterminated SQL string literal' : null
+    };
+}
+
+function prepareRestoreStatements(sql, targetTables) {
+    const parsed = splitRestoreStatements(sql);
+    const rejected = parsed.error ? [parsed.error] : [];
+    let selectedTables = null;
+
+    if (targetTables !== undefined) {
+        if (!Array.isArray(targetTables) || targetTables.length === 0) {
+            rejected.push('Selective restore tables must be a non-empty array');
+        } else {
+            selectedTables = new Set();
+            for (const rawTable of targetTables) {
+                const table = String(rawTable || '').trim().toLowerCase();
+                if (!ALLOWED_TABLES.has(table)) {
+                    rejected.push(`Table "${table || String(rawTable)}" not in allowed list`);
+                } else {
+                    selectedTables.add(table);
+                }
+            }
+            for (const table of selectedTables) {
+                if (SELECTIVE_RESTORE_BLOCKED_TABLES.has(table)) {
+                    rejected.push(`Table "${table}" requires a full restore because selective DELETE can cascade`);
+                }
+            }
+        }
+    }
+
+    const statements = [];
+    const sequenceTables = new Set();
+    for (const stmt of parsed.statements) {
+        const result = validateRestoreStatement(stmt);
+        if (!result.ok) {
+            rejected.push(result.reason);
+            continue;
+        }
+        if (selectedTables && !selectedTables.has(result.table)) continue;
+        // Sequence sync from a backup is accepted only as canonical metadata.
+        // executeRestoreStatements performs the safe server-side query, including
+        // for empty generated tables that have no INSERT statement.
+        if (result.type === 'SEQUENCE_SYNC') sequenceTables.add(result.table);
+        else statements.push(stmt);
+    }
+
+    return {
+        statements,
+        rejected,
+        selectedTables: selectedTables ? [...selectedTables] : null,
+        sequenceTables
+    };
+}
+
+function restoreTouchesAttendanceState(statements, sequenceTables = []) {
+    if ([...sequenceTables].some(table => ATTENDANCE_MAINTENANCE_TABLES.has(table))) {
+        return true;
+    }
     return statements.some(stmt => {
         const validated = validateRestoreStatement(stmt);
         return validated.ok && ATTENDANCE_MAINTENANCE_TABLES.has(validated.table);
     });
+}
+
+function collectInsertedRestoreTables(statements) {
+    const tables = new Set();
+    for (const statement of statements) {
+        const validated = validateRestoreStatement(statement);
+        if (validated.ok && validated.type === 'INSERT') {
+            tables.add(validated.table);
+        }
+    }
+    return tables;
+}
+
+async function repairRestoredSequences(client, tables) {
+    for (const table of tables) {
+        const safeName = safeTableName(table, BACKUP_TABLES);
+        await client.query('SAVEPOINT seq_fix');
+        try {
+            await client.query(
+                `SELECT setval(pg_get_serial_sequence($1, 'id'), COALESCE((SELECT MAX(id) FROM ${safeName}), 0) + 1, false)`,
+                [table]
+            );
+        } catch {
+            // Some allowlisted tables do not have a serial id. Keep their restored data
+            // and isolate the unsupported sequence repair from the surrounding restore.
+            await client.query('ROLLBACK TO SAVEPOINT seq_fix');
+        } finally {
+            await client.query('RELEASE SAVEPOINT seq_fix');
+        }
+    }
+}
+
+async function executeRestoreStatements(client, statements, sequenceTables = []) {
+    const tablesWithData = collectInsertedRestoreTables(statements);
+    const tablesToRepair = new Set([...tablesWithData, ...sequenceTables]);
+    for (const statement of statements) {
+        await client.query(statement);
+    }
+    await repairRestoredSequences(client, tablesToRepair);
+    return { executed: statements.length, tablesWithData };
 }
 
 router.post('/restore', async (req, res) => {
@@ -103,25 +275,12 @@ router.post('/restore', async (req, res) => {
             return res.status(400).json({ error: 'SQL body required' });
         }
 
-        const statements = sql.split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'));
-
-        // Validate every statement against whitelist
-        const rejected = [];
-        const validated = [];
-        for (const stmt of statements) {
-            const result = validateRestoreStatement(stmt);
-            if (!result.ok) {
-                rejected.push(result.reason);
-            } else {
-                // Selective restore: skip tables not in targetTables (if specified)
-                if (Array.isArray(targetTables) && targetTables.length > 0) {
-                    if (!targetTables.includes(result.table)) continue;
-                }
-                validated.push(stmt);
-            }
-        }
+        const {
+            statements: validated,
+            rejected,
+            selectedTables,
+            sequenceTables
+        } = prepareRestoreStatements(sql, targetTables);
 
         if (rejected.length > 0) {
             return res.status(400).json({
@@ -131,38 +290,23 @@ router.post('/restore', async (req, res) => {
         }
 
         await client.query('BEGIN');
-        if (restoreTouchesAttendanceState(validated)) {
+        if (restoreTouchesAttendanceState(validated, sequenceTables)) {
             await lockAttendanceWriteMaintenance(client);
         }
 
-        // Reset sequence counters after restore for tables with serial PKs
-        const tablesWithData = new Set();
-        let executed = 0;
-        for (const stmt of validated) {
-            await client.query(stmt);
-            executed++;
-            const m = stmt.toUpperCase().match(/^INSERT\s+INTO\s+(\w+)/);
-            if (m) tablesWithData.add(m[1].toLowerCase());
-        }
-
-        // Fix serial counters for restored tables (use SAVEPOINT to avoid aborting transaction)
-        for (const table of tablesWithData) {
-            try {
-                const safeName = safeTableName(table, BACKUP_TABLES);
-                await client.query('SAVEPOINT seq_fix');
-                await client.query(
-                    `SELECT setval(pg_get_serial_sequence(${safeName}, 'id'), COALESCE((SELECT MAX(id) FROM ${safeName}), 0) + 1, false)`
-                );
-                await client.query('RELEASE SAVEPOINT seq_fix');
-            } catch {
-                await client.query('ROLLBACK TO SAVEPOINT seq_fix');
-            }
-        }
+        const { executed, tablesWithData } = await executeRestoreStatements(
+            client,
+            validated,
+            sequenceTables
+        );
 
         await client.query('COMMIT');
 
         // Audit log
-        log.info(`Restore: executed ${executed} statements by ${req.user?.username}${targetTables ? ` (tables: ${targetTables.join(',')})` : ''}`);
+        log.info(
+            `Restore: executed ${executed} statements by ${req.user?.username}`
+            + `${selectedTables ? ` (tables: ${selectedTables.join(',')})` : ''}`
+        );
 
         res.json({ success: true, executed, tablesRestored: [...tablesWithData] });
     } catch (err) {
@@ -190,10 +334,18 @@ router.get('/verify', async (req, res) => {
         }
 
         // Count statements
-        const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 0 && !s.startsWith('--'));
-        const inserts = stmts.filter(s => /^INSERT/i.test(s)).length;
-        const deletes = stmts.filter(s => /^DELETE/i.test(s)).length;
+        const parsed = splitRestoreStatements(sql);
+        const stmts = parsed.statements.map(statement => ({
+            statement,
+            validated: validateRestoreStatement(statement)
+        }));
+        const inserts = stmts.filter(item => item.validated.type === 'INSERT').length;
+        const deletes = stmts.filter(item => item.validated.type === 'DELETE').length;
         const errors = lines.filter(l => l.startsWith('-- ERROR')).map(l => l.replace('-- ERROR ', ''));
+        if (parsed.error) errors.push(parsed.error);
+        errors.push(...stmts
+            .filter(item => !item.validated.ok)
+            .map(item => item.validated.reason));
 
         // Verify DB connection is healthy
         const dbPing = await pool.query('SELECT NOW() as now');
@@ -264,34 +416,37 @@ router.post('/restore-encrypted', async (req, res) => {
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         const sql = decipher.update(encrypted, null, 'utf8') + decipher.final('utf8');
 
-        // Forward to the regular restore handler logic
-        req.body.sql = sql;
-        // Re-run through the same pipeline (redirect internally)
-        const statements = sql.split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'));
-
-        for (const stmt of statements) {
-            const v = validateRestoreStatement(stmt);
-            if (!v.ok) {
-                return res.status(400).json({ error: 'Decrypted backup contains invalid statement', reason: v.reason });
-            }
+        const {
+            statements,
+            rejected,
+            selectedTables,
+            sequenceTables
+        } = prepareRestoreStatements(sql, req.body.tables);
+        if (rejected.length > 0) {
+            return res.status(400).json({
+                error: 'Decrypted backup contains invalid statement',
+                reason: rejected[0]
+            });
         }
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            if (restoreTouchesAttendanceState(statements)) {
+            if (restoreTouchesAttendanceState(statements, sequenceTables)) {
                 await lockAttendanceWriteMaintenance(client);
             }
-            let executed = 0;
-            for (const stmt of statements) {
-                await client.query(stmt);
-                executed++;
-            }
+            const { executed, tablesWithData } = await executeRestoreStatements(
+                client,
+                statements,
+                sequenceTables
+            );
             await client.query('COMMIT');
-            log.info(`Encrypted restore: executed ${executed} statements by ${req.user?.username}`);
-            res.json({ success: true, executed });
+            const tablesRestored = [...tablesWithData];
+            log.info(
+                `Encrypted restore: executed ${executed} statements by ${req.user?.username}`
+                + `${selectedTables ? ` (tables: ${selectedTables.join(',')})` : ''}`
+            );
+            res.json({ success: true, executed, tablesRestored });
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
             throw err;

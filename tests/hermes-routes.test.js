@@ -1869,14 +1869,17 @@ describe('Hermes jobs foundation routes', () => {
         const source = await fsp.readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
         const limitMarker = "const HERMES_JOB_RESULT_JSON_LIMIT = '20mb';";
         const hermesParserMarker = "app.use(['/api/hermes/jobs/:id/result', '/api/v1/hermes/jobs/:id/result'], express.json({ limit: HERMES_JOB_RESULT_JSON_LIMIT }));";
-        const globalParserMarker = "app.use(express.json({ limit: '1mb' }));";
+        const globalLimitMarker = "const defaultJsonParser = express.json({ limit: '1mb' });";
+        const globalParserMarker = 'return defaultJsonParser(req, res, next);';
         const limitIndex = source.indexOf(limitMarker);
         const hermesParserIndex = source.indexOf(hermesParserMarker);
+        const globalLimitIndex = source.indexOf(globalLimitMarker);
         const globalParserIndex = source.indexOf(globalParserMarker);
 
         assert.ok(limitIndex >= 0, 'Hermes result JSON limit must be explicit');
         assert.ok(hermesParserIndex >= 0, 'Hermes result route must have a scoped JSON parser');
-        assert.ok(globalParserIndex >= 0, 'global CRM JSON parser must remain at 1mb');
+        assert.ok(globalLimitIndex >= 0, 'global CRM JSON parser must remain at 1mb');
+        assert.ok(globalParserIndex >= 0, 'global CRM JSON parser must remain installed');
         assert.ok(hermesParserIndex < globalParserIndex, 'Hermes result parser must run before the global parser');
     });
 

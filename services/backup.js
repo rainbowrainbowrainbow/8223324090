@@ -2,12 +2,28 @@
  * services/backup.js — Database backup generation & Telegram upload
  */
 const https = require('https');
+const { types: pgTypes } = require('pg');
 const { pool } = require('../db');
 const { TELEGRAM_BOT_TOKEN, getConfiguredChatId, getConfiguredThreadId } = require('./telegram');
 const { getKyivDateStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Backup');
+
+// node-postgres normally converts these PostgreSQL values to JavaScript Date objects.
+// DATE and TIMESTAMP WITHOUT TIME ZONE are then shifted when Date#toISOString() runs
+// outside UTC, while every Date conversion also truncates PostgreSQL microseconds.
+// Keep their wire text only for backup SELECTs so the generated SQL round-trips the
+// database value exactly without changing the application's global pg parsers.
+const RAW_BACKUP_TEMPORAL_OIDS = new Set([1082, 1114, 1184]);
+const BACKUP_QUERY_TYPES = {
+    getTypeParser(oid, format) {
+        if (format === 'text' && RAW_BACKUP_TEMPORAL_OIDS.has(Number(oid))) {
+            return value => value;
+        }
+        return pgTypes.getTypeParser(oid, format);
+    }
+};
 
 // Order matters for restore: parents before children (FK dependencies).
 // DELETE runs in reverse order (children first), INSERT in forward order (parents first).
@@ -40,6 +56,8 @@ const BACKUP_TABLES = [
     // === Parent tables (referenced by FK) ===
     'customers',
     'staff',
+    // Direct staff child; adjacent placement makes its restore dependency explicit.
+    'staff_checkins',
     'warehouse_stock',
     'finance_categories',
     'design_collections',
@@ -86,7 +104,11 @@ async function generateBackupSQL() {
         for (const table of BACKUP_TABLES) {
             await client.query('SAVEPOINT backup_table_read');
             try {
-                const result = await client.query(`SELECT * FROM ${table}`);
+                const text = `SELECT * FROM ${table}`;
+                const result = await client.query({
+                    text,
+                    types: BACKUP_QUERY_TYPES
+                });
                 tableData[table] = result.rows;
                 await client.query('RELEASE SAVEPOINT backup_table_read');
             } catch (err) {
@@ -134,8 +156,13 @@ async function generateBackupSQL() {
         lines.push('');
     }
 
-    lines.push('-- === PHASE 3: SEQUENCE SYNC FOR HR SHIFT SEGMENTS ===');
-    for (const table of ['hr_shift_segments', 'hr_shift_segment_roles']) {
+    lines.push('-- === PHASE 3: SEQUENCE SYNC ===');
+    for (const table of [
+        'hr_shift_segments',
+        'hr_shift_segment_roles',
+        'staff_checkins',
+        'hr_time_records'
+    ]) {
         if (tableData[table] === null) continue;
         lines.push(
             `SELECT setval(pg_get_serial_sequence('${table}', 'id'), `

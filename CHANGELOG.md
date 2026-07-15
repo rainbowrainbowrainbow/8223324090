@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.31 - Безпечне відновлення бази даних
+
+### Backup / Recovery / PostgreSQL safety / (15.07.2026) [codex]
+- **Повний структурований backup v2** — динамічний каталог охоплює всі дозволені public-таблиці, включно зі `staff_checkins`, з контрольними сумами, FK-порядком і точним станом sequences.
+- **Restore працює лише у захищеному контурі** — plain та AES-256-GCM артефакти проходять строгу валідацію, schema fence, bounded database timeouts, явне підтвердження й fail-closed runtime gates.
+- **Завантаження backup має обов’язковий audit receipt** — якщо санітизований запис аудиту не збережено, сервер не віддає артефакт або encrypted envelope.
+- **Recovery доведено на disposable PostgreSQL** — CI відтворює повний backup→restore, selective attendance restore, паралельні advisory locks, FK, timestamps, sequences та обидва restore endpoint-и без production writes.
+
+---
+
 ## v0.79.30 - Надійність attendance і backup
 
 ### Attendance / Backup / PostgreSQL reliability / (15.07.2026) [codex]

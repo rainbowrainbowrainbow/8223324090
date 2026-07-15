@@ -46,7 +46,8 @@ const {
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
     isHiddenProfessionKey,
-    curateProfessionCatalogRows,
+    loadProfessionWorkspaceCatalog,
+    loadProfessionWorkspace,
     professionCatalogActiveKeySet,
     validateProfessionKeys,
     staffProfessionKeys,
@@ -1264,7 +1265,9 @@ function sanitizeCompanyStructureNodes(nodes) {
             x,
             y,
             meta: sanitizeCompanyStructureString(source.meta, 80) || null,
-            displayGroup: staffStructureDisplayGroupKey({ ...source, id }) || null
+            displayGroup: staffStructureDisplayGroupKey({ ...source, id }) || null,
+            collapsed: source.collapsed === true,
+            archived: source.archived === true
         };
     });
     const ids = new Set(normalized.map(node => node.id));
@@ -2404,15 +2407,12 @@ function sendHrShiftPlanError(res, error, extra = {}) {
 
 router.get('/professions', async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT id, key, title, department, short_info, responsibilities, checklist,
-                    color, structure_node_id, sort_order, is_active, created_at, updated_at
-             FROM hr_professions
-             ORDER BY is_active DESC, sort_order ASC, title ASC`
-        );
+        const catalog = await loadProfessionWorkspaceCatalog(pool);
         res.json({
             success: true,
-            data: curateProfessionCatalogRows(result.rows)
+            data: catalog.items,
+            structureNodes: catalog.structureNodes,
+            inventory: catalog.inventory
         });
     } catch (err) {
         log.error('GET /hr/professions error', err);
@@ -2640,7 +2640,21 @@ router.put('/staff/:id/profession-checklist', requireRole('creator', 'director',
     }
 });
 
-// GET /api/hr/staff/:id — full profile
+router.get('/professions/workspace/:identity', async (req, res) => {
+    try {
+        const rawIdentity = String(req.params.identity || '').trim();
+        const identity = /^\d+$/.test(rawIdentity)
+            ? { id: Number(rawIdentity) }
+            : { key: rawIdentity };
+        const workspace = await loadProfessionWorkspace(pool, identity);
+        if (!workspace) return res.status(404).json({ success: false, error: 'Професію не знайдено' });
+        res.json({ success: true, data: workspace });
+    } catch (err) {
+        log.error('GET /hr/professions/workspace/:identity error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження картки професії' });
+    }
+});
+
 router.get('/staff/:id', async (req, res) => {
     try {
         const staff = await pool.query(
@@ -3682,7 +3696,11 @@ router.get('/company-structure', async (req, res) => {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'");
         const payload = normalizeCompanyStructurePayload(result.rows[0]?.value || {});
-        res.json({ success: true, data: payload, displayGroups: listStaffDisplayGroups() });
+        const hasSavedStructure = Boolean(
+            result.rows.length
+            && (payload.nodes.length || payload.structure || payload.instructions || payload.updatedAt)
+        );
+        res.json({ success: true, data: payload, hasSavedStructure, displayGroups: listStaffDisplayGroups() });
     } catch (err) {
         log.error('GET /hr/company-structure error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3693,14 +3711,16 @@ router.put('/company-structure', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
         const source = req.body || {};
-        const expectedUpdatedAt = source.baseUpdatedAt || source.expectedUpdatedAt || null;
+        const hasExpectedVersion = Object.prototype.hasOwnProperty.call(source, 'baseUpdatedAt')
+            || Object.prototype.hasOwnProperty.call(source, 'expectedUpdatedAt');
+        const expectedUpdatedAt = source.baseUpdatedAt ?? source.expectedUpdatedAt ?? null;
 
         await client.query('BEGIN');
         const current = await client.query(
             "SELECT value FROM settings WHERE key = 'hr_company_structure' FOR UPDATE"
         );
         const currentPayload = normalizeCompanyStructurePayload(current.rows[0]?.value || {});
-        if (expectedUpdatedAt && currentPayload.updatedAt && expectedUpdatedAt !== currentPayload.updatedAt) {
+        if (hasExpectedVersion && expectedUpdatedAt !== currentPayload.updatedAt) {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,

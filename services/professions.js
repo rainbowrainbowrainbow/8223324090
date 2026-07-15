@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeStaffCompanyStructurePayload } = require('./staffDisplayGroups');
+
 function parseJsonArray(value, fallback = []) {
     if (Array.isArray(value)) return value;
     if (value && typeof value === 'object') return Array.isArray(value.items) ? value.items : fallback;
@@ -205,6 +207,7 @@ function parseTextList(value, limit = 24) {
 }
 
 function normalizeProfessionCatalogRow(row = {}) {
+    const source = row.source === 'system' || row.is_virtual === true || row.isVirtual === true ? 'system' : 'db';
     return {
         id: row.id,
         key: normalizeProfessionKey(row.key),
@@ -222,7 +225,10 @@ function normalizeProfessionCatalogRow(row = {}) {
         is_active: row.is_active !== false,
         isActive: row.is_active !== false,
         is_virtual: row.is_virtual === true || row.isVirtual === true,
-        isVirtual: row.is_virtual === true || row.isVirtual === true
+        isVirtual: row.is_virtual === true || row.isVirtual === true,
+        source,
+        is_readonly: source === 'system' || row.is_readonly === true || row.isReadonly === true,
+        isReadonly: source === 'system' || row.is_readonly === true || row.isReadonly === true
     };
 }
 
@@ -277,6 +283,204 @@ function validateProfessionKeys(keys, activeKeys) {
     return (keys || []).filter(key => !keySet.has(key));
 }
 
+async function loadAssignedStaffProfessionKeys(db, staff = {}) {
+    const keys = staffProfessionKeys(staff);
+    const staffId = Number(staff.id ?? staff.staff_id);
+    if (!db || typeof db.query !== 'function' || !Number.isInteger(staffId) || staffId <= 0) return keys;
+    const result = await db.query(
+        `SELECT profession_key
+         FROM staff_role_assignments
+         WHERE staff_id = $1
+         ORDER BY is_primary DESC, profession_key`,
+        [staffId]
+    );
+    return normalizeProfessionKeyArray([
+        ...keys,
+        ...safeRows(result).map(row => row.profession_key)
+    ]);
+}
+
+function professionCatalogInventory() {
+    return {
+        dbSource: 'hr_professions',
+        virtual: VIRTUAL_PROFESSIONS.map(row => normalizeProfessionKey(row.key)).filter(Boolean),
+        overrides: Object.keys(PROFESSION_OVERRIDES),
+        hiddenLegacyDuplicates: [...HIDDEN_PROFESSION_KEYS]
+    };
+}
+
+function professionWorkspaceIdentityMatches(profession = {}, identity = {}) {
+    const requestedId = Number(identity.id ?? identity);
+    const requestedKey = normalizeProfessionKey(identity.key ?? (Number.isFinite(requestedId) ? '' : identity));
+    if (Number.isFinite(requestedId) && requestedId !== 0 && Number(profession.id) === requestedId) return true;
+    return Boolean(requestedKey && normalizeProfessionKey(profession.key) === requestedKey);
+}
+
+function safeRows(result) {
+    return Array.isArray(result?.rows) ? result.rows : [];
+}
+
+async function loadProfessionWorkspaceCatalog(db) {
+    if (!db || typeof db.query !== 'function') throw new TypeError('Profession workspace requires a database client');
+    const [professionResult, peopleResult, preferenceResult, progressResult, trainingResult, structureResult] = await Promise.all([
+        db.query(
+            `SELECT id, key, title, department, short_info, responsibilities, checklist,
+                    color, structure_node_id, sort_order, is_active, created_at, updated_at
+             FROM hr_professions
+             ORDER BY is_active DESC, sort_order ASC, title ASC`
+        ),
+        db.query(
+            `WITH profession_assignments AS (
+                SELECT s.id AS staff_id, s.role_type AS profession_key, true AS is_primary
+                FROM staff s
+                WHERE NULLIF(BTRIM(s.role_type), '') IS NOT NULL
+                UNION
+                SELECT s.id AS staff_id, secondary.value AS profession_key, false AS is_primary
+                FROM staff s
+                CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(s.secondary_professions, '[]'::jsonb)) secondary(value)
+                UNION
+                SELECT sra.staff_id, sra.profession_key, COALESCE(sra.is_primary, false) AS is_primary
+                FROM staff_role_assignments sra
+             )
+             SELECT DISTINCT ON (pa.profession_key, s.id)
+                    pa.profession_key, s.id AS staff_id, s.name AS staff_name, s.department,
+                    COALESCE(s.is_active, true) AS is_active, pa.is_primary,
+                    spr.hourly_rate AS explicit_hourly_rate,
+                    s.hourly_rate AS fallback_hourly_rate,
+                    COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                    COALESCE(sra.status, CASE WHEN COALESCE(s.is_active, true) THEN 'active' ELSE 'inactive' END) AS assignment_status,
+                    COALESCE(sra.admission_status, CASE WHEN pa.profession_key = s.role_type THEN 'approved' ELSE 'pending' END) AS admission_status,
+                    COALESCE(sra.internship_status, CASE WHEN pa.profession_key = 'intern' THEN 'in_progress' ELSE 'none' END) AS internship_status,
+                    s.company_structure_node_id
+             FROM profession_assignments pa
+             JOIN staff s ON s.id = pa.staff_id
+             LEFT JOIN staff_profession_rates spr
+                    ON spr.staff_id = s.id AND spr.profession_key = pa.profession_key
+             LEFT JOIN staff_role_assignments sra
+                    ON sra.staff_id = s.id AND sra.profession_key = pa.profession_key
+             ORDER BY pa.profession_key, s.id, pa.is_primary DESC`
+        ),
+        db.query(
+            `SELECT staff_id, profession_key, day_type, start_time, end_time
+             FROM staff_shift_preferences
+             WHERE COALESCE(is_active, true) = true
+             ORDER BY profession_key, staff_id, day_type`
+        ),
+        db.query(
+            `SELECT profession_key,
+                    COUNT(*)::int AS progress_records,
+                    COUNT(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed_records,
+                    COUNT(DISTINCT staff_id)::int AS staff_with_progress
+             FROM hr_staff_profession_checklist_progress
+             GROUP BY profession_key`
+        ),
+        db.query(
+            `SELECT profession_key,
+                    COUNT(*)::int AS course_count,
+                    COUNT(*) FILTER (WHERE COALESCE(is_active, true) = true)::int AS active_course_count
+             FROM training_courses
+             WHERE profession_key IS NOT NULL
+             GROUP BY profession_key`
+        ),
+        db.query("SELECT value FROM settings WHERE key = 'hr_company_structure'")
+    ]);
+
+    const preferencesByAssignment = new Map();
+    for (const row of safeRows(preferenceResult)) {
+        const assignmentKey = `${Number(row.staff_id)}:${normalizeProfessionKey(row.profession_key)}`;
+        if (!preferencesByAssignment.has(assignmentKey)) preferencesByAssignment.set(assignmentKey, []);
+        preferencesByAssignment.get(assignmentKey).push({
+            dayType: row.day_type || 'weekday',
+            startTime: row.start_time || null,
+            endTime: row.end_time || null,
+            isActive: true,
+            source: 'staff_shift_preferences'
+        });
+    }
+
+    const peopleByKey = new Map();
+    for (const row of safeRows(peopleResult)) {
+        const key = normalizeProfessionKey(row.profession_key);
+        if (!key) continue;
+        if (!peopleByKey.has(key)) peopleByKey.set(key, []);
+        peopleByKey.get(key).push({
+            id: Number(row.staff_id),
+            name: row.staff_name || '',
+            department: row.department || '',
+            isActive: row.is_active !== false,
+            isPrimary: row.is_primary === true,
+            assignmentStatus: row.assignment_status || 'active',
+            admissionStatus: row.admission_status || 'pending',
+            internshipStatus: row.internship_status || 'none',
+            rateMode: row.explicit_hourly_rate == null ? 'fallback' : 'explicit',
+            explicitRate: row.explicit_hourly_rate == null ? null : Number(row.explicit_hourly_rate),
+            fallbackRate: row.fallback_hourly_rate == null ? null : Number(row.fallback_hourly_rate),
+            hourlyRate: row.explicit_hourly_rate == null
+                ? (row.fallback_hourly_rate == null ? null : Number(row.fallback_hourly_rate))
+                : Number(row.explicit_hourly_rate),
+            rateSource: row.explicit_hourly_rate == null ? 'staff.hourly_rate' : 'staff_profession_rates.hourly_rate',
+            rateUnit: row.rate_unit || 'hour',
+            structureNodeId: row.company_structure_node_id || null,
+            shiftPreferences: preferencesByAssignment.get(`${Number(row.staff_id)}:${key}`) || []
+        });
+    }
+    peopleByKey.forEach(rows => rows.sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.name.localeCompare(b.name, 'uk')));
+
+    const progressByKey = new Map(safeRows(progressResult).map(row => [normalizeProfessionKey(row.profession_key), {
+        records: Number(row.progress_records || 0),
+        completed: Number(row.completed_records || 0),
+        staffWithProgress: Number(row.staff_with_progress || 0)
+    }]));
+    const trainingByKey = new Map(safeRows(trainingResult).map(row => [normalizeProfessionKey(row.profession_key), {
+        courses: Number(row.course_count || 0),
+        activeCourses: Number(row.active_course_count || 0)
+    }]));
+    const structure = normalizeStaffCompanyStructurePayload(safeRows(structureResult)[0]?.value || {});
+    const structureNodeById = new Map(structure.nodes.map(node => [node.id, node]));
+
+    const items = curateProfessionCatalogRows(safeRows(professionResult)).map(profession => {
+        const key = normalizeProfessionKey(profession.key);
+        const people = peopleByKey.get(key) || [];
+        const structureNode = profession.structureNodeId ? structureNodeById.get(profession.structureNodeId) || null : null;
+        const checklist = Array.isArray(profession.checklist) ? profession.checklist : [];
+        return {
+            ...profession,
+            source: profession.source || (profession.isVirtual ? 'system' : 'db'),
+            isReadonly: profession.isReadonly === true || profession.isVirtual === true,
+            is_readonly: profession.isReadonly === true || profession.isVirtual === true,
+            staffCount: people.length,
+            activeStaffCount: people.filter(person => person.isActive).length,
+            hasChecklist: checklist.length > 0,
+            checklistCount: checklist.length,
+            structureNode: structureNode ? { id: structureNode.id, title: structureNode.title } : null,
+            people,
+            checklistProgress: progressByKey.get(key) || { records: 0, completed: 0, staffWithProgress: 0 },
+            trainingUsage: trainingByKey.get(key) || { courses: 0, activeCourses: 0 }
+        };
+    });
+
+    return {
+        items,
+        structureNodes: structure.nodes.map(node => ({ id: node.id, title: node.title })),
+        inventory: professionCatalogInventory()
+    };
+}
+
+async function loadProfessionWorkspace(db, identity = {}) {
+    const catalog = await loadProfessionWorkspaceCatalog(db);
+    const profession = catalog.items.find(item => professionWorkspaceIdentityMatches(item, identity));
+    if (!profession) return null;
+    return {
+        profession,
+        people: profession.people,
+        checklist: profession.checklist,
+        checklistProgress: profession.checklistProgress,
+        trainingUsage: profession.trainingUsage,
+        structureNode: profession.structureNode,
+        inventory: catalog.inventory
+    };
+}
+
 module.exports = {
     parseJsonArray,
     parseTextList,
@@ -286,12 +490,16 @@ module.exports = {
     normalizeSecondaryProfessions,
     isHiddenProfessionKey,
     staffProfessionKeys,
+    loadAssignedStaffProfessionKeys,
     staffHasProfession,
     validateStaffProfessionAssignments,
     resolveStaffProfessionAssignments,
     resolveStaffProfessionAssignment,
     normalizeProfessionCatalogRow,
     curateProfessionCatalogRows,
+    professionCatalogInventory,
+    loadProfessionWorkspaceCatalog,
+    loadProfessionWorkspace,
     professionCatalogActiveKeySet,
     validateProfessionKeys
 };

@@ -154,7 +154,28 @@
                     </div>
                     <button type="button" id="btnAddProfession" class="btn-add">+ Професія</button>
                 </div>
-                <div id="professionCatalogList" class="hr-profession-grid"></div>
+                <div class="hr-profession-toolbar" aria-label="Фільтри каталогу професій">
+                    <input type="search" id="professionCatalogSearch" placeholder="Знайти професію, напрям або вузол..." aria-label="Пошук професії">
+                    <select id="professionCatalogStatus" aria-label="Статус професії">
+                        <option value="active">Активні</option>
+                        <option value="archived">Архівні</option>
+                        <option value="all">Усі</option>
+                    </select>
+                    <select id="professionCatalogDepartment" aria-label="Напрям професії"><option value="all">Усі напрями</option></select>
+                    <select id="professionCatalogStructureNode" aria-label="Вузол структури"><option value="all">Усі вузли</option></select>
+                    <select id="professionCatalogStaff" aria-label="Наявність працівників">
+                        <option value="all">Будь-яка команда</option>
+                        <option value="with">Є працівники</option>
+                        <option value="without">Без працівників</option>
+                    </select>
+                    <select id="professionCatalogChecklist" aria-label="Наявність чекліста">
+                        <option value="all">Будь-який чекліст</option>
+                        <option value="with">Є чекліст</option>
+                        <option value="without">Без чекліста</option>
+                    </select>
+                </div>
+                <div id="professionCatalogStats" class="hr-profession-catalog-stats" role="status" aria-live="polite"></div>
+                <div id="professionCatalogList" class="hr-profession-master-list" aria-live="polite"></div>
             </div>
 
             <!-- TAB 3B: CHECKLISTS -->
@@ -166,7 +187,74 @@
                     </div>
                     <button type="button" class="btn-secondary" onclick="loadProfessionChecklists()">Оновити</button>
                 </div>
-                <div id="professionChecklistList" class="hr-checklist-grid"></div>
+                <div id="professionChecklistList" class="hr-profession-master-list" aria-live="polite"></div>
+            </div>
+
+            <div id="professionWorkspaceOverlay" class="hr-profession-workspace-overlay hidden" aria-hidden="true">
+                <aside id="professionWorkspace" class="hr-profession-workspace" role="dialog" aria-modal="true" aria-labelledby="professionWorkspaceTitle">
+                    <header class="hr-profession-workspace-header">
+                        <button type="button" id="professionWorkspaceBack" class="hr-profession-workspace-back" aria-label="Назад">←</button>
+                        <div>
+                            <span id="professionWorkspaceSource" class="hr-profession-source-badge">DB profession</span>
+                            <h2 id="professionWorkspaceTitle">Картка професії</h2>
+                            <p id="professionWorkspaceSubtitle"></p>
+                        </div>
+                        <button type="button" id="professionWorkspaceClose" class="hr-profession-workspace-close" aria-label="Закрити">×</button>
+                    </header>
+                    <div id="professionWorkspaceState" class="hr-profession-workspace-state" role="status" aria-live="polite"></div>
+                    <div id="professionWorkspaceContent" class="hr-profession-workspace-content hidden">
+                        <nav class="hr-profession-workspace-tabs" role="tablist" aria-label="Розділи картки професії">
+                            <button type="button" data-profession-workspace-tab="main" role="tab">Основне</button>
+                            <button type="button" data-profession-workspace-tab="people" role="tab">Люди та умови</button>
+                            <button type="button" data-profession-workspace-tab="checklist" role="tab">Чекліст</button>
+                            <button type="button" data-profession-workspace-tab="usage" role="tab">Використання</button>
+                        </nav>
+                        <form id="professionWorkspaceForm" novalidate>
+                            <section data-profession-workspace-panel="main" class="hr-profession-workspace-panel">
+                                <div id="professionWorkspaceKeyReadonly" class="hr-profession-key-readonly"></div>
+                                <label id="professionWorkspaceKeyCreateField" class="hidden">Технічний key<input id="professionWorkspaceKey" autocomplete="off" placeholder="animator"></label>
+                                <div class="hr-profession-workspace-grid">
+                                    <label>Назва<input id="professionWorkspaceTitleInput" required></label>
+                                    <label>Напрям<input id="professionWorkspaceDepartment" placeholder="Аніматори / Зал / Кухня"></label>
+                                    <label class="hr-profession-workspace-wide">Короткий опис<textarea id="professionWorkspaceShortInfo"></textarea></label>
+                                    <label class="hr-profession-workspace-wide">Відповідальності<textarea id="professionWorkspaceResponsibilities" placeholder="Кожен пункт з нового рядка"></textarea></label>
+                                    <label>Вузол структури<select id="professionWorkspaceStructureNode"></select></label>
+                                    <label>Колір<input id="professionWorkspaceColor" type="color"></label>
+                                    <label>Порядок<input id="professionWorkspaceSortOrder" type="number" value="100"></label>
+                                    <label>Статус<select id="professionWorkspaceActive"><option value="true">Активна</option><option value="false">Архівна</option></select></label>
+                                </div>
+                            </section>
+                            <section data-profession-workspace-panel="people" class="hr-profession-workspace-panel" hidden>
+                                <div id="professionWorkspacePeopleSummary" class="hr-profession-workspace-summary"></div>
+                                <div class="hr-profession-people-toolbar">
+                                    <input type="search" id="professionWorkspacePeopleSearch" placeholder="Знайти працівника…" aria-label="Пошук працівника у професії">
+                                    <select id="professionWorkspacePeopleStatus" aria-label="Фільтр працівників за статусом">
+                                        <option value="all">Усі статуси</option>
+                                        <option value="active">Активні працівники</option>
+                                        <option value="archived">Архівні працівники</option>
+                                        <option value="assignment:inactive">Неактивне призначення</option>
+                                        <option value="assignment:suspended">Призупинене призначення</option>
+                                        <option value="admission:pending">Очікують допуску</option>
+                                        <option value="admission:blocked">Допуск заблоковано</option>
+                                        <option value="internship:in_progress">На стажуванні</option>
+                                    </select>
+                                </div>
+                                <div id="professionWorkspacePeople" class="hr-profession-people-list"></div>
+                            </section>
+                            <section data-profession-workspace-panel="checklist" class="hr-profession-workspace-panel" hidden>
+                                <div id="professionWorkspaceChecklistSummary" class="hr-profession-workspace-summary"></div>
+                                <label>Пункти чекліста<textarea id="professionWorkspaceChecklist" placeholder="Кожен пункт з нового рядка"></textarea></label>
+                            </section>
+                            <section data-profession-workspace-panel="usage" class="hr-profession-workspace-panel" hidden>
+                                <div id="professionWorkspaceUsage" class="hr-profession-usage-grid"></div>
+                            </section>
+                        </form>
+                    </div>
+                    <footer id="professionWorkspaceActions" class="hr-profession-workspace-actions hidden">
+                        <button type="button" id="professionWorkspaceArchive" class="btn-secondary">Архівувати</button>
+                        <button type="button" id="professionWorkspaceSave" class="btn-add">Зберегти</button>
+                    </footer>
+                </aside>
             </div>
 
             <!-- TAB 3B: ACCOUNTS -->
@@ -201,27 +289,58 @@
                         <div class="hr-org-chart-head">
                             <div>
                                 <h3>Структура компанії</h3>
-                                <p>Жива схема кадрів: перетягуйте ролі по полотну, а лінії підпорядкування змінюйте системно через обраний вузол.</p>
+                                <p>Оглядайте команду як схему або дерево, змінюйте підпорядкування й відкривайте професії з одного робочого простору.</p>
                             </div>
-                            <span class="hr-org-chart-badge">Редагована карта</span>
                         </div>
                         <div class="hr-org-tools" aria-label="Інструменти структури компанії">
-                            <button type="button" id="hrOrgAutoLayoutBtn" class="hr-org-tool-btn">Авто-впорядкувати</button>
-                            <span id="hrOrgLinkStatus" class="hr-org-link-status">Для лінії натисніть один кружок на картці, потім другий кружок на іншій картці.</span>
+                            <label class="hr-org-search"><span class="sr-only">Пошук у структурі</span><input type="search" id="hrOrgSearch" placeholder="Знайти вузол або професію…" autocomplete="off"></label>
+                            <div class="hr-org-view-switch" role="group" aria-label="Режим відображення">
+                                <button type="button" id="hrOrgViewChart" class="hr-org-tool-btn is-active" aria-pressed="true">Схема</button>
+                                <button type="button" id="hrOrgViewTree" class="hr-org-tool-btn" aria-pressed="false">Дерево</button>
+                            </div>
+                            <button type="button" id="hrOrgFitBtn" class="hr-org-tool-btn" aria-label="Вмістити структуру на екрані">Вмістити</button>
+                            <div class="hr-org-zoom" role="group" aria-label="Масштаб схеми">
+                                <button type="button" id="hrOrgZoomOut" class="hr-org-tool-btn" aria-label="Зменшити масштаб">−</button>
+                                <output id="hrOrgZoomValue" aria-live="polite">100%</output>
+                                <button type="button" id="hrOrgZoomIn" class="hr-org-tool-btn" aria-label="Збільшити масштаб">+</button>
+                            </div>
+                            <button type="button" id="hrOrgUndoBtn" class="hr-org-tool-btn" aria-label="Скасувати останню зміну" disabled>↶</button>
+                            <button type="button" id="hrOrgRedoBtn" class="hr-org-tool-btn" aria-label="Повторити зміну" disabled>↷</button>
+                            <span class="hr-org-toolbar-spacer"></span>
+                            <span id="companyStructureStatus" class="hr-org-save-status" role="status" aria-live="polite"></span>
+                            <button type="button" id="btnSaveCompanyStructure" class="btn-add">Зберегти</button>
                         </div>
                         <div class="hr-org-layout">
-                            <div class="hr-org-canvas" aria-label="Інтерактивна організаційна структура компанії">
-                                <div class="hr-org-stage" id="companyOrgChart" aria-live="polite">
-                                    <div class="hr-org-loading">Завантаження структури...</div>
+                            <div class="hr-org-main">
+                                <div class="hr-org-canvas" id="companyOrgCanvas" aria-label="Інтерактивна організаційна структура компанії">
+                                    <div class="hr-org-stage" id="companyOrgChart" aria-live="polite">
+                                        <div class="hr-org-loading">Завантаження структури...</div>
+                                    </div>
                                 </div>
+                                <div class="hr-org-tree hidden" id="companyOrgTree" role="tree" aria-label="Дерево структури компанії"></div>
                             </div>
-                            <aside class="hr-org-detail" aria-live="polite">
-                                <div class="hr-org-detail-kicker">Обрана роль</div>
-                                <h4 id="hrOrgDetailTitle">Директор</h4>
+                            <aside class="hr-org-detail" id="hrOrgInspector" aria-live="polite" aria-label="Інспектор вузла">
+                                <div class="hr-org-detail-head">
+                                    <div><div class="hr-org-detail-kicker">Обраний вузол</div><h4 id="hrOrgDetailTitle" tabindex="-1">Директор</h4></div>
+                                    <button type="button" id="hrOrgInspectorClose" class="hr-org-inspector-close" aria-label="Закрити інспектор">×</button>
+                                </div>
                                 <p id="hrOrgDetailText">Фінальна відповідальність за бізнес, фінанси, команду, стандарти й стратегічні рішення.</p>
-                                <button type="button" id="hrOrgEditSelectedBtn" class="hr-org-detail-edit">Редагувати вузол</button>
+                                <dl id="hrOrgDetailMeta" class="hr-org-detail-meta"></dl>
+                                <label class="hr-org-inspector-field">Батьківський вузол<select id="hrOrgInspectorParent"></select></label>
+                                <div id="hrOrgDetailProfessions" class="hr-org-detail-professions"></div>
+                                <div class="hr-org-inspector-actions" id="hrOrgInspectorActions">
+                                    <button type="button" id="hrOrgAddChildBtn" class="btn-secondary">+ Дочірній</button>
+                                    <button type="button" id="hrOrgAddSiblingBtn" class="btn-secondary">+ Сусідній</button>
+                                    <button type="button" id="hrOrgAddProfessionBtn" class="btn-secondary">+ Професія</button>
+                                    <button type="button" id="hrOrgEditSelectedBtn" class="btn-secondary">Перейменувати</button>
+                                    <button type="button" id="hrOrgDuplicateBtn" class="btn-secondary">Дублювати</button>
+                                    <button type="button" id="hrOrgArchiveBtn" class="btn-secondary">Архівувати</button>
+                                    <button type="button" id="hrOrgAutoLayoutBtn" class="btn-secondary">Авто-layout</button>
+                                </div>
                             </aside>
                         </div>
+                        <span id="companyStructureModeBadge" class="sr-only">Редагована карта</span>
+                        <span id="hrOrgLinkStatus" class="sr-only" role="status" aria-live="polite"></span>
                         <textarea id="companyStructureText" aria-label="Текстова версія структури компанії" style="display:none;"></textarea>
                     </div>
                     <div class="hr-org-notes" style="grid-column:1/-1;">
@@ -235,9 +354,14 @@
                     </div>
                     </div>
                 </div>
-                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-                    <button type="button" id="btnSaveCompanyStructure" class="btn-add">Зберегти</button>
-                    <span id="companyStructureStatus" style="color:var(--gray-500);font-size:var(--font-sm);"></span>
+                <div id="companyStructureRecovery" class="hr-org-recovery hidden" role="status" aria-live="polite">
+                    <span id="companyStructureRecoveryMessage"></span>
+                    <div class="hr-org-recovery-actions">
+                        <button type="button" id="btnRetryCompanyStructure" class="hr-org-tool-btn hidden">Повторити завантаження</button>
+                        <button type="button" id="btnApplyCompanyStructureTemplate" class="hr-org-tool-btn hidden">Застосувати базовий шаблон</button>
+                        <button type="button" id="btnReloadCompanyStructureConflict" class="hr-org-tool-btn hidden">Завантажити актуальну версію</button>
+                        <button type="button" id="btnCopyCompanyStructureDraft" class="hr-org-tool-btn hidden">Скопіювати мій draft</button>
+                    </div>
                 </div>
             </div>
 
@@ -650,18 +774,18 @@
                 </div>
                 <small class="form-hint">Клік по професії додає її до чіпів. Основну професію дублювати не можна.</small>
             </div>
-            <section class="hr-staff-foundation-panel hr-shift-preferences-panel" aria-label="Типові зміни">
+              <section class="hr-staff-foundation-panel hr-shift-preferences-panel" aria-label="Типові зміни">
                 <div class="hr-staff-foundation-head">
                     <div>
-                        <strong>Типові зміни</strong>
-                        <span>Дефолтний час для графіка за професією, буднями та вихідними.</span>
+                          <strong>Типові зміни</strong>
+                          <span>Дефолтний час для графіка за професією, буднями та вихідними.</span>
                     </div>
                     <button type="button" id="editShiftPreferencesRefresh" class="btn-secondary" onclick="loadStaffShiftPreferences(activeEditStaffId(), { force: true })">Оновити дані</button>
                 </div>
-                <div id="editStaffShiftPreferences" class="hr-shift-preferences-list">Типові зміни завантажуються...</div>
+                 <div id="editStaffShiftPreferences" class="hr-shift-preferences-list">Типові зміни завантажуються...</div>
                 <div class="hr-staff-profile-save-scope">
                     <span>Зберігає тільки дефолтні години для графіка.</span>
-                    <button type="button" id="editShiftPreferencesSave" class="btn-primary" onclick="saveStaffShiftPreferencesScope()">Зберегти типові зміни</button>
+                      <button type="button" id="editShiftPreferencesSave" class="btn-primary" onclick="saveStaffShiftPreferencesScope()">Зберегти типові зміни</button>
                 </div>
             </section>
             <div class="form-group">

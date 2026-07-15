@@ -6,6 +6,8 @@ const path = require('node:path');
 const {
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
+    loadProfessionWorkspaceCatalog,
+    loadProfessionWorkspace,
     validateProfessionKeys
 } = require('../services/professions');
 
@@ -136,18 +138,64 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(hrHtml, /id="professionCatalogList"/);
         assert.match(hrHtml, /id="professionChecklistList"/);
         assert.match(hrHtml, /id="editSecondaryProfessions"/);
-        assert.match(hrHtml, /\.hr-profession-card/);
-        assert.match(hrHtml, /\.hr-checklist-card/);
+        assert.match(hrHtml, /\.hr-profession-master-row/);
+        assert.match(hrHtml, /id="professionWorkspace"/);
 
         assert.match(hrPage, /async function loadProfessions/);
         assert.match(hrPage, /function renderProfessionChecklists/);
+        assert.match(hrPage, /async function openProfessionWorkspace/);
         assert.match(hrPage, /function openProfessionEditor/);
-        assert.match(hrPage, /closeOnBackdrop:\s*false/);
+        assert.match(hrPage, /history\.back\(\)/);
+        assert.match(hrPage, /parseProfessionWorkspaceLocation/);
         assert.match(hrPage, /function populateStaffProfessionControls/);
         assert.match(hrPage, /secondary_professions: normalizeProfessionList\(readStaffSecondaryProfessionSelection/);
 
         assert.match(uiHelper, /closeOnBackdrop = true/);
         assert.match(uiHelper, /e\.target === overlay && closeOnBackdrop/);
+    });
+
+    it('builds one aggregated profession workspace for zero, one, and multiple staff', async () => {
+        const db = {
+            async query(sql) {
+                if (/FROM hr_professions\s+ORDER BY/i.test(sql)) {
+                    return { rows: [
+                        { id: 1, key: 'empty_role', title: 'Без команди', checklist: [], is_active: true, sort_order: 1 },
+                        { id: 2, key: 'host', title: 'Ведуча', checklist: ['Сценарій'], is_active: true, sort_order: 2, structure_node_id: 'art' },
+                        { id: 3, key: 'animator', title: 'Аніматор', checklist: ['Реквізит', 'Програма'], is_active: true, sort_order: 3 },
+                        { id: 4, key: 'archived_role', title: 'Архівна', checklist: [], is_active: false, sort_order: 4 }
+                    ] };
+                }
+                if (/WITH profession_assignments AS/i.test(sql)) {
+                    return { rows: [
+                        { profession_key: 'host', staff_id: 10, staff_name: 'Олена', department: 'Арт', is_active: true, is_primary: true, explicit_hourly_rate: 180, fallback_hourly_rate: 140, rate_unit: 'hour', assignment_status: 'active', admission_status: 'approved', internship_status: 'none' },
+                        { profession_key: 'animator', staff_id: 11, staff_name: 'Іван', department: 'Аніматори', is_active: true, is_primary: true, explicit_hourly_rate: null, fallback_hourly_rate: 160, rate_unit: 'hour', assignment_status: 'active', admission_status: 'approved', internship_status: 'none' },
+                        { profession_key: 'animator', staff_id: 12, staff_name: 'Марія', department: 'Аніматори', is_active: false, is_primary: false, explicit_hourly_rate: null, fallback_hourly_rate: 120, rate_unit: 'hour', assignment_status: 'inactive', admission_status: 'pending', internship_status: 'completed' }
+                    ] };
+                }
+                if (/FROM staff_shift_preferences/i.test(sql)) return { rows: [{ staff_id: 10, profession_key: 'host', day_type: 'weekday', start_time: '10:00', end_time: '18:00' }] };
+                if (/FROM hr_staff_profession_checklist_progress/i.test(sql)) return { rows: [{ profession_key: 'animator', progress_records: 4, completed_records: 3, staff_with_progress: 2 }] };
+                if (/FROM training_courses/i.test(sql)) return { rows: [{ profession_key: 'animator', course_count: 2, active_course_count: 1 }] };
+                if (/FROM settings WHERE key = 'hr_company_structure'/i.test(sql)) return { rows: [{ value: { nodes: [{ id: 'art', title: 'Арт' }] } }] };
+                throw new Error(`Unexpected profession workspace query: ${sql}`);
+            }
+        };
+
+        const catalog = await loadProfessionWorkspaceCatalog(db);
+        assert.equal(catalog.items.find(item => item.key === 'empty_role').staffCount, 0);
+        assert.equal(catalog.items.find(item => item.key === 'host').staffCount, 1);
+        assert.equal(catalog.items.find(item => item.key === 'host').people[0].shiftPreferences[0].startTime, '10:00');
+        assert.equal(catalog.items.find(item => item.key === 'host').people[0].rateSource, 'staff_profession_rates.hourly_rate');
+        assert.equal(catalog.items.find(item => item.key === 'animator').people[0].rateSource, 'staff.hourly_rate');
+        assert.equal(catalog.items.find(item => item.key === 'animator').people[1].assignmentStatus, 'inactive');
+        assert.equal(catalog.items.find(item => item.key === 'animator').staffCount, 2);
+        assert.equal(catalog.items.find(item => item.key === 'archived_role').isActive, false);
+        assert.equal(catalog.items.find(item => item.key === 'pizzaiolo').source, 'system');
+        assert.equal(catalog.items.find(item => item.key === 'pizzaiolo').isReadonly, true);
+
+        const workspace = await loadProfessionWorkspace(db, { key: 'animator' });
+        assert.equal(workspace.people.length, 2);
+        assert.deepEqual(workspace.trainingUsage, { courses: 2, activeCourses: 1 });
+        assert.equal(await loadProfessionWorkspace(db, { key: 'missing' }), null);
     });
 
     it('keeps staff schedule grouping compatible with primary and secondary profession semantics', () => {

@@ -664,6 +664,29 @@ body.dark-mode .hr-foundation-card textarea {
     border-radius: 14px;
     background: var(--gray-50);
 }
+.hr-org-loading strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--gray-700);
+    font-size: 14px;
+}
+.hr-org-skeleton {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 14px;
+    max-width: 620px;
+    margin: 22px auto 0;
+}
+.hr-org-skeleton span {
+    min-height: 78px;
+    border-radius: 14px;
+    background: linear-gradient(90deg, rgba(148,163,184,0.10), rgba(148,163,184,0.24), rgba(148,163,184,0.10));
+    background-size: 220% 100%;
+    animation: hrOrgSkeleton 1.25s ease-in-out infinite;
+}
+@keyframes hrOrgSkeleton {
+    to { background-position: -120% 0; }
+}
 .hr-org-link-layer,
 .hr-org-node-plane {
     position: absolute;
@@ -724,6 +747,9 @@ body.dark-mode .hr-foundation-card textarea {
 .hr-org-node-shell .hr-org-node {
     width: 100%;
     height: 100%;
+}
+.hr-org-stage.is-read-only .hr-org-node {
+    cursor: pointer;
 }
 .hr-org-node {
     position: relative;
@@ -1147,6 +1173,66 @@ body.dark-mode .hr-foundation-card textarea {
 .hr-org-notes textarea {
     min-height: 130px;
 }
+.hr-org-detail-professions {
+    display: grid;
+    gap: 7px;
+    margin-top: 8px;
+    color: var(--gray-500);
+    font-size: 11px;
+}
+.hr-org-detail-professions strong { color: var(--gray-700); }
+.hr-org-detail-professions > div { display: flex; gap: 6px; flex-wrap: wrap; }
+.hr-org-detail-professions button {
+    border: 1px solid rgba(16,185,129,.22);
+    border-radius: 999px;
+    padding: 5px 8px;
+    background: rgba(16,185,129,.08);
+    color: #047857;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+.hr-org-save-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.hr-org-save-status {
+    color: var(--gray-500);
+    font-size: var(--font-sm);
+    font-weight: 750;
+}
+.hr-org-save-status[data-state="changed"] { color: #B45309; }
+.hr-org-save-status[data-state="saving"] { color: #0369A1; }
+.hr-org-save-status[data-state="saved"] { color: #047857; }
+.hr-org-save-status[data-state="conflict"],
+.hr-org-save-status[data-state="error"] { color: #B91C1C; }
+.hr-org-recovery {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(245,158,11,0.28);
+    border-radius: 14px;
+    background: rgba(255,247,237,0.82);
+    color: #92400E;
+    font-size: 12px;
+    font-weight: 800;
+}
+.hr-org-recovery.hidden { display: none; }
+.hr-org-recovery-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.hr-org-recovery .hr-org-tool-btn {
+    background: rgba(255,255,255,0.88);
+}
 body.dark-mode .hr-org-chart-head h3,
 body.dark-mode .hr-org-detail h4 { color: #F8FAFC; }
 body.dark-mode .hr-org-chart-head p,
@@ -1154,6 +1240,12 @@ body.dark-mode .hr-org-detail p { color: #CBD5E1; }
 body.dark-mode .hr-org-loading {
     background: rgba(255,255,255,0.04);
     border-color: rgba(255,255,255,0.12);
+}
+body.dark-mode .hr-org-loading strong { color: #E2E8F0; }
+body.dark-mode .hr-org-recovery {
+    border-color: rgba(251,191,36,0.24);
+    background: rgba(120,53,15,0.22);
+    color: #FDE68A;
 }
 body.dark-mode .hr-org-canvas {
     background:
@@ -1250,6 +1342,10 @@ body.dark-mode .hr-org-detail {
     .hr-org-detail { grid-template-columns: 1fr; }
     .hr-org-detail-edit { grid-column: auto; grid-row: auto; min-width: 0; }
     .hr-org-node-form-row { grid-template-columns: 1fr; }
+    .hr-org-recovery { align-items: stretch; flex-direction: column; }
+    .hr-org-recovery-actions { justify-content: stretch; }
+    .hr-org-recovery-actions .hr-org-tool-btn { flex: 1 1 100%; }
+    .hr-org-skeleton { grid-template-columns: 1fr; }
 }
 
 /* ==========================================
@@ -4617,6 +4713,242 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     font-weight: 900;
     cursor: pointer;
 }
+.hr-profession-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.5fr) repeat(5, minmax(130px, .75fr));
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--gray-100);
+    border-radius: 14px;
+    background: var(--white);
+}
+.hr-profession-toolbar input,
+.hr-profession-toolbar select {
+    min-width: 0;
+    min-height: 40px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: var(--white);
+    color: var(--gray-700);
+    font: inherit;
+    font-size: 12px;
+}
+.hr-profession-catalog-stats {
+    min-height: 24px;
+    padding: 2px 4px 8px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 750;
+}
+.hr-profession-master-list {
+    display: grid;
+    gap: 6px;
+}
+.hr-profession-master-row {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.4fr) minmax(120px, .8fr) minmax(150px, 1fr) 96px 110px 90px;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    min-height: 58px;
+    padding: 9px 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--white);
+    color: var(--gray-700);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--shadow-xs);
+}
+.hr-profession-master-row:hover,
+.hr-profession-master-row:focus-visible {
+    border-color: rgba(16,185,129,.38);
+    background: rgba(16,185,129,.035);
+    outline: none;
+}
+.hr-profession-master-row.is-archived { opacity: .68; }
+.hr-profession-master-title { min-width: 0; }
+.hr-profession-master-title strong,
+.hr-profession-master-title small { display: block; overflow-wrap: anywhere; }
+.hr-profession-master-title strong { color: var(--gray-800); font-size: 13px; }
+.hr-profession-master-title small { margin-top: 3px; color: var(--gray-400); font-size: 10px; }
+.hr-profession-master-cell { color: var(--gray-500); font-size: 11px; font-weight: 750; }
+.hr-profession-master-state,
+.hr-profession-source-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 22px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(16,185,129,.10);
+    color: #047857;
+    font-size: 10px;
+    font-weight: 850;
+}
+.hr-profession-master-state.is-archived { background: rgba(148,163,184,.14); color: #64748B; }
+.hr-profession-source-badge.is-system { background: rgba(59,130,246,.12); color: #1D4ED8; }
+.hr-profession-workspace-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(15,23,42,.42);
+    backdrop-filter: blur(3px);
+}
+.hr-profession-workspace-overlay.hidden { display: none; }
+.hr-profession-workspace {
+    display: flex;
+    flex-direction: column;
+    width: min(880px, calc(100vw - 42px));
+    max-width: 100%;
+    height: 100dvh;
+    box-sizing: border-box;
+    background: var(--white);
+    box-shadow: -24px 0 70px rgba(15,23,42,.22);
+    overflow: hidden;
+}
+.hr-profession-workspace-header {
+    display: grid;
+    grid-template-columns: 42px minmax(0,1fr) 42px;
+    gap: 12px;
+    align-items: center;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--gray-100);
+}
+.hr-profession-workspace-header h2 { margin: 5px 0 2px; color: var(--gray-900); font-size: 20px; }
+.hr-profession-workspace-header p { margin: 0; color: var(--gray-500); font-size: 12px; }
+.hr-profession-workspace-back,
+.hr-profession-workspace-close {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    background: var(--white);
+    color: var(--gray-700);
+    cursor: pointer;
+    font-size: 20px;
+}
+.hr-profession-workspace-state {
+    padding: 32px 24px;
+    color: var(--gray-500);
+    text-align: center;
+    font-size: 13px;
+}
+.hr-profession-workspace-state:empty { display: none; }
+.hr-profession-workspace-state[data-state="error"] { color: #B91C1C; }
+.hr-profession-workspace-content { min-height: 0; flex: 1; overflow: auto; }
+.hr-profession-workspace-content.hidden { display: none; }
+.hr-profession-workspace-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    gap: 6px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--gray-100);
+    background: color-mix(in srgb, var(--white) 94%, transparent);
+    backdrop-filter: blur(12px);
+}
+.hr-profession-workspace-tabs button {
+    min-height: 36px;
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--gray-500);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+.hr-profession-workspace-tabs button.active { background: rgba(16,185,129,.11); color: #047857; }
+.hr-profession-workspace-panel { padding: 20px; }
+.hr-profession-workspace-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.hr-profession-workspace-panel label { display: grid; gap: 6px; color: var(--gray-600); font-size: 11px; font-weight: 800; }
+.hr-profession-workspace-panel input,
+.hr-profession-workspace-panel select,
+.hr-profession-workspace-panel textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 9px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--white);
+    color: var(--gray-800);
+    font: inherit;
+}
+.hr-profession-workspace-panel textarea { min-height: 110px; resize: vertical; }
+.hr-profession-workspace-wide { grid-column: 1/-1; }
+.hr-profession-key-readonly {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--gray-50);
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+}
+.hr-profession-workspace-summary {
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--gray-50);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 750;
+}
+.hr-profession-people-list { display: grid; gap: 7px; }
+.hr-profession-person-row {
+    display: grid;
+    grid-template-columns: minmax(160px,1fr) minmax(110px,.7fr) 120px 86px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 10px;
+    color: var(--gray-600);
+    font-size: 11px;
+}
+.hr-profession-person-row strong { color: var(--gray-800); }
+.hr-profession-people-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px,1fr) minmax(190px,.55fr);
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.hr-profession-people-toolbar input,
+.hr-profession-people-toolbar select {
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--white);
+    color: var(--gray-800);
+    font: inherit;
+}
+.hr-profession-usage-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.hr-profession-usage-card { padding: 14px; border: 1px solid var(--gray-100); border-radius: 12px; background: var(--gray-50); }
+.hr-profession-usage-card strong,
+.hr-profession-usage-card span { display: block; }
+.hr-profession-usage-card strong { color: var(--gray-800); font-size: 18px; }
+.hr-profession-usage-card span { margin-top: 4px; color: var(--gray-500); font-size: 11px; }
+.hr-profession-workspace-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-100);
+    background: var(--white);
+}
+.hr-profession-workspace-actions.hidden { display: none; }
+.hr-profession-workspace.is-read-only .hr-profession-workspace-panel input,
+.hr-profession-workspace.is-read-only .hr-profession-workspace-panel select,
+.hr-profession-workspace.is-read-only .hr-profession-workspace-panel textarea { background: var(--gray-50); }
 .hr-staff-profile-tabs button:focus-visible {
     outline: none;
     border-color: rgba(13, 148, 136, 0.72);
@@ -5724,6 +6056,75 @@ body.dark-mode .hr-reports-hero,
         linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.94)),
         linear-gradient(90deg, rgba(20,184,166,0.12), rgba(245,184,75,0.10));
     box-shadow: 0 14px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+
+body.dark-mode .hr-profession-toolbar,
+body.dark-mode .hr-profession-master-row,
+body.dark-mode .hr-profession-workspace,
+body.dark-mode .hr-profession-workspace-back,
+body.dark-mode .hr-profession-workspace-close,
+body.dark-mode .hr-profession-workspace-actions,
+body.dark-mode .hr-profession-workspace-panel input,
+body.dark-mode .hr-profession-workspace-panel select,
+body.dark-mode .hr-profession-workspace-panel textarea {
+    background: #2A2A4A;
+    border-color: #3D3D5C;
+    color: #E2E8F0;
+}
+body.dark-mode .hr-profession-people-toolbar input,
+body.dark-mode .hr-profession-people-toolbar select {
+    background: #2A2A4A;
+    border-color: #3D3D5C;
+    color: #E2E8F0;
+}
+body.dark-mode .hr-profession-toolbar input,
+body.dark-mode .hr-profession-toolbar select {
+    background: #22223D;
+    border-color: #3D3D5C;
+    color: #E2E8F0;
+}
+body.dark-mode .hr-profession-workspace-header,
+body.dark-mode .hr-profession-workspace-tabs,
+body.dark-mode .hr-profession-workspace-actions { border-color: #3D3D5C; }
+body.dark-mode .hr-profession-workspace-tabs { background: rgba(42,42,74,.94); }
+body.dark-mode .hr-profession-workspace-header h2,
+body.dark-mode .hr-profession-master-title strong,
+body.dark-mode .hr-profession-person-row strong,
+body.dark-mode .hr-profession-usage-card strong { color: #F8FAFC; }
+body.dark-mode .hr-profession-key-readonly,
+body.dark-mode .hr-profession-workspace-summary,
+body.dark-mode .hr-profession-usage-card,
+body.dark-mode .hr-profession-workspace.is-read-only .hr-profession-workspace-panel input,
+body.dark-mode .hr-profession-workspace.is-read-only .hr-profession-workspace-panel select,
+body.dark-mode .hr-profession-workspace.is-read-only .hr-profession-workspace-panel textarea {
+    background: rgba(255,255,255,.045);
+    border-color: rgba(255,255,255,.08);
+    color: #CBD5E1;
+}
+
+@media (max-width: 1180px) {
+    .hr-profession-toolbar { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .hr-profession-toolbar input { grid-column: span 3; }
+    .hr-profession-master-row { grid-template-columns: minmax(180px,1.4fr) minmax(120px,1fr) 90px 90px; }
+    .hr-profession-master-row > :nth-child(3),
+    .hr-profession-master-row > :nth-child(6) { display: none; }
+}
+
+@media (max-width: 680px) {
+    .hr-profession-toolbar { grid-template-columns: 1fr; }
+    .hr-profession-toolbar input { grid-column: auto; }
+    .hr-profession-master-row { grid-template-columns: minmax(0,1fr) 82px; }
+    .hr-profession-master-row > :not(:first-child):not(:last-child) { display: none; }
+    .hr-profession-workspace { width: 100vw; }
+    .hr-profession-workspace-tabs { overflow-x: auto; }
+    .hr-profession-workspace-tabs button { white-space: nowrap; }
+    .hr-profession-workspace-grid,
+    .hr-profession-usage-grid { grid-template-columns: 1fr; }
+    .hr-profession-people-toolbar { grid-template-columns: 1fr; }
+    .hr-profession-workspace-wide { grid-column: auto; }
+    .hr-profession-person-row { grid-template-columns: minmax(0,1fr) 100px; }
+    .hr-profession-person-row > :nth-child(2),
+    .hr-profession-person-row > :nth-child(4) { display: none; }
 }
 
 body.dark-mode .hr-reports-hero-copy,
@@ -6885,3 +7286,281 @@ body.dark-mode .candidate-detail-modal, body.dark-mode .candidate-intake-modal {
 body.dark-mode .candidate-detail-grid section, body.dark-mode .candidate-upload-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
 body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracted, body.dark-mode .candidate-detail-empty, body.dark-mode .candidate-resume-file, body.dark-mode .candidate-intake-grid input, body.dark-mode .candidate-intake-grid textarea { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
 @media (max-width: 640px) { .candidates-kanban { flex-direction: column; } .kanban-col { min-width: auto; } .candidate-detail-grid, .candidate-intake-grid { grid-template-columns: 1fr; } .candidate-detail-overlay { padding: 10px; align-items: start; } .candidate-intake-actions { flex-wrap: wrap; } .candidate-intake-actions span { width: 100%; } }
+
+/* HR company structure workspace */
+.hr-org-chart-card { overflow: hidden; }
+.hr-org-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 0 14px;
+    border-bottom: 1px solid var(--gray-100);
+}
+.hr-org-search { flex: 1 1 220px; min-width: 180px; }
+.hr-org-search input {
+    width: 100%;
+    height: 36px;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--white);
+    color: var(--gray-900);
+    padding: 0 11px;
+    font: inherit;
+}
+.hr-org-view-switch,
+.hr-org-zoom { display: inline-flex; align-items: center; gap: 3px; }
+.hr-org-view-switch .hr-org-tool-btn.is-active {
+    border-color: var(--primary-500);
+    background: rgba(37,99,235,.09);
+    color: var(--primary-700);
+}
+.hr-org-zoom output { min-width: 44px; color: var(--gray-600); font-size: 12px; font-weight: 800; text-align: center; }
+.hr-org-toolbar-spacer { flex: 1 1 24px; }
+.hr-org-save-status { max-width: 260px; font-size: 12px; }
+.hr-org-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 14px;
+    min-height: 610px;
+    padding-top: 14px;
+}
+.hr-org-main { min-width: 0; }
+.hr-org-canvas {
+    position: relative;
+    min-width: 0;
+    height: 610px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--gray-50);
+}
+.hr-org-stage { transform-origin: 0 0; }
+.hr-org-node-shell { transition: opacity .16s ease, filter .16s ease; }
+.hr-org-node-shell.is-search-dim { opacity: .2; filter: grayscale(.65); }
+.hr-org-node-shell.is-dragging { pointer-events: none; }
+.hr-org-node-shell.is-drop-target .hr-org-node {
+    outline: 3px solid var(--primary-500);
+    outline-offset: 3px;
+    box-shadow: 0 12px 30px rgba(37,99,235,.2);
+}
+.hr-org-node-shell.is-drop-invalid .hr-org-node { outline: 3px solid var(--danger-500); outline-offset: 3px; }
+.hr-org-node-shell.is-archived { opacity: .58; }
+.hr-org-node-shell.is-archived .hr-org-node { border-style: dashed; }
+.hr-org-node {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-content: stretch;
+    gap: 4px;
+    padding: 9px 10px;
+    text-align: left;
+    cursor: pointer;
+}
+.hr-org-node-title {
+    display: block;
+    overflow: hidden;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hr-org-node-lane { max-width: calc(100% - 42px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-org-node-counts { display: flex; gap: 7px; color: var(--gray-600); font-size: 10px; font-weight: 800; }
+.hr-org-node-state { color: var(--gray-500); font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.hr-org-node-quick-actions {
+    position: absolute;
+    z-index: 7;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 3px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .14s ease;
+}
+.hr-org-node-shell:hover .hr-org-node-quick-actions,
+.hr-org-node-shell:focus-within .hr-org-node-quick-actions { opacity: 1; pointer-events: auto; }
+.hr-org-node-quick-actions > button {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--gray-200);
+    border-radius: 7px;
+    background: var(--white);
+    color: var(--gray-800);
+    font: inherit;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+}
+.hr-org-node-menu {
+    position: absolute;
+    z-index: 20;
+    top: 30px;
+    right: 0;
+    width: 170px;
+    display: grid;
+    gap: 2px;
+    padding: 5px;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--white);
+    box-shadow: 0 14px 34px rgba(15,23,42,.18);
+}
+.hr-org-node-menu.hidden { display: none; }
+.hr-org-node-menu button {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gray-800);
+    padding: 7px 8px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 750;
+    text-align: left;
+    cursor: pointer;
+}
+.hr-org-node-menu button:hover,
+.hr-org-node-menu button:focus-visible { background: var(--gray-50); }
+.hr-org-drop-preview {
+    position: sticky;
+    z-index: 30;
+    top: 10px;
+    left: 10px;
+    width: max-content;
+    max-width: calc(100% - 20px);
+    border-radius: 8px;
+    background: var(--gray-900);
+    color: var(--white);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    pointer-events: none;
+}
+.hr-org-tree {
+    height: 610px;
+    overflow: auto;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--white);
+    padding: 10px;
+}
+.hr-org-tree.hidden { display: none; }
+.hr-org-tree-list,
+.hr-org-tree-list ul { min-width: 0; margin: 0; padding: 0; list-style: none; }
+.hr-org-tree-list ul { margin-left: 14px; padding-left: 10px; border-left: 1px solid var(--gray-200); }
+.hr-org-tree-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 3px 0;
+}
+.hr-org-tree-row > .hr-org-node-quick-actions { position: relative; z-index: 2; top: auto; right: auto; opacity: 1; pointer-events: auto; }
+.hr-org-tree-toggle,
+.hr-org-tree-select {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--gray-800);
+    font: inherit;
+    cursor: pointer;
+}
+.hr-org-tree-toggle { width: 26px; height: 30px; }
+.hr-org-tree-toggle:disabled { opacity: .25; cursor: default; }
+.hr-org-tree-select {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 7px 9px;
+    text-align: left;
+}
+.hr-org-tree-select strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-org-tree-select small { color: var(--gray-500); white-space: nowrap; }
+.hr-org-tree-select.is-active { background: rgba(37,99,235,.09); color: var(--primary-700); }
+.hr-org-tree-row.is-archived { opacity: .58; }
+.hr-org-detail {
+    position: sticky;
+    top: 10px;
+    align-self: start;
+    max-height: 610px;
+    overflow: auto;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--white);
+    padding: 14px;
+}
+.hr-org-detail-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.hr-org-inspector-close { display: none; border: 0; background: transparent; color: var(--gray-500); font-size: 24px; cursor: pointer; }
+.hr-org-detail-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 12px 0; }
+.hr-org-detail-meta > div { min-width: 0; border-radius: 8px; background: var(--gray-50); padding: 8px; }
+.hr-org-detail-meta dt { color: var(--gray-500); font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.hr-org-detail-meta dd { margin: 3px 0 0; color: var(--gray-800); font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+.hr-org-inspector-field { display: grid; gap: 5px; margin: 12px 0; color: var(--gray-600); font-size: 11px; font-weight: 850; }
+.hr-org-inspector-field select { width: 100%; min-width: 0; border: 1px solid var(--gray-200); border-radius: 8px; background: var(--white); color: var(--gray-900); padding: 8px; }
+.hr-org-inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+.hr-org-inspector-actions button { min-width: 0; }
+.hr-org-detail-professions button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+body.dark-mode .hr-org-search input,
+body.dark-mode .hr-org-tree,
+body.dark-mode .hr-org-detail,
+body.dark-mode .hr-org-node-quick-actions > button,
+body.dark-mode .hr-org-node-menu,
+body.dark-mode .hr-org-inspector-field select {
+    border-color: rgba(255,255,255,.1);
+    background: var(--gray-900);
+    color: var(--gray-100);
+}
+body.dark-mode .hr-org-detail-meta > div,
+body.dark-mode .hr-org-node-menu button:hover,
+body.dark-mode .hr-org-node-menu button:focus-visible { background: rgba(255,255,255,.05); }
+body.dark-mode .hr-org-tree-list ul { border-color: rgba(255,255,255,.12); }
+body.dark-mode .hr-org-tree-select,
+body.dark-mode .hr-org-tree-toggle,
+body.dark-mode .hr-org-node-menu button { color: var(--gray-200); }
+
+@media (max-width: 1050px) {
+    .hr-org-layout { grid-template-columns: minmax(0, 1fr) 280px; }
+    .hr-org-save-status { max-width: 180px; }
+}
+@media (max-width: 820px) {
+    .hr-org-layout { display: block; min-height: 520px; }
+    .hr-org-canvas,
+    .hr-org-tree { height: 520px; }
+    .hr-org-canvas { display: none; }
+    .hr-org-canvas:not(.hidden) { display: block; }
+    .hr-org-tree { display: block; overflow-x: hidden; }
+    .hr-org-tree.hidden { display: none; }
+    .hr-org-toolbar-spacer { display: none; }
+    .hr-org-save-status { order: 10; width: 100%; max-width: none; }
+    .hr-org-detail {
+        position: fixed;
+        z-index: 3000;
+        inset: 0;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        padding: 18px;
+        transform: translateY(105%);
+        transition: transform .2s ease;
+    }
+    .hr-org-detail.is-mobile-open { transform: translateY(0); }
+    .hr-org-inspector-close { display: block; }
+}
+@media (max-width: 560px) {
+    .hr-org-tools { align-items: stretch; }
+    .hr-org-search { flex-basis: 100%; }
+    .hr-org-view-switch { flex: 1; }
+    .hr-org-view-switch button { flex: 1; }
+    .hr-org-zoom { margin-left: auto; }
+    .hr-org-tree-list ul { margin-left: 7px; padding-left: 6px; }
+    .hr-org-tree-row { grid-template-columns: 22px minmax(0, 1fr); }
+    .hr-org-tree-row > .hr-org-node-quick-actions { display: none; }
+    .hr-org-inspector-actions { grid-template-columns: 1fr; }
+}

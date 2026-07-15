@@ -228,10 +228,11 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function loadStaffProfileHistory/);
         assert.match(hrPage, /function professionOptionsFromCatalog/);
         assert.doesNotMatch(hrPage, /Object\.entries\(ROLE_LABELS\)\.forEach\(\(\[value, label\]\)/);
-        assert.match(hrPage, /key: current\?\.key \|\| result\.key/);
-        assert.match(hrPage, /item\.is_virtual \|\| item\.isVirtual \? '<span class="hr-profession-chip">Базова професія<\/span>' : `<button type="button" class="btn-secondary" onclick="openProfessionEditor/);
-        assert.match(hrPage, /current\?\.is_virtual \|\| current\?\.isVirtual/);
-        assert.match(hrPage, /Базову професію не можна редагувати з каталогу/);
+        assert.match(hrPage, /async function openProfessionWorkspace/);
+        assert.match(hrPage, /key: isNew \? document\.getElementById\('professionWorkspaceKey'\)/);
+        assert.match(hrPage, /profession\.source === 'system'/);
+        assert.match(hrPage, /System profession · readonly/);
+        assert.match(hrPage, /history\.back\(\)/);
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 
@@ -307,7 +308,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /replaceStaffProfessionRates\(client, req\.params\.id, normalizedProfessionRates\)/);
         assert.match(hrRoute, /await client\.query\('COMMIT'\)/);
         assert.match(hrRoute, /router\.put\('\/company-structure', requireHrManage/);
-        assert.match(hrRoute, /source\.baseUpdatedAt \|\| source\.expectedUpdatedAt/);
+        assert.match(hrRoute, /Object\.prototype\.hasOwnProperty\.call\(source, 'baseUpdatedAt'\)/);
+        assert.match(hrRoute, /source\.baseUpdatedAt \?\? source\.expectedUpdatedAt \?\? null/);
         assert.match(hrRoute, /Структуру вже оновили в іншій вкладці/);
         assert.match(hrRoute, /SET company_structure_node_id = NULL/);
         assert.match(hrRoute, /SET structure_node_id = NULL, updated_at = NOW\(\)/);
@@ -346,7 +348,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /moveStaffToBucket/);
         assert.match(hrPage, /staffHasProfession\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /function renderSalaryRateSummary/);
-        assert.match(hrPage, /structureNodeId: result\.structureNodeId \|\| null/);
+        assert.match(hrPage, /structureNodeId: document\.getElementById\('professionWorkspaceStructureNode'\)\?\.value \|\| null/);
         assert.match(hrPage, /let companyStructureUpdatedAt = null/);
         assert.match(hrPage, /baseUpdatedAt: companyStructureUpdatedAt/);
 
@@ -364,4 +366,6 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrHtml, /hr-ready-badge/);
         assert.match(hrHtml, /hr-profession-rate-editor/);
     });
+
+
 });

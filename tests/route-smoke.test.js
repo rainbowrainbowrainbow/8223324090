@@ -332,22 +332,32 @@ function createFakePool() {
         onboardingProgress: new Map(),
         hrProfessions: new Map([
             ['animator', {
+                id: 201,
                 key: 'animator',
                 title: 'Аніматор',
                 checklist: ['Вступ у роль аніматора', 'Пробна зміна аніматора'],
                 is_active: true
             }],
             ['barista', {
+                id: 202,
                 key: 'barista',
                 title: 'Бариста',
                 checklist: ['Вступ у роль бариста', 'Пробна зміна бариста'],
                 is_active: true
             }],
             ['cook', {
+                id: 203,
                 key: 'cook',
                 title: 'Кухар',
                 checklist: ['Вступ у роль кухаря'],
                 is_active: true
+            }],
+            ['archived_role', {
+                id: 204,
+                key: 'archived_role',
+                title: 'Архівна професія',
+                checklist: [],
+                is_active: false
             }]
         ]),
         staffRoleAssignments: new Map([
@@ -367,6 +377,13 @@ function createFakePool() {
                 admission_status: 'pending',
                 internship_status: 'in_progress'
             }]
+        ]),
+        staffProfessionRates: new Map([
+            ['45:animator', 175],
+            ['45:barista', 150]
+        ]),
+        staffShiftPreferences: new Map([
+            ['45:animator:weekday', { day_type: 'weekday', start_time: '10:00', end_time: '18:00', is_active: true }]
         ]),
         professionChecklistProgress: new Map(),
         jobVacancies: new Map([
@@ -1626,6 +1643,60 @@ function createFakePool() {
                     is_active: staff.is_active
                 }] : [] };
             }
+            if (/SELECT id, name, role_type, COALESCE\(secondary_professions, '\[\]'::jsonb\) AS secondary_professions, COALESCE\(is_active, true\) AS is_active, hourly_rate, COALESCE\(rate_unit, 'hour'\) AS rate_unit FROM staff WHERE id = \$1/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [{
+                    id: staff.id,
+                    name: staff.name,
+                    role_type: staff.role_type || null,
+                    secondary_professions: staff.secondary_professions || [],
+                    is_active: staff.is_active,
+                    hourly_rate: staff.hourly_rate ?? 140,
+                    rate_unit: staff.rate_unit || 'hour'
+                }] : [], rowCount: staff ? 1 : 0 };
+            }
+            if (/SELECT id, key, title, is_active FROM hr_professions WHERE key = \$1/i.test(text)) {
+                const profession = hrState.hrProfessions.get(String(params[0]));
+                return { rows: profession ? [{ ...profession }] : [], rowCount: profession ? 1 : 0 };
+            }
+            if (/SELECT id, is_primary, status, admission_status, internship_status FROM staff_role_assignments WHERE staff_id = \$1 AND profession_key = \$2/i.test(text)) {
+                const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
+                return { rows: assignment ? [{ id: assignment.id || 1, ...assignment }] : [], rowCount: assignment ? 1 : 0 };
+            }
+            if (/SELECT hourly_rate FROM staff_profession_rates WHERE staff_id = \$1 AND profession_key = \$2/i.test(text)) {
+                const rate = hrState.staffProfessionRates.get(`${Number(params[0])}:${String(params[1])}`);
+                return { rows: rate == null ? [] : [{ hourly_rate: rate }], rowCount: rate == null ? 0 : 1 };
+            }
+            if (/SELECT day_type, start_time, end_time, is_active FROM staff_shift_preferences WHERE staff_id = \$1 AND profession_key = \$2/i.test(text)) {
+                const prefix = `${Number(params[0])}:${String(params[1])}:`;
+                const rows = Array.from(hrState.staffShiftPreferences.entries())
+                    .filter(([key]) => key.startsWith(prefix))
+                    .map(([, row]) => ({ ...row }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/INSERT INTO staff_profession_rates \(staff_id, profession_key, hourly_rate, updated_at\)/i.test(text)) {
+                hrState.staffProfessionRates.set(`${Number(params[0])}:${String(params[1])}`, Number(params[2]));
+                return { rows: [], rowCount: 1 };
+            }
+            if (/DELETE FROM staff_profession_rates WHERE staff_id = \$1 AND profession_key = \$2/i.test(text)) {
+                const deleted = hrState.staffProfessionRates.delete(`${Number(params[0])}:${String(params[1])}`);
+                return { rows: [], rowCount: deleted ? 1 : 0 };
+            }
+            if (/UPDATE staff_role_assignments SET hourly_rate = \$3/i.test(text)) {
+                const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
+                if (assignment) assignment.hourly_rate = params[2];
+                return { rows: [], rowCount: assignment ? 1 : 0 };
+            }
+            if (/INSERT INTO staff_shift_preferences \(staff_id, profession_key, day_type, start_time, end_time, is_active, created_by, updated_by\)/i.test(text)) {
+                hrState.staffShiftPreferences.set(`${Number(params[0])}:${String(params[1])}:${String(params[2])}`, {
+                    day_type: params[2], start_time: params[3], end_time: params[4], is_active: true
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/DELETE FROM staff_shift_preferences WHERE staff_id = \$1 AND profession_key = \$2 AND day_type = \$3/i.test(text)) {
+                const deleted = hrState.staffShiftPreferences.delete(`${Number(params[0])}:${String(params[1])}:${String(params[2])}`);
+                return { rows: [], rowCount: deleted ? 1 : 0 };
+            }
             if (/FROM hr_professions hp LEFT JOIN staff_role_assignments sra ON sra\.staff_id = \$1 AND sra\.profession_key = hp\.key WHERE hp\.key = \$2/i.test(text)) {
                 const profession = hrState.hrProfessions.get(String(params[1]));
                 const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
@@ -2778,6 +2849,36 @@ function createFakePool() {
                 const vacancy = hrState.jobVacancies.get(Number(application.vacancy_id));
                 return { rows: [{ ...application, role_type: vacancy.role_type, vacancy_department: vacancy.department, vac_title: vacancy.title, vacancy_status: vacancy.status, target_hires: vacancy.target_hires ?? null }] };
             }
+            if (/SELECT id, key, title, department, short_info, responsibilities, checklist,[\s\S]+FROM hr_professions[\s\S]+ORDER BY is_active DESC, sort_order ASC, title ASC/i.test(text)) {
+                return {
+                    rows: Array.from(hrState.hrProfessions.values()).map((row, index) => ({
+                        id: row.id || 200 + index,
+                        department: row.department || 'Operations',
+                        short_info: row.short_info || `${row.title} workspace`,
+                        responsibilities: row.responsibilities || [],
+                        color: row.color || '#10b981',
+                        structure_node_id: row.key === 'animator' ? 'director' : null,
+                        sort_order: index + 1,
+                        ...row
+                    }))
+                };
+            }
+            if (/WITH profession_assignments AS/i.test(text)) {
+                return { rows: [
+                    { profession_key: 'animator', staff_id: 45, staff_name: 'HR Onboarding Newbie', department: 'Operations', is_active: true, is_primary: true, explicit_hourly_rate: 175, fallback_hourly_rate: 140, rate_unit: 'hour', assignment_status: 'active', admission_status: 'approved', internship_status: 'none', company_structure_node_id: 'director' },
+                    { profession_key: 'animator', staff_id: 46, staff_name: 'Dismissed HR Reactivation', department: 'Operations', is_active: false, is_primary: true, explicit_hourly_rate: null, fallback_hourly_rate: 100, rate_unit: 'hour', assignment_status: 'inactive', admission_status: 'approved', internship_status: 'completed', company_structure_node_id: null },
+                    { profession_key: 'barista', staff_id: 45, staff_name: 'HR Onboarding Newbie', department: 'Operations', is_active: true, is_primary: false, explicit_hourly_rate: 150, fallback_hourly_rate: 140, rate_unit: 'hour', assignment_status: 'active', admission_status: 'pending', internship_status: 'in_progress', company_structure_node_id: 'director' }
+                ] };
+            }
+            if (/FROM staff_shift_preferences[\s\S]+ORDER BY profession_key, staff_id, day_type/i.test(text)) {
+                return { rows: [{ staff_id: 45, profession_key: 'animator', day_type: 'weekday', start_time: '10:00', end_time: '18:00' }] };
+            }
+            if (/FROM hr_staff_profession_checklist_progress[\s\S]+GROUP BY profession_key/i.test(text)) {
+                return { rows: [{ profession_key: 'animator', progress_records: 2, completed_records: 1, staff_with_progress: 1 }] };
+            }
+            if (/FROM training_courses[\s\S]+WHERE profession_key IS NOT NULL[\s\S]+GROUP BY profession_key/i.test(text)) {
+                return { rows: [{ profession_key: 'animator', course_count: 2, active_course_count: 1 }] };
+            }
             if (/SELECT key, title FROM hr_professions WHERE key = \$1 AND is_active = true LIMIT 1/i.test(text)) {
                 const profession = hrState.hrProfessions.get(String(params[0]));
                 return { rows: profession?.is_active === false || !profession ? [] : [{ key: profession.key, title: profession.title }] };
@@ -2952,6 +3053,7 @@ function createFakePool() {
                                     meta: 'center'
                                 }
                             ],
+                            updatedBy: 'hr_editor',
                             updatedAt: '2099-05-02T12:00:00Z'
                         })
                     }]
@@ -5690,6 +5792,37 @@ describe('route-level API safety smoke', () => {
         assert.match(preview.data.prompt, /Telegram/);
     });
 
+    it('returns one aggregated profession workspace for DB, archived, and system professions', async () => {
+        const catalog = await request('GET', '/api/hr/professions', undefined, withAuth());
+        assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+        assert.equal(catalog.data.success, true);
+        assert.equal(catalog.data.data.find(item => item.key === 'animator').staffCount, 2);
+        assert.equal(catalog.data.data.find(item => item.key === 'barista').staffCount, 1);
+        assert.equal(catalog.data.data.find(item => item.key === 'cook').staffCount, 0);
+        assert.equal(catalog.data.data.find(item => item.key === 'archived_role').isActive, false);
+        assert.equal(catalog.data.data.find(item => item.key === 'pizzaiolo').isReadonly, true);
+        assert.deepEqual(catalog.data.inventory.virtual, ['pizzaiolo']);
+
+        const animator = await request('GET', '/api/hr/professions/workspace/animator', undefined, withAuth());
+        assert.equal(animator.status, 200, JSON.stringify(animator.data));
+        assert.equal(animator.data.data.profession.key, 'animator');
+        assert.equal(animator.data.data.people.length, 2);
+        assert.equal(animator.data.data.people[0].shiftPreferences[0].startTime, '10:00');
+        assert.equal(animator.data.data.people[0].rateSource, 'staff_profession_rates.hourly_rate');
+        assert.equal(animator.data.data.people[1].rateSource, 'staff.hourly_rate');
+        assert.equal(animator.data.data.structureNode.title, 'Директор');
+        assert.deepEqual(animator.data.data.trainingUsage, { courses: 2, activeCourses: 1 });
+
+        const archived = await request('GET', '/api/hr/professions/workspace/204', undefined, withAuth());
+        assert.equal(archived.status, 200, JSON.stringify(archived.data));
+        assert.equal(archived.data.data.profession.isActive, false);
+
+        const system = await request('GET', '/api/hr/professions/workspace/pizzaiolo', undefined, withAuth());
+        assert.equal(system.status, 200, JSON.stringify(system.data));
+        assert.equal(system.data.data.profession.source, 'system');
+        assert.equal(system.data.data.profession.isReadonly, true);
+    });
+
     it('persists HR company structure as editable org chart nodes', async () => {
         const loaded = await request('GET', '/api/hr/company-structure', undefined, withAuth());
         assert.equal(loaded.status, 200, JSON.stringify(loaded.data));
@@ -5698,15 +5831,44 @@ describe('route-level API safety smoke', () => {
         assert.equal(loaded.data.data.nodes[0].id, 'director');
         assert.equal(loaded.data.data.nodes[0].tone, 'gold');
         assert.equal(loaded.data.data.nodes[0].displayGroup, 'admin');
+        assert.equal(loaded.data.hasSavedStructure, true);
         assert.deepEqual(loaded.data.displayGroups.map(group => group.key), ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning']);
+
+        const insertsBeforeConflict = queries.filter(q => /INSERT INTO settings \(key, value\)/i.test(q.text)).length;
+        const conflict = await request('PUT', '/api/hr/company-structure', {
+            schemaVersion: 1,
+            baseUpdatedAt: '2099-05-02T11:59:59Z',
+            nodes: [
+                { id: 'director', title: 'Stale local title', tone: 'gold', lane: 'root', order: 1 }
+            ]
+        }, withAuth());
+        assert.equal(conflict.status, 409, JSON.stringify(conflict.data));
+        assert.equal(conflict.data.success, false);
+        assert.equal(conflict.data.current.updatedAt, '2099-05-02T12:00:00Z');
+        assert.equal(conflict.data.current.updatedBy, 'hr_editor');
+
+        const concurrentInitialSave = await request('PUT', '/api/hr/company-structure', {
+            schemaVersion: 1,
+            baseUpdatedAt: null,
+            nodes: [
+                { id: 'director', title: 'Created from an empty draft', tone: 'gold', lane: 'root', order: 1 }
+            ]
+        }, withAuth());
+        assert.equal(concurrentInitialSave.status, 409, JSON.stringify(concurrentInitialSave.data));
+        assert.equal(
+            queries.filter(q => /INSERT INTO settings \(key, value\)/i.test(q.text)).length,
+            insertsBeforeConflict,
+            'stale baseUpdatedAt must not overwrite settings.hr_company_structure'
+        );
 
         const saved = await request('PUT', '/api/hr/company-structure', {
             schemaVersion: 1,
+            baseUpdatedAt: loaded.data.data.updatedAt,
             structure: 'оновлені нотатки',
             instructions: 'нова інструкція',
             nodes: [
                 { id: 'director', title: 'Директор без корони', description: 'Root', tone: 'gold', lane: 'root', order: 1, x: 180, y: 40 },
-                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', displayGroup: 'tech', order: 2, x: 340, y: 210 }
+                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', displayGroup: 'tech', order: 2, stack: 'ops-stack', meta: 'dispatch', x: 340, y: 210, collapsed: true, archived: true }
             ]
         }, withAuth());
         assert.equal(saved.status, 200, JSON.stringify(saved.data));
@@ -5717,12 +5879,20 @@ describe('route-level API safety smoke', () => {
         assert.equal(saved.data.data.nodes[1].tone, 'blue');
         assert.equal(saved.data.data.nodes[1].lane, 'leadership');
         assert.equal(saved.data.data.nodes[1].parentId, 'director');
+        assert.equal(saved.data.data.nodes[1].id, 'ops');
+        assert.equal(saved.data.data.nodes[1].title, 'Операційний вузол');
+        assert.equal(saved.data.data.nodes[1].description, 'Ops');
+        assert.equal(saved.data.data.nodes[1].order, 2);
+        assert.equal(saved.data.data.nodes[1].stack, 'ops-stack');
+        assert.equal(saved.data.data.nodes[1].meta, 'dispatch');
         assert.equal(saved.data.data.nodes[0].displayGroup, 'admin');
         assert.equal(saved.data.data.nodes[1].displayGroup, 'tech');
         assert.equal(saved.data.data.nodes[0].x, 180);
         assert.equal(saved.data.data.nodes[0].y, 40);
         assert.equal(saved.data.data.nodes[1].x, 340);
         assert.equal(saved.data.data.nodes[1].y, 210);
+        assert.equal(saved.data.data.nodes[1].collapsed, true);
+        assert.equal(saved.data.data.nodes[1].archived, true);
         const invalidGroup = await request('PUT', '/api/hr/company-structure', {
             schemaVersion: 1,
             nodes: [

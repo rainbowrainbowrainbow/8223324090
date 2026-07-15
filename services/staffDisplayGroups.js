@@ -124,7 +124,9 @@ function normalizeStaffCompanyStructureNodes(nodes) {
             x,
             y,
             meta: sanitizeStaffCompanyStructureString(source.meta, 80) || null,
-            displayGroup: staffStructureDisplayGroupKey({ ...source, id }) || null
+            displayGroup: staffStructureDisplayGroupKey({ ...source, id }) || null,
+            collapsed: source.collapsed === true,
+            archived: source.archived === true
         };
     });
     const ids = new Set(normalized.map(node => node.id));

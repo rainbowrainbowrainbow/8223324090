@@ -8,7 +8,10 @@ const {
     activeStaffWhere,
     scheduleableStaffWhere
 } = require('../services/staffOperationalFilters');
-const { staffProfessionKeys } = require('../services/professions');
+const {
+    normalizeSecondaryProfessions,
+    staffProfessionKeys
+} = require('../services/professions');
 const {
     applyHermesScheduleImport,
     buildScheduleCellStateHash,
@@ -182,6 +185,202 @@ function mapHermesStaff(row = {}) {
     };
 }
 
+function normalizeHermesStaffText(value, fieldName, options = {}) {
+    const text = String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
+    if (!text) {
+        if (options.required === false) return null;
+        throw hermesScheduleError(400, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD', `${fieldName} is required`);
+    }
+    if (text.length > (options.maxLength || 160)) {
+        throw hermesScheduleError(
+            400,
+            'HERMES_STAFF_CREATE_INVALID_PAYLOAD',
+            `${fieldName} is too long`
+        );
+    }
+    return text;
+}
+
+function normalizeHermesStaffCreateDate(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const text = String(value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        throw hermesScheduleError(400, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD', 'hireDate must use YYYY-MM-DD');
+    }
+    const parsed = new Date(`${text}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+        throw hermesScheduleError(400, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD', 'hireDate is not a valid date');
+    }
+    return text;
+}
+
+function normalizeHermesStaffCreatePayload(body = {}) {
+    const forbiddenScheduleFields = [
+        'schedule',
+        'scheduleRows',
+        'staffSchedule',
+        'date',
+        'dateFrom',
+        'dateTo',
+        'startTime',
+        'endTime',
+        'shiftStart',
+        'shiftEnd',
+        'status'
+    ];
+    const attemptedScheduleFields = forbiddenScheduleFields.filter(field =>
+        Object.prototype.hasOwnProperty.call(body, field)
+    );
+    if (attemptedScheduleFields.length) {
+        throw hermesScheduleError(
+            400,
+            'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED',
+            'Staff creation cannot change schedule cells. Use staff_schedule.preview/apply as a separate approved step.',
+            { fields: attemptedScheduleFields }
+        );
+    }
+
+    const name = normalizeHermesStaffText(body.name, 'name', { maxLength: 160 });
+    const department = normalizeHermesStaffText(body.department, 'department', { maxLength: 80 });
+    const position = normalizeHermesStaffText(body.position, 'position', { maxLength: 120 });
+    const primaryRole = normalizeHermesStaffText(body.role_type ?? body.roleType, 'role_type', {
+        required: false,
+        maxLength: 80
+    });
+    const phone = normalizeHermesStaffText(body.phone, 'phone', { required: false, maxLength: 40 });
+    const color = normalizeHermesStaffText(body.color, 'color', { required: false, maxLength: 20 });
+    if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        throw hermesScheduleError(400, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD', 'color must be a #RRGGBB value');
+    }
+    const rawTelegram = normalizeHermesStaffText(
+        body.telegramUsername ?? body.telegram_username,
+        'telegramUsername',
+        { required: false, maxLength: 64 }
+    );
+    const telegramUsername = rawTelegram ? rawTelegram.replace(/^@+/, '') : null;
+    const address = normalizeHermesStaffText(body.address, 'address', { required: false, maxLength: 255 });
+    const hireDate = normalizeHermesStaffCreateDate(body.hireDate ?? body.hire_date);
+    const secondaryRoles = normalizeSecondaryProfessions(
+        body.secondary_professions ?? body.secondaryProfessions,
+        primaryRole
+    );
+    const normalizedName = normalizeStaffQuery(name);
+
+    return {
+        name,
+        normalizedName,
+        department,
+        position,
+        phone,
+        hireDate,
+        color,
+        telegramUsername,
+        primaryRole,
+        address,
+        secondaryRoles
+    };
+}
+
+async function assertHermesStaffCreateUnique(query, normalizedName) {
+    const scheduleableSql = scheduleableStaffWhere('s', {
+        dateExpression: 'CURRENT_DATE',
+        includeFreelance: true
+    });
+    const existing = await query.query(
+        `SELECT s.id,
+                s.name,
+                COALESCE(NULLIF(s.display_name, ''), s.name) AS display_name,
+                s.department,
+                s.position,
+                s.role_type,
+                COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                (${scheduleableSql}) AS scheduleable
+         FROM staff s
+         WHERE LOWER(REGEXP_REPLACE(BTRIM(s.name), '\\s+', ' ', 'g')) = $1
+            OR LOWER(REGEXP_REPLACE(BTRIM(COALESCE(NULLIF(s.display_name, ''), s.name)), '\\s+', ' ', 'g')) = $1
+         ORDER BY s.id ASC
+         LIMIT 5`,
+        [normalizedName]
+    );
+    if (existing.rows.length) {
+        const sanitizedExisting = existing.rows.map(mapHermesStaff);
+        const firstExisting = sanitizedExisting[0];
+        throw hermesScheduleError(
+            409,
+            'HERMES_STAFF_ALREADY_EXISTS',
+            'Staff member with this normalized name already exists',
+            {
+                existing: sanitizedExisting,
+                userMessage: `${firstExisting.displayName} вже є в CRM (#${firstExisting.staffId}). Нічого не дублюю.`
+            }
+        );
+    }
+}
+
+async function lockHermesStaffCreateName(query, normalizedName) {
+    await query.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [normalizedName]
+    );
+}
+
+async function createHermesStaffRecord(query, payload) {
+    const scheduleableSql = scheduleableStaffWhere('s', {
+        dateExpression: 'CURRENT_DATE',
+        includeFreelance: true
+    });
+    const result = await query.query(
+        `WITH inserted AS (
+             INSERT INTO staff (
+                 name,
+                 department,
+                 position,
+                 phone,
+                 hire_date,
+                 color,
+                 telegram_username,
+                 role_type,
+                 address,
+                 secondary_professions
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+             RETURNING id,
+                       name,
+                       display_name,
+                       department,
+                       position,
+                       role_type,
+                       secondary_professions,
+                       is_active,
+                       hr_pool_status,
+                       termination_date,
+                       is_freelance
+         )
+         SELECT s.id,
+                s.name,
+                COALESCE(NULLIF(s.display_name, ''), s.name) AS display_name,
+                s.department,
+                s.position,
+                s.role_type,
+                COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                (${scheduleableSql}) AS scheduleable
+         FROM inserted s`,
+        [
+            payload.name,
+            payload.department,
+            payload.position,
+            payload.phone,
+            payload.hireDate,
+            payload.color,
+            payload.telegramUsername,
+            payload.primaryRole,
+            payload.address,
+            JSON.stringify(payload.secondaryRoles)
+        ]
+    );
+    return result.rows[0];
+}
+
 function mapHermesScheduleCell(row = {}) {
     const cell = {
         staffId: Number(row.staff_id),
@@ -261,6 +460,92 @@ function createHermesScheduleRouter(options = {}) {
             sendHermesScheduleError(res, error.statusCode || 403, error.code || 'HERMES_SCHEDULE_FORBIDDEN', error.message);
         }
     };
+
+    router.post(
+        '/staff',
+        requireHermesScheduleAccess,
+        applyMutationGuard,
+        (req, res, next) => {
+            if (!canUseAction(req.user, 'manage_staff')) {
+                return sendHermesScheduleError(
+                    res,
+                    403,
+                    'HERMES_MANAGE_STAFF_REQUIRED',
+                    'Hermes actor does not have manage_staff permission'
+                );
+            }
+            return next();
+        },
+        async (req, res) => {
+            if (typeof db.connect !== 'function') {
+                return sendHermesScheduleError(
+                    res,
+                    503,
+                    'HERMES_STAFF_TRANSACTION_UNAVAILABLE',
+                    'Hermes staff create requires a transactional database pool'
+                );
+            }
+            try {
+                const payload = normalizeHermesStaffCreatePayload(req.body || {});
+                return await runWithIdempotency(req, res, async context => {
+                    await lockHermesStaffCreateName(context.pool, payload.normalizedName);
+                    try {
+                        await assertHermesStaffCreateUnique(context.pool, payload.normalizedName);
+                    } catch (error) {
+                        if (error.code !== 'HERMES_STAFF_ALREADY_EXISTS') throw error;
+                        return {
+                            status: error.statusCode || 409,
+                            body: {
+                                success: false,
+                                error: error.message,
+                                code: error.code,
+                                meta: error.details
+                            }
+                        };
+                    }
+                    const created = await createHermesStaffRecord(context.pool, payload);
+                    const data = mapHermesStaff(created);
+                    return {
+                        status: 201,
+                        body: {
+                            success: true,
+                            data,
+                            meta: {
+                                businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT,
+                                staffWrites: 1,
+                                scheduleWrites: 0,
+                                scheduleTouched: false,
+                                applyRequiresSeparateScheduleApproval: true,
+                                sanitized: true,
+                                userMessage: `${data.displayName} створено у списку персоналу. Графік не змінювався.`
+                            }
+                        }
+                    };
+                }, {
+                    pool: db,
+                    transactional: true,
+                    requestPath: '/api/hermes/staff'
+                });
+            } catch (error) {
+                if (error.statusCode && error.statusCode < 500) {
+                    return sendHermesScheduleError(
+                        res,
+                        error.statusCode,
+                        error.code || 'HERMES_STAFF_CREATE_INVALID_PAYLOAD',
+                        error.message,
+                        error.details
+                    );
+                }
+                log.error('POST /api/hermes/staff failed', error);
+                return sendHermesScheduleError(
+                    res,
+                    500,
+                    'HERMES_INTERNAL_ERROR',
+                    'Failed to create Hermes staff member'
+                );
+            }
+        }
+    );
 
     router.get('/staff', requireHermesScheduleAccess, async (req, res) => {
         try {

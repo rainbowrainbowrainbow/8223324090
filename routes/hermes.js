@@ -146,6 +146,7 @@ const SUPPORTED_ACTIONS = [
     'notification_outbox.stats',
     'notification_outbox.debug',
     'staff.read',
+    'staff.create',
     'staff_schedule.read',
     'staff_schedule.preview',
     'staff_schedule.apply'
@@ -1979,10 +1980,15 @@ function buildCapabilitiesPayload(env = process.env) {
             },
             staff: {
                 list: 'GET /api/hermes/staff',
+                create: 'POST /api/hermes/staff',
                 maxLimit: 50,
                 pagination: 'cursor',
                 defaultScheduleable: true,
-                defaultIncludeFreelance: false
+                defaultIncludeFreelance: false,
+                createRequiresConfirmation: true,
+                createRequiresIdempotencyKey: true,
+                createRequiresManageStaff: true,
+                createScheduleWrites: 0
             },
             staffSchedule: {
                 list: 'GET /api/hermes/staff-schedule',

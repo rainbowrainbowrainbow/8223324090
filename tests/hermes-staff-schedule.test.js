@@ -28,9 +28,22 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
 
     assert.equal(capabilities.integrationId, HERMES_INTEGRATION_ID);
     assert.ok(capabilities.supportedActions.includes('staff.read'));
+    assert.ok(capabilities.supportedActions.includes('staff.create'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.read'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.preview'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.apply'));
+    assert.deepEqual(capabilities.endpoints.staff, {
+        list: 'GET /api/hermes/staff',
+        create: 'POST /api/hermes/staff',
+        maxLimit: 50,
+        pagination: 'cursor',
+        defaultScheduleable: true,
+        defaultIncludeFreelance: false,
+        createRequiresConfirmation: true,
+        createRequiresIdempotencyKey: true,
+        createRequiresManageStaff: true,
+        createScheduleWrites: 0
+    });
     assert.deepEqual(capabilities.endpoints.staffSchedule, {
         list: 'GET /api/hermes/staff-schedule',
         preview: 'POST /api/hermes/staff-schedule/preview',
@@ -115,12 +128,17 @@ test('worker-facing docs contain schedule endpoints, mandatory apply headers, an
 
     for (const needle of [
         'GET /api/hermes/staff',
+        'POST /api/hermes/staff',
         'GET /api/hermes/staff-schedule',
         'POST /api/hermes/staff-schedule/preview',
         'POST /api/hermes/staff-schedule/apply',
         'X-Hermes-User-Confirmed: true',
         'Idempotency-Key:',
         'X-Integration-Id: hermes-event-genix-crm',
+        'Плющкіт вже є в CRM (#<staffId>). Нічого не дублюю.',
+        'Плющкіт створено у списку персоналу. Графік не змінювався.',
+        'Для графіка не вистачає дати/часу. Напиши, наприклад: сьогодні 10:00–20:00.',
+        'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED',
         'HERMES_SCHEDULE_APPLY_STALE'
     ]) {
         assert.match(combined, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

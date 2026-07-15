@@ -117,7 +117,7 @@ Mutation idempotency rules:
 - Never reuse a failed validation/auth key for a changed body.
 - Never reuse keys across different jobs, endpoints, assets, or decisions.
 - Schedule preview is preview-only and does not require confirmation or an
-  idempotency key; schedule apply requires both.
+  idempotency key; staff create and schedule apply require both.
 
 ## Endpoints
 
@@ -131,9 +131,47 @@ Mutation idempotency rules:
 | `POST` | `/api/hermes/jobs/:id/result` | Post worker result and assets. | Yes |
 | `POST` | `/api/hermes/jobs/:id/decision` | Record a human or operator decision. | Yes |
 | `GET` | `/api/hermes/staff` | Read sanitized scheduleable staff. | No |
+| `POST` | `/api/hermes/staff` | Create one staff record. Schedule remains untouched. | Yes, plus exact integration id and `manage_staff` |
 | `GET` | `/api/hermes/staff-schedule` | Read current schedule cells for at most 31 days. | No |
 | `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and create an immutable 30-minute preview. | No schedule writes |
 | `POST` | `/api/hermes/staff-schedule/apply` | Apply selected preview rows atomically. | Yes, plus exact integration id and `manage_staff` |
+
+### Staff Create Command UX
+
+The final confirmed create call must use all three mutation headers:
+
+```http
+POST /api/hermes/staff
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <fresh-key-for-this-create>
+```
+
+```json
+{
+  "name": "Плющкіт",
+  "department": "animators",
+  "position": "Аніматор",
+  "roleType": "animator",
+  "hireDate": "2026-07-15",
+  "color": "#8B5CF6"
+}
+```
+
+The endpoint may also receive `role_type`, `secondaryProfessions` or
+`secondary_professions`, and optional `telegramUsername` without retaining its
+leading `@`. It must return the sanitized staff envelope and
+`staffWrites: 1`, `scheduleWrites: 0`, `scheduleTouched: false`.
+
+Hermes owner-facing messages for natural commands must be short and explicit:
+
+- Already exists: `Плющкіт вже є в CRM (#<staffId>). Нічого не дублюю.`
+- Missing approval: `Це створення працівника в CRM. Підтверди: створити <name> як <position>, графік не чіпати.`
+- Created roster-only: `<name> створено у списку персоналу. Графік не змінювався.`
+- Schedule fields present in staff-create request: `Працівника можна створити окремо, а графік — окремим підтвердженням з датою і часом.`
+- Missing schedule date/time after the phrase “в графік”: `Для графіка не вистачає дати/часу. Напиши, наприклад: сьогодні 10:00–20:00.`
+
+Do not silently treat a staff-create approval as approval to edit the schedule.
 
 ## Staff Schedule OCR Skill And Router Handoff
 
@@ -144,6 +182,7 @@ Hermes should implement this as a dedicated skill/router, for example
 {
   "requiredActions": [
     "staff.read",
+    "staff.create",
     "staff_schedule.read",
     "staff_schedule.preview",
     "staff_schedule.apply"

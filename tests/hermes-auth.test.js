@@ -398,6 +398,7 @@ describe('Hermes capabilities route auth', () => {
                 'notification_outbox.stats',
                 'notification_outbox.debug',
                 'staff.read',
+                'staff.create',
                 'staff_schedule.read',
                 'staff_schedule.preview',
                 'staff_schedule.apply'

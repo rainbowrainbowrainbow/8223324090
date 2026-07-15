@@ -33,6 +33,7 @@ The integration is intentionally narrow:
 - Read, create, claim, update, and return results for durable Hermes jobs.
 - Store Hermes job assets, event history, and human approval decisions.
 - Read a sanitized, cursor-paginated scheduleable staff directory.
+- Create a single staff directory record through a confirmed, idempotent Hermes endpoint.
 - Read existing staff schedule cells for a bounded date range.
 
 The integration must not expose generic CRM access, raw database rows, delete
@@ -265,6 +266,7 @@ Example:
     "hermes_jobs.result",
     "hermes_jobs.decision",
     "staff.read",
+    "staff.create",
     "staff_schedule.read",
     "staff_schedule.preview",
     "staff_schedule.apply"
@@ -516,6 +518,67 @@ Only these staff fields are returned:
 
 Phone numbers, Telegram identifiers, documents, payroll, rates, attendance,
 account links, HR status details, and raw staff rows are not returned.
+
+Confirmed staff create:
+
+```http
+POST /api/hermes/staff
+Content-Type: application/json
+X-API-Key: ***
+X-Integration-Id: hermes-event-genix-crm
+X-Hermes-User-Confirmed: true
+Idempotency-Key: <fresh-unique-key>
+```
+
+```json
+{
+  "name": "Плющкіт",
+  "department": "animators",
+  "position": "Аніматор",
+  "roleType": "animator",
+  "hireDate": "2026-07-15",
+  "color": "#8B5CF6"
+}
+```
+
+`role_type` is accepted as an alias for `roleType`;
+`secondary_professions` is accepted as an alias for `secondaryProfessions`.
+Optional `telegramUsername` is stored without a leading `@`.
+
+Successful response data is deliberately limited to the sanitized staff
+envelope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "staffId": 999,
+    "name": "Плющкіт",
+    "displayName": "Плющкіт",
+    "department": "animators",
+    "position": "Аніматор",
+    "professions": ["animator"],
+    "scheduleable": true
+  },
+  "meta": {
+    "businessContext": "event_genix",
+    "staffWrites": 1,
+    "scheduleWrites": 0,
+    "scheduleTouched": false,
+    "applyRequiresSeparateScheduleApproval": true,
+    "sanitized": true,
+    "userMessage": "Плющкіт створено у списку персоналу. Графік не змінювався."
+  }
+}
+```
+
+The endpoint creates exactly one `staff` record, requires the configured Hermes
+actor to have `manage_staff`, rejects normalized duplicate names, and returns
+only the sanitized staff envelope. It never writes `staff_schedule`/`hr_shifts`;
+if the body contains schedule fields such as `date`, `startTime`, or `endTime`,
+it returns `HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED`. Putting the
+person into a schedule must use `staff_schedule.preview` and `staff_schedule.apply`
+as a separate approved step.
 
 Bounded schedule read:
 

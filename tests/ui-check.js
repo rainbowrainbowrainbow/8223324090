@@ -6709,6 +6709,8 @@ check('HR print documents modal keeps responsive design-system controls and a st
     && hrCode.includes('async function showHrPrintPreview')
     && hrCode.includes('function waitForHrPrintPreviewFrame')
     && hrCode.includes("frame.addEventListener('load', handleLoad, { once: true })")
+    && hrCode.includes('navigator.pdfViewerEnabled === false')
+    && hrCode.includes('Вбудований перегляд PDF недоступний у цьому браузері')
     && hrCode.includes('URL.revokeObjectURL(hrPrintDocumentsState.previewUrl)')
     && hrCode.includes('function isHrPrintPreviewRequestCurrent')
     && hrCode.includes('scrollHrPrintPreviewIntoView()')

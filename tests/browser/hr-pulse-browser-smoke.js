@@ -158,7 +158,8 @@ async function assertHrShell(page, hash, label) {
 }
 
 async function assertNoScheduleIframe(page, label) {
-    assert.equal(await page.locator('iframe, #hrScheduleEmbedFrame').count(), 0, `${label}: no schedule iframe/embed frame exists`);
+    const scheduleEmbed = '#hrScheduleEmbedFrame, iframe[src*="/staff?embed=1"], iframe[data-src*="/staff?embed=1"]';
+    assert.equal(await page.locator(scheduleEmbed).count(), 0, `${label}: no schedule iframe/embed frame exists`);
 }
 
 async function assertThemeMode(page, label) {
@@ -271,6 +272,20 @@ function assertHrPrintGeometry(geometry, label, { previewReady = false, stacked 
     }
 }
 
+async function captureHrPrintFallbackOpen(page) {
+    return page.evaluate(() => {
+        const originalOpen = window.open;
+        let call = null;
+        window.open = (...args) => {
+            call = args;
+            return null;
+        };
+        document.getElementById('hrPrintOpenButton')?.click();
+        window.open = originalOpen;
+        return call;
+    });
+}
+
 async function assertHrPrintDocuments(page) {
     const openButton = page.getByRole('button', { name: 'Документи для друку' });
     await openButton.waitFor({ timeout: 20000 });
@@ -335,24 +350,49 @@ async function assertHrPrintDocuments(page) {
     assert.equal(payload.dailyMode, 'manual_blank', 'browser smoke sends manual blank mode only');
     assert.equal(payload.categoryIds.length, 18, 'browser smoke sends all canonical categories');
     assert.equal(Object.hasOwn(payload, 'employees'), false, 'browser payload never sends employee PII');
-    await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').waitFor({ timeout: 20000 });
+    try {
+        await page.waitForFunction(() => (
+            !document.getElementById('hrPrintDownloadButton')?.disabled
+            && !document.getElementById('hrPrintPrintButton')?.disabled
+            && !document.getElementById('hrPrintOpenButton')?.disabled
+        ), null, { timeout: 25000 });
+    } catch (error) {
+        const previewState = await dialog.evaluate(element => {
+            const frame = element.querySelector('#hrPrintPreviewFrame');
+            let frameLocation = '';
+            let frameReadyState = '';
+            try {
+                frameLocation = frame?.contentWindow?.location?.href || '';
+                frameReadyState = frame?.contentDocument?.readyState || '';
+            } catch {
+                frameLocation = 'inaccessible';
+            }
+            return {
+                pdfViewerEnabled: navigator.pdfViewerEnabled,
+                frameSrc: frame?.getAttribute('src') || '',
+                frameLocation,
+                frameReadyState,
+                badge: element.querySelector('#hrPrintPreviewBadge')?.textContent || '',
+                state: element.querySelector('#hrPrintPreviewState')?.textContent || '',
+                status: element.querySelector('#hrPrintDocumentsStatus')?.textContent || ''
+            };
+        });
+        throw new Error(`print preview did not reach ready state: ${JSON.stringify(previewState)}`, { cause: error });
+    }
     assert.equal(await dialog.getByRole('button', { name: 'Завантажити PDF' }).isEnabled(), true, 'download enables after preview');
     assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'print enables after preview');
     assert.equal(await dialog.getByRole('button', { name: 'Відкрити PDF в окремій вкладці' }).isEnabled(), true, 'fallback opens only after preview');
-    const firstPreviewUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+    const pdfViewerEnabled = await page.evaluate(() => navigator.pdfViewerEnabled !== false);
+    if (pdfViewerEnabled) {
+        assert.equal(await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').count(), 1, 'inline-capable browser renders the PDF frame');
+    } else {
+        assert.equal(await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').count(), 0, 'browser without a PDF viewer keeps the frame hidden');
+        assert.match(await dialog.locator('#hrPrintPreviewState').textContent(), /Відкрийте документ в окремій вкладці/, 'no-viewer browser explains the fallback');
+    }
+    const fallbackOpen = await captureHrPrintFallbackOpen(page);
+    const firstPreviewUrl = fallbackOpen?.[0] || '';
     assert.match(firstPreviewUrl || '', /^blob:/, 'manual preview uses a blob URL');
     assertHrPrintGeometry(await readHrPrintGeometry(page, dialog), '1440x900 ready preview', { previewReady: true });
-    const fallbackOpen = await page.evaluate(() => {
-        const originalOpen = window.open;
-        let call = null;
-        window.open = (...args) => {
-            call = args;
-            return null;
-        };
-        document.getElementById('hrPrintOpenButton')?.click();
-        window.open = originalOpen;
-        return call;
-    });
     assert.equal(fallbackOpen?.[0], firstPreviewUrl, 'fallback opens the current preview URL');
     assert.equal(fallbackOpen?.[1], '_blank', 'fallback opens PDF in a new tab');
     assert.equal(pdfRequestCount, 1, 'preview uses one server snapshot request');
@@ -363,14 +403,8 @@ async function assertHrPrintDocuments(page) {
     ), { timeout: 30000 });
     await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
     assert.equal((await secondResponsePromise).status(), 200, 'repeated manual preview succeeds');
-    await page.waitForFunction(previousUrl => {
-        const frame = document.getElementById('hrPrintPreviewFrame');
-        const download = document.getElementById('hrPrintDownloadButton');
-        return frame?.getAttribute('src')?.startsWith('blob:')
-            && frame.getAttribute('src') !== previousUrl
-            && !download?.disabled;
-    }, firstPreviewUrl, { timeout: 20000 });
-    const secondPreviewUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+    await page.waitForFunction(() => !document.getElementById('hrPrintDownloadButton')?.disabled, null, { timeout: 20000 });
+    const secondPreviewUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
     assert.notEqual(secondPreviewUrl, firstPreviewUrl, 'repeated preview replaces the old blob URL');
     const oldPreviewStillReadable = await page.evaluate(async objectUrl => {
         try {
@@ -389,15 +423,13 @@ async function assertHrPrintDocuments(page) {
             response.request().method() === 'GET'
             && /\/api\/hr\/attendance-documents\/jobs\/\d+\/pdf$/.test(new URL(response.url()).pathname)
         ), { timeout: 30000 });
-        const previousUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+        const previousUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
         await queuedPreview.click();
         assert.equal((await queuedResponsePromise).status(), 200, 'queued immutable preview succeeds');
-        await page.waitForFunction(oldUrl => {
-            const frame = document.getElementById('hrPrintPreviewFrame');
-            return frame?.getAttribute('src')?.startsWith('blob:')
-                && frame.getAttribute('src') !== oldUrl
-                && !document.getElementById('hrPrintDownloadButton')?.disabled;
-        }, previousUrl, { timeout: 20000 });
+        await page.waitForFunction(() => !document.getElementById('hrPrintDownloadButton')?.disabled, null, { timeout: 20000 });
+        const queuedUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
+        assert.match(queuedUrl, /^blob:/, 'queued preview exposes the shared fallback URL');
+        assert.notEqual(queuedUrl, previousUrl, 'queued preview replaces the previous blob URL');
         assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'queued preview uses the shared ready state');
     }
 

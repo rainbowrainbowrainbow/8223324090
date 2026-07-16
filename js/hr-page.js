@@ -1623,6 +1623,11 @@ function isHrPrintPreviewRequestCurrent(requestSeq, objectUrl = '') {
 }
 
 function waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq) {
+    if (navigator.pdfViewerEnabled === false) {
+        frame.classList.add('hidden');
+        frame.removeAttribute('src');
+        return Promise.resolve({ ready: isHrPrintPreviewRequestCurrent(requestSeq, objectUrl), embedded: false });
+    }
     return new Promise(resolve => {
         let settled = false;
         let timeoutId;
@@ -1633,11 +1638,12 @@ function waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq) {
             clearTimeout(timeoutId);
             clearInterval(staleCheckId);
             frame.removeEventListener('load', handleLoad);
-            resolve(Boolean(
-                loaded
+            resolve({
+                ready: Boolean(loaded
                 && frame.getAttribute('src') === objectUrl
-                && isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)
-            ));
+                && isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)),
+                embedded: true
+            });
         };
         const handleLoad = () => finish(true);
         timeoutId = setTimeout(() => finish(false), 20000);
@@ -1682,8 +1688,8 @@ async function showHrPrintPreview({ blob, filename, requestSeq, badgeText, statu
         throw new Error('Область попереднього перегляду недоступна.');
     }
 
-    const loaded = await waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq);
-    if (!loaded) {
+    const preview = await waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq);
+    if (!preview.ready) {
         if (isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)) {
             releaseHrPrintPreview();
             throw new Error('PDF отримано, але вбудований перегляд не завантажився.');
@@ -1691,8 +1697,14 @@ async function showHrPrintPreview({ blob, filename, requestSeq, badgeText, statu
         return false;
     }
 
-    document.getElementById('hrPrintPreviewState')?.classList.add('hidden');
-    document.getElementById('hrPrintPreviewState')?.classList.remove('is-loading');
+    const previewState = document.getElementById('hrPrintPreviewState');
+    if (preview.embedded) {
+        previewState?.classList.add('hidden');
+    } else if (previewState) {
+        previewState.textContent = 'Вбудований перегляд PDF недоступний у цьому браузері. Відкрийте документ в окремій вкладці.';
+        previewState.classList.remove('hidden');
+    }
+    previewState?.classList.remove('is-loading');
     document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
     document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
     document.getElementById('hrPrintOpenButton')?.removeAttribute('disabled');
@@ -2265,6 +2277,10 @@ function downloadHrPrintPdf() {
 function printHrPrintPdf() {
     if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
     const frame = document.getElementById('hrPrintPreviewFrame');
+    if (navigator.pdfViewerEnabled === false || !frame || frame.classList.contains('hidden')) {
+        openHrPrintPdf();
+        return;
+    }
     try {
         frame?.contentWindow?.focus();
         frame?.contentWindow?.print();

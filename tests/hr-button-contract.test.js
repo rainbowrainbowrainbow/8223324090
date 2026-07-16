@@ -112,7 +112,8 @@ test('HR manual scheduled clock-out settles payroll from the planned shift', () 
     assert.equal(payroll.scheduledWorkedMinutes, 450);
     assert.equal(payroll.totalWorkedMinutes, 450);
     assert.equal(payroll.settlementMode, 'scheduled_shift');
-    assert.equal(payroll.status, 'present');
+    assert.equal(payroll.lateMinutes, 475);
+    assert.equal(payroll.status, 'late');
 });
 
 test('HR camera checkout keeps actual-time payroll through the shared clock-out helper', () => {

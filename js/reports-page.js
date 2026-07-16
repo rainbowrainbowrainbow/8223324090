@@ -138,6 +138,14 @@ const ReportsPage = (() => {
                 { key: 'date', label: 'Дата', type: 'date', placeholder: '2026-06-28' },
                 { key: 'employee', label: 'Працівник', type: 'staff', placeholder: 'Оберіть працівника', staffIdKey: 'employee_staff_id', roleKey: 'role' },
                 { key: 'role', label: 'Роль', type: 'text', placeholder: 'Аніматор / адміністратор' },
+                { key: 'planned_start', label: 'План прихід', type: 'text', placeholder: '09:00' },
+                { key: 'planned_end', label: 'План вихід', type: 'text', placeholder: '18:00' },
+                { key: 'clock_in', label: 'Факт прихід', type: 'text', placeholder: '09:00' },
+                { key: 'clock_out', label: 'Факт вихід', type: 'text', placeholder: '18:00' },
+                { key: 'late_minutes', label: 'Запізнення хв', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'early_leave_minutes', label: 'Ранній вихід хв', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'overtime_minutes', label: 'Overtime хв', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'plan_warning', label: 'Попередження плану', type: 'text', placeholder: '' },
                 { key: 'planned_hours', label: 'План', type: 'number', placeholder: '0', total: 'sum' },
                 { key: 'actual_hours', label: 'Факт', type: 'number', placeholder: '0', total: 'sum' },
                 { key: 'hours', label: 'Опл. години', type: 'number', placeholder: '0', total: 'sum' },
@@ -416,6 +424,8 @@ const ReportsPage = (() => {
         staff_not_active_or_missing: 'не в активному HR pool',
         no_shift: 'немає зміни',
         no_attendance: 'немає факту',
+        profession_card_fallback: 'план із картки професії',
+        attendance_unscheduled: 'attendance без плану',
         actual_paid_hours_mismatch: 'факт != оплата',
         duplicate_payroll_row: 'дубль payroll',
         amount_missing_or_zero: 'сума 0',
@@ -443,6 +453,8 @@ const ReportsPage = (() => {
         payroll_amount_zero: 'payroll: сума 0',
         payroll_no_shift_link: 'payroll: немає зміни',
         payroll_no_attendance_link: 'payroll: немає факту',
+        payroll_profession_card_fallback: 'payroll: план із картки професії',
+        payroll_attendance_unscheduled: 'payroll: attendance без плану',
         payroll_actual_hours_mismatch: 'payroll: факт != оплата',
         payroll_offboarded_staff: 'payroll: offboarded staff',
         payroll_staff_not_active_or_missing: 'payroll: staff не в active pool',
@@ -460,13 +472,20 @@ const ReportsPage = (() => {
 
     const REPORT_QUALITY_ISSUE_STATUS = {
         payroll_no_attendance_link: 'warning',
+        payroll_profession_card_fallback: 'warning',
+        payroll_attendance_unscheduled: 'warning',
         payroll_staff_not_active_or_missing: 'warning',
         report_context_missing: 'warning',
         report_submitted_by_missing: 'warning',
         staff_options_unavailable: 'warning'
     };
 
-    const REPORT_QUALITY_AUTOFILL_ZERO_KEYS = new Set(['manual_amount']);
+    const REPORT_QUALITY_AUTOFILL_ZERO_KEYS = new Set([
+        'manual_amount',
+        'late_minutes',
+        'early_leave_minutes',
+        'overtime_minutes'
+    ]);
 
     function ensurePayrollColumn(columns, column, insertAfter = '') {
         if (columns.some(col => col.key === column.key)) return;
@@ -483,6 +502,14 @@ const ReportsPage = (() => {
         if (!isPayrollTemplateLike(template)) return template;
         const columns = Array.isArray(template.columns) ? [...template.columns] : [];
         ensurePayrollColumn(columns, { key: 'date', label: 'Дата', type: 'date', placeholder: '2026-06-28' }, '__first__');
+        ensurePayrollColumn(columns, { key: 'planned_start', label: 'План прихід', type: 'text', placeholder: '09:00' }, 'role');
+        ensurePayrollColumn(columns, { key: 'planned_end', label: 'План вихід', type: 'text', placeholder: '18:00' }, 'planned_start');
+        ensurePayrollColumn(columns, { key: 'clock_in', label: 'Факт прихід', type: 'text', placeholder: '09:00' }, 'planned_end');
+        ensurePayrollColumn(columns, { key: 'clock_out', label: 'Факт вихід', type: 'text', placeholder: '18:00' }, 'clock_in');
+        ensurePayrollColumn(columns, { key: 'late_minutes', label: 'Запізнення хв', type: 'number', placeholder: '0', total: 'sum' }, 'clock_out');
+        ensurePayrollColumn(columns, { key: 'early_leave_minutes', label: 'Ранній вихід хв', type: 'number', placeholder: '0', total: 'sum' }, 'late_minutes');
+        ensurePayrollColumn(columns, { key: 'overtime_minutes', label: 'Overtime хв', type: 'number', placeholder: '0', total: 'sum' }, 'early_leave_minutes');
+        ensurePayrollColumn(columns, { key: 'plan_warning', label: 'Попередження плану', type: 'text', placeholder: '' }, 'overtime_minutes');
         ensurePayrollColumn(columns, { key: 'planned_hours', label: 'План', type: 'number', placeholder: '0', total: 'sum' }, 'role');
         ensurePayrollColumn(columns, { key: 'actual_hours', label: 'Факт', type: 'number', placeholder: '0', total: 'sum' }, 'planned_hours');
         ensurePayrollColumn(columns, { key: 'hours', label: 'Опл. години', type: 'number', placeholder: '0', total: 'sum' }, 'actual_hours');
@@ -494,6 +521,14 @@ const ReportsPage = (() => {
             employee: row?.employee || row?.name || '',
             employee_staff_id: row?.employee_staff_id || row?.staff_id || '',
             role: row?.role || row?.role_snapshot || '',
+            planned_start: row?.planned_start || '',
+            planned_end: row?.planned_end || '',
+            clock_in: row?.clock_in || '',
+            clock_out: row?.clock_out || '',
+            late_minutes: row?.late_minutes ?? '',
+            early_leave_minutes: row?.early_leave_minutes ?? '',
+            overtime_minutes: row?.overtime_minutes ?? '',
+            plan_warning: row?.plan_warning || '',
             planned_hours: row?.planned_hours || '',
             actual_hours: row?.actual_hours || '',
             hours: row?.hours || row?.paid_hours || '',
@@ -641,13 +676,35 @@ const ReportsPage = (() => {
         return diffDateHours(record.clock_in || record.checkin_at, record.clock_out || record.checkout_at);
     }
 
+    function attendanceTimeLabel(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 5);
+        return date.toLocaleTimeString('uk-UA', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Europe/Kyiv'
+        });
+    }
+
+    function payrollAttendanceFacts(record = {}) {
+        const lateMinutes = Number(record.late_minutes || 0) > 5 ? Number(record.late_minutes || 0) : 0;
+        const earlyLeaveMinutes = Math.max(0, Number(record.early_leave_minutes || 0));
+        const overtimeMinutes = Math.max(0, Number(record.overtime_minutes || 0));
+        const events = [];
+        if (lateMinutes > 0) events.push('late');
+        if (earlyLeaveMinutes > 0) events.push('left_early');
+        if (overtimeMinutes > 0) events.push('overtime');
+        return { lateMinutes, earlyLeaveMinutes, overtimeMinutes, events };
+    }
+
     function payrollAttendanceStatus(record = null) {
         if (!record) return '';
         const raw = String(record.time_status || '').trim();
         if (['sick', 'vacation', 'day_off', 'excused'].includes(raw)) return 'excused';
         if (['absent', 'no_show'].includes(raw)) return 'absent';
-        if (raw === 'early_leave' || Number(record.early_leave_minutes || 0) > 0) return 'left_early';
-        if (raw === 'late' || Number(record.late_minutes || 0) > 0) return 'late';
+        const facts = payrollAttendanceFacts(record);
+        if (facts.events.length) return facts.events.join('+');
         if ((record.clock_in || record.checkin_at) && (record.clock_out || record.checkout_at)) return 'completed';
         if (record.clock_in || record.checkin_at) return 'checked_in';
         return raw || 'planned';
@@ -750,9 +807,34 @@ const ReportsPage = (() => {
             const actualHours = attendance ? attendanceActualHours(attendance) : parseNumber(next.actual_hours);
             const paidHours = parseNumber(next.hours || next.paid_hours);
             const amount = parseNumber(next.total || next.amount);
+            const attendanceFacts = attendance ? payrollAttendanceFacts(attendance) : {
+                lateMinutes: 0,
+                earlyLeaveMinutes: 0,
+                overtimeMinutes: 0,
+                events: []
+            };
+            const planSource = attendance
+                ? (attendance.plan_source
+                    || (schedule ? 'hr_shift' : ((attendance.planned_start && attendance.planned_end) ? 'profession_card' : 'unscheduled')))
+                : '';
+            const planWarning = attendance?.plan_warning?.message
+                || attendance?.plan_warning
+                || (planSource === 'profession_card'
+                    ? 'План дня взято з картки основної професії'
+                    : (planSource === 'unscheduled' ? 'Для attendance немає планового часу' : ''));
 
             next.planned_hours = schedule ? plannedHours : (plannedHours || next.planned_hours || '');
             next.actual_hours = actualHours || next.actual_hours || '';
+            next.planned_start = attendance?.planned_start || schedule?.shift_start || schedule?.planned_start || next.planned_start || '';
+            next.planned_end = attendance?.planned_end || schedule?.shift_end || schedule?.planned_end || next.planned_end || '';
+            next.clock_in = attendanceTimeLabel(attendance?.clock_in || attendance?.checkin_at) || next.clock_in || '';
+            next.clock_out = attendanceTimeLabel(attendance?.clock_out || attendance?.checkout_at) || next.clock_out || '';
+            next.late_minutes = attendanceFacts.lateMinutes;
+            next.early_leave_minutes = attendanceFacts.earlyLeaveMinutes;
+            next.overtime_minutes = attendanceFacts.overtimeMinutes;
+            next.attendance_events = attendanceFacts.events;
+            next.plan_source = planSource;
+            next.plan_warning = planWarning;
             next.paid_hours = paidHours || '';
             next.manual_amount = parseNumber(next.manual_amount) || 0;
             next.bonuses = parseNumber(next.bonus || next.bonuses) || 0;
@@ -785,12 +867,19 @@ const ReportsPage = (() => {
 
             if (attendance) {
                 const attendanceStatus = payrollAttendanceStatus(attendance);
+                if (planSource === 'profession_card') payrollIssue('profession_card_fallback', issues);
+                if (planSource === 'unscheduled') payrollIssue('attendance_unscheduled', issues);
                 next.attendance_ref = {
                     source: attendance.attendance_source || 'hr_time_records',
                     time_record_id: attendance.time_record_id || null,
                     checkin_id: attendance.checkin_id || null,
                     date,
-                    status: attendanceStatus
+                    status: attendanceStatus,
+                    events: attendanceFacts.events,
+                    late_minutes: attendanceFacts.lateMinutes,
+                    early_leave_minutes: attendanceFacts.earlyLeaveMinutes,
+                    overtime_minutes: attendanceFacts.overtimeMinutes,
+                    plan_source: planSource
                 };
                 next.attendance_status = attendanceStatus;
             } else if (schedule) {
@@ -975,6 +1064,8 @@ const ReportsPage = (() => {
                 staff_not_active_or_missing: 'payroll_staff_not_active_or_missing',
                 no_shift: 'payroll_no_shift_link',
                 no_attendance: 'payroll_no_attendance_link',
+                profession_card_fallback: 'payroll_profession_card_fallback',
+                attendance_unscheduled: 'payroll_attendance_unscheduled',
                 actual_paid_hours_mismatch: 'payroll_actual_hours_mismatch',
                 duplicate_payroll_row: 'payroll_duplicate_employee_date',
                 amount_missing_or_zero: 'payroll_amount_zero',

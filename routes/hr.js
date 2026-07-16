@@ -26,8 +26,13 @@ const {
     lockAttendanceWriteTargets
 } = require('../services/attendanceWriteLock');
 const {
+    calculateAttendanceClockIn,
     calculateHrClockOutPayroll,
-    decorateAttendanceRecord
+    decorateAttendanceRecord,
+    hydrateAttendanceRecords,
+    recordAttendanceClockIn,
+    recordAttendanceClockOut,
+    timeToMinutes
 } = require('../services/hrAttendance');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
@@ -1376,21 +1381,6 @@ function nowKyiv() {
     return getKyivDate();
 }
 
-// Helper: time string "HH:MM" to minutes since midnight
-function timeToMin(t) {
-    if (!t) return 0;
-    const s = typeof t === 'string' ? t : t.toString();
-    const parts = s.split(':');
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-}
-
-// Helper: minutes diff between now (Kyiv) and a TIME value on today
-function minutesSincePlannedStart(plannedStart) {
-    const now = nowKyiv();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    return nowMin - timeToMin(plannedStart);
-}
-
 // Helper: audit log entry
 async function insertAuditLog(action, staffId, performedBy, details, ipAddress, db = pool) {
     await db.query(
@@ -1915,7 +1905,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                    COALESCE(s.rate_unit, 'hour') AS rate_unit,
                    COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_minutes,
                    SUM(tr.overtime_minutes) AS overtime_minutes,
-                   COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed', 'unscheduled'))::int AS days_worked
+                   COUNT(*) FILTER (WHERE tr.clock_in IS NOT NULL)::int AS days_worked
             FROM active_staff s
             CROSS JOIN params p
             LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
@@ -2098,10 +2088,10 @@ async function loadKpiSnapshot(monthValue, db = pool) {
         ),
         time_stats AS (
             SELECT tr.staff_id,
-                   COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed', 'unscheduled'))::int AS days_worked,
-                   COUNT(*) FILTER (WHERE tr.status = 'late')::int AS late_count,
+                   COUNT(*) FILTER (WHERE tr.clock_in IS NOT NULL)::int AS days_worked,
+                   COUNT(*) FILTER (WHERE COALESCE(tr.late_minutes, 0) > 5)::int AS late_count,
                    COUNT(*) FILTER (WHERE tr.status IN ('absent', 'no_show'))::int AS days_absent,
-                   COALESCE(SUM(tr.late_minutes), 0)::int AS total_late_minutes,
+                   COALESCE(SUM(tr.late_minutes) FILTER (WHERE COALESCE(tr.late_minutes, 0) > 5), 0)::int AS total_late_minutes,
                    COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_worked_minutes,
                    COALESCE(SUM(tr.overtime_minutes), 0)::numeric AS total_overtime_minutes
             FROM hr_time_records tr
@@ -4824,11 +4814,10 @@ router.get('/today', async (req, res) => {
                 : null;
 
             if (record) {
-                if (record.status === 'late' || record.status === 'present' || record.status === 'clocked_in' || record.status === 'unscheduled') present++;
+                if (record.clock_in) present++;
                 else if (record.status === 'vacation') onVacation++;
                 else if (record.status === 'sick') sick++;
-                else if (record.status === 'early_leave' || record.status === 'auto_closed') present++;
-                if (record.status === 'late') late++;
+                if (Number(record.late_minutes || 0) > 5) late++;
             } else if (shift) {
                 absent++;
             }
@@ -4861,6 +4850,8 @@ router.get('/today', async (req, res) => {
                     id: record.id,
                     clock_in: record.clock_in,
                     clock_out: record.clock_out,
+                    planned_start: record.planned_start,
+                    planned_end: record.planned_end,
                     status: record.status,
                     late_minutes: record.late_minutes,
                     early_leave_minutes: record.early_leave_minutes,
@@ -4873,7 +4864,13 @@ router.get('/today', async (req, res) => {
                     overtimeMinutes: record.overtimeMinutes,
                     allocation_source: record.allocation_source,
                     allocation_issues: record.allocation_issues,
-                    overtime_allocation: record.overtime_allocation
+                    overtime_allocation: record.overtime_allocation,
+                    is_late: record.is_late,
+                    is_early_leave: record.is_early_leave,
+                    has_overtime: record.has_overtime,
+                    plan_source: record.plan_source,
+                    plan_warning: record.plan_warning,
+                    attendance_facts: record.attendance_facts
                 } : null
             };
         });
@@ -5112,62 +5109,23 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
-
-        // Check existing
-        const existing = await client.query(
-            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
-            [staffId, today]
-        );
-        if (existing.rows.length > 0 && existing.rows[0].clock_in) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Вже відмічений сьогодні' });
-        }
-
-        // Find planned shift
-        const loadedShift = await loadHrShiftDayPlan(client, { staffId, shiftDate: today });
-        const shift = loadedShift?.shift || null;
-        const hasShift = Boolean(shift);
-        let plannedStart = null, plannedEnd = null, lateMin = 0, status = 'unscheduled';
-
-        if (hasShift) {
-            plannedStart = shift.planned_start;
-            plannedEnd = shift.planned_end;
-            const diff = minutesSincePlannedStart(plannedStart);
-            lateMin = Math.max(0, diff);
-            status = lateMin > 5 ? 'late' : 'present';
-        }
-
-        const clockIn = new Date().toISOString();
-
-        let result;
-        if (existing.rows.length > 0) {
-            // Update existing absent record
-            result = await client.query(
-                `UPDATE hr_time_records SET
-                    clock_in = $1, planned_start = $2, planned_end = $3,
-                    late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
-                    business_context = COALESCE(business_context, $8), updated_at = NOW()
-                 WHERE id = $9 RETURNING *`,
-                [clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent'], businessContext, existing.rows[0].id]
-            );
-        } else {
-            result = await client.query(
-                `INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in, planned_start, planned_end, late_minutes, status, ip_address, user_agent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-                [businessContext, staffId, today, clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent']]
-            );
-        }
-
-        await auditLog(
-            'clock_in',
+        const clockInResult = await recordAttendanceClockIn(client, {
             staffId,
-            req.user?.username,
-            { clock_in: clockIn, late_minutes: lateMin, status },
-            req.ip,
-            client
-        );
+            recordDate: today,
+            businessContext,
+            performedBy: req.user?.username || 'manual',
+            method: 'manual',
+            source: 'hr_today',
+            ip: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         await client.query('COMMIT');
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({
+            success: true,
+            data: clockInResult.record,
+            alreadyClockedIn: clockInResult.alreadyClockedIn,
+            planSource: clockInResult.planSource
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-in error', err);
@@ -5191,70 +5149,27 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const today = todayKyiv();
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
-        const record = await client.query(
-            'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
-            [staffId, today]
-        );
-        if (record.rows.length === 0 || !record.rows[0].clock_in) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, error: 'Спочатку відмітьте прихід' });
-        }
-        if (record.rows[0].clock_out) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Вже завершено' });
-        }
-
-        const rec = record.rows[0];
-        const clockOut = new Date().toISOString();
-
-        const loadedShift = await loadHrShiftDayPlan(client, { staffId, shiftDate: today });
-        const shiftRow = loadedShift?.shift || {};
-        const payroll = calculateHrClockOutPayroll(rec, {
-            clockOut,
-            breakMinutes: shiftRow.break_minutes || 0,
-            plannedStart: rec.planned_start || shiftRow.planned_start,
-            plannedEnd: rec.planned_end || shiftRow.planned_end,
-            scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
-            plan: loadedShift?.plan,
-            primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
+        const clockOutResult = await recordAttendanceClockOut(client, {
+            staffId,
             recordDate: today,
             settlementMode: settlement_mode || settlementMode,
-            kyivNow: nowKyiv()
+            performedBy: req.user?.username || 'manual',
+            method: 'manual',
+            source: 'hr_today',
+            ip: req.ip
         });
-
-        const result = await client.query(
-            `UPDATE hr_time_records SET
-                clock_out = $1, total_worked_minutes = $2, early_leave_minutes = $3,
-                overtime_minutes = $4, status = $5, updated_at = NOW()
-             WHERE id = $6 RETURNING *`,
-            [
-                clockOut,
-                payroll.totalWorkedMinutes,
-                payroll.earlyLeaveMinutes,
-                payroll.overtimeMinutes,
-                payroll.status,
-                rec.id
-            ]
-        );
-
-        await auditLog('clock_out', staffId, req.user?.username,
-            {
-                clock_out: clockOut,
-                total_worked_minutes: payroll.totalWorkedMinutes,
-                actual_worked_minutes: payroll.actualWorkedMinutes,
-                scheduled_worked_minutes: payroll.scheduledWorkedMinutes,
-                settlement_mode: payroll.settlementMode,
-                requested_settlement_mode: payroll.requestedSettlementMode,
-                allocation_source: payroll.allocation.allocationSource,
-                segment_allocations: payroll.allocation.segmentAllocations,
-                allocation_issues: payroll.allocation.allocationIssues,
-                status: payroll.status
-            }, req.ip, client);
         await client.query('COMMIT');
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({
+            success: true,
+            data: clockOutResult.record,
+            alreadyClockedOut: clockOutResult.alreadyClockedOut
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-out error', err);
+        if (err?.code === 'ATTENDANCE_CLOCK_IN_REQUIRED') {
+            return res.status(err.statusCode || 400).json({ success: false, code: err.code, error: err.message });
+        }
         if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -5306,7 +5221,15 @@ router.post('/mark-absent', requireHrManage, async (req, res) => {
 router.put('/records/:id/correct', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
-        const { clock_in, clock_out, notes } = req.body;
+        const {
+            clock_in,
+            clock_out,
+            clock_in_time,
+            clock_out_time,
+            settlement_mode,
+            settlementMode,
+            notes
+        } = req.body;
         await client.query('BEGIN');
 
         // Resolve the advisory-lock target before taking the row lock so all
@@ -5335,39 +5258,102 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         }
 
         const original = rec.rows[0];
-        const newClockIn = clock_in ? new Date(clock_in).toISOString() : original.clock_in;
-        const newClockOut = clock_out ? new Date(clock_out).toISOString() : original.clock_out;
-
         const loadedShift = await loadHrShiftDayPlan(client, {
             staffId: original.staff_id,
             shiftDate: original.record_date
         });
         const shiftRow = loadedShift?.shift || {};
+        const plannedStart = original.planned_start || shiftRow.planned_start || null;
+        const plannedEnd = original.planned_end || shiftRow.planned_end || null;
+        const normalizeCorrectionTime = value => {
+            const match = String(value || '').trim().match(/^(\d{2}):(\d{2})$/);
+            if (!match) return null;
+            const hour = Number(match[1]);
+            const minute = Number(match[2]);
+            return hour <= 23 && minute <= 59 ? `${match[1]}:${match[2]}` : null;
+        };
+        const localTimestamp = async (time, dayOffset = 0) => {
+            const timestamp = await client.query(
+                `SELECT (($1::date + $2::time + ($3::int * INTERVAL '1 day')) AT TIME ZONE 'Europe/Kyiv') AS value`,
+                [original.record_date, time, dayOffset]
+            );
+            return timestamp.rows[0]?.value || null;
+        };
+        const inputClockInTime = clock_in_time === undefined ? null : normalizeCorrectionTime(clock_in_time);
+        const inputClockOutTime = clock_out_time === undefined ? null : normalizeCorrectionTime(clock_out_time);
+        if ((clock_in_time !== undefined && !inputClockInTime) || (clock_out_time !== undefined && !inputClockOutTime)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Час має бути у форматі HH:MM' });
+        }
+
+        let newClockIn = original.clock_in;
+        let newClockOut = original.clock_out;
+        if (inputClockInTime) newClockIn = await localTimestamp(inputClockInTime);
+        else if (clock_in) newClockIn = new Date(clock_in);
+        if (inputClockOutTime) newClockOut = await localTimestamp(inputClockOutTime);
+        else if (clock_out) newClockOut = new Date(clock_out);
+        if ((newClockIn && Number.isNaN(new Date(newClockIn).getTime()))
+            || (newClockOut && Number.isNaN(new Date(newClockOut).getTime()))) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Некоректна дата або час' });
+        }
+        const isOvernightPlan = plannedStart && plannedEnd
+            && timeToMinutes(plannedEnd) <= timeToMinutes(plannedStart);
+        if (inputClockOutTime && newClockIn && new Date(newClockOut) <= new Date(newClockIn) && isOvernightPlan) {
+            newClockOut = await localTimestamp(inputClockOutTime, 1);
+        }
+        if (newClockIn && newClockOut && new Date(newClockOut) <= new Date(newClockIn)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Час виходу має бути пізніше часу приходу' });
+        }
+        newClockIn = newClockIn ? new Date(newClockIn).toISOString() : null;
+        newClockOut = newClockOut ? new Date(newClockOut).toISOString() : null;
+
+        const settlementAudit = await client.query(
+            `SELECT details->>'settlement_mode' AS settlement_mode
+             FROM hr_audit_log
+             WHERE action = 'clock_out' AND staff_id = $1
+               AND (details->>'record_id' = $2 OR details->>'clock_out' = $3)
+             ORDER BY id DESC LIMIT 1`,
+            [original.staff_id, String(original.id), original.clock_out ? new Date(original.clock_out).toISOString() : '']
+        );
+        const correctionSettlementMode = settlement_mode
+            || settlementMode
+            || settlementAudit.rows[0]?.settlement_mode
+            || 'actual_time';
+        let effectiveSettlementMode = correctionSettlementMode;
 
         // Recalculate from the corrected day interval and normalized shift segments.
         let totalWorked = 0, lateMin = 0, earlyLeave = 0, overtime = 0;
+        let status = original.status || 'present';
         if (newClockIn && newClockOut) {
             const payroll = calculateHrClockOutPayroll(original, {
                 clockIn: newClockIn,
                 clockOut: newClockOut,
                 breakMinutes: shiftRow.break_minutes || 0,
-                plannedStart: original.planned_start || shiftRow.planned_start,
-                plannedEnd: original.planned_end || shiftRow.planned_end,
+                plannedStart,
+                plannedEnd,
                 scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
                 plan: loadedShift?.plan,
                 primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
                 recordDate: original.record_date,
-                settlementMode: 'actual_time',
-                kyivNow: nowKyiv()
+                settlementMode: correctionSettlementMode
             });
-            totalWorked = payroll.actualWorkedMinutes;
-            lateMin = payroll.allocation.lateMinutes;
+            totalWorked = payroll.totalWorkedMinutes;
+            lateMin = payroll.lateMinutes;
             earlyLeave = payroll.earlyLeaveMinutes;
             overtime = payroll.overtimeMinutes;
+            status = payroll.status;
+            effectiveSettlementMode = payroll.settlementMode;
+        } else if (newClockIn) {
+            const arrival = calculateAttendanceClockIn({
+                source: plannedStart && plannedEnd ? 'attendance_snapshot' : 'unscheduled',
+                plannedStart,
+                plannedEnd
+            }, newClockIn, original.record_date);
+            lateMin = arrival.lateMinutes;
+            status = arrival.status;
         }
-
-        let status = lateMin > 5 ? 'late' : 'present';
-        if (earlyLeave > 0) status = 'early_leave';
 
         const result = await client.query(
             `UPDATE hr_time_records SET
@@ -5384,7 +5370,19 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         );
 
         await auditLog('correction', original.staff_id, req.user?.username,
-            { old_clock_in: original.clock_in, old_clock_out: original.clock_out, new_clock_in: newClockIn, new_clock_out: newClockOut, notes }, req.ip, client);
+            {
+                record_id: original.id,
+                old_clock_in: original.clock_in,
+                old_clock_out: original.clock_out,
+                new_clock_in: newClockIn,
+                new_clock_out: newClockOut,
+                late_minutes: lateMin,
+                early_leave_minutes: earlyLeave,
+                overtime_minutes: overtime,
+                total_worked_minutes: totalWorked,
+                settlement_mode: effectiveSettlementMode,
+                notes
+            }, req.ip, client);
         await client.query('COMMIT');
         res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
     } catch (err) {
@@ -5446,9 +5444,15 @@ router.get('/report/monthly', async (req, res) => {
         for (const r of shifts.rows) shiftCounts[r.staff_id] = parseInt(r.cnt);
 
         const records = await pool.query(
-            `SELECT tr.staff_id,
+            `SELECT tr.staff_id, tr.record_date, tr.clock_in, tr.clock_out,
+                    tr.planned_start, tr.planned_end,
                     COALESCE(hs.profession_key, s.role_type) AS profession_key,
-                    tr.status, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes, tr.total_worked_minutes
+                    tr.status, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes, tr.total_worked_minutes,
+                    CASE
+                        WHEN hs.id IS NOT NULL THEN 'hr_shift'
+                        WHEN tr.planned_start IS NOT NULL AND tr.planned_end IS NOT NULL THEN 'profession_card'
+                        ELSE 'unscheduled'
+                    END AS plan_source
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
@@ -5499,18 +5503,24 @@ router.get('/report/monthly', async (req, res) => {
                 statsMap[r.staff_id] = {
                     days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
                     days_sick: 0, days_vacation: 0,
-                    total_worked_minutes: 0, total_overtime_minutes: 0,
+                    total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
+                    profession_card_days: 0, unscheduled_days: 0,
                     late_count: 0, total_late_minutes: 0
                 };
             }
             const s = statsMap[r.staff_id];
-            if (['present', 'late', 'early_leave', 'auto_closed', 'unscheduled'].includes(r.status)) {
+            if (r.clock_in) {
                 s.days_worked++;
                 s.total_worked_minutes += r.total_worked_minutes || 0;
                 s.total_overtime_minutes += r.overtime_minutes || 0;
             }
-            if (r.status === 'late') { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
-            if (r.status === 'early_leave') s.days_early_leave++;
+            if (Number(r.late_minutes || 0) > 5) { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
+            if (Number(r.early_leave_minutes || 0) > 0) {
+                s.days_early_leave++;
+                s.total_early_leave_minutes += Number(r.early_leave_minutes || 0);
+            }
+            if (r.plan_source === 'profession_card') s.profession_card_days++;
+            if (r.plan_source === 'unscheduled') s.unscheduled_days++;
             if (r.status === 'absent' || r.status === 'no_show') s.days_absent++;
             if (r.status === 'sick') s.days_sick++;
             if (r.status === 'vacation') s.days_vacation++;
@@ -5519,7 +5529,8 @@ router.get('/report/monthly', async (req, res) => {
         const data = staffList.rows.map(st => {
             const s = statsMap[st.id] || {
                 days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
-                days_sick: 0, days_vacation: 0, total_worked_minutes: 0, total_overtime_minutes: 0,
+                days_sick: 0, days_vacation: 0, total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
+                profession_card_days: 0, unscheduled_days: 0,
                 late_count: 0, total_late_minutes: 0
             };
             const daysScheduled = shiftCounts[st.id] || 0;
@@ -5567,11 +5578,15 @@ router.get('/report/monthly', async (req, res) => {
                 days_worked: s.days_worked,
                 days_late: s.days_late,
                 days_early_leave: s.days_early_leave,
+                total_early_leave_minutes: s.total_early_leave_minutes,
                 days_absent: s.days_absent,
                 days_sick: s.days_sick,
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
+                profession_card_days: s.profession_card_days,
+                unscheduled_days: s.unscheduled_days,
+                plan_warning_count: s.profession_card_days + s.unscheduled_days,
                 estimated_salary: Math.round(estimatedSalary),
                 profession_rate_summary: professionPay.professionRateSummary,
                 allocation_issues: professionPay.allocationIssues,
@@ -5614,7 +5629,8 @@ router.get('/report/daily', async (req, res) => {
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
              WHERE tr.record_date = $1 ORDER BY s.name`, [date]
         );
-        res.json({ success: true, data: result.rows, date });
+        const data = await hydrateAttendanceRecords(pool, result.rows);
+        res.json({ success: true, data, date });
     } catch (err) {
         log.error('GET /hr/report/daily error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -5632,7 +5648,12 @@ router.get('/report/export', async (req, res) => {
                     tr.planned_start, tr.planned_end,
                     tr.total_worked_minutes, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes,
                     s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
-                    COALESCE(hs.profession_key, s.role_type) AS profession_key
+                    COALESCE(hs.profession_key, s.role_type) AS profession_key,
+                    CASE
+                        WHEN hs.id IS NOT NULL THEN 'hr_shift'
+                        WHEN tr.planned_start IS NOT NULL AND tr.planned_end IS NOT NULL THEN 'profession_card'
+                        ELSE 'unscheduled'
+                    END AS plan_source
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
@@ -5642,16 +5663,21 @@ router.get('/report/export', async (req, res) => {
         );
         const professionRateMap = await loadStaffProfessionRateMap(result.rows.map(row => row.staff_id));
 
-        const header = 'ПІБ;Дата;Прихід;Відхід;Заплановано початок;Заплановано кінець;Відпрацьовано хв;Запізнення хв;Рано пішов хв;Переробка хв;Ставка;Сума\n';
+        const header = 'ПІБ;Дата;Плановий прихід;Плановий вихід;Фактичний прихід;Фактичний вихід;Відпрацьовано хв;Запізнення;Запізнення хв;Ранній вихід;Ранній вихід хв;Overtime;Overtime хв;Джерело плану;Попередження;Ставка;Сума\n';
         const rows = result.rows.map(r => {
             const ci = r.clock_in ? new Date(r.clock_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
-            const workedH = ((r.total_worked_minutes || 0) / 60).toFixed(1);
+            const lateMinutes = Number(r.late_minutes || 0) > 5 ? Number(r.late_minutes || 0) : 0;
+            const earlyLeaveMinutes = Math.max(0, Number(r.early_leave_minutes || 0));
+            const overtimeMinutes = Math.max(0, Number(r.overtime_minutes || 0));
+            const planWarning = r.plan_source === 'profession_card'
+                ? 'План із картки професії'
+                : (r.plan_source === 'unscheduled' ? 'Без планового часу' : '');
             const rate = rateForStaffProfession(r, r.profession_key, professionRateMap);
             const salary = staffRateUnit(r) === 'month'
                 ? ''
                 : payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
-            return `${r.name};${r.record_date};${ci};${co};${r.planned_start || ''};${r.planned_end || ''};${r.total_worked_minutes || 0};${r.late_minutes || 0};${r.early_leave_minutes || 0};${r.overtime_minutes || 0};${rate} грн/${rateUnitLabel(r.rate_unit)};${salary}`;
+            return `${r.name};${r.record_date};${r.planned_start || ''};${r.planned_end || ''};${ci};${co};${r.total_worked_minutes || 0};${lateMinutes > 0 ? 'Так' : 'Ні'};${lateMinutes};${earlyLeaveMinutes > 0 ? 'Так' : 'Ні'};${earlyLeaveMinutes};${overtimeMinutes > 0 ? 'Так' : 'Ні'};${overtimeMinutes};${r.plan_source};${planWarning};${rate} грн/${rateUnitLabel(r.rate_unit)};${salary}`;
         }).join('\n');
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');

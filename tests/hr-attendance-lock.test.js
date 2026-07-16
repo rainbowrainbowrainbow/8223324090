@@ -160,17 +160,18 @@ test('camera check-in and checkout lock the staff day before either attendance t
     assertInOrder(routeBlock(source, 'post', '/checkin'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
+        /recordAttendanceClockIn\(client/,
         /INSERT INTO staff_checkins/,
-        /syncHrClockInFromStaffCheckin\(client, staffId/,
         /await client\.query\('COMMIT'\)/,
         /broadcast\('hr:attendance-updated'/
     ], 'POST /api/staff/checkin');
+    assert.doesNotMatch(source, /syncHrClockInFromStaffCheckin|minutesSinceKyivPlannedStart/);
 
     assertInOrder(routeBlock(source, 'post', '/checkout'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
+        /recordAttendanceClockOut\(client/,
         /UPDATE staff_checkins SET check_out/,
-        /syncHrClockOutFromStaffCheckout\(client, staffId/,
         /await client\.query\('COMMIT'\)/,
         /broadcast\('hr:attendance-updated'/
     ], 'POST /api/staff/checkout');
@@ -202,20 +203,15 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
     assertInOrder(routeBlock(source, 'post', '/clock-in'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
-        /SELECT \* FROM hr_time_records[\s\S]*FOR UPDATE/,
-        /loadHrShiftDayPlan\(client/,
-        /(?:UPDATE|INSERT INTO) hr_time_records/,
-        /auditLog\([\s\S]*req\.ip,[\s\S]*client\s*\)/,
+        /recordAttendanceClockIn\(client/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/hr/clock-in');
+    assert.doesNotMatch(routeBlock(source, 'post', '/clock-in'), /minutesSincePlannedStart|lateMin > 5/);
 
     assertInOrder(routeBlock(source, 'post', '/clock-out'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
-        /SELECT \* FROM hr_time_records[\s\S]*FOR UPDATE/,
-        /loadHrShiftDayPlan\(client/,
-        /UPDATE hr_time_records SET/,
-        /auditLog\('clock_out'[\s\S]*req\.ip, client\)/,
+        /recordAttendanceClockOut\(client/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/hr/clock-out');
 

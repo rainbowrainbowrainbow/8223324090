@@ -265,11 +265,33 @@ test('HR, face checkout and attendance UI reuse the shared allocation contract',
     assert.match(correctionBlock, /decorateAttendanceRecord\(result\.rows\[0\], loadedShift\)/);
     assert.match(staffRoute, /hydrateAttendanceRecords\(pool, result\.rows\)/);
     assert.match(staffRoute, /data: attendanceRows/);
-    assert.match(staffRoute, /segment_allocations: payroll\.allocation\.segmentAllocations/);
+    assert.match(staffRoute, /recordAttendanceClockOut\(client/);
+    assert.match(attendanceService, /segment_allocations: payroll\.allocation\.segmentAllocations/);
     assert.match(attendanceService, /break_policy: allocation\.breakPolicy/);
     assert.match(attendanceService, /HR_SHIFT_BREAK_POLICY/);
     assert.match(attendanceService, /const HR_ATTENDANCE_BREAK_POLICY = HR_SHIFT_BREAK_POLICY/);
     assert.match(staffPage, /segmentAllocations/);
     assert.match(staffPage, /allocationIssues/);
     assert.match(staffPage, /timeZone: 'Europe\/Kyiv'/);
+});
+
+test('attendance correction uses Kyiv local times and the same independent fact calculation', () => {
+    const root = path.join(__dirname, '..');
+    const hrRoute = fs.readFileSync(path.join(root, 'routes', 'hr.js'), 'utf8');
+    const hrPage = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
+    const correctionBlock = hrRoute.slice(
+        hrRoute.indexOf("router.put('/records/:id/correct'"),
+        hrRoute.indexOf('// REPORTS')
+    );
+
+    assert.match(correctionBlock, /clock_in_time/);
+    assert.match(correctionBlock, /clock_out_time/);
+    assert.match(correctionBlock, /AT TIME ZONE 'Europe\/Kyiv'/);
+    assert.match(correctionBlock, /details->>'settlement_mode'/);
+    assert.match(correctionBlock, /lateMin = payroll\.lateMinutes/);
+    assert.match(correctionBlock, /earlyLeave = payroll\.earlyLeaveMinutes/);
+    assert.match(correctionBlock, /overtime = payroll\.overtimeMinutes/);
+    assert.match(hrPage, /body\.clock_in_time = clockIn/);
+    assert.match(hrPage, /body\.clock_out_time = clockOut/);
+    assert.doesNotMatch(hrPage, /T\$\{clockIn\}:00\+02:00/);
 });

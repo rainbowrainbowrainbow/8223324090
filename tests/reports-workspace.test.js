@@ -105,9 +105,14 @@ async function setupReportsDom(setupOptions = {}) {
                         time_record_id: 800,
                         clock_in: '2026-06-28T10:30:00.000Z',
                         clock_out: '2026-06-28T18:00:00.000Z',
+                        planned_start: '09:00',
+                        planned_end: '20:00',
                         late_minutes: 30,
+                        early_leave_minutes: 45,
+                        overtime_minutes: 20,
                         total_worked_minutes: 450,
                         time_status: 'late',
+                        plan_source: 'hr_shift',
                         attendance_source: 'hr_time_records',
                         allocation_source: 'clock_interval'
                     }
@@ -392,6 +397,13 @@ test('payroll report template stores canonical staff id with display snapshot', 
     const exportRequest = requests.find(req => req.url === '/api/reports/table/export-csv');
     const exportBody = JSON.parse(exportRequest.options.body);
     assert.equal(exportBody.reportTableTemplate.rows[0].planned_hours, 8.5);
+    assert.equal(exportBody.reportTableTemplate.rows[0].planned_start, '09:00');
+    assert.equal(exportBody.reportTableTemplate.rows[0].planned_end, '20:00');
+    assert.equal(exportBody.reportTableTemplate.rows[0].clock_in, '13:30');
+    assert.equal(exportBody.reportTableTemplate.rows[0].clock_out, '21:00');
+    assert.equal(exportBody.reportTableTemplate.rows[0].late_minutes, 30);
+    assert.equal(exportBody.reportTableTemplate.rows[0].early_leave_minutes, 45);
+    assert.equal(exportBody.reportTableTemplate.rows[0].overtime_minutes, 20);
     assert.equal(exportBody.reportTableTemplate.payrollReconciliation.totals.planned, 8.5);
 
     document.getElementById('reportTemplateSaveBtn').click();
@@ -424,7 +436,12 @@ test('payroll report template stores canonical staff id with display snapshot', 
     assert.equal(row.allocation_source, 'clock_interval');
     assert.equal(row.reconciliation_source, 'reports_rawData_payroll_reconciliation_v1');
     assert.equal(row.attendance_ref.time_record_id, 800);
-    assert.equal(row.attendance_status, 'late');
+    assert.equal(row.attendance_status, 'late+left_early+overtime');
+    assert.deepEqual(row.attendance_events, ['late', 'left_early', 'overtime']);
+    assert.equal(row.late_minutes, 30);
+    assert.equal(row.early_leave_minutes, 45);
+    assert.equal(row.overtime_minutes, 20);
+    assert.equal(row.plan_source, 'hr_shift');
     assert.equal(row.reconciliation_status, 'needs_review');
     assert.ok(row.reconciliation_issues.includes('actual_paid_hours_mismatch'));
     assert.equal(body.rawData.reportTableTemplate.payrollReconciliation.status, 'needs_review');
@@ -438,6 +455,60 @@ test('payroll report template stores canonical staff id with display snapshot', 
         amount: 1200
     });
     assert.equal(body.amount, 1200);
+});
+
+test('payroll attendance ignores one-to-five minute legacy late status and warns on profession fallback', async () => {
+    const { window, requests } = await setupReportsDom({
+        scheduleData: [],
+        attendanceData: [{
+            staff_id: 42,
+            date: '2026-06-28',
+            time_record_id: 801,
+            clock_in: '2026-06-28T06:05:00.000Z',
+            clock_out: '2026-06-28T15:00:00.000Z',
+            planned_start: '09:00',
+            planned_end: '18:00',
+            late_minutes: 5,
+            early_leave_minutes: 30,
+            overtime_minutes: 0,
+            total_worked_minutes: 505,
+            time_status: 'late',
+            plan_source: 'profession_card',
+            plan_warning: { message: 'План дня взято з картки основної професії' },
+            attendance_source: 'hr_time_records'
+        }]
+    });
+    const document = window.document;
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch');
+
+    const date = document.querySelector('[data-row-index="0"][data-column-key="date"]');
+    date.value = '2026-06-28';
+    date.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const staff = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
+    staff.value = '42';
+    staff.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
+    total.value = '100';
+    total.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'fallback payroll save');
+    const request = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const table = JSON.parse(request.options.body).rawData.reportTableTemplate;
+    const row = table.rows[0];
+
+    assert.equal(row.late_minutes, 0);
+    assert.equal(row.early_leave_minutes, 30);
+    assert.deepEqual(row.attendance_events, ['left_early']);
+    assert.equal(row.attendance_status, 'left_early');
+    assert.equal(row.plan_source, 'profession_card');
+    assert.match(row.plan_warning, /картки основної професії/);
+    assert.ok(row.reconciliation_issues.includes('profession_card_fallback'));
+    assert.equal(table.reportQuality.issueCounts.payroll_profession_card_fallback, 1);
+    window.close();
 });
 
 test('payroll planned hours prefer segments over envelope and keep legacy fallback', async t => {

@@ -1986,7 +1986,7 @@ function summarizeTodayItems(items = []) {
             } else if (status === 'sick') {
                 summary.sick++;
             }
-            if (status === 'late') summary.late++;
+            if (Number(rec.late_minutes || 0) > 5) summary.late++;
         } else if (item.shift) {
             summary.absent++;
         }
@@ -2217,12 +2217,18 @@ function renderToday(data) {
         let meta = '';
         let disabled = '';
 
-        if (shift) {
-            meta = `Зміна: ${fmtTime(shift.planned_start)}–${fmtTime(shift.planned_end)}`;
+        const plannedStart = rec?.planned_start || shift?.planned_start;
+        const plannedEnd = rec?.planned_end || shift?.planned_end;
+        if (plannedStart || plannedEnd) {
+            meta = `План: ${fmtTime(plannedStart)}–${fmtTime(plannedEnd)}`;
         }
 
         if (rec) {
-            const st = rec.status;
+            const isLate = Number(rec.late_minutes || 0) > 5;
+            const isEarlyLeave = Number(rec.early_leave_minutes || 0) > 0;
+            const st = rec.status === 'late' && !isLate
+                ? 'present'
+                : (rec.status === 'early_leave' && !isEarlyLeave ? 'present' : rec.status);
             if (st === 'present' || st === 'clocked_in' || st === 'unscheduled') {
                 indicator = 'present';
                 if (rec.clock_out) {
@@ -2230,11 +2236,9 @@ function renderToday(data) {
                     btnClass = 'done';
                     btnText = `Відпрацював ${fmtMinutes(rec.total_worked_minutes)}`;
                     disabled = 'disabled';
-                    meta += ` | Пішов: ${fmtTimeFromISO(rec.clock_out)}`;
                 } else {
                     btnClass = 'clock-out';
                     btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
-                    meta += ` | Прийшов: ${fmtTimeFromISO(rec.clock_in)}`;
                 }
             } else if (st === 'late') {
                 indicator = 'late';
@@ -2247,7 +2251,6 @@ function renderToday(data) {
                     btnClass = 'clock-out late';
                     btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
                 }
-                meta += ` | <span class="late-badge">+${rec.late_minutes}хв</span>`;
             } else if (st === 'early_leave') {
                 indicator = 'done';
                 btnClass = 'done';
@@ -2278,6 +2281,24 @@ function renderToday(data) {
                 btnClass = 'clock-in';
                 btnText = 'Не з\'явився — відмітити';
             }
+
+            const attendanceFacts = [];
+            const actualStart = rec.clock_in ? fmtTimeFromISO(rec.clock_in) : '—';
+            const actualEnd = rec.clock_out ? fmtTimeFromISO(rec.clock_out) : '—';
+            meta += `${meta ? ' | ' : ''}Факт: ${actualStart}–${actualEnd}`;
+            if (isLate) {
+                attendanceFacts.push(`<span class="late-badge">Запізнення +${rec.late_minutes}хв</span>`);
+            }
+            if (isEarlyLeave) {
+                attendanceFacts.push(`<span class="late-badge">Ранній вихід ${rec.early_leave_minutes}хв</span>`);
+            }
+            if (Number(rec.overtime_minutes || 0) > 0) {
+                attendanceFacts.push(`<span class="late-badge">Понаднормово +${rec.overtime_minutes}хв</span>`);
+            }
+            if (rec.plan_warning?.message) {
+                attendanceFacts.push(`<span class="late-badge">⚠ ${escapeHtml(rec.plan_warning.message)}</span>`);
+            }
+            if (attendanceFacts.length) meta += ` | ${attendanceFacts.join(' · ')}`;
         }
 
         const arrived = isTodayItemArrived(item);
@@ -12531,6 +12552,7 @@ function reportHeaderMetricsFromRows(rows = []) {
     const safeRows = Array.isArray(rows) ? rows : [];
     let totalPresent = 0;
     let totalLate = 0;
+    let totalEarlyLeave = 0;
     let totalAbsent = 0;
     let totalOvertime = 0;
     let totalScheduled = 0;
@@ -12541,6 +12563,7 @@ function reportHeaderMetricsFromRows(rows = []) {
     for (const row of safeRows) {
         totalPresent += reportMetricNumber(row.days_worked);
         totalLate += reportMetricNumber(row.late_count);
+        totalEarlyLeave += reportMetricNumber(row.days_early_leave);
         totalAbsent += reportMetricNumber(row.days_absent);
         totalOvertime += reportMetricNumber(row.total_overtime_hours);
         totalScheduled += reportMetricNumber(row.days_scheduled);
@@ -12556,6 +12579,7 @@ function reportHeaderMetricsFromRows(rows = []) {
         staffCount: safeRows.length,
         totalPresent,
         totalLate,
+        totalEarlyLeave,
         totalAbsent,
         totalOvertime,
         totalScheduled,
@@ -12621,6 +12645,7 @@ function renderReports(data) {
     const metrics = reportHeaderMetricsFromRows(rows);
     const {
         totalLate,
+        totalEarlyLeave,
         totalAbsent,
         totalOvertime,
         totalTasksAssigned,
@@ -12634,6 +12659,7 @@ function renderReports(data) {
     document.getElementById('reportSummary').innerHTML = `
         <div class="hr-report-stat hr-report-stat--presence"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
         <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
+        <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalEarlyLeave}</div><div class="stat-label">Ранні виходи</div></div>
         <div class="hr-report-stat hr-report-stat--absence"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
         <div class="hr-report-stat hr-report-stat--overtime"><div class="stat-value">${totalOvertime.toFixed(0)}г</div><div class="stat-label">Переробка</div></div>
         <div class="hr-report-stat hr-report-stat--tasks"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
@@ -12644,14 +12670,18 @@ function renderReports(data) {
     // Table
     document.getElementById('reportHead').innerHTML = `<tr>
         <th>ПІБ</th><th>Зміни</th><th>Відпрац.</th><th>Запізн.</th>
-        <th>Сер. запізн.</th><th>Годин</th><th>Сума</th><th>Задачі</th><th>KPI</th></tr>`;
+        <th>Ранні виходи</th><th>Overtime</th><th>Сер. запізн.</th><th>План</th>
+        <th>Годин</th><th>Сума</th><th>Задачі</th><th>KPI</th></tr>`;
 
     document.getElementById('reportBody').innerHTML = rows.map(r => `<tr>
         <td>${escapeHtml(r.staff_name)}</td>
         <td class="num">${r.days_scheduled}</td>
         <td class="num">${r.days_worked}</td>
         <td class="num">${r.late_count}</td>
+        <td class="num">${r.days_early_leave || 0}</td>
+        <td class="num">${r.total_overtime_hours || 0}г</td>
         <td class="num">${r.avg_late_minutes > 0 ? r.avg_late_minutes + 'хв' : '—'}</td>
+        <td class="num">${r.plan_warning_count > 0 ? `⚠ ${r.plan_warning_count}` : 'OK'}</td>
         <td class="num">${r.total_worked_hours}г</td>
         <td class="num">${fmtMoney(r.estimated_salary)}</td>
         <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>
@@ -12862,10 +12892,9 @@ async function saveCorrection() {
         return;
     }
 
-    const today = todayStr();
     const body = { notes };
-    if (clockIn) body.clock_in = `${today}T${clockIn}:00+02:00`;
-    if (clockOut) body.clock_out = `${today}T${clockOut}:00+02:00`;
+    if (clockIn) body.clock_in_time = clockIn;
+    if (clockOut) body.clock_out_time = clockOut;
 
     const data = await hrFetch(`/records/${recordId}/correct`, {
         method: 'PUT',

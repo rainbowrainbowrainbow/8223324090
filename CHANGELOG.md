@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.34 - HR акаунти та онбординг
+
+### HR / Акаунти / Онбординг / Безпека / (16.07.2026) [codex]
+- **Акаунти стали компактним master-detail центром** — щільний список, фільтри, конкретний conflict drill-down і окрема картка Profile / HR link / Access / Security / History прибирають небезпечні дії з кожного рядка.
+- **Новий акаунт і HR-профіль створюються одним wizard** — сім кроків охоплюють existing/new staff, структуру, професії, ставки, типовий час, role preset, review та зрозумілий setup receipt.
+- **Onboarding працює атомарно** — server-side transaction повністю відкочується при помилці, зайнятий staff блокується до commit, post-commit збої повертаються як warnings, а тимчасовий пароль показується лише один раз і не потрапляє в audit або logs.
+- **Auth boundaries посилено без розширення доступу** — UI та API вимагають фактичні `manage_accounts` + `manage_staff`, 403 не скидає сесію, username залишається immutable, system/guardian accounts і останній активний creator захищені backend-інваріантами.
+- **Release C перевірено як єдиний процес** — disposable PostgreSQL довів rollback, alias collisions і відсутність orphan records; desktop/mobile browser QA пройшов wizard, receipt, focus return та вхід створеним акаунтом.
+
+---
+
 ## v0.79.33 - HR ставки та чеклісти
 
 ### HR / Професії / Чеклісти / Навчання / (16.07.2026) [codex]

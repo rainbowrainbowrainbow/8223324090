@@ -24,6 +24,7 @@ const { normalizePinataFields } = require('./pinataMode');
 const { applyEffectiveBookingPrice } = require('./productPricing');
 const { upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
+const { normalizeCustomerSource } = require('./customerSource');
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
 const WRITABLE_MEMBER_ROLES = new Set(['kitchen', 'activity', 'service', 'manual']);
@@ -1105,6 +1106,88 @@ function resolveAtomicBanquetCustomerId(input = {}, { sourceBooking, group } = {
         });
     }
     return authorityCustomerId ?? requestedCustomerId ?? null;
+}
+
+async function resolveBookingSetPrimaryCustomerId(db, primaryPatch = {}, {
+    primaryBooking,
+    group,
+    businessContext
+} = {}) {
+    const requestedCustomerId = normalizeActivityInteger(primaryPatch.customerId ?? primaryPatch.customer_id, null);
+    const authorityCustomerId = normalizeActivityInteger(
+        group?.customer_id ?? group?.customerId ?? primaryBooking?.customer_id ?? primaryBooking?.customerId,
+        null
+    );
+    const resolvedExistingId = resolveAtomicBanquetCustomerId(primaryPatch, {
+        sourceBooking: primaryBooking,
+        group
+    });
+    if (requestedCustomerId) {
+        const scopedCustomer = await db.query(
+            `SELECT id FROM customers
+              WHERE id = $1
+                AND ${bookingContextSql('', '$2')}
+              LIMIT 1`,
+            [requestedCustomerId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+        );
+        if (!scopedCustomer.rows.length) {
+            throw new BanquetGroupError('Customer does not belong to this business context', {
+                status: 400,
+                code: 'BANQUET_CUSTOMER_NOT_FOUND'
+            });
+        }
+        return resolvedExistingId;
+    }
+
+    const customer = primaryPatch.customer;
+    if (!customer || typeof customer !== 'object' || Array.isArray(customer)) {
+        return resolvedExistingId;
+    }
+    if (authorityCustomerId) {
+        throw new BanquetGroupError('Banquet already has a customer; use its customerId when editing', {
+            status: 409,
+            code: 'CUSTOMER_BANQUET_MISMATCH',
+            details: { banquetCustomerId: authorityCustomerId, groupId: group?.id || null }
+        });
+    }
+
+    const name = normalizeActivityText(customer.name, 200);
+    if (!name) {
+        throw new BanquetGroupError('Customer name is required', {
+            status: 400,
+            code: 'BANQUET_CUSTOMER_NAME_REQUIRED'
+        });
+    }
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const phone = normalizeActivityText(customer.phone, 100);
+    if (phone) {
+        const existing = await db.query(
+            `SELECT id FROM customers
+              WHERE phone = $1
+                AND ${bookingContextSql('', '$2')}
+              LIMIT 1
+              FOR UPDATE`,
+            [phone, context]
+        );
+        if (existing.rows.length) return normalizeActivityInteger(existing.rows[0].id, null);
+    }
+
+    const inserted = await db.query(
+        `INSERT INTO customers
+            (business_context, name, phone, instagram, child_name, child_birthday, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+            context,
+            name,
+            phone,
+            normalizeActivityText(customer.instagram, 200),
+            normalizeActivityText(customer.childName ?? customer.child_name, 200),
+            normalizeActivityText(customer.childBirthday ?? customer.child_birthday, 20),
+            normalizeCustomerSource(customer.source)
+        ]
+    );
+    return normalizeActivityInteger(inserted.rows[0]?.id, null);
 }
 
 function normalizeActivityText(value, maxLength = 2000) {
@@ -2862,6 +2945,21 @@ async function updateBanquetBookingSet({
             context
         );
 
+        const resolvedCustomerId = await resolveBookingSetPrimaryCustomerId(client, primaryPatch, {
+            primaryBooking: primaryRow,
+            group,
+            businessContext: context
+        });
+        const resolvedPrimaryPatch = resolvedCustomerId
+            ? { ...primaryPatch, customerId: resolvedCustomerId }
+            : primaryPatch;
+        const customerGroup = resolvedCustomerId
+            ? { ...group, customer_id: resolvedCustomerId }
+            : group;
+        const customerPrimaryRow = resolvedCustomerId
+            ? { ...primaryRow, customer_id: resolvedCustomerId }
+            : primaryRow;
+
         const seenDesiredIds = new Set();
         const desiredInputs = activities.map((item, index) => {
             if (!item || typeof item !== 'object' || Array.isArray(item)) {
@@ -2892,9 +2990,9 @@ async function updateBanquetBookingSet({
             return { bookingId, patch: item };
         });
 
-        const primaryBooking = normalizeBookingSetRoot(primaryRow, primaryPatch, {
-            primaryBooking: primaryRow,
-            group,
+        const primaryBooking = normalizeBookingSetRoot(primaryRow, resolvedPrimaryPatch, {
+            primaryBooking: customerPrimaryRow,
+            group: customerGroup,
             businessContext: context,
             user,
             role: 'primary'
@@ -2902,8 +3000,8 @@ async function updateBanquetBookingSet({
         const desiredActivities = desiredInputs.map(({ bookingId, patch }) => ({
             bookingId,
             booking: normalizeBookingSetRoot(existingActivityRows.get(String(bookingId)) || null, patch, {
-                primaryBooking: primaryRow,
-                group,
+                primaryBooking: customerPrimaryRow,
+                group: customerGroup,
                 businessContext: context,
                 user,
                 role: 'activity'

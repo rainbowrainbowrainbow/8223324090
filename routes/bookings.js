@@ -157,7 +157,38 @@ async function detachBanquetMembershipOnSoftDelete(queryable, bookingId, busines
     if (!membership) return { detached: false, membership: null };
     const primaryBookingId = String(membership.primary_booking_id || '').trim();
     if (!primaryBookingId || String(membership.role || '').toLowerCase() === 'primary' || primaryBookingId === String(bookingId)) {
-        return { detached: false, membership };
+        const activeMembers = await queryable.query(
+            `SELECT b.id
+               FROM banquet_group_bookings bgb
+               JOIN bookings b ON b.id = bgb.booking_id
+              WHERE bgb.group_id = $1
+                AND ${bookingContextSql('bgb', '$2')}
+                AND ${bookingContextSql('b', '$2')}
+                AND ${bookingActiveStatusSql('b')}
+              LIMIT 1
+              FOR UPDATE OF b`,
+            [membership.group_id, businessContext || DEFAULT_TIMELINE_CONTEXT]
+        );
+        if (activeMembers.rows.length) return { detached: false, membership, groupCancelled: false };
+
+        const cancelledGroup = await queryable.query(
+            `UPDATE banquet_groups
+                SET status = 'cancelled', updated_at = NOW(), updated_by = $3
+              WHERE id = $1
+                AND ${bookingContextSql('', '$2')}
+                AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) != 'cancelled'
+              RETURNING id`,
+            [membership.group_id, businessContext || DEFAULT_TIMELINE_CONTEXT, user?.username || 'system']
+        );
+        if (cancelledGroup.rows.length) {
+            await insertScopedHistory(queryable, 'banquet_group_cancelled_on_primary_delete', user?.username, {
+                group_id: membership.group_id,
+                primary_booking_id: primaryBookingId || bookingId,
+                reason: 'all_group_bookings_cancelled',
+                cancelled_via: 'booking_soft_delete'
+            }, businessContext || DEFAULT_TIMELINE_CONTEXT);
+        }
+        return { detached: false, membership, groupCancelled: Boolean(cancelledGroup.rows.length) };
     }
 
     await queryable.query(

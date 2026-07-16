@@ -2887,6 +2887,20 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
     assert.match(apiJs, /\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/booking-set/);
 });
 
+test('booking templates use the shared authenticated request headers', () => {
+    const bookingForm = read('js', 'booking-form.js');
+    const templateBlock = bookingForm.slice(
+        bookingForm.indexOf('// v30.3: BOOKING TEMPLATES'),
+        bookingForm.indexOf('// v30.4: PRELIMINARY BOOKING EXPIRY')
+    );
+
+    assert.match(templateBlock, /function bookingTemplateAuthHeaders/);
+    assert.match(templateBlock, /getAuthHeaders\(withContentType\)/);
+    assert.match(templateBlock, /headers: bookingTemplateAuthHeaders\(false\)/);
+    assert.match(templateBlock, /headers: bookingTemplateAuthHeaders\(true\)/);
+    assert.doesNotMatch(templateBlock, /localStorage\.getItem\(['"]token['"]\)/);
+});
+
 test('booking conflict locks serialize line and room resources in deterministic order', async () => {
     clearModules();
     const { lockBookingConflictResources } = require('../services/booking');

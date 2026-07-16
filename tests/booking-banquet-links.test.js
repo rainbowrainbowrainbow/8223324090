@@ -213,6 +213,7 @@ function makeDb(rows, links = [], options = {}) {
         queries: [],
         nextLinkId: links.length + 1,
         nextBanquetMembershipId: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships.length : 0) + 1,
+        nextCustomerId: Math.max(0, ...(Array.isArray(options.customers) ? options.customers : []).map(row => Number(row.id) || 0)) + 1,
         released: 0
     };
     let txSnapshot = null;
@@ -232,10 +233,12 @@ function makeDb(rows, links = [], options = {}) {
                 banquetGroups: cloneStateValue(state.banquetGroups),
                 banquetMemberships: cloneStateValue(state.banquetMemberships),
                 banquetDeposits: cloneStateValue(state.banquetDeposits),
+                customers: cloneStateValue(state.customers),
                 customerChildren: cloneStateValue(state.customerChildren),
                 histories: cloneStateValue(state.histories),
                 nextLinkId: state.nextLinkId,
-                nextBanquetMembershipId: state.nextBanquetMembershipId
+                nextBanquetMembershipId: state.nextBanquetMembershipId,
+                nextCustomerId: state.nextCustomerId
             };
             return { rows: [], rowCount: 0 };
         }
@@ -252,10 +255,12 @@ function makeDb(rows, links = [], options = {}) {
                 state.banquetGroups = cloneStateValue(txSnapshot.banquetGroups);
                 state.banquetMemberships = cloneStateValue(txSnapshot.banquetMemberships);
                 state.banquetDeposits = cloneStateValue(txSnapshot.banquetDeposits);
+                state.customers = cloneStateValue(txSnapshot.customers);
                 state.customerChildren = cloneStateValue(txSnapshot.customerChildren);
                 state.histories = cloneStateValue(txSnapshot.histories);
                 state.nextLinkId = txSnapshot.nextLinkId;
                 state.nextBanquetMembershipId = txSnapshot.nextBanquetMembershipId;
+                state.nextCustomerId = txSnapshot.nextCustomerId;
                 txSnapshot = null;
             }
             return { rows: [], rowCount: 0 };
@@ -504,6 +509,16 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
+        if (/SELECT b\.id\s+FROM banquet_group_bookings bgb\s+JOIN bookings b ON b\.id = bgb\.booking_id\s+WHERE bgb\.group_id = \$1/i.test(sql)) {
+            const [groupId, businessContext] = params;
+            const activeRows = state.banquetMemberships
+                .filter(item => item.group_id === groupId && normalizeContext(item.business_context) === normalizeContext(businessContext))
+                .map(item => state.rows.find(row => row.id === item.booking_id))
+                .filter(row => row && String(row.status || 'confirmed').toLowerCase() !== 'cancelled')
+                .slice(0, 1)
+                .map(row => ({ id: row.id }));
+            return { rows: activeRows, rowCount: activeRows.length };
+        }
         if (/SELECT id, category, time, duration FROM bookings WHERE date = \$1 AND program_id = \$2/i.test(sql)) {
             const [date, programId, businessContext, excludeId] = params;
             const excluded = new Set((Array.isArray(excludeId) ? excludeId : [excludeId]).filter(Boolean).map(String));
@@ -650,6 +665,18 @@ function makeDb(rows, links = [], options = {}) {
             if (group) group.updated_by = params[2];
             return { rows: [], rowCount: group ? 1 : 0 };
         }
+        if (/UPDATE banquet_groups\s+SET status = 'cancelled', updated_at = NOW\(\), updated_by = \$3/i.test(sql)) {
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+                && String(item.status || 'active').toLowerCase() !== 'cancelled'
+            );
+            if (!group) return { rows: [], rowCount: 0 };
+            group.status = 'cancelled';
+            group.updated_by = params[2];
+            group.updated_at = new Date('2099-01-01T00:02:00Z').toISOString();
+            return { rows: [{ id: group.id }], rowCount: 1 };
+        }
         if (/UPDATE banquet_groups SET customer_id=\$3, date=\$4, room=\$5, group_name=\$6, updated_at=NOW\(\), updated_by=\$7/i.test(sql)) {
             const group = state.banquetGroups.find(item =>
                 item.id === params[0]
@@ -689,6 +716,28 @@ function makeDb(rows, links = [], options = {}) {
             group.updated_by = params[3];
             group.updated_at = options.nextGroupUpdatedAt || '2099-03-01T00:00:00.000Z';
             return { rows: [{ ...group }], rowCount: 1 };
+        }
+        if (/SELECT id FROM customers\s+WHERE phone = \$1/i.test(sql)) {
+            const [phone, businessContext] = params;
+            const customer = state.customers.find(row =>
+                row.phone === phone
+                && normalizeContext(row.business_context || 'event_genix') === normalizeContext(businessContext)
+            );
+            return { rows: customer ? [{ id: customer.id }] : [], rowCount: customer ? 1 : 0 };
+        }
+        if (/INSERT INTO customers/i.test(sql) && /RETURNING id/i.test(sql)) {
+            const row = {
+                id: state.nextCustomerId++,
+                business_context: params[0],
+                name: params[1],
+                phone: params[2],
+                instagram: params[3],
+                child_name: params[4],
+                child_birthday: params[5],
+                source: params[6]
+            };
+            state.customers.push(row);
+            return { rows: [{ id: row.id }], rowCount: 1 };
         }
         if (/FROM customers/i.test(sql)) {
             const [customerId, businessContext] = params;
@@ -3682,6 +3731,33 @@ test('DELETE booking removes cancelled kitchen marker while keeping source banqu
     });
 });
 
+test('DELETE sole primary booking cancels the now-empty banquet group in the same transaction', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet' })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`, { method: 'DELETE' });
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'cancelled');
+        assert.equal(state.banquetGroups[0].status, 'cancelled');
+        assert.equal(state.banquetGroups[0].updated_by, 'banquet-test');
+        assert.ok(state.histories.some(item =>
+            item.action === 'banquet_group_cancelled_on_primary_delete'
+            && item.data.group_id === 'BQ-ROOT'
+        ));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT', customer_id: null,
+            date: '2099-06-01', room: 'Room A', group_name: 'Banquet root', status: 'active', source: 'test', meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
+        }]
+    });
+});
+
 test('PUT banquet booking-set atomically updates primary and creates activity membership', async () => {
     const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
     await withApp([
@@ -3764,6 +3840,57 @@ test('PUT banquet booking-set atomically updates primary and creates activity me
             id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
         }, {
             id: 2, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-KITCHEN', role: 'kitchen', sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set creates and attaches an inline customer for a customerless group', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT', line_id: 'line-bubble', program_id: 'bubble', program_code: 'BUBBLE',
+            label: 'Bubble show', program_name: 'Bubble show', category: 'show', duration: 30,
+            customer_id: null, room: 'Room A'
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/booking-set?businessContext=event_genix`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                primaryBookingId: 'BK-ROOT',
+                expectedGroupUpdatedAt: groupUpdatedAt,
+                primaryPatch: {
+                    customer: {
+                        name: 'Technical QA Customer',
+                        phone: '+380000000001',
+                        instagram: '@technical_qa',
+                        childName: 'Test Child',
+                        childBirthday: '2030-01-01',
+                        source: 'manual'
+                    }
+                },
+                activities: []
+            })
+        });
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(state.customers.length, 1);
+        const customerId = state.customers[0].id;
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').customer_id, customerId);
+        assert.equal(state.banquetGroups[0].customer_id, customerId);
+        assert.equal(data.primaryBooking.customerId, customerId);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT', customer_id: null,
+            date: '2099-06-01', room: 'Room A', group_name: 'Customerless banquet', status: 'active', source: 'test',
+            meta: {}, updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
         }]
     });
 });

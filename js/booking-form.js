@@ -250,10 +250,14 @@ window.BookingForm = {
 (function() {
     let _templates = [];
 
+    function bookingTemplateAuthHeaders(withContentType = false) {
+        return typeof getAuthHeaders === 'function' ? getAuthHeaders(withContentType) : {};
+    }
+
     async function loadTemplates() {
         try {
             const res = await fetch('/api/booking-templates', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: bookingTemplateAuthHeaders(false)
             });
             if (!res.ok) return;
             _templates = await res.json();
@@ -310,7 +314,7 @@ window.BookingForm = {
         // Increment usage count
         fetch(`/api/booking-templates/${t.id}/use`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            headers: bookingTemplateAuthHeaders(false)
         }).catch(() => {});
 
         if (typeof showNotification === 'function') {
@@ -358,10 +362,7 @@ window.BookingForm = {
         try {
             const res = await fetch('/api/booking-templates', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
+                headers: bookingTemplateAuthHeaders(true),
                 body: JSON.stringify(body)
             });
             if (res.ok) {

@@ -207,7 +207,7 @@ test('staff schedule release verification stays standalone, complete, and read-o
 
     assert.equal(
         packageJson.scripts['test:staff-schedule'],
-        'node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js'
+        'node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js tests/staff-schedule-workbook.test.js'
     );
     assert.equal(
         packageJson.scripts['test:browser:staff-schedule'],
@@ -219,7 +219,8 @@ test('staff schedule release verification stays standalone, complete, and read-o
     );
     for (const focusedTest of [
         'tests/staff-schedule-history-static.test.js',
-        'tests/staff-schedule-audit-static.test.js'
+        'tests/staff-schedule-audit-static.test.js',
+        'tests/staff-schedule-workbook.test.js'
     ]) {
         assert.match(packageJson.scripts['test:unit'], new RegExp(focusedTest.replaceAll('.', '\\.')));
     }

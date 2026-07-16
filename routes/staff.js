@@ -117,6 +117,7 @@ const {
     professionToAccountRole,
     isProtectedSystemAccount
 } = require('../services/accountOnboarding');
+const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleWorkbook');
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
 const log = createLogger('Staff');
@@ -804,6 +805,25 @@ router.get('/schedule', async (req, res) => {
     } catch (err) {
         log.error('GET /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/staff/schedule/export-xlsx — render the current visible schedule as a real multi-sheet workbook
+router.post('/schedule/export-xlsx', async (req, res) => {
+    try {
+        const { buffer, filename } = await buildStaffScheduleWorkbookBuffer(req.body || {});
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.send(buffer);
+    } catch (err) {
+        const status = err.statusCode === 400 ? 400 : 500;
+        if (status === 500) log.error('POST /staff/schedule/export-xlsx error', err);
+        res.status(status).json({
+            success: false,
+            error: status === 400 ? err.message : 'Не вдалося сформувати Excel-файл'
+        });
     }
 });
 

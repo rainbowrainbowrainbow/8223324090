@@ -5,7 +5,7 @@
  * Read-only live/staging browser smoke for the staff schedule page.
  *
  * Read-only guarantee:
- * - Uses POST only for authentication when token auth is not provided.
+ * - Uses POST only for authentication and the read-only XLSX renderer.
  * - Never clicks add/fill/copy/import controls and never edits schedule cells.
  * - Fails the run if a staff mutation endpoint is requested by the browser.
  * - Never writes staff names, IDs, credentials, or tokens to stdout/stderr.
@@ -19,6 +19,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const ExcelJS = require('exceljs');
 
 const ROOT = path.join(__dirname, '..');
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
@@ -187,6 +188,7 @@ function isForbiddenStaffMutation(method, pathname) {
     const normalizedMethod = String(method || '').toUpperCase();
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod)) return false;
     if (pathname === '/api/auth/login' || pathname === '/api/auth/refresh' || pathname === '/api/auth/logout') return false;
+    if (pathname === '/api/staff/schedule/export-xlsx' && normalizedMethod === 'POST') return false;
     if (pathname === '/api/staff/schedule/bulk') return true;
     if (pathname === '/api/staff/schedule/copy-week') return true;
     if (pathname === '/api/staff/import-excel') return true;
@@ -551,49 +553,51 @@ async function fillPrivateScheduleSearch(page, privateValue) {
     }, privateValue);
 }
 
-function scheduleExportStaffIdsFromHtml(html) {
-    return Array.from(
-        String(html || '').matchAll(/\bdata-schedule-export-staff-id="(\d+)"/g),
-        match => Number(match[1])
-    );
-}
-
-function scheduleExportStaffPlacementsFromHtml(html) {
-    return Array.from(
-        String(html || '').matchAll(/\bdata-schedule-export-staff-id="(\d+)"\s+data-schedule-export-department="([^"]+)"/g),
-        match => ({ id: Number(match[1]), department: match[2] })
-    );
-}
-
-async function captureScheduleWorkbookHtml(page) {
+async function captureScheduleWorkbook(page) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
     const download = await downloadPromise;
     try {
         const downloadPath = await download.path();
         assert.equal(Boolean(downloadPath), true, 'workbook download has a readable temporary path');
-        return fs.readFileSync(downloadPath, 'utf8').replace(/^\uFEFF/, '');
+        const buffer = fs.readFileSync(downloadPath);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const sheets = workbook.worksheets.map(worksheet => {
+            const rows = [];
+            for (let rowNumber = 4; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+                const id = Number(worksheet.getCell(rowNumber, 1).value);
+                if (!Number.isSafeInteger(id) || id <= 0) continue;
+                rows.push({
+                    id,
+                    department: String(worksheet.getCell(rowNumber, 2).value || '')
+                });
+            }
+            return { name: worksheet.name, rows };
+        });
+        return { filename: download.suggestedFilename(), buffer, sheets, rows: sheets.flatMap(sheet => sheet.rows) };
     } finally {
         await download.delete().catch(() => {});
     }
 }
 
 async function assertWorkbookStaffSetParity(page, expectedIds, label) {
-    const html = await captureScheduleWorkbookHtml(page);
-    const exportedIds = scheduleExportStaffIdsFromHtml(html);
-    const exportRowAttributeCount = (html.match(/\bdata-schedule-export-staff-id=/g) || []).length;
+    const workbook = await captureScheduleWorkbook(page);
+    const exportedIds = workbook.rows.map(row => row.id);
 
-    assert.equal(html.includes('schedule-export-table'), true, `${label}: generated workbook contains the schedule table`);
-    assert.equal(exportRowAttributeCount, exportedIds.length, `${label}: every workbook staff row has a numeric ID`);
+    assert.match(workbook.filename, /^grafik_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
+    assert.equal(workbook.buffer.subarray(0, 2).equals(Buffer.from('PK')), true, `${label}: generated file is a real xlsx workbook`);
+    assert.equal(workbook.sheets.every(sheet => sheet.rows.length > 0), true, `${label}: every workbook sheet owns staff rows`);
     assert.equal(staffIdsAreUnique(exportedIds), true, `${label}: workbook staff IDs are unique`);
     assert.equal(staffIdSetsMatch(expectedIds, exportedIds), true, `${label}: workbook staff set exactly matches the visible table`);
 }
 
 async function assertWorkbookStaffPlacementParity(page, expectedPlacements, label) {
-    const html = await captureScheduleWorkbookHtml(page);
-    const exportedPlacements = scheduleExportStaffPlacementsFromHtml(html);
+    const workbook = await captureScheduleWorkbook(page);
+    const exportedPlacements = workbook.rows;
 
-    assert.equal(html.includes('schedule-export-table'), true, `${label}: generated workbook contains the schedule table`);
+    assert.equal(workbook.sheets.every(sheet => sheet.rows.length > 0), true, `${label}: every department worksheet owns staff rows`);
+    assert.equal(workbook.sheets.length, new Set(exportedPlacements.map(row => row.department)).size, `${label}: each department has one worksheet`);
     assert.equal(staffPlacementsAreUnique(exportedPlacements), true, `${label}: workbook placements are unique within each professional section`);
     assert.equal(
         staffPlacementSetsMatch(expectedPlacements, exportedPlacements),
@@ -1103,7 +1107,7 @@ async function assertExportFilename(page, range) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
     const download = await downloadPromise;
-    assert.equal(download.suggestedFilename(), `grafik_${range.from}_${range.to}.xls`, 'export filename uses selected period');
+    assert.equal(download.suggestedFilename(), `grafik_${range.from}_${range.to}.xlsx`, 'export filename uses selected period');
     await download.delete().catch(() => {});
 }
 
@@ -1244,7 +1248,7 @@ async function runDesktopFlow(browser, base, session) {
             firstHalf: `${firstHalf.from}..${firstHalf.to}`,
             secondHalf: `${secondHalf.from}..${secondHalf.to}`,
             month: `${monthRange.from}..${monthRange.to}`,
-            exportFilename: `grafik_${monthRange.from}_${monthRange.to}.xls`,
+            exportFilename: `grafik_${monthRange.from}_${monthRange.to}.xlsx`,
             headerActions: 'export/print',
             filteredGroups: 'active-department-only',
             commercialContracts

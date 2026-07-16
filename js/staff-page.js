@@ -6726,11 +6726,28 @@ function scheduleExportCell(entry) {
     if (note) lines.push(note);
     return {
         status: String(status || 'unset').replace(/[^a-z0-9_-]/gi, ''),
+        text: lines.join('\n'),
         html: lines.map(escapeHtml).join('<br>')
     };
 }
 
-function buildScheduleWorkbookHtml(options = {}) {
+function scheduleWorkbookSafeWorksheetName(label = '', usedNames = new Set()) {
+    const cleaned = String(label || '')
+        .replace(/[\\/?*\[\]:]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const base = (cleaned || 'Графік').slice(0, 31) || 'Графік';
+    let name = base;
+    let counter = 2;
+    while (usedNames.has(name.toLowerCase())) {
+        const suffix = ` ${counter++}`;
+        name = `${base.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+    }
+    usedNames.add(name.toLowerCase());
+    return name;
+}
+
+function buildScheduleWorkbookModel() {
     const dates = getScheduleDates();
     const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
     const grouped = groupStaffByScheduleDepartment(exportStaff, {
@@ -6739,19 +6756,16 @@ function buildScheduleWorkbookHtml(options = {}) {
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
     const periodLabel = formatScheduleRangeLabel(from, to);
-    const columnCount = dates.length + 4;
     const generatedAt = new Date().toLocaleString('uk-UA');
-    const headerCells = dates.map(d => `
-            <th scope="col" class="date-col">
-                <div>${escapeHtml(String(d.getDate()))}</div>
-                <small>${escapeHtml(STAFF_SCHEDULE_DAYS_UK[d.getDay()] || '')}</small>
-            </th>`).join('');
-    let bodyRows = '';
+    const usedSheetNames = new Set();
+    const sheets = [];
 
     for (const dept of scheduleDepartmentRenderOrder(grouped)) {
         const deptStaff = grouped[dept] || [];
         if (deptStaff.length === 0) continue;
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
+        const sheetName = scheduleWorkbookSafeWorksheetName(deptLabel, usedSheetNames);
+        const rows = [];
         const subGroups = DEPT_SUB_GROUPS[dept];
         const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
             activeDepartment: dept
@@ -6759,33 +6773,26 @@ function buildScheduleWorkbookHtml(options = {}) {
         const renderableSubGroups = subGroupPartition.groups
             .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
 
-        bodyRows += `
-        <tr class="dept-row">
-            <td colspan="${columnCount}">${escapeHtml(deptLabel)} · ${deptStaff.length}</td>
-        </tr>`;
-
         const renderStaffRow = (emp, subGroup = null) => {
             const staffId = normalizeScheduleStaffId(emp.id);
             const subGroupIdentity = scheduleSubGroupIdentity(subGroup || {});
             const subGroupLabel = subGroup?.label || '';
-            const subGroupAttributes = subGroupIdentity
-                ? ` data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(subGroupLabel)}"`
-                : '';
             const cells = [];
             for (const d of dates) {
                 const ds = formatDateStr(d);
                 const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                const cell = scheduleExportCell(entry);
-                cells.push(`<td class="shift-cell status-${escapeHtml(cell.status)}">${cell.html || '&nbsp;'}</td>`);
+                cells.push(scheduleExportCell(entry));
             }
-            bodyRows += `
-        <tr data-schedule-export-staff-id="${staffId}" data-schedule-export-department="${escapeHtml(dept)}"${subGroupAttributes}>
-            <td class="dept-cell">${escapeHtml(deptLabel)}</td>
-            <td class="subgroup-cell">${escapeHtml(subGroupLabel)}</td>
-            <td class="employee-cell">${escapeHtml(scheduleStaffDisplayName(emp))}</td>
-            <td class="role-cell">${escapeHtml(staffCardRoleSummary(emp) || emp.position || '')}</td>
-            ${cells.join('')}
-        </tr>`;
+            rows.push({
+                staffId,
+                department: dept,
+                departmentLabel: deptLabel,
+                subGroupIdentity,
+                subGroupLabel,
+                employee: scheduleStaffDisplayName(emp),
+                role: staffCardRoleSummary(emp) || emp.position || '',
+                cells
+            });
         };
 
         const renderedStaffIds = new Set();
@@ -6800,26 +6807,104 @@ function buildScheduleWorkbookHtml(options = {}) {
             const staffId = normalizeScheduleStaffId(emp.id);
             renderStaffRow(emp, subGroupPartition.ownershipByStaffId.get(staffId) || null);
         }
+
+        sheets.push({ dept, deptLabel, sheetName, rows });
     }
 
-    if (!bodyRows) {
-        bodyRows = `<tr><td colspan="${columnCount}" class="empty-cell">Немає співробітників у поточному фільтрі</td></tr>`;
+    if (!sheets.length) {
+        const sheetName = scheduleWorkbookSafeWorksheetName('Графік', usedSheetNames);
+        sheets.push({
+            dept: '',
+            deptLabel: 'Графік роботи',
+            sheetName,
+            rows: []
+        });
     }
+
+    return {
+        period: {
+            from: formatDateStr(from),
+            to: formatDateStr(to),
+            label: periodLabel,
+            generatedAt
+        },
+        dates: dates.map(date => ({
+            date: formatDateStr(date),
+            day: String(date.getDate()),
+            weekday: STAFF_SCHEDULE_DAYS_UK[date.getDay()] || ''
+        })),
+        sheets
+    };
+}
+
+function buildScheduleWorkbookExportPayload() {
+    const model = buildScheduleWorkbookModel();
+    return {
+        period: model.period,
+        dates: model.dates,
+        sheets: model.sheets.map(sheet => ({
+            name: sheet.sheetName,
+            label: sheet.deptLabel,
+            rows: sheet.rows.map(row => ({
+                staffId: row.staffId,
+                department: row.department,
+                departmentLabel: row.departmentLabel,
+                subGroupLabel: row.subGroupLabel,
+                employee: row.employee,
+                role: row.role,
+                cells: row.cells.map(cell => ({ status: cell.status, text: cell.text }))
+            }))
+        }))
+    };
+}
+
+function buildScheduleWorkbookHtml(options = {}) {
+    const model = buildScheduleWorkbookModel();
+    const columnCount = model.dates.length + 4;
+    const headerCells = model.dates.map(date => `
+            <th scope="col" class="date-col">
+                <div>${escapeHtml(date.day)}</div>
+                <small>${escapeHtml(date.weekday)}</small>
+            </th>`).join('');
+    const renderBodyRows = sheet => {
+        if (!sheet.rows.length) {
+            return `<tr><td colspan="${columnCount}" class="empty-cell">Немає співробітників у поточному фільтрі</td></tr>`;
+        }
+        const departmentRow = `<tr class="dept-row"><td colspan="${columnCount}">${escapeHtml(sheet.deptLabel)} · ${sheet.rows.length}</td></tr>`;
+        const staffRows = sheet.rows.map(row => {
+            const subGroupAttributes = row.subGroupIdentity
+                ? ` data-schedule-subgroup="${escapeHtml(row.subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(row.subGroupLabel)}"`
+                : '';
+            const cells = row.cells
+                .map(cell => `<td class="shift-cell status-${escapeHtml(cell.status)}">${cell.html || '&nbsp;'}</td>`)
+                .join('');
+            return `<tr data-schedule-export-staff-id="${row.staffId}" data-schedule-export-department="${escapeHtml(row.department)}"${subGroupAttributes}>
+            <td class="dept-cell">${escapeHtml(row.departmentLabel)}</td>
+            <td class="subgroup-cell">${escapeHtml(row.subGroupLabel)}</td>
+            <td class="employee-cell">${escapeHtml(row.employee)}</td>
+            <td class="role-cell">${escapeHtml(row.role)}</td>
+            ${cells}
+        </tr>`;
+        }).join('\n        ');
+        return `${departmentRow}\n        ${staffRows}`;
+    };
 
     const printCss = options.print ? `
         @page { size: landscape; margin: 10mm; }
         body { background: #fff; }
         .sheet { box-shadow: none; padding: 0; }
+        .sheet:not(:last-child) { page-break-after: always; break-after: page; }
     ` : '';
 
     return `<!doctype html>
-<html>
+<html lang="uk">
 <head>
     <meta charset="utf-8">
-    <title>Графік роботи ${escapeHtml(periodLabel)}</title>
+    <title>Графік роботи ${escapeHtml(model.period.label)}</title>
     <style>
         body { margin: 0; padding: 18px; background: #eef2f7; color: #111827; font-family: Calibri, Arial, sans-serif; }
         .sheet { background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12); }
+        .sheet + .sheet { margin-top: 18px; }
         h1 { margin: 0 0 4px; font-size: 22px; color: #0f172a; }
         .meta { margin: 0 0 14px; color: #475569; font-size: 13px; }
         table.schedule-export-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 12px; }
@@ -6843,9 +6928,9 @@ function buildScheduleWorkbookHtml(options = {}) {
     </style>
 </head>
 <body>
-    <div class="sheet">
-        <h1>Графік роботи</h1>
-        <p class="meta">Період: ${escapeHtml(periodLabel)} · Згенеровано: ${escapeHtml(generatedAt)}</p>
+    ${model.sheets.map(sheet => `<div class="sheet" data-schedule-workbook-sheet="${escapeHtml(sheet.sheetName)}" data-schedule-workbook-department="${escapeHtml(sheet.dept)}">
+        <h1>Графік роботи · ${escapeHtml(sheet.deptLabel)}</h1>
+        <p class="meta">Період: ${escapeHtml(model.period.label)} · Відділ: ${escapeHtml(sheet.deptLabel)} · Згенеровано: ${escapeHtml(model.period.generatedAt)}</p>
         <table class="schedule-export-table">
             <thead>
                 <tr>
@@ -6856,39 +6941,53 @@ function buildScheduleWorkbookHtml(options = {}) {
                     ${headerCells}
                 </tr>
             </thead>
-            <tbody>${bodyRows}
+            <tbody>${renderBodyRows(sheet)}
             </tbody>
         </table>
-    </div>
+    </div>`).join('\n    ')}
 </body>
 </html>`;
 }
 
-function handleExcelExport() {
+async function handleExcelExport() {
     if (!scheduleRangeDataReady()) {
         showNotification('Експорт доступний лише для підтвердженого періоду', 'error');
         return false;
     }
-    const dates = getScheduleDates();
-    const from = dates[0];
-    const to = getScheduleRangeEnd(dates);
-    const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.xls`;
-    const blob = new Blob(['\ufeff', buildScheduleWorkbookHtml()], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const touchWindow = typeof openTouchDownloadWindow === 'function'
         ? openTouchDownloadWindow('Графік Excel')
         : null;
-    if (typeof finishBlobDownload === 'function') {
-        finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Графік експортовано в Excel' });
-    } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('Графік експортовано в Excel');
+    try {
+        const payload = buildScheduleWorkbookExportPayload();
+        const response = await staffApiFetch('/api/staff/schedule/export-xlsx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errorPayload = await response.json().catch(() => ({}));
+            throw new Error(errorPayload.error || 'Не вдалося сформувати Excel-файл');
+        }
+        const blob = await response.blob();
+        const filename = `grafik_${payload.period.from}_${payload.period.to}.xlsx`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Графік експортовано в Excel' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('Графік експортовано в Excel');
+        }
+        return true;
+    } catch (err) {
+        if (touchWindow && !touchWindow.closed && typeof touchWindow.close === 'function') touchWindow.close();
+        console.error('Staff schedule Excel export error:', err);
+        showNotification(err.message || 'Не вдалося експортувати графік', 'error');
+        return false;
     }
-    return true;
 }
 
 // ==========================================

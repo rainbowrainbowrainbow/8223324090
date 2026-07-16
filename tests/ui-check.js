@@ -1744,6 +1744,7 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleGroupStaffBlock = staffFunctionBlock('groupStaffByScheduleDepartment');
     const staffScheduleFinalVisibleBlock = staffFunctionBlock('scheduleFinalVisibleStaffSnapshot');
     const staffScheduleExportVisibleBlock = staffFunctionBlock('scheduleExportVisibleStaff');
+    const staffScheduleWorkbookModelBlock = staffFunctionBlock('buildScheduleWorkbookModel');
     const staffScheduleWorkbookBlock = staffFunctionBlock('buildScheduleWorkbookHtml');
     const staffScheduleDisplayNameBlock = staffFunctionBlock('scheduleStaffDisplayName');
     const staffScheduleFillModalBlock = staffFunctionBlock('openFillWeekModal');
@@ -2237,8 +2238,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleDisplayNameBlock.includes('staff.display_name || staff.displayName || staff.name')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-staff-id=')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-department=')
-        && !staffScheduleWorkbookBlock.includes("grouping: 'membership'")
-        && staffScheduleWorkbookBlock.includes('scheduleStaffDisplayName(emp)')
+        && !staffScheduleWorkbookModelBlock.includes("grouping: 'membership'")
+        && staffScheduleWorkbookModelBlock.includes('scheduleStaffDisplayName(emp)')
         && staffScheduleBrowserSmokeCode.includes('const STAFF_API_ROWS =')
         && /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/.test(staffScheduleBrowserSmokeCode)
         && /secondary_professions:\s*\['manager',\s*'barista'\]/.test(staffScheduleBrowserSmokeCode)
@@ -2266,9 +2267,10 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleRangeNavigationBlock.includes('fetchScheduleHours(target.from, target.to, requestOptions)')
         && staffScheduleLoadViewBlock.includes('const dates = getScheduleDates()')
         && staffScheduleLoadViewBlock.includes("syncScheduleRangeLayout('loadViewWrapper', dates, 'load')")
-        && staffScheduleExportBlock.includes('const dates = getScheduleDates()')
-        && staffScheduleExportBlock.includes('const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.xls`;')
-        && staffScheduleExportBlock.includes('application/vnd.ms-excel')
+        && staffScheduleExportBlock.includes('buildScheduleWorkbookExportPayload()')
+        && staffScheduleExportBlock.includes("staffApiFetch('/api/staff/schedule/export-xlsx'")
+        && staffScheduleExportBlock.includes('response.blob()')
+        && staffScheduleExportBlock.includes('const filename = `grafik_${payload.period.from}_${payload.period.to}.xlsx`;')
         && staffCode.includes('function buildScheduleWorkbookHtml')
         && staffCode.includes('schedule-export-table')
         && staffCode.includes('StaffState.scheduleLoadedRange')

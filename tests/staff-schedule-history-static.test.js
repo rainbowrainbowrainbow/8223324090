@@ -9,6 +9,7 @@ const hrRoute = fs.readFileSync('routes/hr.js', 'utf8');
 const staffDisplayGroupService = fs.readFileSync('services/staffDisplayGroups.js', 'utf8');
 const staffOperationalFilters = fs.readFileSync('services/staffOperationalFilters.js', 'utf8');
 const staffScheduleMutations = fs.readFileSync('services/staffScheduleMutations.js', 'utf8');
+const staffScheduleWorkbookService = fs.readFileSync('services/staffScheduleWorkbook.js', 'utf8');
 const hrPage = fs.readFileSync('js/hr-page.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const uiPage = fs.readFileSync('js/ui.js', 'utf8');
@@ -83,6 +84,8 @@ window.__staffScheduleBehaviorApi = {
     renderScheduleCellSegments,
     scheduleCellAriaLabel,
     renderScheduleHealthBadges,
+    buildScheduleWorkbookModel,
+    buildScheduleWorkbookExportPayload,
     buildScheduleWorkbookHtml
 };
 ${marker}`);
@@ -1352,8 +1355,14 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function scheduleExportVisibleStaff\(\) \{[\s\S]*scheduleFinalVisibleStaffSnapshot\(/);
         assert.match(staffPage, /const visibleSnapshot = scheduleFinalVisibleStaffSnapshot\(StaffState\.staff, dates\)/);
         assert.match(staffPage, /const grouped = groupStaffByScheduleDepartment\(filtered, \{[\s\S]*department: StaffState\.activeDept[\s\S]*\}\)/);
-        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{[\s\S]*department: StaffState\.activeDept[\s\S]*\}\)/);
-        assert.match(staffPage, /function buildScheduleWorkbookHtml\(options = \{\}\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
+        assert.match(staffPage, /function buildScheduleWorkbookModel\(\) \{[\s\S]*const exportStaff = uniqueScheduleStaffById\(scheduleExportVisibleStaff\(\)\)[\s\S]*const grouped = groupStaffByScheduleDepartment\(exportStaff, \{[\s\S]*department: StaffState\.activeDept[\s\S]*\}\)/);
+        assert.match(staffPage, /function buildScheduleWorkbookModel\(\) \{[\s\S]*const deptLabel = scheduleDisplayDepartmentLabel\(dept\)/);
+        assert.match(staffPage, /function scheduleWorkbookSafeWorksheetName/);
+        assert.match(staffPage, /function buildScheduleWorkbookExportPayload/);
+        assert.match(staffPage, /data-schedule-workbook-sheet/);
+        assert.match(routePostBlock('/schedule/export-xlsx'), /buildStaffScheduleWorkbookBuffer\(req\.body \|\| \{\}\)/);
+        assert.match(staffScheduleWorkbookService, /new ExcelJS\.Workbook\(\)/);
+        assert.match(staffScheduleWorkbookService, /workbook\.addWorksheet/);
         assert.match(staffPage, /const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set\(\['animators', 'trampoline', 'cafe', 'cleaning'\]\)/);
         assert.match(staffPage, /const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set\(\['reception', 'tech', 'admin'\]\)/);
         assert.match(staffPage, /function scheduleCopyWeekModeForDepartment/);
@@ -1385,6 +1394,7 @@ describe('staff schedule safety guards', () => {
         const exportVisibleBlock = namedFunctionBlock(staffPage, 'scheduleExportVisibleStaff');
         const workbookBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookHtml');
         const displayNameBlock = namedFunctionBlock(staffPage, 'scheduleStaffDisplayName');
+        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         const professionContextBlock = namedFunctionBlock(staffPage, 'scheduleProfessionKeyForDepartment');
         const openCellBlock = namedFunctionBlock(staffPage, 'openScheduleCell');
         const openEditBlock = namedFunctionBlock(staffPage, 'openEditModal');
@@ -1429,8 +1439,8 @@ describe('staff schedule safety guards', () => {
         assert.match(displayNameBlock, /staff\.display_name \|\| staff\.displayName \|\| staff\.name/);
         assert.match(workbookBlock, /data-schedule-export-staff-id=/);
         assert.match(workbookBlock, /data-schedule-export-department=/);
-        assert.doesNotMatch(workbookBlock, /grouping: 'membership'/);
-        assert.match(workbookBlock, /scheduleStaffDisplayName\(emp\)/);
+        assert.doesNotMatch(workbookModelBlock, /grouping: 'membership'/);
+        assert.match(workbookModelBlock, /scheduleStaffDisplayName\(emp\)/);
 
         assert.match(staffScheduleBrowserSmoke, /const STAFF_API_ROWS\s*=/);
         assert.match(staffScheduleBrowserSmoke, /role_type:\s*'senior_manager'/);
@@ -1612,13 +1622,20 @@ describe('staff schedule safety guards', () => {
             html.matchAll(/data-schedule-export-staff-id="(\d+)" data-schedule-export-department="([^"]+)"/g),
             match => `${match[2]}:${Number(match[1])}`
         ).sort();
-        const workbookIds = exportedIds(api.buildScheduleWorkbookHtml());
-        const printIds = exportedIds(api.buildScheduleWorkbookHtml({ print: true }));
+        const allWorkbookPayload = JSON.parse(JSON.stringify(api.buildScheduleWorkbookExportPayload()));
+        const allPrintHtml = api.buildScheduleWorkbookHtml({ print: true });
+        const workbookRows = allWorkbookPayload.sheets.flatMap(sheet => sheet.rows);
+        const workbookIds = workbookRows.map(row => Number(row.staffId));
+        const printIds = exportedIds(allPrintHtml);
         const expectedPlacements = Object.entries(canonicalGrouped)
             .flatMap(([department, ids]) => ids.map(id => `${department}:${id}`))
             .sort();
-        assert.deepEqual(exportedPlacements(api.buildScheduleWorkbookHtml()), expectedPlacements);
-        assert.deepEqual(exportedPlacements(api.buildScheduleWorkbookHtml({ print: true })), expectedPlacements);
+        assert.deepEqual(allWorkbookPayload.sheets.map(sheet => sheet.name), ['Reception', 'Admin', 'Cafe']);
+        assert.deepEqual(
+            workbookRows.map(row => `${row.department}:${Number(row.staffId)}`).sort(),
+            expectedPlacements
+        );
+        assert.deepEqual(exportedPlacements(allPrintHtml), expectedPlacements);
         assert.equal(new Set(workbookIds).size, allVisibleIds.length, 'workbook still contains the unique visible staff set');
         assert.equal(new Set(printIds).size, allVisibleIds.length, 'print still contains the unique visible staff set');
 
@@ -1627,7 +1644,8 @@ describe('staff schedule safety guards', () => {
         const receptionGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds(staff, { department: 'reception' })));
         assert.equal(receptionVisibleIds.join(','), '101', 'secondary reception membership survives active filter and search');
         assert.deepEqual(receptionGrouped, { reception: [101, 103] });
-        assert.equal(exportedIds(api.buildScheduleWorkbookHtml()).join(','), '101');
+        const receptionWorkbookPayload = JSON.parse(JSON.stringify(api.buildScheduleWorkbookExportPayload()));
+        assert.equal(receptionWorkbookPayload.sheets.flatMap(sheet => sheet.rows).map(row => row.staffId).join(','), '101');
         assert.equal(exportedIds(api.buildScheduleWorkbookHtml({ print: true })).join(','), '101');
     });
 
@@ -1672,6 +1690,7 @@ describe('staff schedule safety guards', () => {
         const renderBlock = namedFunctionBlock(staffPage, 'renderSchedule');
         const workbookBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookHtml');
 
+        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         assert.match(staffPage, /key:\s*'trampoline_instructor,senior_instructor,instructor',\s*label:\s*'Батутисти'/);
         assert.match(staffPage, /trampoline:\s*\[\s*\{\s*key:\s*'trampoline_instructor,senior_instructor,instructor'/);
         assert.match(staffPage, /function departmentSubGroupDepartmentKeys/);
@@ -1686,9 +1705,9 @@ describe('staff schedule safety guards', () => {
         assert.match(partitionBlock, /uniqueScheduleStaffById\(deptStaff \|\| \[\]\)/);
         assert.match(partitionBlock, /ownershipByStaffId\.set\(staffId, subGroup\)/);
         assert.match(renderBlock, /partitionScheduleStaffBySubGroup\(dept, deptStaff, subGroups/);
-        assert.match(workbookBlock, /partitionScheduleStaffBySubGroup\(dept, deptStaff, subGroups/);
+        assert.match(workbookModelBlock, /partitionScheduleStaffBySubGroup\(dept, deptStaff, subGroups/);
         assert.match(renderBlock, /const renderedStaffIds = new Set\(\)/);
-        assert.match(workbookBlock, /const renderedStaffIds = new Set\(\)/);
+        assert.match(workbookModelBlock, /const renderedStaffIds = new Set\(\)/);
         assert.match(renderEmpRowBlock, /data-schedule-subgroup-label/);
         assert.match(workbookBlock, /data-schedule-subgroup-label/);
         assert.match(staffPage, /placeholder:\s*'host, trampoline_instructor'/);

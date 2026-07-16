@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const ExcelJS = require('exceljs');
+const { buildStaffScheduleWorkbookBuffer } = require('../../services/staffScheduleWorkbook');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.STAFF_SCHEDULE_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -699,6 +701,17 @@ async function handleApi(req, res, url) {
         });
         return true;
     }
+    if (url.pathname === '/api/staff/schedule/export-xlsx' && req.method === 'POST') {
+        const payload = await collectJson(req);
+        const { buffer, filename } = await buildStaffScheduleWorkbookBuffer(payload);
+        res.writeHead(200, {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Content-Length': buffer.length
+        });
+        res.end(buffer);
+        return true;
+    }
     if (url.pathname === '/api/staff/schedule' && req.method === 'PUT') {
         const body = await collectJson(req);
         const staffId = Number(body.staffId);
@@ -1366,15 +1379,39 @@ function scheduleExportStaffRowsFromHtml(html) {
     );
 }
 
-async function captureScheduleWorkbookHtml(page) {
+async function parseScheduleWorkbook(buffer) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const rows = [];
+    const sheets = workbook.worksheets.map(worksheet => {
+        const sheetRows = [];
+        for (let rowNumber = 4; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+            const id = Number(worksheet.getCell(rowNumber, 1).value);
+            if (!Number.isSafeInteger(id) || id <= 0) continue;
+            const row = {
+                id,
+                department: String(worksheet.getCell(rowNumber, 2).value || ''),
+                name: String(worksheet.getCell(rowNumber, 5).value || ''),
+                worksheet: worksheet.name
+            };
+            rows.push(row);
+            sheetRows.push(row);
+        }
+        return { name: worksheet.name, rows: sheetRows };
+    });
+    return { rows, sheets };
+}
+
+async function captureScheduleWorkbook(page) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#exportExcelBtn').click();
     const download = await downloadPromise;
     const downloadPath = await download.path();
     assert.ok(downloadPath, 'workbook download has a readable local path');
-    const html = fs.readFileSync(downloadPath, 'utf8').replace(/^\uFEFF/, '');
+    const buffer = fs.readFileSync(downloadPath);
+    const filename = download.suggestedFilename();
     await download.delete().catch(() => {});
-    return html;
+    return { buffer, filename };
 }
 
 async function captureSchedulePrintHtml(page) {
@@ -1399,14 +1436,19 @@ async function captureSchedulePrintHtml(page) {
 
 async function assertScheduleExportParity(page, expectedIds, label) {
     const visibleRows = await scheduleStaffRowsFromDom(page);
-    const workbookHtml = await captureScheduleWorkbookHtml(page);
+    const workbookDownload = await captureScheduleWorkbook(page);
+    const workbook = await parseScheduleWorkbook(workbookDownload.buffer);
     const printHtml = await captureSchedulePrintHtml(page);
-    const workbookIds = scheduleExportStaffIdsFromHtml(workbookHtml);
+    const workbookIds = workbook.rows.map(row => row.id);
     const printIds = scheduleExportStaffIdsFromHtml(printHtml);
-    const workbookRows = scheduleExportStaffRowsFromHtml(workbookHtml);
+    const workbookRows = workbook.rows;
     const printRows = scheduleExportStaffRowsFromHtml(printHtml);
 
     assert.deepEqual(sortedScheduleStaffIds(visibleRows.map(row => row.id)), sortedScheduleStaffIds(expectedIds), `${label}: expected staff set is the visible table set`);
+    assert.match(workbookDownload.filename, /^grafik_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
+    assert.ok(workbookDownload.buffer.subarray(0, 2).equals(Buffer.from('PK')), `${label}: export is a real xlsx workbook`);
+    assert.equal(workbook.sheets.every(sheet => sheet.rows.length > 0), true, `${label}: every exported worksheet owns staff rows`);
+    assert.equal(workbook.sheets.length, new Set(workbookRows.map(row => row.department)).size, `${label}: each department has one non-empty worksheet`);
     assertUniqueScheduleStaffPlacements(visibleRows, `${label} table`);
     assertUniqueScheduleStaffPlacements(workbookRows, `${label} workbook`);
     assertUniqueScheduleStaffPlacements(printRows, `${label} print`);
@@ -1435,8 +1477,9 @@ async function assertScheduleExportParity(page, expectedIds, label) {
     }
 
     if (expectedIds.includes(101)) {
-        assert.match(workbookHtml, /Віталіна Синіпол/, `${label}: workbook prefers display_name`);
-        assert.doesNotMatch(workbookHtml, /Синіпол Віталіна \(QA fixture\)/, `${label}: workbook does not replace display_name with legal name`);
+        const workbookNames = workbookRows.map(row => row.name).join('\n');
+        assert.match(workbookNames, /Віталіна Синіпол/, `${label}: workbook prefers display_name`);
+        assert.doesNotMatch(workbookNames, /Синіпол Віталіна \(QA fixture\)/, `${label}: workbook does not replace display_name with legal name`);
         assert.match(printHtml, /Віталіна Синіпол/, `${label}: print prefers display_name`);
         assert.doesNotMatch(printHtml, /Синіпол Віталіна \(QA fixture\)/, `${label}: print does not replace display_name with legal name`);
     }
@@ -3377,7 +3420,7 @@ async function runDesktopFlow(browser, base) {
         const downloadPromise = page.waitForEvent('download');
         await page.locator('#exportExcelBtn').click();
         const download = await downloadPromise;
-        assert.equal(download.suggestedFilename(), `grafik_${firstHalfFrom}_${firstHalfTo}.xls`, 'export filename uses selected first-half range as an Excel workbook');
+        assert.equal(download.suggestedFilename(), `grafik_${firstHalfFrom}_${firstHalfTo}.xlsx`, 'export filename uses selected first-half range as an Excel workbook');
         await page.evaluate(() => {
             window.__staffSchedulePrintCount = 0;
             window.__staffSchedulePrintHtml = '';

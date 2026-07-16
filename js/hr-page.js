@@ -76,13 +76,31 @@ const HR_PRINT_FONT_FIELDS = Object.freeze({
 const HR_PRINT_DEFAULT_TEXTS = Object.freeze({
     arrival_inout: Object.freeze({
         title: 'Лист приходу / уходу працівників',
-        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
+        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
+        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 вертикально • CRM Event Genix'
     }),
     month_grid: Object.freeze({
         title: 'Місячний табель-відмічалка',
+        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
+        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 горизонтально • CRM Event Genix'
+    })
+});
+const HR_PRINT_LEGACY_DEFAULT_TEXTS = Object.freeze({
+    arrival_inout: Object.freeze({
+        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
+        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
+    }),
+    month_grid: Object.freeze({
+        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
         footerNote: 'EG-FORMS-v27 • Місячний табель • A4 horizontal • CRM Event Genix'
     })
 });
+
+function isHrPrintDefaultText(templateId, key, value) {
+    if (!value) return false;
+    return value === HR_PRINT_DEFAULT_TEXTS[templateId]?.[key]
+        || value === HR_PRINT_LEGACY_DEFAULT_TEXTS[templateId]?.[key];
+}
 const HR_POOL_LABELS = {
     core: 'Основна команда',
     reserve: 'Резерв',
@@ -482,7 +500,8 @@ let hrPrintDocumentsState = {
     operationsLoading: false,
     automations: [],
     jobs: [],
-    editingAutomationId: null
+    editingAutomationId: null,
+    editingAutomationMonthlyInstruction: ''
 };
 let professionWorkspaceRequestSeq = 0;
 let professionWorkspaceState = {
@@ -1702,6 +1721,7 @@ function syncHrPrintPresetWarning() {
     const customizedText = Boolean(
         document.getElementById('hrPrintCustomTitle')?.value.trim()
         || document.getElementById('hrPrintCustomFooter')?.value.trim()
+        || hrPrintDocumentsState.editingAutomationMonthlyInstruction
     );
     document.getElementById('hrPrintPresetWarning')?.classList.toggle('hidden', !(customizedFonts || customizedText));
 }
@@ -1731,6 +1751,7 @@ function syncHrPrintTemplateFields() {
 function resetHrPrintPreset() {
     document.getElementById('hrPrintCustomTitle').value = '';
     document.getElementById('hrPrintCustomFooter').value = '';
+    hrPrintDocumentsState.editingAutomationMonthlyInstruction = '';
     renderHrPrintFontControls();
     invalidateHrPrintPreview('Еталон v27 відновлено. Сформуйте preview.');
     setHrPrintStatus('Налаштування шрифтів і текстів повернуто до еталону v27.', 'success');
@@ -1874,6 +1895,10 @@ async function loadHrPrintOperations({ silent = false } = {}) {
 
 function hrPrintAutomationPayload() {
     const request = hrPrintRequestPayload();
+    const texts = { ...request.texts };
+    if (hrPrintDocumentsState.editingAutomationMonthlyInstruction) {
+        texts.monthlyInstruction = hrPrintDocumentsState.editingAutomationMonthlyInstruction;
+    }
     const weekdays = Array.from(document.querySelectorAll('#hrPrintAutomationWeekdays input:checked')).map(input => Number(input.value));
     const name = document.getElementById('hrPrintAutomationName')?.value.trim() || '';
     if (!name) throw new Error('Вкажіть назву автоматизації.');
@@ -1893,7 +1918,7 @@ function hrPrintAutomationPayload() {
             rosterMode: request.rosterMode,
             locationShift: request.locationShift,
             markedBy: request.markedBy,
-            texts: request.texts,
+            texts,
             fontPreset: request.fontPreset
         }
     };
@@ -1901,6 +1926,7 @@ function hrPrintAutomationPayload() {
 
 function resetHrPrintAutomationEditor() {
     hrPrintDocumentsState.editingAutomationId = null;
+    hrPrintDocumentsState.editingAutomationMonthlyInstruction = '';
     const name = document.getElementById('hrPrintAutomationName');
     const enabled = document.getElementById('hrPrintAutomationEnabled');
     const save = document.getElementById('hrPrintAutomationSave');
@@ -1926,12 +1952,20 @@ function editHrPrintAutomation(id) {
         input.checked = (item.weekdays || []).includes(Number(input.value));
     });
     const settings = item.settings || {};
+    const monthlyInstruction = settings.texts?.monthlyInstruction || '';
+    hrPrintDocumentsState.editingAutomationMonthlyInstruction = monthlyInstruction
+        && !isHrPrintDefaultText(item.documentType, 'monthlyInstruction', monthlyInstruction)
+        ? monthlyInstruction
+        : '';
     document.getElementById('hrPrintDailyMode').value = settings.dailyMode || 'manual_blank';
     document.getElementById('hrPrintLocationShift').value = settings.locationShift || '';
     document.getElementById('hrPrintMarkedBy').value = settings.markedBy || '';
-    const defaults = HR_PRINT_DEFAULT_TEXTS[item.documentType] || {};
-    document.getElementById('hrPrintCustomTitle').value = settings.texts?.title && settings.texts.title !== defaults.title ? settings.texts.title : '';
-    document.getElementById('hrPrintCustomFooter').value = settings.texts?.footerNote && settings.texts.footerNote !== defaults.footerNote ? settings.texts.footerNote : '';
+    document.getElementById('hrPrintCustomTitle').value = settings.texts?.title && !isHrPrintDefaultText(item.documentType, 'title', settings.texts.title)
+        ? settings.texts.title
+        : '';
+    document.getElementById('hrPrintCustomFooter').value = settings.texts?.footerNote && !isHrPrintDefaultText(item.documentType, 'footerNote', settings.texts.footerNote)
+        ? settings.texts.footerNote
+        : '';
     renderHrPrintProfessionList();
     syncHrPrintTemplateFields();
     document.querySelectorAll('[data-hr-print-font]').forEach(input => {

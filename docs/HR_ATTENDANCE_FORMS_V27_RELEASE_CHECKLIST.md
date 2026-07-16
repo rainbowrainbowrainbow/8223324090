@@ -64,7 +64,7 @@ Generated artifacts анонімізовані та не мають потрап
 | Ширина name column | — | 59.8 mm | ☐ |
 | Ширина однієї day column | — | 7.35 mm | ☐ |
 | Ширина time box | 11.3 mm | — | ☐ |
-| Inner mark square | — | 4.7 × 4.7 mm | ☐ |
+| Повна зона ручного запису | — | приблизно 7.35 × 7.3 mm | ☐ |
 
 Додатково візуально перевірити:
 
@@ -73,7 +73,10 @@ Generated artifacts анонімізовані та не мають потрап
 - жоден ПІБ, category label або footer не обрізаний;
 - zebra rows, weekly separators та inactive days 29–31 читаються у grayscale;
 - на max-font preset текст не торкається рамок і не накладається на сусідні клітинки;
-- рядки та mark squares не зміщуються між сторінками.
+- усі active day cells чисті, без внутрішнього квадрата або штрихування;
+- числова легенда `0,5 / 0,75 / 1` читається на кожній місячній сторінці;
+- рукописне `0,75` вміщується в day cell без торкання рамки;
+- рядки та day columns не зміщуються між сторінками.
 
 ## 4. Live manual MVP QA
 
@@ -84,9 +87,10 @@ Generated artifacts анонімізовані та не мають потрап
 3. Arrival, «Батутисти» + «Офіціанти» → переконатися, що працівник із двома професіями надрукований один раз.
 4. Arrival, `Порожній бланк` → усі time boxes порожні.
 5. Arrival, `Заповнити відомим фактом` → виконувати лише на тестових attendance records; planned shift не має з'явитися як fact.
-6. Month grid, одна і кілька професій → 31 day columns, правильна orientation і page headers.
-7. Змінити кожен доступний font control до максимуму → preview → download → physical print.
-8. `Скинути до еталону v27` → warning зникає, повторний PDF повертається до baseline.
+6. Month grid, одна і кілька професій → 31 day columns, чисті active cells, numeric legend, правильна orientation і page headers.
+7. Для 28-, 29-, 30- та 31-денного місяця відрендерити й переглянути всі три сторінки, а не лише першу сторінку автоматизованого geometry audit.
+8. Змінити кожен доступний font control до максимуму → preview → download → physical print.
+9. `Скинути до еталону v27` → warning зникає, повторний PDF повертається до baseline.
 
 ## 5. Owner sign-off
 

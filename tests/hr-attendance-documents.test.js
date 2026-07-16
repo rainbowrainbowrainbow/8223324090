@@ -5,7 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
+    CONTRACT_VERSION,
+    DOCUMENT_TEXT_DEFAULTS,
     FONT_PRESET,
+    LEGACY_DOCUMENT_TEXT_DEFAULTS,
+    MONTH_GRID_NUMERIC_LEGEND,
     buildHrAttendanceDocumentSnapshot,
     buildHrAttendanceDocumentSnapshotFromRows,
     normalizeDocumentRequest
@@ -58,6 +62,33 @@ test('request contract accepts settings only and rejects employee or attendance 
         () => normalizeDocumentRequest({ ...request('arrival_inout'), clockIn: '09:00' }),
         /заборонені або невідомі поля/
     );
+});
+
+test('v27.2 defaults use numeric monthly entry and localized footer text', () => {
+    const daily = normalizeDocumentRequest(request('arrival_inout'));
+    const monthly = normalizeDocumentRequest(request('month_grid'));
+    assert.equal(CONTRACT_VERSION, 'v27.2');
+    assert.equal(daily.texts.footerNote, DOCUMENT_TEXT_DEFAULTS.arrival_inout.footerNote);
+    assert.equal(monthly.texts.footerNote, DOCUMENT_TEXT_DEFAULTS.month_grid.footerNote);
+    assert.equal(monthly.texts.monthlyInstruction, 'Укажіть частку зміни числом: 0,5; 0,75 або 1');
+    assert.equal(
+        MONTH_GRID_NUMERIC_LEGEND,
+        '0,5 — половина зміни · 0,75 — три чверті зміни · 1 — повна зміна'
+    );
+    assert.match(daily.texts.footerNote, /A4 вертикально/);
+    assert.match(monthly.texts.footerNote, /A4 горизонтально/);
+});
+
+test('explicit legacy text remains unchanged outside the automation compatibility boundary', () => {
+    const legacy = LEGACY_DOCUMENT_TEXT_DEFAULTS.month_grid;
+    const normalized = normalizeDocumentRequest(request('month_grid', {
+        texts: {
+            monthlyInstruction: legacy.monthlyInstruction,
+            footerNote: legacy.footerNote
+        }
+    }));
+    assert.equal(normalized.texts.monthlyInstruction, legacy.monthlyInstruction);
+    assert.equal(normalized.texts.footerNote, legacy.footerNote);
 });
 
 test('anonymized 41-person snapshot is immutable, deduplicated and preserves v27 category counts', () => {
@@ -283,7 +314,9 @@ test('layout model preserves A4 orientation, v27 geometry and page capacity', ()
     assert.ok(Math.abs(mm(DAILY_LAYOUT.timeBoxWidth) - 11.3) < 0.001);
     assert.ok(Math.abs(mm(MONTH_LAYOUT.nameWidth) - 59.8) < 0.001);
     assert.ok(Math.abs(mm(MONTH_LAYOUT.employeeHeight) - 7.3) < 0.001);
-    assert.ok(Math.abs(mm(MONTH_LAYOUT.markSquare) - 4.7) < 0.001);
+    assert.ok(Math.abs(mm(MONTH_LAYOUT.legendHeight) - 6.9) < 0.001);
+    assert.ok(Math.abs(mm(MONTH_LAYOUT.tableHeaderHeight) - 6.2) < 0.001);
+    assert.equal(Object.hasOwn(MONTH_LAYOUT, 'markSquare'), false);
     const monthDayWidthMm = (297 - (2 * 4.7) - 59.8) / 31;
     assert.ok(Math.abs(monthDayWidthMm - 7.35) <= 0.01);
 
@@ -298,6 +331,16 @@ test('layout model preserves A4 orientation, v27 geometry and page capacity', ()
         .forEach(page => assert.ok(page.usedHeight <= dailyCapacity + 0.01));
     paginateHrAttendanceDocument(referenceSnapshot('month_grid'))
         .forEach(page => assert.ok(page.usedHeight <= monthlyCapacity + 0.01));
+});
+
+test('monthly renderer keeps full day cells and contains no hatch symbol renderer', () => {
+    const rendererSource = fs.readFileSync(path.join(__dirname, '..', 'services', 'hrAttendanceDocumentsPdf.js'), 'utf8');
+    assert.doesNotMatch(rendererSource, /drawLegendSymbol|markSquare|Легенда заштриховки/);
+    const rowStart = rendererSource.indexOf('function drawMonthEmployeeRow');
+    const rowEnd = rendererSource.indexOf('function drawMonthBody', rowStart);
+    assert.ok(rowStart >= 0 && rowEnd > rowStart);
+    const rowSource = rendererSource.slice(rowStart, rowEnd);
+    assert.equal((rowSource.match(/doc\.rect\(/g) || []).length, 2, 'only name and outer day-cell rectangles remain');
 });
 
 test('large category is split deterministically with continuation header', () => {
@@ -343,6 +386,47 @@ test('minimum and maximum allowed font presets render without clipping or page-c
         assert.match(daily.toString('latin1'), /\/MediaBox\s*\[0 0 595\.28 841\.89\]/);
         assert.match(monthly.toString('latin1'), /\/MediaBox\s*\[0 0 841\.89 595\.28\]/);
     }
+});
+
+test('28, 29, 30 and 31-day months keep three A4 landscape pages and stable filenames', async () => {
+    const cases = [
+        ['2026-02', 28],
+        ['2024-02', 29],
+        ['2026-04', 30],
+        ['2026-07', 31]
+    ];
+    for (const [month, expectedDays] of cases) {
+        const snapshot = referenceSnapshot('month_grid', { month });
+        const pdf = await buildHrAttendanceDocumentPdfBuffer(snapshot);
+        assert.equal(snapshot.daysInMonth, expectedDays, month);
+        assert.equal(pdfPageCount(pdf), 3, `${month} page count`);
+        assert.match(pdf.toString('latin1'), /\/MediaBox\s*\[0 0 841\.89 595\.28\]/, `${month} A4 landscape`);
+        assert.equal(hrAttendanceDocumentPdfFilename(snapshot), `month_grid_${month}.pdf`);
+    }
+});
+
+test('HR print UI uses localized footer label and recognizes legacy system defaults', () => {
+    const root = path.join(__dirname, '..');
+    const html = fs.readFileSync(path.join(root, 'hr.html'), 'utf8');
+    const uiSource = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
+    assert.match(html, /Текст у нижньому колонтитулі/);
+    assert.doesNotMatch(html, /Текст у footer/);
+    assert.match(uiSource, /A4 вертикально/);
+    assert.match(uiSource, /A4 горизонтально/);
+    assert.match(uiSource, /HR_PRINT_LEGACY_DEFAULT_TEXTS/);
+    assert.match(uiSource, /isHrPrintDefaultText/);
+    assert.match(uiSource, /editingAutomationMonthlyInstruction/);
+    assert.match(uiSource, /texts\.monthlyInstruction = hrPrintDocumentsState\.editingAutomationMonthlyInstruction/);
+    const warningSource = uiSource.slice(
+        uiSource.indexOf('function syncHrPrintPresetWarning'),
+        uiSource.indexOf('function syncHrPrintTemplateFields')
+    );
+    const resetSource = uiSource.slice(
+        uiSource.indexOf('function resetHrPrintPreset'),
+        uiSource.indexOf('function hrPrintRequestPayload')
+    );
+    assert.match(warningSource, /editingAutomationMonthlyInstruction/);
+    assert.match(resetSource, /editingAutomationMonthlyInstruction = ''/);
 });
 
 test('CI runs a 300 dpi anonymized generated-only visual guard', () => {

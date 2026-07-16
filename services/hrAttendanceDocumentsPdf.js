@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const { CONTRACT_VERSION } = require('./hrAttendanceDocuments');
+const { CONTRACT_VERSION, MONTH_GRID_NUMERIC_LEGEND } = require('./hrAttendanceDocuments');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const FONT_DIR = path.join(ROOT_DIR, 'assets', 'fonts');
@@ -52,7 +52,6 @@ const MONTH_LAYOUT = Object.freeze({
     categoryHeight: 2.9 * MM,
     employeeHeight: 7.3 * MM,
     nameWidth: 59.8 * MM,
-    markSquare: 4.7 * MM,
     footerSafe: 6.4 * MM
 });
 const PAGE_DIMENSIONS = Object.freeze({
@@ -352,44 +351,20 @@ function drawMonthMeta(doc, snapshot, page) {
     return y + MONTH_LAYOUT.metaHeight + MONTH_LAYOUT.blockGap;
 }
 
-function drawLegendSymbol(doc, type, x, y, size) {
-    doc.rect(x, y, size, size).fillAndStroke(COLORS.paper, COLORS.ink);
-    doc.save().rect(x, y, size, size).clip();
-    setStroke(doc, 0.55);
-    if (type === 'worked') {
-        for (let offset = -size; offset < size * 2; offset += 3) {
-            doc.moveTo(x + offset, y + size).lineTo(x + offset + size, y).stroke();
-        }
-    } else if (type === 'absent') {
-        doc.moveTo(x + 1, y + 1).lineTo(x + size - 1, y + size - 1).stroke();
-        doc.moveTo(x + size - 1, y + 1).lineTo(x + 1, y + size - 1).stroke();
-    } else if (type === 'dayoff') {
-        for (let offset = 3; offset < size; offset += 3) {
-            doc.moveTo(x + 1, y + offset).lineTo(x + size - 1, y + offset).stroke();
-        }
-    }
-    doc.restore();
-}
-
 function drawMonthLegend(doc, snapshot, page, y) {
     const x = MONTH_LAYOUT.margin;
     const width = page.width - (x * 2);
     drawBox(doc, x, y, width, MONTH_LAYOUT.legendHeight, COLORS.paper);
-    doc.font('FormBold').fontSize(snapshot.settings.fontPreset.values.monthlyLegend).fillColor(COLORS.ink)
-        .text('Легенда заштриховки:', x + 4, y + 5, { width: 105, lineBreak: false });
-    const items = [
-        ['empty', 'порожньо'],
-        ['worked', 'працював'],
-        ['absent', 'не вийшов'],
-        ['dayoff', 'вихідний']
-    ];
-    const start = x + 115;
-    const itemWidth = (width - 120) / items.length;
-    items.forEach(([type, label], index) => {
-        const itemX = start + (index * itemWidth);
-        drawLegendSymbol(doc, type, itemX, y + 3.5, 10);
-        doc.font('FormRegular').fontSize(snapshot.settings.fontPreset.values.monthlyLegend - 1).fillColor(COLORS.ink)
-            .text(label, itemX + 14, y + 5, { width: itemWidth - 16, lineBreak: false });
+    drawTextFit(doc, MONTH_GRID_NUMERIC_LEGEND, {
+        x: x + 4,
+        y: y + 5,
+        width: width - 8,
+        height: MONTH_LAYOUT.legendHeight - 6,
+        font: 'FormBold',
+        maxSize: snapshot.settings.fontPreset.values.monthlyLegend,
+        minSize: 5.5,
+        align: 'center',
+        field: 'monthlyLegend'
     });
 }
 
@@ -515,15 +490,6 @@ function drawMonthEmployeeRow(doc, snapshot, employee, rowIndex, page, y, grid) 
         const inactive = day > snapshot.daysInMonth;
         doc.rect(dayX, y, grid.dayWidth, MONTH_LAYOUT.employeeHeight)
             .fillAndStroke(inactive ? COLORS.inactiveDay : fill, COLORS.ink);
-        if (!inactive) {
-            const square = MONTH_LAYOUT.markSquare;
-            doc.rect(
-                dayX + ((grid.dayWidth - square) / 2),
-                y + ((MONTH_LAYOUT.employeeHeight - square) / 2),
-                square,
-                square
-            ).stroke(COLORS.ink);
-        }
     }
     drawWeeklySeparators(doc, grid.x, y, MONTH_LAYOUT.employeeHeight, grid.dayWidth);
 }

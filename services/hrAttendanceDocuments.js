@@ -3,7 +3,7 @@
 const { normalizeProfessionKey, normalizeSecondaryProfessions } = require('./professions');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
-const CONTRACT_VERSION = 'v27.1';
+const CONTRACT_VERSION = 'v27.2';
 const DOCUMENT_TEMPLATES = Object.freeze(['arrival_inout', 'month_grid']);
 const DAILY_MODES = Object.freeze(['manual_blank', 'actual_times']);
 const ROSTER_MODES = Object.freeze(['all_eligible', 'scheduled_on_date']);
@@ -11,6 +11,29 @@ const SAFE_CATEGORY_ID_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_MONTH_RE = /^\d{4}-\d{2}$/;
 const LEGACY_IDENTITY_SUFFIX_RE = /\.(?:mgr|clean)$/i;
+const MONTH_GRID_NUMERIC_LEGEND = '0,5 — половина зміни · 0,75 — три чверті зміни · 1 — повна зміна';
+const DOCUMENT_TEXT_DEFAULTS = Object.freeze({
+    arrival_inout: Object.freeze({
+        title: 'Лист приходу / уходу працівників',
+        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
+        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 вертикально • CRM Event Genix'
+    }),
+    month_grid: Object.freeze({
+        title: 'Місячний табель-відмічалка',
+        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
+        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 горизонтально • CRM Event Genix'
+    })
+});
+const LEGACY_DOCUMENT_TEXT_DEFAULTS = Object.freeze({
+    arrival_inout: Object.freeze({
+        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
+        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
+    }),
+    month_grid: Object.freeze({
+        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
+        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 horizontal • CRM Event Genix'
+    })
+});
 
 const FONT_PRESET = Object.freeze({
     title: Object.freeze({ value: 14, min: 12, max: 16 }),
@@ -166,6 +189,18 @@ function normalizedCategoryIds(input) {
     return ids;
 }
 
+function mapLegacyDocumentDefaultTexts(templateId, texts = {}) {
+    if (!texts || typeof texts !== 'object' || Array.isArray(texts)) return texts;
+    const defaults = DOCUMENT_TEXT_DEFAULTS[templateId];
+    const legacyDefaults = LEGACY_DOCUMENT_TEXT_DEFAULTS[templateId];
+    if (!defaults || !legacyDefaults) return { ...texts };
+    const mapped = { ...texts };
+    for (const key of ['monthlyInstruction', 'footerNote']) {
+        if (mapped[key] === legacyDefaults[key]) mapped[key] = defaults[key];
+    }
+    return mapped;
+}
+
 function normalizeDocumentRequest(payload = {}) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         throw documentInputError('PDF settings мають бути об’єктом');
@@ -209,15 +244,7 @@ function normalizeDocumentRequest(payload = {}) {
         ? validIsoMonth(payload.month)
         : null;
     const rosterDate = documentDate || `${month}-01`;
-    const defaults = templateId === 'arrival_inout'
-        ? {
-            title: 'Лист приходу / уходу працівників',
-            footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
-        }
-        : {
-            title: 'Місячний табель-відмічалка',
-            footerNote: 'EG-FORMS-v27 • Місячний табель • A4 horizontal • CRM Event Genix'
-        };
+    const defaults = DOCUMENT_TEXT_DEFAULTS[templateId];
 
     return deepFreeze({
         templateId,
@@ -238,7 +265,7 @@ function normalizeDocumentRequest(payload = {}) {
                 texts.monthlyInstruction,
                 80,
                 'texts.monthlyInstruction',
-                'У клітинці ставимо заштриховку з легенди'
+                defaults.monthlyInstruction
             ),
             footerNote: singleLine(texts.footerNote, 120, 'texts.footerNote', defaults.footerNote)
         },
@@ -577,8 +604,11 @@ function deepFreeze(value) {
 module.exports = {
     CONTRACT_VERSION,
     DAILY_MODES,
+    DOCUMENT_TEXT_DEFAULTS,
     DOCUMENT_TEMPLATES,
     FONT_PRESET,
+    LEGACY_DOCUMENT_TEXT_DEFAULTS,
+    MONTH_GRID_NUMERIC_LEGEND,
     PRINT_CATEGORY_DEFINITIONS,
     ROSTER_MODES,
     buildHrAttendanceDocumentSnapshot,
@@ -586,5 +616,6 @@ module.exports = {
     documentInputError,
     isStaffRowEligibleForAttendanceDocument,
     listHrAttendanceDocumentCategories,
+    mapLegacyDocumentDefaultTexts,
     normalizeDocumentRequest
 };

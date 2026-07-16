@@ -2,7 +2,9 @@ const crypto = require('crypto');
 const os = require('os');
 const { pool } = require('../db');
 const {
+    CONTRACT_VERSION,
     buildHrAttendanceDocumentSnapshot,
+    mapLegacyDocumentDefaultTexts,
     normalizeDocumentRequest
 } = require('./hrAttendanceDocuments');
 const {
@@ -13,7 +15,7 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('HrAttendanceDocumentAutomation');
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
-const TEMPLATE_VERSION = 'v27';
+const TEMPLATE_VERSION = CONTRACT_VERSION;
 const BUILD_LEASE_SECONDS = 180;
 const WORKER_ID = `${os.hostname()}:${process.pid}`.slice(0, 120);
 const DOCUMENT_TYPES = new Set(['arrival_inout', 'month_grid']);
@@ -73,7 +75,7 @@ function documentSettingsFromPayload(documentType, categoryIds, settings = {}) {
         rosterMode: settings.rosterMode || 'all_eligible',
         locationShift: settings.locationShift || '',
         markedBy: settings.markedBy || '',
-        texts: settings.texts || {},
+        texts: mapLegacyDocumentDefaultTexts(documentType, settings.texts || {}),
         fontPreset: settings.fontPreset || {},
         allowEmpty: false
     });
@@ -303,7 +305,7 @@ function requestFromAutomation(automation, localDate) {
         rosterMode: settings.rosterMode || 'all_eligible',
         locationShift: settings.locationShift || '',
         markedBy: settings.markedBy || '',
-        texts: settings.texts || {},
+        texts: mapLegacyDocumentDefaultTexts(documentType, settings.texts || {}),
         fontPreset
     };
 }
@@ -326,9 +328,13 @@ async function enqueueAutomationJob(automationId, triggerKind, actor = {}, optio
                 return null;
             }
         }
-        const key = idempotencyKey(automation, localDate);
+        const effectiveAutomation = {
+            id: Number(automation.id),
+            ...normalizeAutomationPayload(mapAutomationRow(automation))
+        };
+        const key = idempotencyKey(effectiveAutomation, localDate);
         const user = actorValues(actor);
-        const request = requestFromAutomation(automation, localDate);
+        const request = requestFromAutomation(effectiveAutomation, localDate);
         const result = await client.query(
             `INSERT INTO hr_attendance_document_jobs
                 (automation_id, trigger_kind, local_date, document_type, selection_hash, idempotency_key,
@@ -339,9 +345,9 @@ async function enqueueAutomationJob(automationId, triggerKind, actor = {}, optio
                      $10::timestamptz + ($12 || ' hours')::interval,$13,$14)
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
-            [automation.id, triggerKind, localDate, automation.document_type, automation.selection_hash,
-                key, JSON.stringify(request), automation.template_version, automation.copies, now.toISOString(),
-                automation.catch_up_minutes, automation.artifact_ttl_hours, user.id, user.name]
+            [automation.id, triggerKind, localDate, effectiveAutomation.documentType, effectiveAutomation.selectionHash,
+                key, JSON.stringify(request), effectiveAutomation.templateVersion, effectiveAutomation.copies, now.toISOString(),
+                effectiveAutomation.catchUpMinutes, effectiveAutomation.artifactTtlHours, user.id, user.name]
         );
         if (triggerKind === 'scheduled') {
             await client.query(
@@ -374,6 +380,7 @@ async function claimBuildJob(jobId = null, db = pool) {
         `WITH candidate AS (
             SELECT id FROM hr_attendance_document_jobs
             WHERE status='building'
+              AND pdf_data IS NULL
               AND ($1::bigint IS NULL OR id=$1)
               AND (locked_until IS NULL OR locked_until < NOW())
             ORDER BY created_at, id
@@ -395,6 +402,13 @@ async function claimBuildJob(jobId = null, db = pool) {
 async function buildClaimedJob(claim, db = pool) {
     const row = claim.row;
     try {
+        if (row.template_version !== TEMPLATE_VERSION) {
+            throw automationError(
+                'Завдання створене для іншої версії PDF. Створіть новий запуск автоматизації.',
+                'HR_ATTENDANCE_JOB_TEMPLATE_VERSION_MISMATCH',
+                409
+            );
+        }
         const request = row.settings_snapshot || {};
         const snapshot = await buildHrAttendanceDocumentSnapshot(db, request);
         const pdf = await buildHrAttendanceDocumentPdfBuffer(snapshot);
@@ -563,6 +577,7 @@ module.exports = {
     mapJobRow,
     normalizeAutomationPayload,
     processBuildJobs,
+    requestFromAutomation,
     requeueJob,
     cancelJob,
     sha256,

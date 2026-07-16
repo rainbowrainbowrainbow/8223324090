@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.41",
+  "version": "0.79.42",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule XLSX Export"
+    "releaseLabel": "HR Attendance Documents v27"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

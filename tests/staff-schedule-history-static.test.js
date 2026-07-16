@@ -493,7 +493,9 @@ describe('staff schedule safety guards', () => {
         assert.match(reliabilityFlow, /kind:\s*'invalid-json'/);
         assert.match(reliabilityFlow, /kind:\s*'network-error'/);
         assert.match(reliabilityFlow, /dispatchBlockedScheduleActions/);
-        assert.match(reliabilityFlow, /data-schedule-range-preset="month"/);
+        assert.match(reliabilityFlow, /data-schedule-range-preset="first-half"/);
+        assert.match(reliabilityFlow, /data-schedule-range-preset="second-half"/);
+        assert.doesNotMatch(staffScheduleShell, /data-schedule-range-preset="month"/);
         assert.match(reliabilityFlow, /nextWeekBtn/);
         assert.match(reliabilityFlow, /prevWeekBtn/);
     });
@@ -1392,9 +1394,9 @@ describe('staff schedule safety guards', () => {
         const fillSaveBlock = namedFunctionBlock(staffPage, 'handleFillWeekSave');
         const copyIdsBlock = namedFunctionBlock(staffPage, 'scheduleCopyWeekVisibleStaffIds');
         const exportVisibleBlock = namedFunctionBlock(staffPage, 'scheduleExportVisibleStaff');
+        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         const workbookBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookHtml');
         const displayNameBlock = namedFunctionBlock(staffPage, 'scheduleStaffDisplayName');
-        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         const professionContextBlock = namedFunctionBlock(staffPage, 'scheduleProfessionKeyForDepartment');
         const openCellBlock = namedFunctionBlock(staffPage, 'openScheduleCell');
         const openEditBlock = namedFunctionBlock(staffPage, 'openEditModal');
@@ -1688,9 +1690,9 @@ describe('staff schedule safety guards', () => {
         const partitionBlock = namedFunctionBlock(staffPage, 'partitionScheduleStaffBySubGroup');
         const renderEmpRowBlock = namedFunctionBlock(staffPage, 'renderEmpRow');
         const renderBlock = namedFunctionBlock(staffPage, 'renderSchedule');
+        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         const workbookBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookHtml');
 
-        const workbookModelBlock = namedFunctionBlock(staffPage, 'buildScheduleWorkbookModel');
         assert.match(staffPage, /key:\s*'trampoline_instructor,senior_instructor,instructor',\s*label:\s*'Батутисти'/);
         assert.match(staffPage, /trampoline:\s*\[\s*\{\s*key:\s*'trampoline_instructor,senior_instructor,instructor'/);
         assert.match(staffPage, /function departmentSubGroupDepartmentKeys/);

@@ -47,7 +47,6 @@
                         <div class="staff-schedule-range-presets" aria-label="Швидкі періоди графіка">
                             <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="first-half" title="Показати 1-15 число місяця" aria-label="Показати 1-15 число місяця">1-15</button>
                             <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="second-half" title="Показати 16-31 число місяця" aria-label="Показати 16-31 число місяця">16-31</button>
-                            <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="month" title="Показати весь місяць" aria-label="Показати весь місяць">Весь місяць</button>
                         </div>
                     </div>
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">

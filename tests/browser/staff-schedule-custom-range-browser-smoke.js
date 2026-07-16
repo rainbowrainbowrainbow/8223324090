@@ -1077,7 +1077,7 @@ async function assertPeriodPresetLabelsAndSummary(page) {
         const base = from ? new Date(`${from}T00:00:00`) : new Date();
         const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
         return {
-            expectedLabels: [`1-${Math.min(15, lastDay)}`, `${Math.min(16, lastDay)}-${lastDay}`, 'Весь місяць'],
+            expectedLabels: [`1-${Math.min(15, lastDay)}`, `${Math.min(16, lastDay)}-${lastDay}`],
             presetState: buttons.map(button => ({
                 preset: button.getAttribute('data-schedule-range-preset'),
                 label: button.textContent.trim(),
@@ -1086,6 +1086,7 @@ async function assertPeriodPresetLabelsAndSummary(page) {
             }))
         };
     });
+    assert.equal(presetState.length, 2, 'top period shortcuts expose only two half-month options');
     assert.deepEqual(presetState.map(item => item.label), expectedLabels, 'period preset labels expose concrete current-month dates');
     assert.equal(presetState.some(item => item.label.includes('половина') || item.label.includes('кінець')), false, 'period preset labels do not use vague half-month copy');
     assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, `Показати ${expectedLabels[1]} число місяця`, 'second-half preset keeps an accessible date-range label');
@@ -1444,11 +1445,11 @@ async function assertScheduleExportParity(page, expectedIds, label) {
     const workbookRows = workbook.rows;
     const printRows = scheduleExportStaffRowsFromHtml(printHtml);
 
-    assert.deepEqual(sortedScheduleStaffIds(visibleRows.map(row => row.id)), sortedScheduleStaffIds(expectedIds), `${label}: expected staff set is the visible table set`);
     assert.match(workbookDownload.filename, /^grafik_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
     assert.ok(workbookDownload.buffer.subarray(0, 2).equals(Buffer.from('PK')), `${label}: export is a real xlsx workbook`);
     assert.equal(workbook.sheets.every(sheet => sheet.rows.length > 0), true, `${label}: every exported worksheet owns staff rows`);
     assert.equal(workbook.sheets.length, new Set(workbookRows.map(row => row.department)).size, `${label}: each department has one non-empty worksheet`);
+    assert.deepEqual(sortedScheduleStaffIds(visibleRows.map(row => row.id)), sortedScheduleStaffIds(expectedIds), `${label}: expected staff set is the visible table set`);
     assertUniqueScheduleStaffPlacements(visibleRows, `${label} table`);
     assertUniqueScheduleStaffPlacements(workbookRows, `${label} workbook`);
     assertUniqueScheduleStaffPlacements(printRows, `${label} print`);
@@ -2498,8 +2499,8 @@ async function runPeriodReliabilityFlow(browser, base) {
         await page.locator('[data-schedule-range-preset="second-half"]').click();
         await delayedSecondHalf.started.promise;
         await waitForScheduleState(page, 'loading');
-        await page.locator('[data-schedule-range-preset="month"]').click();
-        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'rapid preset month winner');
+        await requestManualRange(page, RANGE_MONTH.from, RANGE_MONTH.to);
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'rapid manual month winner');
 
         const lateSecondHalfResponse = waitForScheduleHttpResponse(page, RANGE_B.from, RANGE_B.to);
         delayedSecondHalf.release();
@@ -2507,7 +2508,7 @@ async function runPeriodReliabilityFlow(browser, base) {
         await responseSecondHalf.finished();
         await delayedSecondHalf.finished.promise;
         await settleScheduleDom(page);
-        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late second-half ignored');
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late second-half ignored after manual month');
 
         const lateFirstHalfResponse = waitForScheduleHttpResponse(page, RANGE_A.from, RANGE_A.to);
         delayedFirstHalf.release();
@@ -2515,11 +2516,11 @@ async function runPeriodReliabilityFlow(browser, base) {
         await responseFirstHalf.finished();
         await delayedFirstHalf.finished.promise;
         await settleScheduleDom(page);
-        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late first-half ignored');
+        await assertConfirmedRange(page, RANGE_MONTH.from, RANGE_MONTH.to, 'ready', 'late first-half ignored after manual month');
         assert.equal(
-            await page.locator('[data-schedule-range-preset="month"]').getAttribute('aria-pressed'),
-            'true',
-            'rapid first-half to second-half to month keeps month active'
+            await page.locator('[data-schedule-range-preset][aria-pressed="true"]').count(),
+            0,
+            'manual full-month range leaves top half-month presets inactive'
         );
 
         const CUSTOM_RANGE = { from: '2026-07-01', to: '2026-07-05' };
@@ -3487,7 +3488,7 @@ async function runDesktopFlow(browser, base) {
 
         // Hours toggle is no longer part of the visible command surface.
         await page.locator('#scheduleStaffSearch').fill('Віталіна');
-        await applyPreset(page, 'month');
+        await applyManualRange(page, '2026-07-01', '2026-07-31');
         assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'Віталіна', 'search query survives preset changes');
         const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
         const monthTo = await page.locator('#scheduleDateTo').inputValue();
@@ -3524,7 +3525,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await waitForDayColumns(page, 15);
         await assertNoControlOverlap(page, `${label} first-half`);
         await assertDepartmentChipsFit(page, `${label} first-half`);
-        await applyPreset(page, 'month');
+        await applyManualRange(page, '2026-07-01', '2026-07-31');
         const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
         const monthTo = await page.locator('#scheduleDateTo').inputValue();
         const monthDays = dateRangeDays(monthFrom, monthTo);

@@ -339,6 +339,20 @@ async function applyPreset(page, preset) {
     }, preset);
 }
 
+async function applyCurrentMonthManualRange(page) {
+    const current = await readRangeState(page);
+    const base = new Date(`${current.from || formatInputDate(new Date())}T00:00:00Z`);
+    const monthStart = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
+    const from = formatInputDate(monthStart);
+    const to = formatInputDate(monthEnd);
+    await page.locator('#scheduleDateFrom').fill(from);
+    await page.locator('#scheduleDateTo').fill(to);
+    await page.locator('#applyScheduleRangeBtn').click();
+    await waitForColumnsToMatchInputs(page);
+    return readRangeState(page);
+}
+
 async function assertHeaderSurface(page) {
     assert.equal(await page.locator('.schedule-toolbar').count(), 0, 'legacy .schedule-toolbar is absent');
     await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
@@ -351,7 +365,7 @@ async function assertHeaderSurface(page) {
         const base = from ? new Date(`${from}T00:00:00`) : new Date();
         const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
         return {
-            expectedLabels: [`1-${Math.min(15, lastDay)}`, `${Math.min(16, lastDay)}-${lastDay}`, 'Весь місяць'],
+            expectedLabels: [`1-${Math.min(15, lastDay)}`, `${Math.min(16, lastDay)}-${lastDay}`],
             presetState: buttons.map(button => ({
                 preset: button.getAttribute('data-schedule-range-preset'),
                 label: button.textContent.trim(),
@@ -360,6 +374,7 @@ async function assertHeaderSurface(page) {
             }))
         };
     });
+    assert.equal(presetState.length, 2, 'top period shortcuts expose only two half-month options');
     assert.deepEqual(presetState.map(item => item.label), expectedLabels, 'period preset labels expose concrete current-month dates');
     assert.equal(presetState.some(item => item.label.includes('половина') || item.label.includes('кінець')), false, 'period preset labels do not use vague half-month copy');
     assert.equal(presetState.find(item => item.preset === 'second-half')?.ariaLabel, `Показати ${expectedLabels[1]} число місяця`, 'second-half preset keeps an accessible date-range label');
@@ -867,18 +882,16 @@ async function assertSearchPersistence(page) {
         return text ? text.slice(0, 12) : 'staff-smoke';
     });
     await fillPrivateScheduleSearch(page, searchTerm);
-    await applyPreset(page, 'month');
-    await waitForColumnsToMatchInputs(page);
+    const range = await applyCurrentMonthManualRange(page);
     assert.equal(
         await page.locator('#scheduleStaffSearch').inputValue() === searchTerm,
         true,
-        'private search query survives period preset changes'
+        'private search query survives manual full-month range changes'
     );
 
-    const range = await readRangeState(page);
     const monthDays = dateRangeDays(range.from, range.to);
-    assert.equal(range.dayCount, monthDays, 'month preset renders all month day columns');
-    assert.ok(monthDays >= 28 && monthDays <= 31, `month preset day count is ${monthDays}`);
+    assert.equal(range.dayCount, monthDays, 'manual full-month range renders all month day columns');
+    assert.ok(monthDays >= 28 && monthDays <= 31, `manual full-month day count is ${monthDays}`);
     return range;
 }
 
@@ -1281,9 +1294,7 @@ async function runMobileFlow(browser, base, session, viewport = VIEWPORTS.mobile
         assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'staff-smoke', 'mobile search input accepts text');
         await assertMobileLayout(page);
         await page.locator('#scheduleStaffSearch').fill('');
-        await applyPreset(page, 'month');
-        await waitForColumnsToMatchInputs(page);
-        const monthRange = await readRangeState(page);
+        const monthRange = await applyCurrentMonthManualRange(page);
         await assertMobileLayout(page);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthRange.dayCount, minDayWidth: 40 });
         await assertScheduleGroupLabelsReadable(page, `${label} month department headers`);

@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.38 - Banquet Repair Cleanup
+
+### Банкети / Cleanup / (16.07.2026) [codex]
+- **Repair закриває повністю скасовані allowlisted-групи навіть без metadata mismatch** — це прибирає технічні хвости після disposable QA та не розширює repair за межі явного списку ID.
+- **Фінальний production-аудит чистий** — після видалення тестового банкету активний набір повернувся до 26 груп із 0 missing, 0 unexpected і 0 mismatched references.
+
+---
+
 ## v0.79.37 - Banquet Activity Repair
 
 ### Банкети / Data repair / Live QA / (16.07.2026) [codex]

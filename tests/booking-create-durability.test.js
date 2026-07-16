@@ -2852,6 +2852,10 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
         bookingJs.indexOf('async function refreshBanquetEditContextAfterSave'),
         bookingJs.indexOf('function hydrateBanquetEditActivityState')
     );
+    const conflictRefreshBlock = bookingJs.slice(
+        bookingJs.indexOf('function scheduleSelectedActivityConflictRefresh'),
+        bookingJs.indexOf('async function validateSelectedActivityScheduleBeforeSubmit')
+    );
 
     assert.match(editBlock, /apiGetBanquetByBooking\(anchorBooking\.id\)/);
     assert.match(editBlock, /banquetEditContext\?\.primaryBooking \|\| anchorBooking/);
@@ -2873,6 +2877,7 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
     assert.match(refreshBlock, /apiGetBanquetByBooking\(bookingId\)/);
     assert.match(refreshBlock, /if \(!snapshot \|\| snapshot\.success === false \|\| !freshContext\)/);
     assert.match(refreshBlock, /hydrateBanquetEditActivityState\(responseContext\)/);
+    assert.match(conflictRefreshBlock, /excludeId:\s*bookingEditConflictExcludeIds\(\)/);
     assert.doesNotMatch(refreshBlock, /'success'/);
     assert.match(conflictBlock, /Залишитись у формі/);
     assert.match(conflictBlock, /if \(!reload\)[\s\S]*return false/);

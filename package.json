@@ -48,6 +48,7 @@
     "audit:second-animator-links": "node scripts/audit-second-animator-links.js",
     "audit:banquet-arrival": "node scripts/audit-banquet-guest-arrival.js",
     "audit:banquet-activities": "node scripts/audit-banquet-activity-consistency.js",
+    "repair:banquet-activities": "node scripts/repair-banquet-activity-consistency.js",
     "test:banquet-arrival-migrations": "node --test tests/banquet-guest-arrival-migrations.test.js",
     "test:backup-recovery": "node --test tests/backup-artifact.test.js tests/backup-recovery-contract.test.js tests/backup-inventory-contract.test.js",
     "test:api:account-access": "node --test tests/api-account-access.test.js",

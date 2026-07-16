@@ -10041,7 +10041,11 @@ function scheduleSelectedActivityConflictRefresh(delay = 250) {
     clearTimeout(_selectedActivityConflictTimer);
     _selectedActivityConflictTimer = setTimeout(() => {
         const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
-        validateSelectedActivitySchedule(formData, { render: true, force: true }).catch(err => {
+        validateSelectedActivitySchedule(formData, {
+            render: true,
+            force: true,
+            excludeId: bookingEditConflictExcludeIds()
+        }).catch(err => {
             console.warn('[Booking] Selected activity schedule validation failed', err);
         });
     }, delay);

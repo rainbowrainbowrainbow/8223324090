@@ -4064,3 +4064,243 @@ test('banquet activity consistency audit is read-only and reports technical iden
     assert.match(script, /BEGIN TRANSACTION READ ONLY/);
     assert.doesNotMatch(script, /--fix|--apply|--repair/);
 });
+
+test('banquet activity metadata repair is allowlisted, confirmed, transactional, and post-audited', async () => {
+    const {
+        APPLY_CONFIRMATION,
+        parseArgs,
+        runApply,
+        validateApplyOptions
+    } = require('../scripts/repair-banquet-activity-consistency');
+    const parsed = parseArgs([
+        '--apply',
+        `--confirm=${APPLY_CONFIRMATION}`,
+        '--groups=BQ-REPAIR,BQ-REPAIR',
+        '--group=BQ-SECOND',
+        '--context=event_genix'
+    ]);
+    assert.deepEqual(parsed.groupIds, ['BQ-SECOND', 'BQ-REPAIR']);
+    assert.equal(parsed.apply, true);
+    assert.equal(parsed.confirmation, APPLY_CONFIRMATION);
+    assert.throws(
+        () => validateApplyOptions({ apply: true, confirmation: '', groupIds: ['BQ-REPAIR'] }),
+        /Apply requires --confirm=/
+    );
+    assert.throws(
+        () => validateApplyOptions({ apply: true, confirmation: APPLY_CONFIRMATION, groupIds: [] }),
+        /explicit --groups/
+    );
+
+    let repaired = false;
+    const queries = [];
+    const reportRows = () => [{
+        group_id: 'BQ-REPAIR',
+        primary_booking_id: 'BK-ROOT',
+        primary_program_id: 'bubble',
+        primary_program_code: 'BUBBLE',
+        primary_program_name: 'Sensitive program name',
+        primary_category: 'show',
+        primary_line_id: 'line-main',
+        primary_price: 2400,
+        primary_extra_data: JSON.stringify({
+            multiActivity: { activityIds: repaired ? ['bubble', 'pinata'] : ['bubble'] }
+        }),
+        member_role: 'activity',
+        member_booking_id: 'BK-PINATA',
+        member_sort_order: 100,
+        member_program_id: 'pinata'
+    }];
+    const db = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ sql: text, params });
+            if (/^BEGIN ISOLATION LEVEL SERIALIZABLE$/.test(text)) return { rows: [] };
+            if (/^COMMIT$|^ROLLBACK$/.test(text)) return { rows: [] };
+            if (/FROM banquet_groups bg[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [{ id: 'BQ-REPAIR', primary_booking_id: 'BK-ROOT' }] };
+            }
+            if (/FROM banquet_group_bookings bgb[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [
+                    { id: 1, group_id: 'BQ-REPAIR', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10 },
+                    { id: 2, group_id: 'BQ-REPAIR', booking_id: 'BK-PINATA', role: 'activity', sort_order: 100 }
+                ] };
+            }
+            if (/SELECT b\.\*[\s\S]*FROM bookings b[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [
+                    { id: 'BK-ROOT', status: 'confirmed', extra_data: '{}' },
+                    { id: 'BK-PINATA', status: 'confirmed', extra_data: '{}' }
+                ] };
+            }
+            if (/SELECT bg\.id AS group_id/.test(text)) return { rows: reportRows() };
+            if (/UPDATE banquet_groups/.test(text)) return { rows: [], rowCount: 1 };
+            if (/INSERT INTO history/.test(text)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected repair query: ${text}`);
+        }
+    };
+    const result = await runApply(db, {
+        apply: true,
+        confirmation: APPLY_CONFIRMATION,
+        groupIds: ['BQ-REPAIR'],
+        businessContext: 'event_genix'
+    }, {
+        async persistDerivedBookingSetMetadata(client, group, context, options) {
+            assert.equal(client, db);
+            assert.equal(group.id, 'BQ-REPAIR');
+            assert.equal(context, 'event_genix');
+            assert.equal(options.source, 'banquet-activity-metadata-repair');
+            repaired = true;
+            return { activityIds: ['bubble', 'pinata'] };
+        },
+        async persistPrimaryDerivedMetadata(client, group, context, derived, source) {
+            assert.equal(client, db);
+            assert.equal(group.id, 'BQ-REPAIR');
+            assert.equal(context, 'event_genix');
+            assert.deepEqual(derived.activityIds, ['bubble', 'pinata']);
+            assert.equal(source, 'banquet-activity-metadata-repair');
+        }
+    });
+    assert.equal(result.repaired.length, 1);
+    assert.equal(result.afterSummary.mismatchedGroups, 0);
+    assert.equal(queries[0].sql, 'BEGIN ISOLATION LEVEL SERIALIZABLE');
+    assert.ok(queries.some(item => /FOR UPDATE/.test(item.sql)));
+    assert.ok(queries.some(item => /INSERT INTO history/.test(item.sql)));
+    assert.equal(queries.at(-1).sql, 'COMMIT');
+
+    const script = fs.readFileSync(
+        path.join(__dirname, '..', 'scripts', 'repair-banquet-activity-consistency.js'),
+        'utf8'
+    );
+    assert.match(script, /BEGIN ISOLATION LEVEL SERIALIZABLE/);
+    assert.match(script, /FOR UPDATE/);
+    assert.match(script, /banquet_activity_metadata_repaired/);
+    assert.match(script, /Post-repair audit still reports mismatches/);
+    assert.doesNotMatch(script, /JOIN customers|phone|instagram|child_name/i);
+});
+
+test('banquet activity metadata repair rolls back when the strict post-audit still mismatches', async () => {
+    const {
+        APPLY_CONFIRMATION,
+        runApply
+    } = require('../scripts/repair-banquet-activity-consistency');
+    const tx = [];
+    const mismatchRow = {
+        group_id: 'BQ-ROLLBACK',
+        primary_booking_id: 'BK-ROOT',
+        primary_program_id: 'bubble',
+        primary_category: 'show',
+        primary_line_id: 'line-main',
+        primary_price: 2400,
+        primary_extra_data: JSON.stringify({ multiActivity: { activityIds: ['bubble'] } }),
+        member_role: 'activity',
+        member_booking_id: 'BK-PINATA',
+        member_sort_order: 100,
+        member_program_id: 'pinata'
+    };
+    const db = {
+        async query(sql) {
+            const text = String(sql);
+            if (/^(?:BEGIN|COMMIT|ROLLBACK)/.test(text)) tx.push(text);
+            if (/FROM banquet_groups bg[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [{ id: 'BQ-ROLLBACK', primary_booking_id: 'BK-ROOT' }] };
+            }
+            if (/FROM banquet_group_bookings bgb[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [
+                    { id: 1, group_id: 'BQ-ROLLBACK', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10 },
+                    { id: 2, group_id: 'BQ-ROLLBACK', booking_id: 'BK-PINATA', role: 'activity', sort_order: 100 }
+                ] };
+            }
+            if (/SELECT b\.\*[\s\S]*FROM bookings b[\s\S]*FOR UPDATE/.test(text)) {
+                return { rows: [
+                    { id: 'BK-ROOT', status: 'confirmed', extra_data: '{}' },
+                    { id: 'BK-PINATA', status: 'confirmed', extra_data: '{}' }
+                ] };
+            }
+            if (/SELECT bg\.id AS group_id/.test(text)) return { rows: [mismatchRow] };
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    await assert.rejects(
+        runApply(db, {
+            apply: true,
+            confirmation: APPLY_CONFIRMATION,
+            groupIds: ['BQ-ROLLBACK'],
+            businessContext: 'event_genix'
+        }, {
+            async persistDerivedBookingSetMetadata() {
+                return { activityIds: ['bubble', 'pinata'] };
+            },
+            async persistPrimaryDerivedMetadata() {
+                return null;
+            }
+        }),
+        /Post-repair audit still reports mismatches/
+    );
+    assert.deepEqual(tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+});
+
+test('banquet activity metadata repair handles only proven cancelled-group and single-member promotion lifecycles', async () => {
+    const {
+        prepareGroupLifecycleForRepair
+    } = require('../scripts/repair-banquet-activity-consistency');
+    const cancelledQueries = [];
+    const cancelled = await prepareGroupLifecycleForRepair({
+        async query(sql, params) {
+            cancelledQueries.push({ sql: String(sql), params });
+            return { rows: [], rowCount: 1 };
+        }
+    }, {
+        id: 'BQ-CANCELLED', primary_booking_id: 'BK-CANCELLED'
+    }, {
+        memberships: [{ group_id: 'BQ-CANCELLED', booking_id: 'BK-CANCELLED', role: 'primary' }],
+        bookings: [{ id: 'BK-CANCELLED', status: 'cancelled', extra_data: '{}' }]
+    }, 'event_genix');
+    assert.equal(cancelled.action, 'cancelled_group');
+    assert.ok(cancelledQueries.some(item => /SET status = 'cancelled'/.test(item.sql)));
+    assert.ok(cancelledQueries.some(item => /banquet_group_cancelled_by_repair/.test(String(item.params?.[1]))));
+
+    const promotedQueries = [];
+    const promoted = await prepareGroupLifecycleForRepair({
+        async query(sql, params) {
+            promotedQueries.push({ sql: String(sql), params });
+            return { rows: [], rowCount: 1 };
+        }
+    }, {
+        id: 'BQ-PROMOTE', primary_booking_id: 'BK-OLD'
+    }, {
+        memberships: [
+            { group_id: 'BQ-PROMOTE', booking_id: 'BK-OLD', role: 'primary' },
+            { group_id: 'BQ-PROMOTE', booking_id: 'BK-KITCHEN', role: 'kitchen' }
+        ],
+        bookings: [
+            { id: 'BK-OLD', status: 'cancelled', extra_data: JSON.stringify({ multiActivity: { activityIds: ['old'] } }) },
+            { id: 'BK-KITCHEN', status: 'confirmed', extra_data: '{}' }
+        ]
+    }, 'event_genix');
+    assert.equal(promoted.action, 'promoted_primary');
+    assert.equal(promoted.group.primary_booking_id, 'BK-KITCHEN');
+    assert.ok(promotedQueries.some(item => /DELETE FROM banquet_group_bookings/.test(item.sql)));
+    assert.ok(promotedQueries.some(item => /SET role = 'primary'/.test(item.sql)));
+    assert.ok(promotedQueries.some(item => /SET primary_booking_id = \$4/.test(item.sql)));
+    assert.ok(promotedQueries.some(item => /DELETE FROM booking_banquet_links/.test(item.sql)));
+    const detachedMetadata = promotedQueries.find(item => /UPDATE bookings[\s\S]*SET extra_data/.test(item.sql));
+    assert.ok(detachedMetadata);
+    assert.doesNotMatch(String(detachedMetadata.params?.[0]), /multiActivity|banquetGroup/);
+
+    await assert.rejects(
+        prepareGroupLifecycleForRepair({ query: async () => ({ rows: [], rowCount: 0 }) }, {
+            id: 'BQ-AMBIGUOUS', primary_booking_id: 'BK-OLD'
+        }, {
+            memberships: [
+                { group_id: 'BQ-AMBIGUOUS', booking_id: 'BK-OLD', role: 'primary' },
+                { group_id: 'BQ-AMBIGUOUS', booking_id: 'BK-A', role: 'activity' },
+                { group_id: 'BQ-AMBIGUOUS', booking_id: 'BK-B', role: 'activity' }
+            ],
+            bookings: [
+                { id: 'BK-OLD', status: 'cancelled' },
+                { id: 'BK-A', status: 'confirmed' },
+                { id: 'BK-B', status: 'confirmed' }
+            ]
+        }, 'event_genix'),
+        /Inactive primary requires manual repair/
+    );
+});

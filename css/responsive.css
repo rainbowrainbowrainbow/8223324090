@@ -1172,11 +1172,6 @@
         font-size: 12px;
     }
 
-    .detail-row {
-        font-size: 12px;
-        margin-bottom: 4px;
-    }
-
     /* v5.36: Afisha form — stack on mobile */
     .afisha-form-row {
         flex-direction: column;

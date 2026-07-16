@@ -463,10 +463,6 @@ body.timeline-context-maysternya .programs-icons {
     margin-top: 0;
 }
 
-body.timeline-context-maysternya .program-details .detail-row:nth-child(n+2) {
-    display: none;
-}
-
 body.timeline-mode-simple .booking-form,
 body.timeline-mode-specialist .booking-form,
 body.timeline-mode-education .booking-form {
@@ -1224,7 +1220,7 @@ body.dark-mode .program-next-price-badge,
 .program-icon.photo .program-media { border-color: rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
 .program-icon.custom .program-media { border-color: rgba(100,116,139,0.18); background: rgba(100,116,139,0.06); }
 
-/* Program details */
+/* Selected activities editor */
 .program-details {
     background: var(--gray-50);
     border-radius: var(--radius-sm);
@@ -1232,17 +1228,6 @@ body.dark-mode .program-next-price-badge,
     margin-bottom: 18px;
     border: 1px solid var(--gray-100);
 }
-
-.detail-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: var(--font-sm);
-    margin-bottom: 6px;
-    color: var(--gray-500);
-}
-
-.detail-row:last-child { margin-bottom: 0; }
-.detail-row span:last-child { font-weight: 800; color: var(--gray-800); }
 
 /* Custom program section */
 .custom-program-section {
@@ -1535,7 +1520,7 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
 .selected-activities-list {
     display: grid;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
 }
 
 .selected-activities-toolbar {

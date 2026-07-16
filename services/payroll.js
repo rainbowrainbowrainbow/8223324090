@@ -1,6 +1,6 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { hydrateAttendanceRecords } = require('./hrAttendance');
+const { attendanceFactMinutes, hydrateAttendanceRecords } = require('./hrAttendance');
 const { buildPayrollRateUnitWarnings, buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
 const { normalizeProfessionKey } = require('./professions');
 
@@ -521,7 +521,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
         const actualMinutes = Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes ?? row.total_worked_minutes, 0));
         const allocatedMinutes = Math.max(0, toNumber(row.allocatedMinutes ?? row.allocated_minutes, 0));
-        const overtimeMinutes = Math.max(0, toNumber(row.overtimeMinutes ?? row.overtime_minutes, 0));
+        const overtimeMinutes = attendanceFactMinutes(row).overtimeMinutes;
         const plannedMinutes = Math.max(0, toNumber(row.plannedMinutes ?? row.planned_minutes, 0));
         const status = String(row.status || row.time_status || '').trim();
         const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);

@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
     HR_ATTENDANCE_BREAK_POLICY,
     allocateAttendanceToSegments,
+    attendanceAllocationFields,
     calculateHrClockOutPayroll
 } = require('../services/hrAttendance');
 
@@ -162,6 +163,24 @@ test('time outside the day envelope becomes overtime of the primary profession',
     assert.equal(result.overtimeMinutes, 60);
     assert.deepEqual(result.overtimeAllocation, { professionKey: 'reception', actualMinutes: 60 });
     assert.ok(result.allocationIssues.some(issue => issue.code === 'ACTUAL_TIME_OUTSIDE_PLANNED_SEGMENTS'));
+});
+
+test('allocation fields expose allocation overtime without attendance overtime aliases', () => {
+    const allocation = allocate({
+        clockIn: '2026-07-13T05:30:00.000Z',
+        clockOut: '2026-07-13T17:30:00.000Z',
+        segments: [
+            segment('reception', '09:00', '13:00'),
+            segment('manager', '15:00', '20:00')
+        ]
+    });
+    const fields = attendanceAllocationFields(allocation);
+
+    assert.equal(fields.allocationOvertimeMinutes, 60);
+    assert.equal(fields.allocation_overtime_minutes, 60);
+    assert.equal(Object.hasOwn(fields, 'overtimeMinutes'), false);
+    assert.equal(Object.hasOwn(fields, 'overtime_minutes'), false);
+    assert.deepEqual(fields.overtime_allocation, { professionKey: 'reception', actualMinutes: 60 });
 });
 
 test('recorded totals without a reliable interval use proportional fallback', () => {

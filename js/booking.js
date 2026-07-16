@@ -5384,11 +5384,37 @@ function bookingSummaryActivityName(program = {}, index = 0, total = 1) {
     return total > 1 ? `${index + 1}. ${base}` : base;
 }
 
+function bookingSummaryActivityDuration(program = {}) {
+    const catalogDuration = Number(program.duration || 0) || 0;
+    if (!program.isCustom) return catalogDuration;
+    const selectedProgramId = document.getElementById('selectedProgram')?.value;
+    if (String(selectedProgramId || '') !== String(program.id || '')) return catalogDuration;
+    const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
+    return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : catalogDuration;
+}
+
+function bookingSummaryActivitiesDuration(programs = []) {
+    return (Array.isArray(programs) ? programs : [])
+        .reduce((sum, program) => sum + bookingSummaryActivityDuration(program), 0);
+}
+
+function bookingSummaryRecommendedGroupLabel(value) {
+    const label = String(value || '').trim();
+    if (!label) return '';
+    return /діт|учн/i.test(label) ? label : `${label} дітей`;
+}
+
 function bookingSummaryActivityMeta(program = {}, row = {}) {
+    const duration = bookingSummaryActivityDuration(program);
+    const hosts = Number(program.hosts || 0) || 0;
+    const recommendedGroup = bookingSummaryRecommendedGroupLabel(program.kids);
     return [
         program.name && program.name !== program.code && program.name !== program.label ? program.name : '',
-        program.duration ? `${program.duration} хв` : '',
+        duration ? `${duration} хв` : '',
         row.time ? selectedActivityScheduleLabel(row) : '',
+        hosts > 0 ? `ведучих: ${hosts}` : '',
+        program.age ? `рекомендований вік: ${program.age}` : '',
+        recommendedGroup ? `рекомендована група: ${recommendedGroup}` : '',
         program.perChild ? 'ціна за дитину' : ''
     ].filter(Boolean);
 }
@@ -5559,7 +5585,9 @@ function renderBookingPackageSummary() {
     const depositAmount = deposit?.provided ? (deposit.expectedAmount ?? 0) : null;
     const finalTotal = toBookingMoney(programSubtotal + menuSubtotal + entrySubtotal);
     const menuCount = Array.isArray(totals.menuPositions) ? totals.menuPositions.length : 0;
-    const activityRows = hasEvent ? renderBookingSummaryActivityRows(totals.activityPrograms || []) : '';
+    const activityPrograms = hasEvent && Array.isArray(totals.activityPrograms) ? totals.activityPrograms : [];
+    const activityRows = hasEvent ? renderBookingSummaryActivityRows(activityPrograms) : '';
+    const activityDuration = bookingSummaryActivitiesDuration(activityPrograms);
     const menuRows = kitchenEnabled ? renderBookingSummaryMenuRows(totals.menuPositions || []) : '';
     const programLabel = program
         ? `${program.code || program.shortLabel || 'ПРО'} · ${program.duration ? `${program.duration} хв` : 'без тривалості'}`
@@ -5590,8 +5618,9 @@ function renderBookingPackageSummary() {
         <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(resolvedCustomerName)}</strong></div>
         ${activityRows || menuRows ? '' : `<div class="booking-summary-row"><span>${escapeHtml(programRowLabel)}</span><strong>${escapeHtml(programLabel)}</strong></div>`}
         ${activityRows}
+        ${activityPrograms.length > 1 && activityDuration > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Сума тривалостей активностей</span><strong>${escapeHtml(`${activityDuration} хв`)}</strong></div>` : ''}
+        ${programSubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>${escapeHtml(activityPrograms.length > 1 ? 'Активності' : 'Програма / активність')}</span><strong>${escapeHtml(formatPrice(programSubtotal))}</strong></div>` : ''}
         ${menuRows}
-        ${programSubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>${escapeHtml((totals.activityPrograms || []).length > 1 ? 'Активності' : 'Програма / активність')}</span><strong>${escapeHtml(formatPrice(programSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && (menuSubtotal > 0 || menuCount > 0) ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Меню</span><strong>${escapeHtml(formatPrice(menuSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Вхід</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
         ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Завдаток</span><strong>${escapeHtml(formatPrice(depositAmount))}</strong></div>` : ''}
@@ -8613,7 +8642,10 @@ function getSelectedActivityScheduleRows(programs = getSelectedActivityPrograms(
     return bookingActivityScheduleApi().buildSelectedActivityScheduleRows(programs, {
         scheduleTimes: getSelectedActivityScheduleTimes(),
         baseTime: selectedActivityScheduleBaseTime(),
-        ...selectedActivityScheduleOptions()
+        ...selectedActivityScheduleOptions(),
+        durationForProgram: typeof bookingSummaryActivityDuration === 'function'
+            ? bookingSummaryActivityDuration
+            : undefined
     });
 }
 
@@ -8957,30 +8989,12 @@ function renderSelectedProgramSummary(program = null) {
     const list = document.getElementById('selectedActivitiesList');
     if (!details) return;
     const programs = getSelectedActivityPrograms();
-    const primaryProgram = program || programs[0] || null;
-    if (!primaryProgram || programs.length === 0) {
+    if (programs.length === 0) {
         if (empty) empty.classList.remove('hidden');
         if (list) list.innerHTML = '';
-        ['detailDuration', 'detailHosts', 'detailPrice', 'detailAge', 'detailKids'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = '—';
-        });
         return;
     }
     if (empty) empty.classList.add('hidden');
-    const totalDuration = bookingActivitiesTotalDuration(programs);
-    const totalPrice = bookingActivitiesTotalPrice(programs);
-    const hostsLabel = programs.length > 1
-        ? `${Math.max(...programs.map(item => Number(item.hosts || 0)))} макс.`
-        : primaryProgram.hosts;
-    document.getElementById('detailDuration').textContent = totalDuration > 0 ? `${totalDuration} хв` : '—';
-    document.getElementById('detailHosts').textContent = hostsLabel || '—';
-    document.getElementById('detailPrice').textContent = formatPrice(totalPrice);
-
-    const ageEl = document.getElementById('detailAge');
-    const kidsEl = document.getElementById('detailKids');
-    if (ageEl) ageEl.textContent = programs.length === 1 ? (primaryProgram.age || '—') : 'за активностями';
-    if (kidsEl) kidsEl.textContent = programs.length === 1 ? (primaryProgram.kids || '—') : 'за активностями';
 
     if (list) {
         const scheduleRows = getSelectedActivityScheduleRows(programs);
@@ -8995,6 +9009,7 @@ function renderSelectedProgramSummary(program = null) {
             const pinataSubflow = renderSelectedActivityPinataSubflow(row);
             const secondHostSubflow = renderSelectedActivitySecondAnimatorSubflow(row);
             const promoAction = renderBookingActivityPromoAction(item, 'selected-activity');
+            const activityDuration = bookingSummaryActivityDuration(item);
             return `
             <div class="selected-activity-item${issueText ? ' has-conflict' : ''}" data-selected-activity-id="${escapeHtml(String(item.id))}">
                 <span class="selected-activity-order">${index + 1}</span>
@@ -9011,7 +9026,7 @@ function renderSelectedProgramSummary(program = null) {
                     </select>
                 </label>
                 <span class="selected-activity-meta">
-                    ${item.duration ? `${escapeHtml(String(item.duration))} хв · ` : ''}${escapeHtml(bookingActivityPriceLabel(item))}
+                    ${activityDuration ? `${escapeHtml(String(activityDuration))} хв · ` : ''}${escapeHtml(bookingActivityPriceLabel(item))}
                 </span>
                 <span class="selected-activity-actions">
                     ${promoAction}
@@ -9231,16 +9246,6 @@ function selectProgram(programId) {
         return;
     }
 
-    const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
-    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
-    document.getElementById('detailHosts').textContent = program.hosts;
-    document.getElementById('detailPrice').textContent = priceText;
-
-    const ageEl = document.getElementById('detailAge');
-    const kidsEl = document.getElementById('detailKids');
-    if (ageEl) ageEl.textContent = program.age || '—';
-    if (kidsEl) kidsEl.textContent = program.kids || '—';
-
     renderSelectedProgramSummary(program);
     syncPrimaryProgramDependentFields(program);
     if (isRoomFirstTimelineView()) {
@@ -9280,13 +9285,6 @@ function selectProgram(programId) {
                     : '';
                 kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
                 kidsInput.oninput = () => {
-                    const count = parseInt(kidsInput.value) || 0;
-                    if (program.perChild) {
-                        const total = count * program.price;
-                        document.getElementById('detailPrice').textContent = count > 0
-                            ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
-                            : `${formatPrice(program.price)}/дит`;
-                    }
                     renderSelectedProgramSummary(program);
                     renderBookingPackageSummary();
                 };
@@ -9579,8 +9577,8 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
 }
 
 function updateCustomDuration() {
-    const duration = parseInt(document.getElementById('customDuration')?.value) || 30;
-    document.getElementById('detailDuration').textContent = `${duration} хв`;
+    renderSelectedProgramSummary();
+    renderBookingPackageSummary();
 }
 
 // ==========================================

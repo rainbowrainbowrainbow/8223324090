@@ -38,6 +38,7 @@ const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
     'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 const MONTHS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+const HR_ATTENDANCE_GRACE_MINUTES = Object.freeze({ late: 5, overtime: 15 });
 const HR_PRINT_CATEGORIES = Object.freeze([
     { id: 'art_director', label: 'Арт-директор', professionKeys: ['art_director'] },
     { id: 'leader', label: 'Керівник', professionKeys: ['director', 'vice_director'] },
@@ -2770,10 +2771,30 @@ function isTodayItemOnShift(item = {}) {
     return HrAttendanceState.isAttendanceRecordOpen(item.record);
 }
 
+function todayAttendanceFactNumber(value) {
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? Math.max(0, num) : 0;
+}
+
+function todayAttendanceFacts(record = {}) {
+    const grace = typeof HR_ATTENDANCE_GRACE_MINUTES === 'object'
+        ? HR_ATTENDANCE_GRACE_MINUTES
+        : { late: 5, overtime: 15 };
+    const serverFacts = record?.attendance_facts || record?.attendanceFacts || {};
+    const lateRaw = todayAttendanceFactNumber(serverFacts.lateMinutes ?? serverFacts.late_minutes ?? record?.late_minutes);
+    const earlyLeaveMinutes = todayAttendanceFactNumber(serverFacts.earlyLeaveMinutes ?? serverFacts.early_leave_minutes ?? record?.early_leave_minutes);
+    const overtimeRaw = todayAttendanceFactNumber(serverFacts.overtimeMinutes ?? serverFacts.overtime_minutes ?? record?.overtime_minutes);
+    return {
+        lateMinutes: lateRaw > grace.late ? lateRaw : 0,
+        earlyLeaveMinutes,
+        overtimeMinutes: overtimeRaw > grace.overtime ? overtimeRaw : 0
+    };
+}
+
 function todayMetricMatchesItem(item = {}, metric = '') {
     const record = item.record;
     if (metric === 'shift') return isTodayItemOnShift(item);
-    if (metric === 'late') return Number(record?.late_minutes || 0) > 5;
+    if (metric === 'late') return todayAttendanceFacts(record).lateMinutes > 0;
     if (metric === 'absent') return !record && Boolean(item.shift);
     if (metric === 'leave') {
         return !isTodayItemOnShift(item) && ['sick', 'vacation'].includes(String(record?.status || ''));
@@ -2792,6 +2813,7 @@ function summarizeTodayItems(items = []) {
         const rec = item.record;
         if (rec) {
             const status = rec.status;
+            const facts = todayAttendanceFacts(rec);
             if (isTodayItemOnShift(item)) {
                 summary.present++;
             } else if (status === 'vacation') {
@@ -2799,7 +2821,7 @@ function summarizeTodayItems(items = []) {
             } else if (status === 'sick') {
                 summary.sick++;
             }
-            if (Number(rec.late_minutes || 0) > 5) summary.late++;
+            if (facts.lateMinutes > 0) summary.late++;
         } else if (item.shift) {
             summary.absent++;
         }
@@ -3165,8 +3187,12 @@ function renderToday(data) {
         }
 
         if (rec) {
-            const isLate = Number(rec.late_minutes || 0) > 5;
-            const isEarlyLeave = Number(rec.early_leave_minutes || 0) > 0;
+            const facts = todayAttendanceFacts(rec);
+            rec.late_minutes = facts.lateMinutes;
+            rec.early_leave_minutes = facts.earlyLeaveMinutes;
+            rec.overtime_minutes = facts.overtimeMinutes;
+            const isLate = facts.lateMinutes > 0;
+            const isEarlyLeave = facts.earlyLeaveMinutes > 0;
             const st = rec.status === 'late' && !isLate
                 ? 'present'
                 : (rec.status === 'early_leave' && !isEarlyLeave ? 'present' : rec.status);
@@ -3233,7 +3259,7 @@ function renderToday(data) {
             if (isEarlyLeave) {
                 attendanceFacts.push(`<span class="late-badge">Ранній вихід ${rec.early_leave_minutes}хв</span>`);
             }
-            if (Number(rec.overtime_minutes || 0) > 0) {
+            if (facts.overtimeMinutes > 0) {
                 attendanceFacts.push(`<span class="late-badge">Понаднормово +${rec.overtime_minutes}хв</span>`);
             }
             if (rec.plan_warning?.message) {
@@ -13489,6 +13515,22 @@ function formatReportOverdueTasks(count) {
     return `${value} прострочені`;
 }
 
+function formatReportHours(value) {
+    const hours = reportMetricNumber(value);
+    if (!hours) return '0';
+    if (Number.isInteger(hours)) return String(hours);
+    return hours.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatReportPlanWarnings(row = {}) {
+    const professionCardDays = reportMetricNumber(row.profession_card_days);
+    const unscheduledDays = reportMetricNumber(row.unscheduled_days);
+    const parts = [];
+    if (professionCardDays > 0) parts.push(`план із картки професії: ${professionCardDays}`);
+    if (unscheduledDays > 0) parts.push(`без плану: ${unscheduledDays}`);
+    return parts.length ? parts.join(' · ') : 'OK';
+}
+
 function reportHeaderMetricsFromRows(rows = []) {
     const safeRows = Array.isArray(rows) ? rows : [];
     let totalPresent = 0;
@@ -13602,7 +13644,7 @@ function renderReports(data) {
         <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
         <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalEarlyLeave}</div><div class="stat-label">Ранні виходи</div></div>
         <div class="hr-report-stat hr-report-stat--absence"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
-        <div class="hr-report-stat hr-report-stat--overtime"><div class="stat-value">${totalOvertime.toFixed(0)}г</div><div class="stat-label">Переробка</div></div>
+        <div class="hr-report-stat hr-report-stat--overtime"><div class="stat-value">${formatReportHours(totalOvertime)}г</div><div class="stat-label">Переробка</div></div>
         <div class="hr-report-stat hr-report-stat--tasks"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
         <div class="hr-report-stat hr-report-stat--kpi"><div class="stat-value">${taskDoneRate}%</div><div class="stat-label">KPI задач</div></div>
         <div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">${totalTasksOverdue}</div><div class="stat-label">Прострочені</div></div>
@@ -13620,9 +13662,9 @@ function renderReports(data) {
         <td class="num">${r.days_worked}</td>
         <td class="num">${r.late_count}</td>
         <td class="num">${r.days_early_leave || 0}</td>
-        <td class="num">${r.total_overtime_hours || 0}г</td>
+        <td class="num">${formatReportHours(r.total_overtime_hours)}г</td>
         <td class="num">${r.avg_late_minutes > 0 ? r.avg_late_minutes + 'хв' : '—'}</td>
-        <td class="num">${r.plan_warning_count > 0 ? `⚠ ${r.plan_warning_count}` : 'OK'}</td>
+        <td>${escapeHtml(formatReportPlanWarnings(r))}</td>
         <td class="num">${r.total_worked_hours}г</td>
         <td class="num">${fmtMoney(r.estimated_salary)}</td>
         <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>

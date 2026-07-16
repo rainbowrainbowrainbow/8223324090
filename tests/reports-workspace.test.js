@@ -511,6 +511,76 @@ test('payroll attendance ignores one-to-five minute legacy late status and warns
     window.close();
 });
 
+test('payroll workspace ignores allocation overtime as an attendance event', async () => {
+    const { window, requests } = await setupReportsDom({
+        scheduleData: [{
+            id: 810,
+            staff_id: 42,
+            date: '2026-06-28',
+            status: 'working',
+            shift_start: '09:00',
+            shift_end: '18:00',
+            hr_shift_id: 811,
+            primary_profession_key: 'reception',
+            planned_minutes: 540,
+            segments: [
+                { id: 8111, professionKey: 'reception', shiftStart: '09:00', shiftEnd: '18:00', breakMinutes: 0, additionalProfessionKeys: [] }
+            ]
+        }],
+        attendanceData: [{
+            staff_id: 42,
+            date: '2026-06-28',
+            time_record_id: 812,
+            clock_in: '2026-06-28T05:55:00.000Z',
+            clock_out: '2026-06-28T15:00:00.000Z',
+            planned_start: '09:00',
+            planned_end: '18:00',
+            late_minutes: 0,
+            early_leave_minutes: 0,
+            overtime_minutes: 0,
+            allocation_overtime_minutes: 5,
+            allocationOvertimeMinutes: 5,
+            total_worked_minutes: 545,
+            time_status: 'present',
+            plan_source: 'hr_shift',
+            attendance_source: 'hr_time_records',
+            allocation_source: 'clock_interval',
+            attendance_facts: {
+                lateMinutes: 0,
+                earlyLeaveMinutes: 0,
+                overtimeMinutes: 0
+            }
+        }]
+    });
+    const document = window.document;
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch');
+
+    const date = document.querySelector('[data-row-index="0"][data-column-key="date"]');
+    date.value = '2026-06-28';
+    date.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const staff = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
+    staff.value = '42';
+    staff.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
+    total.value = '100';
+    total.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'allocation overtime payroll save');
+    const request = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const table = JSON.parse(request.options.body).rawData.reportTableTemplate;
+    const row = table.rows[0];
+
+    assert.equal(row.overtime_minutes, 0);
+    assert.deepEqual(row.attendance_events, []);
+    assert.equal(row.attendance_status, 'completed');
+    assert.equal(row.attendance_ref.overtime_minutes, 0);
+    window.close();
+});
+
 test('payroll planned hours prefer segments over envelope and keep legacy fallback', async t => {
     await t.test('adjacent segments sum without duplicating an additional role', async () => {
         const context = await createPayrollReportForSchedule([{

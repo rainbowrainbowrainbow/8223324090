@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
     calculateAttendanceClockIn,
+    HR_ATTENDANCE_PLAN_SOURCES,
     recordAttendanceClockIn
 } = require('../services/hrAttendance');
 
@@ -22,6 +23,22 @@ function createClockInDb(options = {}) {
             }
             if (text.includes('FROM staff_shift_preferences')) {
                 return { rows: options.preference ? [options.preference] : [] };
+            }
+            if (text.includes('FROM hr_audit_log')) {
+                if (Array.isArray(options.auditRows)) return { rows: options.auditRows };
+                if (options.auditPlanSource) {
+                    return {
+                        rows: [{
+                            details: {
+                                record_id: options.existing?.id ?? null,
+                                record_date: options.existing?.record_date ?? null,
+                                clock_in: options.existing?.clock_in ?? null,
+                                plan_source: options.auditPlanSource
+                            }
+                        }]
+                    };
+                }
+                return { rows: [] };
             }
             if (text.startsWith('INSERT INTO hr_time_records')) {
                 return { rows: [{
@@ -83,7 +100,11 @@ test('HR Today and face check-in use the same profession-card snapshot and five-
         assert.equal(result.record.late_minutes, 0);
         assert.equal(result.record.status, 'present');
         assert.equal(result.planSource, 'profession_card');
+        assert.equal(result.plan.source, 'profession_card');
+        assert.equal(result.record.plan_source, 'profession_card');
         assert.equal(audits.length, 1);
+        assert.equal(audits[0].record_id, 901);
+        assert.equal(audits[0].record_date, '2026-07-17');
         assert.equal(audits[0].plan_source, 'profession_card');
         assert.equal(audits[0].source, routeInput.source);
     }
@@ -114,7 +135,42 @@ test('six minutes after the planned start is late', () => {
     assert.equal(result.status, 'late');
 });
 
-test('repeated check-in preserves the first clock-in and writes no new audit', async () => {
+test('repeated check-in reuses the initial clock-in audit plan source', async () => {
+    for (const planSource of [
+        HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT,
+        HR_ATTENDANCE_PLAN_SOURCES.PROFESSION_CARD,
+        HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED
+    ]) {
+        const existing = {
+            id: 77,
+            staff_id: 7,
+            record_date: '2026-07-17',
+            clock_in: '2026-07-17T08:58:00.000Z',
+            planned_start: planSource === HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED ? null : '12:00',
+            planned_end: planSource === HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED ? null : '20:00',
+            late_minutes: 0,
+            status: planSource === HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED ? 'unscheduled' : 'present'
+        };
+        const { db, calls, audits } = createClockInDb({ existing, auditPlanSource: planSource });
+
+        const result = await recordAttendanceClockIn(db, {
+            staffId: 7,
+            recordDate: '2026-07-17',
+            now: '2026-07-17T10:00:00.000Z'
+        });
+
+        assert.equal(result.record.clock_in, existing.clock_in);
+        assert.equal(result.alreadyClockedIn, true);
+        assert.equal(result.auditWritten, false);
+        assert.equal(result.planSource, planSource);
+        assert.equal(result.plan.source, planSource);
+        assert.equal(result.record.plan_source, planSource);
+        assert.equal(calls.some(call => call.text.startsWith('INSERT INTO hr_audit_log')), false);
+        assert.equal(audits.length, 0);
+    }
+});
+
+test('repeated check-in for old records without audit source returns attendance snapshot', async () => {
     const existing = {
         id: 77,
         staff_id: 7,
@@ -137,7 +193,9 @@ test('repeated check-in preserves the first clock-in and writes no new audit', a
     assert.equal(result.alreadyClockedIn, true);
     assert.equal(result.auditWritten, false);
     assert.equal(result.planSource, 'attendance_snapshot');
-    assert.equal(calls.length, 1);
+    assert.equal(result.plan.source, 'attendance_snapshot');
+    assert.equal(result.record.plan_source, 'attendance_snapshot');
+    assert.equal(calls.length, 2);
     assert.equal(audits.length, 0);
 });
 
@@ -156,5 +214,8 @@ test('missing shift and profession-card hours records an explicit unscheduled ar
     assert.equal(result.record.planned_end, null);
     assert.equal(result.record.late_minutes, 0);
     assert.equal(result.record.status, 'unscheduled');
+    assert.equal(result.record.plan_source, 'unscheduled');
+    assert.equal(result.plan.source, 'unscheduled');
+    assert.equal(result.planSource, 'unscheduled');
     assert.equal(audits[0].plan_source, 'unscheduled');
 });

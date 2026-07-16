@@ -846,12 +846,13 @@ function createBookingDrawerSummaryHarness(options = {}) {
                 <input id="selectedProgram" value="${selectedProgramValue}">
                 <input id="customerName" value="${customerName}">
                 <input id="selectedCustomerId" value="${selectedCustomerId}">
+                <input id="customDuration" value="${options.customDuration ?? 30}">
                 <select id="roomSelect"><option value="${roomValue}" selected>${roomText}</option></select>
                 <div id="bookingSelectedCustomerCard"><strong>${selectedCustomerCardName}</strong></div>
             </body>
         </html>
     `);
-    const programs = [
+    const programs = options.programs || [
         {
             id: 'pinata',
             code: 'PIN',
@@ -860,6 +861,9 @@ function createBookingDrawerSummaryHarness(options = {}) {
             category: 'pinata',
             duration: 15,
             price: 700,
+            hosts: 1,
+            age: '2-99р',
+            kids: 'до 15',
             promoDescription: 'Catalog promo'
         },
         {
@@ -870,6 +874,9 @@ function createBookingDrawerSummaryHarness(options = {}) {
             category: 'show',
             duration: 30,
             price: 2400,
+            hosts: 2,
+            age: '2-8р',
+            kids: '2-16',
             description: 'Bubble promo'
         }
     ];
@@ -914,7 +921,7 @@ function createBookingDrawerSummaryHarness(options = {}) {
         bookingActivityPriceValue: program => Math.round(Number(program?.price || 0) * 100) / 100,
         formatBookingPackageEntryAmount: entry => `${Number(entry?.subtotal || 0)} грн`,
         formatBookingMenuPositionQuantity: item => `${item.quantity} portions`,
-        getSelectedActivityScheduleRows: () => [
+        getSelectedActivityScheduleRows: () => options.scheduleRows || [
             { programId: 'pinata', program: programs[0], time: '13:00', endTime: '13:15' },
             { programId: 'bubble', program: programs[1], time: '13:20', endTime: '13:50' }
         ],
@@ -1166,6 +1173,48 @@ test('booking drawer package summary renders all selected activities, pinata det
     assert.equal(summary.querySelectorAll('.booking-summary-row--menu').length, 1);
     assert.equal(summary.querySelectorAll('[data-booking-activity-promo]').length, 2);
     assert.equal(ctx.__boundPromoButtons, 2);
+    assert.match(text, /ведучих: 1/);
+    assert.match(text, /ведучих: 2/);
+    assert.match(text, /рекомендований вік: 2-99р/);
+    assert.match(text, /рекомендована група: до 15 дітей/);
+    assert.equal(bookingSummaryRowValue(ctx, 'Сума тривалостей активностей'), '45 хв');
+    assert.doesNotMatch(text, /за активностями|макс\./);
+});
+
+test('booking drawer package summary uses the edited custom activity duration', () => {
+    const customProgram = {
+        id: 'custom',
+        code: 'Інше',
+        label: 'Інше',
+        name: 'Інше (вкажіть)',
+        category: 'custom',
+        duration: 30,
+        price: 0,
+        hosts: 1,
+        isCustom: true
+    };
+    const ctx = createBookingDrawerSummaryHarness({
+        selectedProgramValue: 'custom',
+        customDuration: 75,
+        programs: [customProgram],
+        scheduleRows: [{ programId: 'custom', program: customProgram, time: '13:00', endTime: '14:15' }],
+        kitchenEnabled: false,
+        packageTotals: {
+            programBasePrice: 0,
+            positionsSubtotal: 0,
+            entrySubtotal: 0,
+            finalTotal: 0,
+            menuPositions: [],
+            activityPrograms: [customProgram],
+            warnings: []
+        }
+    });
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const summaryText = ctx.document.getElementById('bookingPackageSummary').textContent;
+    assert.match(summaryText, /75 хв/);
+    assert.doesNotMatch(summaryText, /30 хв/);
 });
 
 test('booking drawer package summary keeps day-booking room option hints out of the room row', () => {
@@ -1268,6 +1317,18 @@ test('booking activity schedule helper defaults sequentially from base time', ()
     );
     assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], rows[1]), false);
     assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], { time: '12:20', duration: 15 }), true);
+});
+
+test('booking activity schedule helper accepts a form-specific duration resolver', () => {
+    const programs = [{ id: 'custom', duration: 30 }, { id: 'show', duration: 45 }];
+    const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(programs, {
+        baseTime: '12:00',
+        durationForProgram: program => program.id === 'custom' ? 75 : program.duration
+    });
+
+    assert.deepEqual(rows.map(row => row.duration), [75, 45]);
+    assert.deepEqual(rows.map(row => row.time), ['12:00', '13:15']);
+    assert.deepEqual(rows.map(row => row.endTime), ['13:15', '14:00']);
 });
 
 test('booking activity schedule helper limits selectable starts to 15-minute workday slots', () => {
@@ -3210,6 +3271,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingChangeCustomerBtn/);
     assert.match(html, /programCategoryChips/);
     assert.match(html, /selectedActivitiesList/);
+    assert.doesNotMatch(html, /id="detail(?:Duration|Hosts|Price|Age|Kids)"/);
+    assert.doesNotMatch(bookingJs, /detailDuration|detailHosts|detailPrice|detailAge|detailKids/);
     assert.match(html, /id="bookingPrimaryAnimatorSelect"/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));

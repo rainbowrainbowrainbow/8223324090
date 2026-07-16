@@ -28,11 +28,14 @@ const {
 const {
     calculateAttendanceClockIn,
     calculateHrClockOutPayroll,
+    attendanceCsvRow,
+    attendanceFactMinutes,
+    attendancePlanWarningMessage,
     decorateAttendanceRecord,
     hydrateAttendanceRecords,
-    isAttendanceRecordOpen,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
+    summarizeHrTodayItems,
     timeToMinutes
 } = require('../services/hrAttendance');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
@@ -4961,7 +4964,6 @@ router.get('/today', async (req, res) => {
         const recordMap = {};
         for (const r of records.rows) recordMap[r.staff_id] = r;
 
-        let present = 0, late = 0, absent = 0, onVacation = 0, sick = 0;
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         const data = staff.rows.map(s => {
             const displayStaff = decorateStaffWithDisplayGroup(s, { displayGroupContext });
@@ -4970,15 +4972,6 @@ router.get('/today', async (req, res) => {
             const record = recordMap[s.id]
                 ? decorateAttendanceRecord(recordMap[s.id], shiftSnapshot)
                 : null;
-
-            if (record) {
-                if (isAttendanceRecordOpen(record)) present++;
-                else if (record.status === 'vacation') onVacation++;
-                else if (record.status === 'sick') sick++;
-                if (Number(record.late_minutes || 0) > 5) late++;
-            } else if (shift) {
-                absent++;
-            }
 
             return {
                 staff_id: s.id,
@@ -5020,6 +5013,8 @@ router.get('/today', async (req, res) => {
                     plannedMinutes: record.plannedMinutes,
                     actualMinutes: record.actualMinutes,
                     overtimeMinutes: record.overtimeMinutes,
+                    allocationOvertimeMinutes: record.allocationOvertimeMinutes,
+                    allocation_overtime_minutes: record.allocation_overtime_minutes,
                     allocation_source: record.allocation_source,
                     allocation_issues: record.allocation_issues,
                     overtime_allocation: record.overtime_allocation,
@@ -5032,13 +5027,14 @@ router.get('/today', async (req, res) => {
                 } : null
             };
         });
+        const summary = summarizeHrTodayItems(data);
 
         res.json({
             success: true,
             date: today,
             data,
             displayGroups: listStaffDisplayGroups(),
-            summary: { total_staff: staff.rows.length, present, late, absent, on_vacation: onVacation, sick }
+            summary
         });
     } catch (err) {
         log.error('GET /hr/today error', err);
@@ -5320,7 +5316,8 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         res.json({
             success: true,
             data: clockOutResult.record,
-            alreadyClockedOut: clockOutResult.alreadyClockedOut
+            alreadyClockedOut: clockOutResult.alreadyClockedOut,
+            planSource: clockOutResult.planSource
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -5667,15 +5664,16 @@ router.get('/report/monthly', async (req, res) => {
                 };
             }
             const s = statsMap[r.staff_id];
+            const facts = attendanceFactMinutes(r);
             if (r.clock_in) {
                 s.days_worked++;
                 s.total_worked_minutes += r.total_worked_minutes || 0;
-                s.total_overtime_minutes += r.overtime_minutes || 0;
+                s.total_overtime_minutes += facts.overtimeMinutes;
             }
-            if (Number(r.late_minutes || 0) > 5) { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
-            if (Number(r.early_leave_minutes || 0) > 0) {
+            if (facts.lateMinutes > 0) { s.days_late++; s.late_count++; s.total_late_minutes += facts.lateMinutes; }
+            if (facts.earlyLeaveMinutes > 0) {
                 s.days_early_leave++;
-                s.total_early_leave_minutes += Number(r.early_leave_minutes || 0);
+                s.total_early_leave_minutes += facts.earlyLeaveMinutes;
             }
             if (r.plan_source === 'profession_card') s.profession_card_days++;
             if (r.plan_source === 'unscheduled') s.unscheduled_days++;
@@ -5821,26 +5819,61 @@ router.get('/report/export', async (req, res) => {
         );
         const professionRateMap = await loadStaffProfessionRateMap(result.rows.map(row => row.staff_id));
 
-        const header = 'ПІБ;Дата;Плановий прихід;Плановий вихід;Фактичний прихід;Фактичний вихід;Відпрацьовано хв;Запізнення;Запізнення хв;Ранній вихід;Ранній вихід хв;Overtime;Overtime хв;Джерело плану;Попередження;Ставка;Сума\n';
+        const header = [
+            'ПІБ',
+            'Дата',
+            'Плановий прихід',
+            'Плановий вихід',
+            'Фактичний прихід',
+            'Фактичний вихід',
+            'Відпрацьовано хв',
+            'Запізнення',
+            'Запізнення хв',
+            'Ранній вихід',
+            'Ранній вихід хв',
+            'Overtime',
+            'Overtime хв',
+            'Джерело плану',
+            'Попередження',
+            'Ставка',
+            'Сума'
+        ];
         const rows = result.rows.map(r => {
             const ci = r.clock_in ? new Date(r.clock_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
-            const lateMinutes = Number(r.late_minutes || 0) > 5 ? Number(r.late_minutes || 0) : 0;
-            const earlyLeaveMinutes = Math.max(0, Number(r.early_leave_minutes || 0));
-            const overtimeMinutes = Math.max(0, Number(r.overtime_minutes || 0));
-            const planWarning = r.plan_source === 'profession_card'
-                ? 'План із картки професії'
-                : (r.plan_source === 'unscheduled' ? 'Без планового часу' : '');
+            const facts = attendanceFactMinutes(r);
+            const lateMinutes = facts.lateMinutes;
+            const earlyLeaveMinutes = facts.earlyLeaveMinutes;
+            const overtimeMinutes = facts.overtimeMinutes;
+            const planWarning = attendancePlanWarningMessage(r.plan_source);
             const rate = rateForStaffProfession(r, r.profession_key, professionRateMap);
             const salary = staffRateUnit(r) === 'month'
                 ? ''
                 : payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
-            return `${r.name};${r.record_date};${r.planned_start || ''};${r.planned_end || ''};${ci};${co};${r.total_worked_minutes || 0};${lateMinutes > 0 ? 'Так' : 'Ні'};${lateMinutes};${earlyLeaveMinutes > 0 ? 'Так' : 'Ні'};${earlyLeaveMinutes};${overtimeMinutes > 0 ? 'Так' : 'Ні'};${overtimeMinutes};${r.plan_source};${planWarning};${rate} грн/${rateUnitLabel(r.rate_unit)};${salary}`;
+            return attendanceCsvRow([
+                r.name,
+                r.record_date,
+                r.planned_start || '',
+                r.planned_end || '',
+                ci,
+                co,
+                r.total_worked_minutes || 0,
+                lateMinutes > 0 ? 'Так' : 'Ні',
+                lateMinutes,
+                earlyLeaveMinutes > 0 ? 'Так' : 'Ні',
+                earlyLeaveMinutes,
+                overtimeMinutes > 0 ? 'Так' : 'Ні',
+                overtimeMinutes,
+                r.plan_source,
+                planWarning,
+                `${rate} грн/${rateUnitLabel(r.rate_unit)}`,
+                salary
+            ]);
         }).join('\n');
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="hr_report_${from}_${to}.csv"`);
-        res.send('\uFEFF' + header + rows);
+        res.send('\uFEFF' + [attendanceCsvRow(header), rows].filter(Boolean).join('\n'));
     } catch (err) {
         log.error('GET /hr/report/export error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

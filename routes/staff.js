@@ -47,6 +47,7 @@ const {
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const { lockAttendanceWriteTarget } = require('../services/attendanceWriteLock');
 const {
+    attendanceFactMinutes,
     hydrateAttendanceRecords,
     recordAttendanceClockIn,
     recordAttendanceClockOut
@@ -1822,12 +1823,13 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
         const attendanceRows = await hydrateAttendanceRecords(pool, result.rows);
         const summary = attendanceRows.reduce((acc, row) => {
             const status = String(row.time_status || '').trim() || (row.checkin_at ? 'present' : 'planned');
+            const facts = attendanceFactMinutes(row);
             acc.total += 1;
             if (row.clock_in || row.checkin_at) acc.checked_in += 1;
-            if (Number(row.late_minutes || 0) > 5) acc.late += 1;
+            if (facts.lateMinutes > 0) acc.late += 1;
             if (['absent', 'no_show'].includes(status)) acc.absent += 1;
-            if (Number(row.early_leave_minutes || 0) > 0) acc.left_early += 1;
-            if (Number(row.overtime_minutes || 0) > 0) acc.overtime += 1;
+            if (facts.earlyLeaveMinutes > 0) acc.left_early += 1;
+            if (facts.overtimeMinutes > 0) acc.overtime += 1;
             if (row.clock_in && row.clock_out) acc.completed += 1;
             if (['sick', 'vacation', 'day_off', 'excused'].includes(status)) acc.excused += 1;
             return acc;
@@ -2363,7 +2365,8 @@ router.post('/checkout', async (req, res) => {
             success: true,
             checkin: result.rows[0],
             hrTimeRecord,
-            alreadyClockedOut: clockOutResult.alreadyClockedOut
+            alreadyClockedOut: clockOutResult.alreadyClockedOut,
+            planSource: clockOutResult.planSource
         });
         // Send checkout notification to chat channel (fire-and-forget after response)
         if (!clockOutResult.alreadyClockedOut) try {

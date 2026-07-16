@@ -16,8 +16,18 @@ const HR_ATTENDANCE_GRACE_MINUTES = Object.freeze({
 const HR_ATTENDANCE_PLAN_SOURCES = Object.freeze({
     HR_SHIFT: 'hr_shift',
     PROFESSION_CARD: 'profession_card',
-    UNSCHEDULED: 'unscheduled'
+    UNSCHEDULED: 'unscheduled',
+    ATTENDANCE_SNAPSHOT: 'attendance_snapshot'
 });
+const HR_ATTENDANCE_INITIAL_PLAN_SOURCE_VALUES = new Set([
+    HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT,
+    HR_ATTENDANCE_PLAN_SOURCES.PROFESSION_CARD,
+    HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED
+]);
+const HR_ATTENDANCE_RESPONSE_PLAN_SOURCE_VALUES = new Set([
+    ...HR_ATTENDANCE_INITIAL_PLAN_SOURCE_VALUES,
+    HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT
+]);
 // MVP policy: a segment's break is deducted only when the actual interval touches
 // that segment, and never by more than the touched minutes. Exact break windows
 // require a separate protected schema decision.
@@ -38,11 +48,86 @@ function normalizeNonNegativeMinutes(value) {
     return Math.max(0, Math.round(minutes));
 }
 
+function normalizeAttendancePlanSource(value, { allowSnapshot = false } = {}) {
+    const source = String(value || '').trim();
+    const allowed = allowSnapshot
+        ? HR_ATTENDANCE_RESPONSE_PLAN_SOURCE_VALUES
+        : HR_ATTENDANCE_INITIAL_PLAN_SOURCE_VALUES;
+    return allowed.has(source) ? source : null;
+}
+
 function optionalNonNegativeMinutes(value) {
     if (value === undefined || value === null || value === '') return null;
     const minutes = Number(value);
     if (!Number.isFinite(minutes)) return null;
     return normalizeNonNegativeMinutes(minutes);
+}
+
+function attendanceFactMinutes(record = {}) {
+    const facts = record.attendance_facts || record.attendanceFacts || {};
+    const lateMinutes = normalizeNonNegativeMinutes(
+        facts.lateMinutes ?? facts.late_minutes ?? record.late_minutes ?? record.lateMinutes
+    );
+    const earlyLeaveMinutes = normalizeNonNegativeMinutes(
+        facts.earlyLeaveMinutes ?? facts.early_leave_minutes ?? record.early_leave_minutes ?? record.earlyLeaveMinutes
+    );
+    const overtimeMinutes = normalizeNonNegativeMinutes(
+        facts.overtimeMinutes ?? facts.overtime_minutes ?? record.overtime_minutes ?? record.overtimeMinutes
+    );
+    return {
+        lateMinutes: lateMinutes > HR_ATTENDANCE_GRACE_MINUTES.late ? lateMinutes : 0,
+        earlyLeaveMinutes,
+        overtimeMinutes: overtimeMinutes > HR_ATTENDANCE_GRACE_MINUTES.overtime ? overtimeMinutes : 0
+    };
+}
+
+function attendanceCsvCell(value) {
+    const raw = value === null || value === undefined ? '' : String(value);
+    const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const leadingWhitespace = normalized.match(/^\s*/)?.[0] || '';
+    let safeValue = normalized;
+    const firstMeaningfulChar = normalized.slice(leadingWhitespace.length, leadingWhitespace.length + 1);
+    if (/^[=+\-@]$/.test(firstMeaningfulChar)) {
+        safeValue = `${leadingWhitespace}'${normalized.slice(leadingWhitespace.length)}`;
+    }
+    const needsQuotes = /[;"\n\t]/.test(safeValue) || /^\s|\s$/.test(safeValue);
+    const escaped = safeValue.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function attendanceCsvRow(values = []) {
+    return (Array.isArray(values) ? values : []).map(attendanceCsvCell).join(';');
+}
+
+function attendancePlanWarningMessage(planSource) {
+    if (planSource === HR_ATTENDANCE_PLAN_SOURCES.PROFESSION_CARD) {
+        return 'План дня взято з картки основної професії';
+    }
+    if (planSource === HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED) {
+        return 'Для працівника не задано плановий час';
+    }
+    return '';
+}
+
+function summarizeHrTodayItems(items = []) {
+    const rows = Array.isArray(items) ? items : [];
+    return rows.reduce((summary, item = {}) => {
+        const entry = item || {};
+        const record = Object.prototype.hasOwnProperty.call(entry, 'record') ? entry.record : entry;
+        const shift = entry.shift || null;
+        summary.total_staff += 1;
+        if (record) {
+            const status = String(record.status || '').trim();
+            const facts = attendanceFactMinutes(record);
+            if (isAttendanceRecordOpen(record)) summary.present += 1;
+            else if (status === 'vacation') summary.on_vacation += 1;
+            else if (status === 'sick') summary.sick += 1;
+            if (facts.lateMinutes > 0) summary.late += 1;
+        } else if (shift) {
+            summary.absent += 1;
+        }
+        return summary;
+    }, { total_staff: 0, present: 0, late: 0, absent: 0, on_vacation: 0, sick: 0 });
 }
 
 function timeToMinutes(value) {
@@ -192,8 +277,55 @@ function attendancePlanPayload({ plannedStart = null, plannedEnd = null, profess
         plannedEnd,
         professionKey: professionKey || null,
         segments: Array.isArray(segments) ? segments : [],
-        source
+        source: normalizeAttendancePlanSource(source, { allowSnapshot: true }) || HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED
     };
+}
+
+function timestampAuditValue(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+    return String(value);
+}
+
+function planSourceFromAuditDetails(details) {
+    const source = normalizeAttendancePlanSource(details?.plan_source ?? details?.planSource);
+    return source || null;
+}
+
+async function loadInitialAttendancePlanSource(db, record = {}) {
+    if (!record?.staff_id || !record?.clock_in) {
+        return HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT;
+    }
+    const recordId = record.id === undefined || record.id === null ? '' : String(record.id);
+    const clockIn = timestampAuditValue(record.clock_in);
+    const recordDate = normalizeAttendancePlanDate(record.record_date || record.date) || '';
+    const result = await db.query(
+        `SELECT details
+         FROM hr_audit_log
+         WHERE action = 'clock_in'
+           AND staff_id = $1
+           AND (
+                details->>'record_id' = $2
+                OR details->>'clock_in' = $3
+                OR details->>'record_date' = $4
+                OR details->>'date' = $4
+           )
+         ORDER BY created_at ASC, id ASC
+         LIMIT 5`,
+        [Number(record.staff_id), recordId, clockIn, recordDate]
+    );
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    for (const row of rows) {
+        const details = typeof row.details === 'string'
+            ? (() => {
+                try { return JSON.parse(row.details); } catch (_) { return null; }
+            })()
+            : row.details;
+        const source = planSourceFromAuditDetails(details);
+        if (source) return source;
+    }
+    return HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT;
 }
 
 async function resolveAttendancePlan(db, staffId, date) {
@@ -277,6 +409,7 @@ function calculateAttendanceClockIn(plan, clockIn, recordDate) {
 }
 
 function attendancePlanForDecoration(plan = {}) {
+    const source = normalizeAttendancePlanSource(plan.source, { allowSnapshot: true }) || null;
     return {
         shift: {
             profession_key: plan.professionKey || null,
@@ -288,7 +421,8 @@ function attendancePlanForDecoration(plan = {}) {
             primaryProfessionKey: plan.professionKey || null,
             plannedStart: plan.plannedStart || null,
             plannedEnd: plan.plannedEnd || null,
-            segments: plan.segments || []
+            segments: plan.segments || [],
+            source
         }
     };
 }
@@ -312,14 +446,20 @@ async function recordAttendanceClockIn(db, input = {}) {
     );
     const existing = existingResult.rows?.[0] || null;
     if (existing?.clock_in) {
+        const planSource = await loadInitialAttendancePlanSource(db, existing);
+        const plan = attendancePlanPayload({
+            plannedStart: existing.planned_start || null,
+            plannedEnd: existing.planned_end || null,
+            professionKey: existing.primary_profession_key || null,
+            source: planSource
+        });
         return {
-            record: decorateAttendanceRecord(existing),
-            plan: attendancePlanPayload({
-                plannedStart: existing.planned_start || null,
-                plannedEnd: existing.planned_end || null,
-                source: 'attendance_snapshot'
-            }),
-            planSource: 'attendance_snapshot',
+            record: decorateAttendanceRecord(
+                { ...existing, plan_source: planSource },
+                attendancePlanForDecoration(plan)
+            ),
+            plan,
+            planSource,
             alreadyClockedIn: true,
             auditWritten: false
         };
@@ -375,9 +515,12 @@ async function recordAttendanceClockIn(db, input = {}) {
         );
     }
 
+    const record = writeResult.rows?.[0] || null;
     const method = String(input.method || 'manual').trim() || 'manual';
     const source = String(input.source || 'hr_today').trim() || 'hr_today';
     const auditDetails = {
+        record_id: record?.id ?? null,
+        record_date: recordDate,
         clock_in: clockIn,
         planned_start: fields.plannedStart,
         planned_end: fields.plannedEnd,
@@ -399,9 +542,11 @@ async function recordAttendanceClockIn(db, input = {}) {
         ]
     );
 
-    const record = writeResult.rows?.[0] || null;
     return {
-        record: record ? decorateAttendanceRecord(record, attendancePlanForDecoration(plan)) : null,
+        record: record ? decorateAttendanceRecord(
+            { ...record, plan_source: plan.source },
+            attendancePlanForDecoration(plan)
+        ) : null,
         plan,
         planSource: plan.source,
         alreadyClockedIn: false,
@@ -616,6 +761,7 @@ function allocateAttendanceToSegments(input = {}) {
 }
 
 function attendanceAllocationFields(allocation) {
+    const allocationOvertimeMinutes = normalizeNonNegativeMinutes(allocation.overtimeMinutes);
     return {
         segmentAllocations: allocation.segmentAllocations,
         segment_allocations: allocation.segmentAllocations,
@@ -625,8 +771,8 @@ function attendanceAllocationFields(allocation) {
         actual_minutes: allocation.actualMinutes,
         allocatedMinutes: allocation.allocatedMinutes,
         allocated_minutes: allocation.allocatedMinutes,
-        overtimeMinutes: allocation.overtimeMinutes,
-        overtime_minutes: allocation.overtimeMinutes,
+        allocationOvertimeMinutes,
+        allocation_overtime_minutes: allocationOvertimeMinutes,
         unallocatedGapMinutes: allocation.unallocatedGapMinutes,
         unallocated_gap_minutes: allocation.unallocatedGapMinutes,
         allocationSource: allocation.allocationSource,
@@ -658,6 +804,8 @@ function decorateAttendanceRecord(record = {}, loadedShift = null) {
     return {
         ...record,
         ...attendanceAllocationFields(allocation),
+        overtimeMinutes: reporting.overtimeMinutes,
+        overtime_minutes: reporting.overtimeMinutes,
         planned_start: reporting.plannedStart,
         planned_end: reporting.plannedEnd,
         is_late: reporting.isLate,
@@ -807,31 +955,36 @@ function calculateHrClockOutPayroll(record = {}, options = {}) {
 }
 
 function attendanceReportingFacts(record = {}, loadedShift = null) {
-    const lateMinutes = normalizeNonNegativeMinutes(record.late_minutes ?? record.lateMinutes);
-    const earlyLeaveMinutes = normalizeNonNegativeMinutes(record.early_leave_minutes ?? record.earlyLeaveMinutes);
-    const overtimeMinutes = normalizeNonNegativeMinutes(record.overtime_minutes ?? record.overtimeMinutes);
+    const { lateMinutes, earlyLeaveMinutes, overtimeMinutes } = attendanceFactMinutes(record);
     const plannedStart = record.planned_start || record.plannedStart
         || loadedShift?.plan?.plannedStart || loadedShift?.shift?.planned_start || null;
     const plannedEnd = record.planned_end || record.plannedEnd
         || loadedShift?.plan?.plannedEnd || loadedShift?.shift?.planned_end || null;
-    const explicitSource = String(record.plan_source || record.planSource || '').trim();
-    const planSource = explicitSource
+    const explicitSource = normalizeAttendancePlanSource(
+        record.plan_source || record.planSource,
+        { allowSnapshot: true }
+    );
+    const loadedPlanSource = normalizeAttendancePlanSource(
+        loadedShift?.plan?.source || loadedShift?.source,
+        { allowSnapshot: true }
+    );
+    const planSource = explicitSource || loadedPlanSource
         || (loadedShift?.shift
             ? HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT
             : (plannedStart && plannedEnd
                 ? HR_ATTENDANCE_PLAN_SOURCES.PROFESSION_CARD
                 : HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED));
     const planWarning = planSource === HR_ATTENDANCE_PLAN_SOURCES.PROFESSION_CARD
-        ? { code: 'PROFESSION_CARD_FALLBACK', message: 'План дня взято з картки основної професії' }
+        ? { code: 'PROFESSION_CARD_FALLBACK', message: attendancePlanWarningMessage(planSource) }
         : (planSource === HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED
-            ? { code: 'ATTENDANCE_UNSCHEDULED', message: 'Для attendance немає планового часу' }
+            ? { code: 'ATTENDANCE_UNSCHEDULED', message: attendancePlanWarningMessage(planSource) }
             : null);
 
     return {
         lateMinutes,
         earlyLeaveMinutes,
         overtimeMinutes,
-        isLate: lateMinutes > HR_ATTENDANCE_GRACE_MINUTES.late,
+        isLate: lateMinutes > 0,
         isEarlyLeave: earlyLeaveMinutes > 0,
         hasOvertime: overtimeMinutes > 0,
         plannedStart,
@@ -873,9 +1026,21 @@ async function recordAttendanceClockOut(db, input = {}) {
             400
         );
     }
+    const initialPlanSource = await loadInitialAttendancePlanSource(db, record);
     if (record.clock_out) {
+        const plan = attendancePlanPayload({
+            plannedStart: record.planned_start || null,
+            plannedEnd: record.planned_end || null,
+            professionKey: record.primary_profession_key || null,
+            source: initialPlanSource
+        });
         return {
-            record: decorateAttendanceRecord(record),
+            record: decorateAttendanceRecord(
+                { ...record, plan_source: initialPlanSource },
+                attendancePlanForDecoration(plan)
+            ),
+            plan,
+            planSource: initialPlanSource,
             payroll: null,
             alreadyClockedOut: true,
             auditWritten: false
@@ -955,7 +1120,8 @@ async function recordAttendanceClockOut(db, input = {}) {
         allocation_issues: payroll.allocation.allocationIssues,
         status: payroll.status,
         method,
-        source
+        source,
+        plan_source: initialPlanSource
     };
     await db.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
@@ -970,13 +1136,22 @@ async function recordAttendanceClockOut(db, input = {}) {
 
     return {
         record: writtenRecord
-            ? decorateAttendanceRecord(writtenRecord, attendancePlanForDecoration({
+            ? decorateAttendanceRecord({ ...writtenRecord, plan_source: initialPlanSource }, attendancePlanForDecoration({
                 professionKey: plan.primaryProfessionKey,
                 plannedStart,
                 plannedEnd,
-                segments: plan.segments
+                segments: plan.segments,
+                source: initialPlanSource
             }))
             : null,
+        plan: attendancePlanPayload({
+            plannedStart,
+            plannedEnd,
+            professionKey: plan.primaryProfessionKey,
+            segments: plan.segments,
+            source: initialPlanSource
+        }),
+        planSource: initialPlanSource,
         payroll,
         alreadyClockedOut: false,
         auditWritten: true
@@ -991,6 +1166,10 @@ module.exports = {
     actualWorkedMinutes,
     attendanceDayType,
     attendanceAllocationFields,
+    attendanceCsvCell,
+    attendanceCsvRow,
+    attendanceFactMinutes,
+    attendancePlanWarningMessage,
     attendanceReportingFacts,
     calculateAttendanceClockIn,
     calculateHrClockOutPayroll,
@@ -1003,5 +1182,6 @@ module.exports = {
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     resolveAttendancePlan,
+    summarizeHrTodayItems,
     timeToMinutes
 };

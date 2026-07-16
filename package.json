@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.48",
+  "version": "0.79.49",
   "eventGenix": {
-    "releaseLabel": "HR Today and Schedule Reliability"
+    "releaseLabel": "Attendance Reporting and Timeline Summary"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

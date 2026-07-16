@@ -68,6 +68,7 @@ const HR_HTML = [
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ATTENDANCE_STATE_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-attendance-state.js'), 'utf8');
+const HR_ATTENDANCE_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrAttendance.js'), 'utf8');
 const HR_PULSE_SWITCHER_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
@@ -124,7 +125,8 @@ test('HR Today metrics expose people lists and count only open shifts as on shif
     assert.doesNotMatch(summaryBlock, /early_leave[\s\S]*summary\.present\+\+/);
     assert.match(HR_JS, /function renderTodayMetricPeoplePanel/);
     assert.match(HR_JS, /function focusTodayStaffFromMetric/);
-    assert.match(HR_ROUTE, /if \(isAttendanceRecordOpen\(record\)\) present\+\+/);
+    assert.match(HR_ROUTE, /summarizeHrTodayItems\(data\)/);
+    assert.doesNotMatch(HR_ROUTE, /present\+\+/);
 
     const context = vm.createContext({ HrAttendanceState });
     vm.runInContext(`${modelBlock}\n${summaryBlock}`, context);
@@ -145,6 +147,28 @@ test('HR Today metrics expose people lists and count only open shifts as on shif
         on_vacation: 1,
         sick: 1
     });
+});
+
+test('attendance mutation routes expose stable planSource from the shared service', () => {
+    assert.match(HR_ATTENDANCE_SERVICE, /async function loadInitialAttendancePlanSource/);
+    assert.match(HR_ATTENDANCE_SERVICE, /FROM hr_audit_log/);
+    assert.match(HR_ATTENDANCE_SERVICE, /function planSourceFromAuditDetails/);
+    assert.match(HR_ATTENDANCE_SERVICE, /planSource:\s*initialPlanSource/);
+    assert.match(HR_ROUTE, /planSource:\s*clockInResult\.planSource/);
+    assert.match(HR_ROUTE, /planSource:\s*clockOutResult\.planSource/);
+    assert.match(STAFF_ROUTE, /planSource:\s*clockInResult\.planSource/);
+    assert.match(STAFF_ROUTE, /planSource:\s*clockOutResult\.planSource/);
+});
+
+test('HR attendance CSV export uses shared escaping and stable column rows', () => {
+    assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvCell/);
+    assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvRow/);
+    assert.match(HR_ATTENDANCE_SERVICE, /firstMeaningfulChar/);
+    assert.match(HR_ROUTE, /const header = \[/);
+    assert.match(HR_ROUTE, /attendanceCsvRow\(header\)/);
+    assert.match(HR_ROUTE, /attendanceCsvRow\(\[/);
+    assert.match(HR_ROUTE, /attendancePlanWarningMessage\(r\.plan_source\)/);
+    assert.doesNotMatch(HR_ROUTE, /return `\$\{r\.name\};/);
 });
 
 test('HR Today metric interactions keep all four counts, lists, closing paths, and row focus aligned', () => {

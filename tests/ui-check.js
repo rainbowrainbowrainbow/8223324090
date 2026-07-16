@@ -1260,6 +1260,10 @@ checkPage('index.html', (doc, html) => {
     check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
     check('Park pinata filler supports client-owned filler without legacy client-pinata token', html.includes('value="client_filler"') && html.includes('Свій наповнювач клієнта') && !html.includes('value="Клієнта"'));
     check('Booking multi-activity selection surface exists', !!doc.getElementById('selectedActivitiesList') && html.includes('program-details--summary'));
+    check('Booking activity editor omits duplicate legacy summary rows',
+        ['detailDuration', 'detailHosts', 'detailPrice', 'detailAge', 'detailKids'].every(id => !doc.getElementById(id))
+        && !bookingCode.includes('за активностями')
+        && !bookingCode.includes(' макс.'));
     check('Booking multi-activity frontend keeps separate activity payloads',
         bookingCode.includes('selectedActivityProgramIds')
         && bookingCode.includes('function bookingMultiActivityEnabled')
@@ -1893,8 +1897,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.79.48')
-        && html.includes('js/hr-pulse-switcher.js?v=0.79.48')
+        && html.includes('js/staff-schedule-shell.js?v=0.79.49')
+        && html.includes('js/hr-pulse-switcher.js?v=0.79.49')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -6066,7 +6070,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.79.48')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.79.49')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -6075,8 +6079,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.48')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.79.48')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.49')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.79.49')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -6355,8 +6359,10 @@ check('HR Pulse Today has simplified CSS header metric chips, search, department
     && hrRouteCode.includes('photo_url: s.photo_url')
     && hrRouteCode.includes('has_photo: Boolean')
     && hrRouteCode.includes('FROM staff')
-    && hrRouteCode.includes('isAttendanceRecordOpen(record)')
-    && hrRouteCode.includes('Number(record.late_minutes || 0) > 5')
+    && hrRouteCode.includes('summarizeHrTodayItems(data)')
+    && hrAttendanceServiceCode.includes('function summarizeHrTodayItems')
+    && hrAttendanceServiceCode.includes('if (isAttendanceRecordOpen(record)) summary.present += 1')
+    && hrAttendanceServiceCode.includes('const facts = attendanceFactMinutes(record)')
     && hrRouteCode.includes('department: s.department')
     && hrRouteCode.includes('position: s.position')
     && !htmlContains('hr.html', 'todayHoneycombMenu')
@@ -6409,6 +6415,10 @@ check('HR Pulse Reports has Today-style header metrics, compact controls, export
     && htmlContains('hr.html', 'id="reportBody"')
     && hrCode.includes("document.getElementById('reportExport')?.addEventListener('click', exportCSV)")
     && hrCode.includes('function formatReportOverdueTasks')
+    && hrCode.includes('function formatReportHours')
+    && hrCode.includes('function formatReportPlanWarnings')
+    && !hrCode.includes('totalOvertime.toFixed(0)')
+    && !hrCode.includes('⚠ ${r.plan_warning_count}')
     && hrCode.includes('function reportHeaderMetricsFromRows')
     && hrCode.includes('function updateReportHeaderMetrics')
     && hrCode.includes("setReportHeaderMetricText('reportHeroAttendance'")
@@ -6698,7 +6708,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('hr-team-delete') && hrCode.includes('hr-team-menu-section--danger') && hrCode.includes('тільки для дубля') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.48') && htmlContains('hr.html', 'js/staff-page.js?v=0.79.48') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.49') && htmlContains('hr.html', 'js/staff-page.js?v=0.79.49') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR Salary and KPI expose accessible local employee filters without changing summary snapshots', htmlContains('hr.html', 'id="salarySearch"') && htmlContains('hr.html', 'id="salaryFilterInfo"') && htmlContains('hr.html', 'id="salaryFilterReset"') && htmlContains('hr.html', 'id="salaryDepartmentFilters"') && htmlContains('hr.html', 'id="kpiSearch"') && htmlContains('hr.html', 'id="kpiFilterInfo"') && htmlContains('hr.html', 'id="kpiFilterReset"') && htmlContains('hr.html', 'id="kpiDepartmentFilters"') && htmlContains('hr.html', 'aria-live="polite"') && hrCode.includes('const payrollViewState =') && hrCode.includes('function payrollFilteredRows') && hrCode.includes('normalizeSearchText(parts.filter(Boolean).join') && hrCode.includes('data-payroll-department=') && hrCode.includes('aria-pressed=') && hrCode.includes('renderKpiSources({ rows: allRows, sources })') && hrCode.includes('const totals = allRows.reduce') && hrPageCss.includes('#tab-salary .hr-payroll-filters') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-filters') && hrPageCss.includes('#tab-salary .hr-payroll-empty-state') && hrPageCss.includes('@media (max-width: 480px)'));
 check('HR Salary and KPI group visible rows with persistent native-button toggles', hrCode.includes("storageKey: 'pzp_hr_payroll_salary_expanded_groups'") && hrCode.includes("storageKey: 'pzp_hr_payroll_kpi_expanded_groups'") && hrCode.includes("hydratePayrollExpandedGroups('salary')") && hrCode.includes("hydratePayrollExpandedGroups('kpi')") && hrCode.includes('function payrollGroupedRows') && hrCode.includes('function persistPayrollExpandedGroups') && hrCode.includes('function payrollSearchAutoExpandsGroups') && hrCode.includes('type="button" class="hr-payroll-group-toggle"') && hrCode.includes('data-payroll-group-toggle=') && hrCode.includes('aria-expanded=') && hrCode.includes("renderPayrollGroupedList('salary'") && hrCode.includes("renderPayrollGroupedList('kpi'") && hrPageCss.includes('#tab-salary .hr-payroll-group-header') && hrPageCss.includes('#tab-kpi .hr-payroll-group-toggle:focus-visible') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-group-header'));

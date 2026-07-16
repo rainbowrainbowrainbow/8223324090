@@ -44,6 +44,8 @@ const ReportsPage = (() => {
     let _payrollReconciliationSignature = '';
     let _payrollReconciliationLoading = false;
 
+    const ATTENDANCE_GRACE_MINUTES = Object.freeze({ late: 5, overtime: 15 });
+
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
     const CUSTOM_TEMPLATE_STORAGE_KEY = 'eventgenix_report_table_templates_v1';
@@ -687,10 +689,18 @@ const ReportsPage = (() => {
         });
     }
 
+    function attendanceFactNumber(value) {
+        const num = Number(value || 0);
+        return Number.isFinite(num) ? Math.max(0, num) : 0;
+    }
+
     function payrollAttendanceFacts(record = {}) {
-        const lateMinutes = Number(record.late_minutes || 0) > 5 ? Number(record.late_minutes || 0) : 0;
-        const earlyLeaveMinutes = Math.max(0, Number(record.early_leave_minutes || 0));
-        const overtimeMinutes = Math.max(0, Number(record.overtime_minutes || 0));
+        const serverFacts = record.attendance_facts || record.attendanceFacts || {};
+        const lateRaw = attendanceFactNumber(serverFacts.lateMinutes ?? serverFacts.late_minutes ?? record.late_minutes);
+        const earlyLeaveMinutes = attendanceFactNumber(serverFacts.earlyLeaveMinutes ?? serverFacts.early_leave_minutes ?? record.early_leave_minutes);
+        const overtimeRaw = attendanceFactNumber(serverFacts.overtimeMinutes ?? serverFacts.overtime_minutes ?? record.overtime_minutes);
+        const lateMinutes = lateRaw > ATTENDANCE_GRACE_MINUTES.late ? lateRaw : 0;
+        const overtimeMinutes = overtimeRaw > ATTENDANCE_GRACE_MINUTES.overtime ? overtimeRaw : 0;
         const events = [];
         if (lateMinutes > 0) events.push('late');
         if (earlyLeaveMinutes > 0) events.push('left_early');

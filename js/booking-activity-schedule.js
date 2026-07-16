@@ -162,7 +162,10 @@
                 ? rawManualTime
                 : '';
             const time = manualTime || nextTime || '';
-            const duration = Number(program.duration || 0) || 0;
+            const resolvedDuration = typeof options.durationForProgram === 'function'
+                ? options.durationForProgram(program, index)
+                : program.duration;
+            const duration = Number(resolvedDuration || 0) || 0;
             const startMinutes = time ? scheduleTimeToMinutes(time) : null;
             const endMinutes = startMinutes !== null ? startMinutes + duration : null;
             const endTime = endMinutes !== null ? scheduleMinutesToTime(endMinutes) : '';

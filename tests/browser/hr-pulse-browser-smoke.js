@@ -421,7 +421,7 @@ async function assertHrPrintDocuments(page) {
     if (await queuedPreview.count()) {
         const queuedResponsePromise = page.waitForResponse(response => (
             response.request().method() === 'GET'
-            && /\/api\/hr\/attendance-documents\/jobs\/\d+\/pdf$/.test(new URL(response.url()).pathname)
+            && /\/api\/hr\/attendance-document-jobs\/\d+\/pdf$/.test(new URL(response.url()).pathname)
         ), { timeout: 30000 });
         const previousUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
         await queuedPreview.click();

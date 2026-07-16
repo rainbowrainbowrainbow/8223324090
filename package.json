@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.46",
+  "version": "0.79.47",
   "eventGenix": {
-    "releaseLabel": "HR Today Metrics Drill-down"
+    "releaseLabel": "HR Today Keyboard Escape Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

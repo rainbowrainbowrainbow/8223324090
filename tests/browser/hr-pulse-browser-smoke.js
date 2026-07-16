@@ -120,7 +120,10 @@ async function login(base) {
 }
 
 async function openAuthenticatedPage(browser, base, session) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        serviceWorkers: 'block'
+    });
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user, themeMode }) => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);
@@ -272,21 +275,22 @@ function assertHrPrintGeometry(geometry, label, { previewReady = false, stacked 
     }
 }
 
-async function captureHrPrintFallbackOpen(page) {
-    return page.evaluate(() => {
+async function captureHrPrintWindowOpen(page, buttonId = 'hrPrintOpenButton') {
+    return page.evaluate(targetButtonId => {
         const originalOpen = window.open;
         let call = null;
         window.open = (...args) => {
             call = args;
             return null;
         };
-        document.getElementById('hrPrintOpenButton')?.click();
+        document.getElementById(targetButtonId)?.click();
         window.open = originalOpen;
         return call;
-    });
+    }, buttonId);
 }
 
 async function assertHrPrintDocuments(page) {
+    console.log('HR print smoke: opening modal');
     const openButton = page.getByRole('button', { name: 'Документи для друку' });
     await openButton.waitFor({ timeout: 20000 });
     await openButton.click();
@@ -389,12 +393,22 @@ async function assertHrPrintDocuments(page) {
         assert.equal(await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').count(), 0, 'browser without a PDF viewer keeps the frame hidden');
         assert.match(await dialog.locator('#hrPrintPreviewState').textContent(), /Відкрийте документ в окремій вкладці/, 'no-viewer browser explains the fallback');
     }
-    const fallbackOpen = await captureHrPrintFallbackOpen(page);
+    const downloadPromise = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: 'Завантажити PDF' }).click();
+    const download = await downloadPromise;
+    assert.match(download.suggestedFilename(), /\.pdf$/i, 'download action produces a PDF file');
+
+    const fallbackOpen = await captureHrPrintWindowOpen(page);
     const firstPreviewUrl = fallbackOpen?.[0] || '';
     assert.match(firstPreviewUrl || '', /^blob:/, 'manual preview uses a blob URL');
     assertHrPrintGeometry(await readHrPrintGeometry(page, dialog), '1440x900 ready preview', { previewReady: true });
     assert.equal(fallbackOpen?.[0], firstPreviewUrl, 'fallback opens the current preview URL');
     assert.equal(fallbackOpen?.[1], '_blank', 'fallback opens PDF in a new tab');
+    if (!pdfViewerEnabled) {
+        const printFallbackOpen = await captureHrPrintWindowOpen(page, 'hrPrintPrintButton');
+        assert.equal(printFallbackOpen?.[0], firstPreviewUrl, 'print uses the current PDF fallback when no inline viewer exists');
+        assert.equal(printFallbackOpen?.[1], '_blank', 'print fallback opens in a new tab');
+    }
     assert.equal(pdfRequestCount, 1, 'preview uses one server snapshot request');
 
     const secondResponsePromise = page.waitForResponse(response => (
@@ -404,7 +418,7 @@ async function assertHrPrintDocuments(page) {
     await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
     assert.equal((await secondResponsePromise).status(), 200, 'repeated manual preview succeeds');
     await page.waitForFunction(() => !document.getElementById('hrPrintDownloadButton')?.disabled, null, { timeout: 20000 });
-    const secondPreviewUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
+    const secondPreviewUrl = (await captureHrPrintWindowOpen(page))?.[0] || '';
     assert.notEqual(secondPreviewUrl, firstPreviewUrl, 'repeated preview replaces the old blob URL');
     const oldPreviewStillReadable = await page.evaluate(async objectUrl => {
         try {
@@ -416,6 +430,7 @@ async function assertHrPrintDocuments(page) {
     }, firstPreviewUrl);
     assert.equal(oldPreviewStillReadable, false, 'repeated preview revokes the old blob URL');
     assert.equal(pdfRequestCount, 2, 'repeated preview uses exactly one additional server snapshot request');
+    console.log('HR print smoke: repeated manual preview passed');
 
     const queuedPreview = dialog.locator('[data-hr-print-operation="preview-job"]:visible').first();
     if (await queuedPreview.count()) {
@@ -423,14 +438,15 @@ async function assertHrPrintDocuments(page) {
             response.request().method() === 'GET'
             && /\/api\/hr\/attendance-document-jobs\/\d+\/pdf$/.test(new URL(response.url()).pathname)
         ), { timeout: 30000 });
-        const previousUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
+        const previousUrl = (await captureHrPrintWindowOpen(page))?.[0] || '';
         await queuedPreview.click();
         assert.equal((await queuedResponsePromise).status(), 200, 'queued immutable preview succeeds');
         await page.waitForFunction(() => !document.getElementById('hrPrintDownloadButton')?.disabled, null, { timeout: 20000 });
-        const queuedUrl = (await captureHrPrintFallbackOpen(page))?.[0] || '';
+        const queuedUrl = (await captureHrPrintWindowOpen(page))?.[0] || '';
         assert.match(queuedUrl, /^blob:/, 'queued preview exposes the shared fallback URL');
         assert.notEqual(queuedUrl, previousUrl, 'queued preview replaces the previous blob URL');
         assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'queued preview uses the shared ready state');
+        console.log('HR print smoke: queued preview passed');
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -457,6 +473,13 @@ async function assertHrPrintDocuments(page) {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.waitForTimeout(100);
     assertHrPrintGeometry(await readHrPrintGeometry(page, dialog), '320x568 ready preview', { previewReady: true, stacked: true });
+    console.log('HR print smoke: mobile preview passed');
+
+    await dialog.locator('#hrPrintDocumentsClose').focus();
+    await page.keyboard.press('Escape');
+    assert.equal(await dialog.isVisible(), false, 'Escape closes the print modal');
+    await openButton.click();
+    await dialog.waitFor({ timeout: 20000 });
 
     const pageErrors = [];
     const collectPageError = error => pageErrors.push(error.message || String(error));
@@ -474,19 +497,24 @@ async function assertHrPrintDocuments(page) {
     const closedResponsePromise = page.waitForResponse(response => (
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
-    ), { timeout: 30000 });
-    const delayedClickPromise = dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    ), { timeout: 30000 }).then(response => ({ response }), error => ({ error }));
+    const delayedPreviewButton = dialog.getByRole('button', { name: 'Сформувати preview' });
+    await delayedPreviewButton.focus();
+    await delayedPreviewButton.evaluate(button => button.click());
     await requestPaused;
-    await page.keyboard.press('Escape');
-    assert.equal(await dialog.isVisible(), false, 'Escape closes print modal during generation');
+    console.log('HR print smoke: delayed request paused');
+    await dialog.locator('#hrPrintDocumentsClose').evaluate(button => button.click());
+    assert.equal(await dialog.isVisible(), false, 'close button closes print modal during generation');
     releaseDelayedRequest();
-    await delayedClickPromise;
-    assert.equal((await closedResponsePromise).status(), 200, 'in-flight preview response can finish after modal close');
+    const closedResult = await closedResponsePromise;
+    if (closedResult.error) throw closedResult.error;
+    assert.equal(closedResult.response.status(), 200, 'in-flight preview response can finish after modal close');
     await page.waitForTimeout(250);
     await page.unroute('**/api/hr/attendance-documents/pdf', delayedRoute);
     page.off('pageerror', collectPageError);
     assert.deepEqual(pageErrors, [], 'closing during preview does not raise browser errors');
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'btnHrPrintDocuments', 'print modal restores opener focus');
+    console.log('HR print smoke: close-during-request passed');
     page.off('request', countPdfRequest);
     await page.setViewportSize({ width: 1440, height: 900 });
 }

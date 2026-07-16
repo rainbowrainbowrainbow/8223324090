@@ -46,6 +46,13 @@ test('automation contract is deterministic, queue-only and disabled by default',
     assert.equal(left.enabled, false);
     assert.equal(left.scheduleKind, 'weekly');
     assert.deepEqual(left.weekdays, [1, 2, 3, 4, 5]);
+    assert.equal(left.settings.fontPreset.title, 14);
+    assert.equal(left.settings.fontPreset.dailyEmployee, 15);
+    assert.equal(Object.hasOwn(left.settings.fontPreset, 'values'), false);
+    assert.doesNotThrow(() => normalizeAutomationPayload({
+        ...sample(),
+        settings: left.settings
+    }));
     assert.equal(stableStringify({ b: 2, a: 1 }), '{"a":1,"b":2}');
 });
 

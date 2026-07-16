@@ -83,7 +83,9 @@ function documentSettingsFromPayload(documentType, categoryIds, settings = {}) {
         locationShift: normalized.locationShift,
         markedBy: normalized.markedBy,
         texts: normalized.texts,
-        fontPreset: normalized.fontPreset
+        // Store the accepted scalar values, not normalizeDocumentRequest's
+        // renderer metadata wrapper ({ name, customized, values }).
+        fontPreset: normalized.fontPreset.values
     };
 }
 
@@ -290,6 +292,7 @@ async function disableAutomation(id, actor = {}, db = pool) {
 
 function requestFromAutomation(automation, localDate) {
     const settings = automation.settings_json || automation.settings || {};
+    const fontPreset = settings.fontPreset?.values || settings.fontPreset || {};
     const documentType = automation.document_type || automation.documentType;
     const categoryIds = automation.category_ids || automation.categoryIds;
     return {
@@ -301,7 +304,7 @@ function requestFromAutomation(automation, localDate) {
         locationShift: settings.locationShift || '',
         markedBy: settings.markedBy || '',
         texts: settings.texts || {},
-        fontPreset: settings.fontPreset || {}
+        fontPreset
     };
 }
 

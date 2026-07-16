@@ -344,6 +344,78 @@ function professionConditionError(message, statusCode = 400, code = 'INVALID_PRO
     return error;
 }
 
+async function loadPrimaryStaffShiftPreference(db, staffId, dayType) {
+    if (!db || typeof db.query !== 'function') {
+        throw new TypeError('loadPrimaryStaffShiftPreference requires a database client');
+    }
+    const id = Number(staffId);
+    const normalizedDayType = String(dayType || '').trim().toLowerCase();
+    if (!Number.isInteger(id) || id <= 0) {
+        throw professionConditionError('valid staffId is required');
+    }
+    if (!PROFESSION_CONDITION_DAY_TYPES.includes(normalizedDayType)) {
+        throw professionConditionError('dayType must be weekday or weekend');
+    }
+
+    const staffResult = await db.query(
+        `SELECT s.id, s.role_type, COALESCE(s.is_active, true) AS is_active,
+                (
+                    SELECT sra.profession_key
+                    FROM staff_role_assignments sra
+                    WHERE sra.staff_id = s.id
+                      AND COALESCE(sra.is_primary, false) = true
+                      AND COALESCE(sra.status, 'active') = 'active'
+                    ORDER BY sra.id DESC
+                    LIMIT 1
+                ) AS assigned_primary_profession_key
+         FROM staff s
+         WHERE s.id = $1`,
+        [id]
+    );
+    const staff = safeRows(staffResult)[0] || null;
+    const professionKey = normalizeProfessionKey(staff?.assigned_primary_profession_key)
+        || normalizeProfessionKey(staff?.role_type);
+    if (!staff || staff.is_active === false || !professionKey) {
+        return {
+            staffId: id,
+            professionKey: professionKey || null,
+            dayType: normalizedDayType,
+            startTime: null,
+            endTime: null,
+            isActive: false,
+            source: 'unset'
+        };
+    }
+
+    const preferenceResult = await db.query(
+        `SELECT start_time, end_time, is_active
+         FROM staff_shift_preferences
+         WHERE staff_id = $1
+           AND profession_key = $2
+           AND day_type = $3
+         LIMIT 1`,
+        [id, professionKey, normalizedDayType]
+    );
+    const preference = safeRows(preferenceResult)[0] || null;
+    const startTime = preference?.is_active === false
+        ? null
+        : normalizeProfessionConditionTime(preference?.start_time);
+    const endTime = preference?.is_active === false
+        ? null
+        : normalizeProfessionConditionTime(preference?.end_time);
+    const isActive = Boolean(preference && preference.is_active !== false && startTime && endTime && startTime !== endTime);
+
+    return {
+        staffId: id,
+        professionKey,
+        dayType: normalizedDayType,
+        startTime: isActive ? startTime : null,
+        endTime: isActive ? endTime : null,
+        isActive,
+        source: isActive ? 'staff_shift_preferences' : 'unset'
+    };
+}
+
 function normalizeProfessionConditionPayload(payload = {}, current = {}) {
     const rateMode = String(payload.rateMode ?? payload.rate_mode ?? payload.rate?.mode ?? '').trim().toLowerCase() || 'explicit';
     if (!['explicit', 'fallback', 'unchanged'].includes(rateMode)) {
@@ -840,6 +912,7 @@ module.exports = {
     loadProfessionWorkspaceCatalog,
     loadProfessionWorkspace,
     normalizeProfessionConditionPayload,
+    loadPrimaryStaffShiftPreference,
     loadStaffProfessionCondition,
     saveStaffProfessionCondition,
     professionCatalogActiveKeySet,

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.48 - HR Today and Schedule Reliability
+
+### Пульс компанії / HR / Графік / Reliability / (16.07.2026) [codex]
+- **Єдине правило відкритої зміни** — API, локальний перерахунок, drill-down і дія в рядку використовують один predicate: є `clock_in`, але немає `clock_out`.
+- **Постійний Chromium regression у CI** — перевіряє чотири метрики, фільтри, keyboard focus, polling, realtime, mobile, dark theme та `prefers-reduced-motion` без мутацій даних.
+- **Спрощено швидкі діапазони графіка** — залишено «1–15» і «16–31»; довільний повний місяць і надалі доступний через ручний вибір дат.
+
+---
+
 ## v0.79.47 - HR Today Keyboard Escape Fix
 
 ### Пульс компанії / HR / Accessibility / Hotfix / (16.07.2026) [codex]

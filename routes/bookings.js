@@ -39,7 +39,9 @@ const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
     reconcileBanquetGroupForBooking,
-    createBanquetGroupInTransaction
+    createBanquetGroupInTransaction,
+    persistDerivedBookingSetMetadata,
+    validateSingleBookingActivitySetUpdate
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { broadcastBookingEvent } = require('../services/websocket');
@@ -4064,6 +4066,14 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 members: activityRows.map(row => ({ bookingId: row.id, role: 'activity' }))
             })
             : null;
+        if (createdBanquetGroup?.groupRow) {
+            await persistDerivedBookingSetMetadata(
+                client,
+                createdBanquetGroup.groupRow,
+                businessContext,
+                { source: 'booking_create_full' }
+            );
+        }
 
         await insertScopedHistory(client, 'create', main.createdBy || req.user?.username, main, businessContext);
         for (const activityRow of activityRows) {
@@ -4886,6 +4896,21 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     b.businessContext = businessContext;
     if (!canEditBooking(req.user, old)) {
         return sendBookingDenied(req, res, old);
+    }
+    const activitySetGuard = await validateSingleBookingActivitySetUpdate({
+        bookingId: id,
+        extraData: b.extraData || b.extra_data,
+        businessContext
+    });
+    if (!activitySetGuard.allowed) {
+        return res.status(409).json({
+            success: false,
+            code: 'BANQUET_ACTIVITY_SET_REQUIRES_ATOMIC_ENDPOINT',
+            error: 'Banquet activity membership must be changed through the atomic banquet booking-set endpoint',
+            groupId: activitySetGuard.groupId,
+            requestedActivityIds: activitySetGuard.requestedActivityIds,
+            actualActivityIds: activitySetGuard.actualActivityIds
+        });
     }
     if (!b.date) b.date = old.date;
     if (!b.time) b.time = old.time;

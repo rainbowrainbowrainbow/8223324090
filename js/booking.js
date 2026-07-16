@@ -529,7 +529,9 @@ function bookingMutationBookingIds(result = null, fallbackIds = []) {
         result?.bookings,
         result?.allBookings,
         result?.linkedBookings,
-        result?.updatedBookings
+        result?.updatedBookings,
+        result?.activityBookings,
+        result?.banquetGroup?.bookings?.activities
     ].forEach(list => {
         if (Array.isArray(list)) list.forEach(add);
     });
@@ -7836,6 +7838,7 @@ async function closeBookingPanel(force = false) {
     if (window.BookingForm?.markClean) BookingForm.markClean();
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
     BookingDrawerState.roomBookingAnimationBridge = null;
+    BookingDrawerState.banquetEditContext = null;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
     resetSelectedActivityScheduleState();
@@ -7848,6 +7851,7 @@ function resetBookingEditStateForCreate() {
     AppState.editingBookingId = null;
     AppState.editingBookingUpdatedAt = null;
     BookingDrawerState.roomBookingAnimationBridge = null;
+    BookingDrawerState.banquetEditContext = null;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
     resetSelectedActivityScheduleState();
@@ -7893,10 +7897,14 @@ function renderProgramCategoryChips() {
 }
 
 function bookingMultiActivityEnabled() {
+    const editingBanquetGroup = Boolean(
+        AppState.editingBookingId
+        && BookingDrawerState.banquetEditContext?.groupId
+    );
     return isParkTimelineBookingMode()
         && !isMaysternyaBookingContext()
         && !isEducationTimelineBookingMode()
-        && !AppState.editingBookingId;
+        && (!AppState.editingBookingId || editingBanquetGroup);
 }
 
 function bookingActivityScheduleApi() {
@@ -7981,7 +7989,7 @@ async function retrySelectedActivityPreflightValidation(event) {
         button.textContent = 'Перевіряю...';
     }
     const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
-    const excludeId = AppState.editingBookingId || null;
+    const excludeId = bookingEditConflictExcludeIds();
     try {
         const ok = await validateSelectedActivityScheduleBeforeSubmit(formData, excludeId, { forceRetry: true });
         if (ok) showNotification('Попередню перевірку слотів виконано.', 'success');
@@ -8007,7 +8015,12 @@ function getSelectedActivityPrograms() {
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     const byId = new Map(products.map(product => [String(product.id), product]));
     return getSelectedActivityProgramIds()
-        .map(id => byId.get(String(id)))
+        .map(id => {
+            const product = byId.get(String(id));
+            const bookingFields = getSelectedActivityBookingFields()[String(id)] || null;
+            const duration = Number(bookingFields?.duration || 0);
+            return product && duration > 0 ? { ...product, duration } : product;
+        })
         .filter(Boolean);
 }
 
@@ -8259,6 +8272,14 @@ function getSelectedActivityScheduleTimes() {
         BookingDrawerState.selectedActivityScheduleTimes = {};
     }
     return BookingDrawerState.selectedActivityScheduleTimes;
+}
+
+function getSelectedActivityBookingFields() {
+    if (!BookingDrawerState.selectedActivityBookingFields
+        || typeof BookingDrawerState.selectedActivityBookingFields !== 'object') {
+        BookingDrawerState.selectedActivityBookingFields = {};
+    }
+    return BookingDrawerState.selectedActivityBookingFields;
 }
 
 function getSelectedActivityScheduleIssues() {
@@ -8579,6 +8600,7 @@ function pruneSelectedActivityScheduleState(programIds = []) {
 }
 
 function resetSelectedActivityScheduleState(options = {}) {
+    BookingDrawerState.selectedActivityBookingFields = {};
     BookingDrawerState.selectedActivityScheduleTimes = {};
     BookingDrawerState.selectedActivityScheduleIssues = {};
     BookingDrawerState.selectedActivityPinataFields = {};
@@ -9736,7 +9758,9 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
         if (secondLine) {
             // v5.5: При редагуванні виключити linked бронювання цього ж запису
             const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
-            const linkedId = allBookings.find(b => String(b.linkedTo || '') === String(excludeId || '') && b.lineId === secondLine.id)?.id || null;
+            const linkedId = Array.isArray(excludeId)
+                ? excludeId
+                : (allBookings.find(b => String(b.linkedTo || '') === String(excludeId || '') && b.lineId === secondLine.id)?.id || null);
             const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
                 const cw2 = secondConflict.conflictWith;
@@ -9760,22 +9784,28 @@ function normalizeBookingIdentity(value) {
 }
 
 function collectDuplicateProgramExclusionIds(bookings, excludeId = null) {
-    const targetId = normalizeBookingIdentity(excludeId);
     const excludedIds = new Set();
-    if (!targetId) return excludedIds;
-
     const list = Array.isArray(bookings) ? bookings : [];
-    const target = list.find(b => normalizeBookingIdentity(b.id) === targetId);
-    const rootId = normalizeBookingIdentity(target?.linkedTo) || targetId;
-
-    excludedIds.add(targetId);
-    if (rootId) excludedIds.add(rootId);
+    const targetIds = (Array.isArray(excludeId) ? excludeId : [excludeId])
+        .map(normalizeBookingIdentity)
+        .filter(Boolean);
+    if (!targetIds.length) return excludedIds;
+    const rootIds = new Set();
+    targetIds.forEach(targetId => {
+        const target = list.find(b => normalizeBookingIdentity(b.id) === targetId);
+        const rootId = normalizeBookingIdentity(target?.linkedTo) || targetId;
+        excludedIds.add(targetId);
+        if (rootId) {
+            rootIds.add(rootId);
+            excludedIds.add(rootId);
+        }
+    });
 
     for (const booking of list) {
         const bookingId = normalizeBookingIdentity(booking?.id);
         if (!bookingId) continue;
         const linkedTo = normalizeBookingIdentity(booking?.linkedTo);
-        if (bookingId === targetId || bookingId === rootId || linkedTo === targetId || linkedTo === rootId) {
+        if (excludedIds.has(bookingId) || excludedIds.has(linkedTo) || rootIds.has(linkedTo)) {
             excludedIds.add(bookingId);
         }
     }
@@ -9784,6 +9814,7 @@ function collectDuplicateProgramExclusionIds(bookings, excludeId = null) {
 }
 
 function isDuplicateProgramRelevantEdit(bookings, excludeId, programId, time, duration) {
+    if (Array.isArray(excludeId)) return true;
     const targetId = normalizeBookingIdentity(excludeId);
     if (!targetId) return true;
     const list = Array.isArray(bookings) ? bookings : [];
@@ -9933,12 +9964,13 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
 
     rows.forEach(row => {
         if (!row.time || row.duration <= 0) return;
+        const persistedFields = getSelectedActivityBookingFields()[String(row.programId)] || {};
         const candidate = {
             id: `draft-${row.programId}`,
             date,
             time: row.time,
             duration: row.duration,
-            lineId,
+            lineId: persistedFields.lineId || lineId,
             room,
             programId: row.programId,
             programCode: row.program?.code || null,
@@ -9957,7 +9989,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         if (selectedActivityRequiresSecondAnimator(row.program)) {
             const secondDraft = selectedActivitySecondAnimatorDraft(row.program);
             if (secondDraft.secondAnimatorLineId) {
-                if (normalizeBookingIdentity(secondDraft.secondAnimatorLineId) === normalizeBookingIdentity(lineId)) {
+                if (normalizeBookingIdentity(secondDraft.secondAnimatorLineId) === normalizeBookingIdentity(candidate.lineId)) {
                     addSelectedActivityScheduleIssue(issueMap, row.programId, 'Другий ведучий збігається з основним ведучим.');
                 }
                 const secondLineConflict = existingBookings.find(booking =>
@@ -10381,10 +10413,11 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
     if (!program) return null;
     const activityIndex = Number(options.index || 0);
     const activityIds = (options.activityPrograms || []).map(item => String(item.id));
+    const persistedFields = getSelectedActivityBookingFields()[String(program.id)] || {};
     const pinataFields = selectedActivityPinataDraft(program);
     const secondAnimatorFields = selectedActivitySecondAnimatorDraft(program);
     const price = bookingActivityPriceValue(program);
-    const duration = Number(program.duration || 0) || 30;
+    const duration = Number(persistedFields.duration || program.duration || 0) || 30;
     const extraData = buildExtraData(String(program.id)) || {};
     const timelineIdentity = baseBooking.extraData?.timelineIdentity
         ? { ...baseBooking.extraData.timelineIdentity, source: 'multi_activity_booking' }
@@ -10418,9 +10451,10 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
     if (timelineIdentity) extraData.timelineIdentity = timelineIdentity;
 
     return {
+        bookingId: persistedFields.existingActivityBookingId || undefined,
         date: baseBooking.date,
         time: options.time || baseBooking.time,
-        lineId: baseBooking.lineId,
+        lineId: persistedFields.lineId || baseBooking.lineId,
         lineName: baseBooking.lineName || null,
         resourceId: baseBooking.resourceId || null,
         resourceType: baseBooking.resourceType || null,
@@ -11275,8 +11309,8 @@ async function handleBookingSubmit(e) {
         await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
     }
 
-    // v5.5: excludeId для режиму редагування
-    const excludeId = AppState.editingBookingId || null;
+    // v5.5: exclude current root; banquet edit excludes the full persisted member set.
+    const excludeId = bookingEditConflictExcludeIds();
 
     if (formData.hasEvent && formData.duration > 0) {
         // Валідація конфліктів
@@ -11309,7 +11343,8 @@ async function handleBookingSubmit(e) {
 
             // Зберегти оригінального автора
             const oldBookings = await getBookingsForDate(AppState.selectedDate, { force: true });
-            oldBooking = oldBookings.find(b => b.id === booking.id);
+            oldBooking = BookingDrawerState.banquetEditContext?.primaryBooking
+                || oldBookings.find(b => b.id === booking.id);
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
@@ -11323,8 +11358,35 @@ async function handleBookingSubmit(e) {
         }
 
         if (shouldUpdateExistingBooking) {
-            const updateResult = await apiUpdateBooking(booking.id, booking);
+            const editPath = typeof resolveBookingEditPath === 'function'
+                ? resolveBookingEditPath({
+                    editingBookingId: booking.id,
+                    banquetEditContext: BookingDrawerState.banquetEditContext
+                })
+                : { kind: 'single_booking_update', blocked: false };
+            if (editPath.blocked) {
+                showNotification(editPath.error || 'Контекст редагування банкету неповний. Відкрийте форму ще раз.', 'error');
+                unlockSubmitBtn();
+                return;
+            }
+            const banquetEditContext = BookingDrawerState.banquetEditContext;
+            if (banquetEditContext?.unresolvedActivityProgramIds?.length) {
+                showNotification('Збереження заблоковано: частина активностей банкету відсутня в каталозі.', 'error');
+                unlockSubmitBtn();
+                return;
+            }
+            const updateResult = editPath.kind === 'banquet_booking_set'
+                ? await apiUpdateBanquetBookingSet(
+                    editPath.groupId,
+                    buildBanquetBookingSetPayload(booking, formData, banquetEditContext)
+                )
+                : await apiUpdateBooking(booking.id, booking);
             if (!updateResult || updateResult.success === false) {
+                if (updateResult?.code === 'BANQUET_BOOKING_SET_VERSION_CONFLICT') {
+                    await handleBanquetBookingSetConflict(updateResult, banquetEditContext);
+                    unlockSubmitBtn();
+                    return;
+                }
                 // Optimistic locking: check if it's a version conflict
                 if (updateResult?.conflict) {
                     await handleOptimisticLockConflict(updateResult, booking);
@@ -11342,25 +11404,38 @@ async function handleBookingSubmit(e) {
                 unlockSubmitBtn(); return;
             }
             // Update stored updatedAt from server response
-            if (updateResult && updateResult.booking) {
+            if (editPath.kind === 'banquet_booking_set') {
+                AppState.editingBookingUpdatedAt = updateResult?.primaryBooking?.updatedAt || AppState.editingBookingUpdatedAt;
+            } else if (updateResult && updateResult.booking) {
                 AppState.editingBookingUpdatedAt = updateResult.booking.updatedAt;
             }
-            await apiAddHistory('edit', AppState.currentUser?.username, booking);
+            if (editPath.kind !== 'banquet_booking_set') {
+                await apiAddHistory('edit', AppState.currentUser?.username, booking);
+            }
 
             // v5.51: Save undo for edit (store old state)
             if (oldBooking) pushUndo('edit', { old: { ...oldBooking }, updated: { ...booking } });
 
-            AppState.editingBookingId = null;
-
             restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
             invalidateBookingBanquetPreviewFreshness({
-                bookingIds: bookingMutationBookingIds(updateResult, [booking.id, oldBooking?.id])
+                bookingIds: bookingMutationBookingIds(updateResult, [booking.id, oldBooking?.id]),
+                groupId: banquetEditContext?.groupId
             });
             invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
+            if (editPath.kind === 'banquet_booking_set') {
+                const refreshedContext = await refreshBanquetEditContextAfterSave(updateResult, banquetEditContext);
+                if (!refreshedContext) {
+                    unlockSubmitBtn();
+                    return;
+                }
+                AppState.editingBookingUpdatedAt = refreshedContext.primaryBooking?.updatedAt
+                    || AppState.editingBookingUpdatedAt;
+            }
+            AppState.editingBookingId = null;
             closeBookingPanel(true);
             unlockSubmitBtn();
             await renderTimeline();
-            showNotification('Бронювання оновлено!', 'success');
+            showNotification(editPath.kind === 'banquet_booking_set' ? 'Склад банкету оновлено!' : 'Бронювання оновлено!', 'success');
         } else {
             if (editingBookingId) {
                 const pastValidationError = bookingCreatePastValidationError(formData, AppState.selectedDate);
@@ -11569,6 +11644,40 @@ if (typeof window !== 'undefined') window.handleBookingSubmit = handleBookingSub
 // OPTIMISTIC LOCKING CONFLICT HANDLER
 // ==========================================
 
+async function handleBanquetBookingSetConflict(result, context = BookingDrawerState.banquetEditContext) {
+    const reload = await customConfirm(
+        'Склад банкету вже змінив інший користувач. Ваші дані не збережено. Завантажити свіжий склад банкету?',
+        'Конфлікт редагування банкету',
+        'Завантажити свіжі дані',
+        'Залишитись у формі'
+    );
+    if (!reload) {
+        showNotification('Зміни не збережено. Форма залишилась відкритою.', 'warning');
+        return false;
+    }
+    const bookingId = context?.primaryBookingId || context?.anchorBookingId || AppState.editingBookingId;
+    if (!bookingId || typeof apiGetBanquetByBooking !== 'function') {
+        showNotification('Не вдалося визначити банкет для оновлення. Відкрийте форму ще раз.', 'error');
+        return false;
+    }
+    invalidateBookingBanquetPreviewFreshness({
+        bookingIds: context?.allBookingIds || [bookingId],
+        groupId: context?.groupId
+    });
+    invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
+    const snapshot = await apiGetBanquetByBooking(bookingId);
+    if (!snapshot || snapshot.success === false || !banquetSnapshotHasGroup(snapshot)) {
+        showNotification(snapshot?.error || 'Не вдалося завантажити свіжий snapshot банкету.', 'error');
+        return false;
+    }
+    if (window.BookingForm?.markClean) BookingForm.markClean();
+    await closeBookingPanel(true);
+    await renderTimeline();
+    await editBooking(bookingId);
+    showNotification('Форму оновлено зі свіжого snapshot банкету.', 'info');
+    return true;
+}
+
 async function handleOptimisticLockConflict(result, localBooking) {
     const serverData = result.currentData;
     if (!serverData) {
@@ -11634,7 +11743,10 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
     const allBookings = isRoomFirstTimelineView()
         ? (await apiGetBookings(formatDate(AppState.selectedDate), { timelineView: 'animators', fresh: true }) || [])
         : await getBookingsForDate(AppState.selectedDate);
-    const bookings = allBookings.filter(b => b.lineId === lineId && b.id !== excludeId);
+    const excludeIds = new Set((Array.isArray(excludeId) ? excludeId : [excludeId])
+        .map(normalizeBookingIdentity)
+        .filter(Boolean));
+    const bookings = allBookings.filter(b => b.lineId === lineId && !excludeIds.has(normalizeBookingIdentity(b.id)));
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
 
@@ -13509,24 +13621,275 @@ window.attachBookingToBanquetGroupFromDetails = attachBookingToBanquetGroupFromD
 // РЕДАГУВАННЯ БРОНЮВАННЯ (v5.5)
 // ==========================================
 
+function banquetEditBookingValue(booking = {}, camelKey, snakeKey) {
+    return booking?.[camelKey] ?? booking?.[snakeKey] ?? null;
+}
+
+function buildBanquetEditPrimaryPatch(baseBooking, context = BookingDrawerState.banquetEditContext) {
+    if (!context?.groupId || context.primaryIsActivity) return baseBooking;
+    const primary = context.primaryBooking || {};
+    return {
+        ...baseBooking,
+        id: context.primaryBookingId,
+        time: primary.time || baseBooking.time,
+        lineId: banquetEditBookingValue(primary, 'lineId', 'line_id'),
+        programId: banquetEditBookingValue(primary, 'programId', 'program_id'),
+        programCode: banquetEditBookingValue(primary, 'programCode', 'program_code'),
+        label: primary.label || baseBooking.label,
+        programName: banquetEditBookingValue(primary, 'programName', 'program_name') || baseBooking.programName,
+        category: primary.category || baseBooking.category,
+        duration: Number(primary.duration || 0) || baseBooking.duration,
+        price: Number(primary.price || 0),
+        hosts: Number(primary.hosts || 0),
+        secondAnimator: banquetEditBookingValue(primary, 'secondAnimator', 'second_animator'),
+        pinataMode: banquetEditBookingValue(primary, 'pinataMode', 'pinata_mode') || 'none',
+        pinataNumber: banquetEditBookingValue(primary, 'pinataNumber', 'pinata_number'),
+        pinataFillerNumber: banquetEditBookingValue(primary, 'pinataFillerNumber', 'pinata_filler_number'),
+        pinataFiller: banquetEditBookingValue(primary, 'pinataFiller', 'pinata_filler'),
+        clientPinataServicePrice: banquetEditBookingValue(primary, 'clientPinataServicePrice', 'client_pinata_service_price'),
+        clientPinataServiceNote: banquetEditBookingValue(primary, 'clientPinataServiceNote', 'client_pinata_service_note')
+    };
+}
+
+function buildBanquetEditActivityBookings(baseBooking, formData = {}, context = BookingDrawerState.banquetEditContext) {
+    if (!context?.groupId) return [];
+    const programs = Array.isArray(formData.activityPrograms)
+        ? formData.activityPrograms.filter(Boolean)
+        : getSelectedActivityPrograms();
+    const scheduleRows = getSelectedActivityScheduleRows(programs);
+    const desiredRows = context.primaryIsActivity ? scheduleRows.slice(1) : scheduleRows;
+    return desiredRows.map(row => buildMultiActivityBookingFromProgram(baseBooking, row.program, {
+        index: row.index,
+        time: row.time,
+        activityPrograms: programs,
+        primaryProgramId: context.primaryIsActivity ? programs[0]?.id : null
+    })).filter(Boolean);
+}
+
+function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = BookingDrawerState.banquetEditContext) {
+    const programs = Array.isArray(formData.activityPrograms)
+        ? formData.activityPrograms.filter(Boolean)
+        : getSelectedActivityPrograms();
+    const scheduleRows = getSelectedActivityScheduleRows(programs);
+    const adjustedPrimary = { ...baseBooking };
+    if (context?.primaryIsActivity && scheduleRows[0]) {
+        const primaryFields = getSelectedActivityBookingFields()[String(scheduleRows[0].programId)] || {};
+        adjustedPrimary.time = scheduleRows[0].time || adjustedPrimary.time;
+        adjustedPrimary.duration = Number(primaryFields.duration || scheduleRows[0].duration || adjustedPrimary.duration);
+        adjustedPrimary.lineId = primaryFields.lineId || adjustedPrimary.lineId;
+    }
+    return {
+        primaryBookingId: context?.primaryBookingId,
+        primaryPatch: buildBanquetEditPrimaryPatch(adjustedPrimary, context),
+        activities: buildBanquetEditActivityBookings(adjustedPrimary, formData, context),
+        expectedGroupUpdatedAt: context?.expectedGroupUpdatedAt
+    };
+}
+
+function banquetEditBookingProgramId(booking = {}) {
+    return String(banquetEditBookingValue(booking, 'programId', 'program_id') || '').trim();
+}
+
+function banquetEditBookingId(booking = {}) {
+    return String(booking?.id || booking?.bookingId || booking?.booking_id || '').trim();
+}
+
+function banquetEditSnapshotUpdatedAt(snapshot = {}) {
+    return String(
+        snapshot?.group?.updatedAt
+        || snapshot?.group?.updated_at
+        || snapshot?.updatedAt
+        || snapshot?.updated_at
+        || ''
+    ).trim();
+}
+
+function createBanquetEditContext(snapshot = {}, anchorBookingId = '') {
+    if (!banquetSnapshotHasGroup(snapshot)) return null;
+    const primaryBooking = banquetSnapshotPrimaryBooking(snapshot, null);
+    const primaryBookingId = banquetEditBookingId(primaryBooking);
+    const groupId = String(banquetGroupIdFromSnapshot(snapshot) || '').trim();
+    const expectedGroupUpdatedAt = banquetEditSnapshotUpdatedAt(snapshot);
+    if (!groupId || !primaryBookingId || !expectedGroupUpdatedAt) return null;
+    const activities = Array.isArray(snapshot?.bookings?.activities)
+        ? snapshot.bookings.activities.filter(Boolean)
+        : [];
+    const primaryMember = (snapshot?.members || []).find(member =>
+        member?.isPrimary
+        || String(member?.role || '').toLowerCase() === 'primary'
+        || String(member?.bookingId || member?.booking_id || '') === primaryBookingId
+    ) || null;
+    const primaryIsActivity = primaryMember?.isActivityCandidate !== undefined
+        ? Boolean(primaryMember.isActivityCandidate)
+        : (!primaryMember?.isKitchenCandidate && Boolean(banquetEditBookingProgramId(primaryBooking)));
+    const allBookingIds = new Set([primaryBookingId]);
+    activities.forEach(item => {
+        const id = banquetEditBookingId(item);
+        if (id) allBookingIds.add(id);
+    });
+    (snapshot?.members || []).forEach(member => {
+        const memberId = String(member?.bookingId || member?.booking_id || banquetEditBookingId(member?.booking || {})).trim();
+        if (memberId) allBookingIds.add(memberId);
+        (member?.technicalChildren || member?.technical_children || []).forEach(child => {
+            const childId = banquetEditBookingId(child);
+            if (childId) allBookingIds.add(childId);
+        });
+    });
+    return {
+        groupId,
+        primaryBookingId,
+        expectedGroupUpdatedAt,
+        anchorBookingId: String(anchorBookingId || primaryBookingId),
+        primaryIsActivity,
+        primaryBooking,
+        activities,
+        allBookingIds: [...allBookingIds],
+        snapshot
+    };
+}
+
+function applyBanquetEditContextSnapshot(snapshot = null, anchorBookingId = '') {
+    const context = createBanquetEditContext(snapshot || {}, anchorBookingId);
+    if (!context) return null;
+    BookingDrawerState.banquetEditContext = context;
+    hydrateBanquetEditActivityState(context);
+    return context;
+}
+
+async function refreshBanquetEditContextAfterSave(updateResult = {}, previousContext = null) {
+    const bookingId = previousContext?.primaryBookingId || AppState.editingBookingId;
+    const responseContext = applyBanquetEditContextSnapshot(updateResult?.banquetGroup, bookingId);
+    if (!bookingId || typeof apiGetBanquetByBooking !== 'function') {
+        showNotification('Склад банкету збережено, але свіжий snapshot недоступний. Форма залишилась відкритою.', 'warning');
+        return null;
+    }
+    const snapshot = await apiGetBanquetByBooking(bookingId);
+    const freshContext = applyBanquetEditContextSnapshot(snapshot, bookingId);
+    if (!snapshot || snapshot.success === false || !freshContext) {
+        if (responseContext) {
+            BookingDrawerState.banquetEditContext = responseContext;
+            hydrateBanquetEditActivityState(responseContext);
+            AppState.editingBookingUpdatedAt = responseContext.primaryBooking?.updatedAt
+                || AppState.editingBookingUpdatedAt;
+        }
+        showNotification(
+            snapshot?.error
+                ? `Склад банкету збережено, але не вдалося перевірити свіжий snapshot: ${snapshot.error}`
+                : 'Склад банкету збережено, але свіжий snapshot не підтверджено. Форма залишилась відкритою.',
+            'warning'
+        );
+        return null;
+    }
+    return freshContext;
+}
+
+function hydrateBanquetEditActivityState(context = null) {
+    if (!context?.groupId) return;
+    const primary = context.primaryBooking || {};
+    const rows = [
+        ...(context.primaryIsActivity ? [{ booking: primary, isPrimary: true }] : []),
+        ...(context.activities || []).map(booking => ({ booking, isPrimary: false }))
+    ];
+    const programIds = [];
+    const bookingFields = {};
+    const scheduleTimes = {};
+    const pinataFields = {};
+    const secondAnimatorFields = {};
+
+    rows.forEach(({ booking, isPrimary }) => {
+        const programId = banquetEditBookingProgramId(booking);
+        if (!programId || programIds.includes(programId)) return;
+        programIds.push(programId);
+        const bookingId = banquetEditBookingId(booking);
+        const time = String(booking?.time || '').trim();
+        const duration = Number(booking?.duration || 0) || 0;
+        const lineId = String(banquetEditBookingValue(booking, 'lineId', 'line_id') || '').trim();
+        const secondAnimator = String(banquetEditBookingValue(booking, 'secondAnimator', 'second_animator') || '').trim();
+        bookingFields[programId] = {
+            existingActivityBookingId: isPrimary ? null : (bookingId || null),
+            bookingId: bookingId || null,
+            isPrimary,
+            programId,
+            time,
+            duration,
+            lineId: lineId || null,
+            secondAnimator: secondAnimator || null,
+            secondAnimatorLineId: banquetEditBookingValue(booking, 'secondAnimatorLineId', 'second_animator_line_id'),
+            secondAnimatorLineName: banquetEditBookingValue(booking, 'secondAnimatorLineName', 'second_animator_line_name') || secondAnimator || null
+        };
+        if (time) scheduleTimes[programId] = time;
+        pinataFields[programId] = {
+            pinataMode: String(banquetEditBookingValue(booking, 'pinataMode', 'pinata_mode') || 'none'),
+            pinataNumber: String(banquetEditBookingValue(booking, 'pinataNumber', 'pinata_number') || ''),
+            pinataFiller: String(banquetEditBookingValue(booking, 'pinataFiller', 'pinata_filler') || ''),
+            pinataFillerNumber: String(banquetEditBookingValue(booking, 'pinataFillerNumber', 'pinata_filler_number') || ''),
+            clientPinataServicePrice: String(banquetEditBookingValue(booking, 'clientPinataServicePrice', 'client_pinata_service_price') ?? ''),
+            clientPinataServiceNote: String(banquetEditBookingValue(booking, 'clientPinataServiceNote', 'client_pinata_service_note') || '')
+        };
+        secondAnimatorFields[programId] = {
+            secondAnimator: secondAnimator || '',
+            secondAnimatorLineId: bookingFields[programId].secondAnimatorLineId || null,
+            secondAnimatorLineName: bookingFields[programId].secondAnimatorLineName || null
+        };
+    });
+
+    BookingDrawerState.selectedActivityBookingFields = bookingFields;
+    BookingDrawerState.selectedActivityScheduleTimes = scheduleTimes;
+    BookingDrawerState.selectedActivityScheduleIssues = {};
+    BookingDrawerState.selectedActivityPinataFields = pinataFields;
+    BookingDrawerState.selectedActivitySecondAnimatorFields = secondAnimatorFields;
+    setSelectedActivityPrograms(programIds, { renderSummary: true, renderPackage: true, markDirty: false });
+    const resolvedProgramIds = new Set(getSelectedActivityPrograms().map(item => String(item.id)));
+    context.unresolvedActivityProgramIds = programIds.filter(programId => !resolvedProgramIds.has(programId));
+    syncPrimaryProgramDependentFields(getSelectedActivityPrograms()[0] || null);
+    if (context.unresolvedActivityProgramIds.length) {
+        showNotification('Деякі активності банкету відсутні в каталозі. Збереження заблоковано, щоб не втратити їх зі складу.', 'error');
+    }
+}
+
+function bookingEditConflictExcludeIds() {
+    const context = BookingDrawerState.banquetEditContext;
+    if (context?.groupId && Array.isArray(context.allBookingIds)) return context.allBookingIds;
+    return AppState.editingBookingId || null;
+}
+
 async function editBooking(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
-    const booking = bookings.find(b => b.id === bookingId);
-    if (!booking) return;
-    if (shouldEditBookingInAnimatorView(booking)) {
-        return openAnimationBookingInAnimatorView(booking.id, 'edit');
+    const anchorBooking = bookings.find(b => b.id === bookingId);
+    if (!anchorBooking) return;
+    if (shouldEditBookingInAnimatorView(anchorBooking)) {
+        return openAnimationBookingInAnimatorView(anchorBooking.id, 'edit');
     }
+    const banquetSnapshot = typeof apiGetBanquetByBooking === 'function'
+        ? await apiGetBanquetByBooking(anchorBooking.id)
+        : null;
+    if (banquetSnapshot?.success === false) {
+        showNotification(banquetSnapshot.error || 'Не вдалося перевірити склад банкету. Спробуйте відкрити форму ще раз.', 'error');
+        return;
+    }
+    const banquetEditContext = banquetSnapshot?.success !== false
+        ? createBanquetEditContext(banquetSnapshot || {}, anchorBooking.id)
+        : null;
+    if (banquetSnapshotHasGroup(banquetSnapshot) && !banquetEditContext) {
+        showNotification('Snapshot банкету неповний: немає primary booking або версії групи. Редагування заблоковано.', 'error');
+        return;
+    }
+    const booking = banquetEditContext?.primaryBooking || anchorBooking;
 
     closeAllModals();
 
     // Встановити режим редагування
-    AppState.editingBookingId = bookingId;
+    AppState.editingBookingId = banquetEditContext?.primaryBookingId || bookingId;
     // Store updatedAt for optimistic locking
     AppState.editingBookingUpdatedAt = booking.updatedAt || null;
 
     // Відкрити панель з даними бронювання
-    const panelLineId = isRoomFirstTimelineView() ? (booking.resourceId || booking.room || booking.lineId) : booking.lineId;
+    const panelLineSource = banquetEditContext && !banquetEditContext.primaryIsActivity ? anchorBooking : booking;
+    const panelLineId = isRoomFirstTimelineView()
+        ? (panelLineSource.resourceId || panelLineSource.room || panelLineSource.lineId)
+        : panelLineSource.lineId;
     await openBookingPanel(booking.time, panelLineId);
+    BookingDrawerState.banquetEditContext = banquetEditContext;
 
     // Змінити заголовок і кнопку
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
@@ -13611,6 +13974,8 @@ async function editBooking(bookingId) {
             });
         }
     }
+
+    if (banquetEditContext) hydrateBanquetEditActivityState(banquetEditContext);
 
     await hydrateBookingCustomerSelection(booking, { renderSummary: false });
     hydrateBookingPackageWorkspace(booking);

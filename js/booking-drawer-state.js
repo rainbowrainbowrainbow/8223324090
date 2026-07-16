@@ -5,7 +5,12 @@ var BookingDrawerState = window.BookingDrawerState || {
     selectedCustomerContext: null,
     selectedProgramCategory: 'all',
     selectedActivityProgramIds: [],
+    selectedActivityBookingFields: {},
     selectedActivityPinataFields: {},
+    selectedActivitySecondAnimatorFields: {},
+    selectedActivityScheduleTimes: {},
+    selectedActivityScheduleIssues: {},
+    banquetEditContext: null,
     selectedActivityPreflight: {
         status: 'idle',
         message: '',

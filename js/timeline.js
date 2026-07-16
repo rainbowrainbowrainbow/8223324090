@@ -2493,7 +2493,10 @@ function ensureTimelineBanquetInspector() {
 
 function hideTimelineBanquetInspector() {
     const inspector = document.getElementById('timelineBanquetInspector');
-    if (inspector) inspector.classList.add('hidden');
+    if (inspector) {
+        inspector.classList.add('hidden');
+        delete inspector._timelineBanquetMenuExpanded;
+    }
     clearTimelineActiveBanquetContext('inspector_closed');
     document.body.classList.remove('timeline-banquet-inspector-open');
 }
@@ -2605,13 +2608,19 @@ function timelineBanquetSummaryForInspector(summary = {}, servingInfo = {}, carr
     };
 }
 
-function timelineBanquetMenuPreviewHtml(summary = {}) {
+const TIMELINE_BANQUET_MENU_COLLAPSED_LIMIT = 5;
+const TIMELINE_BANQUET_MENU_LIST_ID = 'timelineBanquetInspectorMenuList';
+
+function timelineBanquetMenuPreviewHtml(summary = {}, options = {}) {
     const allItems = Array.isArray(summary.menuPreviewItems) ? summary.menuPreviewItems : [];
-    const items = allItems.slice(0, 5);
+    const expanded = options.expanded === true;
+    const listId = String(options.listId || TIMELINE_BANQUET_MENU_LIST_ID);
+    const items = expanded ? allItems : allItems.slice(0, TIMELINE_BANQUET_MENU_COLLAPSED_LIMIT);
     if (!items.length) {
         return '<div class="timeline-banquet-inspector-empty">Меню не додано</div>';
     }
     const hiddenCount = Math.max(0, allItems.length - items.length);
+    const hasOverflow = allItems.length > TIMELINE_BANQUET_MENU_COLLAPSED_LIMIT;
     const rows = items.map(item => {
         const meta = [
             timelineMenuQuantityLabel(item),
@@ -2626,10 +2635,40 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
             </li>
         `;
     }).join('');
-    const more = hiddenCount
-        ? `<li><span>Ще позицій: ${escapeHtml(String(hiddenCount))}</span></li>`
+    const toggle = hasOverflow
+        ? `<button type="button"
+                   class="timeline-banquet-inspector-menu-toggle"
+                   data-banquet-inspector-menu-toggle
+                   aria-expanded="${expanded ? 'true' : 'false'}"
+                   aria-controls="${escapeHtml(listId)}">
+               ${expanded ? 'Згорнути' : `Ще позицій: ${escapeHtml(String(hiddenCount))}`}
+           </button>`
         : '';
-    return `<ul class="timeline-banquet-inspector-list timeline-banquet-inspector-menu">${rows}${more}</ul>`;
+    return `<ul id="${escapeHtml(listId)}" class="timeline-banquet-inspector-list timeline-banquet-inspector-menu" data-expanded="${expanded ? 'true' : 'false'}">${rows}</ul>${toggle}`;
+}
+
+function renderTimelineBanquetInspectorMenu(inspector, summary = {}, options = {}) {
+    const host = inspector?.querySelector?.('[data-banquet-inspector-menu-host]');
+    if (!host) return;
+    const expanded = options.expanded === true;
+    inspector._timelineBanquetMenuExpanded = expanded;
+    host.innerHTML = timelineBanquetMenuPreviewHtml(summary, {
+        expanded,
+        listId: TIMELINE_BANQUET_MENU_LIST_ID
+    });
+    const toggle = host.querySelector('[data-banquet-inspector-menu-toggle]');
+    if (!toggle) return;
+    const applyToggle = event => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        renderTimelineBanquetInspectorMenu(inspector, summary, { expanded: !inspector._timelineBanquetMenuExpanded });
+        inspector.querySelector('[data-banquet-inspector-menu-toggle]')?.focus?.({ preventScroll: true });
+    };
+    toggle.addEventListener('click', applyToggle);
+    toggle.addEventListener('keydown', keyEvent => {
+        if (!['Enter', ' ', 'Spacebar'].includes(keyEvent.key)) return;
+        applyToggle(keyEvent);
+    });
 }
 
 function timelineBanquetActivityPreviewHtml(summary = {}) {
@@ -2680,6 +2719,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
     if (!summary) return;
     if (typeof hideTooltip === 'function') hideTooltip();
     const inspector = ensureTimelineBanquetInspector();
+    inspector._timelineBanquetMenuExpanded = false;
     const triggerBookingId = String(trigger?.dataset?.bookingId || '').trim();
     const activeContext = setTimelineActiveBanquetContext(summary, {
         source: 'timeline_banquet_inspector',
@@ -2724,7 +2764,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
             ${commentsHtml}
             <div class="timeline-banquet-inspector-section">
                 <div class="timeline-banquet-inspector-subtitle">Меню</div>
-                ${timelineBanquetMenuPreviewHtml(summary)}
+                <div data-banquet-inspector-menu-host>${timelineBanquetMenuPreviewHtml(summary)}</div>
             </div>
             <div class="timeline-banquet-inspector-section">
                 <div class="timeline-banquet-inspector-subtitle">Активності</div>
@@ -2742,6 +2782,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         clickEvent.stopPropagation();
         hideTimelineBanquetInspector();
     });
+    renderTimelineBanquetInspectorMenu(inspector, summary, { expanded: false });
     const detailsBtn = inspector.querySelector('[data-banquet-inspector-details]');
     detailsBtn?.addEventListener('click', clickEvent => {
         clickEvent.preventDefault();

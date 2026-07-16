@@ -24,6 +24,7 @@ const {
     loadBanquetGroupCandidates,
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
+    updateBanquetBookingSet,
     updateBanquetGuestArrival
 } = require('../services/banquetGroups');
 const {
@@ -262,6 +263,31 @@ router.post('/from-source/activity-booking', async (req, res) => {
         return res.status(201).json(result);
     } catch (err) {
         if (!(err instanceof BanquetGroupError)) log.error('POST /banquets/from-source/activity-booking error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.put('/:groupId/booking-set', requireAction('edit_booking'), async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) {
+            return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const result = await updateBanquetBookingSet({
+            groupId,
+            primaryBookingId: req.body?.primaryBookingId || req.body?.primary_booking_id,
+            primaryPatch: req.body?.primaryPatch || req.body?.primary_patch || {},
+            activities: req.body?.activities,
+            expectedGroupUpdatedAt: req.body?.expectedGroupUpdatedAt || req.body?.expected_group_updated_at,
+            businessContext,
+            user: req.user
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('PUT /banquets/:groupId/booking-set error', err);
         return sendWriteError(res, err);
     }
 });

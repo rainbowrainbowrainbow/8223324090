@@ -470,10 +470,20 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
         return { overlap: false, noPause: false, conflictWith: null };
     }
     const context = normalizeTimelineContext(businessContext);
-    const params = excludeId ? [date, lineId, context, excludeId] : [date, lineId, context];
+    const excludeIds = [...new Set(
+        (Array.isArray(excludeId) ? excludeId : [excludeId])
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+    )];
+    const params = excludeIds.length
+        ? [date, lineId, context, excludeIds.length === 1 ? excludeIds[0] : excludeIds]
+        : [date, lineId, context];
+    const excludeSql = excludeIds.length === 1
+        ? ' AND id != $4'
+        : (excludeIds.length > 1 ? ' AND NOT (id = ANY($4::text[]))' : '');
     const result = await client.query(
         `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
-        (excludeId ? ' AND id != $4' : ''),
+        excludeSql,
         params
     );
     const newStart = timeToMinutes(time);
@@ -562,11 +572,21 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     // v43.10.0: custom programs ("Інше") share programId but are independent — never dedupe
     if (programId === 'custom') return null;
     const context = normalizeTimelineContext(businessContext);
-    const params = excludeId ? [date, programId, context, excludeId] : [date, programId, context];
+    const excludeIds = [...new Set(
+        (Array.isArray(excludeId) ? excludeId : [excludeId])
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+    )];
+    const params = excludeIds.length
+        ? [date, programId, context, excludeIds.length === 1 ? excludeIds[0] : excludeIds]
+        : [date, programId, context];
+    const excludeSql = excludeIds.length === 1
+        ? ' AND id != $4'
+        : (excludeIds.length > 1 ? ' AND NOT (id = ANY($4::text[]))' : '');
     // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
         `SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
-        (excludeId ? ' AND id != $4' : ''),
+        excludeSql,
         params
     );
     const newStart = timeToMinutes(time);

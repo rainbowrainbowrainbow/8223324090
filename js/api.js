@@ -1603,6 +1603,25 @@ async function apiGetBanquetByBooking(bookingId) {
     }
 }
 
+async function apiUpdateBanquetBookingSet(groupId, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/booking-set`)}`, {
+            method: 'PUT',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload(payload))
+        });
+        if (handleAuthError(response)) return apiAuthFailure(response);
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return apiFailureFromBody(body, response);
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateBanquetBookingSet error:', err);
+        return apiOfflineFailure(err, 'Не вдалося зберегти склад банкету. Перевірте з’єднання і спробуйте ще раз.');
+    }
+}
+
 async function apiGetBanquetDepositByBooking(bookingId) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}/deposit`)}`, {

@@ -2009,6 +2009,9 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     min-height: 0;
     padding: 12px 14px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
 }
 
 .timeline-banquet-inspector-grid {
@@ -2101,6 +2104,40 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     overflow-wrap: anywhere;
 }
 
+.timeline-banquet-inspector-menu li > span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.timeline-banquet-inspector-menu-toggle {
+    width: 100%;
+    min-height: 38px;
+    margin-top: 7px;
+    padding: 9px 11px;
+    border: 1px solid rgba(94, 234, 212, 0.32);
+    border-radius: 8px;
+    background: rgba(20, 184, 166, 0.14);
+    color: #CCFBF1;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 900;
+    text-align: left;
+    touch-action: manipulation;
+}
+
+.timeline-banquet-inspector-menu-toggle:hover {
+    border-color: rgba(94, 234, 212, 0.62);
+    background: rgba(20, 184, 166, 0.24);
+}
+
+.timeline-banquet-inspector-menu-toggle:focus-visible {
+    border-color: #5EEAD4;
+    outline: 3px solid rgba(94, 234, 212, 0.34);
+    outline-offset: 2px;
+}
+
 .timeline-banquet-inspector-notes li {
     border-color: rgba(94, 234, 212, 0.16);
     background: rgba(15, 23, 42, 0.7);
@@ -2173,7 +2210,7 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
         bottom: 0;
         left: 0;
         width: auto;
-        max-height: 82vh;
+        max-height: min(82vh, 82dvh);
         border-right: none;
         border-bottom: none;
         border-left: none;
@@ -2182,6 +2219,10 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
 
     .timeline-banquet-inspector-title {
         max-width: calc(100vw - 96px);
+    }
+
+    .timeline-banquet-inspector-body {
+        padding-bottom: max(14px, env(safe-area-inset-bottom));
     }
 
     .timeline-banquet-room-card-glance {

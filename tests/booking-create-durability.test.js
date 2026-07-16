@@ -440,6 +440,34 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             state.banquetMemberships.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
         }
+        if (/SELECT bgb\.\* FROM banquet_group_bookings bgb WHERE bgb\.group_id = \$1/i.test(sql)) {
+            const [groupId, businessContext] = params;
+            const rows = state.banquetMemberships
+                .filter(row => row.group_id === groupId && normalizeContext(row.business_context) === normalizeContext(businessContext))
+                .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const ids = new Set((params[0] || []).map(String));
+            const businessContext = params[1];
+            const rows = state.rows.filter(row =>
+                ids.has(String(row.id))
+                && normalizeContext(row.business_context) === normalizeContext(businessContext)
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/^UPDATE bookings SET extra_data=\$1, updated_at=NOW\(\) WHERE id=\$2/i.test(sql)) {
+            const [extraData, id, businessContext] = params;
+            const row = state.rows.find(item =>
+                String(item.id) === String(id)
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            );
+            if (row) {
+                row.extra_data = extraData;
+                row.updated_at = '2099-01-02T00:00:00.000Z';
+            }
+            return { rows: [], rowCount: row ? 1 : 0 };
+        }
         if (/SELECT \* FROM bookings WHERE id = \$1 AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) IN \('park_zakrevsky', 'park', 'pzp'\) THEN 'event_genix' ELSE LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) END) = \$2(?: FOR UPDATE)?/i.test(sql)) {
             const [id, businessContext] = params;
             const row = state.rows.find(item =>
@@ -958,6 +986,7 @@ async function createFullBooking(baseUrl, overrides = {}, options = {}) {
     if (Array.isArray(overrides.banquetActivities)) {
         body.banquetActivities = overrides.banquetActivities;
     }
+    if (overrides.banquetContext) body.banquetContext = overrides.banquetContext;
     const url = new URL(`${baseUrl}/api/bookings/full`);
     if (options.timelineView) url.searchParams.set('timelineView', options.timelineView);
     const res = await fetch(url, {
@@ -2682,6 +2711,175 @@ test('active add-to-existing create path only resolves atomic endpoints or block
             createFlowBlock.indexOf('apiCreateBooking(booking,'),
         'final active-context block should run before generic apiCreateBooking'
     );
+});
+
+test('POST /api/bookings/full creates Bubble and Pinata in one new banquet membership snapshot', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                programId: 'bubble',
+                programCode: 'BUBBLE',
+                label: 'Bubble show',
+                programName: 'Bubble show',
+                category: 'show',
+                duration: 30,
+                price: 2400,
+                hosts: 1,
+                secondAnimator: null
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '13:40',
+                lineId: 'line-second',
+                lineName: 'Second Animator',
+                room: 'Room A',
+                programId: 'pinata',
+                programCode: 'PIN',
+                label: 'Pinata',
+                programName: 'Pinata',
+                category: 'pinata',
+                duration: 15,
+                price: 700,
+                hosts: 1,
+                pinataMode: 'park',
+                pinataNumber: 'QA-NEW-01',
+                pinataFiller: '2XL',
+                pinataFillerNumber: 'QA-FILL-01',
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }],
+            banquetContext: {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '12:30'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.activityBookings.length, 1);
+        assert.ok(res.data.banquetGroup?.group?.id);
+        const groupId = res.data.banquetGroup.group.id;
+        const mainId = res.data.mainBooking.id;
+        const pinataId = res.data.activityBookings[0].id;
+        assert.deepEqual(
+            state.banquetMemberships
+                .filter(row => row.group_id === groupId)
+                .map(row => `${row.booking_id}:${row.role}`).sort(),
+            [`${mainId}:primary`, `${pinataId}:activity`].sort()
+        );
+        assert.equal(res.data.banquetGroup.membership.bookingId, mainId);
+        assert.equal(res.data.banquetGroup.membership.role, 'primary');
+        assert.deepEqual(
+            res.data.banquetGroup.members.map(row => `${row.bookingId}:${row.role}`),
+            [`${pinataId}:activity`]
+        );
+        assert.equal(res.data.activityBookings[0].pinataNumber, 'QA-NEW-01');
+        assert.equal(state.rows.find(row => row.id === pinataId).pinata_number, 'QA-NEW-01');
+        const mainExtra = JSON.parse(state.rows.find(row => row.id === mainId).extra_data);
+        const pinataExtra = JSON.parse(state.rows.find(row => row.id === pinataId).extra_data);
+        assert.deepEqual(mainExtra.multiActivity.activityIds, ['bubble', 'pinata']);
+        assert.deepEqual(pinataExtra.multiActivity.activityIds, ['bubble', 'pinata']);
+        assert.equal(state.tx.filter(item => item === 'BEGIN').length, 1);
+        assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
+        assert.equal(state.tx.includes('ROLLBACK'), false);
+    });
+});
+
+test('banquet edit path resolves only to the atomic booking-set endpoint when snapshot context exists', () => {
+    const savePath = read('js', 'booking-save-path.js');
+    const window = {};
+    const resolveBookingEditPath = new Function('window', `${savePath}; return window.resolveBookingEditPath;`)(window);
+
+    assert.deepEqual(
+        resolveBookingEditPath({ editingBookingId: 'BK-1', banquetEditContext: null }),
+        {
+            kind: 'single_booking_update',
+            endpoint: '/api/bookings/BK-1',
+            blocked: false,
+            error: null
+        }
+    );
+    assert.deepEqual(
+        resolveBookingEditPath({
+            editingBookingId: 'BK-1',
+            banquetEditContext: {
+                groupId: 'BQ-1',
+                primaryBookingId: 'BK-1',
+                expectedGroupUpdatedAt: '2099-01-01T00:00:00.000Z'
+            }
+        }),
+        {
+            kind: 'banquet_booking_set',
+            endpoint: '/api/banquets/BQ-1/booking-set',
+            groupId: 'BQ-1',
+            primaryBookingId: 'BK-1',
+            expectedGroupUpdatedAt: '2099-01-01T00:00:00.000Z',
+            blocked: false,
+            error: null
+        }
+    );
+    const incomplete = resolveBookingEditPath({
+        editingBookingId: 'BK-1',
+        banquetEditContext: { groupId: 'BQ-1', primaryBookingId: 'BK-1' }
+    });
+    assert.equal(incomplete.kind, 'banquet_booking_set');
+    assert.equal(incomplete.blocked, true);
+    assert.match(incomplete.error, /expectedGroupUpdatedAt/);
+});
+
+test('banquet edit frontend hydrates membership snapshot and keeps optimistic conflicts inside the form', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const editBlock = bookingJs.slice(
+        bookingJs.indexOf('async function editBooking'),
+        bookingJs.indexOf('// ==========================================\n// DUPLICATE BOOKING')
+    );
+    const hydrationBlock = bookingJs.slice(
+        bookingJs.indexOf('function hydrateBanquetEditActivityState'),
+        bookingJs.indexOf('function bookingEditConflictExcludeIds')
+    );
+    const submitBlock = bookingJs.slice(
+        bookingJs.indexOf('async function handleBookingSubmit'),
+        bookingJs.indexOf('if (typeof window !== \'undefined\') window.handleBookingSubmit')
+    );
+    const conflictBlock = bookingJs.slice(
+        bookingJs.indexOf('async function handleBanquetBookingSetConflict'),
+        bookingJs.indexOf('async function handleOptimisticLockConflict')
+    );
+    const refreshBlock = bookingJs.slice(
+        bookingJs.indexOf('async function refreshBanquetEditContextAfterSave'),
+        bookingJs.indexOf('function hydrateBanquetEditActivityState')
+    );
+
+    assert.match(editBlock, /apiGetBanquetByBooking\(anchorBooking\.id\)/);
+    assert.match(editBlock, /banquetEditContext\?\.primaryBooking \|\| anchorBooking/);
+    assert.doesNotMatch(editBlock, /multiActivity\?\.activityIds|multi_activity\?\.activityIds/);
+    assert.match(hydrationBlock, /context\.activities/);
+    assert.match(hydrationBlock, /existingActivityBookingId/);
+    assert.match(hydrationBlock, /selectedActivityScheduleTimes/);
+    assert.match(hydrationBlock, /selectedActivityPinataFields/);
+    assert.match(hydrationBlock, /selectedActivitySecondAnimatorFields/);
+    assert.match(bookingJs, /bookingId: persistedFields\.existingActivityBookingId/);
+    assert.match(bookingJs, /lineId: persistedFields\.lineId \|\| baseBooking\.lineId/);
+    assert.match(bookingJs, /const desiredRows = context\.primaryIsActivity \? scheduleRows\.slice\(1\) : scheduleRows/);
+    assert.match(submitBlock, /apiUpdateBanquetBookingSet/);
+    assert.match(submitBlock, /buildBanquetBookingSetPayload/);
+    assert.match(submitBlock, /BANQUET_BOOKING_SET_VERSION_CONFLICT/);
+    assert.match(submitBlock, /refreshBanquetEditContextAfterSave\(updateResult, banquetEditContext\)/);
+    assert.match(submitBlock, /if \(!refreshedContext\)[\s\S]*return;[\s\S]*closeBookingPanel\(true\)[\s\S]*showNotification\(editPath\.kind === 'banquet_booking_set'/);
+    assert.match(refreshBlock, /updateResult\?\.banquetGroup/);
+    assert.match(refreshBlock, /apiGetBanquetByBooking\(bookingId\)/);
+    assert.match(refreshBlock, /if \(!snapshot \|\| snapshot\.success === false \|\| !freshContext\)/);
+    assert.match(refreshBlock, /hydrateBanquetEditActivityState\(responseContext\)/);
+    assert.doesNotMatch(refreshBlock, /'success'/);
+    assert.match(conflictBlock, /Залишитись у формі/);
+    assert.match(conflictBlock, /if \(!reload\)[\s\S]*return false/);
+    assert.match(conflictBlock, /apiGetBanquetByBooking\(bookingId\)/);
+    assert.match(apiJs, /async function apiUpdateBanquetBookingSet/);
+    assert.match(apiJs, /method: 'PUT'/);
+    assert.match(apiJs, /\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/booking-set/);
 });
 
 test('booking conflict locks serialize line and room resources in deterministic order', async () => {

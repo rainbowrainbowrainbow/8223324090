@@ -9,6 +9,9 @@ const {
     mapBookingRow,
     normalizeBookingStatus,
     BANQUET_SERVICE_LINE_ID,
+    isLineConflictBlockingLine,
+    isRoomConflictBlockingRoom,
+    timeToMinutes,
     validateDate,
     validateTime,
     validateBanquetCreationContext
@@ -17,6 +20,8 @@ const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canEditBooking } = require('./bookingVisibility');
 const { insertHistory } = require('./historyLog');
 const { applyBookingPackage, applyBookingPackageEntryCharge } = require('./bookingPackage');
+const { normalizePinataFields } = require('./pinataMode');
+const { applyEffectiveBookingPrice } = require('./productPricing');
 const { upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 
@@ -549,6 +554,19 @@ async function getMembershipRows(db, groupId, businessContext) {
     return result.rows || [];
 }
 
+async function getMembershipRowsForUpdate(db, groupId, businessContext) {
+    const result = await db.query(
+        `SELECT bgb.*
+           FROM banquet_group_bookings bgb
+          WHERE bgb.group_id = $1
+            AND ${bookingContextSql('bgb', '$2')}
+          ORDER BY bgb.sort_order ASC, bgb.id ASC
+          FOR UPDATE`,
+        [groupId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    return result.rows || [];
+}
+
 async function getBookingsByIds(db, ids, businessContext) {
     const uniqueIds = [...new Set((ids || []).map(cleanId).filter(Boolean))];
     if (!uniqueIds.length) return [];
@@ -573,6 +591,21 @@ async function getTechnicalChildren(db, rootIds, businessContext) {
           WHERE NULLIF(COALESCE(b.linked_to, ''), '') = ANY($1::text[])
             AND ${bookingContextSql('b', '$2')}
           ORDER BY b.date ASC, b.time ASC, b.id ASC`,
+        [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    return result.rows || [];
+}
+
+async function getTechnicalChildrenForUpdate(db, rootIds, businessContext) {
+    const uniqueIds = [...new Set((rootIds || []).map(cleanId).filter(Boolean))];
+    if (!uniqueIds.length) return [];
+    const result = await db.query(
+        `SELECT b.*
+           FROM bookings b
+          WHERE NULLIF(COALESCE(b.linked_to, ''), '') = ANY($1::text[])
+            AND ${bookingContextSql('b', '$2')}
+          ORDER BY b.date ASC, b.time ASC, b.id ASC
+          FOR UPDATE`,
         [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows || [];
@@ -1543,6 +1576,410 @@ async function insertLinkedActivityChildBooking(db, booking, rootBookingId, busi
     return result.rows[0] || null;
 }
 
+function bookingSetExtraData(existingRow = {}, patch = {}) {
+    const existing = parseExtraData(existingRow);
+    const input = patch.extraData ?? patch.extra_data;
+    const incoming = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const merged = { ...existing, ...incoming };
+    delete merged.multiActivity;
+    delete merged.multi_activity;
+    return merged;
+}
+
+function normalizeBookingSetRoot(existingRow, patch, {
+    primaryBooking,
+    group,
+    businessContext,
+    user,
+    role
+} = {}) {
+    const existing = existingRow ? mapBookingRow(existingRow) : {};
+    const input = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
+    const merged = {
+        ...existing,
+        ...input,
+        extraData: bookingSetExtraData(existingRow || {}, input)
+    };
+    const booking = normalizeRootActivityBooking(merged, {
+        sourceBooking: primaryBooking || existingRow,
+        group,
+        businessContext,
+        user
+    });
+    booking.id = cleanId(existingRow?.id || input.bookingId || input.booking_id);
+    booking.createdBy = normalizeActivityText(existingRow?.created_by || merged.createdBy || actorName(user), 100);
+    booking.status = normalizeBookingStatus(merged.status, existingRow?.status || primaryBooking?.status || 'confirmed');
+    if (String(booking.status || '').toLowerCase() === 'cancelled') {
+        throw new BanquetGroupError('Cancelled bookings must be omitted from the desired activity set', {
+            status: 400,
+            code: 'BANQUET_BOOKING_SET_CANCELLED_MEMBER'
+        });
+    }
+    booking.groupName = role === 'primary'
+        ? normalizeActivityText(merged.groupName || merged.group_name || group?.group_name, 200)
+        : null;
+    booking.banquetGuests = role === 'primary'
+        ? normalizeActivityInteger(merged.banquetGuests ?? merged.banquet_guests, null)
+        : null;
+    booking.banquetAdults = role === 'primary'
+        ? normalizeActivityInteger(merged.banquetAdults ?? merged.banquet_adults, null)
+        : null;
+    booking.banquetTables = role === 'primary'
+        ? normalizeActivityInteger(merged.banquetTables ?? merged.banquet_tables, null)
+        : null;
+    booking.banquetMenu = role === 'primary'
+        ? normalizeActivityText(merged.banquetMenu || merged.banquet_menu, 4000)
+        : null;
+    booking.extraData.banquetGroup = {
+        ...(booking.extraData.banquetGroup || booking.extraData.banquet_group || {}),
+        groupId: group?.id || null,
+        sourceBookingId: group?.primary_booking_id || primaryBooking?.id || booking.id || null,
+        role,
+        source: 'banquet_booking_set'
+    };
+    delete booking.extraData.banquet_group;
+    return booking;
+}
+
+function applyBookingSetPinataNormalization(booking) {
+    const normalized = normalizePinataFields(booking);
+    if (normalized.error) {
+        throw new BanquetGroupError(normalized.error, { status: 400, code: 'INVALID_PINATA_FIELDS' });
+    }
+    booking.pinataMode = normalized.pinataMode;
+    booking.pinataNumber = normalized.pinataNumber;
+    booking.pinataFillerNumber = normalized.pinataFillerNumber;
+    booking.pinataFiller = normalized.pinataFiller;
+    booking.clientPinataServicePrice = normalized.clientPinataServicePrice;
+    booking.clientPinataServiceNote = normalized.clientPinataServiceNote;
+    if (normalized.pinataMode === 'client') {
+        booking.price = normalized.clientPinataServicePrice ?? 0;
+    } else if (
+        normalized.pinataMode === 'none'
+        && (booking.category === 'pinata' || String(booking.programId || '').startsWith('pinata'))
+    ) {
+        booking.price = 0;
+    }
+}
+
+function assertBookingSetTechnicalChildrenStable(existingRow, booking, technicalRows = []) {
+    const desiredSecondAnimator = normalizeActivityText(booking.secondAnimator, 100);
+    if (!existingRow) {
+        if (desiredSecondAnimator) {
+            throw new BanquetGroupError(
+                'New banquet activities with a second animator require the linked-booking endpoint',
+                {
+                    status: 409,
+                    code: 'BANQUET_BOOKING_SET_LINKED_ACTIVITY_REQUIRES_NESTED_CONTRACT'
+                }
+            );
+        }
+        return;
+    }
+
+    const existingSecondAnimator = normalizeActivityText(existingRow.second_animator, 100);
+    const children = technicalRows.filter(row => String(row.linked_to || '') === String(existingRow.id || ''));
+    if (desiredSecondAnimator !== existingSecondAnimator) {
+        throw new BanquetGroupError(
+            'Changing the second animator requires the linked-booking endpoint',
+            {
+                status: 409,
+                code: 'BANQUET_BOOKING_SET_LINKED_ACTIVITY_REQUIRES_NESTED_CONTRACT',
+                details: { bookingId: existingRow.id }
+            }
+        );
+    }
+    if ((desiredSecondAnimator && children.length === 0) || (!desiredSecondAnimator && children.length > 0)) {
+        throw new BanquetGroupError(
+            'Banquet activity linked-booking state is inconsistent',
+            {
+                status: 409,
+                code: 'BANQUET_BOOKING_SET_LINKED_ACTIVITY_INCONSISTENT',
+                details: { bookingId: existingRow.id }
+            }
+        );
+    }
+}
+
+function bookingSetRangesOverlap(a, b) {
+    if (String(a.date || '') !== String(b.date || '')) return false;
+    const aStart = timeToMinutes(a.time);
+    const bStart = timeToMinutes(b.time);
+    const aEnd = aStart + Number(a.duration || 0);
+    const bEnd = bStart + Number(b.duration || 0);
+    return aStart < bEnd && aEnd > bStart;
+}
+
+function assertBookingSetPairwiseConflicts(bookings = []) {
+    for (let leftIndex = 0; leftIndex < bookings.length; leftIndex += 1) {
+        const left = bookings[leftIndex];
+        for (let rightIndex = leftIndex + 1; rightIndex < bookings.length; rightIndex += 1) {
+            const right = bookings[rightIndex];
+            if (!bookingSetRangesOverlap(left, right)) continue;
+            if (
+                String(left.lineId || '') === String(right.lineId || '')
+                && isLineConflictBlockingLine(left.lineId)
+            ) {
+                throw new BanquetGroupError('Activity line slot is busy inside the desired banquet set', {
+                    status: 409,
+                    code: 'BANQUET_BOOKING_SET_LINE_CONFLICT',
+                    details: { leftBookingId: left.id || null, rightBookingId: right.id || null }
+                });
+            }
+            const sameRoom = String(left.room || '').trim() === String(right.room || '').trim();
+            const kitchenActivityOverlap = isKitchenCandidate(left) !== isKitchenCandidate(right);
+            if (sameRoom && isRoomConflictBlockingRoom(left.room) && !kitchenActivityOverlap) {
+                throw new BanquetGroupError('Activity room slot is busy inside the desired banquet set', {
+                    status: 409,
+                    code: 'BANQUET_BOOKING_SET_ROOM_CONFLICT',
+                    details: { leftBookingId: left.id || null, rightBookingId: right.id || null }
+                });
+            }
+        }
+    }
+}
+
+async function assertBookingSetExternalConflicts(
+    db,
+    booking,
+    businessContext,
+    groupId,
+    sourceBookingId,
+    excludeIds
+) {
+    const lineConflict = await checkServerConflicts(
+        db,
+        booking.date,
+        booking.lineId,
+        booking.time,
+        booking.duration || 0,
+        excludeIds,
+        businessContext
+    );
+    if (lineConflict.overlap) {
+        throw new BanquetGroupError('Activity line slot is busy', {
+            status: 409,
+            code: 'ACTIVITY_LINE_CONFLICT',
+            details: { conflictBookingId: lineConflict.conflictWith?.id || null }
+        });
+    }
+    const duplicate = await checkServerDuplicate(
+        db,
+        booking.date,
+        booking.programId,
+        booking.time,
+        booking.duration || 0,
+        excludeIds,
+        businessContext
+    );
+    if (duplicate) {
+        throw new BanquetGroupError('Activity already exists at this time', {
+            status: 409,
+            code: 'ACTIVITY_DUPLICATE',
+            details: { conflictBookingId: duplicate.id || null }
+        });
+    }
+    const roomConflict = await checkRoomConflict(
+        db,
+        booking.date,
+        booking.room,
+        booking.time,
+        booking.duration || 0,
+        {
+            excludeIds,
+            banquetGroupId: groupId,
+            sourceBookingId: sourceBookingId || booking.id || null,
+            candidateBooking: booking,
+            allowSameBanquetOperationalOverlap: true
+        },
+        businessContext
+    );
+    if (roomConflict) {
+        throw new BanquetGroupError('Activity room slot is busy', {
+            status: 409,
+            code: 'ACTIVITY_ROOM_CONFLICT',
+            details: { conflictBookingId: roomConflict.id || null }
+        });
+    }
+}
+
+async function updateBookingSetRoot(db, bookingId, booking, businessContext) {
+    const result = await db.query(
+        `UPDATE bookings SET
+            date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
+            label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
+            second_animator=$12, pinata_filler=$13, pinata_mode=$14, pinata_number=$15,
+            pinata_filler_number=$16, client_pinata_service_price=$17,
+            client_pinata_service_note=$18, costume=$19, room=$20, notes=$21,
+            created_by=$22, status=$23, kids_count=$24, group_name=$25, extra_data=$26,
+            skip_notification=$27, customer_id=$28, payment_method=$29,
+            banquet_guests=$30, banquet_adults=$31, banquet_tables=$32, banquet_menu=$33,
+            updated_at=NOW()
+          WHERE id=$34
+            AND ${bookingContextSql('', '$35')}
+          RETURNING *`,
+        [
+            booking.date,
+            booking.time,
+            booking.lineId,
+            booking.programId,
+            booking.programCode,
+            booking.label,
+            booking.programName,
+            booking.category,
+            booking.duration,
+            booking.price || 0,
+            booking.hosts,
+            booking.secondAnimator,
+            booking.pinataFiller,
+            booking.pinataMode,
+            booking.pinataNumber,
+            booking.pinataFillerNumber,
+            booking.clientPinataServicePrice,
+            booking.clientPinataServiceNote,
+            booking.costume,
+            booking.room,
+            booking.notes,
+            booking.createdBy,
+            booking.status,
+            booking.kidsCount,
+            booking.groupName,
+            normalizeActivityExtraData(booking.extraData),
+            booking.skipNotification,
+            booking.customerId,
+            booking.paymentMethod,
+            booking.banquetGuests,
+            booking.banquetAdults,
+            booking.banquetTables,
+            booking.banquetMenu,
+            bookingId,
+            businessContext || DEFAULT_TIMELINE_CONTEXT
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+async function cascadeBookingSetTechnicalChildren(db, rootBookingId, booking, businessContext) {
+    await db.query(
+        `UPDATE bookings SET
+            date=$1, time=$2, duration=$3, status=$4, room=$5,
+            pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
+            client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
+            updated_at=NOW()
+          WHERE linked_to=$12
+            AND ${bookingContextSql('', '$13')}
+            AND ${bookingActiveStatusSql()}`,
+        [
+            booking.date,
+            booking.time,
+            booking.duration,
+            booking.status,
+            booking.room,
+            booking.pinataFiller,
+            booking.pinataMode,
+            booking.clientPinataServicePrice,
+            booking.clientPinataServiceNote,
+            booking.pinataNumber,
+            booking.pinataFillerNumber,
+            rootBookingId,
+            businessContext || DEFAULT_TIMELINE_CONTEXT
+        ]
+    );
+}
+
+async function cancelBookingSetActivity(db, groupId, primaryBookingId, bookingId, businessContext, user) {
+    await db.query(
+        `UPDATE bookings
+            SET status='cancelled', updated_at=NOW()
+          WHERE (id=$1 OR linked_to=$1)
+            AND ${bookingContextSql('', '$2')}`,
+        [bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    await db.query(
+        `DELETE FROM banquet_group_bookings
+          WHERE group_id=$1
+            AND booking_id=$2
+            AND ${bookingContextSql('', '$3')}`,
+        [groupId, bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    await deleteCompatibilityLink(db, businessContext, primaryBookingId, bookingId);
+    await logBanquetHistory(db, businessContext, 'banquet_group_activity_booking_cancelled', user, {
+        group_id: groupId,
+        primary_booking_id: primaryBookingId,
+        booking_id: bookingId
+    });
+}
+
+async function persistDerivedBookingSetMetadata(
+    db,
+    group,
+    businessContext,
+    { source = 'banquet_booking_set' } = {}
+) {
+    const memberships = await getMembershipRows(db, group.id, businessContext);
+    const memberRows = await getBookingsByIds(db, memberships.map(row => row.booking_id), businessContext);
+    const rowById = new Map(memberRows.map(row => [String(row.id), row]));
+    const primaryRow = rowById.get(String(group.primary_booking_id)) || null;
+    const activityRows = memberships
+        .filter(row => row.role === 'activity')
+        .map(row => rowById.get(String(row.booking_id)))
+        .filter(Boolean);
+    const primaryIsActivity = primaryRow && isBanquetActivityCandidate(primaryRow);
+    const orderedActivities = [
+        ...(primaryIsActivity ? [primaryRow] : []),
+        ...activityRows
+    ];
+    const activityIds = orderedActivities.map(row => String(row.program_id || '')).filter(Boolean);
+    const totalDuration = orderedActivities.reduce((sum, row) => sum + Number(row.duration || 0), 0);
+    const totalPrice = orderedActivities.reduce((sum, row) => sum + Number(row.price || 0), 0);
+    const schedule = orderedActivities.map((row, index) => ({
+        activityIndex: index + 1,
+        bookingId: row.id,
+        programId: row.program_id || null,
+        time: row.time || null,
+        duration: Number(row.duration || 0)
+    }));
+    const metadataTargets = [...new Set([primaryRow, ...activityRows].filter(Boolean).map(row => row.id))];
+    for (const bookingId of metadataTargets) {
+        const row = rowById.get(String(bookingId));
+        if (!row) continue;
+        const extraData = parseExtraData(row);
+        const activityIndex = orderedActivities.findIndex(item => String(item.id) === String(bookingId));
+        if (orderedActivities.length > 1 && activityIndex >= 0) {
+            extraData.multiActivity = {
+                schemaVersion: 1,
+                role: String(bookingId) === String(group.primary_booking_id) ? 'primary' : 'activity',
+                activityIndex: activityIndex + 1,
+                activityCount: orderedActivities.length,
+                activityIds,
+                totalDuration,
+                totalPrice,
+                schedule,
+                source
+            };
+        } else {
+            delete extraData.multiActivity;
+            delete extraData.multi_activity;
+        }
+        extraData.banquetGroup = {
+            ...(extraData.banquetGroup || extraData.banquet_group || {}),
+            groupId: group.id,
+            sourceBookingId: group.primary_booking_id,
+            role: String(bookingId) === String(group.primary_booking_id) ? 'primary' : 'activity',
+            source
+        };
+        delete extraData.banquet_group;
+        await db.query(
+            `UPDATE bookings
+                SET extra_data=$1, updated_at=NOW()
+              WHERE id=$2
+                AND ${bookingContextSql('', '$3')}`,
+            [normalizeActivityExtraData(extraData), bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+        );
+    }
+    return { primaryRow, activityRows, activityIds, totalDuration, totalPrice, schedule };
+}
+
 function connectedLegacyLinks(allLinks, bookingId) {
     const startId = cleanId(bookingId);
     if (!startId) return [];
@@ -2329,6 +2766,402 @@ async function updateBanquetGuestArrival({
     } finally {
         client.release();
     }
+}
+
+async function updateBanquetBookingSet({
+    db = defaultPool,
+    groupId,
+    primaryBookingId,
+    primaryPatch = {},
+    activities = [],
+    expectedGroupUpdatedAt,
+    businessContext = DEFAULT_TIMELINE_CONTEXT,
+    user = null
+} = {}) {
+    const cleanGroupId = cleanId(groupId);
+    const cleanPrimaryBookingId = cleanId(primaryBookingId);
+    const expectedUpdatedAt = timestampIso(expectedGroupUpdatedAt);
+    if (!cleanGroupId) {
+        throw new BanquetGroupError('Invalid banquet group ID', { status: 400, code: 'BANQUET_GROUP_ID_REQUIRED' });
+    }
+    if (!cleanPrimaryBookingId) {
+        throw new BanquetGroupError('primaryBookingId is required', { status: 400, code: 'PRIMARY_BOOKING_REQUIRED' });
+    }
+    if (!primaryPatch || typeof primaryPatch !== 'object' || Array.isArray(primaryPatch)) {
+        throw new BanquetGroupError('primaryPatch must be an object', { status: 400, code: 'PRIMARY_PATCH_INVALID' });
+    }
+    if (!Array.isArray(activities) || activities.length > 50) {
+        throw new BanquetGroupError('activities must be an array with at most 50 items', {
+            status: 400,
+            code: 'BANQUET_ACTIVITY_SET_INVALID'
+        });
+    }
+    if (!expectedUpdatedAt) {
+        throw new BanquetGroupError('expectedGroupUpdatedAt is required', {
+            status: 400,
+            code: 'BANQUET_BOOKING_SET_UPDATED_AT_REQUIRED'
+        });
+    }
+
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const group = await getGroupByIdForUpdate(client, cleanGroupId, context);
+        if (!group) {
+            throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
+        }
+        if (String(group.status || 'active').trim().toLowerCase() !== 'active') {
+            throw new BanquetGroupError('Inactive banquet group cannot be edited', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
+        }
+        if (String(group.primary_booking_id || '') !== cleanPrimaryBookingId) {
+            throw new BanquetGroupError('primaryBookingId does not match the banquet group', {
+                status: 409,
+                code: 'BANQUET_PRIMARY_BOOKING_MISMATCH',
+                details: { currentPrimaryBookingId: group.primary_booking_id || null }
+            });
+        }
+        const currentUpdatedAt = timestampIso(group.updated_at);
+        if (!currentUpdatedAt || currentUpdatedAt !== expectedUpdatedAt) {
+            throw new BanquetGroupError('Banquet activity set was changed by another user', {
+                status: 409,
+                code: 'BANQUET_BOOKING_SET_VERSION_CONFLICT',
+                details: { currentUpdatedAt }
+            });
+        }
+
+        const primaryRow = await getScopedBookingForUpdate(client, cleanPrimaryBookingId, context);
+        if (!primaryRow) {
+            throw new BanquetGroupError('Primary booking not found', { status: 409, code: 'PRIMARY_BOOKING_NOT_FOUND' });
+        }
+        assertEditableBooking(user, primaryRow);
+        assertRootBooking(primaryRow, 'PRIMARY_BOOKING_MUST_BE_ROOT');
+        assertActiveBooking(primaryRow);
+
+        const membershipRows = await getMembershipRowsForUpdate(client, cleanGroupId, context);
+        const activityMembershipRows = membershipRows.filter(row => row.role === 'activity');
+        const existingActivityIds = activityMembershipRows.map(row => cleanId(row.booking_id)).filter(Boolean);
+        const existingActivityRows = new Map();
+        for (const bookingId of [...existingActivityIds].sort()) {
+            const row = await getScopedBookingForUpdate(client, bookingId, context);
+            if (!row) {
+                throw new BanquetGroupError('Activity booking member not found', {
+                    status: 409,
+                    code: 'BANQUET_ACTIVITY_MEMBER_MISSING',
+                    details: { bookingId }
+                });
+            }
+            assertEditableBooking(user, row);
+            assertRootBooking(row, 'ACTIVITY_BOOKING_MUST_BE_ROOT');
+            assertActiveBooking(row);
+            existingActivityRows.set(String(bookingId), row);
+        }
+        const technicalRows = await getTechnicalChildrenForUpdate(
+            client,
+            membershipRows.map(row => row.booking_id),
+            context
+        );
+
+        const seenDesiredIds = new Set();
+        const desiredInputs = activities.map((item, index) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                throw new BanquetGroupError('Each activity must be an object', {
+                    status: 400,
+                    code: 'BANQUET_ACTIVITY_ITEM_INVALID',
+                    details: { activityIndex: index }
+                });
+            }
+            const bookingId = cleanId(item.bookingId || item.booking_id);
+            if (bookingId) {
+                if (seenDesiredIds.has(bookingId)) {
+                    throw new BanquetGroupError('Duplicate activity bookingId in desired set', {
+                        status: 400,
+                        code: 'BANQUET_ACTIVITY_ID_DUPLICATE',
+                        details: { bookingId }
+                    });
+                }
+                if (!existingActivityRows.has(bookingId)) {
+                    throw new BanquetGroupError('Activity booking does not belong to this banquet group', {
+                        status: 409,
+                        code: 'BANQUET_ACTIVITY_NOT_IN_GROUP',
+                        details: { bookingId }
+                    });
+                }
+                seenDesiredIds.add(bookingId);
+            }
+            return { bookingId, patch: item };
+        });
+
+        const primaryBooking = normalizeBookingSetRoot(primaryRow, primaryPatch, {
+            primaryBooking: primaryRow,
+            group,
+            businessContext: context,
+            user,
+            role: 'primary'
+        });
+        const desiredActivities = desiredInputs.map(({ bookingId, patch }) => ({
+            bookingId,
+            booking: normalizeBookingSetRoot(existingActivityRows.get(String(bookingId)) || null, patch, {
+                primaryBooking: primaryRow,
+                group,
+                businessContext: context,
+                user,
+                role: 'activity'
+            })
+        }));
+
+        assertBookingSetTechnicalChildrenStable(primaryRow, primaryBooking, technicalRows);
+        for (const desired of desiredActivities) {
+            assertBookingSetTechnicalChildrenStable(
+                existingActivityRows.get(String(desired.bookingId)) || null,
+                desired.booking,
+                technicalRows
+            );
+        }
+
+        const normalizedBookings = [primaryBooking, ...desiredActivities.map(item => item.booking)];
+        for (const booking of normalizedBookings) {
+            assertCreateActivityPayload(booking);
+            applyBookingSetPinataNormalization(booking);
+            applyBookingPackage(booking);
+            await applyEffectiveBookingPrice(client, booking, { businessContext: context });
+            await applyBookingPackageEntryCharge(client, booking, {
+                businessContext: context,
+                sourceBooking: primaryRow,
+                primaryBooking: primaryRow
+            });
+        }
+
+        assertBookingSetPairwiseConflicts(normalizedBookings);
+        const conflictExcludeIds = [
+            ...membershipRows.map(row => row.booking_id),
+            ...technicalRows.map(row => row.id)
+        ];
+        for (const booking of normalizedBookings) {
+            await assertBookingSetExternalConflicts(
+                client,
+                booking,
+                context,
+                cleanGroupId,
+                cleanPrimaryBookingId,
+                conflictExcludeIds
+            );
+        }
+
+        const updatedPrimaryRow = await updateBookingSetRoot(
+            client,
+            cleanPrimaryBookingId,
+            primaryBooking,
+            context
+        );
+        if (!updatedPrimaryRow) {
+            throw new BanquetGroupError('Primary booking not found', { status: 409, code: 'PRIMARY_BOOKING_NOT_FOUND' });
+        }
+        await cascadeBookingSetTechnicalChildren(client, cleanPrimaryBookingId, primaryBooking, context);
+        await logBanquetHistory(client, context, 'banquet_booking_set_primary_updated', user, {
+            group_id: cleanGroupId,
+            booking_id: cleanPrimaryBookingId,
+            previous: mapBookingRow(primaryRow),
+            updated: mapBookingRow(updatedPrimaryRow)
+        });
+
+        const removedActivityIds = existingActivityIds.filter(bookingId => !seenDesiredIds.has(bookingId));
+        for (const bookingId of removedActivityIds) {
+            await cancelBookingSetActivity(
+                client,
+                cleanGroupId,
+                cleanPrimaryBookingId,
+                bookingId,
+                context,
+                user
+            );
+        }
+
+        const savedActivityRows = [];
+        for (const desired of desiredActivities) {
+            if (desired.bookingId) {
+                const updated = await updateBookingSetRoot(
+                    client,
+                    desired.bookingId,
+                    desired.booking,
+                    context
+                );
+                if (!updated) {
+                    throw new BanquetGroupError('Activity booking not found', {
+                        status: 409,
+                        code: 'BANQUET_ACTIVITY_MEMBER_MISSING',
+                        details: { bookingId: desired.bookingId }
+                    });
+                }
+                await cascadeBookingSetTechnicalChildren(client, desired.bookingId, desired.booking, context);
+                await upsertCompatibilityLink(
+                    client,
+                    context,
+                    cleanPrimaryBookingId,
+                    desired.bookingId,
+                    group.group_name || desired.booking.programName,
+                    user
+                );
+                await logBanquetHistory(client, context, 'banquet_group_activity_booking_updated', user, {
+                    group_id: cleanGroupId,
+                    primary_booking_id: cleanPrimaryBookingId,
+                    booking_id: desired.bookingId,
+                    updated: mapBookingRow(updated)
+                });
+                savedActivityRows.push(updated);
+                continue;
+            }
+
+            const created = await insertRootActivityBooking(client, desired.booking, context);
+            const membershipResult = await client.query(
+                `INSERT INTO banquet_group_bookings
+                    (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+                 VALUES ($1, $2, $3, 'activity', $4, $5, $6)
+                 RETURNING *`,
+                [
+                    cleanGroupId,
+                    context,
+                    created.id,
+                    100 + savedActivityRows.length,
+                    actorUserId(user),
+                    actorName(user)
+                ]
+            );
+            await upsertCompatibilityLink(
+                client,
+                context,
+                cleanPrimaryBookingId,
+                created.id,
+                group.group_name || desired.booking.programName,
+                user
+            );
+            await logBanquetHistory(client, context, 'create', user, mapBookingRow(created));
+            await logBanquetHistory(client, context, 'banquet_group_activity_booking_created', user, {
+                group_id: cleanGroupId,
+                primary_booking_id: cleanPrimaryBookingId,
+                booking_id: created.id,
+                membership_id: membershipResult.rows[0]?.id || null
+            });
+            savedActivityRows.push(created);
+        }
+
+        const updatedGroupResult = await client.query(
+            `UPDATE banquet_groups SET
+                customer_id=$3,
+                date=$4,
+                room=$5,
+                group_name=$6,
+                updated_at=NOW(),
+                updated_by=$7
+              WHERE id=$1
+                AND ${bookingContextSql('', '$2')}
+              RETURNING *`,
+            [
+                cleanGroupId,
+                context,
+                primaryBooking.customerId,
+                primaryBooking.date,
+                primaryBooking.room,
+                primaryBooking.groupName || group.group_name || null,
+                actorName(user)
+            ]
+        );
+        const updatedGroup = updatedGroupResult.rows[0];
+        if (!updatedGroup) {
+            throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
+        }
+
+        const derived = await persistDerivedBookingSetMetadata(client, updatedGroup, context);
+        await logBanquetHistory(client, context, 'banquet_booking_set_updated', user, {
+            group_id: cleanGroupId,
+            primary_booking_id: cleanPrimaryBookingId,
+            activity_booking_ids: savedActivityRows.map(row => row.id),
+            cancelled_activity_booking_ids: removedActivityIds,
+            activity_ids: derived.activityIds,
+            expected_group_updated_at: expectedUpdatedAt,
+            updated_group_at: timestampIso(updatedGroup.updated_at)
+        });
+
+        const snapshot = await loadBanquetGroupById({
+            db: client,
+            groupId: cleanGroupId,
+            businessContext: context
+        });
+        await client.query('COMMIT');
+
+        broadcastBanquetEvent('banquet:booking-set-updated', {
+            groupId: cleanGroupId,
+            primaryBookingId: cleanPrimaryBookingId,
+            businessContext: context,
+            updatedAt: mapGroupRow(updatedGroup)?.updatedAt || null,
+            cancelledActivityBookingIds: removedActivityIds
+        });
+        return {
+            success: true,
+            group: mapGroupRow(updatedGroup),
+            primaryBooking: snapshot?.bookings?.primary || mapBookingRow(updatedPrimaryRow),
+            activityBookings: snapshot?.bookings?.activities || savedActivityRows.map(mapBookingRow),
+            cancelledActivityBookingIds: removedActivityIds,
+            banquetGroup: snapshot,
+            serverVerified: true
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err?.code === '23505') {
+            throw new BanquetGroupError('Booking is already attached to a banquet group', {
+                status: 409,
+                code: 'BOOKING_ALREADY_IN_GROUP'
+            });
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function validateSingleBookingActivitySetUpdate({
+    db = defaultPool,
+    bookingId,
+    extraData,
+    businessContext = DEFAULT_TIMELINE_CONTEXT
+} = {}) {
+    const requestedExtra = extraData && typeof extraData === 'object' && !Array.isArray(extraData)
+        ? extraData
+        : {};
+    const requestedMultiActivity = requestedExtra.multiActivity || requestedExtra.multi_activity;
+    if (!Array.isArray(requestedMultiActivity?.activityIds)) {
+        return { allowed: true, groupId: null, requestedActivityIds: null, actualActivityIds: null };
+    }
+    const snapshot = await loadBanquetGroupByBookingId({ db, bookingId, businessContext });
+    if (!snapshot?.groupId || snapshot.source !== BANQUET_GROUP_SOURCE.GROUP) {
+        return {
+            allowed: true,
+            groupId: null,
+            requestedActivityIds: requestedMultiActivity.activityIds.map(String),
+            actualActivityIds: null
+        };
+    }
+    const primary = snapshot.bookings?.primary || null;
+    const actualBookings = [
+        ...(primary && isBanquetActivityCandidate(primary) ? [primary] : []),
+        ...(snapshot.bookings?.activities || [])
+    ];
+    const requestedActivityIds = requestedMultiActivity.activityIds
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .sort();
+    const actualActivityIds = actualBookings
+        .map(item => String(item.programId || item.program_id || '').trim())
+        .filter(Boolean)
+        .sort();
+    const allowed = requestedActivityIds.length === actualActivityIds.length
+        && requestedActivityIds.every((value, index) => value === actualActivityIds[index]);
+    return {
+        allowed,
+        groupId: snapshot.groupId,
+        requestedActivityIds,
+        actualActivityIds
+    };
 }
 
 async function attachBookingToBanquetGroup({
@@ -3235,8 +4068,11 @@ module.exports = {
     loadBanquetGroupCandidates,
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
+    persistDerivedBookingSetMetadata,
     reconcileBanquetGroupForBooking,
     resolveBanquetArrivalBackfillCandidate,
+    updateBanquetBookingSet,
     updateBanquetGuestArrival,
+    validateSingleBookingActivitySetUpdate,
     isKitchenCandidate
 };

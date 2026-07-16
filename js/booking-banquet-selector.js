@@ -370,6 +370,12 @@ function resetBookingDrawerStateForOpen(mode = inferBookingDrawerModeForOpen()) 
     setBookingDrawerMode(mode);
     BookingDrawerState.selectedProgramCategory = 'all';
     BookingDrawerState.selectedActivityProgramIds = [];
+    BookingDrawerState.selectedActivityBookingFields = {};
+    BookingDrawerState.selectedActivityPinataFields = {};
+    BookingDrawerState.selectedActivitySecondAnimatorFields = {};
+    BookingDrawerState.selectedActivityScheduleTimes = {};
+    BookingDrawerState.selectedActivityScheduleIssues = {};
+    BookingDrawerState.banquetEditContext = null;
     BookingDrawerState.selectedActivityPreflight = {
         status: 'idle',
         message: '',

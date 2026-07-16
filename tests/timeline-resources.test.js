@@ -2106,6 +2106,11 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(banquetInspectorHelpers, /item\?\.servingNote \|\| item\?\.serving_note/);
     assert.match(banquetInspectorHelpers, /item\?\.note \|\| item\?\.notes/);
     assert.match(timeline, /timeline-banquet-inspector-menu-note/);
+    assert.match(timeline, /data-banquet-inspector-menu-toggle/);
+    assert.match(timeline, /aria-expanded="\$\{expanded \? 'true' : 'false'\}"/);
+    assert.match(timeline, /aria-controls="\$\{escapeHtml\(listId\)\}"/);
+    assert.match(timeline, /\['Enter', ' ', 'Spacebar'\]/);
+    assert.match(timeline, /renderTimelineBanquetInspectorMenu/);
     assert.match(timeline, /Початок активностей/);
     assert.match(timeline, /<span>Прихід гостей<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
     assert.match(timeline, /\['Прихід гостей', timelineBanquetDateTimeText\(summary\)\]/);
@@ -2168,6 +2173,9 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.timeline-banquet-inspector-section--notes/);
     assert.match(css, /\.timeline-banquet-inspector-notes/);
     assert.match(css, /\.timeline-banquet-inspector-menu-note/);
+    assert.match(css, /\.timeline-banquet-inspector-menu-toggle:focus-visible/);
+    assert.match(css, /overscroll-behavior:\s*contain/);
+    assert.match(css, /-webkit-overflow-scrolling:\s*touch/);
     assert.match(css, /\.timeline-banquet-inspector-note-text/);
     assert.match(css, /\.timeline-room-service-marker-main/);
     assert.match(css, /\.timeline-room-service-marker-detail/);
@@ -3206,6 +3214,45 @@ test('room timeline banquet inspector and service markers use clear menu quantit
     assert.match(markers[0].titleAttr, /Нутелла 5 порцій по 100 г без горіхів/);
     assert.match(markers[1].titleAttr, /Бургер дитячий 3 порції/);
     assert.doesNotMatch(markers.map(marker => marker.titleAttr).join('\n'), /x5|5 100г|5 100 г/);
+});
+
+test('room timeline banquet inspector expands and collapses hidden menu positions by click, Enter, and Space', () => {
+    const menuPositions = Array.from({ length: 11 }, (_, index) => ({
+        id: `menu-${index + 1}`,
+        title: `Long banquet menu position ${index + 1} with preparation details`,
+        quantity: index + 1,
+        servingUnit: 'portion',
+        servingTime: `${String(12 + Math.floor(index / 4)).padStart(2, '0')}:${String((index % 4) * 15).padStart(2, '0')}`
+    }));
+    const { ctx, inspectorSummary } = renderTimelineBanquetRoomGridMarkers({ menuPositions, serviceEvents: [] });
+    ctx.showTimelineBanquetInspector(null, inspectorSummary, null);
+    const inspector = ctx.document.getElementById('timelineBanquetInspector');
+    const visibleRows = () => inspector.querySelectorAll('.timeline-banquet-inspector-menu li').length;
+    const toggle = () => inspector.querySelector('[data-banquet-inspector-menu-toggle]');
+
+    assert.equal(visibleRows(), 5);
+    assert.equal(toggle().tagName, 'BUTTON');
+    assert.equal(toggle().getAttribute('aria-expanded'), 'false');
+    assert.equal(toggle().getAttribute('aria-controls'), 'timelineBanquetInspectorMenuList');
+    assert.match(toggle().textContent, /Ще позицій: 6/);
+
+    toggle().click();
+    assert.equal(visibleRows(), 11);
+    assert.equal(toggle().getAttribute('aria-expanded'), 'true');
+    assert.match(toggle().textContent, /Згорнути/);
+
+    toggle().click();
+    assert.equal(visibleRows(), 5);
+    toggle().dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(visibleRows(), 11);
+    toggle().dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    assert.equal(visibleRows(), 5);
+
+    toggle().click();
+    assert.equal(visibleRows(), 11);
+    ctx.hideTimelineBanquetInspector();
+    ctx.showTimelineBanquetInspector(null, inspectorSummary, null);
+    assert.equal(visibleRows(), 5, 'expanded state resets when the inspector is reopened');
 });
 
 test('room timeline renders room_setup service event as a separate room-grid marker', () => {

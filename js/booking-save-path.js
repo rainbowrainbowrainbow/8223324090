@@ -177,6 +177,35 @@ function buildBookingCreatePath(kind, options = {}) {
     };
 }
 
+function resolveBookingEditPath(formState = {}) {
+    const editingBookingId = String(formState.editingBookingId || '').trim();
+    const context = formState.banquetEditContext || null;
+    if (!context?.groupId) {
+        return {
+            kind: 'single_booking_update',
+            endpoint: editingBookingId ? `/api/bookings/${encodeURIComponent(editingBookingId)}` : null,
+            blocked: !editingBookingId,
+            error: editingBookingId ? null : 'Booking ID is required for edit'
+        };
+    }
+    const groupId = String(context.groupId || '').trim();
+    const primaryBookingId = String(context.primaryBookingId || '').trim();
+    const expectedGroupUpdatedAt = String(context.expectedGroupUpdatedAt || '').trim();
+    const missing = [
+        !primaryBookingId && 'primaryBookingId',
+        !expectedGroupUpdatedAt && 'expectedGroupUpdatedAt'
+    ].filter(Boolean);
+    return {
+        kind: 'banquet_booking_set',
+        endpoint: `/api/banquets/${encodeURIComponent(groupId)}/booking-set`,
+        groupId,
+        primaryBookingId,
+        expectedGroupUpdatedAt,
+        blocked: missing.length > 0,
+        error: missing.length ? `Banquet edit context is incomplete: ${missing.join(', ')}` : null
+    };
+}
+
 function bookingCreatePathActiveBanquetRole(formData = {}, drawerState = BookingDrawerState) {
     const roleIntent = String(drawerState?.activeBanquetRoleIntent || '').trim().toLowerCase();
     if (isSelectedBanquetActivityCreate(formData) || roleIntent === 'activity') return 'activity';
@@ -424,3 +453,4 @@ function resolveBookingCreatePath(formState = {}, drawerState = BookingDrawerSta
 }
 
 window.resolveBookingCreatePath = resolveBookingCreatePath;
+window.resolveBookingEditPath = resolveBookingEditPath;

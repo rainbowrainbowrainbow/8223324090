@@ -346,10 +346,26 @@ async function applyCurrentMonthManualRange(page) {
     const monthEnd = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
     const from = formatInputDate(monthStart);
     const to = formatInputDate(monthEnd);
-    await page.locator('#scheduleDateFrom').fill(from);
-    await page.locator('#scheduleDateTo').fill(to);
-    await page.locator('#applyScheduleRangeBtn').click();
-    await waitForColumnsToMatchInputs(page);
+    const expectedDays = dateRangeDays(from, to);
+    await page.evaluate(range => {
+        const fromInput = document.getElementById('scheduleDateFrom');
+        const toInput = document.getElementById('scheduleDateTo');
+        const applyButton = document.getElementById('applyScheduleRangeBtn');
+        if (!fromInput || !toInput || !applyButton) throw new Error('manual schedule range controls are unavailable');
+        fromInput.value = range.from;
+        toInput.value = range.to;
+        fromInput.dispatchEvent(new Event('input', { bubbles: true }));
+        toInput.dispatchEvent(new Event('input', { bubbles: true }));
+        applyButton.click();
+    }, { from, to });
+    await page.waitForFunction(range => {
+        const region = document.getElementById('scheduleDataRegion');
+        return document.getElementById('scheduleDateFrom')?.value === range.from
+            && document.getElementById('scheduleDateTo')?.value === range.to
+            && document.querySelectorAll('#scheduleHead th').length === range.expectedDays + 1
+            && region?.dataset.hasCommittedRange === 'true'
+            && ['ready', 'empty'].includes(region?.dataset.scheduleState || '');
+    }, { from, to, expectedDays });
     return readRangeState(page);
 }
 

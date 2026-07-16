@@ -62,9 +62,11 @@ function readCssWithImports(file, seen = new Set()) {
     return [css, ...imports].filter(Boolean).join('\n');
 }
 
+const HR_HTML_SOURCE = readSource('hr.html');
+const HR_PAGE_CSS = readSource('css', 'hr-page.css');
 const HR_HTML = [
-    readSource('hr.html'),
-    readSource('css', 'hr-page.css')
+    HR_HTML_SOURCE,
+    HR_PAGE_CSS
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ATTENDANCE_STATE_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-attendance-state.js'), 'utf8');
@@ -101,6 +103,36 @@ test('HR static and rendered button tags declare an explicit type', () => {
     ];
     assert.deepEqual(offenders, []);
     assert.equal(/createElement\(['"]button['"]\)/.test(HR_JS), false, 'new dynamic button elements must set .type = "button"');
+});
+
+test('HR print modal uses page button components without leaking its open-state class', () => {
+    const document = new JSDOM(HR_HTML_SOURCE).window.document;
+    const expectClass = (id, className) => {
+        const element = document.getElementById(id);
+        assert.ok(element, `${id} exists`);
+        assert.equal(element.classList.contains(className), true, `${id} uses ${className}`);
+    };
+
+    expectClass('btnHrPrintDocuments', 'hr-print-documents-trigger');
+    assert.equal(document.getElementById('btnHrPrintDocuments').classList.contains('hr-print-documents-open'), false);
+    expectClass('hrPrintPreviewButton', 'btn-page-primary');
+    expectClass('hrPrintDownloadButton', 'btn-page-secondary');
+    expectClass('hrPrintPrintButton', 'btn-page-secondary');
+    expectClass('hrPrintOpenButton', 'btn-page-secondary');
+    for (const id of ['hrPrintSelectAll', 'hrPrintAutomationRefresh', 'hrPrintResetPreset']) {
+        expectClass(id, 'btn-page-toolbar');
+    }
+
+    const picker = document.querySelector('.hr-print-template-picker');
+    assert.equal(picker.querySelectorAll('small').length, 0, 'template cards omit secondary descriptions');
+    assert.ok(document.getElementById('hrPrintDetailsTitle'), 'PDF signature fields remain available');
+    assert.equal(document.getElementById('hrPrintProfessionSearch').getAttribute('aria-label'), 'Пошук категорій');
+    assert.match(HR_PAGE_CSS, /body\.hr-print-documents-open\s*\{\s*overflow:\s*hidden;/);
+    assert.match(HR_PAGE_CSS, /\.hr-print-documents-trigger\s*\{[^}]*white-space:\s*nowrap;/);
+    assert.doesNotMatch(HR_PAGE_CSS, /(?:^|,)\s*\.hr-print-documents-open\s*\{/m);
+
+    assert.match(HR_JS, /class="btn-page-primary" data-hr-print-operation="(?:run-automation|preview-job)"/);
+    assert.match(HR_JS, /class="btn-page-toolbar" data-hr-print-operation="(?:edit-automation|requeue-job)"/);
 });
 
 test('HR Today metrics expose people lists and count only open shifts as on shift', () => {

@@ -211,6 +211,66 @@ async function assertStaffScheduleInitialized(page, label) {
     }
 }
 
+async function readHrPrintGeometry(page, dialog) {
+    return dialog.evaluate(element => {
+        const rect = node => {
+            if (!node) return null;
+            const value = node.getBoundingClientRect();
+            return {
+                top: value.top,
+                right: value.right,
+                bottom: value.bottom,
+                left: value.left,
+                width: value.width,
+                height: value.height
+            };
+        };
+        const body = element.querySelector('.hr-print-documents-body');
+        const form = element.querySelector('.hr-print-documents-form');
+        const categoryList = element.querySelector('.hr-print-profession-list');
+        const preview = element.querySelector('.hr-print-preview-panel');
+        const frame = element.querySelector('.hr-print-preview-frame:not(.hidden)');
+        const actions = element.querySelector('.hr-print-documents-actions');
+        return {
+            viewportWidth: document.documentElement.clientWidth,
+            pageScrollWidth: document.documentElement.scrollWidth,
+            dialog: rect(element),
+            body: rect(body),
+            form: rect(form),
+            categoryList: rect(categoryList),
+            preview: rect(preview),
+            frame: rect(frame),
+            actions: rect(actions),
+            bodyClientWidth: body?.clientWidth || 0,
+            bodyScrollWidth: body?.scrollWidth || 0,
+            bodyScrollTop: body?.scrollTop || 0,
+            categoryClientWidth: categoryList?.clientWidth || 0,
+            categoryScrollWidth: categoryList?.scrollWidth || 0,
+            modalWhiteSpace: getComputedStyle(element).whiteSpace,
+            bodyWhiteSpace: body ? getComputedStyle(body).whiteSpace : ''
+        };
+    });
+}
+
+function assertHrPrintGeometry(geometry, label, { previewReady = false, stacked = false } = {}) {
+    assert.ok(geometry.dialog.width <= geometry.viewportWidth + 1, `${label}: print dialog fits viewport`);
+    assert.ok(geometry.pageScrollWidth <= geometry.viewportWidth + 1, `${label}: page has no horizontal overflow`);
+    assert.ok(geometry.bodyScrollWidth <= geometry.bodyClientWidth + 1, `${label}: modal body has no horizontal overflow`);
+    assert.ok(geometry.categoryScrollWidth <= geometry.categoryClientWidth + 1, `${label}: categories stay inside their card`);
+    assert.equal(geometry.modalWhiteSpace, 'normal', `${label}: modal content can wrap`);
+    assert.equal(geometry.bodyWhiteSpace, 'normal', `${label}: modal body content can wrap`);
+    if (!previewReady || !geometry.frame) return;
+    assert.ok(geometry.frame.right <= geometry.preview.right + 1, `${label}: preview frame stays inside panel horizontally`);
+    assert.ok(geometry.frame.bottom <= geometry.preview.bottom + 1, `${label}: preview frame stays inside panel vertically`);
+    if (stacked) {
+        assert.ok(geometry.preview.top < geometry.body.bottom, `${label}: generated preview is scrolled into the visible modal body`);
+        assert.ok(geometry.preview.bottom > geometry.body.top, `${label}: generated preview intersects the visible modal body`);
+    } else {
+        assert.ok(geometry.preview.bottom <= geometry.body.bottom + 1, `${label}: preview panel stays above modal footer`);
+        assert.ok(geometry.frame.bottom <= geometry.actions.top + 1, `${label}: preview frame is not hidden below footer`);
+    }
+}
+
 async function assertHrPrintDocuments(page) {
     const openButton = page.getByRole('button', { name: 'Документи для друку' });
     await openButton.waitFor({ timeout: 20000 });
@@ -222,6 +282,21 @@ async function assertHrPrintDocuments(page) {
     await dialog.getByRole('heading', { name: '6. Автоматичне формування' }).waitFor();
     await page.waitForFunction(() => !document.getElementById('hrPrintAutomationList')?.textContent?.includes('Завантажуємо'));
     assert.equal(await dialog.locator('#hrPrintAutomationSave').isEnabled(), true, 'manager can configure CRM PDF automation');
+
+    for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 1024, height: 768 },
+        { width: 998, height: 553 }
+    ]) {
+        await page.setViewportSize(viewport);
+        await page.waitForTimeout(100);
+        const geometry = await readHrPrintGeometry(page, dialog);
+        assertHrPrintGeometry(geometry, `${viewport.width}x${viewport.height}`, { stacked: viewport.width <= 980 });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await page.keyboard.press('Tab');
+    assert.equal(await dialog.evaluate(element => element.contains(document.activeElement)), true, 'Tab keeps focus inside print modal');
 
     const search = dialog.getByRole('searchbox', { name: 'Пошук категорій' });
     await search.fill('офі');
@@ -251,7 +326,8 @@ async function assertHrPrintDocuments(page) {
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
     ), { timeout: 30000 });
-    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    await dialog.getByRole('button', { name: 'Сформувати preview' }).focus();
+    await page.keyboard.press('Enter');
     const response = await responsePromise;
     assert.equal(response.status(), 200, 'manual print preview endpoint succeeds');
     assert.match(response.headers()['content-type'] || '', /application\/pdf/i, 'manual print preview returns PDF');
@@ -262,23 +338,123 @@ async function assertHrPrintDocuments(page) {
     await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').waitFor({ timeout: 20000 });
     assert.equal(await dialog.getByRole('button', { name: 'Завантажити PDF' }).isEnabled(), true, 'download enables after preview');
     assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'print enables after preview');
+    assert.equal(await dialog.getByRole('button', { name: 'Відкрити PDF в окремій вкладці' }).isEnabled(), true, 'fallback opens only after preview');
+    const firstPreviewUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+    assert.match(firstPreviewUrl || '', /^blob:/, 'manual preview uses a blob URL');
+    assertHrPrintGeometry(await readHrPrintGeometry(page, dialog), '1440x900 ready preview', { previewReady: true });
+    const fallbackOpen = await page.evaluate(() => {
+        const originalOpen = window.open;
+        let call = null;
+        window.open = (...args) => {
+            call = args;
+            return null;
+        };
+        document.getElementById('hrPrintOpenButton')?.click();
+        window.open = originalOpen;
+        return call;
+    });
+    assert.equal(fallbackOpen?.[0], firstPreviewUrl, 'fallback opens the current preview URL');
+    assert.equal(fallbackOpen?.[1], '_blank', 'fallback opens PDF in a new tab');
     assert.equal(pdfRequestCount, 1, 'preview uses one server snapshot request');
-    page.off('request', countPdfRequest);
 
-    await page.keyboard.press('Escape');
-    assert.equal(await dialog.isVisible(), false, 'Escape closes print modal');
-    assert.equal(await page.evaluate(() => document.activeElement?.id), 'btnHrPrintDocuments', 'print modal restores opener focus');
+    const secondResponsePromise = page.waitForResponse(response => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
+    ), { timeout: 30000 });
+    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    assert.equal((await secondResponsePromise).status(), 200, 'repeated manual preview succeeds');
+    await page.waitForFunction(previousUrl => {
+        const frame = document.getElementById('hrPrintPreviewFrame');
+        const download = document.getElementById('hrPrintDownloadButton');
+        return frame?.getAttribute('src')?.startsWith('blob:')
+            && frame.getAttribute('src') !== previousUrl
+            && !download?.disabled;
+    }, firstPreviewUrl, { timeout: 20000 });
+    const secondPreviewUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+    assert.notEqual(secondPreviewUrl, firstPreviewUrl, 'repeated preview replaces the old blob URL');
+    const oldPreviewStillReadable = await page.evaluate(async objectUrl => {
+        try {
+            const result = await fetch(objectUrl);
+            return result.ok;
+        } catch {
+            return false;
+        }
+    }, firstPreviewUrl);
+    assert.equal(oldPreviewStillReadable, false, 'repeated preview revokes the old blob URL');
+    assert.equal(pdfRequestCount, 2, 'repeated preview uses exactly one additional server snapshot request');
+
+    const queuedPreview = dialog.locator('[data-hr-print-operation="preview-job"]:visible').first();
+    if (await queuedPreview.count()) {
+        const queuedResponsePromise = page.waitForResponse(response => (
+            response.request().method() === 'GET'
+            && /\/api\/hr\/attendance-documents\/jobs\/\d+\/pdf$/.test(new URL(response.url()).pathname)
+        ), { timeout: 30000 });
+        const previousUrl = await dialog.locator('#hrPrintPreviewFrame').getAttribute('src');
+        await queuedPreview.click();
+        assert.equal((await queuedResponsePromise).status(), 200, 'queued immutable preview succeeds');
+        await page.waitForFunction(oldUrl => {
+            const frame = document.getElementById('hrPrintPreviewFrame');
+            return frame?.getAttribute('src')?.startsWith('blob:')
+                && frame.getAttribute('src') !== oldUrl
+                && !document.getElementById('hrPrintDownloadButton')?.disabled;
+        }, previousUrl, { timeout: 20000 });
+        assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'queued preview uses the shared ready state');
+    }
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await openButton.click();
-    const mobileGeometry = await dialog.evaluate(element => ({
-        width: element.getBoundingClientRect().width,
-        viewport: document.documentElement.clientWidth,
-        bodyWidth: document.body.scrollWidth
-    }));
-    assert.ok(mobileGeometry.width <= mobileGeometry.viewport + 1, 'mobile print dialog fits viewport');
-    assert.ok(mobileGeometry.bodyWidth <= mobileGeometry.viewport + 1, 'mobile print dialog has no page overflow');
+    const mobileResponsePromise = page.waitForResponse(response => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
+    ), { timeout: 30000 });
+    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    assert.equal((await mobileResponsePromise).status(), 200, 'mobile manual preview succeeds');
+    await page.waitForFunction(() => {
+        const body = document.querySelector('.hr-print-documents-body');
+        const preview = document.querySelector('.hr-print-preview-panel');
+        const bodyRect = body?.getBoundingClientRect();
+        const previewRect = preview?.getBoundingClientRect();
+        return body?.scrollTop > 0
+            && previewRect?.top < bodyRect?.bottom
+            && previewRect?.bottom > bodyRect?.top
+            && !document.getElementById('hrPrintDownloadButton')?.disabled;
+    }, null, { timeout: 20000 });
+    const mobileGeometry = await readHrPrintGeometry(page, dialog);
+    assert.ok(mobileGeometry.dialog.width <= mobileGeometry.viewportWidth + 1, 'mobile print dialog fits viewport');
+    assertHrPrintGeometry(mobileGeometry, '390x844 ready preview', { previewReady: true, stacked: true });
+
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.waitForTimeout(100);
+    assertHrPrintGeometry(await readHrPrintGeometry(page, dialog), '320x568 ready preview', { previewReady: true, stacked: true });
+
+    const pageErrors = [];
+    const collectPageError = error => pageErrors.push(error.message || String(error));
+    page.on('pageerror', collectPageError);
+    let releaseDelayedRequest;
+    let markRequestPaused;
+    const requestPaused = new Promise(resolve => { markRequestPaused = resolve; });
+    const delayedRequestRelease = new Promise(resolve => { releaseDelayedRequest = resolve; });
+    const delayedRoute = async route => {
+        markRequestPaused();
+        await delayedRequestRelease;
+        await route.continue();
+    };
+    await page.route('**/api/hr/attendance-documents/pdf', delayedRoute);
+    const closedResponsePromise = page.waitForResponse(response => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
+    ), { timeout: 30000 });
+    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    await requestPaused;
     await page.keyboard.press('Escape');
+    assert.equal(await dialog.isVisible(), false, 'Escape closes print modal during generation');
+    releaseDelayedRequest();
+    assert.equal((await closedResponsePromise).status(), 200, 'in-flight preview response can finish after modal close');
+    await page.waitForTimeout(250);
+    await page.unroute('**/api/hr/attendance-documents/pdf', delayedRoute);
+    page.off('pageerror', collectPageError);
+    assert.deepEqual(pageErrors, [], 'closing during preview does not raise browser errors');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'btnHrPrintDocuments', 'print modal restores opener focus');
+    page.off('request', countPdfRequest);
     await page.setViewportSize({ width: 1440, height: 900 });
 }
 

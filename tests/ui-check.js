@@ -6688,6 +6688,33 @@ check('HR staff profile shows derived lifecycle checklist without a new schema',
     && hrFoundationCss.includes('.hr-lifecycle-panel')
     && hrFoundationCss.includes('.hr-lifecycle-summary')
     && hrFoundationCss.includes('body.dark-mode .hr-lifecycle-panel'));
+check('HR print documents modal keeps responsive design-system controls and a stable blob preview',
+    hrHtmlForContracts.includes('class="btn-page-secondary hr-print-documents-trigger"')
+    && hrHtmlForContracts.includes('id="hrPrintPreviewButton" class="btn-page-primary"')
+    && hrHtmlForContracts.includes('id="hrPrintDownloadButton" class="btn-page-secondary"')
+    && hrHtmlForContracts.includes('id="hrPrintPrintButton" class="btn-page-secondary"')
+    && hrHtmlForContracts.includes('id="hrPrintOpenButton" class="btn-page-secondary"')
+    && hrHtmlForContracts.includes('id="hrPrintProfessionSearch" aria-label="Пошук категорій"')
+    && !hrHtmlForContracts.includes('<small>A4 вертикально')
+    && !hrHtmlForContracts.includes('<small>A4 горизонтально')
+    && hrHtmlForContracts.includes('id="hrPrintDetailsTitle"')
+    && hrPageCss.includes('body.hr-print-documents-open { overflow: hidden; }')
+    && hrPageCss.includes('.hr-print-documents-trigger {')
+    && hrPageCss.includes('.hr-print-documents-body {\n    display: flex; min-width: 0; min-height: 0; flex: 1 1 0; overflow: hidden;')
+    && hrPageCss.includes('.hr-print-documents-form { min-width: 0; min-height: 0;')
+    && /\.hr-print-profession-list\s*\{[^}]*min-width:\s*0;/.test(hrPageCss)
+    && hrPageCss.includes('.hr-print-preview-panel {\n    display: flex; min-width: 0; min-height: 0;')
+    && /\.hr-print-preview-state, \.hr-print-preview-frame\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*flex:\s*1 1 0;/.test(hrPageCss)
+    && hrPageCss.includes('.hr-print-preview-panel { min-height: 520px; }')
+    && hrCode.includes('async function showHrPrintPreview')
+    && hrCode.includes('function waitForHrPrintPreviewFrame')
+    && hrCode.includes("frame.addEventListener('load', handleLoad, { once: true })")
+    && hrCode.includes('URL.revokeObjectURL(hrPrintDocumentsState.previewUrl)')
+    && hrCode.includes('function isHrPrintPreviewRequestCurrent')
+    && hrCode.includes('scrollHrPrintPreviewIntoView()')
+    && hrCode.includes("document.getElementById('hrPrintOpenButton')?.addEventListener('click', openHrPrintPdf)")
+    && (hrCode.match(/await showHrPrintPreview\(\{/g) || []).length === 2
+    && !hrCode.toLowerCase().includes('pdfjs'));
 check('HR/invite/changelog polish prevents long labels from overflowing compact surfaces',
     hrPageCss.includes('.hr-profession-card-head > div')
     && hrPageCss.includes('.hr-profession-chip')

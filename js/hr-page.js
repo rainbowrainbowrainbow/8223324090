@@ -1601,9 +1601,9 @@ function setHrPrintStatus(message = '', tone = '') {
     status.dataset.tone = tone;
 }
 
-function releaseHrPrintPreview() {
+function releaseHrPrintPreview({ clearFrame = true } = {}) {
     const frame = document.getElementById('hrPrintPreviewFrame');
-    if (frame) {
+    if (frame && clearFrame) {
         frame.classList.add('hidden');
         frame.removeAttribute('src');
     }
@@ -1613,6 +1613,97 @@ function releaseHrPrintPreview() {
     hrPrintDocumentsState.previewFileName = '';
     document.getElementById('hrPrintDownloadButton')?.setAttribute('disabled', '');
     document.getElementById('hrPrintPrintButton')?.setAttribute('disabled', '');
+    document.getElementById('hrPrintOpenButton')?.setAttribute('disabled', '');
+}
+
+function isHrPrintPreviewRequestCurrent(requestSeq, objectUrl = '') {
+    return hrPrintDocumentsState.open
+        && requestSeq === hrPrintDocumentsState.requestSeq
+        && (!objectUrl || objectUrl === hrPrintDocumentsState.previewUrl);
+}
+
+function waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq) {
+    return new Promise(resolve => {
+        let settled = false;
+        let timeoutId;
+        let staleCheckId;
+        const finish = loaded => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            clearInterval(staleCheckId);
+            frame.removeEventListener('load', handleLoad);
+            resolve(Boolean(
+                loaded
+                && frame.getAttribute('src') === objectUrl
+                && isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)
+            ));
+        };
+        const handleLoad = () => finish(true);
+        timeoutId = setTimeout(() => finish(false), 20000);
+        staleCheckId = setInterval(() => {
+            if (!isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)) finish(false);
+        }, 50);
+        frame.addEventListener('load', handleLoad, { once: true });
+        frame.classList.remove('hidden');
+        frame.src = objectUrl;
+    });
+}
+
+function scrollHrPrintPreviewIntoView() {
+    if (!window.matchMedia?.('(max-width: 980px)').matches) return;
+    const body = document.querySelector('.hr-print-documents-body');
+    const panel = document.querySelector('.hr-print-preview-panel');
+    if (!body || !panel) return;
+    const bodyRect = body.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const top = body.scrollTop + panelRect.top - bodyRect.top;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    body.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? 'auto' : 'smooth' });
+}
+
+async function showHrPrintPreview({ blob, filename, requestSeq, badgeText, statusMessage }) {
+    if (!isHrPrintPreviewRequestCurrent(requestSeq)) return false;
+    if (!(blob instanceof Blob) || (blob.type && !blob.type.includes('pdf'))) {
+        throw new Error('Сервер повернув не PDF-документ.');
+    }
+
+    releaseHrPrintPreview({ clearFrame: false });
+    if (!isHrPrintPreviewRequestCurrent(requestSeq)) return false;
+
+    const objectUrl = URL.createObjectURL(blob);
+    hrPrintDocumentsState.previewBlob = blob;
+    hrPrintDocumentsState.previewUrl = objectUrl;
+    hrPrintDocumentsState.previewFileName = filename || '';
+
+    const frame = document.getElementById('hrPrintPreviewFrame');
+    if (!frame) {
+        releaseHrPrintPreview();
+        throw new Error('Область попереднього перегляду недоступна.');
+    }
+
+    const loaded = await waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq);
+    if (!loaded) {
+        if (isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)) {
+            releaseHrPrintPreview();
+            throw new Error('PDF отримано, але вбудований перегляд не завантажився.');
+        }
+        return false;
+    }
+
+    document.getElementById('hrPrintPreviewState')?.classList.add('hidden');
+    document.getElementById('hrPrintPreviewState')?.classList.remove('is-loading');
+    document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
+    document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
+    document.getElementById('hrPrintOpenButton')?.removeAttribute('disabled');
+    const badge = document.getElementById('hrPrintPreviewBadge');
+    if (badge) {
+        badge.textContent = badgeText;
+        badge.className = 'hr-print-preview-badge is-ready';
+    }
+    setHrPrintStatus(statusMessage, 'success');
+    scrollHrPrintPreviewIntoView();
+    return true;
 }
 
 function invalidateHrPrintPreview(message = 'Налаштування змінено. Сформуйте preview ще раз.') {
@@ -1839,9 +1930,9 @@ function renderHrPrintOperations() {
                     </div>
                     <div class="hr-print-operation-meta">${item.documentType === 'arrival_inout' ? 'Лист приходу/уходу' : 'Місячний табель'} · ${escapeHtml(item.localTime || '08:00')} · ${item.categoryIds.length} кат.</div>
                     <div class="hr-print-operation-actions">
-                        ${canManage ? `<button type="button" class="btn-secondary" data-hr-print-operation="edit-automation" data-id="${item.id}">Редагувати</button>
-                        <button type="button" class="btn-primary" data-hr-print-operation="run-automation" data-id="${item.id}">Сформувати зараз</button>
-                        ${item.enabled ? `<button type="button" class="btn-secondary" data-hr-print-operation="disable-automation" data-id="${item.id}">Вимкнути</button>` : ''}` : ''}
+                        ${canManage ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="edit-automation" data-id="${item.id}">Редагувати</button>
+                        <button type="button" class="btn-page-primary" data-hr-print-operation="run-automation" data-id="${item.id}">Сформувати зараз</button>
+                        ${item.enabled ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="disable-automation" data-id="${item.id}">Вимкнути</button>` : ''}` : ''}
                     </div>
                 </article>
             `).join('')
@@ -1857,9 +1948,9 @@ function renderHrPrintOperations() {
                     </div>
                     <div class="hr-print-operation-meta">${escapeHtml(String(job.localDate || ''))} · ${hrPrintFormatDateTime(job.createdAt)}${job.errorMessage ? `<br>${escapeHtml(job.errorMessage)}` : ''}</div>
                     <div class="hr-print-operation-actions">
-                        ${job.pdfByteLength && job.status !== 'expired' ? `<button type="button" class="btn-primary" data-hr-print-operation="preview-job" data-id="${job.id}" data-filename="${escapeHtml(job.filename || '')}">Відкрити PDF</button>` : ''}
-                        ${canManage && ['failed', 'cancelled', 'queued', 'expired'].includes(job.status) ? `<button type="button" class="btn-secondary" data-hr-print-operation="requeue-job" data-id="${job.id}">Повторити</button>` : ''}
-                        ${canManage && ['building', 'queued', 'failed'].includes(job.status) ? `<button type="button" class="btn-secondary" data-hr-print-operation="cancel-job" data-id="${job.id}">Скасувати</button>` : ''}
+                        ${job.pdfByteLength && job.status !== 'expired' ? `<button type="button" class="btn-page-primary" data-hr-print-operation="preview-job" data-id="${job.id}" data-filename="${escapeHtml(job.filename || '')}">Відкрити PDF</button>` : ''}
+                        ${canManage && ['failed', 'cancelled', 'queued', 'expired'].includes(job.status) ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="requeue-job" data-id="${job.id}">Повторити</button>` : ''}
+                        ${canManage && ['building', 'queued', 'failed'].includes(job.status) ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="cancel-job" data-id="${job.id}">Скасувати</button>` : ''}
                     </div>
                 </article>
             `).join('')
@@ -2011,24 +2102,39 @@ async function saveHrPrintAutomation() {
 
 async function previewHrPrintJob(id, filename = '') {
     invalidateHrPrintPreview('Завантажуємо збережений PDF із черги…');
+    const requestSeq = hrPrintDocumentsState.requestSeq;
+    const state = document.getElementById('hrPrintPreviewState');
+    const badge = document.getElementById('hrPrintPreviewBadge');
+    state?.classList.add('is-loading');
+    if (badge) {
+        badge.textContent = 'Завантажується';
+        badge.className = 'hr-print-preview-badge';
+    }
     try {
         const response = typeof apiFetchWithAuthRetry === 'function'
             ? await apiFetchWithAuthRetry(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } })
             : await fetch(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } });
         if (!response?.ok) throw new Error(response ? await hrPrintResponseError(response) : 'Сервер не повернув відповідь.');
         const blob = await response.blob();
-        hrPrintDocumentsState.previewBlob = blob;
-        hrPrintDocumentsState.previewUrl = URL.createObjectURL(blob);
-        hrPrintDocumentsState.previewFileName = filename || `event-genix-hr-job-${id}.pdf`;
-        const frame = document.getElementById('hrPrintPreviewFrame');
-        if (frame) { frame.src = hrPrintDocumentsState.previewUrl; frame.classList.remove('hidden'); }
-        document.getElementById('hrPrintPreviewState')?.classList.add('hidden');
-        const badge = document.getElementById('hrPrintPreviewBadge');
-        if (badge) { badge.textContent = 'З черги'; badge.className = 'hr-print-preview-badge is-ready'; }
-        document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
-        document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
-        setHrPrintStatus('Відкрито той самий незмінний PDF, який збережений у черзі.', 'success');
+        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
+        await showHrPrintPreview({
+            blob,
+            filename: filename || `event-genix-hr-job-${id}.pdf`,
+            requestSeq,
+            badgeText: 'З черги',
+            statusMessage: 'Відкрито той самий незмінний PDF, який збережений у черзі.'
+        });
     } catch (error) {
+        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
+        releaseHrPrintPreview();
+        if (state) {
+            state.textContent = error.message || 'Не вдалося відкрити PDF.';
+            state.classList.remove('hidden', 'is-loading');
+        }
+        if (badge) {
+            badge.textContent = 'Помилка';
+            badge.className = 'hr-print-preview-badge is-stale';
+        }
         setHrPrintStatus(error.message || 'Не вдалося відкрити PDF.', 'error');
     }
 }
@@ -2107,24 +2213,14 @@ async function generateHrPrintPreview() {
         if (!response) throw new Error('Сервер не повернув відповідь.');
         if (!response.ok) throw new Error(await hrPrintResponseError(response));
         const blob = await response.blob();
-        if (requestSeq !== hrPrintDocumentsState.requestSeq || !hrPrintDocumentsState.open) return;
-        if (blob.type && !blob.type.includes('pdf')) throw new Error('Сервер повернув не PDF-документ.');
-        hrPrintDocumentsState.previewBlob = blob;
-        hrPrintDocumentsState.previewUrl = URL.createObjectURL(blob);
-        const frame = document.getElementById('hrPrintPreviewFrame');
-        if (frame) {
-            frame.src = hrPrintDocumentsState.previewUrl;
-            frame.classList.remove('hidden');
-        }
-        state?.classList.add('hidden');
-        state?.classList.remove('is-loading');
-        document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
-        document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
-        if (badge) {
-            badge.textContent = 'Готово';
-            badge.className = 'hr-print-preview-badge is-ready';
-        }
-        setHrPrintStatus('Preview готовий. Завантаження і друк використають цей самий server snapshot.', 'success');
+        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
+        await showHrPrintPreview({
+            blob,
+            filename: hrPrintFileName(),
+            requestSeq,
+            badgeText: 'Готово',
+            statusMessage: 'Preview готовий. Завантаження і друк використають цей самий server snapshot.'
+        });
     } catch (error) {
         if (requestSeq !== hrPrintDocumentsState.requestSeq) return;
         releaseHrPrintPreview();
@@ -2173,8 +2269,13 @@ function printHrPrintPdf() {
         frame?.contentWindow?.focus();
         frame?.contentWindow?.print();
     } catch {
-        window.open(hrPrintDocumentsState.previewUrl, '_blank', 'noopener');
+        openHrPrintPdf();
     }
+}
+
+function openHrPrintPdf() {
+    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
+    window.open(hrPrintDocumentsState.previewUrl, '_blank', 'noopener');
 }
 
 function closeHrPrintDocuments() {
@@ -2257,6 +2358,7 @@ function initHrPrintDocuments() {
     document.getElementById('hrPrintPreviewButton')?.addEventListener('click', generateHrPrintPreview);
     document.getElementById('hrPrintDownloadButton')?.addEventListener('click', downloadHrPrintPdf);
     document.getElementById('hrPrintPrintButton')?.addEventListener('click', printHrPrintPdf);
+    document.getElementById('hrPrintOpenButton')?.addEventListener('click', openHrPrintPdf);
     document.getElementById('hrPrintResetPreset')?.addEventListener('click', resetHrPrintPreset);
     document.getElementById('hrPrintAutomationRefresh')?.addEventListener('click', () => loadHrPrintOperations());
     document.getElementById('hrPrintAutomationSave')?.addEventListener('click', saveHrPrintAutomation);

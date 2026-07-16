@@ -527,7 +527,7 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
              FROM staff s
              LEFT JOIN staff_schedule ss
                ON ss.staff_id = s.id
-              AND ss.date = $1::date
+              AND ss.date = $1::text
               WHERE s.id = $2`,
             [date, staffId]
         );

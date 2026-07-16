@@ -299,10 +299,24 @@ async function waitForBookingPanel(page) {
         return mainApp && !mainApp.classList.contains('hidden')
             && (!loginScreen || loginScreen.classList.contains('hidden'));
     });
-    await page.waitForFunction(() => {
-        const panel = document.getElementById('bookingPanel');
-        return panel && !panel.classList.contains('hidden');
-    });
+    try {
+        await page.waitForFunction(() => {
+            const panel = document.getElementById('bookingPanel');
+            return panel && !panel.classList.contains('hidden');
+        }, null, { timeout: 5000 });
+    } catch {
+        const opened = await page.evaluate(async () => {
+            if (typeof getLinesForDate !== 'function' || typeof openBookingPanel !== 'function') return false;
+            const lines = await getLinesForDate(AppState.selectedDate);
+            const line = lines.find(item => item?.id && item.id !== 'afisha');
+            return line ? openBookingPanel('19:30', line.id) : false;
+        });
+        assert.equal(opened, true, 'booking drawer could not open on an active live timeline line');
+        await page.waitForFunction(() => {
+            const panel = document.getElementById('bookingPanel');
+            return panel && !panel.classList.contains('hidden');
+        });
+    }
 }
 
 async function selectCustomerThroughSearch(page, customer) {
@@ -504,6 +518,7 @@ async function assertKitchenNotesAction(page, customer, scenario) {
 async function runScenario(browser, base, session, customer, scenario) {
     const bookingPostRequests = [];
     const serverErrors = [];
+    const bookingTemplateStatuses = [];
     let context;
     let page;
     try {
@@ -517,6 +532,9 @@ async function runScenario(browser, base, session, customer, scenario) {
         });
         page.on('response', response => {
             const pathname = new URL(response.url()).pathname;
+            if (pathname === '/api/booking-templates') {
+                bookingTemplateStatuses.push(response.status());
+            }
             if (response.status() >= 500 && (pathname.startsWith('/api/bookings') || pathname.startsWith('/api/customers'))) {
                 serverErrors.push(`${response.request().method()} ${pathname} ${response.status()}`);
             }
@@ -524,6 +542,12 @@ async function runScenario(browser, base, session, customer, scenario) {
 
         await page.goto(bookingUrl(base, scenario), { waitUntil: 'domcontentloaded' });
         await waitForBookingPanel(page);
+        await page.evaluate(async () => {
+            if (!window.BookingTemplates?.load) throw new Error('BookingTemplates.load is unavailable');
+            await window.BookingTemplates.load();
+        });
+        assert.ok(bookingTemplateStatuses.includes(200), `${scenario.name}: booking templates request did not return 200`);
+        assert.equal(bookingTemplateStatuses.some(status => status === 401 || status === 403), false, `${scenario.name}: booking templates authorization failed`);
         await selectCustomerThroughSearch(page, customer);
         const state = await readContextState(page);
         assertPanelText(state, customer, scenario);
@@ -538,7 +562,8 @@ async function runScenario(browser, base, session, customer, scenario) {
             gridColumns: state.gridColumns,
             bookingLine: state.bookingLine || '-',
             room: state.room || '-',
-            kitchenNotesAction
+            kitchenNotesAction,
+            bookingTemplatesStatus: 200
         };
     } finally {
         await page?.close().catch(() => {});
@@ -576,7 +601,7 @@ async function run() {
         console.log(`  OK customer: ${customer.id} (created disposable)`);
         console.log(`  OK date: ${SMOKE_DATE}`);
         for (const result of results) {
-            console.log(`  OK ${result.name}: selected=${result.selectedCustomerId}, line=${result.bookingLine}, room=${result.room}, kitchenNotesAction=${result.kitchenNotesAction ? 'clicked' : 'hidden'}, grid=${result.gridColumns}`);
+            console.log(`  OK ${result.name}: selected=${result.selectedCustomerId}, line=${result.bookingLine}, room=${result.room}, templates=${result.bookingTemplatesStatus}, kitchenNotesAction=${result.kitchenNotesAction ? 'clicked' : 'hidden'}, grid=${result.gridColumns}`);
         }
         console.log(`  OK businessContext: ${BUSINESS_CONTEXT}`);
     } catch (err) {

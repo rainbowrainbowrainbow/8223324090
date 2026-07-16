@@ -162,10 +162,14 @@ test('new booking must fit one availability window while the gap is rejected', a
         { start: '10:00', end: '13:00', segmentId: 501 },
         { start: '17:00', end: '20:00', segmentId: 502 }
     ];
+    let availabilitySql = '';
     const client = {
         async query(sql) {
             if (sql.includes('FROM bookings WHERE')) return { rows: [] };
-            if (sql.includes('FROM staff s')) return { rows: [{ staff_id: 7, status: 'working', availability_windows: windows }] };
+            if (sql.includes('FROM staff s')) {
+                availabilitySql = sql;
+                return { rows: [{ staff_id: 7, status: 'working', availability_windows: windows }] };
+            }
             throw new Error(`Unexpected query: ${sql}`);
         }
     };
@@ -176,6 +180,8 @@ test('new booking must fit one availability window while the gap is rejected', a
     assert.equal(gap.unavailable, true);
     assert.equal(gap.reason, 'outside_availability_window');
     assert.equal((await checkServerConflicts(client, '2026-07-20', '7', '18:00', 60)).overlap, false);
+    assert.match(availabilitySql, /ss\.date = \$1::text/);
+    assert.doesNotMatch(availabilitySql, /ss\.date = \$1::date/);
 });
 
 test('overnight animator window accepts its after-midnight continuation', async () => {

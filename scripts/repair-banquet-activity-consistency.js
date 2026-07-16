@@ -410,20 +410,30 @@ async function runApply(db, options = {}, dependencies = {}) {
 
         for (const group of locked.groups) {
             const item = mismatchByGroupId.get(String(group.id));
-            if (!item) {
-                alreadyConsistent.push(String(group.id));
-                continue;
-            }
+            const activityBookingIds = locked.memberships
+                .filter(row => String(row.group_id) === String(group.id) && String(row.role) === 'activity')
+                .map(row => String(row.booking_id));
+            const repairItem = item || {
+                groupId: String(group.id),
+                primaryBookingId: String(group.primary_booking_id || ''),
+                activityBookingIds,
+                membershipActivityCount: activityBookingIds.length,
+                extraActivityCount: 0
+            };
             const lifecycle = await prepareGroupLifecycleForRepair(db, group, locked, businessContext);
             if (lifecycle.action === 'cancelled_group') {
                 repaired.push({
-                    groupId: item.groupId,
-                    primaryBookingId: item.primaryBookingId,
-                    activityBookingIds: item.activityBookingIds,
-                    previousExtraActivityCount: item.extraActivityCount,
+                    groupId: repairItem.groupId,
+                    primaryBookingId: repairItem.primaryBookingId,
+                    activityBookingIds: repairItem.activityBookingIds,
+                    previousExtraActivityCount: repairItem.extraActivityCount,
                     repairedActivityCount: 0,
                     lifecycleAction: lifecycle.action
                 });
+                continue;
+            }
+            if (!item && lifecycle.action === 'metadata_only') {
+                alreadyConsistent.push(String(group.id));
                 continue;
             }
             const repairGroup = lifecycle.group;
@@ -440,12 +450,12 @@ async function runApply(db, options = {}, dependencies = {}) {
                     AND COALESCE(NULLIF(BTRIM(business_context), ''), $2) = $2`,
                 [repairGroup.id, businessContext, REPAIR_ACTOR]
             );
-            await recordRepairHistory(db, businessContext, item, derived);
+            await recordRepairHistory(db, businessContext, repairItem, derived);
             repaired.push({
-                groupId: item.groupId,
-                primaryBookingId: item.primaryBookingId,
-                activityBookingIds: item.activityBookingIds,
-                previousExtraActivityCount: item.extraActivityCount,
+                groupId: repairItem.groupId,
+                primaryBookingId: repairItem.primaryBookingId,
+                activityBookingIds: repairItem.activityBookingIds,
+                previousExtraActivityCount: repairItem.extraActivityCount,
                 repairedActivityCount: derived.activityIds.length,
                 lifecycleAction: lifecycle.action
             });

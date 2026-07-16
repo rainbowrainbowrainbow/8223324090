@@ -4174,6 +4174,10 @@ test('banquet activity metadata repair is allowlisted, confirmed, transactional,
     assert.match(script, /FOR UPDATE/);
     assert.match(script, /banquet_activity_metadata_repaired/);
     assert.match(script, /Post-repair audit still reports mismatches/);
+    assert.match(
+        script,
+        /const lifecycle = await prepareGroupLifecycleForRepair[\s\S]*if \(lifecycle\.action === 'cancelled_group'\)[\s\S]*if \(!item && lifecycle\.action === 'metadata_only'\)/
+    );
     assert.doesNotMatch(script, /JOIN customers|phone|instagram|child_name/i);
 });
 

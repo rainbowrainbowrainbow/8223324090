@@ -3,12 +3,18 @@
  * Validates HTML structure, JS function availability, onclick handlers
  * Run: node tests/ui-check.js
  */
-const fs = require('fs');
+const nodeFs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
 const { createUiCheckContext } = require('./static/static-check-helpers');
 const { runInviteChecks } = require('./static/invite-checks');
 const { runBookingSummaryChecks } = require('./static/booking-summary-checks');
+
+const fs = Object.create(nodeFs);
+fs.readFileSync = (...args) => {
+    const value = nodeFs.readFileSync(...args);
+    return typeof value === 'string' ? value.replace(/\r\n?/g, '\n') : value;
+};
 
 const ROOT = path.join(__dirname, '..');
 const ui = createUiCheckContext({ root: ROOT });

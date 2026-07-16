@@ -2,6 +2,10 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 
+function readNormalizedText(filepath) {
+    return fs.readFileSync(filepath, 'utf8').replace(/\r\n?/g, '\n');
+}
+
 function createUiCheckContext({ root }) {
     let passed = 0;
     let failed = 0;
@@ -16,7 +20,7 @@ function createUiCheckContext({ root }) {
     }
 
     function fileText(filename) {
-        return fs.readFileSync(path.join(root, filename), 'utf8');
+        return readNormalizedText(path.join(root, filename));
     }
 
     function cssTextWithImports(filename, seen = new Set()) {
@@ -86,7 +90,7 @@ function createUiCheckContext({ root }) {
             console.log(`⚠️  ${filename} not found`);
             return;
         }
-        const html = fs.readFileSync(filepath, 'utf8');
+        const html = readNormalizedText(filepath);
         const dom = new JSDOM(html, { url: `http://localhost:3000/${filename.replace('.html', '')}`, runScripts: 'outside-only' });
         const doc = dom.window.document;
         console.log(`\n📄 ${filename}`);
@@ -100,7 +104,7 @@ function createUiCheckContext({ root }) {
             console.log(`⚠️  ${filename} not found`);
             return '';
         }
-        const code = fs.readFileSync(filepath, 'utf8');
+        const code = readNormalizedText(filepath);
         console.log(`\n📜 ${filename}`);
 
         try {

@@ -327,3 +327,5 @@ Preflight preview показує: template, mode, date/month, roster mode, ви�
 ## 15. Межі Task 1
 
 Цей контракт не змінює database schema, API, frontend, PDF renderer, scheduler або printer integration. Реалізація генератора, UI у «Пульсі компанії», автоматичного розкладу та підключення printer є наступними задачами.
+
+Implementation status (16.07.2026): generator, private HR API, PDF preview/download, Pulse UI та `queue_only` scheduler реалізовані й випущені. Фізичний printer/print-agent залишається окремим відкладеним етапом.

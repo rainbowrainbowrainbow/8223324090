@@ -21,6 +21,7 @@ const MODES = {
     api: ['tests/api.test.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
+        'tests/integration/hr-attendance-document-automation-concurrency.integration.test.js',
         'tests/integration/attendance-backup-roundtrip.integration.test.js',
         'tests/integration/full-backup-recovery.integration.test.js'
     ],
@@ -256,6 +257,7 @@ async function runSuite(testDb, testFile) {
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
+        RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION: testFile.includes('hr-attendance-document-automation-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',

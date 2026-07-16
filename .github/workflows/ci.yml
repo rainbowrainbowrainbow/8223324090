@@ -38,6 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install PDF renderer for HR visual audit
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Run anonymized HR attendance PDF visual audit
+        run: npm run audit:hr-attendance-documents:visual:ci
+
       - name: Run fast verification baseline
         run: npm test
 

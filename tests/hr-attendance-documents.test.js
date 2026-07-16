@@ -345,6 +345,19 @@ test('minimum and maximum allowed font presets render without clipping or page-c
     }
 });
 
+test('CI runs a 300 dpi anonymized generated-only visual guard', () => {
+    const root = path.join(__dirname, '..');
+    const auditSource = fs.readFileSync(path.join(root, 'scripts', 'hr-attendance-documents-visual-audit.js'), 'utf8');
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
+    assert.match(packageJson.scripts['audit:hr-attendance-documents:visual:ci'], /--generated-only true/);
+    assert.match(auditSource, /mode: generatedOnly \? 'generated-only' : 'reference'/);
+    assert.match(auditSource, /arrivalMaxFont/);
+    assert.match(auditSource, /monthMaxFont/);
+    assert.match(workflow, /Install PDF renderer for HR visual audit/);
+    assert.match(workflow, /audit:hr-attendance-documents:visual:ci/);
+});
+
 test('short-month snapshot keeps 31-column geometry metadata and long names fail preflight', async () => {
     const february = referenceSnapshot('month_grid', { month: '2026-02' });
     assert.equal(february.daysInMonth, 28);

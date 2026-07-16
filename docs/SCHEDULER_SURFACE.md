@@ -96,6 +96,10 @@ Automation rows are locked with `FOR UPDATE`, PDF build work is claimed with
 This allows two Railway replicas to evaluate the same minute without creating
 two documents. The current target is `queue_only`; physical printer delivery is
 intentionally outside this scheduler.
+The database guarantee is exercised by
+`tests/integration/hr-attendance-document-automation-concurrency.integration.test.js`,
+which starts two independent PostgreSQL pools and proves that concurrent
+scheduled/manual enqueue attempts converge on one idempotency key and one job.
 
 `checkBookingPushReminders` intentionally uses no guard-level dedup so the
 60-second interval can evaluate bookings due in the next 30 minutes. Its direct

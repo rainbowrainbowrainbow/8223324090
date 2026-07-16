@@ -71,10 +71,29 @@ function maxFontPreset() {
     return Object.fromEntries(Object.entries(FONT_PRESET).map(([key, contract]) => [key, contract.max]));
 }
 
+function unwrapWindowsCommand(filePath, depth = 0) {
+    if (depth > 3 || !/\.(?:cmd|bat)$/i.test(filePath) || !fs.existsSync(filePath)) return filePath;
+    const source = fs.readFileSync(filePath, 'utf8');
+    const targetMatch = source.match(/%(?:~dp0|SCRIPT_DIR%)([^"\r\n]*pdftoppm\.(?:exe|cmd))/i);
+    if (!targetMatch) return filePath;
+    const target = path.resolve(path.dirname(filePath), targetMatch[1]);
+    return unwrapWindowsCommand(target, depth + 1);
+}
+
 function runPdftoppm(executable, pdfPath, prefix) {
-    const result = spawnSync(executable, [
+    let resolvedExecutable = executable;
+    if (process.platform === 'win32' && !path.extname(executable)) {
+        const located = spawnSync('where.exe', [executable], { encoding: 'utf8', windowsHide: true });
+        resolvedExecutable = String(located.stdout || '').split(/\r?\n/).find(Boolean) || executable;
+    }
+    if (process.platform === 'win32') resolvedExecutable = unwrapWindowsCommand(resolvedExecutable);
+    const result = spawnSync(resolvedExecutable, [
         '-f', '1', '-singlefile', '-r', String(DPI), '-gray', pdfPath, prefix
-    ], { encoding: 'utf8', windowsHide: true });
+    ], {
+        encoding: 'utf8',
+        windowsHide: true,
+        shell: process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(resolvedExecutable)
+    });
     if (result.error) throw result.error;
     if (result.status !== 0) {
         throw new Error(`pdftoppm failed for ${path.basename(pdfPath)}: ${result.stderr || result.stdout || result.status}`);
@@ -265,18 +284,24 @@ function markdownReport(report) {
     report.checks.forEach(check => {
         lines.push(`| ${check.label}.${check.metric} | ${check.actual ?? 'n/a'} | ${check.expected} | +/-${check.tolerance} | ${check.passed ? 'PASS' : 'FAIL'} |`);
     });
-    lines.push('', 'References are local-only and are identified by SHA-256; no source PDF or employee name is copied into this report.', '');
+    lines.push('', report.mode === 'generated-only'
+        ? 'Generated-only mode uses anonymized fixtures and committed geometry tolerances; no employee data or reference PDF is required.'
+        : 'References are local-only and are identified by SHA-256; no source PDF or employee name is copied into this report.', '');
     return lines.join('\n');
 }
 
 async function main() {
     const args = parseArgs(process.argv.slice(2));
-    const referenceArrival = path.resolve(args['reference-arrival'] || process.env.HR_ATTENDANCE_REFERENCE_ARRIVAL || '');
-    const referenceMonth = path.resolve(args['reference-month'] || process.env.HR_ATTENDANCE_REFERENCE_MONTH || '');
-    if (!args['reference-arrival'] && !process.env.HR_ATTENDANCE_REFERENCE_ARRIVAL) {
+    const generatedOnly = args['generated-only'] === 'true'
+        || process.env.HR_ATTENDANCE_VISUAL_GENERATED_ONLY === 'true';
+    const arrivalReferenceInput = args['reference-arrival'] || process.env.HR_ATTENDANCE_REFERENCE_ARRIVAL || '';
+    const monthReferenceInput = args['reference-month'] || process.env.HR_ATTENDANCE_REFERENCE_MONTH || '';
+    const referenceArrival = arrivalReferenceInput ? path.resolve(arrivalReferenceInput) : null;
+    const referenceMonth = monthReferenceInput ? path.resolve(monthReferenceInput) : null;
+    if (!generatedOnly && !arrivalReferenceInput) {
         throw new Error('Provide --reference-arrival or HR_ATTENDANCE_REFERENCE_ARRIVAL');
     }
-    if (!args['reference-month'] && !process.env.HR_ATTENDANCE_REFERENCE_MONTH) {
+    if (!generatedOnly && !monthReferenceInput) {
         throw new Error('Provide --reference-month or HR_ATTENDANCE_REFERENCE_MONTH');
     }
     const pdftoppm = args.pdftoppm || process.env.PDFTOPPM_PATH || 'pdftoppm';
@@ -285,13 +310,15 @@ async function main() {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-hr-v27-'));
 
     try {
-        const referenceHashes = {
+        const referenceHashes = generatedOnly ? {} : {
             arrival: sha256(referenceArrival),
             month: sha256(referenceMonth)
         };
-        for (const key of Object.keys(REFERENCE_SHA256)) {
-            if (referenceHashes[key] !== REFERENCE_SHA256[key]) {
-                throw new Error(`${key} reference SHA-256 mismatch: ${referenceHashes[key]}`);
+        if (!generatedOnly) {
+            for (const key of Object.keys(REFERENCE_SHA256)) {
+                if (referenceHashes[key] !== REFERENCE_SHA256[key]) {
+                    throw new Error(`${key} reference SHA-256 mismatch: ${referenceHashes[key]}`);
+                }
             }
         }
 
@@ -314,33 +341,41 @@ async function main() {
         for (const [key, filePath] of Object.entries(outputFiles)) fs.writeFileSync(filePath, buffers[key]);
 
         const renderInputs = {
-            referenceArrival,
-            referenceMonth,
             arrival: outputFiles.arrival,
             month: outputFiles.month,
             arrivalMaxFont: outputFiles.arrivalMaxFont,
             monthMaxFont: outputFiles.monthMaxFont
         };
+        if (!generatedOnly) {
+            renderInputs.referenceArrival = referenceArrival;
+            renderInputs.referenceMonth = referenceMonth;
+        }
         const images = {};
         for (const [key, pdfPath] of Object.entries(renderInputs)) {
             images[key] = readPgm(runPdftoppm(pdftoppm, pdfPath, path.join(tempDir, key)));
         }
         const measurements = {
-            referenceArrival: measure(images.referenceArrival, 'arrival'),
-            referenceMonth: measure(images.referenceMonth, 'month'),
             arrival: measure(images.arrival, 'arrival'),
             month: measure(images.month, 'month'),
             arrivalMaxFont: measure(images.arrivalMaxFont, 'arrival'),
             monthMaxFont: measure(images.monthMaxFont, 'month')
         };
+        if (!generatedOnly) {
+            measurements.referenceArrival = measure(images.referenceArrival, 'arrival');
+            measurements.referenceMonth = measure(images.referenceMonth, 'month');
+        }
         const checks = [
             ...compareMetrics(measurements.arrival, BASELINES.arrival, 'arrival.baseline'),
             ...compareMetrics(measurements.month, BASELINES.month, 'month.baseline'),
-            ...compareMetrics(measurements.arrival, measurements.referenceArrival, 'arrival.reference'),
-            ...compareMetrics(measurements.month, measurements.referenceMonth, 'month.reference'),
             ...compareMetrics(measurements.arrivalMaxFont, measurements.arrival, 'arrival.maxFont'),
             ...compareMetrics(measurements.monthMaxFont, measurements.month, 'month.maxFont')
         ];
+        if (!generatedOnly) {
+            checks.push(
+                ...compareMetrics(measurements.arrival, measurements.referenceArrival, 'arrival.reference'),
+                ...compareMetrics(measurements.month, measurements.referenceMonth, 'month.reference')
+            );
+        }
         const pageCounts = {
             arrival: pageCount(buffers.arrival),
             month: pageCount(buffers.month),
@@ -351,6 +386,7 @@ async function main() {
             && pageCounts.arrivalMaxFont === 2 && pageCounts.monthMaxFont === 3;
         const report = {
             generatedAt: new Date().toISOString(),
+            mode: generatedOnly ? 'generated-only' : 'reference',
             dpi: DPI,
             toleranceMm: METRIC_TOLERANCE_MM,
             referenceHashes,

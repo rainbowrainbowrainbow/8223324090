@@ -1,8 +1,8 @@
 # HR attendance forms v27 — physical print and release checklist
 
-Статус: **очікує фізичного приймання власником**
+Статус: **manual CRM MVP випущено; фізичне приймання відкладено до підключення принтера**
 
-Цей checklist є обов'язковим release gate для manual MVP двох документів:
+Автоматизовані перевірки цього checklist є release gate для manual CRM MVP двох документів. Розділи фізичного друку та owner sign-off є gate лише для майбутнього print-agent/автодруку:
 
 - `arrival_inout` — лист приходу / уходу;
 - `month_grid` — місячний табель-відмічалка.
@@ -19,6 +19,12 @@ npm run audit:hr-attendance-documents:visual
 ```
 
 Очікуваний результат: `HR attendance visual audit: PASS`.
+
+CI окремо виконує 300 dpi generated-only guard на анонімізованих fixtures без локальних еталонів і персональних даних:
+
+```bash
+npm run audit:hr-attendance-documents:visual:ci
+```
 
 Artifacts у `output/pdf/`:
 
@@ -95,4 +101,4 @@ Generated artifacts анонімізовані та не мають потрап
 | Коментарі | |
 | Owner approval | ім'я / дата |
 
-Version bump, changelog, push у production source branch, deploy і live release verification виконуються **лише після заповненого owner sign-off**.
+Owner sign-off обов'язковий перед автоматичним фізичним друком. Він не блокує manual CRM preview/download/print, які вже пройшли software release gate.

@@ -34,6 +34,7 @@
     "cleanup:inventory": "node scripts/cleanup-inventory.js",
     "audit:timeline-access": "node scripts/audit-timeline-access.js",
     "audit:hr-attendance-documents:visual": "node scripts/hr-attendance-documents-visual-audit.js",
+    "audit:hr-attendance-documents:visual:ci": "node scripts/hr-attendance-documents-visual-audit.js --generated-only true --output-dir output/pdf/ci",
     "audit:account-access": "node scripts/audit-account-access.js",
     "audit:staff-schedule": "node scripts/audit-staff-schedule.js",
     "reconcile:hr-shifts": "node scripts/reconcile-hr-shifts.js",

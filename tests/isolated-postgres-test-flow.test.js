@@ -102,6 +102,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const hrSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-disposable.integration.test.js'), 'utf8');
         const freshDbSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'fresh-db-startup.integration.test.js'), 'utf8');
         const onboardingSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-onboarding-hire.integration.test.js'), 'utf8');
+        const accountOnboardingSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'account-onboarding.integration.test.js'), 'utf8');
         const legacyBackfillSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-legacy-hire-backfill.integration.test.js'), 'utf8');
         const attendanceLockSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-lock-concurrency.integration.test.js'), 'utf8');
         const attendanceBackupSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-backup-roundtrip.integration.test.js'), 'utf8');
@@ -129,10 +130,13 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(hrSuite, /DELETE', `\/api\/staff\/\$\{staffId\}`/);
         assert.doesNotMatch(hrSuite, /HR_DISPOSABLE_STAFF_ID/);
         assert.doesNotMatch(hrSuite, /copied\.length, 2/);
-        assert.match(runner, /onboarding:\s*\[\s*'tests\/integration\/fresh-db-startup\.integration\.test\.js',\s*'tests\/integration\/hr-onboarding-hire\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /onboarding:\s*\[\s*'tests\/integration\/fresh-db-startup\.integration\.test\.js',\s*'tests\/integration\/hr-onboarding-hire\.integration\.test\.js',\s*'tests\/integration\/account-onboarding\.integration\.test\.js'\s*\]/);
         assert.match(runner, /backfill:\s*\[\s*'tests\/integration\/hr-legacy-hire-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js'\s*\]/);
         assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
+        assert.match(runner, /RUN_ACCOUNT_ONBOARDING_INTEGRATION/);
+        assert.match(accountOnboardingSuite, /transactional account onboarding on isolated PostgreSQL/);
+        assert.match(accountOnboardingSuite, /rolls the entire transaction back/);
         assert.match(onboardingSuite, /one corporate and three profession processes exist/);
         assert.match(onboardingSuite, /cook progress remains unchanged/);
         assert.match(workflow, /hr-onboarding-postgres:/);

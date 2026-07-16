@@ -84,6 +84,10 @@ test('employee profile account links require canonical account-management policy
     assert.match(employees, /await ensureActorCanManageAccountId\(client, req\.user, user_id\)/);
     assert.match(employees, /await ensureActorCanManageAccountId\(client, req\.user, current\.rows\[0\]\.user_id\)/);
     assert.match(employees, /router\.post\('\/auto-link', requireAction\('manage_accounts'\)/);
+    assert.match(employees, /await ensureActorCanManageAccountId\(client, req\.user, matchingUser\.rows\[0\]\.id\)/);
+    assert.match(employees, /await linkUserToStaffProfile\(client, \{/);
+    assert.match(employees, /eventType: 'employee_profile_account_auto_linked'/);
+    assert.match(employees, /await client\.query\('BEGIN'\)/);
 });
 
 test('HR account side effects stay behind canonical account-management policy', () => {

@@ -17,7 +17,7 @@ const {
     canUseAction
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
-const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { recordAccountSecurityEvent, listAccountSecurityEvents } = require('../services/accountSecurity');
 const { normalizeManualPassword } = require('../services/credentialInput');
 const {
     BUSINESS_CONTEXTS,
@@ -32,8 +32,18 @@ const {
     getAccountLinkConflicts,
     generateOneTimePassword,
     oneTimeCredential,
-    verifyIssuedCredential
+    verifyIssuedCredential,
+    reserveUsernameIdentity
 } = require('../services/accountLinking');
+const {
+    PROFESSION_ACCOUNT_ROLE_MAP,
+    accountSystemStatus,
+    isProtectedSystemAccount,
+    assertLastActiveCreatorInvariant,
+    createAccountOnboarding
+} = require('../services/accountOnboarding');
+const { normalizeStaffCompanyStructurePayload } = require('../services/staffDisplayGroups');
+const { curateProfessionCatalogRows } = require('../services/professions');
 
 const log = createLogger('Users');
 
@@ -61,7 +71,7 @@ function accountMaxRoleLevel(account = {}) {
 }
 
 function actorCanManageRoleSet(actor, primaryRole, extraRoles = []) {
-    if (!actor || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
+    if (!actor || !canUseAction(actor, 'manage_accounts') || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
     if (actor.role === 'creator') return true;
     const maxTargetLevel = normalizeRoleSet([primaryRole], extraRoles).reduce(
         (max, role) => Math.max(max, roleLevel(role)),
@@ -71,7 +81,7 @@ function actorCanManageRoleSet(actor, primaryRole, extraRoles = []) {
 }
 
 function actorCanManageTarget(actor, target) {
-    if (!actor || !target || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
+    if (!actor || !target || !canUseAction(actor, 'manage_accounts') || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
     if (actor.role === 'creator') return true;
     return accountMaxRoleLevel(target) < roleLevel('director');
 }
@@ -89,6 +99,17 @@ function canMutateSensitiveAccount(actor, target) {
 
 function canCreateAccount(actor, primaryRole, extraRoles = []) {
     return actorCanManageRoleSet(actor, primaryRole, extraRoles);
+}
+
+function protectedAccountError(target, action = 'change') {
+    const err = new Error(`Системний акаунт ${target?.username || ''} захищений від дії: ${action}`.trim());
+    err.statusCode = 403;
+    err.code = 'PROTECTED_SYSTEM_ACCOUNT';
+    return err;
+}
+
+function assertAccountMutable(target, action = 'change') {
+    if (isProtectedSystemAccount(target)) throw protectedAccountError(target, action);
 }
 
 function normalizeActionOverrideList(value) {
@@ -197,21 +218,49 @@ function shouldActivateAfterPasswordReset(body = {}) {
     return truthyResetFlag(body.activateOnReset) || truthyResetFlag(body.activate) || truthyResetFlag(body.reactivate);
 }
 
+function decorateManagedAccount(row = {}, actor = null) {
+    const systemStatus = accountSystemStatus(row);
+    const protectedAccount = Boolean(systemStatus);
+    const canMutate = !protectedAccount && canMutateSensitiveAccount(actor, row);
+    const canToggle = !protectedAccount && canToggleAccount(actor, row);
+    const hasStaff = Number.isInteger(Number(row.staff_id)) && Number(row.staff_id) > 0;
+    const linkActive = row.profile_active !== false && row.staff_active !== false;
+    return {
+        ...row,
+        system_status: systemStatus,
+        is_system: protectedAccount,
+        protected_account: protectedAccount,
+        link_status: hasStaff ? (linkActive ? 'linked_active' : 'linked_inactive') : 'unlinked',
+        can_mutate: canMutate,
+        can_toggle: canToggle,
+        can_unlink: canMutate && hasStaff
+    };
+}
+
 // GET /api/users — list all users for account management (creator/director)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
 router.get('/', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
-                    ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
-                    s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist,
+                    u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
+                    u.password_changed_at, u.session_revoked_at,
+                    ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name, ep.is_active AS profile_active,
+                    s.name AS staff_name, s.department AS staff_department, s.position AS staff_position,
+                    s.role_type AS staff_role_type, s.is_active AS staff_active
              FROM users u
-             LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND ep.is_active = true
+             LEFT JOIN LATERAL (
+                 SELECT profile.id, profile.staff_id, profile.full_name, profile.is_active
+                 FROM employee_profiles profile
+                 WHERE profile.user_id = u.id
+                 ORDER BY COALESCE(profile.is_active, true) DESC, profile.id DESC
+                 LIMIT 1
+             ) ep ON true
              LEFT JOIN staff s ON s.id = ep.staff_id
              ORDER BY COALESCE(u.is_active, true) DESC, lower(COALESCE(NULLIF(u.name, ''), u.username)), u.id`
         );
-        res.json(result.rows);
+        res.json(result.rows.map(row => decorateManagedAccount(row, req.user)));
     } catch (err) {
         log.error('List users error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -235,6 +284,7 @@ router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
         pageAccess: PAGE_ACCESS,
         actionPermissions: ACTION_PERMISSIONS,
         nonDelegableActions: Array.from(NON_DELEGABLE_ACTIONS),
+        professionRoleMap: PROFESSION_ACCOUNT_ROLE_MAP,
         actions: Object.keys(ACTION_PERMISSIONS).map(action => ({
             key: action,
             roles: ACTION_PERMISSIONS[action] || [],
@@ -248,11 +298,22 @@ router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
 router.get('/staff-options', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT s.id, s.name, s.department, s.position,
+            `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
+                    s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    s.company_structure_node_id, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                    COALESCE(s.is_active, true) AS staff_active,
                     ep.user_id AS linked_user_id,
-                    u.username AS linked_username
+                    ep.is_active AS profile_active,
+                    u.username AS linked_username,
+                    u.is_active AS linked_user_active
              FROM staff s
-             LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+             LEFT JOIN LATERAL (
+                 SELECT profile.user_id, profile.is_active
+                 FROM employee_profiles profile
+                 WHERE profile.staff_id = s.id
+                 ORDER BY (profile.user_id IS NOT NULL) DESC, COALESCE(profile.is_active, true) DESC, profile.id DESC
+                 LIMIT 1
+             ) ep ON true
              LEFT JOIN users u ON u.id = ep.user_id
              WHERE COALESCE(s.is_active, true) = true
              ORDER BY s.department, lower(s.name), s.id`
@@ -283,56 +344,238 @@ router.get('/link-conflicts', requireAction('manage_accounts'), async (req, res)
     }
 });
 
+// GET /api/users/onboarding/options — aggregate data for the controlled account onboarding wizard
+router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('manage_staff'), async (req, res) => {
+    try {
+        const [staffResult, professionResult, structureResult, conditionResult] = await Promise.all([
+            pool.query(
+                `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
+                        s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                        s.company_structure_node_id, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                        COALESCE(s.is_active, true) AS is_active,
+                        COALESCE(assignments.items, '[]'::jsonb) AS role_assignments,
+                        ep.user_id AS linked_user_id, ep.is_active AS profile_active,
+                        u.username AS linked_username, u.is_active AS linked_user_active
+                 FROM staff s
+                 LEFT JOIN LATERAL (
+                     SELECT profile.user_id, profile.is_active
+                     FROM employee_profiles profile
+                     WHERE profile.staff_id = s.id
+                     ORDER BY (profile.user_id IS NOT NULL) DESC, COALESCE(profile.is_active, true) DESC, profile.id DESC
+                     LIMIT 1
+                 ) ep ON true
+                 LEFT JOIN users u ON u.id = ep.user_id
+                 LEFT JOIN LATERAL (
+                     SELECT jsonb_agg(
+                         jsonb_build_object(
+                             'key', assignment.profession_key,
+                             'isPrimary', assignment.is_primary,
+                             'status', assignment.status,
+                             'admissionStatus', assignment.admission_status,
+                             'internshipStatus', assignment.internship_status
+                         )
+                         ORDER BY assignment.is_primary DESC, assignment.id
+                     ) AS items
+                     FROM staff_role_assignments assignment
+                     WHERE assignment.staff_id = s.id
+                 ) assignments ON true
+                 WHERE COALESCE(s.is_active, true) = true
+                 ORDER BY s.department, lower(s.name), s.id`
+            ),
+            pool.query(
+                `SELECT id, key, title, department, short_info, responsibilities, checklist,
+                        color, structure_node_id, sort_order, is_active
+                 FROM hr_professions
+                 ORDER BY sort_order, lower(title), id`
+            ),
+            pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'"),
+            pool.query(
+                `SELECT keys.staff_id, keys.profession_key,
+                        rate.hourly_rate AS explicit_rate,
+                        COALESCE(
+                            jsonb_agg(
+                                jsonb_build_object(
+                                    'dayType', pref.day_type,
+                                    'startTime', to_char(pref.start_time, 'HH24:MI'),
+                                    'endTime', to_char(pref.end_time, 'HH24:MI'),
+                                    'isActive', COALESCE(pref.is_active, true)
+                                )
+                                ORDER BY CASE pref.day_type WHEN 'weekday' THEN 1 WHEN 'weekend' THEN 2 ELSE 3 END
+                            ) FILTER (WHERE pref.day_type IS NOT NULL),
+                            '[]'::jsonb
+                        ) AS shift_preferences
+                 FROM (
+                     SELECT staff_id, profession_key FROM staff_role_assignments
+                     UNION
+                     SELECT staff_id, profession_key FROM staff_profession_rates
+                     UNION
+                     SELECT staff_id, profession_key FROM staff_shift_preferences
+                 ) keys
+                 JOIN staff s ON s.id = keys.staff_id AND COALESCE(s.is_active, true) IS TRUE
+                 LEFT JOIN staff_profession_rates rate
+                   ON rate.staff_id = keys.staff_id AND rate.profession_key = keys.profession_key
+                 LEFT JOIN staff_shift_preferences pref
+                   ON pref.staff_id = keys.staff_id AND pref.profession_key = keys.profession_key
+                 GROUP BY keys.staff_id, keys.profession_key, rate.hourly_rate
+                 ORDER BY keys.staff_id, keys.profession_key`
+            )
+        ]);
+        const structure = normalizeStaffCompanyStructurePayload(structureResult.rows[0]?.value || {});
+        const conditionsByStaff = new Map();
+        conditionResult.rows.forEach(row => {
+            const staffId = Number(row.staff_id);
+            if (!conditionsByStaff.has(staffId)) conditionsByStaff.set(staffId, []);
+            conditionsByStaff.get(staffId).push({
+                professionKey: row.profession_key,
+                rateMode: row.explicit_rate == null ? 'fallback' : 'explicit',
+                explicitRate: row.explicit_rate == null ? null : Number(row.explicit_rate),
+                shiftPreferences: row.shift_preferences || []
+            });
+        });
+        res.json({
+            success: true,
+            staff: staffResult.rows.map(staff => ({
+                ...staff,
+                profession_conditions: conditionsByStaff.get(Number(staff.id)) || []
+            })),
+            professions: curateProfessionCatalogRows(professionResult.rows).filter(row => row.is_active !== false),
+            structureNodes: structure.nodes.map(node => ({
+                id: node.id,
+                title: node.title,
+                parentId: node.parentId || null,
+                archived: node.archived === true
+            })),
+            roleHierarchy: ROLE_HIERARCHY,
+            rolePresets: {
+                management: ['senior_manager', 'manager'],
+                operations: ['admin', 'reception', 'security'],
+                creative: ['art_director', 'marketer'],
+                finance: ['accountant'],
+                programs: ['senior_instructor', 'instructor', 'animator'],
+                support: ['barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher', 'waiter']
+            },
+            businessContexts: businessContextCatalog(),
+            professionRoleMap: PROFESSION_ACCOUNT_ROLE_MAP,
+            nonDelegableActions: Array.from(NON_DELEGABLE_ACTIONS)
+        });
+    } catch (err) {
+        log.error('Account onboarding options error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити дані для створення акаунта' });
+    }
+});
+
+// POST /api/users/onboarding — atomically create/link account and HR working setup
+router.post('/onboarding', requireAction('manage_accounts'), requireAction('manage_staff'), async (req, res) => {
+    try {
+        const result = await createAccountOnboarding({
+            payload: req.body || {},
+            actor: req.user,
+            req
+        });
+        log.info(`User ${req.user.username} completed controlled account onboarding for ${result?.receipt?.account?.username || 'new account'}`);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Controlled account onboarding error', err);
+        res.status(err.statusCode || 500).json({
+            success: false,
+            code: err.code || 'ACCOUNT_ONBOARDING_FAILED',
+            error: err.statusCode ? err.message : 'Не вдалося завершити створення акаунта'
+        });
+    }
+});
+
+// GET /api/users/:id/workspace — canonical account detail payload for master-detail UI
+router.get('/:id/workspace', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(userId) || userId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний account id' });
+        }
+        const result = await pool.query(
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist,
+                    u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context,
+                    u.is_active, u.created_at, u.last_seen_at, u.password_changed_at, u.session_revoked_at,
+                    ep.id AS profile_id, ep.staff_id, ep.full_name AS profile_name, ep.is_active AS profile_active,
+                    s.name AS staff_name, s.department AS staff_department, s.position AS staff_position,
+                    s.role_type AS staff_role_type, s.is_active AS staff_active, s.company_structure_node_id
+             FROM users u
+             LEFT JOIN LATERAL (
+                 SELECT profile.id, profile.staff_id, profile.full_name, profile.is_active
+                 FROM employee_profiles profile
+                 WHERE profile.user_id = u.id
+                 ORDER BY COALESCE(profile.is_active, true) DESC, profile.id DESC
+                 LIMIT 1
+             ) ep ON true
+             LEFT JOIN staff s ON s.id = ep.staff_id
+             WHERE u.id = $1`,
+            [userId]
+        );
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Акаунт не знайдено' });
+        const user = decorateManagedAccount(result.rows[0], req.user);
+        const history = await listAccountSecurityEvents(userId, 20);
+        res.json({
+            success: true,
+            user,
+            history,
+            actions: {
+                canMutate: user.can_mutate,
+                canToggle: user.can_toggle,
+                canUnlink: user.can_unlink,
+                protectedAccount: user.protected_account
+            }
+        });
+    } catch (err) {
+        log.error('Account workspace error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити картку акаунта' });
+    }
+});
+
 // PATCH /api/users/:id/profile — edit account identity and HR staff binding
 router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
         const { name } = req.body;
-        const username = normalizeUsername(req.body.username);
         const staffId = normalizeStaffId(req.body.staffId);
 
-        if (!username || !name || !String(name).trim()) {
-            return res.status(400).json({ error: 'Логін та імʼя обовʼязкові' });
-        }
-        if (username.length < 3 || username.length > 50 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
-            return res.status(400).json({ error: 'Логін має містити 3-50 символів: латиниця, цифри, крапка, дефіс або підкреслення' });
-        }
+        if (!name || !String(name).trim()) return res.status(400).json({ error: 'Імʼя обовʼязкове' });
         if (Number.isNaN(staffId)) {
             return res.status(400).json({ error: 'Некоректний staff-профіль' });
         }
 
         await client.query('BEGIN');
-        const target = await client.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1 FOR UPDATE', [parseInt(id, 10)]);
-        if (target.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: 'Користувача не знайдено' });
-        }
-        if (!canMutateSensitiveAccount(req.user, target.rows[0])) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({ error: 'Цей акаунт не можна редагувати з поточного рівня доступу' });
-        }
-        if (target.rows[0].id === req.user.id && username.toLowerCase() !== target.rows[0].username.toLowerCase()) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Не можна змінити власний логін з цього меню' });
-        }
-
-        const duplicate = await client.query(
-            'SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id <> $2 LIMIT 1',
-            [username, parseInt(id, 10)]
+        const target = await client.query(
+            'SELECT id, username, name, role, extra_roles, is_active FROM users WHERE id = $1 FOR UPDATE',
+            [parseInt(id, 10)]
         );
-        if (duplicate.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ error: 'Користувач з таким username вже існує' });
+        if (target.rows.length === 0) {
+            const err = new Error('Користувача не знайдено');
+            err.statusCode = 404;
+            throw err;
+        }
+        const current = target.rows[0];
+        assertAccountMutable(current, 'profile_update');
+        if (!canMutateSensitiveAccount(req.user, current)) {
+            const err = new Error('Цей акаунт не можна редагувати з поточного рівня доступу');
+            err.statusCode = 403;
+            throw err;
+        }
+        const requestedUsername = req.body.username == null
+            ? current.username
+            : normalizeUsername(req.body.username);
+        if (!requestedUsername || requestedUsername.toLowerCase() !== String(current.username).toLowerCase()) {
+            const err = new Error('Username є незмінним після створення акаунта');
+            err.statusCode = 409;
+            err.code = 'USERNAME_IMMUTABLE';
+            throw err;
         }
 
         const updated = await client.query(
             `UPDATE users
-             SET username = $1,
-                 name = $2
-             WHERE id = $3
+             SET name = $1
+             WHERE id = $2
              RETURNING id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active`,
-            [username, String(name).trim(), parseInt(id, 10)]
+            [String(name).trim(), parseInt(id, 10)]
         );
 
         const staffLink = staffId
@@ -357,11 +600,12 @@ router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) 
             eventType: 'account_profile_updated',
             reason: 'account_management',
             details: {
-                changedUsername: username.toLowerCase() !== target.rows[0].username.toLowerCase(),
+                changedUsername: false,
                 staffLinked: !!staffId
             },
             req,
-            client
+            client,
+            strict: true
         });
         await client.query('COMMIT');
 
@@ -381,6 +625,7 @@ router.patch('/:id/access', requireAction('manage_accounts'), updateAccountAcces
 router.patch('/:id/role', requireAction('manage_accounts'), updateAccountAccess);
 
 async function updateAccountAccess(req, res) {
+    let client = null;
     try {
         const { id } = req.params;
         const { role, extraRoles, pageAllowlist, businessContexts } = req.body;
@@ -404,25 +649,40 @@ async function updateAccountAccess(req, res) {
         const normalizedActionDenylist = actionDenylistInput !== undefined
             ? normalizeActionOverrideList(actionDenylistInput)
             : null;
-        const target = await pool.query(
-            'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE id = $1',
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const target = await client.query(
+            `SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist,
+                    action_denylist, business_contexts, default_business_context, is_active
+             FROM users WHERE id = $1 FOR UPDATE`,
             [parseInt(id)]
         );
-        if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
-            return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
+        if (target.rows.length === 0) {
+            const err = new Error('Користувача не знайдено');
+            err.statusCode = 404;
+            throw err;
         }
-        if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
-        if (!canCreateAccount(req.user, role, normalizedExtraRoles || normalizeStoredArray(target.rows[0].extra_roles))) {
-            return res.status(403).json({ error: 'Не можна призначити акаунту такий рівень доступу' });
+        const current = target.rows[0];
+        assertAccountMutable(current, 'access_update');
+        if (!canMutateSensitiveAccount(req.user, current)) {
+            const err = new Error('Цей акаунт не можна змінити з поточного рівня доступу');
+            err.statusCode = 403;
+            throw err;
+        }
+        if (!canCreateAccount(req.user, role, normalizedExtraRoles || normalizeStoredArray(current.extra_roles))) {
+            const err = new Error('Не можна призначити акаунту такий рівень доступу');
+            err.statusCode = 403;
+            throw err;
         }
 
-        const oldRole = target.rows[0].role;
-        const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
-        const oldPageAllowlist = normalizeStoredArray(target.rows[0].page_allowlist);
-        const oldActionAllowlist = accountActionAllowlist(target.rows[0]);
-        const oldActionDenylist = accountActionDenylist(target.rows[0]);
-        const oldBusinessContexts = normalizeStoredArray(target.rows[0].business_contexts);
-        const oldDefaultBusinessContext = target.rows[0].default_business_context
+        const oldRole = current.role;
+        const oldExtraRoles = normalizeStoredArray(current.extra_roles);
+        const oldPageAllowlist = normalizeStoredArray(current.page_allowlist);
+        const oldActionAllowlist = accountActionAllowlist(current);
+        const oldActionDenylist = accountActionDenylist(current);
+        const oldBusinessContexts = normalizeStoredArray(current.business_contexts);
+        const oldDefaultBusinessContext = current.default_business_context
             || defaultBusinessContextForSelection(null, oldBusinessContexts, oldRole);
         const defaultNeedsUpdate = Object.prototype.hasOwnProperty.call(req.body, 'defaultBusinessContext')
             || Object.prototype.hasOwnProperty.call(req.body, 'default_business_context')
@@ -442,7 +702,7 @@ async function updateAccountAccess(req, res) {
             )
             : null;
         const prospectiveAccount = {
-            ...target.rows[0],
+            ...current,
             role,
             extra_roles: normalizedExtraRoles || oldExtraRoles,
             page_allowlist: normalizedPageAllowlist || oldPageAllowlist,
@@ -452,7 +712,13 @@ async function updateAccountAccess(req, res) {
             default_business_context: normalizedDefaultBusinessContext || oldDefaultBusinessContext
         };
         assertSelfAccountAccessSafe(req.user, prospectiveAccount);
-        const updated = await pool.query(
+        await assertLastActiveCreatorInvariant(client, current, {
+            role,
+            extraRoles: prospectiveAccount.extra_roles,
+            actionDenylist: prospectiveAccount.action_denylist,
+            isActive: current.is_active !== false
+        });
+        const updated = await client.query(
             `UPDATE users
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
@@ -474,11 +740,11 @@ async function updateAccountAccess(req, res) {
         const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
         const newDefaultBusinessContext = updatedUser.default_business_context
             || defaultBusinessContextForSelection(null, newBusinessContexts, updatedUser.role);
-        await revokeAllUserTokens(parseInt(id));
+        await revokeAllUserTokens(parseInt(id), client);
 
         await recordAccountSecurityEvent({
             actor: req.user,
-            target: target.rows[0],
+            target: current,
             eventType: 'account_access_updated',
             reason: 'account_management',
             details: {
@@ -507,13 +773,16 @@ async function updateAccountAccess(req, res) {
                     defaultBusinessContext: oldDefaultBusinessContext !== newDefaultBusinessContext
                 }
             },
-            req
+            req,
+            client,
+            strict: true
         });
+        await client.query('COMMIT');
 
-        log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${updatedUser.role}`);
+        log.info(`User ${req.user.username} changed role of ${current.username}: ${oldRole} → ${updatedUser.role}`);
         res.json({
             success: true,
-            username: target.rows[0].username,
+            username: current.username,
             oldRole,
             newRole: updatedUser.role,
             extraRoles: newExtraRoles,
@@ -526,13 +795,19 @@ async function updateAccountAccess(req, res) {
             defaultBusinessContext: newDefaultBusinessContext
         });
     } catch (err) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch {}
+        }
         log.error('Change role error', err);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client?.release();
     }
 }
 
 // POST /api/users/:id/reset-password — reset password (account admins, guarded)
 router.post('/:id/reset-password', requireAction('manage_accounts'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const manualPassword = resetPasswordFromPayload(req.body || {});
@@ -547,13 +822,26 @@ router.post('/:id/reset-password', requireAction('manage_accounts'), async (req,
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }
 
-        const target = await pool.query('SELECT id, username, name, role, extra_roles, is_active, login_aliases FROM users WHERE id = $1', [parseInt(id)]);
-        if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
+        await client.query('BEGIN');
+        const target = await client.query(
+            'SELECT id, username, name, role, extra_roles, is_active, login_aliases FROM users WHERE id = $1 FOR UPDATE',
+            [parseInt(id)]
+        );
+        if (target.rows.length === 0) {
+            const err = new Error('Користувача не знайдено');
+            err.statusCode = 404;
+            throw err;
+        }
+        assertAccountMutable(target.rows[0], 'password_reset');
         if (!canMutateSensitiveAccount(req.user, target.rows[0])) {
-            return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
+            const err = new Error('Цей акаунт не можна змінити з поточного рівня доступу');
+            err.statusCode = 403;
+            throw err;
         }
         if (activateOnReset && target.rows[0].is_active === false && !canToggleAccount(req.user, target.rows[0])) {
-            return res.status(403).json({ error: 'Цей акаунт не можна активувати з поточного рівня доступу' });
+            const err = new Error('Цей акаунт не можна активувати з поточного рівня доступу');
+            err.statusCode = 403;
+            throw err;
         }
 
         const hash = await bcrypt.hash(finalPassword, 10);
@@ -561,7 +849,7 @@ router.post('/:id/reset-password', requireAction('manage_accounts'), async (req,
         if (!hashVerified) {
             throw new Error('password_hash_verified_after_reset_failed');
         }
-        const updated = await pool.query(
+        const updated = await client.query(
             `UPDATE users
              SET password_hash = $1,
                  password_changed_at = NOW(),
@@ -573,28 +861,28 @@ router.post('/:id/reset-password', requireAction('manage_accounts'), async (req,
         );
         const activatedByReset = activateOnReset && target.rows[0].is_active === false && updated.rows[0]?.is_active !== false;
         if (activatedByReset) {
-            try {
-                await pool.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
-            } catch (linkErr) {
-                log.warn(`Password reset activated ${target.rows[0].username}, but staff profile activation failed: ${linkErr.message}`);
-            }
+            await client.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
         }
         const loginCheck = await verifyIssuedCredential({
+            client,
             username: updated.rows[0]?.username || target.rows[0].username,
             password: finalPassword
         });
         if (updated.rows[0]?.is_active !== false && !loginCheck.loginReady) {
             throw new Error(`password_login_ready_check_failed_after_reset:${loginCheck.reason}`);
         }
-        await revokeAllUserTokens(parseInt(id));
+        await revokeAllUserTokens(parseInt(id), client);
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
             eventType: issueOneTime ? 'password_one_time_reissued' : 'password_reset_by_admin',
             reason: 'account_management',
             details: { sessionsRevoked: true, oneTimeIssued: issueOneTime, activateOnReset, activatedByReset, loginReady: loginCheck.loginReady },
-            req
+            req,
+            client,
+            strict: true
         });
+        await client.query('COMMIT');
 
         log.info(`User ${req.user.username} reset password for ${target.rows[0].username}`);
         res.json({
@@ -612,25 +900,49 @@ router.post('/:id/reset-password', requireAction('manage_accounts'), async (req,
             credential: issueOneTime ? oneTimeCredential(target.rows[0].username, finalPassword, 'password_reissue') : null
         });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('Reset password error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
 // PATCH /api/users/:id/active — activate/deactivate user (account admins, guarded)
 router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const { isActive } = req.body;
-
-        const target = await pool.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1', [parseInt(id)]);
-        if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
-
-        if (!canToggleAccount(req.user, target.rows[0])) {
-            return res.status(400).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
+        if (typeof isActive !== 'boolean') {
+            return res.status(400).json({ error: 'isActive має бути boolean' });
         }
 
-        await pool.query(
+        await client.query('BEGIN');
+        const target = await client.query(
+            'SELECT id, username, name, role, extra_roles, action_denylist, is_active FROM users WHERE id = $1 FOR UPDATE',
+            [parseInt(id)]
+        );
+        if (target.rows.length === 0) {
+            const err = new Error('Користувача не знайдено');
+            err.statusCode = 404;
+            throw err;
+        }
+        assertAccountMutable(target.rows[0], 'active_status_update');
+
+        if (!canToggleAccount(req.user, target.rows[0])) {
+            const err = new Error('Цей акаунт не можна змінити з поточного рівня доступу');
+            err.statusCode = 403;
+            throw err;
+        }
+
+        await assertLastActiveCreatorInvariant(client, target.rows[0], {
+            role: target.rows[0].role,
+            extraRoles: normalizeStoredArray(target.rows[0].extra_roles),
+            actionDenylist: normalizeStoredArray(target.rows[0].action_denylist),
+            isActive: !!isActive
+        });
+        await client.query(
             `UPDATE users
              SET is_active = $1,
                  session_revoked_at = CASE WHEN $1 = false THEN NOW() ELSE session_revoked_at END
@@ -638,10 +950,10 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
             [!!isActive, parseInt(id)]
         );
         if (!isActive) {
-            await pool.query('UPDATE employee_profiles SET is_active = false WHERE user_id = $1', [parseInt(id)]);
-            await revokeAllUserTokens(parseInt(id));
+            await client.query('UPDATE employee_profiles SET is_active = false WHERE user_id = $1', [parseInt(id)]);
+            await revokeAllUserTokens(parseInt(id), client);
         } else {
-            await pool.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
+            await client.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
         }
 
         await recordAccountSecurityEvent({
@@ -650,14 +962,20 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
             eventType: isActive ? 'account_activated' : 'account_deactivated',
             reason: 'account_management',
             details: { sessionsRevoked: !isActive },
-            req
+            req,
+            client,
+            strict: true
         });
+        await client.query('COMMIT');
 
         log.info(`User ${req.user.username} ${isActive ? 'activated' : 'deactivated'} ${target.rows[0].username}`);
         res.json({ success: true, username: target.rows[0].username, isActive: !!isActive });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('Toggle active error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -678,6 +996,9 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         }
         if (username.length < 3 || username.length > 50 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
             return res.status(400).json({ error: 'Логін має містити 3-50 символів: латиниця, цифри, крапка, дефіс або підкреслення' });
+        }
+        if (isProtectedSystemAccount({ username, name })) {
+            return res.status(409).json({ error: 'Це імʼя зарезервоване для захищеного системного акаунта' });
         }
         const finalPassword = issueOneTime ? generateOneTimePassword() : normalizeManualPassword(password);
         if (finalPassword.length < 6) {
@@ -718,12 +1039,11 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             return res.status(403).json({ error: 'Не можна створити акаунт з таким рівнем доступу' });
         }
 
-        const existing = await pool.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [username]);
-        if (existing.rows.length > 0) {
-            return res.status(409).json({ error: 'Користувач з таким username вже існує' });
-        }
-
         await client.query('BEGIN');
+        await reserveUsernameIdentity(client, username, {
+            code: 'ACCOUNT_USERNAME_OCCUPIED',
+            message: 'Акаунт або login alias з таким username вже існує'
+        });
         const hash = await bcrypt.hash(finalPassword, 10);
         const hashVerified = await bcrypt.compare(finalPassword, hash);
         if (!hashVerified) {
@@ -759,7 +1079,8 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             reason: 'account_management',
             details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
-            client
+            client,
+            strict: true
         });
         await client.query('COMMIT');
 

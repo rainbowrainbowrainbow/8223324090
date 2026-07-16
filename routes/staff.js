@@ -113,8 +113,12 @@ const {
     uniqueUsername,
     verifyIssuedCredential
 } = require('../services/accountLinking');
+const {
+    professionToAccountRole,
+    isProtectedSystemAccount
+} = require('../services/accountOnboarding');
 
-const { requireAction, requireRole, authenticateToken, ROLE_LEVEL } = require('../middleware/auth');
+const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
@@ -167,7 +171,8 @@ function accountMaxRoleLevel(account = {}) {
 }
 
 function canActorManageAccountRoleSet(actor, primaryRole, extraRoles = []) {
-    if (!actor || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (!actor || !canUseAction(actor, 'manage_accounts') || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (roleLevel(primaryRole) < 0 || normalizeAccountRoleSet(extraRoles).some(role => roleLevel(role) < 0)) return false;
     if (actor.role === 'creator') return true;
     const maxTargetLevel = normalizeAccountRoleSet([primaryRole], extraRoles)
         .reduce((max, role) => Math.max(max, roleLevel(role)), -1);
@@ -175,7 +180,7 @@ function canActorManageAccountRoleSet(actor, primaryRole, extraRoles = []) {
 }
 
 function canActorManageAccount(actor, account) {
-    if (!actor || !account || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (!actor || !account || !canUseAction(actor, 'manage_accounts') || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
     if (actor.role === 'creator') return true;
     return accountMaxRoleLevel(account) < roleLevel('director');
 }
@@ -210,16 +215,22 @@ async function getLinkedAccountsForStaffManagement(client, staffId) {
 }
 
 function ensureActorCanManageAccount(actor, account) {
+    if (isProtectedSystemAccount(account)) {
+        throw accountManagementError('Protected system account cannot be linked or unlinked');
+    }
     if (!canActorManageAccount(actor, account)) {
         throw accountManagementError('Insufficient account-management permissions for this account');
     }
 }
 
 function canDisableLinkedStaffAccount(actor, account) {
-    return Number(account?.id) !== Number(actor?.id) && canActorManageAccount(actor, account);
+    return !isProtectedSystemAccount(account)
+        && Number(account?.id) !== Number(actor?.id)
+        && canActorManageAccount(actor, account);
 }
 
 function linkedStaffAccountBlockReason(actor, account = {}) {
+    if (isProtectedSystemAccount(account)) return 'protected_system_account';
     if (Number(account.id) === Number(actor?.id)) return 'current_user';
     if (!actor || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return 'requires_manage_accounts';
     if (!canActorManageAccount(actor, account)) return 'protected_role';
@@ -2490,27 +2501,7 @@ const EXCEL_TO_CRM_ROLE = {
 };
 
 function staffRoleToAccountRole(roleType) {
-    const role = String(roleType || '').trim();
-    const aliases = {
-        trampoline_instructor: 'animator',
-        senior_instructor: 'manager',
-        cleaner: 'cleaning',
-        pizzaiolo: 'cook',
-        technician: 'maintenance',
-        head_cook: 'head_chef',
-        bartender: 'barista',
-        hr_manager: 'hr',
-        host: 'animator',
-        intern: 'animator'
-    };
-    const mapped = aliases[role] || role;
-    return [
-        'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
-        'security', 'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook',
-        'head_chef', 'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
-        'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
-        'vice_director', 'director'
-    ].includes(mapped) ? mapped : 'animator';
+    return professionToAccountRole(roleType);
 }
 
 // GET /api/staff/link-status — account linking status for all active staff
@@ -2609,10 +2600,14 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
         const unlinked = await client.query(`
             SELECT s.id, s.name, s.department, s.role_type, s.unique_person_key
             FROM staff s
-            LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true AND ep.user_id IS NOT NULL
             WHERE ${activeOperationalStaffWhere('s')}
               AND s.is_freelance = false
-              AND ep.id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM employee_profiles ep
+                  WHERE ep.staff_id = s.id
+                    AND ep.user_id IS NOT NULL
+              )
             ORDER BY s.department, s.name
         `);
 
@@ -2630,6 +2625,16 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
             if (personKey) seenPersonKeys.add(personKey);
 
             const role = staffRoleToAccountRole(staff.role_type);
+            if (!role) {
+                skipped.push({
+                    staffId: staff.id,
+                    name: staff.name,
+                    profession: staff.role_type || null,
+                    reason: 'unmapped_profession_role',
+                    label: 'Для професії не налаштовано безпечне відображення на CRM-роль'
+                });
+                continue;
+            }
             if (!canActorManageAccountRoleSet(req.user, role)) {
                 skipped.push({
                     staffId: staff.id,
@@ -2641,7 +2646,17 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
                 continue;
             }
 
-            const username = await uniqueUsername(client, suggestUsernameForStaff(staff));
+            const suggestedUsername = suggestUsernameForStaff(staff);
+            if (isProtectedSystemAccount({ username: suggestedUsername, name: staff.name })) {
+                skipped.push({
+                    staffId: staff.id,
+                    name: staff.name,
+                    reason: 'reserved_system_identity',
+                    label: 'Логін або імʼя зарезервовано для захищеного системного акаунта'
+                });
+                continue;
+            }
+            const username = await uniqueUsername(client, suggestedUsername);
             const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
             const hashVerified = await bcrypt.compare(password, passwordHash);

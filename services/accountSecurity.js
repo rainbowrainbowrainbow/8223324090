@@ -20,16 +20,25 @@ function requestUserAgent(req) {
     return String(req?.headers?.['user-agent'] || '').slice(0, 500) || null;
 }
 
-function safeJson(value) {
-    if (!value || typeof value !== 'object') return {};
-    const clone = { ...value };
-    delete clone.password;
-    delete clone.newPassword;
-    delete clone.manualPassword;
-    delete clone.currentPassword;
-    delete clone.token;
-    delete clone.refreshToken;
-    return clone;
+const SENSITIVE_AUDIT_KEYS = new Set([
+    'password', 'newpassword', 'manualpassword', 'currentpassword',
+    'token', 'refreshtoken', 'accesstoken', 'credential', 'credentials',
+    'authorization', 'cookie', 'secret'
+]);
+
+function safeJson(value, depth = 0) {
+    if (depth > 8 || value === null || value === undefined) return null;
+    if (Array.isArray(value)) return value.map(item => safeJson(item, depth + 1));
+    if (typeof value !== 'object') return value;
+    const sanitized = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+        const normalizedKey = String(key).replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (SENSITIVE_AUDIT_KEYS.has(normalizedKey)) continue;
+        const safeValue = safeJson(nestedValue, depth + 1);
+        if (safeValue && typeof safeValue === 'object' && !Array.isArray(safeValue) && Object.keys(safeValue).length === 0) continue;
+        sanitized[key] = safeValue;
+    }
+    return sanitized;
 }
 
 async function recordAccountSecurityEvent({
@@ -39,7 +48,8 @@ async function recordAccountSecurityEvent({
     reason = null,
     details = {},
     req = null,
-    client = null
+    client = null,
+    strict = false
 } = {}) {
     if (!eventType) return;
     const db = client || pool;
@@ -64,6 +74,7 @@ async function recordAccountSecurityEvent({
         );
     } catch (err) {
         log.warn(`Account security audit failed: ${err.message}`);
+        if (strict) throw err;
     }
 }
 

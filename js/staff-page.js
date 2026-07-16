@@ -6299,7 +6299,7 @@ function validateStaffAccountManualPassword(values = {}) {
     return null;
 }
 
-function showOneTimeCredential(credential, title = 'One-time credentials', payload = {}) {
+function showOneTimeCredential(credential, title = 'Тимчасовий пароль, показується один раз', payload = {}) {
     if (!credential) return;
     const text = `Логін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
     const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
@@ -6322,8 +6322,6 @@ function showOneTimeCredential(credential, title = 'One-time credentials', paylo
     }
     if (typeof showNotification === 'function') {
         showNotification(text, 'info');
-    } else {
-        console.info(`${title}\n\n${text}`);
     }
 }
 

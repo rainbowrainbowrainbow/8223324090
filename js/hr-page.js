@@ -1450,7 +1450,7 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
         ? await apiFetchWithAuthRetry(`/api/hr${path}`, request)
         : await fetch(`/api/hr${path}`, request);
     if (!resp) return null;
-    if (resp.status === 401 || (resp.status === 403 && !allowForbiddenResponse)) {
+    if (resp.status === 401) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
         return null;
@@ -1470,7 +1470,7 @@ async function crmApiFetch(path, options = {}) {
         ? await apiFetchWithAuthRetry(path, request)
         : await fetch(path, request);
     if (!resp) return null;
-    if (resp.status === 401 || resp.status === 403) {
+    if (resp.status === 401) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
         return null;
@@ -1503,6 +1503,9 @@ async function initPage() {
     if (!user) { window.location.href = '/'; return; }
 
     AppState.currentUser = user;
+    if (typeof hydrateActionPermissions === 'function') {
+        await hydrateActionPermissions(user);
+    }
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -4237,12 +4240,34 @@ let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
 let accountActionDefinitions = [];
 let accountRolePresets = {};
+let accountProfessionRoleMap = {};
 let accountPageAccessMatrix = {};
 let accountActionPermissionsMatrix = {};
+let accountRoleDefinitionsPromise = null;
 let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
 let accountDeepLinkApplied = false;
+let accountCenterSelectedId = null;
+let accountCenterDetailData = null;
+let accountCenterDetailTab = 'profile';
+let accountCenterLoadRequestSeq = 0;
+let accountCenterDetailRequestSeq = 0;
+let accountCenterConflictDrilldown = null;
+let accountDetailMobilePortal = null;
+let accountConflictRequestSeq = 0;
+let accountOnboardingOptions = null;
+let accountOnboardingRequestSeq = 0;
+let accountOnboardingState = {
+    open: false,
+    step: 1,
+    returnFocus: null,
+    context: {},
+    submitting: false,
+    receipt: null,
+    credential: null,
+    payload: null
+};
 const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
 const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
@@ -4314,19 +4339,25 @@ const ACCOUNT_PAGE_LABELS = {
 };
 
 function canManageAccountSecurity() {
+    if (typeof canAccess === 'function') return canAccess('manage_accounts');
     return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
+}
+
+function canRunAccountOnboarding() {
+    const canManageStaff = typeof canAccess === 'function' ? canAccess('manage_staff') : false;
+    return canManageAccountSecurity() && canManageStaff;
 }
 
 function canManageAccountProfile() {
-    return ACCOUNT_PROFILE_ROLES.includes(AppState.currentUser?.role);
+    return canManageAccountSecurity();
 }
 
 function canManageAccountAccess() {
-    return ACCOUNT_PROFILE_ROLES.includes(AppState.currentUser?.role);
+    return canManageAccountSecurity();
 }
 
 function canLinkAccounts() {
-    return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
+    return canManageAccountSecurity();
 }
 
 function canEditAccountBusinessContexts() {
@@ -4464,6 +4495,9 @@ function currentAccountCanManageRoleSet(primaryRole = 'animator', extraRoles = [
 }
 
 function currentAccountCanMutateTarget(user = {}) {
+    if (user.protected_account === true || user.protectedAccount === true) return false;
+    if (typeof user.can_mutate === 'boolean') return user.can_mutate;
+    if (typeof user.canMutate === 'boolean') return user.canMutate;
     const actorRole = AppState.currentUser?.role;
     if (!ACCOUNT_SECURITY_ROLES.includes(actorRole)) return false;
     if (actorRole === 'creator') return true;
@@ -4473,6 +4507,8 @@ function currentAccountCanMutateTarget(user = {}) {
 }
 
 function currentAccountCanToggleTarget(user = {}) {
+    if (typeof user.can_toggle === 'boolean') return user.can_toggle;
+    if (typeof user.canToggle === 'boolean') return user.canToggle;
     if (!currentAccountCanMutateTarget(user)) return false;
     return Number(user.id) !== Number(AppState.currentUser?.id);
 }
@@ -4611,9 +4647,15 @@ function renderAccountRolePackFromForm(values = {}, fallback = {}) {
     );
 }
 
-async function loadAccountRoleDefinitions() {
-    if (accountRoleHierarchy.length && accountBusinessContexts.length && Object.keys(accountRolePresets).length && Object.keys(accountPageAccessMatrix).length && Object.keys(accountActionPermissionsMatrix).length) return;
-    const data = await crmApiFetch('/api/users/roles');
+function hasAccountRoleDefinitions() {
+    return accountRoleHierarchy.length
+        && accountBusinessContexts.length
+        && Object.keys(accountRolePresets).length
+        && Object.keys(accountPageAccessMatrix).length
+        && Object.keys(accountActionPermissionsMatrix).length;
+}
+
+function commitAccountRoleDefinitions(data = {}) {
     if (Array.isArray(data?.hierarchy)) {
         accountRoleHierarchy = data.hierarchy.filter(role => ROLE_LABELS[role] || role);
     }
@@ -4636,6 +4678,24 @@ async function loadAccountRoleDefinitions() {
     } else if (Array.isArray(data?.actions)) {
         accountActionPermissionsMatrix = Object.fromEntries(data.actions.map(action => [action.key, action.roles || []]).filter(([key]) => key));
     }
+    if (data?.professionRoleMap && typeof data.professionRoleMap === 'object') {
+        accountProfessionRoleMap = { ...data.professionRoleMap };
+    }
+}
+
+async function fetchAccountRoleDefinitions() {
+    if (hasAccountRoleDefinitions()) return null;
+    if (!accountRoleDefinitionsPromise) {
+        accountRoleDefinitionsPromise = crmApiFetch('/api/users/roles')
+            .finally(() => { accountRoleDefinitionsPromise = null; });
+    }
+    return accountRoleDefinitionsPromise;
+}
+
+async function loadAccountRoleDefinitions() {
+    const data = await fetchAccountRoleDefinitions();
+    if (data) commitAccountRoleDefinitions(data);
+    return data;
 }
 
 async function loadAccountStaffOptions(force = false) {
@@ -4651,12 +4711,14 @@ function getAccountStaffSelectOptions(currentUserId = null) {
     accountStaffOptions.forEach(staff => {
         const linkedUserId = staff.linked_user_id || staff.linkedUserId;
         const linkedUsername = staff.linked_username || staff.linkedUsername;
-        const locked = linkedUserId && Number(linkedUserId) !== Number(currentUserId)
+        const occupied = Boolean(linkedUserId && Number(linkedUserId) !== Number(currentUserId));
+        const locked = occupied
             ? ` · зайнято: ${linkedUsername || 'інший акаунт'}`
             : '';
         options.push({
             value: String(staff.id),
-            label: `${staff.name}${staff.department ? ' · ' + staff.department : ''}${staff.position ? ' · ' + staff.position : ''}${locked}`
+            label: `${staff.name}${staff.department ? ' · ' + staff.department : ''}${staff.position ? ' · ' + staff.position : ''}${staff.is_active === false || staff.staff_active === false ? ' · неактивний' : ''}${locked}`,
+            disabled: occupied
         });
     });
     return options;
@@ -4676,16 +4738,17 @@ function suggestAccountUsernameFromStaff(staff = {}) {
 function staffRoleToAccountRole(roleType) {
     const role = String(roleType || '').trim();
     const aliases = {
-        trampoline_instructor: 'instructor',
+        trampoline_instructor: 'animator',
         cleaner: 'cleaning',
         technician: 'maintenance',
         head_cook: 'head_chef',
         bartender: 'barista',
         hr_manager: 'hr',
+        pizzaiolo: 'cook',
         host: 'animator',
         intern: 'animator'
     };
-    const mapped = aliases[role] || role;
+    const mapped = accountProfessionRoleMap[role] || aliases[role] || role;
     const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
     return roles.includes(mapped) ? mapped : 'animator';
 }
@@ -4694,7 +4757,7 @@ function accountCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
-function showOneTimeCredentialModal(credential, title = 'Одноразові облікові дані', payload = {}) {
+function showOneTimeCredentialModal(credential, title = 'Тимчасовий пароль, показується один раз', payload = {}) {
     if (!credential) return;
     const username = credential.username || '';
     const password = accountCredentialPassword(credential);
@@ -4716,15 +4779,13 @@ function showOneTimeCredentialModal(credential, title = 'Одноразові о
             cancelText: 'Закрити'
         }).then(ok => {
             if (ok && navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => showNotification('Одноразові облікові дані скопійовано', 'success'));
+                navigator.clipboard.writeText(text).then(() => showNotification('Тимчасові облікові дані скопійовано', 'success'));
             }
         });
         return;
     }
     if (typeof showNotification === 'function') {
         showNotification(text, 'info');
-    } else {
-        console.info(`${title}\n\n${text}`);
     }
 }
 
@@ -4775,11 +4836,12 @@ function validateAccountManualPassword(values = {}, passwordKey = 'password') {
 }
 
 async function loadAccountConflicts() {
+    const requestSeq = ++accountConflictRequestSeq;
     try {
         const data = await crmApiFetch('/api/users/link-conflicts');
-        accountConflicts = data?.success ? data : null;
+        if (requestSeq === accountConflictRequestSeq) accountConflicts = data?.success ? data : null;
     } catch {
-        accountConflicts = null;
+        if (requestSeq === accountConflictRequestSeq) accountConflicts = null;
     }
     return accountConflicts;
 }
@@ -4789,22 +4851,18 @@ function renderAccountConflictSummary() {
     if (!root) return;
     const counts = accountConflicts?.counts || {};
     const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
-    root.classList.toggle('hidden', !accountConflicts);
+    root.classList.toggle('hidden', !accountConflicts || total === 0);
     if (!accountConflicts) {
         root.innerHTML = '';
         return;
     }
-    const parts = [
-        `unlinked users: ${Number(counts.unlinkedUsers || 0)}`,
-        `unlinked staff: ${Number(counts.unlinkedStaff || 0)}`,
-        `inactive links: ${Number(counts.inactiveProfileConflicts || 0)}`,
-        `telegram duplicates: ${Number(counts.duplicateTelegramIdentities || 0)}`,
-        `ambiguous profiles: ${Number(counts.ambiguousProfiles || 0)}`
-    ];
-    root.innerHTML = `
-        <strong>Контроль звʼязків:</strong>
-        <span>${total ? parts.join(' · ') : 'конфліктів у швидкому аудиті не знайдено'}</span>
-    `;
+    root.innerHTML = total
+        ? `<strong>Потребують уваги:</strong>${Object.entries(ACCOUNT_CONFLICT_META).map(([type, meta]) => {
+            const count = Number(counts[type] || 0);
+            if (!count) return '';
+            return `<button type="button" class="hr-account-conflict-chip ${accountCenterConflictDrilldown === type ? 'is-active' : ''}" data-account-conflict-type="${type}"><span>${escapeHtml(meta.label)}</span><strong>${count}</strong></button>`;
+        }).join('')}`
+        : '';
 }
 
 function applyAccountDeepLinkFilters() {
@@ -4824,7 +4882,7 @@ function applyAccountDeepLinkFilters() {
     accountCenterLastUpdatedId = target.id;
     setAccountCenterFilters({
         query: target.username || target.name || target.staff_name || '',
-        activeOnly: false,
+        status: 'all',
         showSystem: false
     }, { render: false });
 }
@@ -5695,7 +5753,13 @@ window.toggleStaffProfessionChecklist = toggleStaffProfessionChecklist;
 function isSystemAccount(u) {
     const username = String(u.username || '').toLowerCase();
     const name = String(u.name || '').toLowerCase();
-    return username.startsWith('openclaw')
+    return u.is_system === true
+        || u.isSystem === true
+        || Boolean(u.system_status || u.systemStatus)
+        || u.protected_account === true
+        || u.protectedAccount === true
+        || ['guardian', 'system'].includes(username)
+        || username.startsWith('openclaw')
         || username.startsWith('open_claw')
         || username.startsWith('open-claw')
         || name.startsWith('openclaw')
@@ -5713,6 +5777,67 @@ function normalizeAccountArray(value) {
     return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
 }
 
+const ACCOUNT_CONFLICT_META = Object.freeze({
+    unlinkedUsers: { label: 'Акаунти без staff', singular: 'Акаунт без staff' },
+    unlinkedStaff: { label: 'Staff без акаунта', singular: 'Staff без акаунта' },
+    inactiveProfileConflicts: { label: 'Неактивні звʼязки', singular: 'Неактивний звʼязок' },
+    duplicateTelegramIdentities: { label: 'Telegram дублікати', singular: 'Telegram дублікат' },
+    ambiguousProfiles: { label: 'Неоднозначні профілі', singular: 'Неоднозначний профіль' }
+});
+const ACCOUNT_DETAIL_TABS = Object.freeze([
+    { id: 'profile', label: 'Profile' },
+    { id: 'hr', label: 'HR link' },
+    { id: 'access', label: 'Access summary' },
+    { id: 'security', label: 'Security' },
+    { id: 'history', label: 'History' }
+]);
+
+function accountLinkStatus(user = {}) {
+    const raw = String(user.link_status || user.linkStatus || '').trim().toLowerCase();
+    if (['inactive', 'inactive_link', 'linked_inactive'].includes(raw)) return 'inactive';
+    if (['linked', 'active'].includes(raw)) return 'linked';
+    if (['unlinked', 'none', 'missing'].includes(raw)) return 'unlinked';
+    if (user.profile_active === false || user.profileActive === false || user.staff_active === false || user.staffActive === false) {
+        return user.staff_id || user.staffId ? 'inactive' : 'unlinked';
+    }
+    return user.staff_id || user.staffId ? 'linked' : 'unlinked';
+}
+
+function accountBusinessKeys(user = {}) {
+    return normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts, []);
+}
+
+function accountConflictEntries(type) {
+    return Array.isArray(accountConflicts?.data?.[type]) ? accountConflicts.data[type] : [];
+}
+
+function accountConflictTypesForUser(user = {}) {
+    const userId = Number(user.id);
+    const types = new Set();
+    accountConflictEntries('unlinkedUsers').forEach(item => {
+        if (Number(item.id) === userId) types.add('unlinkedUsers');
+    });
+    accountConflictEntries('inactiveProfileConflicts').forEach(item => {
+        if (Number(item.user_id || item.userId) === userId) types.add('inactiveProfileConflicts');
+    });
+    accountConflictEntries('ambiguousProfiles').forEach(item => {
+        if (Number(item.user_id || item.userId) === userId) types.add('ambiguousProfiles');
+    });
+    accountConflictEntries('duplicateTelegramIdentities').forEach(item => {
+        const entities = Array.isArray(item.entities) ? item.entities : [];
+        if (entities.some(entity => String(entity.source || '').startsWith('users.') && Number(entity.entityId || entity.entity_id) === userId)) {
+            types.add('duplicateTelegramIdentities');
+        }
+    });
+    return Array.from(types);
+}
+
+function accountMatchesConflict(user, conflictType) {
+    if (!conflictType || conflictType === 'all') return true;
+    if (conflictType === 'unlinkedStaff') return false;
+    return accountConflictTypesForUser(user).includes(conflictType);
+}
+
 function formatAccountAccess(u) {
     const roles = [u.role, ...normalizeAccountArray(u.extra_roles || u.extraRoles)]
         .filter(Boolean)
@@ -5727,27 +5852,49 @@ function formatAccountAccess(u) {
 function getAccountCenterFilterState() {
     return {
         query: String(document.getElementById('accountCenterSearch')?.value || '').trim(),
-        activeOnly: document.getElementById('accountCenterActiveOnly')?.checked !== false,
+        status: document.getElementById('accountCenterStatusFilter')?.value || 'active',
+        link: document.getElementById('accountCenterLinkFilter')?.value || 'all',
+        role: document.getElementById('accountCenterRoleFilter')?.value || 'all',
+        business: document.getElementById('accountCenterBusinessFilter')?.value || 'all',
+        conflict: document.getElementById('accountCenterConflictFilter')?.value || 'all',
         showSystem: document.getElementById('accountCenterShowSystem')?.checked === true
     };
 }
 
 function hasAccountCenterFilters(filters = getAccountCenterFilterState()) {
-    return !!filters.query || filters.activeOnly === false || filters.showSystem === true;
+    return !!filters.query
+        || filters.status !== 'active'
+        || filters.link !== 'all'
+        || filters.role !== 'all'
+        || filters.business !== 'all'
+        || filters.conflict !== 'all'
+        || filters.showSystem === true;
 }
 
-function setAccountCenterFilters({ query = '', activeOnly = true, showSystem = false } = {}, { render = false } = {}) {
+function setAccountCenterFilters({
+    query = '',
+    status = 'active',
+    link = 'all',
+    role = 'all',
+    business = 'all',
+    conflict = 'all',
+    showSystem = false
+} = {}, { render = false } = {}) {
     const search = document.getElementById('accountCenterSearch');
-    const activeOnlyInput = document.getElementById('accountCenterActiveOnly');
-    const showSystemInput = document.getElementById('accountCenterShowSystem');
     if (search) search.value = query;
-    if (activeOnlyInput) activeOnlyInput.checked = activeOnly !== false;
+    const values = { accountCenterStatusFilter: status, accountCenterLinkFilter: link, accountCenterRoleFilter: role, accountCenterBusinessFilter: business, accountCenterConflictFilter: conflict };
+    Object.entries(values).forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input && Array.from(input.options || []).some(option => option.value === value)) input.value = value;
+    });
+    const showSystemInput = document.getElementById('accountCenterShowSystem');
     if (showSystemInput) showSystemInput.checked = showSystem === true;
     if (render) renderAccountCenter();
 }
 
 function resetAccountCenterFilters(options = {}) {
-    setAccountCenterFilters({ query: '', activeOnly: true, showSystem: false }, { render: options.render !== false });
+    accountCenterConflictDrilldown = null;
+    setAccountCenterFilters({ query: '', status: 'active', link: 'all', role: 'all', business: 'all', conflict: 'all', showSystem: false }, { render: options.render !== false });
 }
 
 window.resetAccountCenterFilters = resetAccountCenterFilters;
@@ -5771,32 +5918,53 @@ function accountMatchesSearch(user, query) {
     return haystack.includes(query.toLowerCase());
 }
 
+function clearAccountDetailWorkspace(message = 'Оберіть акаунт зі списку.') {
+    accountCenterDetailRequestSeq += 1;
+    accountCenterSelectedId = null;
+    accountCenterDetailData = null;
+    closeAccountDetailMobile({ restoreFocus: false });
+    const panel = document.getElementById('accountDetailPanel');
+    if (!panel) return;
+    panel.classList.remove('is-mobile-open');
+    panel.innerHTML = `<div class="hr-account-detail-empty"><strong>Картка акаунта недоступна</strong><span>${escapeHtml(message)}</span></div>`;
+}
+
 async function loadAccountCenter(options = {}) {
     const root = document.getElementById('accountCenterList');
-    if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
-    await Promise.all([loadAccountRoleDefinitions(), loadAccountConflicts()]);
-    const data = await crmApiFetch('/api/users');
-    if (!Array.isArray(data)) {
-        if (root) root.innerHTML = `<div class="hr-account-empty">Центр акаунтів недоступний: ${escapeHtml(data?.error || 'немає доступу')}</div>`;
+    const requestSeq = ++accountCenterLoadRequestSeq;
+    bindAccountCenterControls();
+    if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів…</div>';
+    const [, , data] = await Promise.all([
+        loadAccountRoleDefinitions().catch(() => null),
+        loadAccountConflicts().catch(() => null),
+        crmApiFetch('/api/users').catch(error => ({ success: false, error: error?.message || 'Помилка мережі' }))
+    ]);
+    if (requestSeq !== accountCenterLoadRequestSeq) return;
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : (Array.isArray(data?.data) ? data.data : null));
+    if (!rows) {
+        if (root) root.innerHTML = `<div class="hr-account-empty"><strong>Центр акаунтів недоступний.</strong><span>${escapeHtml(data?.error || 'Немає доступу або сервер не відповідає.')}</span><button type="button" class="hr-account-empty-action" data-account-retry>Повторити</button></div>`;
+        accountCenterConflictDrilldown = null;
+        clearAccountDetailWorkspace('Список не завантажився. Повторіть запит.');
         return;
     }
-    accountUsers = data;
+    accountUsers = rows;
     if (options.resetFilters) {
         resetAccountCenterFilters({ render: false });
     }
     applyAccountDeepLinkFilters();
+    populateAccountCenterFilterOptions();
     renderAccountCenter();
-    const search = document.getElementById('accountCenterSearch');
-    const activeOnly = document.getElementById('accountCenterActiveOnly');
-    const showSystem = document.getElementById('accountCenterShowSystem');
     const createBtn = document.getElementById('accountCreateBtn');
     const adminNote = document.getElementById('accountCenterAdminNote');
     const canManageSecurity = canManageAccountSecurity();
-    if (createBtn) createBtn.classList.toggle('hidden', !canManageSecurity);
-    if (adminNote) adminNote.classList.toggle('hidden', canManageSecurity);
-    if (search) search.oninput = renderAccountCenter;
-    if (activeOnly) activeOnly.onchange = renderAccountCenter;
-    if (showSystem) showSystem.onchange = renderAccountCenter;
+    const canOnboard = canRunAccountOnboarding();
+    if (createBtn) createBtn.classList.toggle('hidden', !canOnboard);
+    if (adminNote) {
+        adminNote.textContent = canManageSecurity
+            ? 'Створення акаунта разом із HR-профілем потребує capability manage_accounts і manage_staff.'
+            : 'Для керування акаунтами потрібна capability manage_accounts.';
+        adminNote.classList.toggle('hidden', canOnboard);
+    }
 }
 
 window.refreshAccountCenter = async function(button) {
@@ -5812,19 +5980,17 @@ function renderAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (!root) return;
     renderAccountConflictSummary();
-    const canManageSecurity = canManageAccountSecurity();
-    const canManageProfile = canManageAccountProfile();
-    const canManageAccess = canManageAccountAccess();
     const filters = getAccountCenterFilterState();
     const query = filters.query.toLowerCase();
-    const activeOnly = filters.activeOnly;
-    const showSystem = filters.showSystem;
-    let rows = accountUsers;
-    if (!showSystem) rows = rows.filter(u => !isSystemAccount(u));
-    if (activeOnly) rows = rows.filter(u => u.is_active !== false);
-    if (query) {
-        rows = rows.filter(u => accountMatchesSearch(u, query));
-    }
+    let rows = accountUsers.slice();
+    if (!filters.showSystem) rows = rows.filter(user => !isSystemAccount(user));
+    if (filters.status === 'active') rows = rows.filter(user => user.is_active !== false);
+    if (filters.status === 'inactive') rows = rows.filter(user => user.is_active === false);
+    if (filters.link !== 'all') rows = rows.filter(user => accountLinkStatus(user) === filters.link);
+    if (filters.role !== 'all') rows = rows.filter(user => normalizeAccountRoleSelection(user.role, user.extra_roles || user.extraRoles).includes(filters.role));
+    if (filters.business !== 'all') rows = rows.filter(user => accountBusinessKeys(user).includes(filters.business));
+    if (filters.conflict !== 'all') rows = rows.filter(user => accountMatchesConflict(user, filters.conflict));
+    if (query) rows = rows.filter(user => accountMatchesSearch(user, query));
     const activeHumanCount = accountUsers.filter(u => u.is_active !== false && !isSystemAccount(u)).length;
     const filterNotice = document.getElementById('accountCenterFilterNotice');
     const resetBtn = document.getElementById('accountCenterResetFiltersBtn');
@@ -5839,143 +6005,1264 @@ function renderAccountCenter() {
         if (hasFilters) {
             const parts = [];
             if (filters.query) parts.push(`пошук “${escapeHtml(filters.query)}”`);
-            if (filters.activeOnly === false) parts.push('показ вимкнених');
-            if (filters.showSystem) parts.push('system-акаунти');
+            if (filters.status !== 'active') parts.push(`статус: ${escapeHtml(filters.status)}`);
+            if (filters.link !== 'all') parts.push(`HR-звʼязок: ${escapeHtml(filters.link)}`);
+            if (filters.role !== 'all') parts.push(`роль: ${escapeHtml(ROLE_LABELS[filters.role] || filters.role)}`);
+            if (filters.business !== 'all') parts.push(`бізнес: ${escapeHtml(filters.business)}`);
+            if (filters.conflict !== 'all') parts.push(ACCOUNT_CONFLICT_META[filters.conflict]?.singular || filters.conflict);
+            if (filters.showSystem) parts.push('system');
             filterNotice.innerHTML = `
                 <strong>Увімкнено фільтр:</strong>
                 <span>${parts.join(' · ') || 'нестандартний режим перегляду'}</span>
-                <button type="button" class="hr-account-inline-action" onclick="resetAccountCenterFilters()">Показати всі активні</button>
+                <button type="button" class="hr-account-inline-action" onclick="resetAccountCenterFilters()">Скинути</button>
             `;
         }
     }
     if (!rows.length) {
         root.innerHTML = `<div class="hr-account-empty">
             <strong>${hasFilters ? 'Акаунтів за цим фільтром немає.' : 'Активних акаунтів немає.'}</strong>
-            <span>${hasFilters ? 'Список не порожній: зараз його обмежують пошук або чекбокси.' : 'Увімкніть показ вимкнених або створіть новий акаунт.'}</span>
+            <span>${hasFilters ? 'Змініть фільтри або відкрийте конкретний запис із блоку конфліктів.' : 'Увімкніть показ вимкнених або створіть новий акаунт.'}</span>
             ${hasFilters ? '<button type="button" class="hr-account-empty-action" onclick="resetAccountCenterFilters()">Скинути фільтри</button>' : ''}
         </div>`;
+        accountCenterDetailRequestSeq += 1;
+        accountCenterSelectedId = null;
+        accountCenterDetailData = null;
+        if (accountCenterConflictDrilldown) {
+            renderAccountConflictDrilldown(accountCenterConflictDrilldown);
+        } else {
+            clearAccountDetailWorkspace(hasFilters ? 'За поточними фільтрами немає записів.' : 'У списку немає доступних акаунтів.');
+        }
         return;
+    }
+    if (!rows.some(user => Number(user.id) === Number(accountCenterSelectedId))) {
+        accountCenterSelectedId = Number(rows[0].id);
+        accountCenterDetailData = null;
     }
     root.innerHTML = rows.map(u => {
         const active = u.is_active !== false;
-        const staff = u.staff_name ? `${escapeHtml(u.staff_name)}${u.staff_department ? ' · ' + escapeHtml(u.staff_department) : ''}` : 'не привʼязано до staff';
-        const role = formatAccountAccess(u);
+        const linkStatus = accountLinkStatus(u);
+        const staff = u.staff_name || u.profile_name || 'Без staff';
+        const conflictTypes = accountConflictTypesForUser(u);
         const recentlyUpdated = Number(accountCenterLastUpdatedId) === Number(u.id);
         const canMutateTarget = currentAccountCanMutateTarget(u);
-        const canToggleTarget = currentAccountCanToggleTarget(u);
-        const targetProtected = canManageSecurity && !canMutateTarget;
-        return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${recentlyUpdated ? 'is-recently-updated' : ''}">
-            <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
-            <div class="hr-account-main">
-                <div class="hr-account-title">
+        const selected = Number(accountCenterSelectedId) === Number(u.id);
+        return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${recentlyUpdated ? 'is-recently-updated' : ''} ${selected ? 'is-selected' : ''}" role="listitem" data-account-id="${Number(u.id)}">
+            <button type="button" class="hr-account-row-open" data-account-open="${Number(u.id)}">
+                <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
+                <span class="hr-account-identity">
                     <strong>${escapeHtml(u.name || u.username || 'Без імені')}</strong>
                     <span>${escapeHtml(u.username || '')}</span>
-                </div>
-                <div class="hr-account-meta">${escapeHtml(role)} · ${staff} · ${formatAccountLastSeen(u.last_seen_at)}</div>
-            </div>
-            <div class="hr-account-actions">
-                <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
-                ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
-                ${canManageProfile && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
-                ${canManageSecurity && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
-                ${canManageAccess && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
-                ${canToggleTarget ? `<button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>` : ''}
-                ${targetProtected ? '<span class="hr-account-state off" title="Цей рівень акаунта змінює тільки creator">захищено</span>' : ''}
+                </span>
+                <span class="hr-account-cell hr-account-cell--role"><strong>${escapeHtml(ROLE_LABELS[u.role] || u.role || 'Без ролі')}</strong><span>${escapeHtml(formatAccountBusinessBadges(u) || 'Парк')}</span></span>
+                <span class="hr-account-cell hr-account-cell--link"><strong>${escapeHtml(staff)}</strong><span>${linkStatus === 'inactive' ? 'звʼязок неактивний' : (linkStatus === 'linked' ? escapeHtml(u.staff_department || 'HR linked') : 'не привʼязано')}</span></span>
+                <span class="hr-account-signals">
+                    <span class="hr-account-badge ${active ? 'is-active' : ''}">${active ? 'active' : 'inactive'}</span>
+                    ${isSystemAccount(u) ? '<span class="hr-account-badge is-system">system</span>' : ''}
+                    ${conflictTypes.length ? `<span class="hr-account-badge is-warning">конфлікт ${conflictTypes.length}</span>` : ''}
+                </span>
+            </button>
+            <div class="hr-account-row-menu-wrap">
+                <button type="button" class="hr-account-icon-btn" data-account-menu-toggle="${Number(u.id)}" aria-label="Дії акаунта ${escapeHtml(u.username || '')}" aria-expanded="false">⋯</button>
+                ${renderAccountActionMenu(u, { hidden: true, canMutateTarget })}
             </div>
         </article>`;
     }).join('');
+    if (accountCenterConflictDrilldown) {
+        renderAccountConflictDrilldown(accountCenterConflictDrilldown);
+    } else if (!accountCenterDetailData || Number(accountCenterDetailData.user?.id) !== Number(accountCenterSelectedId)) {
+        loadAccountDetailWorkspace(accountCenterSelectedId);
+    } else {
+        renderAccountDetailPanel();
+    }
+}
+
+function populateAccountCenterFilterOptions() {
+    const roleSelect = document.getElementById('accountCenterRoleFilter');
+    const businessSelect = document.getElementById('accountCenterBusinessFilter');
+    const currentRole = roleSelect?.value || 'all';
+    const currentBusiness = businessSelect?.value || 'all';
+    if (roleSelect) {
+        const roles = Array.from(new Set(accountUsers.flatMap(user => normalizeAccountRoleSelection(user.role, user.extra_roles || user.extraRoles)))).filter(Boolean);
+        roleSelect.innerHTML = '<option value="all">Усі ролі</option>' + roles
+            .sort((a, b) => (ROLE_LABELS[a] || a).localeCompare(ROLE_LABELS[b] || b, 'uk'))
+            .map(role => `<option value="${escapeHtml(role)}">${escapeHtml(ROLE_LABELS[role] || role)}</option>`).join('');
+        if (roles.includes(currentRole)) roleSelect.value = currentRole;
+    }
+    if (businessSelect) {
+        const businesses = Array.from(new Set(accountUsers.flatMap(accountBusinessKeys))).filter(Boolean);
+        const catalog = new Map(getAccountBusinessCatalog().map(item => [item.key, item.label || item.key]));
+        businessSelect.innerHTML = '<option value="all">Усі бізнеси</option>' + businesses
+            .sort((a, b) => (catalog.get(a) || a).localeCompare(catalog.get(b) || b, 'uk'))
+            .map(key => `<option value="${escapeHtml(key)}">${escapeHtml(catalog.get(key) || key)}</option>`).join('');
+        if (businesses.includes(currentBusiness)) businessSelect.value = currentBusiness;
+    }
+}
+
+function renderAccountActionMenu(user = {}, options = {}) {
+    const canMutate = options.canMutateTarget ?? currentAccountCanMutateTarget(user);
+    const canToggle = currentAccountCanToggleTarget(user);
+    const staffId = Number(user.staff_id || user.staffId || 0);
+    const active = user.is_active !== false;
+    const protectedAccount = user.protected_account === true || user.protectedAccount === true || (canManageAccountSecurity() && !canMutate);
+    const actions = [];
+    if (canMutate) {
+        actions.push('<button type="button" data-account-action="profile">Профіль і HR-звʼязок</button>');
+        actions.push('<button type="button" data-account-action="password">Тимчасовий пароль</button>');
+        actions.push('<button type="button" data-account-action="access">Розширені права</button>');
+        if (staffId) actions.push('<button type="button" data-account-action="unlink">Відвʼязати staff</button>');
+    }
+    if (canToggle) actions.push(`<button type="button" data-account-action="toggle" class="${active ? 'is-danger' : ''}">${active ? 'Вимкнути акаунт' : 'Активувати акаунт'}</button>`);
+    if (!actions.length) actions.push(`<button type="button" disabled>${protectedAccount ? 'Системний або захищений акаунт' : 'Дії недоступні'}</button>`);
+    return `<div class="hr-account-action-menu ${options.hidden ? 'hidden' : ''}" data-account-menu="${Number(user.id || 0)}">${actions.join('')}</div>`;
+}
+
+function bindAccountCenterControls() {
+    const root = document.getElementById('accountCenterWorkspace');
+    if (!root || root.dataset.bound === 'true') return;
+    root.dataset.bound = 'true';
+    const renderFromFilters = event => {
+        if (event?.target?.id === 'accountCenterConflictFilter') {
+            accountCenterConflictDrilldown = event.target.value === 'all' ? null : event.target.value;
+        }
+        renderAccountCenter();
+    };
+    document.getElementById('accountCenterSearch')?.addEventListener('input', renderFromFilters);
+    ['accountCenterStatusFilter', 'accountCenterLinkFilter', 'accountCenterRoleFilter', 'accountCenterBusinessFilter', 'accountCenterConflictFilter', 'accountCenterShowSystem']
+        .forEach(id => document.getElementById(id)?.addEventListener('change', renderFromFilters));
+    document.getElementById('accountCenterList')?.addEventListener('click', event => {
+        const retry = event.target.closest('[data-account-retry]');
+        if (retry) return void loadAccountCenter();
+        const open = event.target.closest('[data-account-open]');
+        if (open) return void openAccountDetail(Number(open.dataset.accountOpen), { focus: true, returnFocus: open });
+        const menuToggle = event.target.closest('[data-account-menu-toggle]');
+        if (menuToggle) {
+            event.stopPropagation();
+            toggleAccountActionMenu(menuToggle);
+            return;
+        }
+        const action = event.target.closest('[data-account-action]');
+        if (!action) return;
+        const row = action.closest('[data-account-id]');
+        if (row) handleAccountAction(action.dataset.accountAction, Number(row.dataset.accountId), action);
+    });
+    document.getElementById('accountCenterList')?.addEventListener('scroll', closeAccountActionMenus, { passive: true });
+    document.getElementById('accountDetailPanel')?.addEventListener('click', event => {
+        const tab = event.target.closest('[data-account-detail-tab]');
+        if (tab) {
+            activateAccountDetailTab(tab.dataset.accountDetailTab, { focus: true });
+            return;
+        }
+        const retry = event.target.closest('[data-account-detail-retry]');
+        if (retry) return void loadAccountDetailWorkspace(Number(retry.dataset.accountDetailRetry), { focus: true });
+        const open = event.target.closest('[data-account-open]');
+        if (open) return void openAccountDetail(Number(open.dataset.accountOpen), { focus: true, returnFocus: open });
+        const menuToggle = event.target.closest('[data-account-menu-toggle]');
+        if (menuToggle) {
+            event.stopPropagation();
+            toggleAccountActionMenu(menuToggle);
+            return;
+        }
+        const action = event.target.closest('[data-account-action]');
+        if (action) return void handleAccountAction(action.dataset.accountAction, Number(accountCenterSelectedId), action);
+        if (event.target.closest('[data-account-mobile-close]')) closeAccountDetailMobile();
+    });
+    document.getElementById('accountDetailPanel')?.addEventListener('keydown', event => {
+        if (handleAccountDetailMobileKeydown(event)) return;
+        const tab = event.target.closest('[data-account-detail-tab]');
+        if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const index = ACCOUNT_DETAIL_TABS.findIndex(item => item.id === tab.dataset.accountDetailTab);
+        if (index < 0) return;
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = ACCOUNT_DETAIL_TABS.length - 1;
+        else if (event.key === 'ArrowRight') nextIndex = (index + 1) % ACCOUNT_DETAIL_TABS.length;
+        else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + ACCOUNT_DETAIL_TABS.length) % ACCOUNT_DETAIL_TABS.length;
+        activateAccountDetailTab(ACCOUNT_DETAIL_TABS[nextIndex].id, { focus: true });
+    });
+    document.getElementById('accountDetailPanel')?.addEventListener('scroll', closeAccountActionMenus, { passive: true });
+    window.addEventListener('resize', () => {
+        if (accountDetailMobilePortal && !isAccountDetailMobileViewport()) {
+            closeAccountDetailMobile({ restoreFocus: false });
+        }
+    }, { passive: true });
+    document.getElementById('accountCenterConflictSummary')?.addEventListener('click', event => {
+        const trigger = event.target.closest('[data-account-conflict-type]');
+        if (trigger) openAccountConflictDrilldown(trigger.dataset.accountConflictType, trigger);
+    });
+    document.addEventListener('click', event => {
+        if (event.target.closest('[data-account-menu-toggle], [data-account-menu]')) return;
+        closeAccountActionMenus();
+    });
+}
+
+function activateAccountDetailTab(tabId, options = {}) {
+    if (!ACCOUNT_DETAIL_TABS.some(tab => tab.id === tabId)) return;
+    accountCenterDetailTab = tabId;
+    renderAccountDetailPanel();
+    if (options.focus) {
+        document.querySelector(`[data-account-detail-tab="${tabId}"]`)?.focus({ preventScroll: true });
+    }
+}
+
+function fixedMenuContainingBlockOrigin(element) {
+    let ancestor = element?.parentElement || null;
+    while (ancestor && ancestor !== document.body) {
+        const style = window.getComputedStyle(ancestor);
+        if (
+            style.transform !== 'none'
+            || style.perspective !== 'none'
+            || style.filter !== 'none'
+            || style.backdropFilter !== 'none'
+        ) {
+            const rect = ancestor.getBoundingClientRect();
+            return {
+                left: rect.left + (ancestor.clientLeft || 0),
+                top: rect.top + (ancestor.clientTop || 0)
+            };
+        }
+        ancestor = ancestor.parentElement;
+    }
+    return { left: 0, top: 0 };
+}
+
+function toggleAccountActionMenu(button) {
+    const menu = button.parentElement?.querySelector('[data-account-menu]');
+    if (!menu) return;
+    const open = menu.classList.contains('hidden');
+    closeAccountActionMenus();
+    menu.classList.toggle('hidden', !open);
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+        menu.style.position = 'fixed';
+        menu.style.visibility = 'hidden';
+        const buttonRect = button.getBoundingClientRect();
+        const menuRect = menu.getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = document.documentElement.clientHeight;
+        const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, viewportWidth - menuRect.width - 8));
+        const top = buttonRect.bottom + menuRect.height + 8 <= viewportHeight
+            ? buttonRect.bottom + 4
+            : Math.max(8, buttonRect.top - menuRect.height - 4);
+        const origin = fixedMenuContainingBlockOrigin(menu);
+        menu.style.left = `${Math.round(left - origin.left)}px`;
+        menu.style.right = 'auto';
+        menu.style.top = `${Math.round(top - origin.top)}px`;
+        menu.style.visibility = '';
+        menu.querySelector('button:not([disabled])')?.focus();
+    }
+}
+
+function closeAccountActionMenus() {
+    document.querySelectorAll('[data-account-menu]').forEach(menu => {
+        menu.classList.add('hidden');
+        menu.removeAttribute('style');
+    });
+    document.querySelectorAll('[data-account-menu-toggle]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+}
+
+async function handleAccountAction(action, userId, button) {
+    closeAccountActionMenus();
+    if (action === 'profile') return openAccountProfileModal(userId, button);
+    if (action === 'password') return openAccountPasswordModal(userId, button);
+    if (action === 'access') return openAccountAccessEditor(userId, button);
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!user) return;
+    if (action === 'toggle') return toggleAccountActive(userId, user.is_active === false, button);
+    if (action === 'unlink') return unlinkAccountStaff(userId, button);
+}
+
+async function openAccountDetail(userId, options = {}) {
+    if (!Number.isInteger(Number(userId)) || Number(userId) <= 0) return;
+    const returnFocus = options.returnFocus || document.activeElement;
+    accountCenterConflictDrilldown = null;
+    accountCenterSelectedId = Number(userId);
+    accountCenterDetailTab = options.initialTab || accountCenterDetailTab || 'profile';
+    const listUser = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (listUser) accountCenterDetailData = { user: listUser, history: [] };
+    renderAccountCenter();
+    await loadAccountDetailWorkspace(userId, { focus: options.focus !== false, returnFocus });
+}
+
+async function loadAccountDetailWorkspace(userId, options = {}) {
+    const panel = document.getElementById('accountDetailPanel');
+    if (!panel || !userId) return;
+    const requestSeq = ++accountCenterDetailRequestSeq;
+    panel.innerHTML = '<div class="hr-account-detail-loading">Завантаження картки акаунта…</div>';
+    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/workspace`).catch(error => ({ success: false, error: error?.message || 'Помилка мережі' }));
+    if (requestSeq !== accountCenterDetailRequestSeq || Number(accountCenterSelectedId) !== Number(userId)) return;
+    const listUser = accountUsers.find(item => Number(item.id) === Number(userId)) || {};
+    if (!response?.success && !response?.user) {
+        accountCenterDetailData = null;
+        panel.innerHTML = `<div class="hr-account-detail-error"><strong>Не вдалося завантажити картку.</strong><span>${escapeHtml(response?.error || 'Сервер не відповідає.')}</span><button type="button" class="hr-account-toggle" data-account-detail-retry="${Number(userId)}">Повторити</button></div>`;
+        return;
+    }
+    const payload = response.data && typeof response.data === 'object' ? response.data : response;
+    accountCenterDetailData = {
+        ...payload,
+        user: { ...listUser, ...(payload.user || {}) },
+        history: Array.isArray(payload.history) ? payload.history : (Array.isArray(payload.actions) ? payload.actions : [])
+    };
+    renderAccountDetailPanel();
+    if (options.focus) {
+        openAccountDetailMobile(panel, options.returnFocus);
+    }
+}
+
+function renderAccountDetailPanel() {
+    const panel = document.getElementById('accountDetailPanel');
+    const data = accountCenterDetailData;
+    if (!panel || !data?.user) return;
+    const user = data.user;
+    const active = user.is_active !== false;
+    const linkStatus = accountLinkStatus(user);
+    const protectedAccount = user.protected_account === true || user.protectedAccount === true || !currentAccountCanMutateTarget(user);
+    const history = Array.isArray(data.history) ? data.history : [];
+    const selectedTab = ACCOUNT_DETAIL_TABS.some(tab => tab.id === accountCenterDetailTab) ? accountCenterDetailTab : 'profile';
+    const panels = {
+        profile: `<div class="hr-account-detail-grid">
+            ${accountDetailCard('Імʼя в CRM', user.name || 'Не задано')}
+            ${accountDetailCard('Username · readonly', user.username || 'Не задано')}
+            ${accountDetailCard('Статус', active ? 'Активний' : 'Вимкнений')}
+            ${accountDetailCard('Створено', formatAccountDateTime(user.created_at || user.createdAt))}
+            ${accountDetailCard('Остання активність', formatAccountDateTime(user.last_seen_at || user.lastSeenAt), true)}
+        </div>`,
+        hr: `<div class="hr-account-detail-grid">
+            ${accountDetailCard('HR-звʼязок', linkStatus === 'linked' ? 'Активний' : (linkStatus === 'inactive' ? 'Привʼязано, але неактивно' : 'Не привʼязано'))}
+            ${accountDetailCard('Staff', user.staff_name || user.profile_name || 'Не вибрано')}
+            ${accountDetailCard('Відділ', user.staff_department || 'Не задано')}
+            ${accountDetailCard('Посада', user.staff_position || 'Не задано')}
+        </div><div class="hr-account-detail-actions">${user.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(user.staff_id)}#team">Відкрити staff card</a>` : ''}${currentAccountCanMutateTarget(user) ? '<button type="button" class="hr-account-toggle" data-account-action="profile">Змінити HR-звʼязок</button>' : ''}</div>`,
+        access: `<div class="hr-account-detail-grid">
+            ${accountDetailCard('Основна роль', ROLE_LABELS[user.role] || user.role || 'Не задано')}
+            ${accountDetailCard('Додаткові ролі', normalizeAccountArray(user.extra_roles || user.extraRoles).map(role => ROLE_LABELS[role] || role).join(', ') || 'Немає')}
+            ${accountDetailCard('Бізнес-контексти', formatAccountBusinessBadges(user) || 'Парк', true)}
+            ${accountDetailCard('Ручні сторінки', normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ') || 'Немає', true)}
+            ${accountDetailCard('Ручний allow', normalizeAccountArray(user.action_allowlist || user.actionAllowlist).join(', ') || 'Немає', true)}
+            ${accountDetailCard('Ручний deny', normalizeAccountArray(user.action_denylist || user.actionDenylist).join(', ') || 'Немає', true)}
+        </div>${currentAccountCanMutateTarget(user) ? '<div class="hr-account-detail-actions"><button type="button" class="hr-account-toggle" data-account-action="access">Розширені права</button></div>' : ''}`,
+        security: `<div class="hr-account-detail-grid">
+            ${accountDetailCard('System status', user.system_status || user.systemStatus || (isSystemAccount(user) ? 'system' : 'human'))}
+            ${accountDetailCard('Protected', protectedAccount ? 'Так' : 'Ні')}
+            ${accountDetailCard('Пароль змінено', formatAccountDateTime(user.password_changed_at || user.passwordChangedAt))}
+            ${accountDetailCard('Сесії відкликано', formatAccountDateTime(user.session_revoked_at || user.sessionRevokedAt))}
+            ${accountDetailCard('Остання активність', formatAccountDateTime(user.last_seen_at || user.lastSeenAt), true)}
+        </div><p class="hr-account-meta">Операції з паролем, активністю та доступом знаходяться в меню ⋯ і перевіряються backend.</p>`,
+        history: history.length ? `<div class="hr-account-history">${history.map(renderAccountHistoryItem).join('')}</div>` : '<div class="hr-account-empty"><strong>Історія порожня.</strong><span>Події зʼявляться після змін профілю, доступу або безпеки.</span></div>'
+    };
+    panel.innerHTML = `
+        <header class="hr-account-detail-head">
+            <div><span class="hr-account-eyebrow">Картка акаунта</span><h4>${escapeHtml(user.name || user.username || 'Без імені')}</h4><p>${escapeHtml(user.username || '')} · ${active ? 'active' : 'inactive'}${isSystemAccount(user) ? ' · system' : ''}</p></div>
+            <div class="hr-account-detail-menu-wrap">
+                <button type="button" class="hr-account-icon-btn hr-account-detail-mobile-close" data-account-mobile-close aria-label="Повернутися до списку">←</button>
+                <button type="button" class="hr-account-icon-btn" data-account-menu-toggle="${Number(user.id)}" aria-label="Дії акаунта" aria-expanded="false">⋯</button>
+                ${renderAccountActionMenu(user, { hidden: true })}
+            </div>
+        </header>
+        <nav class="hr-account-detail-tabs" role="tablist" aria-label="Розділи картки акаунта">${ACCOUNT_DETAIL_TABS.map(tab => `<button type="button" id="account-detail-tab-${tab.id}" role="tab" data-account-detail-tab="${tab.id}" class="${selectedTab === tab.id ? 'is-active' : ''}" aria-selected="${selectedTab === tab.id ? 'true' : 'false'}" aria-controls="account-detail-panel-${tab.id}" tabindex="${selectedTab === tab.id ? '0' : '-1'}">${tab.label}</button>`).join('')}</nav>
+        <section id="account-detail-panel-${selectedTab}" class="hr-account-detail-panel" role="tabpanel" aria-labelledby="account-detail-tab-${selectedTab}" tabindex="0">${panels[selectedTab]}</section>`;
+}
+
+function accountDetailCard(label, value, wide = false) {
+    return `<div class="hr-account-detail-card ${wide ? 'is-wide' : ''}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`;
+}
+
+function formatAccountDateTime(value) {
+    if (!value) return 'Немає даних';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Немає даних' : date.toLocaleString('uk-UA', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function renderAccountHistoryItem(item = {}) {
+    const type = item.event_type || item.eventType || item.action || 'account_event';
+    const actor = item.actor_username || item.actorUsername || item.actor || 'system';
+    const reason = item.reason || item.message || '';
+    return `<article class="hr-account-history-item"><strong>${escapeHtml(type)}</strong><span>${escapeHtml(actor)} · ${escapeHtml(formatAccountDateTime(item.created_at || item.createdAt))}</span>${reason ? `<span>${escapeHtml(reason)}</span>` : ''}</article>`;
+}
+
+function openAccountConflictDrilldown(type, returnFocus = document.activeElement) {
+    if (!ACCOUNT_CONFLICT_META[type]) return;
+    accountCenterConflictDrilldown = type;
+    const select = document.getElementById('accountCenterConflictFilter');
+    if (select) select.value = type;
+    renderAccountCenter();
+    renderAccountConflictDrilldown(type, { focus: true, returnFocus });
+}
+
+function renderAccountConflictDrilldown(type, options = {}) {
+    const panel = document.getElementById('accountDetailPanel');
+    if (!panel || !ACCOUNT_CONFLICT_META[type]) return;
+    const entries = accountConflictEntries(type);
+    panel.innerHTML = `<header class="hr-account-detail-head"><div><span class="hr-account-eyebrow">Контроль звʼязків</span><h4>${escapeHtml(ACCOUNT_CONFLICT_META[type].label)}</h4><p>${entries.length} записів у поточному звіті</p></div><button type="button" class="hr-account-icon-btn hr-account-detail-mobile-close" data-account-mobile-close aria-label="Повернутися до списку">←</button></header><section class="hr-account-detail-panel">${entries.length ? `<div class="hr-account-history">${entries.map(entry => renderAccountConflictItem(type, entry)).join('')}</div>` : '<div class="hr-account-empty"><strong>Записів немає.</strong><span>Оновіть аудит звʼязків, якщо стан змінився.</span></div>'}</section>`;
+    if (options.focus) {
+        openAccountDetailMobile(panel, options.returnFocus);
+    }
+}
+
+function renderAccountConflictItem(type, entry = {}) {
+    if (type === 'unlinkedUsers') {
+        return `<article class="hr-account-conflict-item"><strong>${escapeHtml(entry.name || entry.username || 'Акаунт')}</strong><span>${escapeHtml(entry.username || '')} · ${escapeHtml(ROLE_LABELS[entry.role] || entry.role || '')}</span><button type="button" data-account-open="${Number(entry.id)}">Відкрити акаунт</button></article>`;
+    }
+    if (type === 'unlinkedStaff') {
+        return `<article class="hr-account-conflict-item"><strong>${escapeHtml(entry.name || 'Staff')}</strong><span>${escapeHtml(entry.department || '')}${entry.position ? ` · ${escapeHtml(entry.position)}` : ''}</span><a href="/hr?employee=${encodeURIComponent(entry.id)}#team">Відкрити staff card</a></article>`;
+    }
+    if (type === 'duplicateTelegramIdentities') {
+        const labels = (Array.isArray(entry.entities) ? entry.entities : []).map(entity => `${entity.source || ''}: ${entity.label || entity.entityId || entity.entity_id || ''}`).join(' · ');
+        return `<article class="hr-account-conflict-item"><strong>${escapeHtml(entry.value || 'Telegram identity')}</strong><span>${escapeHtml(labels || `${entry.count || 0} збігів`)}</span></article>`;
+    }
+    const userId = Number(entry.user_id || entry.userId || 0);
+    const staffId = Number(entry.staff_id || entry.staffId || 0);
+    return `<article class="hr-account-conflict-item"><strong>${escapeHtml(entry.username || entry.staff_name || entry.staffName || entry.reason || ACCOUNT_CONFLICT_META[type].singular)}</strong><span>${escapeHtml(entry.reason || '')}${staffId ? ` · staff #${staffId}` : ''}</span>${userId ? `<button type="button" data-account-open="${userId}">Відкрити акаунт</button>` : (staffId ? `<a href="/hr?employee=${staffId}#team">Відкрити staff card</a>` : '')}</article>`;
+}
+
+function isAccountDetailMobileViewport() {
+    return window.matchMedia?.('(max-width: 768px)').matches ?? window.innerWidth <= 768;
+}
+
+function isUsableAccountFocusTarget(target) {
+    if (!target || target === document.body || target === document.documentElement) return false;
+    if (!target.isConnected || typeof target.focus !== 'function') return false;
+    if (target.matches?.(':disabled, [aria-disabled="true"]')) return false;
+    if (target.closest?.('[hidden], .hidden, [inert]')) return false;
+    const style = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(target) : null;
+    if (style?.display === 'none' || style?.visibility === 'hidden') return false;
+    return typeof target.getClientRects !== 'function' || target.getClientRects().length > 0;
+}
+
+function accountFocusFallback() {
+    const conflictTrigger = accountCenterConflictDrilldown
+        ? document.querySelector(`[data-account-conflict-type="${cssEscapeValue(accountCenterConflictDrilldown)}"]`)
+        : null;
+    const candidates = [
+        conflictTrigger,
+        document.querySelector(`[data-account-open="${Number(accountCenterSelectedId)}"]`),
+        document.querySelector('#hrNav .hr-tab.active'),
+        document.getElementById('accountCreateBtn')
+    ];
+    const focusable = candidates.find(isUsableAccountFocusTarget);
+    if (focusable) return focusable;
+    const surface = document.querySelector('.hr-tab-content.active') || document.getElementById('main-content');
+    if (!surface) return null;
+    if (!surface.hasAttribute('tabindex')) surface.setAttribute('tabindex', '-1');
+    return isUsableAccountFocusTarget(surface) ? surface : null;
+}
+
+function setAccountDetailMobileBackgroundInert(inert) {
+    const mainApp = document.getElementById('mainApp');
+    if (!mainApp) return;
+    if (inert && !mainApp.inert) {
+        mainApp.inert = true;
+        mainApp.dataset.accountDetailMobileInert = 'true';
+    } else if (!inert && mainApp.dataset.accountDetailMobileInert === 'true') {
+        mainApp.inert = false;
+        delete mainApp.dataset.accountDetailMobileInert;
+    }
+}
+
+function openAccountDetailMobile(panel, returnFocus = null) {
+    if (!panel) return;
+    if (!isAccountDetailMobileViewport()) {
+        panel.focus({ preventScroll: true });
+        return;
+    }
+    if (!accountDetailMobilePortal) {
+        accountDetailMobilePortal = {
+            parent: panel.parentNode,
+            nextSibling: panel.nextSibling,
+            returnFocus: returnFocus || document.activeElement
+        };
+        document.body.appendChild(panel);
+    }
+    panel.classList.add('is-mobile-open');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    setAccountDetailMobileBackgroundInert(true);
+    panel.focus({ preventScroll: true });
+}
+
+function handleAccountDetailMobileKeydown(event) {
+    const panel = event.currentTarget;
+    if (!accountDetailMobilePortal || !panel?.classList.contains('is-mobile-open')) return false;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeAccountDetailMobile();
+        return true;
+    }
+    if (event.key !== 'Tab') return false;
+    const focusable = Array.from(panel.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter(element => !element.closest('[hidden], .hidden'));
+    if (!focusable.length) {
+        event.preventDefault();
+        panel.focus();
+        return true;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+        return true;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+        return true;
+    }
+    return false;
+}
+
+function closeAccountDetailMobile(options = {}) {
+    const panel = document.getElementById('accountDetailPanel');
+    panel?.classList.remove('is-mobile-open');
+    panel?.removeAttribute('role');
+    panel?.removeAttribute('aria-modal');
+    const portal = accountDetailMobilePortal;
+    accountDetailMobilePortal = null;
+    if (panel && portal?.parent?.isConnected) {
+        if (portal.nextSibling?.parentNode === portal.parent) portal.parent.insertBefore(panel, portal.nextSibling);
+        else portal.parent.appendChild(panel);
+    }
+    setAccountDetailMobileBackgroundInert(false);
+    if (options.restoreFocus === false) return;
+    const returnFocus = isUsableAccountFocusTarget(portal?.returnFocus)
+        ? portal.returnFocus
+        : accountFocusFallback();
+    returnFocus?.focus?.({ preventScroll: true });
+}
+
+async function unlinkAccountStaff(userId, button) {
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    const staffId = Number(user?.staff_id || user?.staffId || 0);
+    if (!user || !staffId || !currentAccountCanMutateTarget(user)) return;
+    const confirmed = await confirmHrAction(`Відвʼязати ${user.username} від staff-профілю ${user.staff_name || `#${staffId}`}?`, { okText: 'Відвʼязати' });
+    if (!confirmed) return;
+    if (button) button.disabled = true;
+    const response = await crmApiFetch(`/api/staff/${encodeURIComponent(staffId)}/unlink`, { method: 'POST', body: {} });
+    if (button) button.disabled = false;
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося відвʼязати staff', 'error');
+        return;
+    }
+    showNotification('HR-звʼязок видалено', 'success');
+    accountCenterDetailData = null;
+    await loadAccountStaffOptions(true);
+    await loadAccountCenter();
+}
+
+function accountOnboardingEl(id) {
+    return document.getElementById(id);
+}
+
+function accountOnboardingStaffMode() {
+    return document.querySelector('input[name="accountOnboardingStaffMode"]:checked')?.value || 'existing';
+}
+
+function parseAccountProfessionKeys(value) {
+    if (Array.isArray(value)) return value.map(normalizeProfessionKey).filter(Boolean);
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+    if (raw.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed.map(normalizeProfessionKey).filter(Boolean);
+        } catch {}
+    }
+    return normalizeAccountListInput(raw).map(normalizeProfessionKey).filter(Boolean);
+}
+
+async function loadAccountOnboardingOptions(force = false, expectedRequestSeq = null) {
+    if (accountOnboardingOptions && !force) return accountOnboardingOptions;
+    const [options, roleDefinitions] = await Promise.all([
+        crmApiFetch('/api/users/onboarding/options'),
+        fetchAccountRoleDefinitions()
+    ]);
+    if (!options?.success) throw new Error(options?.error || 'Не вдалося завантажити onboarding');
+    if (expectedRequestSeq !== null && expectedRequestSeq !== accountOnboardingRequestSeq) return null;
+    if (roleDefinitions) commitAccountRoleDefinitions(roleDefinitions);
+    accountOnboardingOptions = options;
+    if (Array.isArray(options.roleHierarchy)) accountRoleHierarchy = options.roleHierarchy;
+    if (options.rolePresets && typeof options.rolePresets === 'object') accountRolePresets = options.rolePresets;
+    if (Array.isArray(options.businessContexts)) accountBusinessContexts = options.businessContexts;
+    if (options.professionRoleMap && typeof options.professionRoleMap === 'object') accountProfessionRoleMap = { ...options.professionRoleMap };
+    return accountOnboardingOptions;
+}
+
+function renderAccountOnboardingCheckboxList(rootId, options, selected = [], attribute = 'account-onboarding-value') {
+    const root = accountOnboardingEl(rootId);
+    if (!root) return;
+    const selectedSet = new Set(normalizeAccountArray(selected));
+    root.innerHTML = options.map(option => {
+        const value = String(option.value || '');
+        const disabled = option.disabled === true;
+        return `<label class="${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-${attribute}="${escapeHtml(value)}" value="${escapeHtml(value)}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''}><span>${escapeHtml(option.label || value)}</span></label>`;
+    }).join('');
+}
+
+function checkedAccountOnboardingValues(rootId, attribute) {
+    return Array.from(accountOnboardingEl(rootId)?.querySelectorAll(`input[data-${attribute}]:checked`) || [])
+        .map(input => input.value)
+        .filter(Boolean);
+}
+
+function accountOnboardingSelectedProfessions() {
+    const primary = accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[name="accountOnboardingPrimaryProfession"]:checked')?.value || '';
+    return Array.from(accountOnboardingEl('accountOnboardingProfessions')?.querySelectorAll('input[data-account-onboarding-profession]:checked') || [])
+        .map(input => ({ key: normalizeProfessionKey(input.value), isPrimary: normalizeProfessionKey(input.value) === normalizeProfessionKey(primary) }))
+        .filter(item => item.key);
+}
+
+function setAccountOnboardingProfessionSelection(keys = [], primaryKey = '') {
+    const selected = new Set(parseAccountProfessionKeys(keys));
+    const normalizedPrimary = normalizeProfessionKey(primaryKey) || selected.values().next().value || '';
+    const root = accountOnboardingEl('accountOnboardingProfessions');
+    root?.querySelectorAll('input[data-account-onboarding-profession]').forEach(input => {
+        input.checked = selected.has(normalizeProfessionKey(input.value));
+    });
+    root?.querySelectorAll('input[name="accountOnboardingPrimaryProfession"]').forEach(input => {
+        input.checked = selected.has(normalizeProfessionKey(input.value)) && normalizeProfessionKey(input.value) === normalizedPrimary;
+    });
+    syncAccountOnboardingProfessionDependants({ recommendRole: true });
+}
+
+function renderAccountOnboardingProfessions() {
+    const root = accountOnboardingEl('accountOnboardingProfessions');
+    if (!root) return;
+    const current = accountOnboardingSelectedProfessions();
+    const selected = new Set(current.map(item => item.key));
+    const primary = current.find(item => item.isPrimary)?.key || '';
+    const professions = Array.isArray(accountOnboardingOptions?.professions) ? accountOnboardingOptions.professions : [];
+    root.innerHTML = professions.map(profession => {
+        const key = normalizeProfessionKey(profession.key);
+        const safeId = key.replace(/[^a-z0-9_-]+/gi, '-');
+        const checkboxId = `accountOnboardingProfession-${safeId}`;
+        const primaryId = `accountOnboardingPrimaryProfession-${safeId}`;
+        return `<div class="hr-account-profession-option">
+            <input id="${escapeHtml(checkboxId)}" type="checkbox" data-account-onboarding-profession value="${escapeHtml(key)}" ${selected.has(key) ? 'checked' : ''}>
+            <label class="hr-account-profession-copy" for="${escapeHtml(checkboxId)}"><strong>${escapeHtml(profession.title || key)}</strong><small>${escapeHtml(profession.department || 'Без напряму')}</small></label>
+            <input id="${escapeHtml(primaryId)}" class="hr-account-primary-radio" type="radio" name="accountOnboardingPrimaryProfession" value="${escapeHtml(key)}" ${primary === key ? 'checked' : ''}>
+            <label class="hr-account-primary-label" for="${escapeHtml(primaryId)}">Основна<span class="sr-only">: ${escapeHtml(profession.title || key)}</span></label>
+        </div>`;
+    }).join('');
+}
+
+function renderAccountOnboardingStaffOptions() {
+    const select = accountOnboardingEl('accountOnboardingStaffId');
+    if (!select) return;
+    const current = select.value;
+    const rows = Array.isArray(accountOnboardingOptions?.staff) ? accountOnboardingOptions.staff : [];
+    select.innerHTML = '<option value="">Оберіть staff</option>' + rows.map(staff => {
+        const occupied = Boolean(staff.linked_user_id || staff.linkedUserId);
+        const suffix = occupied ? ` · зайнято: ${staff.linked_username || 'інший акаунт'}` : '';
+        return `<option value="${Number(staff.id)}" ${occupied ? 'disabled aria-disabled="true"' : ''}>${escapeHtml(`${staff.name || `Staff #${staff.id}`}${staff.department ? ` · ${staff.department}` : ''}${staff.position ? ` · ${staff.position}` : ''}${suffix}`)}</option>`;
+    }).join('');
+    if (Array.from(select.options).some(option => option.value === current && !option.disabled)) select.value = current;
+}
+
+function renderAccountOnboardingStructureOptions() {
+    const select = accountOnboardingEl('accountOnboardingStructureNode');
+    if (!select) return;
+    const current = select.value;
+    const rows = Array.isArray(accountOnboardingOptions?.structureNodes) ? accountOnboardingOptions.structureNodes : [];
+    select.innerHTML = '<option value="">Без вузла</option>' + rows.map(node => `<option value="${escapeHtml(node.id)}" ${node.archived === true ? 'disabled aria-disabled="true"' : ''}>${escapeHtml(`${node.title || node.id}${node.archived === true ? ' · архівний (лише зберегти поточний)' : ''}`)}</option>`).join('');
+    if (Array.from(select.options).some(option => option.value === current)) select.value = current;
+}
+
+function renderAccountOnboardingAccessControls(options = {}) {
+    const roleSelect = accountOnboardingEl('accountOnboardingRole');
+    if (!roleSelect) return;
+    const requestedRole = options.role || roleSelect.value || accountOnboardingSelectedProfessions().find(item => item.isPrimary)?.key || 'animator';
+    const mappedRole = accountOnboardingOptions?.professionRoleMap?.[requestedRole] || staffRoleToAccountRole(requestedRole);
+    const roleOptions = getAccountRoleOptions(mappedRole || 'animator');
+    const allowedRoles = new Set(roleOptions.map(option => option.value));
+    const role = allowedRoles.has(options.role || roleSelect.value) ? (options.role || roleSelect.value) : (allowedRoles.has(mappedRole) ? mappedRole : roleOptions[0]?.value || 'animator');
+    roleSelect.innerHTML = roleOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === role ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+
+    const selectedExtras = options.extraRoles || checkedAccountOnboardingValues('accountOnboardingExtraRoles', 'account-onboarding-extra-role');
+    renderAccountOnboardingCheckboxList('accountOnboardingExtraRoles', getAccountExtraRoleOptions(role, selectedExtras), selectedExtras, 'account-onboarding-extra-role');
+    renderAccountOnboardingCheckboxList('accountOnboardingPages', getAccountPageOptions(checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page')), checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page'), 'account-onboarding-page');
+    renderAccountOnboardingCheckboxList('accountOnboardingActionAllow', getAccountActionOptions(checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'), { includeNonDelegable: false }), checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'), 'account-onboarding-action-allow');
+    renderAccountOnboardingCheckboxList('accountOnboardingActionDeny', getAccountActionOptions(checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny')), checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny'), 'account-onboarding-action-deny');
+
+    const presetRoot = accountOnboardingEl('accountOnboardingRolePresets');
+    if (presetRoot) {
+        presetRoot.innerHTML = getAccountRolePresetButtons(role).map(preset => `<button type="button" data-account-onboarding-preset-role="${escapeHtml(preset.values.role)}" data-account-onboarding-preset-extra="${escapeHtml((preset.values.extraRoles || []).join(','))}" data-account-onboarding-preset-business="${escapeHtml((preset.values.businessContexts || []).join(','))}" data-account-onboarding-preset-default="${escapeHtml(preset.values.defaultBusinessContext || '')}"><strong>${escapeHtml(preset.label)}</strong><small>${escapeHtml(preset.hint || '')}</small></button>`).join('');
+    }
+    renderAccountOnboardingBusinessControls(options.businessContexts, options.defaultBusinessContext);
+}
+
+function renderAccountOnboardingBusinessControls(selectedInput = null, defaultInput = '') {
+    const role = accountOnboardingEl('accountOnboardingRole')?.value || 'animator';
+    const canSwitch = accountRoleCanSwitchBusinessContext(role);
+    const selected = canSwitch
+        ? normalizeAccountBusinessSelection(selectedInput || checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business'))
+        : ['event_genix'];
+    renderAccountOnboardingCheckboxList(
+        'accountOnboardingBusinesses',
+        getAccountBusinessCatalog().map(item => ({ value: item.key, label: item.label || item.key, disabled: !canSwitch && item.key !== 'event_genix' })),
+        selected,
+        'account-onboarding-business'
+    );
+    const defaultSelect = accountOnboardingEl('accountOnboardingDefaultBusiness');
+    if (!defaultSelect) return;
+    const defaultKey = canSwitch ? getAccountDefaultBusinessValue({ defaultBusinessContext: defaultInput || defaultSelect.value }, selected) : 'event_genix';
+    defaultSelect.innerHTML = getAccountBusinessCatalog()
+        .filter(item => selected.includes(item.key))
+        .map(item => `<option value="${escapeHtml(item.key)}" ${item.key === defaultKey ? 'selected' : ''}>${escapeHtml(item.label || item.key)}</option>`)
+        .join('');
+    defaultSelect.disabled = !canSwitch;
+}
+
+function syncAccountOnboardingProfessionDependants(options = {}) {
+    const selected = accountOnboardingSelectedProfessions();
+    const conditionSelect = accountOnboardingEl('accountOnboardingConditionProfession');
+    const previous = conditionSelect?.value || '';
+    if (conditionSelect) {
+        conditionSelect.innerHTML = selected.map(item => {
+            const profession = accountOnboardingOptions?.professions?.find(row => normalizeProfessionKey(row.key) === item.key);
+            return `<option value="${escapeHtml(item.key)}">${escapeHtml(profession?.title || item.key)}</option>`;
+        }).join('');
+        conditionSelect.value = selected.some(item => item.key === previous) ? previous : (selected.find(item => item.isPrimary)?.key || selected[0]?.key || '');
+    }
+    if (options.recommendRole) {
+        const primary = selected.find(item => item.isPrimary)?.key;
+        if (primary) renderAccountOnboardingAccessControls({ role: accountOnboardingOptions?.professionRoleMap?.[primary] || staffRoleToAccountRole(primary) });
+    }
+}
+
+function syncAccountOnboardingRateControls() {
+    const mode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
+    const rate = accountOnboardingEl('accountOnboardingHourlyRate');
+    const hint = accountOnboardingEl('accountOnboardingRateHint');
+    const label = accountOnboardingEl('accountOnboardingHourlyRateLabel');
+    const timeDisabled = mode === 'keep';
+    const rateDisabled = !['explicit', 'fallback'].includes(mode);
+    if (rate) {
+        rate.disabled = rateDisabled;
+        rate.min = mode === 'explicit' ? '0.01' : '0';
+    }
+    if (label) label.textContent = mode === 'explicit' ? 'Індивідуальна ставка за годину' : 'Базова ставка staff за годину';
+    if (hint) hint.textContent = mode === 'keep'
+        ? 'Ставка й типовий час існуючого staff лишаться без змін.'
+        : (mode === 'explicit' ? 'Застосовується лише до вибраної професії.' : (mode === 'unchanged' ? 'Ставка залишиться без змін; оновляться лише побажання часу.' : 'Професія використовуватиме базову ставку staff.'));
+    ['accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
+        .forEach(id => { const input = accountOnboardingEl(id); if (input) input.disabled = timeDisabled; });
+}
+
+function prefillAccountOnboardingCondition(staff, professionKey, options = {}) {
+    if (!staff) return;
+    const key = normalizeProfessionKey(professionKey);
+    const conditions = Array.isArray(staff.profession_conditions)
+        ? staff.profession_conditions
+        : (Array.isArray(staff.professionConditions) ? staff.professionConditions : []);
+    const condition = conditions.find(item => normalizeProfessionKey(item.professionKey || item.profession_key) === key) || null;
+    const rateMode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
+    const rate = accountOnboardingEl('accountOnboardingHourlyRate');
+    if (rate && options.includeRate !== false) {
+        const explicitRate = condition?.explicitRate ?? condition?.explicit_rate;
+        rate.value = rateMode === 'explicit' && explicitRate != null
+            ? String(explicitRate)
+            : (rateMode === 'fallback' && staff.hourly_rate != null ? String(staff.hourly_rate) : '');
+    }
+    if (options.includeTimes === false) return;
+    const preferences = Array.isArray(condition?.shiftPreferences)
+        ? condition.shiftPreferences
+        : (Array.isArray(condition?.shift_preferences) ? condition.shift_preferences : []);
+    const values = Object.fromEntries(preferences.map(item => [String(item.dayType || item.day_type || ''), item]));
+    for (const [dayType, startId, endId] of [
+        ['weekday', 'accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd'],
+        ['weekend', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
+    ]) {
+        const preference = values[dayType];
+        const active = preference && preference.isActive !== false && preference.is_active !== false;
+        const start = accountOnboardingEl(startId);
+        const end = accountOnboardingEl(endId);
+        if (start) start.value = active ? String(preference.startTime || preference.start_time || '').slice(0, 5) : '';
+        if (end) end.value = active ? String(preference.endTime || preference.end_time || '').slice(0, 5) : '';
+    }
+}
+
+function prefillSelectedAccountOnboardingCondition(options = {}) {
+    if (accountOnboardingStaffMode() !== 'existing') return;
+    const staffId = Number(accountOnboardingEl('accountOnboardingStaffId')?.value || 0);
+    const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === staffId);
+    prefillAccountOnboardingCondition(staff, accountOnboardingEl('accountOnboardingConditionProfession')?.value, options);
+}
+
+function syncAccountOnboardingStaffMode() {
+    const existing = accountOnboardingStaffMode() === 'existing';
+    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = !existing;
+    if (accountOnboardingEl('accountOnboardingNewStaffFields')) accountOnboardingEl('accountOnboardingNewStaffFields').hidden = existing;
+    const rateMode = accountOnboardingEl('accountOnboardingRateMode');
+    const previousStaffMode = rateMode?.dataset.staffMode || '';
+    if (!existing && previousStaffMode !== 'new') {
+        ['accountOnboardingHourlyRate', 'accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
+            .forEach(id => { const input = accountOnboardingEl(id); if (input) input.value = ''; });
+    }
+    if (rateMode && !existing && rateMode.value === 'keep') rateMode.value = 'fallback';
+    if (rateMode && existing && !rateMode.dataset.userChanged) rateMode.value = 'keep';
+    if (rateMode) rateMode.dataset.staffMode = existing ? 'existing' : 'new';
+    if (existing && previousStaffMode === 'new') prefillSelectedAccountOnboardingCondition();
+    syncAccountOnboardingRateControls();
+}
+
+function prefillAccountOnboardingFromStaff(staffId, options = {}) {
+    const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(staffId));
+    if (!staff) return;
+    const name = accountOnboardingEl('accountOnboardingName');
+    const phone = accountOnboardingEl('accountOnboardingPhone');
+    const username = accountOnboardingEl('accountOnboardingUsername');
+    if (name && (!name.value || options.force)) name.value = staff.name || '';
+    if (phone && (!phone.value || options.force)) phone.value = staff.phone || '';
+    if (username && (!username.value || options.force)) username.value = suggestAccountUsernameFromStaff(staff);
+    if (accountOnboardingEl('accountOnboardingStructureNode')) accountOnboardingEl('accountOnboardingStructureNode').value = staff.company_structure_node_id || '';
+    const assignments = Array.isArray(staff.role_assignments) ? staff.role_assignments : [];
+    const assignmentKeys = assignments.map(item => normalizeProfessionKey(item.key || item.professionKey || item.profession_key)).filter(Boolean);
+    const secondary = parseAccountProfessionKeys(staff.secondary_professions);
+    const primary = normalizeProfessionKey(assignments.find(item => item.isPrimary === true || item.is_primary === true)?.key || staff.role_type);
+    setAccountOnboardingProfessionSelection([primary, ...secondary, ...assignmentKeys], primary);
+    const rateMode = accountOnboardingEl('accountOnboardingRateMode');
+    if (rateMode) {
+        rateMode.value = 'keep';
+        delete rateMode.dataset.userChanged;
+    }
+    prefillAccountOnboardingCondition(staff, primary);
+    syncAccountOnboardingRateControls();
+}
+
+function setAccountOnboardingStatus(message = '', type = 'error') {
+    const status = accountOnboardingEl('accountOnboardingStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.type = message ? type : '';
+}
+
+function focusInvalidAccountOnboarding(message, element) {
+    setAccountOnboardingStatus(message, 'error');
+    element?.focus?.({ preventScroll: false });
+    return false;
+}
+
+function validateAccountOnboardingStep(step) {
+    setAccountOnboardingStatus('');
+    if (step === 1) {
+        const name = accountOnboardingEl('accountOnboardingName');
+        const username = accountOnboardingEl('accountOnboardingUsername');
+        if (!String(name?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть імʼя в CRM.', name);
+        if (!/^[a-zA-Z0-9._-]{3,50}$/.test(String(username?.value || '').trim())) return focusInvalidAccountOnboarding('Username: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
+    }
+    if (step === 2) {
+        if (accountOnboardingStaffMode() === 'existing') {
+            const select = accountOnboardingEl('accountOnboardingStaffId');
+            const selectedStaff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
+            if (!select?.value || !selectedStaff || selectedStaff.linked_user_id || selectedStaff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
+                return focusInvalidAccountOnboarding('Оберіть вільний staff-профіль.', select);
+            }
+        }
+        if (accountOnboardingStaffMode() === 'new') {
+            if (!String(accountOnboardingEl('accountOnboardingDepartment')?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть відділ нового staff.', accountOnboardingEl('accountOnboardingDepartment'));
+            if (!String(accountOnboardingEl('accountOnboardingPosition')?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть посаду нового staff.', accountOnboardingEl('accountOnboardingPosition'));
+        }
+    }
+    if (step === 3) {
+        const professions = accountOnboardingSelectedProfessions();
+        if (!professions.length) return focusInvalidAccountOnboarding('Оберіть щонайменше одну професію.', accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[data-account-onboarding-profession]'));
+        if (professions.filter(item => item.isPrimary).length !== 1) return focusInvalidAccountOnboarding('Позначте одну професію як основну.', accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[name="accountOnboardingPrimaryProfession"]'));
+    }
+    if (step === 4) {
+        const mode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
+        if (mode !== 'keep') {
+            if (!accountOnboardingEl('accountOnboardingConditionProfession')?.value) return focusInvalidAccountOnboarding('Оберіть професію для умов.', accountOnboardingEl('accountOnboardingConditionProfession'));
+            const rateValue = String(accountOnboardingEl('accountOnboardingHourlyRate')?.value || '').trim();
+            if (mode === 'explicit' && (!rateValue || Number(rateValue) <= 0)) return focusInvalidAccountOnboarding('Вкажіть індивідуальну ставку більше нуля.', accountOnboardingEl('accountOnboardingHourlyRate'));
+            if (rateValue && (!Number.isFinite(Number(rateValue)) || Number(rateValue) < 0)) return focusInvalidAccountOnboarding('Ставка має бути невідʼємним числом.', accountOnboardingEl('accountOnboardingHourlyRate'));
+            for (const [startId, endId, label] of [['accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'Будні'], ['accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd', 'Вихідні']]) {
+                const start = accountOnboardingEl(startId)?.value || '';
+                const end = accountOnboardingEl(endId)?.value || '';
+                if (Boolean(start) !== Boolean(end) || (start && start === end)) return focusInvalidAccountOnboarding(`${label}: заповніть різні початок і кінець або лишіть обидва поля порожніми.`, accountOnboardingEl(startId));
+            }
+        }
+    }
+    if (step === 5 && !accountOnboardingEl('accountOnboardingRole')?.value) return focusInvalidAccountOnboarding('Оберіть CRM role.', accountOnboardingEl('accountOnboardingRole'));
+    return true;
+}
+
+function buildAccountOnboardingPayload() {
+    const staffMode = accountOnboardingStaffMode();
+    const rateMode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
+    const rateValue = String(accountOnboardingEl('accountOnboardingHourlyRate')?.value || '').trim();
+    const staff = staffMode === 'existing'
+        ? { mode: 'existing', id: Number(accountOnboardingEl('accountOnboardingStaffId')?.value) }
+        : {
+            mode: 'new',
+            department: String(accountOnboardingEl('accountOnboardingDepartment')?.value || '').trim(),
+            position: String(accountOnboardingEl('accountOnboardingPosition')?.value || '').trim(),
+            hireDate: accountOnboardingEl('accountOnboardingHireDate')?.value || null
+        };
+    if (rateMode === 'fallback' && rateValue !== '') {
+        staff.hourlyRate = Number(rateValue);
+        staff.rateUnit = 'hour';
+    }
+    const role = accountOnboardingEl('accountOnboardingRole')?.value || 'animator';
+    const businessContexts = accountRoleCanSwitchBusinessContext(role)
+        ? checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business')
+        : ['event_genix'];
+    const payload = {
+        personal: {
+            name: String(accountOnboardingEl('accountOnboardingName')?.value || '').trim(),
+            username: String(accountOnboardingEl('accountOnboardingUsername')?.value || '').trim(),
+            phone: String(accountOnboardingEl('accountOnboardingPhone')?.value || '').trim() || undefined
+        },
+        staff,
+        structureNodeId: accountOnboardingEl('accountOnboardingStructureNode')?.value || null,
+        professions: accountOnboardingSelectedProfessions(),
+        access: {
+            role,
+            extraRoles: checkedAccountOnboardingValues('accountOnboardingExtraRoles', 'account-onboarding-extra-role'),
+            businessContexts,
+            defaultBusinessContext: accountRoleCanSwitchBusinessContext(role) ? (accountOnboardingEl('accountOnboardingDefaultBusiness')?.value || businessContexts[0]) : 'event_genix',
+            pageAllowlist: checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page'),
+            actionAllowlist: checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'),
+            actionDenylist: checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny')
+        },
+        issueOneTime: true
+    };
+    if (rateMode !== 'keep') {
+        payload.conditions = {
+            professionKey: accountOnboardingEl('accountOnboardingConditionProfession')?.value,
+            rateMode,
+            hourlyRate: rateMode === 'explicit' ? Number(rateValue) : undefined,
+            shiftPreferences: [
+                { dayType: 'weekday', startTime: accountOnboardingEl('accountOnboardingWeekdayStart')?.value || null, endTime: accountOnboardingEl('accountOnboardingWeekdayEnd')?.value || null },
+                { dayType: 'weekend', startTime: accountOnboardingEl('accountOnboardingWeekendStart')?.value || null, endTime: accountOnboardingEl('accountOnboardingWeekendEnd')?.value || null }
+            ]
+        };
+    }
+    return payload;
+}
+
+function renderAccountOnboardingReview() {
+    const payload = buildAccountOnboardingPayload();
+    accountOnboardingState.payload = payload;
+    const staffRow = payload.staff.mode === 'existing' ? accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(payload.staff.id)) : null;
+    const professionTitles = payload.professions.map(item => {
+        const row = accountOnboardingOptions?.professions?.find(profession => normalizeProfessionKey(profession.key) === item.key);
+        return `${row?.title || item.key}${item.isPrimary ? ' · основна' : ''}`;
+    }).join(', ');
+    const structure = accountOnboardingOptions?.structureNodes?.find(node => node.id === payload.structureNodeId);
+    const conditionText = payload.conditions
+        ? `${payload.conditions.rateMode === 'explicit' ? `індивідуальна ${payload.conditions.hourlyRate}` : 'fallback staff'} · ${payload.conditions.professionKey}`
+        : 'не змінювати наявні умови';
+    accountOnboardingEl('accountOnboardingReview').innerHTML = [
+        ['Акаунт', `${payload.personal.name} · ${payload.personal.username}`],
+        ['HR-профіль', payload.staff.mode === 'existing' ? `${staffRow?.name || `Staff #${payload.staff.id}`} · існуючий` : `${payload.personal.name} · новий`],
+        ['Структура', structure?.title || 'Без вузла'],
+        ['Професії', professionTitles],
+        ['Ставка / час', conditionText],
+        ['Доступ', `${ROLE_LABELS[payload.access.role] || payload.access.role} · ${payload.access.businessContexts.join(', ')}`],
+        ['Overrides', `${payload.access.extraRoles.length} дод. ролей · ${payload.access.pageAllowlist.length} сторінок · ${payload.access.actionAllowlist.length}/${payload.access.actionDenylist.length} allow/deny`]
+    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('');
+}
+
+function showAccountOnboardingStep(step) {
+    const safeStep = Math.min(Math.max(Number(step) || 1, 1), 7);
+    accountOnboardingState.step = safeStep;
+    document.querySelectorAll('[data-account-onboarding-step]').forEach(panel => { panel.hidden = Number(panel.dataset.accountOnboardingStep) !== safeStep; });
+    document.querySelectorAll('[data-account-onboarding-step-label]').forEach(label => {
+        const number = Number(label.dataset.accountOnboardingStepLabel);
+        label.classList.toggle('is-active', number === safeStep);
+        label.classList.toggle('is-complete', number < safeStep);
+        label.setAttribute('aria-current', number === safeStep ? 'step' : 'false');
+    });
+    if (safeStep === 7) renderAccountOnboardingReview();
+    if (accountOnboardingEl('accountOnboardingBack')) accountOnboardingEl('accountOnboardingBack').disabled = safeStep === 1;
+    accountOnboardingEl('accountOnboardingNext')?.classList.toggle('hidden', safeStep === 7);
+    accountOnboardingEl('accountOnboardingSubmit')?.classList.toggle('hidden', safeStep !== 7);
+    if (accountOnboardingEl('accountOnboardingProgress')) accountOnboardingEl('accountOnboardingProgress').textContent = `Крок ${safeStep} з 7`;
+    accountOnboardingEl('accountOnboardingForm')?.querySelector(`[data-account-onboarding-step="${safeStep}"] input:not([disabled]), [data-account-onboarding-step="${safeStep}"] select:not([disabled]), [data-account-onboarding-step="${safeStep}"] button:not([disabled])`)?.focus?.({ preventScroll: true });
+}
+
+function renderAccountOnboardingReceipt(response) {
+    const receipt = response?.receipt || {};
+    const credential = response?.credential || null;
+    accountOnboardingState.receipt = receipt;
+    accountOnboardingState.credential = credential;
+    const staffId = Number(receipt.staff?.id || response?.staff?.id || 0);
+    const professionKey = receipt.professions?.find(item => item.isPrimary)?.key || accountOnboardingState.payload?.professions?.find(item => item.isPrimary)?.key || '';
+    const warnings = Array.isArray(receipt.warnings) ? receipt.warnings : [];
+    const conditionSummary = (receipt.conditions || []).map(condition => {
+        const after = condition.after || condition;
+        const rate = after.rateMode === 'explicit'
+            ? `${after.explicitRate ?? after.effectiveRate ?? '—'} ${after.rateUnit || 'hour'}`
+            : `fallback ${after.effectiveRate ?? '—'} ${after.rateUnit || 'hour'}`;
+        const shifts = (after.shiftPreferences || []).filter(item => item.isActive).map(item => `${item.dayType}: ${item.startTime}–${item.endTime}`).join(', ');
+        return `${condition.professionKey || ''}: ${rate}${shifts ? ` · ${shifts}` : ''}`;
+    }).join('; ');
+    const root = accountOnboardingEl('accountOnboardingReceipt');
+    if (!root) return;
+    root.setAttribute('tabindex', '-1');
+    root.innerHTML = `<h4>Акаунт і HR-профіль створено</h4><div class="hr-account-receipt-grid">${[
+        ['Акаунт', `${receipt.account?.name || response?.user?.name || ''} · ${receipt.account?.username || response?.user?.username || ''}`],
+        ['Staff', `${receipt.staff?.name || response?.staff?.name || ''} · ${receipt.staff?.created ? 'створено' : 'привʼязано'}`],
+        ['Професії', (receipt.professions || []).map(item => `${item.key}${item.isPrimary ? ' · основна' : ''}`).join(', ')],
+        ['Ставка / типовий час', conditionSummary || 'Не змінювалися'],
+        ['Доступ', receipt.access?.role || receipt.account?.role || '']
+    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Username: ${escapeHtml(credential.username || '')}</code><code>Password: ${escapeHtml(credential.password || '')}</code><button type="button" class="hr-account-toggle" data-account-onboarding-copy>Скопіювати логін і пароль</button></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити staff card</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити checklist</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
+    root.classList.remove('hidden');
+    accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
+    accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
+    accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
+    setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте post-commit попередження нижче.' : '', warnings.length ? 'warning' : 'success');
+    root.focus({ preventScroll: true });
+}
+
+async function submitAccountOnboarding() {
+    for (let step = 1; step <= 5; step += 1) {
+        if (!validateAccountOnboardingStep(step)) {
+            showAccountOnboardingStep(step);
+            return;
+        }
+    }
+    renderAccountOnboardingReview();
+    const submit = accountOnboardingEl('accountOnboardingSubmit');
+    accountOnboardingState.submitting = true;
+    if (submit) submit.disabled = true;
+    setAccountOnboardingStatus('Створюємо акаунт, HR-профіль і робочі налаштування…', 'progress');
+    let response = null;
+    try {
+        response = await crmApiFetch('/api/users/onboarding', { method: 'POST', body: accountOnboardingState.payload });
+    } catch (error) {
+        setAccountOnboardingStatus(error?.message || 'Мережевий збій під час onboarding. Перевірте список акаунтів перед повторною спробою.', 'error');
+        return;
+    } finally {
+        accountOnboardingState.submitting = false;
+        if (submit) submit.disabled = false;
+    }
+    if (!response?.success) {
+        setAccountOnboardingStatus(response?.error || 'Не вдалося завершити onboarding. Жодних часткових даних не повинно лишитися.', 'error');
+        return;
+    }
+    renderAccountOnboardingReceipt(response);
+    accountCenterLastUpdatedId = response.receipt?.account?.id || response.user?.id || null;
+    accountOnboardingOptions = null;
+    void Promise.allSettled([loadAccountStaffOptions(true), loadTeam(), loadAccountCenter({ resetFilters: true })]);
+}
+
+function closeAccountOnboardingWizard() {
+    if (accountOnboardingState.submitting) return;
+    const returnFocus = accountOnboardingState.returnFocus;
+    accountOnboardingRequestSeq += 1;
+    accountOnboardingState.open = false;
+    accountOnboardingState.receipt = null;
+    accountOnboardingState.credential = null;
+    accountOnboardingState.payload = null;
+    const overlay = accountOnboardingEl('accountOnboardingOverlay');
+    overlay?.classList.add('hidden');
+    overlay?.setAttribute('aria-hidden', 'true');
+    accountOnboardingEl('accountOnboardingForm')?.reset();
+    if (accountOnboardingEl('accountOnboardingRateMode')) {
+        delete accountOnboardingEl('accountOnboardingRateMode').dataset.userChanged;
+        delete accountOnboardingEl('accountOnboardingRateMode').dataset.staffMode;
+    }
+    accountOnboardingEl('accountOnboardingForm')?.classList.remove('hidden');
+    accountOnboardingEl('accountOnboardingSteps')?.classList.remove('hidden');
+    accountOnboardingEl('accountOnboardingActions')?.classList.remove('hidden');
+    accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
+    if (accountOnboardingEl('accountOnboardingReceipt')) accountOnboardingEl('accountOnboardingReceipt').innerHTML = '';
+    setAccountOnboardingStatus('');
+    setAccountOnboardingBackgroundInert(false);
+    const safeReturnFocus = isUsableAccountFocusTarget(returnFocus)
+        ? returnFocus
+        : accountFocusFallback();
+    safeReturnFocus?.focus?.({ preventScroll: true });
+}
+
+function setAccountOnboardingBackgroundInert(inert) {
+    const overlay = accountOnboardingEl('accountOnboardingOverlay');
+    if (!overlay) return;
+    const targets = Array.from(document.body.children)
+        .filter(element => element !== overlay && !['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName));
+    targets.forEach(element => {
+        if (inert && !element.inert) {
+            element.inert = true;
+            element.dataset.accountOnboardingInert = 'true';
+        } else if (!inert && element.dataset.accountOnboardingInert === 'true') {
+            element.inert = false;
+            delete element.dataset.accountOnboardingInert;
+        }
+    });
+}
+
+function bindAccountOnboardingControls() {
+    const overlay = accountOnboardingEl('accountOnboardingOverlay');
+    if (!overlay || overlay.dataset.bound === 'true') return;
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    overlay.dataset.bound = 'true';
+    accountOnboardingEl('accountOnboardingClose')?.addEventListener('click', closeAccountOnboardingWizard);
+    accountOnboardingEl('accountOnboardingBack')?.addEventListener('click', () => showAccountOnboardingStep(accountOnboardingState.step - 1));
+    accountOnboardingEl('accountOnboardingNext')?.addEventListener('click', () => {
+        if (validateAccountOnboardingStep(accountOnboardingState.step)) showAccountOnboardingStep(accountOnboardingState.step + 1);
+    });
+    accountOnboardingEl('accountOnboardingSubmit')?.addEventListener('click', submitAccountOnboarding);
+    accountOnboardingEl('accountOnboardingForm')?.addEventListener('submit', event => event.preventDefault());
+    document.querySelectorAll('input[name="accountOnboardingStaffMode"]').forEach(input => input.addEventListener('change', syncAccountOnboardingStaffMode));
+    accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => prefillAccountOnboardingFromStaff(event.target.value, { force: true }));
+    accountOnboardingEl('accountOnboardingRateMode')?.addEventListener('change', event => {
+        event.target.dataset.userChanged = 'true';
+        prefillSelectedAccountOnboardingCondition({ includeTimes: false });
+        syncAccountOnboardingRateControls();
+    });
+    accountOnboardingEl('accountOnboardingConditionProfession')?.addEventListener('change', () => {
+        prefillSelectedAccountOnboardingCondition();
+    });
+    accountOnboardingEl('accountOnboardingRole')?.addEventListener('change', event => renderAccountOnboardingAccessControls({ role: event.target.value }));
+    accountOnboardingEl('accountOnboardingProfessions')?.addEventListener('change', event => {
+        const previousCondition = accountOnboardingEl('accountOnboardingConditionProfession')?.value || '';
+        if (event.target.matches('input[name="accountOnboardingPrimaryProfession"]')) {
+            const checkbox = Array.from(accountOnboardingEl('accountOnboardingProfessions').querySelectorAll('input[data-account-onboarding-profession]')).find(input => input.value === event.target.value);
+            if (checkbox) checkbox.checked = true;
+        }
+        if (event.target.matches('input[data-account-onboarding-profession]') && !event.target.checked) {
+            const primary = accountOnboardingEl('accountOnboardingProfessions').querySelector(`input[name="accountOnboardingPrimaryProfession"][value="${event.target.value}"]`);
+            if (primary) primary.checked = false;
+        }
+        syncAccountOnboardingProfessionDependants({ recommendRole: true });
+        if (previousCondition !== (accountOnboardingEl('accountOnboardingConditionProfession')?.value || '')) {
+            prefillSelectedAccountOnboardingCondition();
+        }
+    });
+    accountOnboardingEl('accountOnboardingRolePresets')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-account-onboarding-preset-role]');
+        if (!button) return;
+        renderAccountOnboardingAccessControls({ role: button.dataset.accountOnboardingPresetRole, extraRoles: normalizeAccountListInput(button.dataset.accountOnboardingPresetExtra), businessContexts: normalizeAccountListInput(button.dataset.accountOnboardingPresetBusiness), defaultBusinessContext: button.dataset.accountOnboardingPresetDefault });
+    });
+    accountOnboardingEl('accountOnboardingBusinesses')?.addEventListener('change', () => renderAccountOnboardingBusinessControls());
+    accountOnboardingEl('accountOnboardingReceipt')?.addEventListener('click', async event => {
+        if (event.target.closest('[data-account-onboarding-copy]') && accountOnboardingState.credential) {
+            const credential = accountOnboardingState.credential;
+            if (!navigator.clipboard?.writeText) {
+                showNotification('Буфер обміну недоступний. Скопіюйте дані вручну.', 'error');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(`Username: ${credential.username}\nPassword: ${credential.password}`);
+                showNotification('Логін і тимчасовий пароль скопійовано', 'success');
+            } catch {
+                showNotification('Не вдалося скопіювати. Скопіюйте дані вручну.', 'error');
+            }
+            return;
+        }
+        const staffButton = event.target.closest('[data-account-onboarding-open-staff]');
+        const docsButton = event.target.closest('[data-account-onboarding-open-documents]');
+        const resourcesButton = event.target.closest('[data-account-onboarding-open-resources]');
+        const checklistButton = event.target.closest('[data-account-onboarding-open-checklist]');
+        if (staffButton || docsButton || resourcesButton || checklistButton) closeAccountOnboardingWizard();
+        if (staffButton) return void openStaffEdit(Number(staffButton.dataset.accountOnboardingOpenStaff));
+        if (docsButton) return void openStaffEdit(Number(docsButton.dataset.accountOnboardingOpenDocuments), { focus: 'documents' });
+        if (resourcesButton) return void openStaffEdit(Number(resourcesButton.dataset.accountOnboardingOpenResources), { focus: 'resources' });
+        if (checklistButton) return void openProfessionWorkspace({ key: checklistButton.dataset.accountOnboardingOpenChecklist, initialTab: 'checklist', returnContext: { tab: 'accounts' } });
+        if (event.target.closest('[data-account-onboarding-finish]')) closeAccountOnboardingWizard();
+    });
+    overlay.addEventListener('click', event => {
+        const retry = event.target.closest('[data-account-onboarding-retry]');
+        if (retry) {
+            return void openAccountOnboardingWizard(accountOnboardingState.returnFocus, accountOnboardingState.context);
+        }
+        if (event.target === overlay) closeAccountOnboardingWizard();
+    });
+    overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') return closeAccountOnboardingWizard();
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(overlay.querySelectorAll('button:not([disabled]):not(.hidden), input:not([disabled]), select:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')).filter(element => {
+            if (element.closest('[hidden], .hidden')) return false;
+            const closedDetails = element.closest('details:not([open])');
+            return !closedDetails || element.tagName === 'SUMMARY';
+        });
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+}
+
+async function openAccountOnboardingWizard(button, context = {}) {
+    if (!canRunAccountOnboarding()) {
+        showNotification('Для контрольованого onboarding потрібні capability manage_accounts і manage_staff', 'error');
+        return false;
+    }
+    const overlay = accountOnboardingEl('accountOnboardingOverlay');
+    if (!overlay) return false;
+    const requestSeq = ++accountOnboardingRequestSeq;
+    accountOnboardingState = { open: true, step: 1, requestSeq, returnFocus: button || document.activeElement, context, submitting: false, receipt: null, credential: null, payload: null };
+    bindAccountOnboardingControls();
+    overlay.classList.remove('hidden');
+    overlay.removeAttribute('aria-hidden');
+    setAccountOnboardingBackgroundInert(true);
+    const loading = accountOnboardingEl('accountOnboardingLoading');
+    if (loading) {
+        loading.textContent = 'Завантаження довідників…';
+        loading.classList.remove('hidden');
+    }
+    accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
+    accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
+    accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
+    accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
+    setAccountOnboardingStatus('');
+    let loaded = false;
+    try {
+        const loadedOptions = await loadAccountOnboardingOptions(true, requestSeq);
+        if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
+        if (!loadedOptions) return false;
+        renderAccountOnboardingStaffOptions();
+        renderAccountOnboardingStructureOptions();
+        renderAccountOnboardingProfessions();
+        renderAccountOnboardingAccessControls({ role: 'animator' });
+        const requestedStaffId = Number(context.staff?.id || context.staffId || 0);
+        const contextStaff = requestedStaffId
+            ? accountOnboardingOptions.staff.find(staff => (
+                Number(staff.id) === requestedStaffId
+                && !staff.linked_user_id
+                && !staff.linkedUserId
+            ))
+            : null;
+        if (contextStaff) {
+            document.querySelector('input[name="accountOnboardingStaffMode"][value="existing"]').checked = true;
+            accountOnboardingEl('accountOnboardingStaffId').value = String(contextStaff.id);
+            prefillAccountOnboardingFromStaff(contextStaff.id, { force: true });
+        } else {
+            const hasFreeStaff = accountOnboardingOptions.staff.some(staff => !staff.linked_user_id && !staff.linkedUserId);
+            document.querySelector(`input[name="accountOnboardingStaffMode"][value="${hasFreeStaff ? 'existing' : 'new'}"]`).checked = true;
+            if (context.name) accountOnboardingEl('accountOnboardingName').value = context.name;
+            if (context.username) accountOnboardingEl('accountOnboardingUsername').value = context.username;
+        }
+        syncAccountOnboardingStaffMode();
+        syncAccountOnboardingProfessionDependants();
+        showAccountOnboardingStep(1);
+        loaded = true;
+    } catch (error) {
+        if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
+        const message = error?.message || 'Не вдалося завантажити onboarding.';
+        setAccountOnboardingStatus(message, 'error');
+        if (loading) loading.innerHTML = `<strong>Довідники не завантажилися.</strong><span>${escapeHtml(message)}</span><button type="button" class="hr-account-toggle" data-account-onboarding-retry>Повторити</button>`;
+    } finally {
+        if (accountOnboardingState.open && requestSeq === accountOnboardingRequestSeq) {
+            loading?.classList.toggle('hidden', loaded);
+            accountOnboardingEl('accountOnboardingForm')?.classList.toggle('hidden', !loaded);
+            accountOnboardingEl('accountOnboardingSteps')?.classList.toggle('hidden', !loaded);
+            accountOnboardingEl('accountOnboardingActions')?.classList.toggle('hidden', !loaded);
+        }
+    }
+    if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
+    (loaded ? overlay.querySelector('.hr-account-onboarding') : loading?.querySelector('[data-account-onboarding-retry]'))?.focus?.({ preventScroll: true });
+    return loaded;
 }
 
 window.openAccountCreateModal = async function(button, context = {}) {
-    if (!canManageAccountSecurity()) {
-        showNotification('Створення акаунтів доступне тільки creator/director', 'error');
+    if (!accountOnboardingEl('accountOnboardingOverlay')) {
+        showNotification('Контрольований onboarding недоступний. Оновіть сторінку перед створенням акаунта.', 'error');
         return;
     }
-    await loadAccountRoleDefinitions();
-    await loadAccountStaffOptions();
-    const contextStaff = context.staff || (context.staffId ? teamStaff.find(staff => Number(staff.id) === Number(context.staffId)) : null);
-    const defaultStaffId = contextStaff?.id ? String(contextStaff.id) : '';
-    const defaultName = contextStaff?.name || '';
-    const defaultUsername = context.username || (contextStaff ? suggestAccountUsernameFromStaff(contextStaff) : '');
-    const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
-    const defaultBusinessContexts = normalizeAccountBusinessSelection(context.businessContexts || ['event_genix']);
-    const defaultBusinessContext = getAccountDefaultBusinessValue(context, defaultBusinessContexts);
-    const canEditBusiness = canEditAccountBusinessContexts();
-    const businessFieldsVisible = values => accountRoleCanSwitchBusinessContext(values.role || defaultRole);
-    const createFields = [
-        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
-        { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
-        { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
-        { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
-        { key: 'rolePreset', label: 'Швидка пачка доступу', type: 'presetButtons', presets: getAccountRolePresetButtons(defaultRole), hint: 'Пачка виставляє основну роль і додаткові ролі. Creator не видається швидкою пачкою.' },
-        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
-        { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
-        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: [], dependsOn: 'role', options: getAccountExtraRoleOptions(defaultRole, []), optionsFor: (role, values) => getAccountExtraRoleOptions(role, values.extraRoles || []), hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
-        { key: 'roleAccessPack', type: 'dynamicNote', render: values => renderAccountRolePackFromForm(values, { role: defaultRole }) },
-        { key: 'pageAllowlist', label: 'Дозволити окремі сторінки', type: 'checkboxGroup', defaultValue: [], options: getAccountPageOptions([]), hint: 'Це ручні винятки понад рольову пачку. Сторінки, які вже дає роль, застосуються автоматично після нового входу.' },
-        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([], { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
-        { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Deny має пріоритет над роллю і allow.' }
-    ];
-    if (canEditBusiness) {
-        createFields.splice(6, 0,
-            { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), visibleWhen: businessFieldsVisible, hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
-            { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, dependsOn: 'businessContexts', options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), optionsFor: (_, values) => getAccountBusinessSelectOptions(values.businessContexts || defaultBusinessContexts, values.defaultBusinessContext || defaultBusinessContext), visibleWhen: businessFieldsVisible, hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' }
-        );
-    }
-    const result = await formModal('Створити CRM акаунт', createFields, {
-        icon: '👤',
-        type: 'info',
-        okText: 'Створити',
-        className: 'account-create-modal',
-        validate: validateAccountManualPassword
-    });
-    if (!result) return;
-    const password = String(result.password || '');
-    const issueOneTime = !password;
-    if (password && password.length < 6) {
-        showNotification('Пароль має бути не менше 6 символів', 'error');
-        return;
-    }
-    if (password && password !== String(result.confirmPassword || '')) {
-        showNotification('Паролі не збігаються', 'error');
-        return;
-    }
-    if (button) button.disabled = true;
-    const selectedBusinessContexts = canEditBusiness ? normalizeAccountBusinessSelection(result.businessContexts) : ['event_genix'];
-    const selectedDefaultBusinessContext = canEditBusiness
-        ? getAccountDefaultBusinessValue({ defaultBusinessContext: result.defaultBusinessContext }, selectedBusinessContexts)
-        : 'event_genix';
-    const response = await crmApiFetch('/api/users', {
-        method: 'POST',
-        body: {
-            username: String(result.username || '').trim(),
-            password: issueOneTime ? undefined : password,
-            issueOneTime,
-            name: String(result.name || '').trim(),
-            role: result.role || 'animator',
-            staffId: result.staffId || null,
-            businessContexts: selectedBusinessContexts,
-            defaultBusinessContext: selectedDefaultBusinessContext,
-            extraRoles: normalizeAccountListInput(result.extraRoles),
-            pageAllowlist: normalizeAccountListInput(result.pageAllowlist),
-            actionAllowlist: Array.isArray(result.actionAllowlist) ? result.actionAllowlist : normalizeAccountListInput(result.actionAllowlist),
-            actionDenylist: Array.isArray(result.actionDenylist) ? result.actionDenylist : normalizeAccountListInput(result.actionDenylist)
-        }
-    });
-    if (button) button.disabled = false;
-    if (!response?.success) {
-        showNotification(response?.error || 'Не вдалося створити акаунт', 'error');
-        return;
-    }
-    if (response.credential) {
-        showOneTimeCredentialModal(response.credential, `Акаунт ${response.user?.username || result.username} створено`, response);
-    } else {
-        showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте пароль користувачу напряму.`, 'success');
-    }
-    accountCenterLastUpdatedId = response.user?.id || null;
-    await loadAccountStaffOptions(true);
-    await loadTeam();
-    await loadAccountCenter({ resetFilters: true });
+    await openAccountOnboardingWizard(button, context);
 };
 
 window.openAccountCreateForStaff = async function(staffId, button) {
@@ -6049,7 +7336,7 @@ window.openAccountForStaff = async function(staffId, button) {
     accountCenterLastUpdatedId = target.id;
     setAccountCenterFilters({
         query: target.username || staff?.name || '',
-        activeOnly: false,
+        status: 'all',
         showSystem: false
     }, { render: true });
 };
@@ -6068,7 +7355,7 @@ async function openAccountProfileModal(userId, button) {
     await loadAccountStaffOptions();
     const result = await formModal(`Профіль акаунта · ${user.username}`, [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: user.name || user.username || '' },
-        { key: 'username', label: 'Логін', required: true, defaultValue: user.username || '', placeholder: 'latin.login' },
+        { key: 'usernameReadonly', type: 'note', text: `Username: ${user.username || 'не задано'} · readonly. Зміна заблокована через legacy references.` },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: user.staff_id ? String(user.staff_id) : '', options: getAccountStaffSelectOptions(user.id) }
     ], {
         icon: '👥',
@@ -6077,17 +7364,12 @@ async function openAccountProfileModal(userId, button) {
         className: 'account-profile-modal'
     });
     if (!result) return;
-    const username = String(result.username || '').trim();
-    if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username)) {
-        showNotification('Логін: 3-50 символів, латиниця/цифри/крапка/дефіс/підкреслення', 'error');
-        return;
-    }
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/profile`, {
         method: 'PATCH',
         body: {
             name: String(result.name || '').trim(),
-            username,
+            username: user.username,
             staffId: result.staffId || null
         }
     });

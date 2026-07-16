@@ -16,7 +16,7 @@ const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
     buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole,
-    actionPermissionDecision
+    actionPermissionDecision, requireAction
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
@@ -41,6 +41,7 @@ const {
     curateProfessionCatalogRows,
     normalizeSecondaryProfessions
 } = require('../services/professions');
+const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 const {
     resolveBusinessScope,
     requireBusinessScope,
@@ -1478,7 +1479,7 @@ router.get('/permissions', authenticateToken, (req, res) => {
 });
 
 // v24.0.0: Impersonation — creator can get a temporary JWT for any user
-router.post('/impersonate', authenticateToken, async (req, res) => {
+router.post('/impersonate', authenticateToken, requireAction('manage_accounts'), async (req, res) => {
     try {
         if (process.env.DISABLE_IMPERSONATION === 'true') {
             return res.status(403).json({ error: 'Impersonation disabled' });
@@ -1488,13 +1489,19 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
         }
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'userId required' });
+        if (Number(userId) === Number(req.user.id)) {
+            return res.status(409).json({ error: 'Self-impersonation is not allowed', code: 'SELF_IMPERSONATION_FORBIDDEN' });
+        }
 
         const result = await pool.query(
-            'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
+            'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
             [parseInt(userId)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const target = result.rows[0];
+        if (isProtectedSystemAccount(target)) {
+            return res.status(403).json({ error: 'Protected system accounts cannot be impersonated', code: 'PROTECTED_SYSTEM_ACCOUNT' });
+        }
         if (!target.is_active) return res.status(400).json({ error: 'User is deactivated' });
 
         const authUser = { ...buildAuthUserPayload(target), imp: true, impBy: req.user.username };
@@ -1528,7 +1535,7 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
 });
 
 // v24.0.0: Users list for impersonation dropdown — creator only
-router.get('/users-list', authenticateToken, async (req, res) => {
+router.get('/users-list', authenticateToken, requireAction('manage_accounts'), async (req, res) => {
     try {
         if (req.user.role !== 'creator') {
             return res.status(403).json({ error: 'Only creator can list users' });
@@ -1536,7 +1543,7 @@ router.get('/users-list', authenticateToken, async (req, res) => {
         const result = await pool.query(
             'SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE is_active = true ORDER BY name'
         );
-        res.json(result.rows);
+        res.json(result.rows.filter(user => !isProtectedSystemAccount(user)));
     } catch (err) {
         log.error('Users list error', err);
         res.status(500).json({ error: 'Internal server error' });

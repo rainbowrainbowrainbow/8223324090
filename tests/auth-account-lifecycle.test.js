@@ -15,6 +15,7 @@ function clearModules() {
         '../routes/users',
         '../routes/streaks',
         '../services/accountLinking',
+        '../services/accountOnboarding',
         '../services/accountSecurity'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -56,7 +57,8 @@ function createFakePool() {
             avatar_url: null
         }],
         refreshTokens: [],
-        securityEvents: []
+        securityEvents: [],
+        transactionStatements: []
     };
 
     function publicUser(row) {
@@ -94,7 +96,16 @@ function createFakePool() {
     async function query(sql, params = []) {
         const text = normalizeSql(sql);
 
-        if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(text)) {
+            state.transactionStatements.push(text.split(/\s+/)[0].toUpperCase());
+            return { rows: [], rowCount: 0 };
+        }
+        if (/SELECT pg_advisory_xact_lock\(hashtext\(\$1\)\)/i.test(text)) return { rows: [{}], rowCount: 1 };
+
+        if (/SELECT id, username FROM users WHERE LOWER\(username\) = \$1/i.test(text)) {
+            const user = findUserByLogin(params[0]);
+            return { rows: user ? [{ id: user.id, username: user.username }] : [] };
+        }
 
         if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
             const user = state.users.find(item => Number(item.id) === Number(params[0]));
@@ -209,6 +220,32 @@ function createFakePool() {
             }] : [] };
         }
 
+        if (/SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                page_allowlist: row.page_allowlist || [],
+                action_allowlist: row.action_allowlist || [],
+                action_denylist: row.action_denylist || [],
+                business_contexts: row.business_contexts || ['event_genix'],
+                default_business_context: row.default_business_context || 'event_genix',
+                is_active: row.is_active !== false
+            }] : [] };
+        }
+
+        if (/SELECT pg_advisory_xact_lock\(hashtext\('eventgenix:last-active-creator'\)\)/i.test(text)) {
+            return { rows: [{ pg_advisory_xact_lock: null }], rowCount: 1 };
+        }
+
+        if (/SELECT id FROM users WHERE role = 'creator' AND COALESCE\(is_active, true\) = true AND id <> \$1 LIMIT 1/i.test(text)) {
+            const row = state.users.find(item => item.role === 'creator' && item.is_active !== false && Number(item.id) !== Number(params[0]));
+            return { rows: row ? [{ id: row.id }] : [] };
+        }
+
         if (/SELECT id, username, role, extra_roles FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{
@@ -229,6 +266,19 @@ function createFakePool() {
                 extra_roles: row.extra_roles || [],
                 is_active: row.is_active,
                 login_aliases: row.login_aliases || []
+            }] : [] };
+        }
+
+        if (/SELECT id, username, name, role, extra_roles, action_denylist, is_active FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                action_denylist: row.action_denylist || [],
+                is_active: row.is_active !== false
             }] : [] };
         }
 
@@ -481,6 +531,87 @@ async function withAuthApp(run) {
 function creatorToken() {
     return jwt.sign({ id: 1, username: 'creator', name: 'Creator', role: 'creator' }, TEST_JWT_SECRET, { expiresIn: '1h' });
 }
+
+test('protected system accounts cannot be impersonated', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const guardian = {
+            id: fakePool.state.nextUserId++,
+            username: 'guardian',
+            name: 'Guardian',
+            role: 'bot',
+            extra_roles: [],
+            page_allowlist: [],
+            action_allowlist: [],
+            action_denylist: [],
+            business_contexts: ['event_genix'],
+            default_business_context: 'event_genix',
+            is_active: true,
+            login_aliases: []
+        };
+        fakePool.state.users.push(guardian);
+
+        const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', { userId: guardian.id }, creatorToken());
+        assert.equal(impersonate.status, 403);
+        assert.equal(impersonate.data.code, 'PROTECTED_SYSTEM_ACCOUNT');
+        assert.equal(fakePool.state.securityEvents.some(event => event.event_type === 'account_impersonation_started' && event.target_user_id === guardian.id), false);
+    });
+});
+
+test('impersonation honors manage_accounts denylist, blocks self, and preserves target access overrides', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.action_denylist = ['manage_accounts'];
+        const deniedToken = creatorToken();
+
+        const deniedImpersonation = await request(baseUrl, 'POST', '/api/auth/impersonate', { userId: 2 }, deniedToken);
+        const deniedList = await request(baseUrl, 'GET', '/api/auth/users-list', undefined, deniedToken);
+        assert.equal(deniedImpersonation.status, 403);
+        assert.equal(deniedList.status, 403);
+
+        creator.action_denylist = [];
+        const self = await request(baseUrl, 'POST', '/api/auth/impersonate', { userId: creator.id }, creatorToken());
+        assert.equal(self.status, 409);
+        assert.equal(self.data.code, 'SELF_IMPERSONATION_FORBIDDEN');
+
+        const target = {
+            id: fakePool.state.nextUserId++,
+            username: 'restricted.operator',
+            name: 'Restricted Operator',
+            role: 'animator',
+            extra_roles: [],
+            page_allowlist: ['/hr.html'],
+            action_allowlist: ['delete_booking'],
+            action_denylist: ['manage_staff'],
+            business_contexts: ['event_genix'],
+            default_business_context: 'event_genix',
+            is_active: true,
+            login_aliases: []
+        };
+        fakePool.state.users.push(target);
+
+        const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', { userId: target.id }, creatorToken());
+        assert.equal(impersonate.status, 200);
+        const payload = jwt.verify(impersonate.data.token, TEST_JWT_SECRET);
+        assert.deepEqual(payload.actionAllowlist, ['delete_booking']);
+        assert.deepEqual(payload.actionDenylist, ['manage_staff']);
+        assert.deepEqual(payload.pageAllowlist, ['/hr.html']);
+    });
+});
+
+test('account onboarding requires manage_staff in addition to manage_accounts before any transaction', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.action_denylist = ['manage_staff'];
+
+        const options = await request(baseUrl, 'GET', '/api/users/onboarding/options', undefined, creatorToken());
+        const create = await request(baseUrl, 'POST', '/api/users/onboarding', {}, creatorToken());
+
+        assert.equal(options.status, 403);
+        assert.equal(create.status, 403);
+        assert.deepEqual(fakePool.state.transactionStatements, []);
+        assert.equal(fakePool.state.users.length, 1);
+    });
+});
 
 test('created manual account can log in, verify, access protected API, reject wrong password, and logout', async () => {
     await withAuthApp(async ({ baseUrl, fakePool }) => {

@@ -271,7 +271,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.ok(oneTimeChars && !/[ILO0l1]/.test(oneTimeChars), 'one-time passwords avoid visually ambiguous characters');
         assert.match(accountLinkingService, /async function getAccountLinkConflicts/);
         assert.match(accountLinkingService, /staff_already_linked/);
-        assert.match(accountSecurityService, /delete clone\.manualPassword/);
+        assert.match(accountSecurityService, /const SENSITIVE_AUDIT_KEYS = new Set/);
+        assert.match(accountSecurityService, /SENSITIVE_AUDIT_KEYS\.has\(normalizedKey\)/);
+        assert.match(accountSecurityService, /safeJson\(nestedValue, depth \+ 1\)/);
 
         assert.match(usersRoute, /router\.get\('\/link-conflicts'/);
         assert.match(usersRoute, /router\.get\('\/staff-options', requireAction\('manage_accounts'\)/);
@@ -300,6 +302,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffRoute, /staff_overlay_account_linked/);
         assert.match(staffRoute, /bulk_account_created_with_staff_link/);
         assert.match(staffRoute, /bulk_account_login_ready_check_failed/);
+        assert.match(staffRoute, /reason: 'unmapped_profession_role'/);
+        assert.match(staffRoute, /reason: 'reserved_system_identity'/);
+        assert.match(staffRoute, /isProtectedSystemAccount\(\{ username: suggestedUsername, name: staff\.name \}\)/);
         assert.match(staffRoute, /credentialsPolicy/);
         assert.match(staffRoute, /router\.post\('\/bulk-pdf'[\s\S]*res\.status\(410\)/);
         assert.match(staffRoute, /function staffRoleToAccountRole/);

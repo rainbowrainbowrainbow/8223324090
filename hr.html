@@ -289,24 +289,131 @@
                 <div class="hr-account-head">
                     <div>
                         <h3>Центр керування акаунтами</h3>
-                        <p>Створення акаунтів, профіль, staff-привʼязка, зміна пароля, ролі й активність.</p>
+                        <p>Компактний огляд CRM-доступу, HR-звʼязків, конфліктів і безпечний onboarding.</p>
                     </div>
                     <div class="hr-account-actions">
                         <button type="button" id="accountCreateBtn" class="hr-account-primary" onclick="openAccountCreateModal(this)">+ Створити акаунт</button>
-                        <button type="button" class="hr-account-toggle" onclick="refreshAccountCenter(this)">Оновити список</button>
+                        <button type="button" id="accountCenterRefreshBtn" class="hr-account-toggle" onclick="refreshAccountCenter(this)">Оновити список</button>
                     </div>
                 </div>
-                <div id="accountCenterAdminNote" class="hr-account-note hidden">Керування акаунтами доступне тільки creator/director.</div>
-                <div class="hr-account-toolbar">
-                    <input type="text" id="accountCenterSearch" class="hr-team-search" placeholder="Знайти акаунт, імʼя, роль або staff...">
-                    <span id="accountCenterStats" class="hr-account-stats">0 акаунтів</span>
-                    <label class="hr-account-check"><input type="checkbox" id="accountCenterActiveOnly" checked> тільки активні</label>
-                    <label class="hr-account-check"><input type="checkbox" id="accountCenterShowSystem"> system</label>
-                    <button type="button" id="accountCenterResetFiltersBtn" class="hr-account-toggle hidden" onclick="resetAccountCenterFilters()">Скинути фільтри</button>
+                <div id="accountCenterAdminNote" class="hr-account-note hidden">Для керування акаунтами потрібна capability manage_accounts.</div>
+                <div class="hr-account-toolbar" aria-label="Фільтри акаунтів">
+                    <label class="hr-account-search"><span class="sr-only">Пошук акаунтів</span><input type="search" id="accountCenterSearch" class="hr-team-search" placeholder="Імʼя, username, роль або staff…" autocomplete="off"></label>
+                    <label class="hr-account-filter"><span>Статус</span><select id="accountCenterStatusFilter"><option value="active">Активні</option><option value="inactive">Вимкнені</option><option value="all">Усі</option></select></label>
+                    <label class="hr-account-filter"><span>HR-звʼязок</span><select id="accountCenterLinkFilter"><option value="all">Усі</option><option value="linked">Привʼязані</option><option value="unlinked">Без staff</option><option value="inactive">Неактивний звʼязок</option></select></label>
+                    <label class="hr-account-filter"><span>Роль</span><select id="accountCenterRoleFilter"><option value="all">Усі ролі</option></select></label>
+                    <label class="hr-account-filter"><span>Бізнес</span><select id="accountCenterBusinessFilter"><option value="all">Усі бізнеси</option></select></label>
+                    <label class="hr-account-filter"><span>Конфлікт</span><select id="accountCenterConflictFilter"><option value="all">Усі</option><option value="unlinkedUsers">Акаунт без staff</option><option value="unlinkedStaff">Staff без акаунта</option><option value="inactiveProfileConflicts">Неактивні звʼязки</option><option value="duplicateTelegramIdentities">Telegram дублікати</option><option value="ambiguousProfiles">Неоднозначні профілі</option></select></label>
+                    <label class="hr-account-check"><input type="checkbox" id="accountCenterShowSystem"> Показати system</label>
+                    <button type="button" id="accountCenterResetFiltersBtn" class="hr-account-toggle hidden" onclick="resetAccountCenterFilters()">Скинути</button>
                 </div>
+                <div class="hr-account-toolbar-summary"><span id="accountCenterStats" class="hr-account-stats">0 акаунтів</span></div>
                 <div id="accountCenterFilterNotice" class="hr-account-filter-note hidden"></div>
-                <div id="accountCenterConflictSummary" class="hr-account-filter-note hidden"></div>
-                <div id="accountCenterList" class="hr-account-list"></div>
+                <div id="accountCenterConflictSummary" class="hr-account-conflict-summary hidden" aria-label="Конфлікти HR-звʼязків"></div>
+                <div id="accountCenterWorkspace" class="hr-account-workspace">
+                    <section class="hr-account-master" aria-label="Список акаунтів">
+                        <div id="accountCenterList" class="hr-account-list" role="list" aria-label="CRM-акаунти" aria-live="polite"></div>
+                    </section>
+                    <aside id="accountDetailPanel" class="hr-account-detail" tabindex="-1" aria-label="Картка акаунта" aria-live="polite">
+                        <div class="hr-account-detail-empty"><strong>Оберіть акаунт</strong><span>Профіль, HR-звʼязок, доступ, безпека й історія відкриються тут.</span></div>
+                    </aside>
+                </div>
+            </div>
+
+            <div id="accountOnboardingOverlay" class="hr-account-onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="accountOnboardingTitle">
+                <section class="hr-account-onboarding" tabindex="-1">
+                    <header class="hr-account-onboarding-head">
+                        <div>
+                            <span class="hr-account-eyebrow">Контрольоване створення</span>
+                            <h3 id="accountOnboardingTitle">Новий CRM-акаунт і HR-профіль</h3>
+                            <p>Усі основні дані зберігаються однією транзакцією. Документи додаються після створення.</p>
+                        </div>
+                        <button type="button" id="accountOnboardingClose" class="hr-account-icon-btn" aria-label="Закрити onboarding">×</button>
+                    </header>
+                    <div id="accountOnboardingLoading" class="hr-account-onboarding-loading hidden" role="status">Завантаження довідників…</div>
+                    <ol id="accountOnboardingSteps" class="hr-account-onboarding-steps" aria-label="Кроки onboarding">
+                        <li data-account-onboarding-step-label="1" class="is-active"><span>1</span>Особисті дані</li>
+                        <li data-account-onboarding-step-label="2"><span>2</span>HR-профіль</li>
+                        <li data-account-onboarding-step-label="3"><span>3</span>Структура</li>
+                        <li data-account-onboarding-step-label="4"><span>4</span>Умови</li>
+                        <li data-account-onboarding-step-label="5"><span>5</span>Доступ</li>
+                        <li data-account-onboarding-step-label="6"><span>6</span>Розширені права</li>
+                        <li data-account-onboarding-step-label="7"><span>7</span>Перевірка</li>
+                    </ol>
+                    <form id="accountOnboardingForm" class="hr-account-onboarding-form" novalidate>
+                        <section data-account-onboarding-step="1" class="hr-account-onboarding-panel">
+                            <div class="hr-account-onboarding-panel-head"><h4>Особисті дані</h4><p>Імʼя для CRM та незмінний username для входу.</p></div>
+                            <div class="hr-account-form-grid">
+                                <label><span>Імʼя в CRM *</span><input id="accountOnboardingName" name="name" maxlength="100" autocomplete="name" required></label>
+                                <label><span>Username *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення username не змінюється.</small></label>
+                                <label><span>Телефон</span><input id="accountOnboardingPhone" name="phone" maxlength="30" autocomplete="tel"></label>
+                            </div>
+                        </section>
+                        <section data-account-onboarding-step="2" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>HR-профіль</h4><p>Привʼяжіть вільний staff-профіль або створіть новий.</p></div>
+                            <div class="hr-account-choice-row" role="radiogroup" aria-label="Тип HR-профілю">
+                                <label><input type="radio" name="accountOnboardingStaffMode" value="existing" checked> Існуючий staff</label>
+                                <label><input type="radio" name="accountOnboardingStaffMode" value="new"> Новий staff</label>
+                            </div>
+                            <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
+                                <label class="is-wide"><span>Staff-профіль *</span><select id="accountOnboardingStaffId"><option value="">Оберіть staff</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
+                            </div>
+                            <div id="accountOnboardingNewStaffFields" class="hr-account-form-grid" hidden>
+                                <label><span>Відділ *</span><input id="accountOnboardingDepartment" maxlength="50"></label>
+                                <label><span>Посада *</span><input id="accountOnboardingPosition" maxlength="100"></label>
+                                <label><span>Дата найму</span><input id="accountOnboardingHireDate" type="date"></label>
+                            </div>
+                        </section>
+                        <section data-account-onboarding-step="3" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>Структура та професії</h4><p>Оберіть вузол і щонайменше одну професію; одна має бути основною.</p></div>
+                            <div class="hr-account-form-grid">
+                                <label class="is-wide"><span>Вузол структури</span><select id="accountOnboardingStructureNode"><option value="">Без вузла</option></select></label>
+                            </div>
+                            <div id="accountOnboardingProfessions" class="hr-account-option-list" role="group" aria-label="Професії" tabindex="-1"></div>
+                        </section>
+                        <section data-account-onboarding-step="4" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>Ставка і типовий час</h4><p>Це побажання для планування, а не фактична зміна чи проведений payroll.</p></div>
+                            <div class="hr-account-form-grid">
+                                <label><span>Професія для умов</span><select id="accountOnboardingConditionProfession"></select></label>
+                                <label><span>Джерело ставки</span><select id="accountOnboardingRateMode"><option value="keep">Не змінювати наявні умови</option><option value="unchanged">Ставку не змінювати, оновити час</option><option value="fallback">Базова ставка staff</option><option value="explicit">Індивідуальна ставка професії</option></select></label>
+                                <label><span id="accountOnboardingHourlyRateLabel">Ставка за годину</span><input id="accountOnboardingHourlyRate" type="number" min="0" step="0.01" disabled><small id="accountOnboardingRateHint">Для існуючого staff умови лишаться без змін.</small></label>
+                            </div>
+                            <div class="hr-account-time-grid">
+                                <fieldset><legend>Будні</legend><label><span>Початок</span><input id="accountOnboardingWeekdayStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekdayEnd" type="time"></label></fieldset>
+                                <fieldset><legend>Вихідні</legend><label><span>Початок</span><input id="accountOnboardingWeekendStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekendEnd" type="time"></label></fieldset>
+                            </div>
+                        </section>
+                        <section data-account-onboarding-step="5" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>CRM role і бізнес-контекст</h4><p>Безпечні role presets покривають більшість сценаріїв.</p></div>
+                            <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
+                            <div class="hr-account-form-grid">
+                                <label><span>Основна роль *</span><select id="accountOnboardingRole"></select></label>
+                                <label><span>Бізнес за замовченням</span><select id="accountOnboardingDefaultBusiness"></select></label>
+                            </div>
+                            <div><strong class="hr-account-field-title">Доступні бізнеси</strong><div id="accountOnboardingBusinesses" class="hr-account-option-list is-compact"></div></div>
+                        </section>
+                        <section data-account-onboarding-step="6" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>Розширені права</h4><p>Необовʼязкові точкові overrides. manage_accounts не видається вручну.</p></div>
+                            <details class="hr-account-advanced" open><summary>Додаткові ролі</summary><div id="accountOnboardingExtraRoles" class="hr-account-option-list is-compact"></div></details>
+                            <details class="hr-account-advanced"><summary>Дозволити окремі сторінки</summary><div id="accountOnboardingPages" class="hr-account-option-list is-compact"></div></details>
+                            <details class="hr-account-advanced"><summary>Дозволити окремі дії</summary><div id="accountOnboardingActionAllow" class="hr-account-option-list is-compact"></div></details>
+                            <details class="hr-account-advanced"><summary>Заборонити окремі дії</summary><div id="accountOnboardingActionDeny" class="hr-account-option-list is-compact"></div></details>
+                        </section>
+                        <section data-account-onboarding-step="7" class="hr-account-onboarding-panel" hidden>
+                            <div class="hr-account-onboarding-panel-head"><h4>Перевірка перед створенням</h4><p>Переконайтеся, що staff, професії та рівень доступу правильні.</p></div>
+                            <div id="accountOnboardingReview" class="hr-account-review"></div>
+                            <div class="hr-account-credential-note">Тимчасовий пароль буде показано один раз після успішного створення.</div>
+                        </section>
+                    </form>
+                    <section id="accountOnboardingReceipt" class="hr-account-receipt hidden" aria-live="polite"></section>
+                    <div id="accountOnboardingStatus" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>
+                    <footer id="accountOnboardingActions" class="hr-account-onboarding-actions">
+                        <button type="button" id="accountOnboardingBack" class="hr-account-toggle" disabled>Назад</button>
+                        <span id="accountOnboardingProgress">Крок 1 з 7</span>
+                        <button type="button" id="accountOnboardingNext" class="hr-account-primary">Далі</button>
+                        <button type="button" id="accountOnboardingSubmit" class="hr-account-primary hidden">Створити все</button>
+                    </footer>
+                </section>
             </div>
 
             <!-- TAB 3A: COMPANY STRUCTURE -->

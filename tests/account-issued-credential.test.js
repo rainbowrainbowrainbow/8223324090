@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const {
     generateOneTimePassword,
-    verifyIssuedCredential
+    verifyIssuedCredential,
+    reserveUsernameIdentity,
+    uniqueUsername
 } = require('../services/accountLinking');
 const {
     extractCredentialBlock,
@@ -79,6 +81,40 @@ describe('issued account credentials', () => {
         assert.equal(result.reason, 'ready');
         assert.equal(result.username, 'Zhenya');
         assert.equal(result.isActive, true);
+    });
+
+    it('reserves username and login aliases through one locked identity contract', async () => {
+        const calls = [];
+        const client = {
+            async query(sql, params) {
+                calls.push({ sql, params });
+                if (/pg_advisory_xact_lock/i.test(sql)) return { rows: [{}] };
+                return { rows: [{ id: 8, username: 'canonical.user' }] };
+            }
+        };
+
+        await assert.rejects(
+            reserveUsernameIdentity(client, ' Legacy.Alias '),
+            error => error.code === 'account_identity_occupied' && error.statusCode === 409
+        );
+        assert.match(calls[1].sql, /login_aliases/);
+        assert.match(calls[1].sql, /LOWER\(TRIM\(alias\.value\)\) = \$1/);
+        assert.deepEqual(calls[0].params, ['eventgenix:account-username:legacy.alias']);
+        assert.deepEqual(calls[1].params, ['legacy.alias']);
+    });
+
+    it('generates bulk usernames without colliding with login aliases', async () => {
+        const queriedIdentities = [];
+        const client = {
+            async query(sql, params) {
+                if (/pg_advisory_xact_lock/i.test(sql)) return { rows: [{}] };
+                queriedIdentities.push(params[0]);
+                return { rows: params[0] === 'staff.member' ? [{ id: 9 }] : [] };
+            }
+        };
+
+        assert.equal(await uniqueUsername(client, 'staff.member'), 'staff.member.2');
+        assert.deepEqual(queriedIdentities, ['staff.member', 'staff.member.2']);
     });
 
     it('verifies issued credentials when the password is pasted as a labeled block', async () => {

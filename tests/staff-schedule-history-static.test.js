@@ -1739,13 +1739,9 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(importRoleMap, /role:\s*'cleaning'/);
 
         const accountRoleMapper = staffRoute.match(/function staffRoleToAccountRole\(roleType\) \{[\s\S]*?\n\}/)?.[0] || '';
-        assert.match(accountRoleMapper, /trampoline_instructor:\s*'animator'/);
-        assert.match(accountRoleMapper, /senior_instructor:\s*'manager'/);
-        assert.match(accountRoleMapper, /cleaner:\s*'cleaning'/);
-        assert.match(accountRoleMapper, /pizzaiolo:\s*'cook'/);
-        assert.doesNotMatch(accountRoleMapper, /trampoline_instructor:\s*'instructor'/);
-        assert.match(accountRoleMapper, /'instructor'/);
-        assert.match(accountRoleMapper, /'cleaning'/);
+        assert.match(accountRoleMapper, /return professionToAccountRole\(roleType\)/);
+        assert.match(staffRoute, /reason: 'unmapped_profession_role'/);
+        assert.match(staffRoute, /reason: 'reserved_system_identity'/);
     });
 
     it('renders explicit cell history UI and fetches it from the staff API', () => {

@@ -568,8 +568,8 @@ async function revokeRefreshToken(refreshToken) {
 /**
  * Revoke all refresh tokens for a user (logout all devices)
  */
-async function revokeAllUserTokens(userId) {
-    await pool.query(
+async function revokeAllUserTokens(userId, db = pool) {
+    await db.query(
         'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
         [userId]
     );

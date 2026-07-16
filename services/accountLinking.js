@@ -86,12 +86,48 @@ async function verifyIssuedCredential({ client = pool, username, password } = {}
     };
 }
 
+async function reserveUsernameIdentity(client, username, {
+    statusCode = 409,
+    code = 'account_identity_occupied',
+    message = 'Акаунт або login alias з таким username вже існує'
+} = {}) {
+    const identity = normalizeLoginIdentifier(username);
+    if (!identity) {
+        throw appError('Некоректний username', 400, 'invalid_username_identity');
+    }
+
+    await client.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1))',
+        [`eventgenix:account-username:${identity}`]
+    );
+    const existing = await client.query(
+        `SELECT id, username
+         FROM users
+         WHERE LOWER(username) = $1
+            OR EXISTS (
+                SELECT 1
+                FROM unnest(COALESCE(login_aliases, '{}'::text[])) AS alias(value)
+                WHERE LOWER(TRIM(alias.value)) = $1
+            )
+         LIMIT 1`,
+        [identity]
+    );
+    if (existing.rows.length > 0) {
+        throw appError(message, statusCode, code, { identity });
+    }
+    return identity;
+}
+
 async function uniqueUsername(client, baseUsername) {
     const base = normalizeUsername(baseUsername) || `user.${Date.now()}`;
     let candidate = base.slice(0, 50);
     for (let i = 0; i < 50; i += 1) {
-        const result = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [candidate]);
-        if (result.rows.length === 0) return candidate;
+        try {
+            await reserveUsernameIdentity(client, candidate);
+            return candidate;
+        } catch (error) {
+            if (error?.code !== 'account_identity_occupied') throw error;
+        }
         const suffix = `.${i + 2}`;
         candidate = `${base.slice(0, Math.max(1, 50 - suffix.length))}${suffix}`;
     }
@@ -166,7 +202,6 @@ async function linkUserToStaffProfile(client, {
          WHERE ep.staff_id = $1
            AND ep.user_id IS NOT NULL
            AND ep.user_id <> $2
-           AND COALESCE(ep.is_active, true) IS TRUE
          LIMIT 1`,
         [safeStaffId, safeUserId]
     );
@@ -350,9 +385,12 @@ async function getAccountLinkConflicts({ limit = 25 } = {}) {
         pool.query(
             `SELECT u.id, u.username, u.name, u.role, u.is_active
              FROM users u
-             LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND COALESCE(ep.is_active, true) IS TRUE
              WHERE COALESCE(u.is_active, true) IS TRUE
-               AND ep.id IS NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM employee_profiles ep
+                   WHERE ep.user_id = u.id
+               )
                AND LOWER(u.username) NOT LIKE 'openclaw%'
                AND LOWER(u.username) NOT IN ('guardian', 'system')
              ORDER BY lower(COALESCE(NULLIF(u.name, ''), u.username)), u.id
@@ -362,13 +400,14 @@ async function getAccountLinkConflicts({ limit = 25 } = {}) {
         pool.query(
             `SELECT s.id, s.name, s.department, s.position, s.role_type, s.unique_person_key
              FROM staff s
-             LEFT JOIN employee_profiles ep
-               ON ep.staff_id = s.id
-              AND COALESCE(ep.is_active, true) IS TRUE
-              AND ep.user_id IS NOT NULL
              WHERE COALESCE(s.is_active, true) IS TRUE
                AND COALESCE(s.is_freelance, false) IS FALSE
-               AND ep.id IS NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM employee_profiles ep
+                   WHERE ep.staff_id = s.id
+                     AND ep.user_id IS NOT NULL
+               )
              ORDER BY s.department, lower(s.name), s.id
              LIMIT $1`,
             [safeLimit]
@@ -460,6 +499,7 @@ module.exports = {
     suggestUsernameForStaff,
     generateOneTimePassword,
     verifyIssuedCredential,
+    reserveUsernameIdentity,
     uniqueUsername,
     oneTimeCredential,
     linkUserToStaffProfile,

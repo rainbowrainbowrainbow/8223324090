@@ -28,7 +28,8 @@ const MODES = {
     hr: ['tests/integration/hr-disposable.integration.test.js'],
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
-        'tests/integration/hr-onboarding-hire.integration.test.js'
+        'tests/integration/hr-onboarding-hire.integration.test.js',
+        'tests/integration/account-onboarding.integration.test.js'
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js'],
@@ -258,6 +259,7 @@ async function runSuite(testDb, testFile) {
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
+        RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
         RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',

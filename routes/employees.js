@@ -6,6 +6,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { linkUserToStaffProfile, unlinkStaffAccount } = require('../services/accountLinking');
+const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 
 const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const log = createLogger('Employees');
@@ -69,6 +70,9 @@ async function ensureActorCanManageAccountId(client, actor, userId) {
     if (!hasAccountLinkValue(userId)) return null;
     ensureManageAccounts(actor);
     const account = await getAccountForManagement(client, userId);
+    if (isProtectedSystemAccount(account)) {
+        throw accountManagementError('Protected system account cannot be linked or unlinked');
+    }
     if (!canActorManageAccount(actor, account)) {
         throw accountManagementError('Insufficient account-management permissions for this account');
     }
@@ -267,37 +271,87 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/employees/auto-link — auto-create profiles from existing users/staff
 router.post('/auto-link', requireAction('manage_accounts'), async (req, res) => {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
         // Find staff without profiles
-        const unlinkedStaff = await pool.query(
-            `SELECT s.* FROM staff s
-             LEFT JOIN employee_profiles ep ON ep.staff_id = s.id
-             WHERE ep.id IS NULL AND s.is_active = true`
+        const unlinkedStaff = await client.query(
+            `SELECT s.*
+             FROM staff s
+             WHERE s.is_active = true
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM employee_profiles ep
+                   WHERE ep.staff_id = s.id
+               )
+             ORDER BY s.id
+             FOR UPDATE OF s`
         );
 
         let created = 0;
+        let linked = 0;
+        let leftUnlinked = 0;
         for (const staff of unlinkedStaff.rows) {
-            // Try to find matching user by name
-            const matchingUser = await pool.query(
-                `SELECT id FROM users WHERE name ILIKE $1 AND id NOT IN (SELECT user_id FROM employee_profiles WHERE user_id IS NOT NULL)`,
+            // Only one exact, manageable candidate may be linked automatically.
+            const matchingUser = await client.query(
+                `SELECT u.id
+                 FROM users u
+                 WHERE u.name ILIKE $1
+                   AND COALESCE(u.is_active, true) IS TRUE
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM employee_profiles ep
+                       WHERE ep.user_id = u.id
+                   )
+                 ORDER BY u.id
+                 LIMIT 2`,
                 [staff.name]
             );
 
-            await pool.query(
+            if (matchingUser.rows.length === 1) {
+                let manageable = false;
+                try {
+                    await ensureActorCanManageAccountId(client, req.user, matchingUser.rows[0].id);
+                    manageable = true;
+                } catch (error) {
+                    if (error.statusCode !== 403) throw error;
+                }
+                if (manageable) {
+                    await linkUserToStaffProfile(client, {
+                        userId: matchingUser.rows[0].id,
+                        staffId: staff.id,
+                        actor: req.user,
+                        req,
+                        eventType: 'employee_profile_account_auto_linked',
+                        details: { source: 'employees_auto_link' }
+                    });
+                    created += 1;
+                    linked += 1;
+                    continue;
+                }
+            }
+
+            const inserted = await client.query(
                 `INSERT INTO employee_profiles (staff_id, user_id, full_name, phone, department, telegram_username, role)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'employee')
-                 ON CONFLICT DO NOTHING`,
-                [staff.id, matchingUser.rows[0]?.id || null, staff.name, staff.phone || null,
+                 VALUES ($1, NULL, $2, $3, $4, $5, 'employee')
+                 ON CONFLICT DO NOTHING
+                 RETURNING id`,
+                [staff.id, staff.name, staff.phone || null,
                  staff.department || null, staff.telegram_username || null]
             );
-            created++;
+            created += inserted.rowCount || 0;
+            leftUnlinked += inserted.rowCount || 0;
         }
 
+        await client.query('COMMIT');
         log.info(`Auto-link: ${created} profiles created from ${unlinkedStaff.rows.length} unlinked staff`);
-        res.json({ success: true, created, total_unlinked: unlinkedStaff.rows.length });
+        res.json({ success: true, created, linked, left_unlinked: leftUnlinked, total_unlinked: unlinkedStaff.rows.length });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('Auto-link error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

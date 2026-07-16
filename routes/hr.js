@@ -15,6 +15,7 @@ const { broadcastLineEvent } = require('../services/websocket');
 const costumeInventory = require('../services/costumeInventory');
 const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest
@@ -486,6 +487,7 @@ function accountMaxRoleLevel(account = {}) {
 function actorCanDisableOffboardingAccount(actor, account = {}) {
     if (!actor || !canUseAction(actor, 'manage_accounts')) return false;
     if (Number(account.id) === Number(actor.id)) return false;
+    if (isProtectedSystemAccount(account)) return false;
     if (accountHasCreatorRole(account)) return false;
     if (actor.role === 'creator') return true;
     return accountMaxRoleLevel(account) < accountRoleLevel('director');
@@ -493,6 +495,7 @@ function actorCanDisableOffboardingAccount(actor, account = {}) {
 
 function accountOffboardingBlockReason(actor, account = {}) {
     if (Number(account.id) === Number(actor?.id)) return 'current_user';
+    if (isProtectedSystemAccount(account)) return 'protected_system_account';
     if (accountHasCreatorRole(account)) return 'protected_role';
     if (!canUseAction(actor, 'manage_accounts')) return 'requires_manage_accounts';
     if (!actorCanDisableOffboardingAccount(actor, account)) return 'protected_role';
@@ -511,11 +514,13 @@ function staffOffboardingDisableError(blockers = []) {
 
 function actorCanReactivateStaffAccount(actor, account = {}) {
     if (!actor || !canUseAction(actor, 'manage_accounts')) return false;
+    if (isProtectedSystemAccount(account)) return false;
     if (actor.role === 'creator') return true;
     return accountMaxRoleLevel(account) < accountRoleLevel('director');
 }
 
 function accountRehireBlockReason(actor, account = {}) {
+    if (isProtectedSystemAccount(account)) return 'protected_system_account';
     if (!canUseAction(actor, 'manage_accounts')) return 'requires_manage_accounts';
     if (!actorCanReactivateStaffAccount(actor, account)) return 'protected_role';
     return null;

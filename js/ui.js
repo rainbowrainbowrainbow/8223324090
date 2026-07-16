@@ -1824,7 +1824,8 @@ function formModal(title, fields, options = {}) {
                 const selected = selectedValue !== null
                     ? String(o.value) === selectedValue
                     : o.selected === true;
-                return `<option value="${escAttr(o.value)}"${selected ? ' selected' : ''}>${escAttr(o.label)}</option>`;
+                const disabled = o.disabled === true;
+                return `<option value="${escAttr(o.value)}"${selected ? ' selected' : ''}${disabled ? ' disabled aria-disabled="true"' : ''}>${escAttr(o.label)}</option>`;
             }).join('');
         };
         const renderCheckboxOptions = (field, optionList, selectedOverride = null) => {

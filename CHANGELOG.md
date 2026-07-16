@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.44 - HR Attendance PDF Preview Fix
+
+### Пульс компанії / HR / PDF / Hotfix / (16.07.2026) [codex]
+- **PDF preview відображається в модалці** — CSP дозволяє лише origin-bound `blob:` URL для iframe попереднього перегляду; зовнішні frame-джерела не відкриті.
+- **Завантаження та друк не змінено** — той самий приватний immutable PDF із черги залишається доступним для download/print.
+
+---
+
 ## v0.79.43 - HR Attendance Documents v27 Fix
 
 ### Пульс компанії / HR / PDF / Hotfix / (16.07.2026) [codex]

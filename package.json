@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.43",
+  "version": "0.79.44",
   "eventGenix": {
-    "releaseLabel": "HR Attendance Documents v27 Fix"
+    "releaseLabel": "HR Attendance PDF Preview Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

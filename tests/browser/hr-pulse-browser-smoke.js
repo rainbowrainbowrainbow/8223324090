@@ -475,11 +475,12 @@ async function assertHrPrintDocuments(page) {
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
     ), { timeout: 30000 });
-    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    const delayedClickPromise = dialog.getByRole('button', { name: 'Сформувати preview' }).click();
     await requestPaused;
     await page.keyboard.press('Escape');
     assert.equal(await dialog.isVisible(), false, 'Escape closes print modal during generation');
     releaseDelayedRequest();
+    await delayedClickPromise;
     assert.equal((await closedResponsePromise).status(), 200, 'in-flight preview response can finish after modal close');
     await page.waitForTimeout(250);
     await page.unroute('**/api/hr/attendance-documents/pdf', delayedRoute);

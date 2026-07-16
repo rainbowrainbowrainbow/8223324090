@@ -14,7 +14,7 @@ function securityHeaders(req, res, next) {
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co https://*.clarity.ms https://c.bing.com",
         "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com https://*.clarity.ms https://c.bing.com",
-        "frame-src 'self'",
+        "frame-src 'self' blob:",
         "frame-ancestors 'self'"
     ].join('; '));
     if (req.secure || req.get('x-forwarded-proto') === 'https') {

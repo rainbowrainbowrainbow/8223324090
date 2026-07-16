@@ -24,6 +24,11 @@ const {
     referenceSnapshot
 } = require('./fixtures/hrAttendanceDocumentsV27');
 
+test('security policy permits origin-bound blob URLs for PDF preview frames', () => {
+    const securityMiddleware = fs.readFileSync(path.join(__dirname, '..', 'middleware', 'security.js'), 'utf8');
+    assert.match(securityMiddleware, /frame-src 'self' blob:/);
+});
+
 function pdfPageCount(buffer) {
     return (buffer.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
 }

@@ -5,6 +5,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
+const HrAttendanceState = require('../js/hr-attendance-state');
 const {
     PAYROLL_EVENT_LABELS,
     assertPayrollPeriodOpen,
@@ -66,6 +67,7 @@ const HR_HTML = [
     readSource('css', 'hr-page.css')
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+const HR_ATTENDANCE_STATE_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-attendance-state.js'), 'utf8');
 const HR_PULSE_SWITCHER_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
@@ -112,14 +114,19 @@ test('HR Today metrics expose people lists and count only open shifts as on shif
 
     assert.match(HR_HTML, /<button type="button" class="hr-today-metric-chip[^>]+aria-controls="todayMetricPeoplePanel"/);
     assert.match(HR_HTML, /id="todayMetricPeoplePanel"[^>]+hidden/);
-    assert.match(HR_JS, /function isTodayItemOnShift[\s\S]*record\?\.clock_in && !item\.record\?\.clock_out/);
+    const sharedScriptIndex = HR_HTML.indexOf('js/hr-attendance-state.js');
+    const pageScriptIndex = HR_HTML.indexOf('js/hr-page.js');
+    assert.ok(sharedScriptIndex > -1 && sharedScriptIndex < pageScriptIndex, 'shared attendance state loads before HR page logic');
+    assert.match(HR_ATTENDANCE_STATE_JS, /record && record\.clock_in && !record\.clock_out/);
+    assert.match(HR_JS, /function isTodayItemOnShift[\s\S]*HrAttendanceState\.isAttendanceRecordOpen\(item\.record\)/);
+    assert.doesNotMatch(HR_JS, /record\?\.clock_in && !item\.record\?\.clock_out/);
     assert.match(summaryBlock, /if \(isTodayItemOnShift\(item\)\)/);
     assert.doesNotMatch(summaryBlock, /early_leave[\s\S]*summary\.present\+\+/);
     assert.match(HR_JS, /function renderTodayMetricPeoplePanel/);
     assert.match(HR_JS, /function focusTodayStaffFromMetric/);
     assert.match(HR_ROUTE, /if \(isAttendanceRecordOpen\(record\)\) present\+\+/);
 
-    const context = vm.createContext({});
+    const context = vm.createContext({ HrAttendanceState });
     vm.runInContext(`${modelBlock}\n${summaryBlock}`, context);
     context.rows = [
         { record: { status: 'present', clock_in: '2026-07-16T06:00:00.000Z', clock_out: null } },
@@ -182,6 +189,7 @@ test('HR Today metric interactions keep all four counts, lists, closing paths, a
         window: dom.window,
         setTimeout: () => 1,
         clearTimeout: () => {},
+        HrAttendanceState,
         escapeHtml: value => String(value ?? ''),
         fmtTimeFromISO: () => '09:00',
         fmtTime: value => String(value || '').slice(0, 5),

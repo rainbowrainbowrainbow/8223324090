@@ -74,6 +74,9 @@ jobs:
       - name: Run HR Team browser smoke
         run: npm run test:browser:hr-team
 
+      - name: Run HR Today metrics browser smoke
+        run: npm run test:browser:hr-today
+
       - name: Run HR onboarding cross-surface browser smoke
         run: npm run test:browser:hr-onboarding
 

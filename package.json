@@ -67,6 +67,7 @@
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
     "test:browser:customer-child-create": "npx --yes --package playwright node tests/browser/customer-child-create-browser-smoke.js",
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
+    "test:browser:hr-today": "npm exec --yes --package=playwright -c \"node tests/browser/hr-today-metrics-browser-smoke.js\"",
     "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\"",
     "test:browser:hr-onboarding": "npm exec --yes --package=playwright -c \"node tests/browser/hr-onboarding-flow-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",

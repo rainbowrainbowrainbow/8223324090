@@ -41,6 +41,8 @@ const {
 const bookingSummaryBrowserSmokeCode = fileText('tests/browser/booking-summary-browser-smoke.js');
 const hrPulseBrowserSmokeCode = fileText('tests/browser/hr-pulse-browser-smoke.js');
 const hrTeamBrowserSmokeCode = fileText('tests/browser/hr-team-browser-smoke.js');
+const hrTodayBrowserSmokeCode = fileText('tests/browser/hr-today-metrics-browser-smoke.js');
+const hrAttendanceStateCode = fileText('js/hr-attendance-state.js');
 const ciWorkflow = fileText('.github/workflows/ci.yml');
 const inviteShareCode = fileText('js/invite-share.js');
 
@@ -6367,8 +6369,11 @@ check('HR Pulse Today metrics open matching people and focus the selected row',
     htmlContains('hr.html', '<button type="button" class="hr-today-metric-chip')
     && htmlContains('hr.html', 'aria-controls="todayMetricPeoplePanel"')
     && htmlContains('hr.html', 'id="todayMetricPeoplePanel"')
+    && htmlScriptLoadsBefore('hr.html', 'js/hr-attendance-state.js', 'js/hr-page.js')
+    && hrAttendanceStateCode.includes('record && record.clock_in && !record.clock_out')
     && hrCode.includes('function isTodayItemOnShift')
-    && hrCode.includes('item.record?.clock_in && !item.record?.clock_out')
+    && hrCode.includes('HrAttendanceState.isAttendanceRecordOpen(item.record)')
+    && !hrCode.includes('item.record?.clock_in && !item.record?.clock_out')
     && hrCode.includes('function todayMetricMatchesItem')
     && hrCode.includes('function renderTodayMetricPeoplePanel')
     && hrCode.includes('function focusTodayStaffFromMetric')
@@ -6573,6 +6578,16 @@ check('HR Team browser smoke is a required Chromium CI gate',
     && ciWorkflow.includes('name: HR Team browser smoke')
     && ciWorkflow.includes('playwright install --with-deps chromium')
     && ciWorkflow.includes('run: npm run test:browser:hr-team'));
+check('HR Today metrics browser smoke covers polling, realtime, focus, mobile, and is required in Chromium CI',
+    pkg.scripts?.['test:browser:hr-today'] === 'npm exec --yes --package=playwright -c "node tests/browser/hr-today-metrics-browser-smoke.js"'
+    && hrTodayBrowserSmokeCode.includes('assertMetricLists')
+    && hrTodayBrowserSmokeCode.includes('assertKeyboardAndFocus')
+    && hrTodayBrowserSmokeCode.includes('assertPollingAndRealtime')
+    && hrTodayBrowserSmokeCode.includes('assertMobileThemeAndReducedMotion')
+    && hrTodayBrowserSmokeCode.includes("window.dispatchEvent(new CustomEvent('ws:hr-attendance'))")
+    && hrTodayBrowserSmokeCode.includes("Number(delay) === 30000 ? 80 : delay")
+    && ciWorkflow.includes('Run HR Today metrics browser smoke')
+    && ciWorkflow.includes('run: npm run test:browser:hr-today'));
 check('HR Team browser smoke mounts the production drawer and protects its visual contract',
     hrTeamBrowserSmokeCode.includes("const STAFF_EDIT_MODAL_HTML = extractElementMarkup(HR_HTML, 'staffEditModal');")
     && hrTeamBrowserSmokeCode.includes('window.__hrTeamBrowserModalMarkup = markup;')

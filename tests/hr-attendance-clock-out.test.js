@@ -6,6 +6,7 @@ const {
     isAttendanceRecordOpen,
     recordAttendanceClockOut
 } = require('../services/hrAttendance');
+const { isAttendanceRecordOpen: sharedIsAttendanceRecordOpen } = require('../js/hr-attendance-state');
 
 function createClockOutDb(existing) {
     const calls = [];
@@ -54,6 +55,7 @@ const baseRecord = {
 };
 
 test('open attendance means clocked in without a recorded departure', () => {
+    assert.equal(isAttendanceRecordOpen, sharedIsAttendanceRecordOpen);
     assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: null }), true);
     assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: '2026-07-17T14:30:00.000Z' }), false);
     assert.equal(isAttendanceRecordOpen({ clock_in: null, clock_out: null }), false);

@@ -4,6 +4,7 @@ const {
     loadHrShiftDayPlan
 } = require('./hrShiftSegments');
 const { loadPrimaryStaffShiftPreference } = require('./professions');
+const { isAttendanceRecordOpen } = require('../js/hr-attendance-state');
 
 const MINUTES_PER_DAY = 24 * 60;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
@@ -160,10 +161,6 @@ function normalizeAttendanceSegments(input = {}) {
         || left.endMinutes - right.endMinutes
         || left.sortOrder - right.sortOrder
     ));
-}
-
-function isAttendanceRecordOpen(record = {}) {
-    return Boolean(record.clock_in && !record.clock_out);
 }
 
 function normalizeAttendancePlanDate(value) {

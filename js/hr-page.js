@@ -2767,7 +2767,7 @@ const TODAY_METRIC_DEFINITIONS = Object.freeze({
 });
 
 function isTodayItemOnShift(item = {}) {
-    return Boolean(item.record?.clock_in && !item.record?.clock_out);
+    return HrAttendanceState.isAttendanceRecordOpen(item.record);
 }
 
 function todayMetricMatchesItem(item = {}, metric = '') {
@@ -3267,7 +3267,7 @@ function renderToday(data) {
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button type="button" class="hr-clock-btn ${btnClass}" ${disabled}
-                onclick="handleClock(${item.staff_id}, '${rec && rec.clock_in && !rec.clock_out ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"
+                onclick="handleClock(${item.staff_id}, '${isTodayItemOnShift(item) ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"
             >${btnText}</button>
         </div>`;
     }).join('');

@@ -3067,6 +3067,11 @@ function bindTodayMetricChips(items = []) {
             todayActiveMetric = metric;
             renderTodayMetricPeoplePanel(items);
         };
+        chip.onkeydown = event => {
+            if (event.key !== 'Escape' || !todayActiveMetric) return;
+            event.preventDefault();
+            closeTodayMetricPeoplePanel({ restoreFocus: true });
+        };
     });
     renderTodayMetricPeoplePanel(items);
 }

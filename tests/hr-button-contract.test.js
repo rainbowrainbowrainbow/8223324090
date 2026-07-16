@@ -240,6 +240,12 @@ test('HR Today metric interactions keep all four counts, lists, closing paths, a
     assert.equal(panel.hidden, true, 'Escape closes the people list');
     assert.equal(dom.window.document.activeElement, leaveChip, 'Escape restores focus to the active metric');
 
+    const absentChip = dom.window.document.querySelector('[data-today-metric="absent"]');
+    absentChip.click();
+    absentChip.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(panel.hidden, true, 'Escape closes when focus remains on the keyboard opener');
+    assert.equal(dom.window.document.activeElement, absentChip, 'opener Escape keeps focus on the active metric');
+
     const lateChip = dom.window.document.querySelector('[data-today-metric="late"]');
     lateChip.click();
     panel.querySelector('.hr-today-metric-panel-close').click();

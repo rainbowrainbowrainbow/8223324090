@@ -12,7 +12,8 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const {
     createAutomation,
-    enqueueAutomationJob
+    enqueueAutomationJob,
+    idempotencyKey
 } = require('../../services/hrAttendanceDocumentAutomation');
 
 const enabled = process.env.RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION === 'true';
@@ -42,13 +43,14 @@ function createPool(testDb) {
 describe('HR attendance document automation on isolated PostgreSQL', { skip: !enabled, concurrency: 1 }, () => {
     let replicaA;
     let replicaB;
+    let automation;
     let automationId;
 
     before(async () => {
         const testDb = requireIsolatedDatabase();
         replicaA = createPool(testDb);
         replicaB = createPool(testDb);
-        const automation = await createAutomation({
+        automation = await createAutomation({
             name: `Disposable two-replica proof ${process.pid}`,
             documentType: 'arrival_inout',
             categoryIds: ['waiter', 'trampoline'],
@@ -89,7 +91,7 @@ describe('HR attendance document automation on isolated PostgreSQL', { skip: !en
 
         assert.ok(scheduled?.id);
         assert.equal(manual?.id, scheduled.id);
-        assert.equal(scheduled.idempotencyKey, manual.idempotencyKey);
+        const expectedIdempotencyKey = idempotencyKey(automation, FIXED_LOCAL_DATE);
 
         const stored = await replicaA.query(
             `SELECT id, idempotency_key, status, trigger_kind
@@ -99,7 +101,7 @@ describe('HR attendance document automation on isolated PostgreSQL', { skip: !en
         );
         assert.equal(stored.rowCount, 1);
         assert.equal(Number(stored.rows[0].id), scheduled.id);
-        assert.equal(stored.rows[0].idempotency_key, scheduled.idempotencyKey);
+        assert.equal(stored.rows[0].idempotency_key, expectedIdempotencyKey);
         assert.equal(stored.rows[0].status, 'building');
         assert.ok(['scheduled', 'manual'].includes(stored.rows[0].trigger_kind));
 

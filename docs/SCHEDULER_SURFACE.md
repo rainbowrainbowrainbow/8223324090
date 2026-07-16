@@ -64,6 +64,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkNpsFollowUp` | `services/scheduler.js` | customers | `60000` | `hourly` |
 | `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
 | `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
+| `checkHrAttendancePrintAutomations` | `services/scheduler.js` | hr | `60000` | none |
 | `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
 | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
 | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
@@ -86,6 +87,15 @@ Supported `guardScheduler` dedup modes:
   minute-level `YYYY-MM-DDTHH:MM` tracking key for observability.
 
 Unsupported dedup values are rejected before the scheduler function can run.
+
+`checkHrAttendancePrintAutomations` runs every minute without guard-level dedup.
+Its durable deduplication is owned by `hr_attendance_document_jobs`: the unique
+key combines automation, Kyiv local date, document type, and selection hash.
+Automation rows are locked with `FOR UPDATE`, PDF build work is claimed with
+`FOR UPDATE SKIP LOCKED` and a lease, and expired artifacts are removed by TTL.
+This allows two Railway replicas to evaluate the same minute without creating
+two documents. The current target is `queue_only`; physical printer delivery is
+intentionally outside this scheduler.
 
 `checkBookingPushReminders` intentionally uses no guard-level dedup so the
 60-second interval can evaluate bookings due in the next 30 minutes. Its direct
@@ -213,6 +223,7 @@ The manifest records test files where direct coverage exists:
 - `tests/task-lifecycle-scheduler-hardening.test.js`
 - `tests/telegram-callbacks.test.js`
 - `tests/graduation-ops-automation.test.js`
+- `tests/hr-attendance-document-automation.test.js`
 - `tests/training.test.js`
 - `tests/guardian-ops.test.js`
 - `tests/guardian-convergence.test.js`

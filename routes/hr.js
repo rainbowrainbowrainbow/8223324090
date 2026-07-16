@@ -157,6 +157,24 @@ const {
     listStaffResources,
     returnStaffResource
 } = require('../services/hrStaffResources');
+const {
+    buildHrAttendanceDocumentSnapshot
+} = require('../services/hrAttendanceDocuments');
+const {
+    buildHrAttendanceDocumentPdfBuffer,
+    hrAttendanceDocumentPdfFilename
+} = require('../services/hrAttendanceDocumentsPdf');
+const {
+    createAutomation: createHrAttendanceDocumentAutomation,
+    disableAutomation: disableHrAttendanceDocumentAutomation,
+    getJobPdf: getHrAttendanceDocumentJobPdf,
+    listAutomations: listHrAttendanceDocumentAutomations,
+    listJobs: listHrAttendanceDocumentJobs,
+    manualRun: runHrAttendanceDocumentAutomation,
+    requeueJob: requeueHrAttendanceDocumentJob,
+    cancelJob: cancelHrAttendanceDocumentJob,
+    updateAutomation: updateHrAttendanceDocumentAutomation
+} = require('../services/hrAttendanceDocumentAutomation');
 
 // RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
@@ -4772,6 +4790,145 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
 // ==========================================
 // CLOCK IN / CLOCK OUT
 // ==========================================
+
+// POST /api/hr/attendance-documents/pdf — private server-owned HR form generation.
+router.post('/attendance-documents/pdf', requireRole(...HR_VIEW_ROLES), async (req, res) => {
+    const safeContext = {
+        templateId: String(req.body?.templateId || '').slice(0, 32),
+        rosterMode: String(req.body?.rosterMode || '').slice(0, 32),
+        categoryCount: Array.isArray(req.body?.categoryIds) ? req.body.categoryIds.length : 0
+    };
+    try {
+        const snapshot = await buildHrAttendanceDocumentSnapshot(pool, req.body || {});
+        const buffer = await buildHrAttendanceDocumentPdfBuffer(snapshot);
+        const filename = hrAttendanceDocumentPdfFilename(snapshot);
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'no-store, private, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Content-Type-Options': 'nosniff'
+        });
+        res.send(buffer);
+    } catch (err) {
+        const status = Number(err.statusCode) === 400 ? 400 : 500;
+        if (status === 500) {
+            log.error('POST /hr/attendance-documents/pdf error', {
+                code: err.code || 'HR_ATTENDANCE_DOCUMENT_PDF_ERROR',
+                ...safeContext
+            });
+        }
+        res.status(status).json({
+            success: false,
+            code: err.code || 'HR_ATTENDANCE_DOCUMENT_PDF_ERROR',
+            error: status === 400
+                ? err.message
+                : 'Не вдалося сформувати HR PDF'
+        });
+    }
+});
+
+function sendHrAttendanceAutomationError(res, err) {
+    const status = [400, 404, 409, 410].includes(Number(err.statusCode)) ? Number(err.statusCode) : 500;
+    if (status === 500) {
+        log.error('HR attendance document automation error', {
+            code: err.code || 'HR_ATTENDANCE_AUTOMATION_ERROR'
+        });
+    }
+    return res.status(status).json({
+        success: false,
+        code: err.code || 'HR_ATTENDANCE_AUTOMATION_ERROR',
+        error: status === 500 ? 'Не вдалося виконати операцію з HR-документом' : err.message
+    });
+}
+
+router.get('/attendance-document-automations', async (_req, res) => {
+    try {
+        res.json({ success: true, automations: await listHrAttendanceDocumentAutomations(pool) });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.post('/attendance-document-automations', requireHrManage, async (req, res) => {
+    try {
+        const automation = await createHrAttendanceDocumentAutomation(req.body || {}, req.user, pool);
+        res.status(201).json({ success: true, automation });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.patch('/attendance-document-automations/:id', requireHrManage, async (req, res) => {
+    try {
+        const automation = await updateHrAttendanceDocumentAutomation(req.params.id, req.body || {}, req.user, pool);
+        res.json({ success: true, automation });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.post('/attendance-document-automations/:id/disable', requireHrManage, async (req, res) => {
+    try {
+        const automation = await disableHrAttendanceDocumentAutomation(req.params.id, req.user, pool);
+        res.json({ success: true, automation });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.post('/attendance-document-automations/:id/run', requireHrManage, async (req, res) => {
+    try {
+        const job = await runHrAttendanceDocumentAutomation(req.params.id, req.user, {}, pool);
+        res.status(job?.status === 'queued' ? 201 : 200).json({ success: true, job });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.get('/attendance-document-jobs', async (req, res) => {
+    try {
+        const jobs = await listHrAttendanceDocumentJobs({ limit: req.query.limit }, pool);
+        res.json({ success: true, jobs });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.get('/attendance-document-jobs/:id/pdf', async (req, res) => {
+    try {
+        const artifact = await getHrAttendanceDocumentJobPdf(req.params.id, pool);
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${artifact.filename || `hr-attendance-${req.params.id}.pdf`}"`,
+            'Cache-Control': 'no-store, private, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Content-Type-Options': 'nosniff',
+            'X-Document-SHA256': artifact.sha256 || ''
+        });
+        res.send(artifact.buffer);
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.post('/attendance-document-jobs/:id/cancel', requireHrManage, async (req, res) => {
+    try {
+        res.json({ success: true, job: await cancelHrAttendanceDocumentJob(req.params.id, pool) });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
+
+router.post('/attendance-document-jobs/:id/requeue', requireHrManage, async (req, res) => {
+    try {
+        res.json({ success: true, job: await requeueHrAttendanceDocumentJob(req.params.id, pool) });
+    } catch (err) {
+        sendHrAttendanceAutomationError(res, err);
+    }
+});
 
 // GET /api/hr/today — dashboard
 router.get('/today', async (req, res) => {

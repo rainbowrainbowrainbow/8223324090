@@ -8769,3 +8769,212 @@ body.dark-mode .hr-checklist-template-item input:not([readonly]):focus { border-
     .hr-checklist-template-actions { flex-wrap: wrap; }
     .hr-checklist-template-add { grid-template-columns: 1fr; }
 }
+
+/* HR attendance documents v27 */
+.hr-today-filter-row:has(.hr-print-documents-open) { grid-template-columns: minmax(220px, 1fr) auto auto; }
+.hr-print-documents-open { flex: 0 0 auto; min-height: 42px; white-space: nowrap; }
+.hr-print-documents-open span { margin-right: 6px; color: #2563eb; }
+.hr-print-documents-overlay {
+    position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center;
+    padding: 20px; background: rgba(15, 23, 42, .68); backdrop-filter: blur(8px);
+}
+.hr-print-documents-overlay.hidden { display: none; }
+body.hr-print-documents-open { overflow: hidden; }
+.hr-print-documents-modal {
+    display: flex; flex-direction: column; width: min(1380px, 100%); max-height: calc(100vh - 40px);
+    overflow: hidden; border: 1px solid rgba(148, 163, 184, .28); border-radius: 22px;
+    background: #f8fafc; color: #0f172a; box-shadow: 0 28px 80px rgba(15, 23, 42, .34);
+}
+.hr-print-documents-head, .hr-print-documents-actions { flex: 0 0 auto; background: #fff; }
+.hr-print-documents-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+    padding: 20px 24px 18px; border-bottom: 1px solid #e2e8f0;
+}
+.hr-print-documents-kicker {
+    display: block; margin-bottom: 4px; color: #2563eb; font-size: 11px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+}
+.hr-print-documents-head h2, .hr-print-documents-head p, .hr-print-documents-card h3,
+.hr-print-documents-card p, .hr-print-preview-head h3 { margin: 0; }
+.hr-print-documents-head h2 { font-size: clamp(22px, 2.5vw, 30px); line-height: 1.1; }
+.hr-print-documents-head p { margin-top: 6px; color: #64748b; font-size: 13px; }
+.hr-print-documents-close {
+    display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+    border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+    color: #475569; font-size: 26px; line-height: 1; cursor: pointer;
+}
+.hr-print-documents-close:hover, .hr-print-documents-close:focus-visible {
+    border-color: #93c5fd; color: #1d4ed8; outline: 3px solid rgba(59, 130, 246, .16);
+}
+.hr-print-documents-body {
+    display: grid; grid-template-columns: minmax(440px, .92fr) minmax(480px, 1.08fr);
+    min-height: 0; overflow: hidden;
+}
+.hr-print-documents-form { min-height: 0; padding: 18px; overflow-y: auto; }
+.hr-print-documents-card {
+    margin: 0 0 14px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 16px;
+    background: #fff; box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+}
+.hr-print-documents-card:last-child { margin-bottom: 0; }
+.hr-print-documents-card legend, .hr-print-documents-card h3 { color: #0f172a; font-size: 14px; font-weight: 800; }
+.hr-print-template-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.hr-print-template-picker legend { grid-column: 1 / -1; margin-bottom: 8px; padding: 0; }
+.hr-print-template-picker label { position: relative; cursor: pointer; }
+.hr-print-template-picker input { position: absolute; opacity: 0; pointer-events: none; }
+.hr-print-template-picker label > span {
+    display: flex; min-height: 78px; flex-direction: column; justify-content: center; gap: 5px;
+    padding: 13px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc;
+}
+.hr-print-template-picker label > span small { color: #64748b; font-size: 11px; line-height: 1.4; }
+.hr-print-template-picker input:checked + span { border-color: #3b82f6; background: #eff6ff; box-shadow: inset 0 0 0 1px #3b82f6; }
+.hr-print-template-picker input:focus-visible + span { outline: 3px solid rgba(59, 130, 246, .2); outline-offset: 2px; }
+.hr-print-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.hr-print-field-grid label, .hr-print-font-control {
+    display: flex; min-width: 0; flex-direction: column; gap: 6px;
+    color: #334155; font-size: 12px; font-weight: 700;
+}
+.hr-print-field-grid label.wide { grid-column: 1 / -1; }
+.hr-print-field-grid input, .hr-print-field-grid select, .hr-print-profession-search input {
+    width: 100%; min-height: 40px; padding: 9px 11px; border: 1px solid #cbd5e1;
+    border-radius: 10px; background: #fff; color: #0f172a; font: inherit; font-weight: 500;
+}
+.hr-print-field-grid input:focus, .hr-print-field-grid select:focus, .hr-print-profession-search input:focus {
+    border-color: #3b82f6; outline: 3px solid rgba(59, 130, 246, .14);
+}
+.hr-print-field-note { margin-top: 10px !important; color: #64748b; font-size: 11px; line-height: 1.45; }
+.hr-print-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.hr-print-section-head p { margin-top: 4px; color: #64748b; font-size: 11px; }
+.hr-print-profession-search { display: block; margin-top: 12px; }
+.hr-print-profession-list {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px;
+    max-height: 236px; margin-top: 10px; padding-right: 3px; overflow-y: auto;
+}
+.hr-print-profession-option {
+    display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px 10px;
+    border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc;
+    color: #334155; font-size: 12px; cursor: pointer;
+}
+.hr-print-profession-option:has(input:checked) { border-color: #93c5fd; background: #eff6ff; color: #1e40af; }
+.hr-print-profession-option input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: #2563eb; }
+.hr-print-profession-option span { min-width: 0; overflow-wrap: anywhere; }
+.hr-print-empty {
+    margin-top: 10px !important; padding: 12px; border-radius: 10px; background: #f8fafc;
+    color: #64748b; font-size: 12px; text-align: center;
+}
+.hr-print-font-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin-top: 14px; }
+.hr-print-font-control-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px; align-items: center; gap: 10px; }
+.hr-print-font-control input[type="range"] { min-width: 0; accent-color: #2563eb; }
+.hr-print-font-value {
+    padding: 4px 7px; border-radius: 7px; background: #eff6ff; color: #1d4ed8;
+    font-size: 11px; font-weight: 800; text-align: center;
+}
+.hr-print-preset-warning {
+    margin-top: 12px !important; padding: 9px 11px; border: 1px solid #fbbf24;
+    border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 11px;
+}
+.hr-print-weekdays {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; border: 0;
+}
+.hr-print-weekdays legend { width: 100%; margin-bottom: 2px; color: #334155 !important; font-size: 12px !important; }
+.hr-print-weekdays label {
+    display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px;
+    border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc;
+    color: #475569; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.hr-print-weekdays label:has(input:checked) { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+.hr-print-weekdays input { accent-color: #2563eb; }
+.hr-print-automation-enabled > span { display: flex; align-items: center; gap: 6px; min-height: 40px; font-weight: 500; }
+.hr-print-automation-enabled input { width: 17px !important; min-height: 17px !important; accent-color: #2563eb; }
+.hr-print-automation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.hr-print-automation-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.hr-print-automation-columns h4 { margin: 0 0 7px; color: #334155; font-size: 12px; }
+.hr-print-operation-list { display: grid; gap: 7px; color: #64748b; font-size: 11px; }
+.hr-print-operation-item {
+    min-width: 0; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc;
+}
+.hr-print-operation-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.hr-print-operation-item strong { min-width: 0; color: #1e293b; overflow-wrap: anywhere; }
+.hr-print-operation-meta { margin-top: 4px; line-height: 1.4; }
+.hr-print-operation-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.hr-print-operation-actions button { min-height: 30px; padding: 5px 8px; font-size: 10px; }
+.hr-print-operation-status { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; background: #e2e8f0; color: #475569; font-weight: 800; }
+.hr-print-operation-status.is-ready, .hr-print-operation-status.is-enabled { background: #dcfce7; color: #166534; }
+.hr-print-operation-status.is-failed { background: #fee2e2; color: #991b1b; }
+.hr-print-operation-status.is-building { background: #dbeafe; color: #1d4ed8; }
+.hr-print-preview-panel {
+    display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 18px;
+    border-left: 1px solid #e2e8f0; background: #e2e8f0;
+}
+.hr-print-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.hr-print-preview-head > div > span { color: #2563eb; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.hr-print-preview-head h3 { margin-top: 2px; font-size: 15px; }
+.hr-print-preview-badge { padding: 5px 9px; border-radius: 999px; background: #fff; color: #64748b; font-size: 11px; font-weight: 800; }
+.hr-print-preview-badge.is-ready { background: #dcfce7; color: #166534; }
+.hr-print-preview-badge.is-stale { background: #fef3c7; color: #92400e; }
+.hr-print-preview-state, .hr-print-preview-frame {
+    width: 100%; min-height: 520px; flex: 1 1 auto; border: 0; border-radius: 12px; background: #fff;
+}
+.hr-print-preview-state {
+    display: grid; place-items: center; padding: 28px; color: #64748b;
+    font-size: 13px; line-height: 1.5; text-align: center;
+}
+.hr-print-preview-state.is-loading::before {
+    width: 26px; height: 26px; margin-right: 10px; border: 3px solid #dbeafe;
+    border-top-color: #2563eb; border-radius: 50%; content: ''; animation: hr-print-spin .75s linear infinite;
+}
+@keyframes hr-print-spin { to { transform: rotate(360deg); } }
+.hr-print-documents-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 14px 20px; border-top: 1px solid #e2e8f0;
+}
+.hr-print-documents-actions > span { min-width: 0; margin-right: auto; color: #64748b; font-size: 12px; }
+.hr-print-documents-actions button { min-height: 40px; }
+body.dark-mode .hr-print-documents-modal { border-color: rgba(148, 163, 184, .22); background: #0f172a; color: #e2e8f0; }
+body.dark-mode .hr-print-documents-head, body.dark-mode .hr-print-documents-actions,
+body.dark-mode .hr-print-documents-card { border-color: #334155; background: #111827; }
+body.dark-mode .hr-print-documents-head h2, body.dark-mode .hr-print-documents-card h3,
+body.dark-mode .hr-print-documents-card legend, body.dark-mode .hr-print-preview-head h3 { color: #f8fafc; }
+body.dark-mode .hr-print-documents-close, body.dark-mode .hr-print-template-picker label > span,
+body.dark-mode .hr-print-field-grid input, body.dark-mode .hr-print-field-grid select,
+body.dark-mode .hr-print-profession-search input, body.dark-mode .hr-print-profession-option {
+    border-color: #475569; background: #1e293b; color: #e2e8f0;
+}
+body.dark-mode .hr-print-template-picker input:checked + span,
+body.dark-mode .hr-print-profession-option:has(input:checked) {
+    border-color: #60a5fa; background: rgba(37, 99, 235, .2); color: #bfdbfe;
+}
+body.dark-mode .hr-print-preview-panel { border-color: #334155; background: #020617; }
+body.dark-mode .hr-print-preview-state { background: #111827; color: #94a3b8; }
+body.dark-mode .hr-print-preset-warning { border-color: #92400e; background: rgba(146, 64, 14, .2); color: #fde68a; }
+body.dark-mode .hr-print-weekdays label, body.dark-mode .hr-print-operation-item {
+    border-color: #475569; background: #1e293b; color: #cbd5e1;
+}
+body.dark-mode .hr-print-weekdays legend, body.dark-mode .hr-print-automation-columns h4,
+body.dark-mode .hr-print-operation-item strong { color: #e2e8f0 !important; }
+
+@media (max-width: 980px) {
+    .hr-print-documents-body { display: block; overflow-y: auto; }
+    .hr-print-documents-form { overflow: visible; }
+    .hr-print-preview-panel { min-height: 620px; border-top: 1px solid #e2e8f0; border-left: 0; }
+    .hr-print-documents-actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+    .hr-today-filter-row:has(.hr-print-documents-open) { grid-template-columns: 1fr; }
+    .hr-today-filter-row .hr-print-documents-open { width: 100%; justify-content: center; }
+    .hr-print-documents-overlay { padding: 0; }
+    .hr-print-documents-modal { width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+    .hr-print-documents-head { padding: 15px 16px; }
+    .hr-print-documents-head p { display: none; }
+    .hr-print-documents-form, .hr-print-preview-panel { padding: 12px; }
+    .hr-print-template-picker, .hr-print-field-grid, .hr-print-profession-list, .hr-print-font-controls,
+    .hr-print-automation-columns { grid-template-columns: 1fr; }
+    .hr-print-field-grid label.wide { grid-column: auto; }
+    .hr-print-section-head { align-items: stretch; flex-direction: column; }
+    .hr-print-section-head .btn-sm { align-self: flex-start; }
+    .hr-print-preview-panel { min-height: 520px; }
+    .hr-print-preview-state, .hr-print-preview-frame { min-height: 420px; }
+    .hr-print-documents-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 12px; }
+    .hr-print-documents-actions > span, .hr-print-documents-actions #hrPrintPreviewButton { grid-column: 1 / -1; }
+    .hr-print-documents-actions button { width: 100%; }
+}

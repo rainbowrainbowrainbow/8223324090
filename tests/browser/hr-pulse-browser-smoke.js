@@ -211,12 +211,84 @@ async function assertStaffScheduleInitialized(page, label) {
     }
 }
 
+async function assertHrPrintDocuments(page) {
+    const openButton = page.getByRole('button', { name: 'Документи для друку' });
+    await openButton.waitFor({ timeout: 20000 });
+    await openButton.click();
+    const dialog = page.getByRole('dialog', { name: 'Документи для друку' });
+    await dialog.waitFor({ timeout: 20000 });
+    assert.equal(await dialog.locator('[data-hr-print-category]').count(), 18, 'print modal exposes canonical v27 categories');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'hrPrintDocumentsClose', 'print modal receives initial focus');
+    await dialog.getByRole('heading', { name: '6. Автоматичне формування' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('hrPrintAutomationList')?.textContent?.includes('Завантажуємо'));
+    assert.equal(await dialog.locator('#hrPrintAutomationSave').isEnabled(), true, 'manager can configure CRM PDF automation');
+
+    const search = dialog.getByRole('searchbox', { name: 'Пошук категорій' });
+    await search.fill('офі');
+    assert.equal(await dialog.getByRole('checkbox', { name: 'Офіціанти' }).count(), 1, 'profession search finds waiters');
+    assert.equal(await dialog.getByRole('checkbox', { name: 'Батутисти' }).count(), 0, 'profession search stays category-local');
+    await search.fill('');
+
+    await dialog.getByText('Місячний табель-відмічалка', { exact: true }).click();
+    assert.equal(await dialog.locator('#hrPrintDocumentMonth').isVisible(), true, 'monthly template exposes month input');
+    assert.equal(await dialog.locator('#hrPrintDailyMode').isVisible(), false, 'monthly template hides daily attendance mode');
+    assert.equal(await dialog.locator('#hrPrintAutomationWeekdays').isVisible(), false, 'monthly automation uses first-day rule instead of weekdays');
+    await dialog.getByText('Лист приходу / уходу', { exact: true }).click();
+    assert.equal(await dialog.locator('#hrPrintDailyMode').inputValue(), 'manual_blank', 'browser smoke never requests production actual attendance');
+    assert.equal(await dialog.locator('#hrPrintAutomationWeekdays').isVisible(), true, 'daily automation exposes weekdays');
+
+    await dialog.locator('#hrPrintCustomTitle').fill('Browser smoke title');
+    assert.equal(await dialog.locator('#hrPrintPresetWarning').isVisible(), true, 'custom title marks preset as changed');
+    await dialog.getByRole('button', { name: 'Скинути до еталону v27' }).click();
+    assert.equal(await dialog.locator('#hrPrintPresetWarning').isVisible(), false, 'reset restores v27 preset');
+
+    let pdfRequestCount = 0;
+    const countPdfRequest = request => {
+        if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/hr/attendance-documents/pdf') pdfRequestCount += 1;
+    };
+    page.on('request', countPdfRequest);
+    const responsePromise = page.waitForResponse(response => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/hr/attendance-documents/pdf'
+    ), { timeout: 30000 });
+    await dialog.getByRole('button', { name: 'Сформувати preview' }).click();
+    const response = await responsePromise;
+    assert.equal(response.status(), 200, 'manual print preview endpoint succeeds');
+    assert.match(response.headers()['content-type'] || '', /application\/pdf/i, 'manual print preview returns PDF');
+    const payload = response.request().postDataJSON();
+    assert.equal(payload.dailyMode, 'manual_blank', 'browser smoke sends manual blank mode only');
+    assert.equal(payload.categoryIds.length, 18, 'browser smoke sends all canonical categories');
+    assert.equal(Object.hasOwn(payload, 'employees'), false, 'browser payload never sends employee PII');
+    await dialog.locator('#hrPrintPreviewFrame:not(.hidden)').waitFor({ timeout: 20000 });
+    assert.equal(await dialog.getByRole('button', { name: 'Завантажити PDF' }).isEnabled(), true, 'download enables after preview');
+    assert.equal(await dialog.getByRole('button', { name: 'Друкувати' }).isEnabled(), true, 'print enables after preview');
+    assert.equal(pdfRequestCount, 1, 'preview uses one server snapshot request');
+    page.off('request', countPdfRequest);
+
+    await page.keyboard.press('Escape');
+    assert.equal(await dialog.isVisible(), false, 'Escape closes print modal');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'btnHrPrintDocuments', 'print modal restores opener focus');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openButton.click();
+    const mobileGeometry = await dialog.evaluate(element => ({
+        width: element.getBoundingClientRect().width,
+        viewport: document.documentElement.clientWidth,
+        bodyWidth: document.body.scrollWidth
+    }));
+    assert.ok(mobileGeometry.width <= mobileGeometry.viewport + 1, 'mobile print dialog fits viewport');
+    assert.ok(mobileGeometry.bodyWidth <= mobileGeometry.viewport + 1, 'mobile print dialog has no page overflow');
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 1440, height: 900 });
+}
+
 async function runHrPulseFlow(page, base) {
     await page.goto(`${base}/hr#today`, { waitUntil: 'domcontentloaded' });
     await assertThemeMode(page, 'today tab');
     await assertHrShell(page, '#today', 'today tab');
     await assertPulseNavClean(page, 'today tab');
     await assertNoScheduleIframe(page, 'today tab');
+    await assertHrPrintDocuments(page);
 
     await page.locator('.hr-pulse-card').filter({ hasText: 'Графік' }).first().click();
     await assertHrShell(page, '#schedule', 'schedule click');

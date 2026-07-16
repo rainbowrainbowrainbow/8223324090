@@ -38,6 +38,50 @@ const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
     'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 const MONTHS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+const HR_PRINT_CATEGORIES = Object.freeze([
+    { id: 'art_director', label: 'Арт-директор', professionKeys: ['art_director'] },
+    { id: 'leader', label: 'Керівник', professionKeys: ['director', 'vice_director'] },
+    { id: 'bartender', label: 'Бармен', professionKeys: ['bartender', 'barista'] },
+    { id: 'wardrobe', label: 'Гардеробниця', professionKeys: ['wardrobe'] },
+    { id: 'cleaning', label: 'Прибирання', professionKeys: ['cleaner', 'cleaning'] },
+    { id: 'hall_hostess', label: 'Хозяюшка залу', professionKeys: ['cleaning'] },
+    { id: 'trampoline', label: 'Батутисти', professionKeys: ['trampoline_instructor', 'instructor', 'senior_instructor'] },
+    { id: 'animator', label: 'Аніматори', professionKeys: ['animator'] },
+    { id: 'tech_director', label: 'Тех-директор', professionKeys: ['it_specialist', 'maintenance', 'technician'] },
+    { id: 'hr', label: 'HR-менеджер', professionKeys: ['hr', 'hr_manager'] },
+    { id: 'admin', label: 'Адміністратори', professionKeys: ['admin'] },
+    { id: 'accountant', label: 'Бухгалтер', professionKeys: ['accountant'] },
+    { id: 'sales_manager', label: 'Менеджери з продажу', professionKeys: ['manager'] },
+    { id: 'top_manager', label: 'Топ-менеджер', professionKeys: ['senior_manager'] },
+    { id: 'cook', label: 'Кухарі', professionKeys: ['cook', 'head_cook', 'head_chef'] },
+    { id: 'waiter', label: 'Офіціанти', professionKeys: ['waiter'] },
+    { id: 'dishwasher', label: 'Мийниця', professionKeys: ['dishwasher'] },
+    { id: 'security', label: 'Охорона', professionKeys: ['security', 'maintenance'] }
+]);
+const HR_PRINT_FONT_FIELDS = Object.freeze({
+    arrival_inout: Object.freeze([
+        { key: 'title', label: 'Заголовок', value: 14, min: 12, max: 16 },
+        { key: 'dailyCategory', label: 'Категорія', value: 8, min: 6.5, max: 9 },
+        { key: 'dailyEmployee', label: 'ПІБ працівника', value: 15, min: 12, max: 16 },
+        { key: 'meta', label: 'Мета-дані', value: 9, min: 7, max: 10 }
+    ]),
+    month_grid: Object.freeze([
+        { key: 'title', label: 'Заголовок', value: 14, min: 12, max: 16 },
+        { key: 'monthlyCategory', label: 'Категорія', value: 6, min: 5, max: 7.5 },
+        { key: 'monthlyEmployee', label: 'ПІБ працівника', value: 9, min: 7, max: 10 },
+        { key: 'meta', label: 'Мета-дані', value: 9, min: 7, max: 10 }
+    ])
+});
+const HR_PRINT_DEFAULT_TEXTS = Object.freeze({
+    arrival_inout: Object.freeze({
+        title: 'Лист приходу / уходу працівників',
+        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
+    }),
+    month_grid: Object.freeze({
+        title: 'Місячний табель-відмічалка',
+        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 horizontal • CRM Event Genix'
+    })
+});
 const HR_POOL_LABELS = {
     core: 'Основна команда',
     reserve: 'Резерв',
@@ -421,6 +465,22 @@ let professionCatalogStructureNodes = [];
 let professionCatalogInventory = null;
 let professionCatalogLoadState = 'idle';
 let professionCatalogLoadError = '';
+let hrPrintDocumentsState = {
+    initialized: false,
+    open: false,
+    opener: null,
+    selectedCategoryIds: new Set(HR_PRINT_CATEGORIES.map(item => item.id)),
+    professionQuery: '',
+    previewBlob: null,
+    previewUrl: '',
+    previewFileName: '',
+    generating: false,
+    requestSeq: 0,
+    operationsLoading: false,
+    automations: [],
+    jobs: [],
+    editingAutomationId: null
+};
 let professionWorkspaceRequestSeq = 0;
 let professionWorkspaceState = {
     open: false,
@@ -1493,6 +1553,718 @@ async function confirmHrAction(message, options = {}) {
 }
 
 // ==========================================
+// HR ATTENDANCE DOCUMENTS V27
+// ==========================================
+
+function hrPrintTemplateId() {
+    return document.querySelector('input[name="hrPrintTemplate"]:checked')?.value || 'arrival_inout';
+}
+
+function hrPrintSelectedCategories() {
+    return HR_PRINT_CATEGORIES.filter(item => hrPrintDocumentsState.selectedCategoryIds.has(item.id));
+}
+
+function hrPrintFocusableElements() {
+    const modal = document.querySelector('#hrPrintDocumentsModal .hr-print-documents-modal');
+    if (!modal) return [];
+    return Array.from(modal.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe:not(.hidden), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => !element.closest('.hidden') && element.getClientRects().length > 0);
+}
+
+function setHrPrintStatus(message = '', tone = '') {
+    const status = document.getElementById('hrPrintDocumentsStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.tone = tone;
+}
+
+function releaseHrPrintPreview() {
+    const frame = document.getElementById('hrPrintPreviewFrame');
+    if (frame) {
+        frame.classList.add('hidden');
+        frame.removeAttribute('src');
+    }
+    if (hrPrintDocumentsState.previewUrl) URL.revokeObjectURL(hrPrintDocumentsState.previewUrl);
+    hrPrintDocumentsState.previewUrl = '';
+    hrPrintDocumentsState.previewBlob = null;
+    hrPrintDocumentsState.previewFileName = '';
+    document.getElementById('hrPrintDownloadButton')?.setAttribute('disabled', '');
+    document.getElementById('hrPrintPrintButton')?.setAttribute('disabled', '');
+}
+
+function invalidateHrPrintPreview(message = 'Налаштування змінено. Сформуйте preview ще раз.') {
+    hrPrintDocumentsState.requestSeq += 1;
+    releaseHrPrintPreview();
+    const state = document.getElementById('hrPrintPreviewState');
+    const badge = document.getElementById('hrPrintPreviewBadge');
+    if (state) {
+        state.textContent = message;
+        state.classList.remove('hidden', 'is-loading');
+    }
+    if (badge) {
+        badge.textContent = 'Потрібне оновлення';
+        badge.className = 'hr-print-preview-badge is-stale';
+    }
+}
+
+function hrPrintEstimatedEmployeeIds() {
+    const ids = new Set();
+    for (const category of hrPrintSelectedCategories()) {
+        for (const professionKey of category.professionKeys) {
+            const profession = hrProfessions.find(item => normalizeProfessionKey(item.key) === professionKey);
+            for (const person of profession?.people || []) {
+                const id = Number(person.id);
+                if (person.isActive !== false && Number.isFinite(id)) ids.add(id);
+            }
+        }
+    }
+    return ids;
+}
+
+function syncHrPrintEmployeeCount() {
+    const count = document.getElementById('hrPrintEmployeeCount');
+    if (!count) return;
+    const categoryCount = hrPrintDocumentsState.selectedCategoryIds.size;
+    if (professionCatalogLoadState === 'loading') {
+        count.textContent = `${categoryCount} кат. · завантажуємо актуальний склад…`;
+        return;
+    }
+    if (professionCatalogLoadState === 'error') {
+        count.textContent = `${categoryCount} кат. · склад уточнить сервер під час preview`;
+        return;
+    }
+    const employeeCount = hrPrintEstimatedEmployeeIds().size;
+    count.textContent = `${categoryCount} кат. · попередньо ${employeeCount} унік. працівн.`;
+}
+
+function syncHrPrintSelectAllButton() {
+    const button = document.getElementById('hrPrintSelectAll');
+    if (!button) return;
+    const allSelected = hrPrintDocumentsState.selectedCategoryIds.size === HR_PRINT_CATEGORIES.length;
+    button.textContent = allSelected ? 'Скасувати вибір' : 'Вибрати всі';
+    button.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+}
+
+function renderHrPrintProfessionList() {
+    const list = document.getElementById('hrPrintProfessionList');
+    const empty = document.getElementById('hrPrintProfessionEmpty');
+    if (!list) return;
+    const query = String(hrPrintDocumentsState.professionQuery || '').trim().toLocaleLowerCase('uk-UA');
+    const visible = HR_PRINT_CATEGORIES.filter(item => !query || item.label.toLocaleLowerCase('uk-UA').includes(query));
+    list.innerHTML = visible.map(item => `
+        <label class="hr-print-profession-option">
+            <input type="checkbox" value="${escapeHtml(item.id)}" data-hr-print-category${hrPrintDocumentsState.selectedCategoryIds.has(item.id) ? ' checked' : ''}>
+            <span>${escapeHtml(item.label)}</span>
+        </label>
+    `).join('');
+    empty?.classList.toggle('hidden', visible.length > 0);
+    syncHrPrintSelectAllButton();
+    syncHrPrintEmployeeCount();
+}
+
+function renderHrPrintFontControls() {
+    const root = document.getElementById('hrPrintFontControls');
+    if (!root) return;
+    const fields = HR_PRINT_FONT_FIELDS[hrPrintTemplateId()] || HR_PRINT_FONT_FIELDS.arrival_inout;
+    root.innerHTML = fields.map(field => `
+        <label class="hr-print-font-control">
+            <span>${escapeHtml(field.label)}</span>
+            <span class="hr-print-font-control-row">
+                <input type="range" min="${field.min}" max="${field.max}" step="0.5" value="${field.value}" data-hr-print-font="${escapeHtml(field.key)}" data-default-value="${field.value}">
+                <output class="hr-print-font-value" data-hr-print-font-output="${escapeHtml(field.key)}">${field.value} pt</output>
+            </span>
+        </label>
+    `).join('');
+    syncHrPrintPresetWarning();
+}
+
+function hrPrintFontPreset() {
+    const values = {};
+    document.querySelectorAll('[data-hr-print-font]').forEach(input => {
+        values[input.dataset.hrPrintFont] = Number(input.value);
+    });
+    return values;
+}
+
+function syncHrPrintFontOutput(input) {
+    if (!input?.dataset.hrPrintFont) return;
+    const output = document.querySelector(`[data-hr-print-font-output="${input.dataset.hrPrintFont}"]`);
+    if (output) output.textContent = `${Number(input.value)} pt`;
+}
+
+function syncHrPrintPresetWarning() {
+    const customizedFonts = Array.from(document.querySelectorAll('[data-hr-print-font]'))
+        .some(input => Number(input.value) !== Number(input.dataset.defaultValue));
+    const customizedText = Boolean(
+        document.getElementById('hrPrintCustomTitle')?.value.trim()
+        || document.getElementById('hrPrintCustomFooter')?.value.trim()
+    );
+    document.getElementById('hrPrintPresetWarning')?.classList.toggle('hidden', !(customizedFonts || customizedText));
+}
+
+function syncHrPrintTemplateFields() {
+    const isDaily = hrPrintTemplateId() === 'arrival_inout';
+    const dateField = document.getElementById('hrPrintDateField');
+    const monthField = document.getElementById('hrPrintMonthField');
+    const dailyModeField = document.getElementById('hrPrintDailyModeField');
+    dateField?.classList.toggle('hidden', !isDaily);
+    monthField?.classList.toggle('hidden', isDaily);
+    dailyModeField?.classList.toggle('hidden', !isDaily);
+    const dateInput = document.getElementById('hrPrintDocumentDate');
+    const monthInput = document.getElementById('hrPrintDocumentMonth');
+    if (dateInput) dateInput.required = isDaily;
+    if (monthInput) monthInput.required = !isDaily;
+    document.getElementById('hrPrintAutomationWeekdays')?.classList.toggle('hidden', !isDaily);
+    const scheduleNote = document.getElementById('hrPrintAutomationScheduleNote');
+    if (scheduleNote) {
+        scheduleNote.textContent = isDaily
+            ? 'Після перезапуску CRM ранковий документ буде створено лише в межах 120 хвилин, не ввечері.'
+            : 'Місячний табель формується першого дня місяця у вибраний час.';
+    }
+    renderHrPrintFontControls();
+}
+
+function resetHrPrintPreset() {
+    document.getElementById('hrPrintCustomTitle').value = '';
+    document.getElementById('hrPrintCustomFooter').value = '';
+    renderHrPrintFontControls();
+    invalidateHrPrintPreview('Еталон v27 відновлено. Сформуйте preview.');
+    setHrPrintStatus('Налаштування шрифтів і текстів повернуто до еталону v27.', 'success');
+}
+
+function hrPrintRequestPayload() {
+    const templateId = hrPrintTemplateId();
+    const categoryIds = hrPrintSelectedCategories().map(item => item.id);
+    if (!categoryIds.length) throw new Error('Оберіть хоча б одну категорію працівників.');
+    const date = document.getElementById('hrPrintDocumentDate')?.value;
+    const month = document.getElementById('hrPrintDocumentMonth')?.value;
+    if (templateId === 'arrival_inout' && !date) throw new Error('Оберіть дату документа.');
+    if (templateId === 'month_grid' && !month) throw new Error('Оберіть місяць документа.');
+    const title = document.getElementById('hrPrintCustomTitle')?.value.trim() || '';
+    const footerNote = document.getElementById('hrPrintCustomFooter')?.value.trim() || '';
+    const texts = {};
+    if (title) texts.title = title;
+    if (footerNote) texts.footerNote = footerNote;
+    return {
+        templateId,
+        ...(templateId === 'arrival_inout' ? { documentDate: date } : { month }),
+        categoryIds,
+        dailyMode: templateId === 'arrival_inout'
+            ? (document.getElementById('hrPrintDailyMode')?.value || 'manual_blank')
+            : 'manual_blank',
+        rosterMode: 'all_eligible',
+        locationShift: document.getElementById('hrPrintLocationShift')?.value.trim() || '',
+        markedBy: document.getElementById('hrPrintMarkedBy')?.value.trim() || '',
+        texts,
+        fontPreset: hrPrintFontPreset()
+    };
+}
+
+function hrPrintResponseError(response) {
+    return response.text().then(text => {
+        try {
+            const body = text ? JSON.parse(text) : {};
+            return body.error || body.message || `HTTP ${response.status}`;
+        } catch {
+            return text || `HTTP ${response.status}`;
+        }
+    });
+}
+
+async function hrPrintFetchJson(path, options = {}) {
+    const request = {
+        ...options,
+        headers: { Accept: 'application/json', ...(options.headers || {}) }
+    };
+    const response = typeof apiFetchWithAuthRetry === 'function'
+        ? await apiFetchWithAuthRetry(path, request)
+        : await fetch(path, request);
+    if (!response) throw new Error('Сервер не повернув відповідь.');
+    if (!response.ok) throw new Error(await hrPrintResponseError(response));
+    return response.json();
+}
+
+function hrPrintJobStatusLabel(status) {
+    return ({
+        building: 'Формується', queued: 'PDF готовий', failed: 'Помилка', cancelled: 'Скасовано',
+        expired: 'Протерміновано', claimed: 'Отримано агентом', printing: 'Друкується',
+        completed: 'Надруковано', unknown_outcome: 'Невідомий результат'
+    })[status] || status || 'Невідомо';
+}
+
+function hrPrintFormatDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('uk-UA', {
+        timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+    }).format(date);
+}
+
+function renderHrPrintOperations() {
+    const automationsRoot = document.getElementById('hrPrintAutomationList');
+    const jobsRoot = document.getElementById('hrPrintJobList');
+    if (automationsRoot) {
+        automationsRoot.innerHTML = hrPrintDocumentsState.automations.length
+            ? hrPrintDocumentsState.automations.map(item => `
+                <article class="hr-print-operation-item">
+                    <div class="hr-print-operation-item-head">
+                        <strong>${escapeHtml(item.name)}</strong>
+                        <span class="hr-print-operation-status${item.enabled ? ' is-enabled' : ''}">${item.enabled ? 'Увімкнено' : 'Вимкнено'}</span>
+                    </div>
+                    <div class="hr-print-operation-meta">${item.documentType === 'arrival_inout' ? 'Лист приходу/уходу' : 'Місячний табель'} · ${escapeHtml(item.localTime || '08:00')} · ${item.categoryIds.length} кат.</div>
+                    <div class="hr-print-operation-actions">
+                        ${canManage ? `<button type="button" class="btn-secondary" data-hr-print-operation="edit-automation" data-id="${item.id}">Редагувати</button>
+                        <button type="button" class="btn-primary" data-hr-print-operation="run-automation" data-id="${item.id}">Сформувати зараз</button>
+                        ${item.enabled ? `<button type="button" class="btn-secondary" data-hr-print-operation="disable-automation" data-id="${item.id}">Вимкнути</button>` : ''}` : ''}
+                    </div>
+                </article>
+            `).join('')
+            : '<div class="hr-print-operation-item">Збережених автоматизацій ще немає.</div>';
+    }
+    if (jobsRoot) {
+        jobsRoot.innerHTML = hrPrintDocumentsState.jobs.length
+            ? hrPrintDocumentsState.jobs.map(job => `
+                <article class="hr-print-operation-item">
+                    <div class="hr-print-operation-item-head">
+                        <strong>${escapeHtml(job.automationName || `PDF #${job.id}`)}</strong>
+                        <span class="hr-print-operation-status is-${escapeHtml(job.status)}">${escapeHtml(hrPrintJobStatusLabel(job.status))}</span>
+                    </div>
+                    <div class="hr-print-operation-meta">${escapeHtml(String(job.localDate || ''))} · ${hrPrintFormatDateTime(job.createdAt)}${job.errorMessage ? `<br>${escapeHtml(job.errorMessage)}` : ''}</div>
+                    <div class="hr-print-operation-actions">
+                        ${job.pdfByteLength && job.status !== 'expired' ? `<button type="button" class="btn-primary" data-hr-print-operation="preview-job" data-id="${job.id}" data-filename="${escapeHtml(job.filename || '')}">Відкрити PDF</button>` : ''}
+                        ${canManage && ['failed', 'cancelled', 'queued', 'expired'].includes(job.status) ? `<button type="button" class="btn-secondary" data-hr-print-operation="requeue-job" data-id="${job.id}">Повторити</button>` : ''}
+                        ${canManage && ['building', 'queued', 'failed'].includes(job.status) ? `<button type="button" class="btn-secondary" data-hr-print-operation="cancel-job" data-id="${job.id}">Скасувати</button>` : ''}
+                    </div>
+                </article>
+            `).join('')
+            : '<div class="hr-print-operation-item">Черга PDF порожня.</div>';
+    }
+}
+
+async function loadHrPrintOperations({ silent = false } = {}) {
+    if (hrPrintDocumentsState.operationsLoading) return;
+    hrPrintDocumentsState.operationsLoading = true;
+    if (!silent) {
+        const automationRoot = document.getElementById('hrPrintAutomationList');
+        const jobsRoot = document.getElementById('hrPrintJobList');
+        if (automationRoot) automationRoot.textContent = 'Завантажуємо…';
+        if (jobsRoot) jobsRoot.textContent = 'Завантажуємо…';
+    }
+    try {
+        const [automationResponse, jobsResponse] = await Promise.all([
+            hrPrintFetchJson('/api/hr/attendance-document-automations'),
+            hrPrintFetchJson('/api/hr/attendance-document-jobs?limit=30')
+        ]);
+        hrPrintDocumentsState.automations = automationResponse.automations || [];
+        hrPrintDocumentsState.jobs = jobsResponse.jobs || [];
+        renderHrPrintOperations();
+    } catch (error) {
+        setHrPrintStatus(error.message || 'Не вдалося завантажити автоматизації.', 'error');
+        const root = document.getElementById('hrPrintAutomationList');
+        if (root) root.textContent = error.message || 'Помилка завантаження.';
+    } finally {
+        hrPrintDocumentsState.operationsLoading = false;
+    }
+}
+
+function hrPrintAutomationPayload() {
+    const request = hrPrintRequestPayload();
+    const weekdays = Array.from(document.querySelectorAll('#hrPrintAutomationWeekdays input:checked')).map(input => Number(input.value));
+    const name = document.getElementById('hrPrintAutomationName')?.value.trim() || '';
+    if (!name) throw new Error('Вкажіть назву автоматизації.');
+    if (request.templateId === 'arrival_inout' && !weekdays.length) throw new Error('Оберіть хоча б один день формування.');
+    return {
+        name,
+        documentType: request.templateId,
+        categoryIds: request.categoryIds,
+        weekdays,
+        localTime: document.getElementById('hrPrintAutomationTime')?.value || '08:00',
+        copies: Number(document.getElementById('hrPrintAutomationCopies')?.value || 1),
+        artifactTtlHours: Number(document.getElementById('hrPrintAutomationTtl')?.value || 168),
+        catchUpMinutes: 120,
+        enabled: document.getElementById('hrPrintAutomationEnabled')?.checked === true,
+        settings: {
+            dailyMode: request.dailyMode,
+            rosterMode: request.rosterMode,
+            locationShift: request.locationShift,
+            markedBy: request.markedBy,
+            texts: request.texts,
+            fontPreset: request.fontPreset
+        }
+    };
+}
+
+function resetHrPrintAutomationEditor() {
+    hrPrintDocumentsState.editingAutomationId = null;
+    const name = document.getElementById('hrPrintAutomationName');
+    const enabled = document.getElementById('hrPrintAutomationEnabled');
+    const save = document.getElementById('hrPrintAutomationSave');
+    if (name) name.value = '';
+    if (enabled) enabled.checked = false;
+    if (save) save.textContent = 'Зберегти автоматизацію';
+    document.getElementById('hrPrintAutomationCancelEdit')?.classList.add('hidden');
+}
+
+function editHrPrintAutomation(id) {
+    const item = hrPrintDocumentsState.automations.find(entry => Number(entry.id) === Number(id));
+    if (!item) return;
+    hrPrintDocumentsState.editingAutomationId = item.id;
+    const radio = document.querySelector(`input[name="hrPrintTemplate"][value="${item.documentType}"]`);
+    if (radio) radio.checked = true;
+    hrPrintDocumentsState.selectedCategoryIds = new Set(item.categoryIds || []);
+    document.getElementById('hrPrintAutomationName').value = item.name || '';
+    document.getElementById('hrPrintAutomationTime').value = item.localTime || '08:00';
+    document.getElementById('hrPrintAutomationCopies').value = item.copies || 1;
+    document.getElementById('hrPrintAutomationTtl').value = item.artifactTtlHours || 168;
+    document.getElementById('hrPrintAutomationEnabled').checked = item.enabled === true;
+    document.querySelectorAll('#hrPrintAutomationWeekdays input').forEach(input => {
+        input.checked = (item.weekdays || []).includes(Number(input.value));
+    });
+    const settings = item.settings || {};
+    document.getElementById('hrPrintDailyMode').value = settings.dailyMode || 'manual_blank';
+    document.getElementById('hrPrintLocationShift').value = settings.locationShift || '';
+    document.getElementById('hrPrintMarkedBy').value = settings.markedBy || '';
+    const defaults = HR_PRINT_DEFAULT_TEXTS[item.documentType] || {};
+    document.getElementById('hrPrintCustomTitle').value = settings.texts?.title && settings.texts.title !== defaults.title ? settings.texts.title : '';
+    document.getElementById('hrPrintCustomFooter').value = settings.texts?.footerNote && settings.texts.footerNote !== defaults.footerNote ? settings.texts.footerNote : '';
+    renderHrPrintProfessionList();
+    syncHrPrintTemplateFields();
+    document.querySelectorAll('[data-hr-print-font]').forEach(input => {
+        const value = Number(settings.fontPreset?.[input.dataset.hrPrintFont]);
+        if (Number.isFinite(value)) input.value = value;
+        syncHrPrintFontOutput(input);
+    });
+    syncHrPrintPresetWarning();
+    document.getElementById('hrPrintAutomationSave').textContent = 'Оновити автоматизацію';
+    document.getElementById('hrPrintAutomationCancelEdit')?.classList.remove('hidden');
+    invalidateHrPrintPreview('Налаштування автоматизації завантажено. Сформуйте preview для перевірки.');
+    document.getElementById('hrPrintAutomationName')?.focus();
+}
+
+async function saveHrPrintAutomation() {
+    let payload;
+    try {
+        payload = hrPrintAutomationPayload();
+    } catch (error) {
+        setHrPrintStatus(error.message, 'error');
+        return;
+    }
+    const button = document.getElementById('hrPrintAutomationSave');
+    if (button) { button.disabled = true; button.textContent = 'Зберігаємо…'; }
+    try {
+        const id = hrPrintDocumentsState.editingAutomationId;
+        await hrPrintFetchJson(id
+            ? `/api/hr/attendance-document-automations/${id}`
+            : '/api/hr/attendance-document-automations', {
+            method: id ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        resetHrPrintAutomationEditor();
+        await loadHrPrintOperations({ silent: true });
+        setHrPrintStatus(id ? 'Автоматизацію оновлено.' : 'Автоматизацію збережено.', 'success');
+    } catch (error) {
+        setHrPrintStatus(error.message || 'Не вдалося зберегти автоматизацію.', 'error');
+    } finally {
+        if (button) { button.disabled = false; button.textContent = hrPrintDocumentsState.editingAutomationId ? 'Оновити автоматизацію' : 'Зберегти автоматизацію'; }
+    }
+}
+
+async function previewHrPrintJob(id, filename = '') {
+    invalidateHrPrintPreview('Завантажуємо збережений PDF із черги…');
+    try {
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } })
+            : await fetch(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } });
+        if (!response?.ok) throw new Error(response ? await hrPrintResponseError(response) : 'Сервер не повернув відповідь.');
+        const blob = await response.blob();
+        hrPrintDocumentsState.previewBlob = blob;
+        hrPrintDocumentsState.previewUrl = URL.createObjectURL(blob);
+        hrPrintDocumentsState.previewFileName = filename || `event-genix-hr-job-${id}.pdf`;
+        const frame = document.getElementById('hrPrintPreviewFrame');
+        if (frame) { frame.src = hrPrintDocumentsState.previewUrl; frame.classList.remove('hidden'); }
+        document.getElementById('hrPrintPreviewState')?.classList.add('hidden');
+        const badge = document.getElementById('hrPrintPreviewBadge');
+        if (badge) { badge.textContent = 'З черги'; badge.className = 'hr-print-preview-badge is-ready'; }
+        document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
+        document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
+        setHrPrintStatus('Відкрито той самий незмінний PDF, який збережений у черзі.', 'success');
+    } catch (error) {
+        setHrPrintStatus(error.message || 'Не вдалося відкрити PDF.', 'error');
+    }
+}
+
+async function handleHrPrintOperation(event) {
+    const button = event.target.closest('[data-hr-print-operation]');
+    if (!button) return;
+    const id = Number(button.dataset.id);
+    const action = button.dataset.hrPrintOperation;
+    if (action === 'edit-automation') return editHrPrintAutomation(id);
+    if (action === 'preview-job') return previewHrPrintJob(id, button.dataset.filename || '');
+    button.disabled = true;
+    try {
+        if (action === 'run-automation') {
+            const response = await hrPrintFetchJson(`/api/hr/attendance-document-automations/${id}/run`, { method: 'POST' });
+            await loadHrPrintOperations({ silent: true });
+            if (response.job?.status === 'queued') await previewHrPrintJob(response.job.id, response.job.filename || '');
+            setHrPrintStatus('PDF сформовано один раз і додано до черги.', 'success');
+        } else if (action === 'disable-automation') {
+            await hrPrintFetchJson(`/api/hr/attendance-document-automations/${id}/disable`, { method: 'POST' });
+            await loadHrPrintOperations({ silent: true });
+            setHrPrintStatus('Автоматизацію вимкнено.', 'success');
+        } else if (action === 'cancel-job') {
+            await hrPrintFetchJson(`/api/hr/attendance-document-jobs/${id}/cancel`, { method: 'POST' });
+            await loadHrPrintOperations({ silent: true });
+            setHrPrintStatus('Завдання скасовано.', 'success');
+        } else if (action === 'requeue-job') {
+            const response = await hrPrintFetchJson(`/api/hr/attendance-document-jobs/${id}/requeue`, { method: 'POST' });
+            await loadHrPrintOperations({ silent: true });
+            if (response.job?.status === 'queued') await previewHrPrintJob(response.job.id, response.job.filename || '');
+            setHrPrintStatus('Завдання повернуто до черги без створення дубля.', 'success');
+        }
+    } catch (error) {
+        setHrPrintStatus(error.message || 'Операція не виконана.', 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function generateHrPrintPreview() {
+    if (hrPrintDocumentsState.generating) return;
+    let payload;
+    try {
+        payload = hrPrintRequestPayload();
+    } catch (error) {
+        setHrPrintStatus(error.message, 'error');
+        document.querySelector('[data-hr-print-category]')?.focus();
+        return;
+    }
+    invalidateHrPrintPreview('Формуємо документ із актуального server snapshot…');
+    const requestSeq = hrPrintDocumentsState.requestSeq;
+    hrPrintDocumentsState.generating = true;
+    const previewButton = document.getElementById('hrPrintPreviewButton');
+    const state = document.getElementById('hrPrintPreviewState');
+    const badge = document.getElementById('hrPrintPreviewBadge');
+    if (previewButton) {
+        previewButton.disabled = true;
+        previewButton.setAttribute('aria-busy', 'true');
+        previewButton.textContent = 'Формуємо…';
+    }
+    if (state) state.classList.add('is-loading');
+    if (badge) {
+        badge.textContent = 'Формується';
+        badge.className = 'hr-print-preview-badge';
+    }
+    setHrPrintStatus('Завантажуємо актуальний roster і будуємо PDF…');
+    try {
+        const request = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/pdf' },
+            body: JSON.stringify(payload)
+        };
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry('/api/hr/attendance-documents/pdf', request)
+            : await fetch('/api/hr/attendance-documents/pdf', request);
+        if (!response) throw new Error('Сервер не повернув відповідь.');
+        if (!response.ok) throw new Error(await hrPrintResponseError(response));
+        const blob = await response.blob();
+        if (requestSeq !== hrPrintDocumentsState.requestSeq || !hrPrintDocumentsState.open) return;
+        if (blob.type && !blob.type.includes('pdf')) throw new Error('Сервер повернув не PDF-документ.');
+        hrPrintDocumentsState.previewBlob = blob;
+        hrPrintDocumentsState.previewUrl = URL.createObjectURL(blob);
+        const frame = document.getElementById('hrPrintPreviewFrame');
+        if (frame) {
+            frame.src = hrPrintDocumentsState.previewUrl;
+            frame.classList.remove('hidden');
+        }
+        state?.classList.add('hidden');
+        state?.classList.remove('is-loading');
+        document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
+        document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
+        if (badge) {
+            badge.textContent = 'Готово';
+            badge.className = 'hr-print-preview-badge is-ready';
+        }
+        setHrPrintStatus('Preview готовий. Завантаження і друк використають цей самий server snapshot.', 'success');
+    } catch (error) {
+        if (requestSeq !== hrPrintDocumentsState.requestSeq) return;
+        releaseHrPrintPreview();
+        if (state) {
+            state.textContent = error.message || 'Не вдалося сформувати PDF.';
+            state.classList.remove('hidden', 'is-loading');
+        }
+        if (badge) {
+            badge.textContent = 'Помилка';
+            badge.className = 'hr-print-preview-badge is-stale';
+        }
+        setHrPrintStatus(error.message || 'Не вдалося сформувати PDF.', 'error');
+    } finally {
+        hrPrintDocumentsState.generating = false;
+        if (previewButton) {
+            previewButton.disabled = false;
+            previewButton.removeAttribute('aria-busy');
+            previewButton.textContent = 'Сформувати preview';
+        }
+    }
+}
+
+function hrPrintFileName() {
+    if (hrPrintDocumentsState.previewFileName) return hrPrintDocumentsState.previewFileName;
+    const isDaily = hrPrintTemplateId() === 'arrival_inout';
+    const period = isDaily
+        ? document.getElementById('hrPrintDocumentDate')?.value
+        : document.getElementById('hrPrintDocumentMonth')?.value;
+    return `event-genix-${isDaily ? 'arrival-inout' : 'month-grid'}-${period || 'v27'}.pdf`;
+}
+
+function downloadHrPrintPdf() {
+    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
+    const link = document.createElement('a');
+    link.href = hrPrintDocumentsState.previewUrl;
+    link.download = hrPrintFileName();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+function printHrPrintPdf() {
+    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
+    const frame = document.getElementById('hrPrintPreviewFrame');
+    try {
+        frame?.contentWindow?.focus();
+        frame?.contentWindow?.print();
+    } catch {
+        window.open(hrPrintDocumentsState.previewUrl, '_blank', 'noopener');
+    }
+}
+
+function closeHrPrintDocuments() {
+    const overlay = document.getElementById('hrPrintDocumentsModal');
+    if (!overlay || !hrPrintDocumentsState.open) return;
+    hrPrintDocumentsState.open = false;
+    hrPrintDocumentsState.requestSeq += 1;
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hr-print-documents-open');
+    releaseHrPrintPreview();
+    hrPrintDocumentsState.generating = false;
+    const opener = hrPrintDocumentsState.opener;
+    hrPrintDocumentsState.opener = null;
+    if (opener?.isConnected) opener.focus();
+}
+
+async function openHrPrintDocuments(event) {
+    const overlay = document.getElementById('hrPrintDocumentsModal');
+    if (!overlay) return;
+    hrPrintDocumentsState.open = true;
+    hrPrintDocumentsState.opener = event?.currentTarget || document.activeElement;
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hr-print-documents-open');
+    setHrPrintStatus('');
+    renderHrPrintProfessionList();
+    syncHrPrintTemplateFields();
+    document.getElementById('hrPrintDocumentsClose')?.focus();
+    professionCatalogLoadState = professionCatalogLoadState === 'ready' ? 'ready' : 'loading';
+    syncHrPrintEmployeeCount();
+    const saveAutomation = document.getElementById('hrPrintAutomationSave');
+    if (saveAutomation) {
+        saveAutomation.disabled = !canManage;
+        saveAutomation.title = canManage ? '' : 'Потрібне право керування працівниками';
+    }
+    try {
+        await Promise.all([
+            ensureProfessionsLoaded({ silent: true }),
+            loadHrPrintOperations()
+        ]);
+    } finally {
+        if (hrPrintDocumentsState.open) syncHrPrintEmployeeCount();
+    }
+}
+
+function handleHrPrintModalKeydown(event) {
+    if (!hrPrintDocumentsState.open) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeHrPrintDocuments();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = hrPrintFocusableElements();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function initHrPrintDocuments() {
+    if (hrPrintDocumentsState.initialized) return;
+    const overlay = document.getElementById('hrPrintDocumentsModal');
+    if (!overlay) return;
+    hrPrintDocumentsState.initialized = true;
+    const today = todayStr();
+    const dateInput = document.getElementById('hrPrintDocumentDate');
+    const monthInput = document.getElementById('hrPrintDocumentMonth');
+    if (dateInput) dateInput.value = today;
+    if (monthInput) monthInput.value = today.slice(0, 7);
+    document.getElementById('btnHrPrintDocuments')?.addEventListener('click', openHrPrintDocuments);
+    document.getElementById('hrPrintDocumentsClose')?.addEventListener('click', closeHrPrintDocuments);
+    document.getElementById('hrPrintPreviewButton')?.addEventListener('click', generateHrPrintPreview);
+    document.getElementById('hrPrintDownloadButton')?.addEventListener('click', downloadHrPrintPdf);
+    document.getElementById('hrPrintPrintButton')?.addEventListener('click', printHrPrintPdf);
+    document.getElementById('hrPrintResetPreset')?.addEventListener('click', resetHrPrintPreset);
+    document.getElementById('hrPrintAutomationRefresh')?.addEventListener('click', () => loadHrPrintOperations());
+    document.getElementById('hrPrintAutomationSave')?.addEventListener('click', saveHrPrintAutomation);
+    document.getElementById('hrPrintAutomationCancelEdit')?.addEventListener('click', resetHrPrintAutomationEditor);
+    document.getElementById('hrPrintAutomationList')?.addEventListener('click', handleHrPrintOperation);
+    document.getElementById('hrPrintJobList')?.addEventListener('click', handleHrPrintOperation);
+    document.getElementById('hrPrintSelectAll')?.addEventListener('click', () => {
+        const allSelected = hrPrintDocumentsState.selectedCategoryIds.size === HR_PRINT_CATEGORIES.length;
+        hrPrintDocumentsState.selectedCategoryIds = new Set(allSelected ? [] : HR_PRINT_CATEGORIES.map(item => item.id));
+        renderHrPrintProfessionList();
+        invalidateHrPrintPreview();
+    });
+    document.getElementById('hrPrintProfessionSearch')?.addEventListener('input', event => {
+        hrPrintDocumentsState.professionQuery = event.target.value || '';
+        renderHrPrintProfessionList();
+    });
+    document.getElementById('hrPrintProfessionList')?.addEventListener('change', event => {
+        const input = event.target.closest('[data-hr-print-category]');
+        if (!input) return;
+        if (input.checked) hrPrintDocumentsState.selectedCategoryIds.add(input.value);
+        else hrPrintDocumentsState.selectedCategoryIds.delete(input.value);
+        syncHrPrintSelectAllButton();
+        syncHrPrintEmployeeCount();
+        invalidateHrPrintPreview();
+    });
+    document.getElementById('hrPrintDocumentsForm')?.addEventListener('input', event => {
+        if (event.target.id === 'hrPrintProfessionSearch' || event.target.matches('[data-hr-print-category]')) return;
+        if (event.target.closest('[aria-labelledby="hrPrintAutomationTitle"]')) return;
+        if (event.target.matches('[data-hr-print-font]')) syncHrPrintFontOutput(event.target);
+        syncHrPrintPresetWarning();
+        invalidateHrPrintPreview();
+    });
+    document.getElementById('hrPrintDocumentsForm')?.addEventListener('change', event => {
+        if (event.target.name === 'hrPrintTemplate') syncHrPrintTemplateFields();
+    });
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeHrPrintDocuments();
+    });
+    overlay.addEventListener('keydown', handleHrPrintModalKeydown);
+    window.addEventListener('beforeunload', releaseHrPrintPreview);
+    renderHrPrintProfessionList();
+    syncHrPrintTemplateFields();
+}
+
+// ==========================================
 // PAGE INIT
 // ==========================================
 
@@ -1521,6 +2293,7 @@ async function initPage() {
     initModals();
     initContextMenu();
     initNewTabs();
+    initHrPrintDocuments();
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
     const employeeId = new URLSearchParams(window.location.search).get('employee');

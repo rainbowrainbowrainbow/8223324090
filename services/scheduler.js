@@ -7,6 +7,7 @@
  * All times are in Europe/Kyiv timezone (getKyivTimeStr returns "HH:MM").
  */
 const { pool } = require('../db');
+const { checkHrAttendancePrintAutomations } = require('./hrAttendanceDocumentAutomation');
 const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
@@ -2505,6 +2506,7 @@ module.exports = {
     checkNpsFollowUp,
     checkCleaningTasks,
     checkGraduationOpsAutomation,
+    checkHrAttendancePrintAutomations,
     checkBirthdayTagSync,
     DIGEST_SEND_MESSAGES,
     classifyDigestSendFailure,

@@ -9,7 +9,7 @@
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { authRequest } = require('../helpers');
+const { BASE_URL, authRequest, getToken } = require('../helpers');
 
 const enabled = process.env.RUN_HR_DISPOSABLE_INTEGRATION === 'true';
 let fixtureStaffId = null;
@@ -353,5 +353,59 @@ describe('HR disposable fixture integration', { skip: !enabled }, () => {
         assert.equal(response.data?.count, 2);
         assert.equal(rows.length, 2);
         rows.forEach(shift => assertSegmentedPlan(shift, shift.staff_id));
+    });
+
+    it('creates one immutable queued PDF for two concurrent manual runs', async () => {
+        requireFixture();
+        const created = await authRequest('POST', '/api/hr/attendance-document-automations', {
+            name: `Disposable attendance PDF ${process.pid}`,
+            documentType: 'arrival_inout',
+            categoryIds: ['sales_manager'],
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            localTime: '08:00',
+            copies: 1,
+            artifactTtlHours: 24,
+            catchUpMinutes: 120,
+            enabled: false,
+            settings: {
+                dailyMode: 'manual_blank',
+                rosterMode: 'all_eligible',
+                locationShift: 'Disposable integration',
+                markedBy: '',
+                texts: {},
+                fontPreset: {}
+            }
+        });
+        assert.equal(created.status, 201);
+        const automationId = Number(created.data?.automation?.id);
+        assert.ok(Number.isInteger(automationId) && automationId > 0);
+
+        const runs = await Promise.all([
+            authRequest('POST', `/api/hr/attendance-document-automations/${automationId}/run`),
+            authRequest('POST', `/api/hr/attendance-document-automations/${automationId}/run`)
+        ]);
+        assert.ok(runs.every(response => [200, 201].includes(response.status)));
+        const jobIds = runs.map(response => Number(response.data?.job?.id));
+        assert.ok(jobIds.every(Number.isInteger));
+        assert.equal(new Set(jobIds).size, 1, 'DB idempotency returns one job to both callers');
+
+        let queuedJob = null;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+            const jobs = await authRequest('GET', '/api/hr/attendance-document-jobs?limit=20');
+            queuedJob = jobs.data?.jobs?.find(job => Number(job.id) === jobIds[0]);
+            if (queuedJob?.status === 'queued') break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.equal(queuedJob?.status, 'queued');
+        assert.ok(Number(queuedJob.pdfByteLength) > 1000);
+
+        const token = await getToken();
+        const pdf = await fetch(`${BASE_URL}/api/hr/attendance-document-jobs/${jobIds[0]}/pdf`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' }
+        });
+        assert.equal(pdf.status, 200);
+        assert.match(pdf.headers.get('content-type') || '', /application\/pdf/i);
+        assert.match(pdf.headers.get('cache-control') || '', /no-store/i);
+        assert.ok((await pdf.arrayBuffer()).byteLength > 1000);
     });
 });

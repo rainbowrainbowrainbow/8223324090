@@ -93,29 +93,30 @@
                             <p>Присутність, запізнення і доступність у живому режимі.</p>
                         </div>
                         <div class="hr-today-hero-metrics" aria-label="Ключові метрики сьогодні" aria-live="polite">
-                            <div class="hr-today-metric-chip hr-today-metric-chip--shift" data-today-metric="shift">
+                            <button type="button" class="hr-today-metric-chip hr-today-metric-chip--shift" data-today-metric="shift" aria-controls="todayMetricPeoplePanel" aria-expanded="false" aria-label="Показати людей на зміні">
                                 <span class="hr-today-metric-label">На зміні</span>
                                 <strong id="todayOnShiftMetric">0</strong>
                                 <small id="todayOnShiftMeta">немає активних</small>
-                            </div>
-                            <div class="hr-today-metric-chip hr-today-metric-chip--late" data-today-metric="late">
+                            </button>
+                            <button type="button" class="hr-today-metric-chip hr-today-metric-chip--late" data-today-metric="late" aria-controls="todayMetricPeoplePanel" aria-expanded="false" aria-label="Показати людей із запізненням">
                                 <span class="hr-today-metric-label">Запізнення</span>
                                 <strong id="todayLateMetric">0</strong>
                                 <small id="todayLateMeta">без запізнень</small>
-                            </div>
-                            <div class="hr-today-metric-chip hr-today-metric-chip--absent" data-today-metric="absent">
+                            </button>
+                            <button type="button" class="hr-today-metric-chip hr-today-metric-chip--absent" data-today-metric="absent" aria-controls="todayMetricPeoplePanel" aria-expanded="false" aria-label="Показати відсутніх людей">
                                 <span class="hr-today-metric-label">Відсутні</span>
                                 <strong id="todayAbsentMetric">0</strong>
                                 <small id="todayAbsentMeta">без відсутніх</small>
-                            </div>
-                            <div class="hr-today-metric-chip hr-today-metric-chip--leave" data-today-metric="leave">
+                            </button>
+                            <button type="button" class="hr-today-metric-chip hr-today-metric-chip--leave" data-today-metric="leave" aria-controls="todayMetricPeoplePanel" aria-expanded="false" aria-label="Показати людей на лікарняному або у відпустці">
                                 <span class="hr-today-metric-label">Хвороба / відпустка</span>
                                 <strong id="todayLeaveMetric">0</strong>
                                 <small id="todayLeaveMeta">немає</small>
-                            </div>
+                            </button>
                         </div>
                     </div>
                 </section>
+                <section id="todayMetricPeoplePanel" class="hr-today-metric-panel" aria-labelledby="todayMetricPeopleTitle" hidden></section>
                 <div class="hr-today-controls" aria-label="Фільтри сьогоднішнього пульсу">
                     <div class="hr-today-filter-row">
                         <input type="search" id="todaySearch" class="hr-today-search" aria-label="Пошук у сьогоднішньому пульсі" placeholder="Пошук: ПІБ, професія, відділ, статус...">

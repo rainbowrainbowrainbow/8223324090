@@ -30,6 +30,7 @@ const {
     calculateHrClockOutPayroll,
     decorateAttendanceRecord,
     hydrateAttendanceRecords,
+    isAttendanceRecordOpen,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     timeToMinutes
@@ -4971,7 +4972,7 @@ router.get('/today', async (req, res) => {
                 : null;
 
             if (record) {
-                if (record.clock_in) present++;
+                if (isAttendanceRecordOpen(record)) present++;
                 else if (record.status === 'vacation') onVacation++;
                 else if (record.status === 'sick') sick++;
                 if (Number(record.late_minutes || 0) > 5) late++;

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
     calculateHrClockOutPayroll,
+    isAttendanceRecordOpen,
     recordAttendanceClockOut
 } = require('../services/hrAttendance');
 
@@ -51,6 +52,12 @@ const baseRecord = {
     late_minutes: 10,
     status: 'late'
 };
+
+test('open attendance means clocked in without a recorded departure', () => {
+    assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: null }), true);
+    assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: '2026-07-17T14:30:00.000Z' }), false);
+    assert.equal(isAttendanceRecordOpen({ clock_in: null, clock_out: null }), false);
+});
 
 test('scheduled and actual settlement keep the same independent attendance facts', async () => {
     const results = [];

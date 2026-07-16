@@ -6353,7 +6353,7 @@ check('HR Pulse Today has simplified CSS header metric chips, search, department
     && hrRouteCode.includes('photo_url: s.photo_url')
     && hrRouteCode.includes('has_photo: Boolean')
     && hrRouteCode.includes('FROM staff')
-    && hrRouteCode.includes('if (record.clock_in) present++')
+    && hrRouteCode.includes('isAttendanceRecordOpen(record)')
     && hrRouteCode.includes('Number(record.late_minutes || 0) > 5')
     && hrRouteCode.includes('department: s.department')
     && hrRouteCode.includes('position: s.position')
@@ -6363,6 +6363,21 @@ check('HR Pulse Today has simplified CSS header metric chips, search, department
     && !hrCode.includes('todayHoneycombTabs')
     && !hrPageCss.includes('hr-today-honeycomb-menu')
     && !hrPageCss.includes('hr-today-honeycomb-tabs'));
+check('HR Pulse Today metrics open matching people and focus the selected row',
+    htmlContains('hr.html', '<button type="button" class="hr-today-metric-chip')
+    && htmlContains('hr.html', 'aria-controls="todayMetricPeoplePanel"')
+    && htmlContains('hr.html', 'id="todayMetricPeoplePanel"')
+    && hrCode.includes('function isTodayItemOnShift')
+    && hrCode.includes('item.record?.clock_in && !item.record?.clock_out')
+    && hrCode.includes('function todayMetricMatchesItem')
+    && hrCode.includes('function renderTodayMetricPeoplePanel')
+    && hrCode.includes('function focusTodayStaffFromMetric')
+    && hrCode.includes('data-today-metric-staff-id=')
+    && hrCode.includes("row.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })")
+    && hrPageCss.includes('.hr-today-metric-chip[aria-expanded="true"]')
+    && hrPageCss.includes('.hr-today-metric-people-list')
+    && hrPageCss.includes('.hr-today-metric-person:focus-visible')
+    && hrPageCss.includes('.hr-staff-row.hr-staff-row--metric-focus'));
 check('HR Pulse Reports has Today-style header metrics, compact controls, export, and report tables',
     !htmlContains('hr.html', 'images/hr-pulse/reports-kpi.png')
     && !hrPageCss.includes('reports-kpi.png')

@@ -2088,6 +2088,7 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
 }
 .hr-today-metric-chip {
     --today-metric-tone: 59, 130, 246;
+    appearance: none;
     display: grid;
     align-content: center;
     gap: 3px;
@@ -2098,11 +2099,29 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(var(--today-metric-tone),0.10), rgba(255,255,255,0.70));
     box-shadow: 0 8px 20px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.70);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition: border-color var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth);
 }
 .hr-today-metric-chip--shift { --today-metric-tone: 16, 185, 129; }
 .hr-today-metric-chip--late { --today-metric-tone: 245, 158, 11; }
 .hr-today-metric-chip--absent { --today-metric-tone: 239, 68, 68; }
 .hr-today-metric-chip--leave { --today-metric-tone: 139, 92, 246; }
+.hr-today-metric-chip:hover {
+    border-color: rgba(var(--today-metric-tone),0.42);
+    box-shadow: 0 12px 24px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.76);
+    transform: translateY(-1px);
+}
+.hr-today-metric-chip:focus-visible {
+    outline: 3px solid rgba(var(--today-metric-tone),0.28);
+    outline-offset: 2px;
+}
+.hr-today-metric-chip[aria-expanded="true"] {
+    border-color: rgba(var(--today-metric-tone),0.58);
+    box-shadow: 0 0 0 2px rgba(var(--today-metric-tone),0.13), 0 12px 24px rgba(15,23,42,0.10);
+}
 .hr-today-metric-label {
     min-width: 0;
     color: rgba(51,65,85,0.72);
@@ -2127,6 +2146,132 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
     font-weight: 800;
     line-height: 1.15;
     overflow-wrap: anywhere;
+}
+.hr-today-metric-panel {
+    margin: 0 0 12px;
+    padding: 14px;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 14px 32px rgba(15,23,42,0.08);
+}
+.hr-today-metric-panel[hidden] {
+    display: none;
+}
+.hr-today-metric-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+.hr-today-metric-panel-eyebrow {
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.hr-today-metric-panel h4 {
+    margin: 3px 0 0;
+    color: var(--gray-900);
+    font-size: 18px;
+}
+.hr-today-metric-panel h4 span {
+    display: inline-flex;
+    min-width: 24px;
+    justify-content: center;
+    margin-left: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.07);
+    font-size: 12px;
+}
+.hr-today-metric-panel-close {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 1px solid rgba(148,163,184,0.24);
+    border-radius: 10px;
+    background: rgba(248,250,252,0.86);
+    color: var(--gray-600);
+    cursor: pointer;
+    font: inherit;
+    font-size: 22px;
+    line-height: 1;
+}
+.hr-today-metric-panel-close:hover,
+.hr-today-metric-panel-close:focus-visible {
+    border-color: rgba(20,184,166,0.42);
+    color: var(--gray-900);
+    outline: none;
+}
+.hr-today-metric-people-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.hr-today-metric-person {
+    width: 100%;
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 12px;
+    background: rgba(248,250,252,0.78);
+    color: var(--gray-900);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition: border-color var(--speed-fast) var(--ease-smooth), background var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth);
+}
+.hr-today-metric-person:hover {
+    border-color: rgba(20,184,166,0.34);
+    background: rgba(240,253,250,0.92);
+    transform: translateY(-1px);
+}
+.hr-today-metric-person:focus-visible {
+    border-color: rgba(20,184,166,0.54);
+    outline: 3px solid rgba(20,184,166,0.18);
+    outline-offset: 1px;
+}
+.hr-today-metric-person-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+.hr-today-metric-person-copy strong,
+.hr-today-metric-person-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hr-today-metric-person-copy strong {
+    color: inherit;
+    font-size: 13px;
+}
+.hr-today-metric-person-copy small {
+    color: var(--gray-500);
+    font-size: 11px;
+}
+.hr-today-metric-person-arrow {
+    color: #0F9D8F;
+    font-size: 18px;
+}
+.hr-today-metric-empty {
+    margin: 0;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(148,163,184,0.08);
+    color: var(--gray-500);
+    font-size: 13px;
+    font-weight: 700;
 }
 .hr-today-date {
     display: inline-flex;
@@ -2265,6 +2410,10 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
 #tab-today .hr-staff-row:hover {
     border-color: rgba(20,184,166,0.24);
     box-shadow: 0 16px 34px rgba(15,23,42,0.10);
+}
+#tab-today .hr-staff-row.hr-staff-row--metric-focus {
+    border-color: rgba(20,184,166,0.68);
+    box-shadow: 0 0 0 4px rgba(20,184,166,0.16), 0 18px 38px rgba(15,23,42,0.12);
 }
 .hr-staff-row--arrived {
     border-color: rgba(16,185,129,0.38);
@@ -6353,6 +6502,44 @@ body.dark-mode .hr-today-metric-chip small,
 html[data-theme="dark"] body .hr-today-metric-chip small {
     color: rgba(203,213,225,0.78);
 }
+body.dark-mode .hr-today-metric-panel,
+html[data-theme="dark"] body .hr-today-metric-panel {
+    border-color: rgba(148,163,184,0.16);
+    background: rgba(15,23,42,0.92);
+    box-shadow: 0 16px 36px rgba(0,0,0,0.28);
+}
+body.dark-mode .hr-today-metric-panel h4,
+html[data-theme="dark"] body .hr-today-metric-panel h4,
+body.dark-mode .hr-today-metric-person,
+html[data-theme="dark"] body .hr-today-metric-person {
+    color: #F8FAFC;
+}
+body.dark-mode .hr-today-metric-panel h4 span,
+html[data-theme="dark"] body .hr-today-metric-panel h4 span {
+    background: rgba(148,163,184,0.16);
+}
+body.dark-mode .hr-today-metric-panel-close,
+html[data-theme="dark"] body .hr-today-metric-panel-close,
+body.dark-mode .hr-today-metric-person,
+html[data-theme="dark"] body .hr-today-metric-person {
+    border-color: rgba(148,163,184,0.18);
+    background: rgba(30,41,59,0.78);
+}
+body.dark-mode .hr-today-metric-person:hover,
+html[data-theme="dark"] body .hr-today-metric-person:hover {
+    border-color: rgba(94,234,212,0.34);
+    background: rgba(30,55,65,0.88);
+}
+body.dark-mode .hr-today-metric-person-copy small,
+html[data-theme="dark"] body .hr-today-metric-person-copy small,
+body.dark-mode .hr-today-metric-empty,
+html[data-theme="dark"] body .hr-today-metric-empty {
+    color: #CBD5E1;
+}
+body.dark-mode .hr-today-metric-empty,
+html[data-theme="dark"] body .hr-today-metric-empty {
+    background: rgba(148,163,184,0.10);
+}
 body.dark-mode .hr-today-hero .hr-today-date,
 html[data-theme="dark"] body .hr-today-hero .hr-today-date {
     color: rgba(226,232,240,0.84);
@@ -6384,6 +6571,11 @@ body.dark-mode #tab-today .hr-staff-row {
 body.dark-mode #tab-today .hr-staff-row:hover {
     border-color: rgba(94,234,212,0.24);
     box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+}
+body.dark-mode #tab-today .hr-staff-row.hr-staff-row--metric-focus,
+html[data-theme="dark"] body #tab-today .hr-staff-row.hr-staff-row--metric-focus {
+    border-color: rgba(94,234,212,0.70);
+    box-shadow: 0 0 0 4px rgba(94,234,212,0.16), 0 20px 42px rgba(0,0,0,0.28);
 }
 body.dark-mode #tab-today .hr-staff-row.hr-staff-row--arrived {
     background:
@@ -7447,6 +7639,9 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-today-metric-chip small {
         font-size: 10px;
     }
+    .hr-today-metric-people-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
     .hr-today-date {
         width: fit-content;
         min-height: 22px;
@@ -7881,7 +8076,10 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-nav--pulse .hr-tab.hr-pulse-card *,
     .hr-pulse-card-icon,
     .hr-pulse-card-line,
-    .hr-report-controls .btn-export {
+    .hr-report-controls .btn-export,
+    .hr-today-metric-chip,
+    .hr-today-metric-person,
+    #tab-today .hr-staff-row {
         animation: none !important;
         transition: none !important;
     }
@@ -7892,7 +8090,9 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
     .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon,
     .hr-report-controls .btn-export:hover,
-    .hr-report-controls .btn-export:focus-visible {
+    .hr-report-controls .btn-export:focus-visible,
+    .hr-today-metric-chip:hover,
+    .hr-today-metric-person:hover {
         transform: none !important;
     }
 

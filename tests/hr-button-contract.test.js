@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
     PAYROLL_EVENT_LABELS,
@@ -97,6 +98,162 @@ test('HR static and rendered button tags declare an explicit type', () => {
     ];
     assert.deepEqual(offenders, []);
     assert.equal(/createElement\(['"]button['"]\)/.test(HR_JS), false, 'new dynamic button elements must set .type = "button"');
+});
+
+test('HR Today metrics expose people lists and count only open shifts as on shift', () => {
+    const modelBlock = HR_JS.slice(
+        HR_JS.indexOf('const TODAY_METRIC_DEFINITIONS'),
+        HR_JS.indexOf('function summarizeTodayItems')
+    );
+    const summaryBlock = HR_JS.slice(
+        HR_JS.indexOf('function summarizeTodayItems'),
+        HR_JS.indexOf('const TODAY_ARRIVED_STATUSES')
+    );
+
+    assert.match(HR_HTML, /<button type="button" class="hr-today-metric-chip[^>]+aria-controls="todayMetricPeoplePanel"/);
+    assert.match(HR_HTML, /id="todayMetricPeoplePanel"[^>]+hidden/);
+    assert.match(HR_JS, /function isTodayItemOnShift[\s\S]*record\?\.clock_in && !item\.record\?\.clock_out/);
+    assert.match(summaryBlock, /if \(isTodayItemOnShift\(item\)\)/);
+    assert.doesNotMatch(summaryBlock, /early_leave[\s\S]*summary\.present\+\+/);
+    assert.match(HR_JS, /function renderTodayMetricPeoplePanel/);
+    assert.match(HR_JS, /function focusTodayStaffFromMetric/);
+    assert.match(HR_ROUTE, /if \(isAttendanceRecordOpen\(record\)\) present\+\+/);
+
+    const context = vm.createContext({});
+    vm.runInContext(`${modelBlock}\n${summaryBlock}`, context);
+    context.rows = [
+        { record: { status: 'present', clock_in: '2026-07-16T06:00:00.000Z', clock_out: null } },
+        { record: { status: 'early_leave', clock_in: '2026-07-16T06:00:00.000Z', clock_out: '2026-07-16T13:00:00.000Z', late_minutes: 10 } },
+        { record: { status: 'auto_closed', clock_in: '2026-07-16T06:00:00.000Z', clock_out: '2026-07-16T15:00:00.000Z' } },
+        { record: { status: 'sick', clock_in: null, clock_out: null } },
+        { record: { status: 'vacation', clock_in: null, clock_out: null } },
+        { record: null, shift: { planned_start: '09:00', planned_end: '18:00' } }
+    ];
+    const summary = JSON.parse(vm.runInContext('JSON.stringify(summarizeTodayItems(rows))', context));
+    assert.deepEqual(summary, {
+        total_staff: 6,
+        present: 1,
+        late: 1,
+        absent: 1,
+        on_vacation: 1,
+        sick: 1
+    });
+});
+
+test('HR Today metric interactions keep all four counts, lists, closing paths, and row focus aligned', () => {
+    const dom = new JSDOM(`
+        <button type="button" data-today-metric="shift" aria-expanded="false"><strong id="todayOnShiftMetric">0</strong><small id="todayOnShiftMeta"></small></button>
+        <button type="button" data-today-metric="late" aria-expanded="false"><strong id="todayLateMetric">0</strong><small id="todayLateMeta"></small></button>
+        <button type="button" data-today-metric="absent" aria-expanded="false"><strong id="todayAbsentMetric">0</strong><small id="todayAbsentMeta"></small></button>
+        <button type="button" data-today-metric="leave" aria-expanded="false"><strong id="todayLeaveMetric">0</strong><small id="todayLeaveMeta"></small></button>
+        <section id="todayMetricPeoplePanel" hidden></section>
+        <div id="todayList">
+            <div data-staff-id="11" tabindex="-1"></div>
+            <div data-staff-id="12" tabindex="-1"></div>
+            <div data-staff-id="13" tabindex="-1"></div>
+            <div data-staff-id="14" tabindex="-1"></div>
+            <div data-staff-id="15" tabindex="-1"></div>
+            <div data-staff-id="16" tabindex="-1"></div>
+        </div>
+    `);
+    dom.window.matchMedia = () => ({ matches: true });
+    dom.window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+        this.dataset.scrolled = 'true';
+    };
+
+    const modelBlock = HR_JS.slice(
+        HR_JS.indexOf('const TODAY_METRIC_DEFINITIONS'),
+        HR_JS.indexOf('function summarizeTodayItems')
+    );
+    const summaryBlock = HR_JS.slice(
+        HR_JS.indexOf('function summarizeTodayItems'),
+        HR_JS.indexOf('const TODAY_ARRIVED_STATUSES')
+    );
+    const headerBlock = HR_JS.slice(
+        HR_JS.indexOf('function setTodayHeaderMetricText'),
+        HR_JS.indexOf('function todayMetricPersonMeta')
+    );
+    const interactionBlock = HR_JS.slice(
+        HR_JS.indexOf('function todayMetricPersonMeta'),
+        HR_JS.indexOf('function hrTodayActionIconSvg')
+    );
+    const context = vm.createContext({
+        document: dom.window.document,
+        window: dom.window,
+        setTimeout: () => 1,
+        clearTimeout: () => {},
+        escapeHtml: value => String(value ?? ''),
+        fmtTimeFromISO: () => '09:00',
+        fmtTime: value => String(value || '').slice(0, 5),
+        ROLE_LABELS: {},
+        STATUS_LABELS: { sick: 'Лікарняний', vacation: 'Відпустка' },
+        staffDisplayGroupKeyForStaff: () => 'admin',
+        staffDisplayGroupLabel: () => 'Адміністрація',
+        renderToday: () => {}
+    });
+    vm.runInContext(`
+        let todayActiveMetric = null;
+        let todayMetricFocusTimer = null;
+        let todayData = null;
+        let todayFilters = { query: '', department: 'all' };
+        ${modelBlock}
+        ${summaryBlock}
+        ${headerBlock}
+        ${interactionBlock}
+    `, context);
+    context.items = [
+        { staff_id: 11, staff_name: 'Відкрита зміна', position: 'Менеджер', record: { status: 'present', clock_in: '2026-07-16T06:00:00.000Z', clock_out: null } },
+        { staff_id: 12, staff_name: 'Запізнення', position: 'Бариста', record: { status: 'late', clock_in: '2026-07-16T06:12:00.000Z', clock_out: '2026-07-16T15:00:00.000Z', late_minutes: 12 } },
+        { staff_id: 13, staff_name: 'Відсутній', position: 'Аніматор', record: null, shift: { planned_start: '09:00', planned_end: '18:00' } },
+        { staff_id: 14, staff_name: 'Лікарняний', position: 'Кухар', record: { status: 'sick', clock_in: null, clock_out: null } },
+        { staff_id: 15, staff_name: 'Відпустка', position: 'Офіціант', record: { status: 'vacation', clock_in: null, clock_out: null } },
+        { staff_id: 16, staff_name: 'Закрита зміна', position: 'Менеджер', record: { status: 'present', clock_in: '2026-07-16T06:00:00.000Z', clock_out: '2026-07-16T15:00:00.000Z' } }
+    ];
+
+    vm.runInContext('updateTodayHeaderMetrics(summarizeTodayItems(items)); bindTodayMetricChips(items)', context);
+    const panel = dom.window.document.getElementById('todayMetricPeoplePanel');
+    const scenarios = [
+        { metric: 'shift', countId: 'todayOnShiftMetric', expectedIds: ['11'], detail: /На зміні з 09:00/ },
+        { metric: 'late', countId: 'todayLateMetric', expectedIds: ['12'], detail: /Запізнення \+12 хв · зміна завершена/ },
+        { metric: 'absent', countId: 'todayAbsentMetric', expectedIds: ['13'], detail: /План 09:00–18:00/ },
+        { metric: 'leave', countId: 'todayLeaveMetric', expectedIds: ['14', '15'], detail: /Лікарняний|Відпустка/ }
+    ];
+
+    for (const scenario of scenarios) {
+        const chip = dom.window.document.querySelector(`[data-today-metric="${scenario.metric}"]`);
+        chip.click();
+        const people = [...panel.querySelectorAll('[data-today-metric-staff-id]')];
+        assert.equal(panel.hidden, false, `${scenario.metric}: panel opens`);
+        assert.equal(chip.getAttribute('aria-expanded'), 'true', `${scenario.metric}: expanded state`);
+        assert.equal(Number(dom.window.document.getElementById(scenario.countId).textContent), people.length, `${scenario.metric}: metric count matches list`);
+        assert.deepEqual(people.map(button => button.dataset.todayMetricStaffId), scenario.expectedIds, `${scenario.metric}: matching people`);
+        assert.match(panel.textContent, scenario.detail, `${scenario.metric}: useful context`);
+
+        chip.click();
+        assert.equal(panel.hidden, true, `${scenario.metric}: repeated click closes`);
+        assert.equal(chip.getAttribute('aria-expanded'), 'false', `${scenario.metric}: collapsed state`);
+    }
+
+    const leaveChip = dom.window.document.querySelector('[data-today-metric="leave"]');
+    leaveChip.click();
+    panel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(panel.hidden, true, 'Escape closes the people list');
+    assert.equal(dom.window.document.activeElement, leaveChip, 'Escape restores focus to the active metric');
+
+    const lateChip = dom.window.document.querySelector('[data-today-metric="late"]');
+    lateChip.click();
+    panel.querySelector('.hr-today-metric-panel-close').click();
+    assert.equal(panel.hidden, true, 'close control hides the people list');
+    assert.equal(dom.window.document.activeElement, lateChip, 'close control restores metric focus');
+
+    const shiftChip = dom.window.document.querySelector('[data-today-metric="shift"]');
+    shiftChip.click();
+    panel.querySelector('[data-today-metric-staff-id="11"]').click();
+    const row = dom.window.document.querySelector('[data-staff-id="11"]');
+    assert.equal(panel.hidden, true);
+    assert.equal(dom.window.document.activeElement, row);
+    assert.equal(row.dataset.scrolled, 'true');
+    assert.equal(row.classList.contains('hr-staff-row--metric-focus'), true);
 });
 
 test('HR manual scheduled clock-out settles payroll from the planned shift', () => {

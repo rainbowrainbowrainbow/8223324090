@@ -162,6 +162,10 @@ function normalizeAttendanceSegments(input = {}) {
     ));
 }
 
+function isAttendanceRecordOpen(record = {}) {
+    return Boolean(record.clock_in && !record.clock_out);
+}
+
 function normalizeAttendancePlanDate(value) {
     if (typeof value === 'string') {
         const raw = value.trim();
@@ -995,6 +999,7 @@ module.exports = {
     calculateHrClockOutPayroll,
     decorateAttendanceRecord,
     hydrateAttendanceRecords,
+    isAttendanceRecordOpen,
     normalizeHrSettlementMode,
     paidMinutesAfterSegmentBreak,
     plannedShiftWorkedMinutes,

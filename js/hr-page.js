@@ -446,6 +446,8 @@ function peopleBucketTitle(bucketId) {
 let canManage = false;
 let todayData = null;
 let todayFilters = { query: '', department: 'all' };
+let todayActiveMetric = null;
+let todayMetricFocusTimer = null;
 const payrollViewState = {
     salary: { allRows: [], query: '', department: 'all', expandedGroups: new Set() },
     kpi: { allRows: [], query: '', department: 'all', expandedGroups: new Set() }
@@ -2745,6 +2747,44 @@ function todayDepartmentOptions(items = [], groups = staffDisplayGroupsContract)
     return ordered;
 }
 
+const TODAY_METRIC_DEFINITIONS = Object.freeze({
+    shift: {
+        label: 'На зміні',
+        empty: 'Зараз немає людей з відкритою зміною.'
+    },
+    late: {
+        label: 'Запізнення',
+        empty: 'Сьогодні немає зафіксованих запізнень.'
+    },
+    absent: {
+        label: 'Відсутні',
+        empty: 'За поточним зрізом немає відсутніх.'
+    },
+    leave: {
+        label: 'Хвороба / відпустка',
+        empty: 'Сьогодні немає лікарняних або відпусток.'
+    }
+});
+
+function isTodayItemOnShift(item = {}) {
+    return Boolean(item.record?.clock_in && !item.record?.clock_out);
+}
+
+function todayMetricMatchesItem(item = {}, metric = '') {
+    const record = item.record;
+    if (metric === 'shift') return isTodayItemOnShift(item);
+    if (metric === 'late') return Number(record?.late_minutes || 0) > 5;
+    if (metric === 'absent') return !record && Boolean(item.shift);
+    if (metric === 'leave') {
+        return !isTodayItemOnShift(item) && ['sick', 'vacation'].includes(String(record?.status || ''));
+    }
+    return false;
+}
+
+function todayMetricItems(metric, items = []) {
+    return (Array.isArray(items) ? items : []).filter(item => todayMetricMatchesItem(item, metric));
+}
+
 function summarizeTodayItems(items = []) {
     const rows = Array.isArray(items) ? items : [];
     const summary = { total_staff: rows.length, present: 0, late: 0, absent: 0, on_vacation: 0, sick: 0 };
@@ -2752,7 +2792,7 @@ function summarizeTodayItems(items = []) {
         const rec = item.record;
         if (rec) {
             const status = rec.status;
-            if (['late', 'present', 'clocked_in', 'early_leave', 'auto_closed', 'unscheduled'].includes(status)) {
+            if (isTodayItemOnShift(item)) {
                 summary.present++;
             } else if (status === 'vacation') {
                 summary.on_vacation++;
@@ -2909,6 +2949,128 @@ function updateTodayHeaderMetrics(summary = {}) {
     setTodayHeaderMetricText('todayLeaveMeta', metrics.leave > 0 ? `${metrics.sick} хвороба · ${metrics.vacation} відпустка` : 'немає');
 }
 
+function todayMetricPersonMeta(item = {}, metric = '') {
+    const record = item.record;
+    const role = item.position || ROLE_LABELS[item.role_type] || item.role_type || '';
+    const group = staffDisplayGroupLabel(staffDisplayGroupKeyForStaff(item));
+    let detail = '';
+    if (metric === 'shift' && record?.clock_in) {
+        detail = `На зміні з ${fmtTimeFromISO(record.clock_in)}`;
+    } else if (metric === 'late') {
+        detail = `Запізнення +${Number(record?.late_minutes || 0)} хв`;
+        if (record?.clock_out) detail += ' · зміна завершена';
+    } else if (metric === 'absent' && item.shift) {
+        detail = `План ${fmtTime(item.shift.planned_start)}–${fmtTime(item.shift.planned_end)}`;
+    } else if (metric === 'leave') {
+        detail = STATUS_LABELS[record?.status] || '';
+    }
+    return [...new Set([role, group, detail].filter(Boolean))].join(' · ');
+}
+
+function closeTodayMetricPeoplePanel(options = {}) {
+    const metric = todayActiveMetric;
+    todayActiveMetric = null;
+    document.querySelectorAll('[data-today-metric]').forEach(chip => chip.setAttribute('aria-expanded', 'false'));
+    const panel = document.getElementById('todayMetricPeoplePanel');
+    if (panel) panel.hidden = true;
+    if (options.restoreFocus && metric) {
+        document.querySelector(`[data-today-metric="${metric}"]`)?.focus();
+    }
+}
+
+function focusTodayStaffFromMetric(staffId) {
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    closeTodayMetricPeoplePanel();
+
+    let row = document.querySelector(`#todayList [data-staff-id="${id}"]`);
+    if (!row && todayData) {
+        todayFilters = { query: '', department: 'all' };
+        renderToday(todayData);
+        row = document.querySelector(`#todayList [data-staff-id="${id}"]`);
+    }
+    if (!row) return;
+
+    if (todayMetricFocusTimer) clearTimeout(todayMetricFocusTimer);
+    row.classList.add('hr-staff-row--metric-focus');
+    row.focus({ preventScroll: true });
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    row.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+    todayMetricFocusTimer = setTimeout(() => {
+        row.classList.remove('hr-staff-row--metric-focus');
+        todayMetricFocusTimer = null;
+    }, 1800);
+}
+
+function renderTodayMetricPeoplePanel(items = []) {
+    const panel = document.getElementById('todayMetricPeoplePanel');
+    if (!panel) return;
+
+    document.querySelectorAll('[data-today-metric]').forEach(chip => {
+        chip.setAttribute('aria-expanded', chip.dataset.todayMetric === todayActiveMetric ? 'true' : 'false');
+    });
+    if (!todayActiveMetric || !TODAY_METRIC_DEFINITIONS[todayActiveMetric]) {
+        panel.hidden = true;
+        return;
+    }
+
+    const definition = TODAY_METRIC_DEFINITIONS[todayActiveMetric];
+    const matches = todayMetricItems(todayActiveMetric, items);
+    const people = matches.length
+        ? `<ul class="hr-today-metric-people-list">${matches.map(item => `
+            <li>
+                <button type="button" class="hr-today-metric-person" data-today-metric-staff-id="${Number(item.staff_id)}">
+                    <span class="hr-today-metric-person-copy">
+                        <strong>${escapeHtml(item.staff_name)}</strong>
+                        <small>${escapeHtml(todayMetricPersonMeta(item, todayActiveMetric))}</small>
+                    </span>
+                    <span class="hr-today-metric-person-arrow" aria-hidden="true">→</span>
+                </button>
+            </li>`).join('')}</ul>`
+        : `<p class="hr-today-metric-empty">${escapeHtml(definition.empty)}</p>`;
+
+    panel.innerHTML = `
+        <div class="hr-today-metric-panel-head">
+            <div>
+                <span class="hr-today-metric-panel-eyebrow">Люди за показником</span>
+                <h4 id="todayMetricPeopleTitle">${escapeHtml(definition.label)} <span>${matches.length}</span></h4>
+            </div>
+            <button type="button" class="hr-today-metric-panel-close" aria-label="Закрити список">×</button>
+        </div>
+        ${people}`;
+    panel.hidden = false;
+    panel.querySelector('.hr-today-metric-panel-close')?.addEventListener('click', () => {
+        closeTodayMetricPeoplePanel({ restoreFocus: true });
+    });
+    panel.querySelectorAll('[data-today-metric-staff-id]').forEach(button => {
+        button.addEventListener('click', () => focusTodayStaffFromMetric(button.dataset.todayMetricStaffId));
+    });
+    panel.onkeydown = event => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        closeTodayMetricPeoplePanel({ restoreFocus: true });
+    };
+}
+
+function bindTodayMetricChips(items = []) {
+    document.querySelectorAll('[data-today-metric]').forEach(chip => {
+        const metric = chip.dataset.todayMetric;
+        const definition = TODAY_METRIC_DEFINITIONS[metric];
+        if (!definition) return;
+        const count = todayMetricItems(metric, items).length;
+        chip.setAttribute('aria-label', `${definition.label}: ${count}. Показати список людей`);
+        chip.onclick = () => {
+            if (todayActiveMetric === metric) {
+                closeTodayMetricPeoplePanel();
+                return;
+            }
+            todayActiveMetric = metric;
+            renderTodayMetricPeoplePanel(items);
+        };
+    });
+    renderTodayMetricPeoplePanel(items);
+}
+
 function hrTodayActionIconSvg(type) {
     if (type === 'profile') {
         return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>';
@@ -2969,6 +3131,7 @@ function renderToday(data) {
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     updateTodayHeaderMetrics(s);
+    bindTodayMetricChips(visibleItems);
     document.getElementById('todaySummary').innerHTML = '';
 
     const list = document.getElementById('todayList');
@@ -3086,7 +3249,7 @@ function renderToday(data) {
             departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
         ].filter(Boolean).join(' · ');
 
-        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" oncontextmenu="showContext(event, ${item.staff_id})">
+        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
                 <div class="hr-staff-name">

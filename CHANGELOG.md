@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.45 - HR Attendance Documents Reliability
+
+### Пульс компанії / HR / PDF / Reliability / (16.07.2026) [codex]
+- **Реальний захист від дублів у CI** — disposable PostgreSQL test запускає два незалежні workers і доводить, що scheduled/manual enqueue створюють один job.
+- **300 dpi visual guard без персональних даних** — CI рендерить анонімізовані arrival/month/default/max-font PDF та перевіряє геометрію v27.
+- **Документацію синхронізовано** — manual CRM MVP не блокується фізичним принтером; print-agent лишається окремим етапом.
+
+---
+
 ## v0.79.44 - HR Attendance PDF Preview Fix
 
 ### Пульс компанії / HR / PDF / Hotfix / (16.07.2026) [codex]

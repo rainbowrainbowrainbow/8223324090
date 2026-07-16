@@ -34,12 +34,16 @@ const {
 } = require('../services/hrStaffResources');
 
 const ROOT = path.join(__dirname, '..');
+function readSource(...segments) {
+    return fs.readFileSync(path.join(ROOT, ...segments), 'utf8').replace(/\r\n?/g, '\n');
+}
+
 function readCssWithImports(file, seen = new Set()) {
     const normalized = file.replace(/\\/g, '/');
     if (seen.has(normalized)) return '';
     seen.add(normalized);
 
-    const css = fs.readFileSync(path.join(ROOT, normalized), 'utf8');
+    const css = readSource(normalized);
     const dir = path.posix.dirname(normalized);
     const imports = [];
     const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
@@ -57,8 +61,8 @@ function readCssWithImports(file, seen = new Set()) {
 }
 
 const HR_HTML = [
-    fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8'),
-    fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
+    readSource('hr.html'),
+    readSource('css', 'hr-page.css')
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_PULSE_SWITCHER_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');

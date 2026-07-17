@@ -7467,14 +7467,37 @@ router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
             reversed.push({ staffId: report.staff_id, name: report.staff_name, amount, reversalTransactionId });
         }
 
+        const reversedStaffIds = [...new Set(reports.rows.map(report => Number(report.staff_id)).filter(Number.isInteger))];
+        const removedEntries = reversedStaffIds.length
+            ? await client.query(
+                `DELETE FROM payroll_entries
+                 WHERE period_month = $1
+                   AND staff_id = ANY($2::int[])`,
+                [month, reversedStaffIds]
+            )
+            : { rowCount: 0 };
+        const removedPayrollEntries = Number(removedEntries.rowCount || 0);
         const reversedTotal = reversed.reduce((sum, row) => sum + Number(row.amount || 0), 0);
         const periodLock = await setPayrollPeriodLock(month, false, actor, `Сторновано: ${reason}`, client);
-        await recordPayrollPeriodEvent(month, 'reverse', actor, reason, { count: reversed.length, amount: reversedTotal }, client);
+        await recordPayrollPeriodEvent(month, 'reverse', actor, reason, {
+            count: reversed.length,
+            amount: reversedTotal,
+            removedPayrollEntries
+        }, client);
         const reconciliation = await loadPayrollReconciliation(month, client);
         const events = await loadPayrollPeriodEvents(month, client);
         await client.query('COMMIT');
 
-        res.json({ success: true, month, reversed, count: reversed.length, period_lock: periodLock, reconciliation, events });
+        res.json({
+            success: true,
+            month,
+            reversed,
+            count: reversed.length,
+            removedPayrollEntries,
+            period_lock: periodLock,
+            reconciliation,
+            events
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/salary/reverse error', err);

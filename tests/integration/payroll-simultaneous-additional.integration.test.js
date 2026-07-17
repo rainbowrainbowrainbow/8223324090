@@ -405,6 +405,50 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             },
             { type: 'income', amount: 2600, paymentMethod: 'salary_reversal' }
         );
+        assert.ok(Number(reversal.data.removedPayrollEntries) > 0);
+
+        const entriesAfterReverse = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM payroll_entries
+             WHERE staff_id = $1 AND period_month = $2`,
+            [staffId, MONTH]
+        );
+        assert.equal(entriesAfterReverse.rows[0].count, 0);
+
+        const previewAfterReverse = await authRequest(
+            'GET',
+            `/api/payroll/preview?staffId=${staffId}&month=${MONTH}`
+        );
+        assert.equal(previewAfterReverse.status, 200, JSON.stringify(previewAfterReverse.data));
+        assert.equal(Number(previewAfterReverse.data.preview.netAmount), 2600);
+        assert.equal(Number(previewAfterReverse.data.preview.baseAmount), 900);
+        assert.equal(Number(previewAfterReverse.data.preview.additionalAmount), 1700);
+        assert.equal(
+            previewAfterReverse.data.preview.lines.filter(line => line.source === 'payroll_entries').length,
+            0
+        );
+
+        const generationAfterReverse = await authRequest(
+            'POST',
+            `/api/payroll/generate?month=${MONTH}`,
+            { month: MONTH }
+        );
+        assert.equal(generationAfterReverse.status, 200, JSON.stringify(generationAfterReverse.data));
+        const regeneratedAfterReverse = generationAfterReverse.data.reports
+            .find(row => Number(row.staff_id) === staffId);
+        assert.equal(Number(regeneratedAfterReverse.net_amount), 2600);
+        assert.equal(
+            jsonValue(regeneratedAfterReverse.breakdown_json).lines
+                .filter(line => line.source === 'payroll_entries').length,
+            0
+        );
+        const entriesAfterRegeneration = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM payroll_entries
+             WHERE staff_id = $1 AND period_month = $2`,
+            [staffId, MONTH]
+        );
+        assert.equal(entriesAfterRegeneration.rows[0].count, 0);
 
         const secondReversal = await authRequest('POST', '/api/hr/salary/reverse', {
             month: MONTH,

@@ -225,6 +225,13 @@ function makeDb(rows, links = [], options = {}) {
             const raw = String(value || 'event_genix').trim().toLowerCase();
             return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
         };
+        const roomConflictMatches = (row, roomParam, resourceIdsParam = []) => {
+            const rooms = new Set((Array.isArray(roomParam) ? roomParam : [roomParam]).map(String));
+            const resourceIds = new Set((Array.isArray(resourceIdsParam) ? resourceIdsParam : [resourceIdsParam]).filter(Boolean).map(String));
+            return rooms.has(String(row.room || ''))
+                || resourceIds.has(String(row.resource_id || ''))
+                || resourceIds.has(String(row.line_id || ''));
+        };
         if (sql === 'BEGIN') {
             state.tx.push(sql);
             txSnapshot = {
@@ -266,12 +273,15 @@ function makeDb(rows, links = [], options = {}) {
             return { rows: [], rowCount: 0 };
         }
         if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(sql)) {
-            const [date, room, businessContext, excludeIds] = params;
+            const [date, room, businessContext] = params;
+            const aliasMode = Array.isArray(room);
+            const resourceIds = aliasMode ? params[3] : [];
+            const excludeIds = aliasMode ? params[4] : params[3];
             const excluded = new Set((Array.isArray(excludeIds) ? excludeIds : []).map(String));
             const rows = state.rows
                 .filter(row =>
                     row.date === date &&
-                    row.room === room &&
+                    roomConflictMatches(row, room, resourceIds) &&
                     normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                     String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
                     !excluded.has(String(row.id))
@@ -485,12 +495,16 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
-        if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
-            const [date, room, businessContext, excludeIds] = params;
+        if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room = ANY\(\$2::text\[\]\)/i.test(sql)
+            || /SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
+            const [date, room, businessContext] = params;
+            const aliasMode = Array.isArray(room);
+            const resourceIds = aliasMode ? params[3] : [];
+            const excludeIds = aliasMode ? params[4] : params[3];
             const excluded = new Set((Array.isArray(excludeIds) ? excludeIds : []).map(String));
             const rows = state.rows.filter(row =>
                 row.date === date &&
-                row.room === room &&
+                roomConflictMatches(row, room, resourceIds) &&
                 normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                 String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
                 !excluded.has(String(row.id))

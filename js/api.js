@@ -2188,9 +2188,12 @@ async function apiUpdateTimelineResource(resourceId, resource) {
     }
 }
 
-async function apiDeleteTimelineResource(resourceId) {
+async function apiDeleteTimelineResource(resourceId, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}`)}`, {
+        const params = new URLSearchParams();
+        if (options.confirmFutureBookings) params.set('confirmFutureBookings', 'true');
+        const suffix = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}${suffix}`)}`, {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });

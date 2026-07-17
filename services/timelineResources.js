@@ -403,6 +403,22 @@ function timelineResourceAliases(resource = {}) {
     return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
 }
 
+function timelineResourceRoomMatchValues(resource = {}) {
+    return [...new Set([
+        resource.name,
+        resource.shortName,
+        resource.short_name,
+        ...timelineResourceAliases(resource)
+    ].map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function timelineResourceMatchesRoomValue(resource = {}, value = '') {
+    const normalized = normalizedRoomIdentityValue(value);
+    if (!normalized) return false;
+    return timelineResourceRoomMatchValues(resource)
+        .some(candidate => normalizedRoomIdentityValue(candidate) === normalized);
+}
+
 function mergeTimelineResourceRenameAliases(existing = null, inputMetadata = {}, nextName = '') {
     const existingMetadata = normalizeMetadata(existing?.metadata);
     const incomingMetadata = normalizeMetadata(inputMetadata);
@@ -581,9 +597,14 @@ async function upsertTimelineResource(db = defaultPool, context = DEFAULT_TIMELI
     const color = resourceColor(normalizeSortOrder(input.sortOrder || input.sort_order), input.color);
     const capacity = normalizeCapacity(input.capacity);
     const equipment = normalizeEquipment(input.equipment);
-    const metadata = normalizeMetadata(input.metadata);
+    const inputMetadata = normalizeMetadata(input.metadata);
     const isActive = input.isActive !== undefined ? Boolean(input.isActive) : input.is_active !== false;
     const sortOrder = normalizeSortOrder(input.sortOrder ?? input.sort_order);
+    const existing = await findTimelineResource(db, businessContext, resourceId, {
+        type,
+        includeInactive: true
+    });
+    const metadata = mergeTimelineResourceRenameAliases(existing, inputMetadata, name);
 
     const result = await db.query(
         `INSERT INTO timeline_resources
@@ -765,6 +786,30 @@ async function deleteTimelineResource(db = defaultPool, context = DEFAULT_TIMELI
     return result.rows[0] ? mapTimelineResourceRow(result.rows[0]) : null;
 }
 
+async function countFutureActiveBookingsForTimelineResource(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, resource = {}) {
+    const businessContext = normalizeTimelineContext(context);
+    const resourceId = String(resource?.resourceId || resource?.resource_id || '').trim();
+    if (!resourceId) return 0;
+    const type = normalizeResourceType(resource?.type, 'cabinet');
+    const roomValues = type === 'room' ? timelineResourceRoomMatchValues(resource) : [];
+    const result = await db.query(
+        `SELECT COUNT(*)::int AS count
+           FROM bookings b
+          WHERE COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $1
+            AND b.date >= CURRENT_DATE
+            AND ${activeBookingStatusSql('b')}
+            AND (
+                b.line_id = $2
+                OR b.resource_id = $2
+                ${roomValues.length ? 'OR b.room = ANY($3::text[])' : ''}
+            )`,
+        roomValues.length
+            ? [businessContext, resourceId, roomValues]
+            : [businessContext, resourceId]
+    );
+    return Number(result.rows[0]?.count || 0);
+}
+
 async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const context = normalizeTimelineContext(options.context || options.businessContext);
     const type = normalizeResourceType(options.type || 'cabinet', 'cabinet');
@@ -779,12 +824,12 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         ensureDefault: true
     });
     const resourceIds = resources.map(resource => resource.resourceId);
-    const resourceNames = resources.map(resource => resource.name);
+    const resourceNames = [...new Set(resources.flatMap(timelineResourceRoomMatchValues))];
     if (!resourceIds.length) {
         return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
     const bookings = await db.query(
-        `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
+        `SELECT b.id, b.line_id, b.resource_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
                 b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
                 c.name AS customer_name,
                 bg.id AS banquet_group_id,
@@ -805,7 +850,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
-            AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
+            AND (b.line_id = ANY($3::text[]) OR b.resource_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
         [date, context, resourceIds, resourceNames]
     );
     const start = timeToMinutes(time);
@@ -813,8 +858,8 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const byResource = new Map(resources.map(resource => [resource.resourceId, []]));
     const dayBookingsByResource = new Map(resources.map(resource => [resource.resourceId, []]));
     for (const booking of bookings.rows) {
-        const direct = resources.find(resource => resource.resourceId === booking.line_id);
-        const byName = direct || resources.find(resource => resource.name === booking.room);
+        const direct = resources.find(resource => [booking.resource_id, booking.line_id].some(value => resource.resourceId === value));
+        const byName = direct || resources.find(resource => timelineResourceMatchesRoomValue(resource, booking.room));
         if (!byName) continue;
         if (!String(booking.linked_to || '').trim()) {
             const customerName = booking.customer_name || booking.group_name || booking.label
@@ -915,6 +960,8 @@ module.exports = {
     mapTimelineResourceRow,
     resourceToLine,
     timelineResourceAliases,
+    timelineResourceRoomMatchValues,
+    timelineResourceMatchesRoomValue,
     mergeTimelineResourceRenameAliases,
     resolveRoomTimelineResourceIdentity,
     upsertTimelineResource,
@@ -925,5 +972,6 @@ module.exports = {
     timelineResourceLinesForMode,
     syncTimelineResourcesFromLines,
     deleteTimelineResource,
+    countFutureActiveBookingsForTimelineResource,
     timelineResourceAvailability
 };

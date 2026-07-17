@@ -1422,6 +1422,9 @@ function createFakePool() {
             if (/SELECT value FROM settings WHERE key = \$1/i.test(text)) {
                 return { rows: [{ value: JSON.stringify({ mode: 'simple', resourceModel: 'specialist' }) }], rowCount: 1 };
             }
+            if (/SELECT resource_id, name, short_name, metadata\s+FROM timeline_resources/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
             if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND resource_id = \$2/i.test(text)) {
                 const resourceId = String(params[1] || '');
                 if (params[0] === 'maysternya_doli' && resourceId === 'md-consult-room') {
@@ -1490,11 +1493,17 @@ function createFakePool() {
                 return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
             }
             if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(text)) {
-                const excluded = new Set((Array.isArray(params[3]) ? params[3] : []).map(String));
+                const roomValues = new Set((Array.isArray(params[1]) ? params[1] : [params[1]]).map(String));
+                const resourceIds = new Set((Array.isArray(params[3]) ? params[3] : []).filter(Boolean).map(String));
+                const excluded = new Set((Array.isArray(params[4]) ? params[4] : []).map(String));
                 const rows = hrState.bookings
                     .filter(booking =>
                         booking.date === params[0]
-                        && booking.room === params[1]
+                        && (
+                            roomValues.has(String(booking.room || ''))
+                            || resourceIds.has(String(booking.resource_id || ''))
+                            || resourceIds.has(String(booking.line_id || ''))
+                        )
                         && booking.business_context === params[2]
                         && booking.status !== 'cancelled'
                         && !excluded.has(String(booking.id))
@@ -1526,10 +1535,17 @@ function createFakePool() {
                     .map(item => ({ group_id: item.group_id, role: item.role }));
                 return { rows, rowCount: rows.length };
             }
-            if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
+            if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room = ANY\(\$2::text\[\]\)/i.test(text)
+                || /SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
+                const roomValues = new Set((Array.isArray(params[1]) ? params[1] : [params[1]]).map(String));
+                const resourceIds = new Set((Array.isArray(params[3]) ? params[3] : []).filter(Boolean).map(String));
                 const rows = hrState.bookings.filter(booking =>
                     booking.date === params[0]
-                    && booking.room === params[1]
+                    && (
+                        roomValues.has(String(booking.room || ''))
+                        || resourceIds.has(String(booking.resource_id || ''))
+                        || resourceIds.has(String(booking.line_id || ''))
+                    )
                     && booking.business_context === params[2]
                     && booking.status !== 'cancelled'
                 );

@@ -63,6 +63,32 @@ function activeBookingStatusSql(alias = '') {
     return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
 }
 
+function roomAvailabilityPayloadFromResources(payload = {}) {
+    const resources = Array.isArray(payload.resources) ? payload.resources : [];
+    const rooms = resources.map(resource => ({
+        name: resource.name,
+        room: resource.name,
+        resourceId: resource.resourceId,
+        shortName: resource.shortName || null,
+        color: resource.color || null,
+        occupied: Boolean(resource.occupied),
+        free: !resource.occupied && resource.capacityAvailable !== false,
+        capacityAvailable: resource.capacityAvailable !== false,
+        unavailableReason: resource.unavailableReason || null,
+        bookings: Array.isArray(resource.bookings) ? resource.bookings : [],
+        dayBookings: Array.isArray(resource.dayBookings) ? resource.dayBookings : []
+    }));
+    const dayBookingsByRoom = {};
+    rooms.forEach(room => {
+        dayBookingsByRoom[room.name] = room.dayBookings;
+    });
+    return {
+        ...payload,
+        rooms,
+        dayBookingsByRoom
+    };
+}
+
 const REQUIRED_SCHEMA_MIGRATIONS = Object.freeze([
     '216_booking_banquet_links',
     '260_leads_kanban_position',
@@ -694,15 +720,20 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         if (!requireTimelineContext(req, res, context)) return;
         const display = await getTimelineDisplaySettings(pool, context);
         const resourceType = resourceTypeForDisplayMode(display.mode, display);
-        if (resourceType) {
-            return res.json(await timelineResourceAvailability(pool, {
+        if (resourceType || display.mode === 'park') {
+            const resourceAvailability = await timelineResourceAvailability(pool, {
                 context,
-                type: resourceType,
+                type: resourceType || 'room',
                 date,
                 time,
                 duration: dur,
                 capacity: req.query.capacity || req.query.attendees || req.query.kidsCount
-            }));
+            });
+            if (resourceType || resourceAvailability.total > 0) {
+                return res.json((resourceType === 'room' || (!resourceType && display.mode === 'park'))
+                    ? roomAvailabilityPayloadFromResources(resourceAvailability)
+                    : resourceAvailability);
+            }
         }
 
         const params = [date, context || DEFAULT_TIMELINE_CONTEXT];

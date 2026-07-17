@@ -136,10 +136,80 @@ function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAUL
     return keys;
 }
 
+function bookingRoomResourceMatchValues(row = {}) {
+    const metadata = safeBookingExtraData(row.metadata);
+    const aliases = Array.isArray(metadata.aliases) ? metadata.aliases : [];
+    return Array.from(new Set([
+        row.name,
+        row.short_name,
+        row.shortName,
+        ...aliases
+    ].map(value => String(value || '').trim()).filter(Boolean)));
+}
+
+async function resolveRoomConflictLookup(client, businessContext, room) {
+    const context = normalizeTimelineContext(businessContext);
+    const requestedRoom = String(room || '').trim();
+    const roomValues = new Set();
+    const resourceIds = new Set();
+    if (requestedRoom) roomValues.add(requestedRoom);
+    if (!isRoomConflictBlockingRoom(requestedRoom) || !client?.query) {
+        return { roomValues: Array.from(roomValues), resourceIds: [] };
+    }
+
+    const normalizedRoom = bookingConflictLockPart(requestedRoom);
+    try {
+        const result = await client.query(
+            `SELECT resource_id, name, short_name, metadata
+               FROM timeline_resources
+              WHERE COALESCE(business_context, 'event_genix') = $1
+                AND type = 'room'`,
+            [context]
+        );
+        for (const resource of result.rows || []) {
+            const matchValues = bookingRoomResourceMatchValues(resource);
+            const matchesRoom = matchValues.some(value => bookingConflictLockPart(value) === normalizedRoom);
+            if (!matchesRoom) continue;
+            matchValues.forEach(value => roomValues.add(value));
+            addCleanSetValue(resourceIds, resource.resource_id || resource.resourceId);
+        }
+    } catch {
+        // Keep booking conflict checks operational if the room catalog is unavailable during migration/rollback.
+    }
+
+    return {
+        roomValues: Array.from(roomValues),
+        resourceIds: Array.from(resourceIds)
+    };
+}
+
+async function addBookingAliasConflictLockKeys(client, keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT, lookupCache = null) {
+    const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
+    const date = bookingConflictLockPart(booking.date);
+    if (!date || !isRoomConflictBlockingRoom(booking.room)) return keys;
+    const cacheKey = `${context}:${bookingConflictLockPart(booking.room)}`;
+    let lookup = lookupCache?.get(cacheKey);
+    if (!lookup) {
+        lookup = await resolveRoomConflictLookup(client, context, booking.room);
+        lookupCache?.set(cacheKey, lookup);
+    }
+    lookup.roomValues.forEach(value => {
+        const room = bookingConflictLockPart(value);
+        if (isRoomConflictBlockingRoom(room)) keys.add(`room:${context}:${date}:${room}`);
+    });
+    lookup.resourceIds.forEach(value => {
+        const resourceId = bookingConflictLockPart(value);
+        if (resourceId) keys.add(`room-resource:${context}:${date}:${resourceId}`);
+    });
+    return keys;
+}
+
 async function lockBookingConflictResources(client, bookings, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     const keys = new Set();
+    const roomLookupCache = new Map();
     for (const booking of Array.isArray(bookings) ? bookings : [bookings]) {
         addBookingConflictLockKeys(keys, booking, businessContext);
+        await addBookingAliasConflictLockKeys(client, keys, booking, businessContext, roomLookupCache);
     }
 
     const orderedKeys = Array.from(keys).sort();
@@ -396,13 +466,25 @@ function findRoomConflictAmongCandidates(candidates = []) {
 }
 
 async function queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata) {
-    const params = [date, room, context];
+    const lookup = await resolveRoomConflictLookup(client, context, room);
+    const roomValues = lookup.roomValues.length ? lookup.roomValues : [String(room || '').trim()];
+    const resourceIds = lookup.resourceIds || [];
+    const params = [date, roomValues, context, resourceIds];
     const excludeSql = excludeIds.length
         ? ` AND ${includePolicyMetadata ? 'b.' : ''}id != ALL($${params.push(excludeIds)}::text[])`
         : '';
     if (!includePolicyMetadata) {
         return client.query(
-            `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
+            `SELECT id, time, duration, label, program_code
+               FROM bookings
+              WHERE date = $1
+                AND (
+                    room = ANY($2::text[])
+                    OR resource_id = ANY($4::text[])
+                    OR line_id = ANY($4::text[])
+                )
+                AND COALESCE(business_context, 'event_genix') = $3
+                AND ${activeBookingStatusSql()}` +
             excludeSql,
             params
         );
@@ -415,7 +497,11 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
            ON bgb.booking_id = b.id
           AND COALESCE(bgb.business_context, 'event_genix') = $3
          WHERE b.date = $1
-           AND b.room = $2
+           AND (
+                b.room = ANY($2::text[])
+                OR b.resource_id = ANY($4::text[])
+                OR b.line_id = ANY($4::text[])
+           )
            AND COALESCE(b.business_context, 'event_genix') = $3
            AND ${activeBookingStatusSql('b.status')}` +
         excludeSql,

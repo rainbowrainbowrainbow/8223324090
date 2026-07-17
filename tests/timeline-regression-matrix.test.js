@@ -375,6 +375,24 @@ test('timeline view isolation matrix keeps polluted room rows out of animator st
     assert.equal(hooks.isRoomTimelineLinePayload({ id: '748', resourceType: 'animator', name: 'Пасенко Женя' }), false);
 });
 
+test('room timeline render matrix hides only empty quarantine rows', () => {
+    const timeline = readProjectFile('js/timeline.js');
+    const renderStart = timeline.indexOf('lines.forEach(line => {');
+    const renderEnd = timeline.indexOf('syncTimelineContentWidth(selectedDate', renderStart);
+    const renderBlock = timeline.slice(renderStart, renderEnd);
+    const miniStart = timeline.indexOf('const miniMatchedBookingIds = new Set();');
+    const miniEnd = timeline.indexOf('const miniUnmatchedBookings', miniStart);
+    const miniBlock = timeline.slice(miniStart, miniEnd);
+
+    assert.match(timeline, /function isTimelineRoomQuarantineLine\(line = \{\}\)/);
+    assert.match(timeline, /function shouldRenderTimelineLine\(line = \{\}, lineBookings = \[\]\)/);
+    assert.match(timeline, /isRoomTimelineView\(\) && isTimelineRoomQuarantineLine\(line\)[\s\S]*lineBookings\.length > 0/);
+    assert.match(renderBlock, /const lineBookings = lineBookingsById\.get\(String\(line\.id\)\) \|\| \[\];[\s\S]*if \(!shouldRenderTimelineLine\(line, lineBookings\)\) return;[\s\S]*container\.appendChild\(lineEl\);/);
+    assert.match(miniBlock, /const lineBookings = timelineBookingsForLine\(bookings, line\);[\s\S]*if \(!shouldRenderTimelineLine\(line, lineBookings\)\) continue;[\s\S]*html \+= renderMiniLineHtml\(line, lineBookings, start, end, cellWidth\);/);
+    assert.match(renderBlock, /lineEl\.dataset\.assignmentAllowed = lineUnavailable \? 'false' : 'true';/);
+    assert.match(renderBlock, /timelineRoomQuarantineDiagnosticReasons\(lineBookings\)\.join\(','\)/);
+});
+
 test('timeline view switch isolation keeps room rows out of animator render and cache scope', () => {
     const timeline = readProjectFile('js/timeline.js');
     const timelineCache = readProjectFile('js/timeline-cache.js');

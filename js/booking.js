@@ -824,16 +824,32 @@ function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
         option.textContent = value;
         room.appendChild(option);
     }
+    option.dataset.roomLabel = option.dataset.roomLabel || value;
     room.value = value;
     room.setAttribute('aria-invalid', 'false');
 }
 
-function ensureTimelineRoomOption(value) {
-    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет');
+function ensureTimelineRoomOption(value, options = {}) {
+    const label = String(value || options.name || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет').trim();
+    ensureMaysternyaRoomOption(label);
+    const room = document.getElementById('roomSelect');
+    const option = Array.from(room?.options || []).find(opt => opt.value === label);
+    if (!option) return;
+    option.textContent = options.text || label;
+    option.dataset.roomLabel = options.roomLabel || options.name || label;
+    if (options.resourceId) option.dataset.resourceId = options.resourceId;
+    if (options.resourceType) option.dataset.resourceType = options.resourceType;
+    if (options.currentBookingRoom) option.dataset.currentBookingRoom = 'true';
+    option.disabled = options.disabled === true;
 }
 
 const BOOKING_ROOM_FALLBACK_GROUP = '__ungrouped__';
 const BOOKING_ROOM_NON_OPERATIONAL_VALUES = new Set(['Інше', 'Other']);
+const BookingRoomCatalogState = {
+    resources: [],
+    loadedAt: 0,
+    loading: null
+};
 const BookingRoomAvailabilityState = {
     baseGroups: null,
     defaultHint: '',
@@ -842,6 +858,129 @@ const BookingRoomAvailabilityState = {
     roomDayBookings: new Map(),
     availableRooms: new Set()
 };
+
+function resetBookingRoomResourceCatalog() {
+    BookingRoomCatalogState.resources = [];
+    BookingRoomCatalogState.loadedAt = 0;
+    BookingRoomCatalogState.loading = null;
+    BookingRoomAvailabilityState.baseGroups = null;
+}
+
+function bookingRoomResourceOptionData(resource = {}) {
+    const name = String(resource.name || resource.resourceName || '').trim();
+    if (!name) return null;
+    return {
+        value: name,
+        text: name,
+        disabled: resource.isActive === false,
+        resourceId: resource.resourceId || resource.resource_id || '',
+        resourceType: resource.type || resource.resourceType || 'room',
+        color: resource.color || '',
+        sortOrder: resource.sortOrder ?? resource.sort_order ?? 0
+    };
+}
+
+function applyBookingRoomOptionDataset(option, optionData = {}) {
+    option.dataset.roomLabel = optionData.text || optionData.value || '';
+    if (optionData.resourceId) option.dataset.resourceId = optionData.resourceId;
+    if (optionData.resourceType) option.dataset.resourceType = optionData.resourceType;
+    if (optionData.color) option.dataset.resourceColor = optionData.color;
+    if (optionData.currentBookingRoom) option.dataset.currentBookingRoom = 'true';
+    if (optionData.sortOrder !== undefined && optionData.sortOrder !== null) option.dataset.sortOrder = String(optionData.sortOrder);
+}
+
+function renderBookingRoomCatalogOptions(resources = [], options = {}) {
+    const select = document.getElementById('roomSelect');
+    if (!select) return;
+    const selectedRoom = String(options.selectedRoom ?? select.value ?? '').trim();
+    const activeOptions = (Array.isArray(resources) ? resources : [])
+        .filter(resource => resource && resource.isActive !== false)
+        .map(bookingRoomResourceOptionData)
+        .filter(Boolean);
+    const fragment = document.createDocumentFragment();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Оберіть кімнату';
+    fragment.appendChild(empty);
+
+    if (activeOptions.length) {
+        const group = document.createElement('optgroup');
+        group.label = 'Кімнати';
+        activeOptions.forEach(optionData => {
+            const option = document.createElement('option');
+            option.value = optionData.value;
+            option.textContent = optionData.text;
+            option.disabled = optionData.disabled === true;
+            applyBookingRoomOptionDataset(option, optionData);
+            group.appendChild(option);
+        });
+        fragment.appendChild(group);
+    }
+
+    const hasSelectedRoom = selectedRoom && activeOptions.some(option => option.value === selectedRoom);
+    if (selectedRoom && !hasSelectedRoom && options.includeCurrentRoom) {
+        const current = document.createElement('option');
+        current.value = selectedRoom;
+        current.textContent = `${selectedRoom} (поточна, неактивна або legacy)`;
+        current.disabled = options.currentRoomDisabled !== false;
+        applyBookingRoomOptionDataset(current, {
+            value: selectedRoom,
+            text: selectedRoom,
+            currentBookingRoom: true,
+            resourceId: options.currentResourceId || '',
+            resourceType: 'room'
+        });
+        fragment.appendChild(current);
+    }
+
+    select.innerHTML = '';
+    select.appendChild(fragment);
+    if (selectedRoom && Array.from(select.options).some(option => option.value === selectedRoom)) {
+        select.value = selectedRoom;
+    }
+    BookingRoomAvailabilityState.baseGroups = null;
+    snapshotBookingRoomOptions();
+}
+
+async function loadBookingRoomResourcesForSelect(options = {}) {
+    if (!isParkTimelineBookingMode()) {
+        snapshotBookingRoomOptions();
+        return BookingRoomCatalogState.resources;
+    }
+    const maxAgeMs = 60 * 1000;
+    if (!options.force
+        && BookingRoomCatalogState.loadedAt
+        && (Date.now() - BookingRoomCatalogState.loadedAt) < maxAgeMs
+        && BookingRoomCatalogState.resources.length) {
+        renderBookingRoomCatalogOptions(BookingRoomCatalogState.resources, options);
+        return BookingRoomCatalogState.resources;
+    }
+    if (!BookingRoomCatalogState.loading || options.force) {
+        BookingRoomCatalogState.loading = (typeof apiGetTimelineResources === 'function'
+            ? apiGetTimelineResources('room', { includeInactive: true })
+            : Promise.resolve([]))
+            .then(resources => {
+                BookingRoomCatalogState.resources = Array.isArray(resources) ? resources : [];
+                BookingRoomCatalogState.loadedAt = Date.now();
+                return BookingRoomCatalogState.resources;
+            })
+            .catch(error => {
+                console.warn('[BookingRooms] room resource catalog unavailable', error);
+                return BookingRoomCatalogState.resources;
+            })
+            .finally(() => {
+                BookingRoomCatalogState.loading = null;
+            });
+    }
+    const resources = await BookingRoomCatalogState.loading;
+    if (resources.length) renderBookingRoomCatalogOptions(resources, options);
+    else snapshotBookingRoomOptions();
+    return resources;
+}
+
+if (typeof window !== 'undefined') {
+    window.resetBookingRoomResourceCatalog = resetBookingRoomResourceCatalog;
+}
 
 function isOperationalBookingRoomValue(value) {
     const room = String(value || '').trim();
@@ -859,7 +998,12 @@ function snapshotBookingRoomOptions() {
                 .map(option => ({
                     value: option.value,
                     text: option.textContent || option.value,
-                    disabled: option.disabled
+                    disabled: option.disabled,
+                    resourceId: option.dataset.resourceId || '',
+                    resourceType: option.dataset.resourceType || '',
+                    color: option.dataset.resourceColor || '',
+                    currentBookingRoom: option.dataset.currentBookingRoom === 'true',
+                    sortOrder: option.dataset.sortOrder || ''
                 }));
             if (options.length) groups.push({ label: child.label || BOOKING_ROOM_FALLBACK_GROUP, options });
             return;
@@ -870,7 +1014,12 @@ function snapshotBookingRoomOptions() {
                 options: [{
                     value: child.value,
                     text: child.textContent || child.value,
-                    disabled: child.disabled
+                    disabled: child.disabled,
+                    resourceId: child.dataset.resourceId || '',
+                    resourceType: child.dataset.resourceType || '',
+                    color: child.dataset.resourceColor || '',
+                    currentBookingRoom: child.dataset.currentBookingRoom === 'true',
+                    sortOrder: child.dataset.sortOrder || ''
                 }]
             });
         }
@@ -1223,7 +1372,7 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
             const option = document.createElement('option');
             option.value = optionData.value;
             const dayBookings = roomDayBookings.get(optionData.value) || [];
-            option.dataset.roomLabel = optionData.text || optionData.value;
+            applyBookingRoomOptionDataset(option, optionData);
             option.textContent = `${optionData.text}${isOperationalBookingRoomValue(optionData.value) ? roomDayBookingSuffix(dayBookings) : ''}`;
             option.disabled = optionData.disabled;
             if (dayBookings.length > 0) option.dataset.hasDayBookings = 'true';
@@ -1321,8 +1470,14 @@ async function fetchBookingRoomAvailabilityForSelectedSlot(options = {}) {
 
 async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
     if (!isParkTimelineBookingMode()) return;
-    snapshotBookingRoomOptions();
     const selectedRoom = String(options.selectedRoom ?? document.getElementById('roomSelect')?.value ?? '').trim();
+    await loadBookingRoomResourcesForSelect({
+        selectedRoom,
+        includeCurrentRoom: Boolean(selectedRoom && AppState.editingBookingId),
+        currentRoomDisabled: true,
+        force: options.forceRoomCatalog === true
+    });
+    snapshotBookingRoomOptions();
     try {
         if (!Array.isArray(options.bookings)) {
             const availability = await fetchBookingRoomAvailabilityForSelectedSlot(options);
@@ -5950,6 +6105,9 @@ function renderBookingWorkspaceDetail(booking) {
 }
 
 function initBookingPackageWorkspace() {
+    if (typeof loadBookingRoomResourcesForSelect === 'function') {
+        loadBookingRoomResourcesForSelect().catch(error => console.warn('[BookingRooms] initial catalog load failed', error));
+    }
     snapshotBookingRoomOptions();
     renderBookingMenuProductOptions();
     syncBookingWorkspaceMode({ markDirty: false });
@@ -6689,7 +6847,12 @@ async function openBookingPanel(time, lineId, options = {}) {
     // Скинути форму
     document.getElementById('roomSelect').value = '';
     if (isRoomFirstTimelineView()) {
-        ensureTimelineRoomOption(line.name);
+        await loadBookingRoomResourcesForSelect({ selectedRoom: line.name });
+        ensureTimelineRoomOption(line.name, {
+            resourceId: line.resourceId || line.resource_id || line.id,
+            resourceType: line.resourceType || line.resource_type || 'room',
+            name: line.name
+        });
         document.getElementById('roomSelect').value = line.name;
     }
     document.getElementById('selectedProgram').value = '';
@@ -13908,6 +14071,14 @@ async function editBooking(bookingId) {
     BookingDrawerState.legacyGroupNameFallback = isParkTimelineBookingMode() && Boolean(booking.groupName);
 
     // Заповнити форму
+    if (booking.room) {
+        ensureTimelineRoomOption(booking.room, {
+            resourceId: booking.resourceId || booking.resource_id || null,
+            resourceType: 'room',
+            currentBookingRoom: true,
+            disabled: true
+        });
+    }
     document.getElementById('roomSelect').value = booking.room || '';
     await refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom: booking.room || '', excludeId: bookingId });
     if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
@@ -14031,6 +14202,7 @@ async function duplicateBooking(bookingId) {
     hydrateBookingWorkspace(booking);
 
     // Pre-fill форму (ідентично editBooking)
+    await loadBookingRoomResourcesForSelect({ selectedRoom: booking.room || '' });
     document.getElementById('roomSelect').value = booking.room || '';
     if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';

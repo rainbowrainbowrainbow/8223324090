@@ -1326,7 +1326,7 @@ function collectTimelineDisplaySettingsFromControls() {
 
 function timelineResourceTypeForMode(mode, settings = null) {
     const normalized = normalizeTimelineControlSettings({ ...(settings || {}), mode });
-    if (normalized.mode === 'park') return null;
+    if (normalized.mode === 'park') return normalized.roomTimelineEnabled ? 'room' : null;
     if (window.TimelineBusinessContext?.resourceTypeForMode) {
         return window.TimelineBusinessContext.resourceTypeForMode(normalized.mode, normalized);
     }
@@ -1337,6 +1337,17 @@ function timelineResourceTypeForMode(mode, settings = null) {
 }
 
 function timelineResourceCopy(type) {
+    if (type === 'room') {
+        return {
+            title: 'Кімнати',
+            add: '+ Додати кімнату',
+            hint: 'Кімнати керуються з timeline_resources. Активні кімнати зʼявляються у формі бронювання, таймлайні кімнат і панелі вільних кімнат.',
+            empty: 'Кімнат ще немає в каталозі. Додайте першу кімнату або перевірте seed timeline_resources.',
+            prompt: 'Назва кімнати',
+            capacityPrompt: 'Місткість кімнати',
+            unit: 'місць'
+        };
+    }
     if (type === 'cabinet') {
         return {
             title: 'Кабінети',
@@ -1627,6 +1638,9 @@ function resetTimelineResourceCaches() {
         AppState.lines = [];
         AppState.linesByDate = {};
     }
+    if (typeof resetBookingRoomResourceCatalog === 'function') {
+        resetBookingRoomResourceCatalog();
+    }
 }
 
 async function addTimelineResourceFromSettings() {
@@ -1636,7 +1650,7 @@ async function addTimelineResourceFromSettings() {
     const copy = timelineResourceCopy(type);
     const name = await promptModal(copy.prompt, {
         title: copy.add.replace(/^\+\s*/, ''),
-        placeholder: type === 'cabinet' ? 'Кабінет 4' : 'Спеціаліст',
+        placeholder: type === 'room' ? 'Нова кімната' : (type === 'cabinet' ? 'Кабінет 4' : 'Спеціаліст'),
         okText: 'Додати'
     });
     if (!name) return;
@@ -1669,6 +1683,26 @@ async function addTimelineResourceFromSettings() {
     showNotification('Ресурс таймлайну збережено', 'success');
 }
 
+function normalizeTimelineResourceColorInput(value, fallback = '') {
+    const color = String(value || '').trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(color)) return color;
+    return fallback || '';
+}
+
+async function disableTimelineResourceFromSettings(resourceId, current = {}) {
+    let result = await apiDeleteTimelineResource(resourceId);
+    if (result?.code === 'RESOURCE_HAS_FUTURE_BOOKINGS') {
+        const count = Number(result.futureBookingCount || 0);
+        const confirmed = await confirmModal(
+            `У кімнаті "${result.resourceName || current.name || resourceId}" є майбутні активні бронювання: ${count}.\n\nВимкнути кімнату все одно? Старі бронювання залишаться видимими, але нові записи в цю кімнату будуть недоступні.`,
+            { type: 'warning', okText: 'Вимкнути', cancelText: 'Скасувати' }
+        );
+        if (!confirmed) return { success: true, cancelled: true };
+        result = await apiDeleteTimelineResource(resourceId, { confirmFutureBookings: true });
+    }
+    return result;
+}
+
 async function handleTimelineResourceListClick(event) {
     const button = event.target.closest('[data-resource-action]');
     if (!button) return;
@@ -1685,19 +1719,43 @@ async function handleTimelineResourceListClick(event) {
 
     let result = null;
     if (action === 'edit') {
-        const name = await promptModal(timelineResourceCopy(type).prompt, {
+        const copy = timelineResourceCopy(type);
+        const name = await promptModal(copy.prompt, {
             title: 'Редагувати ресурс',
             defaultValue: current.name || '',
             placeholder: current.name || '',
             okText: 'Зберегти'
         });
         if (!name) return;
-        result = await apiUpdateTimelineResource(resourceId, { ...current, type, name });
+        const colorInput = await promptModal('Колір ресурсу (#RRGGBB)', {
+            title: 'Колір',
+            defaultValue: current.color || '#10B981',
+            placeholder: '#10B981',
+            okText: 'Зберегти'
+        });
+        if (colorInput === null) return;
+        const sortInput = await promptModal('Порядок у таймлайні', {
+            title: 'Порядок',
+            defaultValue: String(current.sortOrder ?? current.sort_order ?? 0),
+            placeholder: '10',
+            inputType: 'number',
+            okText: 'Зберегти'
+        });
+        if (sortInput === null) return;
+        result = await apiUpdateTimelineResource(resourceId, {
+            ...current,
+            type,
+            name,
+            color: normalizeTimelineResourceColorInput(colorInput, current.color || '#10B981'),
+            sortOrder: parseInt(sortInput, 10) || 0
+        });
     } else if (action === 'disable') {
-        result = await apiDeleteTimelineResource(resourceId);
+        result = await disableTimelineResourceFromSettings(resourceId, current);
     } else if (action === 'enable') {
         result = await apiUpdateTimelineResource(resourceId, { ...current, type, isActive: true });
     }
+
+    if (result?.cancelled) return;
 
     if (!result?.success) {
         showNotification(result?.error || 'Не вдалося оновити ресурс таймлайну', 'error');

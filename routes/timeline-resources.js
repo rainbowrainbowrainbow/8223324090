@@ -13,8 +13,10 @@ const {
 const {
     normalizeResourceType,
     listTimelineResources,
+    findTimelineResource,
     upsertTimelineResource,
     deleteTimelineResource,
+    countFutureActiveBookingsForTimelineResource,
     timelineResourceAvailability
 } = require('../services/timelineResources');
 const { validateDate, validateTime } = require('../services/booking');
@@ -87,12 +89,29 @@ router.delete('/resources/:resourceId', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
         if (!requireTimelineAction(req, res, context, 'settings')) return;
+        const current = await findTimelineResource(pool, context, req.params.resourceId, {
+            includeInactive: true
+        });
+        if (!current) return res.status(404).json({ error: 'Resource not found' });
+        const confirmFutureBookings = req.query.confirmFutureBookings === 'true'
+            || req.query.confirm_future_bookings === 'true';
+        const futureBookingCount = current.type === 'room'
+            ? await countFutureActiveBookingsForTimelineResource(pool, context, current)
+            : 0;
+        if (futureBookingCount > 0 && !confirmFutureBookings) {
+            return res.status(409).json({
+                error: 'Resource has future active bookings',
+                code: 'RESOURCE_HAS_FUTURE_BOOKINGS',
+                futureBookingCount,
+                resourceId: current.resourceId,
+                resourceName: current.name
+            });
+        }
         const resource = await deleteTimelineResource(pool, context, req.params.resourceId);
-        if (!resource) return res.status(404).json({ error: 'Resource not found' });
         logAdminAction('timeline_resource_disable', 'timeline_resources', {
             username: req.user?.username,
             target: resource.resourceId,
-            details: { context, type: resource.type, name: resource.name },
+            details: { context, type: resource.type, name: resource.name, futureBookingCount },
             ip: req.ip,
             requestId: req.headers['x-request-id']
         });

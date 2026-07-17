@@ -23,8 +23,11 @@ const {
     findTimelineResourceByName,
     resourceToLine,
     timelineResourceAvailability,
+    timelineResourceRoomMatchValues,
     mergeTimelineResourceRenameAliases,
-    resolveRoomTimelineResourceIdentity
+    resolveRoomTimelineResourceIdentity,
+    upsertTimelineResource,
+    countFutureActiveBookingsForTimelineResource
 } = require('../services/timelineResources');
 const {
     TIMELINE_VISUAL_BLOCKS,
@@ -40,7 +43,8 @@ const {
     isRoomConflictBlockingRoom,
     isTakeawayRoomValue,
     lockBookingConflictResources,
-    findRoomConflictAmongCandidates
+    findRoomConflictAmongCandidates,
+    ALL_ROOMS
 } = require('../services/booking');
 const banquetConflictMatrix = require('./fixtures/banquet-conflict-matrix');
 
@@ -153,7 +157,12 @@ function createTimelineResourceMatchingHarness(options = {}) {
             timelineBookingMatchDiagnostic,
             normalizeTimelineBookingsForContext,
             timelineBookingDiagnosticsStore,
-            resetTimelineBookingDiagnostics
+            resetTimelineBookingDiagnostics,
+            isTimelineRoomQuarantineLine,
+            shouldRenderTimelineLine,
+            timelineRoomQuarantineDiagnosticReasons,
+            timelineLineHeaderTitle,
+            timelineLineUnavailableStatusText
         };
     `, context, { filename: 'js/timeline.js' });
     return context.__resourceMatchingHooks;
@@ -164,6 +173,9 @@ function roomConflictPolicyClient(rows, sourceGroups = []) {
     return {
         queries,
         query: async (sql, params) => {
+            if (/FROM timeline_resources/i.test(sql)) {
+                return { rows: [], rowCount: 0 };
+            }
             queries.push({ sql, params });
             if (/FROM banquet_group_bookings/i.test(sql) && /booking_id = \$1/i.test(sql)) {
                 return { rows: sourceGroups.map(group_id => ({ group_id })) };
@@ -772,7 +784,9 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /function resourceTypeForDisplayMode/);
     assert.match(service, /function timelineResourceAvailability/);
     assert.match(service, /async function findTimelineResourceByName/);
-    assert.match(service, /b\.line_id = ANY\(\$3::text\[\]\) OR b\.room = ANY\(\$4::text\[\]\)/);
+    assert.match(service, /function timelineResourceRoomMatchValues/);
+    assert.match(service, /function timelineResourceMatchesRoomValue/);
+    assert.match(service, /b\.line_id = ANY\(\$3::text\[\]\) OR b\.resource_id = ANY\(\$3::text\[\]\) OR b\.room = ANY\(\$4::text\[\]\)/);
     assert.match(service, /requestedCapacity/);
     assert.match(service, /capacityAvailable/);
     assert.match(service, /overCapacity/);
@@ -967,6 +981,44 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
+});
+
+test('legacy ALL_ROOMS fallback stays aligned with seeded room resources for one-release fallback', () => {
+    const migration = read('db/migrations/263_event_genix_room_timeline_resources.sql');
+    const html = read('index.html');
+    const seededRoomNames = Array.from(
+        migration.matchAll(/\('event_genix', 'room-[^']+', 'room', '([^']+)'/g),
+        match => match[1]
+    );
+
+    assert.ok(seededRoomNames.length >= 10, 'room timeline resource seed must contain the operational room catalog');
+    assert.deepEqual(ALL_ROOMS, seededRoomNames);
+    assert.match(html, /id="roomSelect"[^>]*data-room-catalog="timeline_resources"/);
+    assert.doesNotMatch(html, /<option value="Марвел">/);
+    assert.doesNotMatch(html, /<option value="Інше">/);
+});
+
+test('booking room selector and settings manager use timeline room resources as source of truth', () => {
+    const html = read('index.html');
+    const booking = read('js/booking.js');
+    const settings = read('js/settings.js');
+    const api = read('js/api.js');
+    const route = read('routes/timeline-resources.js');
+
+    assert.match(html, /id="roomSelect"[^>]*data-room-catalog="timeline_resources"/);
+    assert.match(booking, /function renderBookingRoomCatalogOptions/);
+    assert.match(booking, /apiGetTimelineResources\('room', \{ includeInactive: true \}\)/);
+    assert.match(booking, /option\.dataset\.resourceId/);
+    assert.match(booking, /currentBookingRoom: true/);
+    assert.match(booking, /current\.disabled = options\.currentRoomDisabled !== false/);
+    assert.match(booking, /includeCurrentRoom: Boolean\(selectedRoom && AppState\.editingBookingId\)/);
+    assert.match(settings, /normalized\.mode === 'park'\) return normalized\.roomTimelineEnabled \? 'room' : null;/);
+    assert.match(settings, /if \(type === 'room'\)/);
+    assert.match(settings, /normalizeTimelineResourceColorInput/);
+    assert.match(settings, /RESOURCE_HAS_FUTURE_BOOKINGS/);
+    assert.match(api, /confirmFutureBookings/);
+    assert.match(route, /countFutureActiveBookingsForTimelineResource/);
+    assert.match(route, /RESOURCE_HAS_FUTURE_BOOKINGS/);
 });
 
 test('timeline resource matching prefers canonical projection over legacy fallback collisions', () => {
@@ -1471,9 +1523,74 @@ test('room conflict checks can exclude same-banquet source ids without hiding un
         { excludeIds: ['BK-SOURCE'] }
     );
 
+    const bookingQuery = queries.find(query => /FROM bookings/i.test(query.sql));
     assert.equal(conflict.id, 'BK-OTHER');
-    assert.deepEqual(queries[0].params[3], ['BK-SOURCE']);
-    assert.match(queries[0].sql, /id != ALL\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
+    assert.match(bookingQuery.sql, /resource_id = ANY\(\$4::text\[\]\)/);
+    assert.deepEqual(bookingQuery.params[4], ['BK-SOURCE']);
+    assert.match(bookingQuery.sql, /id != ALL\(\$5::text\[\]\)/);
+});
+
+test('room conflict checks and advisory locks use room resource aliases after rename', async () => {
+    const queries = [];
+    const resourceRow = {
+        resource_id: 'room-marvel',
+        type: 'room',
+        name: 'Марвел Prime',
+        short_name: null,
+        metadata: { aliases: ['Марвел'] }
+    };
+    const client = {
+        query: async (sql, params) => {
+            queries.push({ sql, params });
+            if (/FROM timeline_resources/i.test(sql)) {
+                return { rows: [resourceRow], rowCount: 1 };
+            }
+            if (/FROM bookings/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 'BK-OLD-ROOM',
+                        room: 'Марвел',
+                        time: '15:00',
+                        duration: 60,
+                        label: 'Old room booking',
+                        program_code: 'QUEST'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/pg_advisory_xact_lock/i.test(sql)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+
+    const conflict = await checkRoomConflict(client, '2099-07-01', 'Марвел Prime', '15:15', 30);
+    assert.equal(conflict.id, 'BK-OLD-ROOM');
+    const bookingQuery = queries.find(query => /FROM bookings/i.test(query.sql));
+    assert.deepEqual(bookingQuery.params[1], ['Марвел Prime', 'Марвел']);
+    assert.deepEqual(bookingQuery.params[3], ['room-marvel']);
+    assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
+    assert.match(bookingQuery.sql, /resource_id = ANY\(\$4::text\[\]\)/);
+
+    const lockClient = {
+        query: async (sql, params) => {
+            if (/FROM timeline_resources/i.test(sql)) {
+                return { rows: [resourceRow], rowCount: 1 };
+            }
+            queries.push({ sql, params });
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const keys = await lockBookingConflictResources(lockClient, [{
+        businessContext: 'event_genix',
+        date: '2099-07-01',
+        room: 'Марвел Prime'
+    }]);
+    assert.deepEqual(keys, [
+        'room-resource:event_genix:2099-07-01:room-marvel',
+        'room:event_genix:2099-07-01:марвел',
+        'room:event_genix:2099-07-01:марвел prime'
+    ]);
 });
 
 test('room conflict policy keeps legacy room conflicts strict without allow flag', async () => {
@@ -1676,7 +1793,7 @@ test('room conflict policy can resolve same-banquet context from source booking 
     );
 
     assert.equal(conflict, null);
-    assert.deepEqual(client.queries[0].params[3], ['BK-SOURCE']);
+    assert.deepEqual(client.queries[0].params[4], ['BK-SOURCE']);
     assert.match(client.queries[1].sql, /FROM banquet_group_bookings/);
     assert.deepEqual(client.queries[1].params, ['BK-SOURCE', 'event_genix']);
 });
@@ -1686,6 +1803,9 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     const booking = read('js/booking.js');
     assert.match(settings, /timelineResourceAvailability/);
     assert.match(settings, /resourceTypeForDisplayMode\(display\.mode, display\)/);
+    assert.match(settings, /if \(resourceType \|\| display\.mode === 'park'\)/);
+    assert.match(settings, /type: resourceType \|\| 'room'/);
+    assert.match(settings, /roomAvailabilityPayloadFromResources\(resourceAvailability\)/);
     assert.match(settings, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
     assert.match(settings, /c\.name AS customer_name/);
     assert.match(booking, /appendApiContext\?\.\(`\/rooms\/free\/\$\{date\}\/\$\{time\}\/\$\{duration\}`\)/);
@@ -1843,6 +1963,81 @@ test('resource availability keeps day booking metadata separate from selected-ti
     assert.match(bookingQuery.sql, /c\.name AS customer_name/);
     assert.match(bookingQuery.sql, /LEFT JOIN banquet_group_bookings bgb/);
     assert.match(bookingQuery.sql, /LEFT JOIN banquet_groups bg/);
+});
+
+test('room resource availability resolves legacy room aliases and durable resource ids', async () => {
+    const queries = [];
+    const resources = [{
+        id: 1,
+        business_context: 'event_genix',
+        resource_id: 'room-marvel-prime',
+        type: 'room',
+        name: 'Марвел Prime',
+        short_name: 'Марвел+',
+        color: '#10B981',
+        capacity: null,
+        equipment: [],
+        is_active: true,
+        sort_order: 10,
+        metadata: { aliases: ['Марвел'] }
+    }];
+    const bookingRows = [{
+        id: 'BK-ROOM-ALIAS',
+        line_id: 'legacy-line',
+        resource_id: null,
+        room: 'Марвел',
+        time: '14:00',
+        duration: 60,
+        label: 'Alias booking',
+        program_code: 'QUEST',
+        program_name: 'Quest',
+        status: 'confirmed',
+        kids_count: 6,
+        group_name: null,
+        linked_to: null,
+        extra_data: {},
+        customer_name: null,
+        customer_id: null,
+        business_context: 'event_genix',
+        banquet_group_id: null,
+        banquet_group_role: null,
+        banquet_group_primary_booking_id: null,
+        banquet_group_customer_id: null
+    }];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            const text = String(sql);
+            if (/SELECT COUNT\(\*\)::int AS count FROM timeline_resources/i.test(text)) {
+                return { rows: [{ count: resources.length }], rowCount: 1 };
+            }
+            if (/SELECT \*\s+FROM timeline_resources/i.test(text)) {
+                return { rows: resources, rowCount: resources.length };
+            }
+            if (/FROM bookings b/i.test(text)) {
+                return { rows: bookingRows, rowCount: bookingRows.length };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        }
+    };
+
+    const availability = await timelineResourceAvailability(fakeDb, {
+        context: 'event_genix',
+        type: 'room',
+        date: '2099-03-10',
+        time: '14:30',
+        duration: 30
+    });
+
+    assert.deepEqual(timelineResourceRoomMatchValues(availability.resources[0]), ['Марвел Prime', 'Марвел+', 'Марвел']);
+    assert.deepEqual(availability.occupied, ['Марвел Prime']);
+    assert.deepEqual(availability.free, []);
+    assert.equal(availability.resources[0].dayBookings[0].room, 'Марвел');
+    const bookingQuery = queries.find(query => /FROM bookings b/i.test(query.sql));
+    assert.match(bookingQuery.sql, /b\.resource_id = ANY\(\$3::text\[\]\)/);
+    assert.match(bookingQuery.sql, /b\.room = ANY\(\$4::text\[\]\)/);
+    assert.deepEqual(bookingQuery.params[2], ['room-marvel-prime']);
+    assert.deepEqual(bookingQuery.params[3], ['Марвел Prime', 'Марвел+', 'Марвел']);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {
@@ -2654,6 +2849,71 @@ test('room timeline matches quarantined booking only to quarantine and keeps dia
     assert.deepEqual(Array.from(diagnostic.matchedLineIds), ['room-quarantine']);
 });
 
+test('empty room quarantine remains loaded for matching but hidden from render', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const takeawayLine = { id: 'room-takeaway', resourceId: 'room-takeaway', resourceType: 'room' };
+    const quarantineLine = {
+        id: 'room-quarantine',
+        resourceId: 'room-quarantine',
+        resourceType: 'room',
+        assignmentAllowed: false,
+        isUnavailable: true,
+        metadata: { quarantine: true }
+    };
+    const marvelLine = { id: 'room-marvel', resourceId: 'room-marvel', resourceType: 'room' };
+
+    assert.equal(hooks.isTimelineRoomQuarantineLine(quarantineLine), true);
+    assert.equal(hooks.timelineBookingsForLine([], quarantineLine).length, 0);
+    assert.equal(hooks.shouldRenderTimelineLine(quarantineLine, []), false);
+    assert.equal(hooks.shouldRenderTimelineLine(takeawayLine, []), true);
+    assert.equal(hooks.shouldRenderTimelineLine(marvelLine, []), true);
+
+    const visibleLines = [takeawayLine, quarantineLine, marvelLine]
+        .filter(line => hooks.shouldRenderTimelineLine(line, hooks.timelineBookingsForLine([], line)));
+    assert.deepEqual(visibleLines.map(line => line.id), ['room-takeaway', 'room-marvel']);
+});
+
+test('room quarantine renders with problematic booking and exposes diagnostic reason only', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const booking = {
+        id: 'BK-QUARANTINE',
+        room: 'Legacy Customer Room Name',
+        resourceId: 'room-takeaway',
+        customerName: 'Sensitive Customer',
+        phone: '+380000000000',
+        timelineProjection: {
+            timelineView: 'rooms',
+            resourceId: 'room-quarantine',
+            resourceName: 'Невідома / неактивна кімната',
+            resourceType: 'room',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            diagnosticReason: 'custom_room'
+        }
+    };
+    const quarantineLine = {
+        id: 'room-quarantine',
+        resourceId: 'room-quarantine',
+        resourceType: 'room',
+        assignmentAllowed: false,
+        isUnavailable: true,
+        warning: 'Проблемне бронювання кімнати потребує перевірки.',
+        metadata: { roomIdentityQuarantine: true }
+    };
+
+    const lineBookings = hooks.timelineBookingsForLine([booking], quarantineLine);
+    assert.equal(lineBookings.length, 1);
+    assert.equal(hooks.shouldRenderTimelineLine(quarantineLine, lineBookings), true);
+    assert.deepEqual(Array.from(hooks.timelineRoomQuarantineDiagnosticReasons(lineBookings)), ['custom_room']);
+
+    const headerTitle = hooks.timelineLineHeaderTitle(quarantineLine, lineBookings);
+    const statusText = hooks.timelineLineUnavailableStatusText(quarantineLine, lineBookings);
+    assert.match(headerTitle, /diagnosticReason: custom_room/);
+    assert.equal(statusText, 'diagnosticReason: custom_room');
+    assert.doesNotMatch(`${headerTitle} ${statusText}`, /Legacy Customer Room Name|Sensitive Customer|\+380|BK-QUARANTINE/);
+});
+
 test('room render fallback is quarantine-only and never uses the first room line', () => {
     const timeline = read('js/timeline.js');
     const fallbackStart = timeline.indexOf('const unmatchedBookings = bookings.filter');
@@ -2724,6 +2984,96 @@ test('timeline resource rename metadata preserves old and incoming aliases', () 
     );
     assert.deepEqual(new Set(metadata.aliases), new Set(['Very Old Name', 'Imported Alias', 'Old Name', 'Old']));
     assert.equal(metadata.custom, true);
+});
+
+test('upserting renamed room resource persists old name as alias', async () => {
+    const queries = [];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            const text = String(sql);
+            if (/SELECT \* FROM timeline_resources/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 7,
+                        business_context: 'event_genix',
+                        resource_id: 'room-marvel',
+                        type: 'room',
+                        name: 'Марвел',
+                        short_name: 'Марвел',
+                        color: '#10B981',
+                        capacity: null,
+                        equipment: [],
+                        is_active: true,
+                        sort_order: 10,
+                        metadata: { aliases: ['Marvel legacy'] }
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/INSERT INTO timeline_resources/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 7,
+                        business_context: params[0],
+                        resource_id: params[1],
+                        type: params[2],
+                        name: params[3],
+                        short_name: params[4],
+                        color: params[5],
+                        capacity: params[6],
+                        equipment: JSON.parse(params[7]),
+                        is_active: params[8],
+                        sort_order: params[9],
+                        metadata: JSON.parse(params[10])
+                    }],
+                    rowCount: 1
+                };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        }
+    };
+
+    const resource = await upsertTimelineResource(fakeDb, 'event_genix', {
+        resourceId: 'room-marvel',
+        type: 'room',
+        name: 'Марвел Prime',
+        shortName: 'Марвел+',
+        color: '#10B981',
+        metadata: { aliases: ['External Alias'] }
+    });
+
+    assert.equal(resource.resourceId, 'room-marvel');
+    assert.equal(resource.name, 'Марвел Prime');
+    assert.deepEqual(
+        new Set(resource.metadata.aliases),
+        new Set(['Marvel legacy', 'External Alias', 'Марвел'])
+    );
+    assert.match(queries[1].sql, /metadata = EXCLUDED\.metadata/);
+});
+
+test('room resource deactivate guard counts future bookings by durable id and aliases', async () => {
+    const queries = [];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            return { rows: [{ count: 2 }], rowCount: 1 };
+        }
+    };
+
+    const count = await countFutureActiveBookingsForTimelineResource(fakeDb, 'event_genix', {
+        resourceId: 'room-marvel-prime',
+        type: 'room',
+        name: 'Марвел Prime',
+        shortName: 'Марвел+',
+        metadata: { aliases: ['Марвел'] }
+    });
+
+    assert.equal(count, 2);
+    assert.match(queries[0].sql, /b\.line_id = \$2/);
+    assert.match(queries[0].sql, /b\.resource_id = \$2/);
+    assert.match(queries[0].sql, /b\.room = ANY\(\$3::text\[\]\)/);
+    assert.deepEqual(queries[0].params, ['event_genix', 'room-marvel-prime', ['Марвел Prime', 'Марвел+', 'Марвел']]);
 });
 
 test('shared PinataNumbers helper owns operational number normalization', () => {

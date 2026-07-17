@@ -397,6 +397,22 @@ body.timeline-dashboard-page {
     overflow-wrap: anywhere;
 }
 
+.timeline-line--unavailable .line-header {
+    border-left-color: var(--warning) !important;
+    background: rgba(245, 158, 11, 0.08);
+    cursor: not-allowed;
+}
+
+.line-unavailable-warning {
+    display: block;
+    margin-top: 5px;
+    color: var(--warning);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
 .line-sub {
     font-size: 10px;
     color: var(--gray-400);

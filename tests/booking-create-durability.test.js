@@ -2921,7 +2921,8 @@ test('booking conflict locks serialize line and room resources in deterministic 
         'line:dar:2099-02-12:specialist-main',
         'room:dar:2099-02-12:cabinet'
     ]);
-    assert.equal(calls.length, 2);
-    assert.ok(calls.every(call => /pg_advisory_xact_lock/i.test(call.sql)));
-    assert.deepEqual(calls.map(call => call.params[0]), ['booking_conflict_v1', 'booking_conflict_v1']);
+    const lockCalls = calls.filter(call => /pg_advisory_xact_lock/i.test(call.sql));
+    assert.equal(lockCalls.length, 2);
+    assert.ok(calls.some(call => /FROM timeline_resources/i.test(call.sql)));
+    assert.deepEqual(lockCalls.map(call => call.params[0]), ['booking_conflict_v1', 'booking_conflict_v1']);
 });

@@ -3803,7 +3803,7 @@ test('activity-first kitchen room open initializes source context after programm
         bookingJs.indexOf('async function openBookingPanel')
     );
 
-    assert.match(openPanelBlock, /ensureTimelineRoomOption\(line\.name\);\s*document\.getElementById\('roomSelect'\)\.value = line\.name;/);
+    assert.match(openPanelBlock, /await loadBookingRoomResourcesForSelect\(\{ selectedRoom: line\.name \}\);[\s\S]*ensureTimelineRoomOption\(line\.name,\s*\{[\s\S]*resourceId:[\s\S]*resourceType:[\s\S]*document\.getElementById\('roomSelect'\)\.value = line\.name;/);
     assert.match(openPanelBlock, /await refreshBookingRoomAvailabilityForSelectedDate\(\);\s*if \(!appliedExplicitBanquetContext\) \{\s*await initializeRoomFirstBookingSourceContext\(\);\s*\}/);
     assert.match(initBlock, /handleBookingRoomSelectionContextChange\(\)/);
     assert.match(initBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);

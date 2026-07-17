@@ -3813,6 +3813,68 @@ function normalizeTimelineBookingsForContext(bookings = []) {
     return normalized.filter(booking => !booking.timelineRenderHiddenReason);
 }
 
+function isTimelineRoomQuarantineLine(line = {}) {
+    const metadata = line?.metadata || {};
+    return String(line?.id || line?.resourceId || '').trim() === 'room-quarantine'
+        || metadata.quarantine === true
+        || metadata.roomIdentityQuarantine === true;
+}
+
+function timelineSafeDiagnosticReason(value) {
+    const reason = String(value || '').trim();
+    if (!reason) return '';
+    return reason.replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 80);
+}
+
+function timelineRoomQuarantineDiagnosticReasons(lineBookings = []) {
+    const reasons = new Set();
+    (Array.isArray(lineBookings) ? lineBookings : []).forEach(booking => {
+        const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+        const diagnostic = typeof timelineProjectionDiagnosticReason === 'function'
+            ? timelineProjectionDiagnosticReason(booking)
+            : null;
+        [
+            diagnostic?.reason,
+            projection?.diagnosticReason,
+            projection?.diagnostic_reason,
+            booking?.timelineIdentity?.fallbackReason,
+            booking?.timeline_identity?.fallbackReason,
+            booking?.timelineIdentity?.fallback_reason,
+            booking?.timeline_identity?.fallback_reason
+        ].forEach(value => {
+            const reason = timelineSafeDiagnosticReason(value);
+            if (reason) reasons.add(reason);
+        });
+    });
+    if (!reasons.size && Array.isArray(lineBookings) && lineBookings.length) {
+        reasons.add('room_identity_quarantine');
+    }
+    return Array.from(reasons);
+}
+
+function shouldRenderTimelineLine(line = {}, lineBookings = []) {
+    if (isRoomTimelineView() && isTimelineRoomQuarantineLine(line)) {
+        return Array.isArray(lineBookings) && lineBookings.length > 0;
+    }
+    return true;
+}
+
+function timelineLineHeaderTitle(line = {}, lineBookings = []) {
+    const warning = String(line?.warning || '').trim();
+    if (!isRoomTimelineView() || !isTimelineRoomQuarantineLine(line)) return warning;
+    const reasons = timelineRoomQuarantineDiagnosticReasons(lineBookings);
+    const diagnostic = reasons.length ? `diagnosticReason: ${reasons.join(', ')}` : '';
+    return [warning || 'Проблемні бронювання кімнати потребують перевірки.', diagnostic].filter(Boolean).join(' ');
+}
+
+function timelineLineUnavailableStatusText(line = {}, lineBookings = []) {
+    if (isRoomTimelineView() && isTimelineRoomQuarantineLine(line)) {
+        const reasons = timelineRoomQuarantineDiagnosticReasons(lineBookings);
+        return reasons.length ? `diagnosticReason: ${reasons.join(', ')}` : 'Потрібна перевірка';
+    }
+    return 'Недоступний';
+}
+
 async function handleTimelineBusinessContextChanged(event) {
     const detail = event?.detail || {};
     if (detail.previous && detail.current && detail.previous === detail.current) return;
@@ -4092,16 +4154,23 @@ async function renderTimeline() {
     lines.forEach(line => {
         try {
         const lineBookings = lineBookingsById.get(String(line.id)) || [];
+        if (!shouldRenderTimelineLine(line, lineBookings)) return;
         const lineEl = document.createElement('div');
         const lineUnavailable = line?.assignmentAllowed === false || line?.isUnavailable === true;
+        const unavailableStatusText = timelineLineUnavailableStatusText(line, lineBookings);
+        const headerTitle = timelineLineHeaderTitle(line, lineBookings);
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}${lineUnavailable ? ' timeline-line--unavailable' : ''}`;
         lineEl.dataset.lineType = line.resourceType || window.TimelineBusinessContext?.presentation?.().lineTypeLabel || 'line';
         lineEl.dataset.assignmentAllowed = lineUnavailable ? 'false' : 'true';
+        if (isRoomTimelineView() && isTimelineRoomQuarantineLine(line)) {
+            lineEl.dataset.roomQuarantine = 'true';
+            lineEl.dataset.quarantineReasons = timelineRoomQuarantineDiagnosticReasons(lineBookings).join(',');
+        }
 
         lineEl.innerHTML = `
-            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}" title="${escapeHtml(line.warning || '')}">
+            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}" title="${escapeHtml(headerTitle)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                ${lineUnavailable ? `<span class="line-unavailable-warning" role="status">Недоступний</span>` : ''}
+                ${lineUnavailable ? `<span class="line-unavailable-warning" role="status">${escapeHtml(unavailableStatusText)}</span>` : ''}
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}
@@ -7214,6 +7283,7 @@ async function renderDaySectionHtml(date, options = {}) {
     for (const line of lines) {
         const lineBookings = timelineBookingsForLine(bookings, line);
         lineBookings.forEach(booking => miniMatchedBookingIds.add(String(booking.id)));
+        if (!shouldRenderTimelineLine(line, lineBookings)) continue;
         html += renderMiniLineHtml(line, lineBookings, start, end, cellWidth);
     }
     const miniUnmatchedBookings = bookings.filter(booking => !miniMatchedBookingIds.has(String(booking.id)));

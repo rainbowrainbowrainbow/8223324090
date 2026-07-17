@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.79.51">
-    <link rel="stylesheet" href="css/auth.css?v=0.79.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.79.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.51">
-    <link rel="stylesheet" href="css/timeline.css?v=0.79.51">
-    <link rel="stylesheet" href="css/panel.css?v=0.79.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.79.51">
-    <link rel="stylesheet" href="css/controls.css?v=0.79.51">
-    <link rel="stylesheet" href="css/features.css?v=0.79.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.79.51">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.51">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.51">
+    <link rel="stylesheet" href="css/base.css?v=0.79.52">
+    <link rel="stylesheet" href="css/auth.css?v=0.79.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.79.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.52">
+    <link rel="stylesheet" href="css/timeline.css?v=0.79.52">
+    <link rel="stylesheet" href="css/panel.css?v=0.79.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.79.52">
+    <link rel="stylesheet" href="css/controls.css?v=0.79.52">
+    <link rel="stylesheet" href="css/features.css?v=0.79.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.79.52">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.52">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.79.51">✨ 0.79.51</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.79.52">✨ 0.79.52</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.79.51 — Attendance Review Reliability</p>
+                <p class="tagline">AI First CRM v0.79.52 — Room Timeline Catalog</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.51</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.52</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -388,30 +388,8 @@
                 <div class="form-section">
                     <label for="roomSelect">Кімната <span class="required-mark">*</span> <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
                     <div id="freeRoomsPanel" class="free-rooms-panel hidden"></div>
-                    <select id="roomSelect" required aria-required="true" aria-describedby="bookingRoomHint">
-                        <option value="">Оберіть кімнату</option>
-                        <optgroup label="Кімнати">
-                            <option value="Марвел">Марвел</option>
-                            <option value="Ніндзя">Ніндзя</option>
-                            <option value="Майнкрафт">Майнкрафт</option>
-                            <option value="Монстер Хай">Монстер Хай</option>
-                            <option value="Ельза">Ельза</option>
-                            <option value="Растішка">Растішка</option>
-                            <option value="Рок">Рок</option>
-                            <option value="Міньйон">Міньйон</option>
-                            <option value="Поні">Поні</option>
-                            <option value="Фудкорт">Фудкорт</option>
-                            <option value="Жовтий стіл">Жовтий стіл</option>
-                        </optgroup>
-                        <optgroup label="Дивани">
-                            <option value="Диван 1">Диван 1</option>
-                            <option value="Диван 2">Диван 2</option>
-                            <option value="Диван 3">Диван 3</option>
-                            <option value="Диван 4">Диван 4</option>
-                        </optgroup>
-                        <optgroup label="Інше">
-                            <option value="Інше">Інше (вказати в примітках)</option>
-                        </optgroup>
+                    <select id="roomSelect" required aria-required="true" aria-describedby="bookingRoomHint" data-room-catalog="timeline_resources">
+                        <option value="">Завантаження кімнат...</option>
                     </select>
                     <small id="bookingRoomHint" class="form-hint">Без кімнати бронювання не зберігається.</small>
                 </div>
@@ -1773,6 +1751,15 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.79.52 — Room Timeline Catalog</h4>
+                    <ul>
+                        <li><b>Єдиний каталог кімнат</b> — форма бронювання, таймлайн і «Вільні кімнати» у park-режимі тепер використовують <code>timeline_resources</code>.</li>
+                        <li><b>Quarantine без шуму</b> — рядок «Невідома / неактивна кімната» показується тільки коли є проблемне бронювання.</li>
+                        <li><b>Перейменування без втрати старих записів</b> — стара назва кімнати зберігається в aliases, а availability і конфлікти враховують legacy назви.</li>
+                        <li><b>Керування кімнатами в налаштуваннях</b> — додавання, перейменування, порядок, колір і деактивація працюють через каталог room resources.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.79.51 — Attendance Review Reliability</h4>
                     <ul>
                         <li><b>HR «Сьогодні» без перезавантаження</b> — check-in і Hermes одразу оновлюють рядок, метрики та стан кнопки.</li>
@@ -2213,7 +2200,7 @@
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.51" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.52" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -2516,43 +2503,43 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.79.51"></script>
-    <script src="js/timeline-visibility.js?v=0.79.51"></script>
-    <script src="js/kitchen-menu-images.js?v=0.79.51"></script>
-    <script src="js/config.js?v=0.79.51"></script>
-    <script src="js/api.js?v=0.79.51"></script>
-    <script src="js/ui.js?v=0.79.51"></script>
-    <script src="js/auth.js?v=0.79.51"></script>
-    <script src="js/timeline-interaction-model.js?v=0.79.51"></script>
-    <script src="js/timeline-cache.js?v=0.79.51"></script>
-    <script src="js/timeline-resource-identity.js?v=0.79.51"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.51"></script>
-    <script src="js/event-cards.js?v=0.79.51"></script>
-    <script src="js/invite-config.js?v=0.79.51"></script>
-    <script src="js/invite-share.js?v=0.79.51"></script>
-    <script src="js/timeline.js?v=0.79.51"></script>
-    <script src="js/booking-drawer-state.js?v=0.79.51"></script>
-    <script src="js/booking-banquet-selector.js?v=0.79.51"></script>
-    <script src="js/booking-save-path.js?v=0.79.51"></script>
-    <script src="js/booking-package-renderer.js?v=0.79.51"></script>
-    <script src="js/booking-banquet-detail.js?v=0.79.51"></script>
-    <script src="js/booking-activity-schedule.js?v=0.79.51"></script>
-    <script src="js/booking.js?v=0.79.51"></script>
-    <script src="js/settings.js?v=0.79.51"></script>
-    <script src="js/booking-form.js?v=0.79.51"></script>
-    <script src="js/booking-linked.js?v=0.79.51"></script>
-    <script src="js/settings-dashboard.js?v=0.79.51"></script>
-    <script src="js/settings-history.js?v=0.79.51"></script>
-    <script src="js/settings-afisha.js?v=0.79.51"></script>
-    <script src="js/settings-certificates.js?v=0.79.51"></script>
-    <script src="js/offline.js?v=0.79.51"></script>
-    <script src="js/crm-feature-registry.js?v=0.79.51"></script>
-    <script src="js/search.js?v=0.79.51"></script>
-    <script src="js/ws.js?v=0.79.51"></script>
-    <script src="js/app.js?v=0.79.51"></script>
-    <script src="js/kleshnya-widget.js?v=0.79.51"></script>
-    <script src="js/components/sidebar.js?v=0.79.51"></script>
+    <script src="js/timeline-context.js?v=0.79.52"></script>
+    <script src="js/timeline-visibility.js?v=0.79.52"></script>
+    <script src="js/kitchen-menu-images.js?v=0.79.52"></script>
+    <script src="js/config.js?v=0.79.52"></script>
+    <script src="js/api.js?v=0.79.52"></script>
+    <script src="js/ui.js?v=0.79.52"></script>
+    <script src="js/auth.js?v=0.79.52"></script>
+    <script src="js/timeline-interaction-model.js?v=0.79.52"></script>
+    <script src="js/timeline-cache.js?v=0.79.52"></script>
+    <script src="js/timeline-resource-identity.js?v=0.79.52"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.52"></script>
+    <script src="js/event-cards.js?v=0.79.52"></script>
+    <script src="js/invite-config.js?v=0.79.52"></script>
+    <script src="js/invite-share.js?v=0.79.52"></script>
+    <script src="js/timeline.js?v=0.79.52"></script>
+    <script src="js/booking-drawer-state.js?v=0.79.52"></script>
+    <script src="js/booking-banquet-selector.js?v=0.79.52"></script>
+    <script src="js/booking-save-path.js?v=0.79.52"></script>
+    <script src="js/booking-package-renderer.js?v=0.79.52"></script>
+    <script src="js/booking-banquet-detail.js?v=0.79.52"></script>
+    <script src="js/booking-activity-schedule.js?v=0.79.52"></script>
+    <script src="js/booking.js?v=0.79.52"></script>
+    <script src="js/settings.js?v=0.79.52"></script>
+    <script src="js/booking-form.js?v=0.79.52"></script>
+    <script src="js/booking-linked.js?v=0.79.52"></script>
+    <script src="js/settings-dashboard.js?v=0.79.52"></script>
+    <script src="js/settings-history.js?v=0.79.52"></script>
+    <script src="js/settings-afisha.js?v=0.79.52"></script>
+    <script src="js/settings-certificates.js?v=0.79.52"></script>
+    <script src="js/offline.js?v=0.79.52"></script>
+    <script src="js/crm-feature-registry.js?v=0.79.52"></script>
+    <script src="js/search.js?v=0.79.52"></script>
+    <script src="js/ws.js?v=0.79.52"></script>
+    <script src="js/app.js?v=0.79.52"></script>
+    <script src="js/kleshnya-widget.js?v=0.79.52"></script>
+    <script src="js/components/sidebar.js?v=0.79.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.79.51"></script>
+    <script src="js/alerts.js?v=0.79.52"></script>
 </body>
 </html>

@@ -40,6 +40,83 @@ function readSource(...segments) {
     return fs.readFileSync(path.join(ROOT, ...segments), 'utf8').replace(/\r\n?/g, '\n');
 }
 
+function extractBalancedSource(source, openIndex, openChar = '[', closeChar = ']') {
+    assert.notEqual(openIndex, -1, `missing opening ${openChar}`);
+    let depth = 0;
+    let quote = null;
+    let escaped = false;
+
+    for (let index = openIndex; index < source.length; index += 1) {
+        const char = source[index];
+        if (quote) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === quote) {
+                quote = null;
+            }
+            continue;
+        }
+
+        if (char === '\'' || char === '"' || char === '`') {
+            quote = char;
+            continue;
+        }
+        if (char === openChar) {
+            depth += 1;
+        } else if (char === closeChar) {
+            depth -= 1;
+            if (depth === 0) return source.slice(openIndex, index + 1);
+        }
+    }
+
+    assert.fail(`unterminated ${openChar}${closeChar} block`);
+}
+
+function extractArrayAfter(source, needle) {
+    const needleIndex = source.indexOf(needle);
+    assert.notEqual(needleIndex, -1, `missing ${needle}`);
+    return extractBalancedSource(source, source.indexOf('[', needleIndex));
+}
+
+function countTopLevelArrayElements(arraySource) {
+    const body = arraySource.slice(1, -1).trim();
+    if (!body) return 0;
+
+    let count = 1;
+    let depth = 0;
+    let quote = null;
+    let escaped = false;
+
+    for (const char of body) {
+        if (quote) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === quote) {
+                quote = null;
+            }
+            continue;
+        }
+
+        if (char === '\'' || char === '"' || char === '`') {
+            quote = char;
+            continue;
+        }
+        if (char === '[' || char === '(' || char === '{') {
+            depth += 1;
+        } else if (char === ']' || char === ')' || char === '}') {
+            depth -= 1;
+        } else if (char === ',' && depth === 0) {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
 function readCssWithImports(file, seen = new Set()) {
     const normalized = file.replace(/\\/g, '/');
     if (seen.has(normalized)) return '';
@@ -230,6 +307,13 @@ test('attendance mutation routes expose stable planSource from the shared servic
 });
 
 test('HR attendance CSV export uses shared escaping and stable column rows', () => {
+    const exportRoute = HR_ROUTE.slice(
+        HR_ROUTE.indexOf("router.get('/report/export'"),
+        HR_ROUTE.indexOf('// ==========================================', HR_ROUTE.indexOf("router.get('/report/export'"))
+    );
+    const headerArray = extractArrayAfter(exportRoute, 'const header =');
+    const rowArray = extractArrayAfter(exportRoute, 'return attendanceCsvRow(');
+
     assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvCell/);
     assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvRow/);
     assert.match(HR_ATTENDANCE_SERVICE, /firstMeaningfulChar/);
@@ -237,6 +321,16 @@ test('HR attendance CSV export uses shared escaping and stable column rows', () 
     assert.match(HR_ROUTE, /attendanceCsvRow\(header\)/);
     assert.match(HR_ROUTE, /attendanceCsvRow\(\[/);
     assert.match(HR_ROUTE, /attendancePlanWarningMessage\(r\.plan_source\)/);
+    assert.equal(countTopLevelArrayElements(headerArray), 17);
+    assert.equal(countTopLevelArrayElements(rowArray), 17);
+    assert.match(exportRoute, /const facts = attendanceFactMinutes\(r\)/);
+    assert.match(exportRoute, /const lateMinutes = facts\.lateMinutes/);
+    assert.match(exportRoute, /const earlyLeaveMinutes = facts\.earlyLeaveMinutes/);
+    assert.match(exportRoute, /const overtimeMinutes = facts\.overtimeMinutes/);
+    assert.match(exportRoute, /lateMinutes > 0 \?/);
+    assert.match(exportRoute, /earlyLeaveMinutes > 0 \?/);
+    assert.match(exportRoute, /overtimeMinutes > 0 \?/);
+    assert.doesNotMatch(exportRoute, /r\.status/);
     assert.doesNotMatch(HR_ROUTE, /return `\$\{r\.name\};/);
 });
 

@@ -10,11 +10,18 @@
  *   - API (POST /api/recurring) for eager-generate on template creation
  */
 const { pool, generateBookingNumber } = require('../db');
-const { checkServerConflicts, checkRoomConflict, ensureDefaultLines, getKyivDateStr } = require('./booking');
+const {
+    checkServerConflicts,
+    checkRoomConflict,
+    lockBookingConflictResources,
+    ensureDefaultLines,
+    getKyivDateStr
+} = require('./booking');
 const { processBookingAutomation } = require('./bookingAutomation');
 const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
+const { canonicalizeBookingRoomResource } = require('./timelineResources');
 
 const log = createLogger('Recurring');
 
@@ -214,6 +221,9 @@ function lineConflictDetails(conflict, prefix = 'Line conflict') {
  * @returns {{ created: number, skipped: number, conflicts: Array }}
  */
 async function generateBookingsForTemplate(template, fromDate, toDate) {
+    await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, template, {
+        required: true
+    });
     const result = { created: 0, skipped: 0, conflicts: [] };
     const timeStart = formatTime(template.time_start);
     const duration = template.duration || 0;
@@ -296,6 +306,16 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            const conflictCandidate = {
+                businessContext: DEFAULT_TIMELINE_CONTEXT,
+                date: dateStr,
+                lineId: primaryLineId,
+                room: template.room,
+                roomResourceId: template.roomResourceId || template.room_resource_id || null,
+                time: timeStart,
+                duration
+            };
+            await lockBookingConflictResources(client, [conflictCandidate], DEFAULT_TIMELINE_CONTEXT);
 
             // Check line conflict
             const lineConflict = await checkServerConflicts(client, dateStr, primaryLineId, timeStart, duration, null, DEFAULT_TIMELINE_CONTEXT);
@@ -311,7 +331,15 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             }
 
             // Check room conflict
-            const roomConflict = await checkRoomConflict(client, dateStr, template.room, timeStart, duration, null, DEFAULT_TIMELINE_CONTEXT);
+            const roomConflict = await checkRoomConflict(
+                client,
+                dateStr,
+                template.room,
+                timeStart,
+                duration,
+                { candidateBooking: conflictCandidate },
+                DEFAULT_TIMELINE_CONTEXT
+            );
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 client.release();
@@ -332,9 +360,9 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                   (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
                   duration, price, hosts, second_animator, pinata_filler, pinata_mode,
                   pinata_number, pinata_filler_number, client_pinata_service_price,
-                  client_pinata_service_note, costume, room, notes,
+                  client_pinata_service_note, costume, room, room_resource_id, notes,
                   created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$31,$23,$24,$25,$26,$27,$28,$29,$30)`,
                 [mainId, DEFAULT_TIMELINE_CONTEXT, dateStr, timeStart, primaryLineId,
                  template.product_id, template.product_code, template.product_label, template.product_name,
                  template.category, duration, template.price, template.hosts || 1,
@@ -344,7 +372,8 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                  template.costume || null, template.room, template.notes, template.created_by || 'system',
                  null, bookingStatus, template.kids_count || null, template.group_name || null,
                  template.extra_data ? JSON.stringify(template.extra_data) : null,
-                 template.id]
+                 template.id,
+                 template.roomResourceId || template.room_resource_id || null]
             );
 
             // Handle 2-animator programs (hosts > 1)
@@ -371,9 +400,9 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                           (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
                           duration, price, hosts, second_animator, pinata_filler, pinata_mode,
                           pinata_number, pinata_filler_number, client_pinata_service_price,
-                          client_pinata_service_note, costume, room, notes,
+                          client_pinata_service_note, costume, room, room_resource_id, notes,
                           created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$31,$23,$24,$25,$26,$27,$28,$29,$30)`,
                         [linkedId, DEFAULT_TIMELINE_CONTEXT, dateStr, timeStart, secondLineId,
                          template.product_id, template.product_code, template.product_label, template.product_name,
                          template.category, duration, template.price, template.hosts || 1,
@@ -383,7 +412,8 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                          template.costume || null, template.room, template.notes, template.created_by || 'system',
                          mainId, bookingStatus, template.kids_count || null, template.group_name || null,
                          template.extra_data ? JSON.stringify(template.extra_data) : null,
-                         template.id]
+                         template.id,
+                         template.roomResourceId || template.room_resource_id || null]
                     );
                 }
             }
@@ -505,6 +535,7 @@ function mapTemplateRow(row) {
         lineId: row.line_id,
         preferredLineName: row.preferred_line_name,
         room: row.room,
+        roomResourceId: row.room_resource_id || null,
         productId: row.product_id,
         productCode: row.product_code,
         productLabel: row.product_label,

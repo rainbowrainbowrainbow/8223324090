@@ -3364,7 +3364,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /scenario: formData\.scenario \|\| getBookingWorkspaceScenario\(formData\)/);
     assert.match(bookingJs, /roomFirst: isRoomFirstTimelineView\(\)/);
     assert.match(bookingJs, /room\.required = true/);
-    assert.match(bookingJs, /const room = document\.getElementById\('roomSelect'\)\?\.value \|\| '';/);
+    assert.match(bookingJs, /const roomIdentity = selectedBookingRoomResourceIdentity\(\);/);
+    assert.match(bookingJs, /const room = roomIdentity\.room;/);
+    assert.match(bookingJs, /roomResourceId:\s*roomIdentity\.roomResourceId/);
     assert.match(bookingJs, /room: formData\.room/);
     assert.match(bookingJs, /function addBookingMenuPositionFromForm/);
     assert.match(bookingJs, /programBasePrice/);

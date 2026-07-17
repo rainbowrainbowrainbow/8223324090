@@ -445,6 +445,96 @@ function normalizedRoomIdentityValue(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+function bookingRoomResourceId(booking = {}) {
+    return String(
+        booking.roomResourceId
+        || booking.room_resource_id
+        || ''
+    ).trim();
+}
+
+function isTakeawayRoomIdentity(resourceId, room) {
+    const normalizedId = normalizedRoomIdentityValue(resourceId);
+    const normalizedRoom = normalizedRoomIdentityValue(room);
+    return normalizedId === 'room-takeaway'
+        || ['room-takeaway', 'takeaway', '\u043d\u0430 \u0432\u0438\u043d\u0456\u0441', '\u043d\u0430 \u0432\u044b\u043d\u043e\u0441'].includes(normalizedRoom);
+}
+
+function roomResourceWriteError(message, code, statusCode = 400, details = null) {
+    const error = new Error(message);
+    error.code = code;
+    error.statusCode = statusCode;
+    error.details = details;
+    return error;
+}
+
+async function canonicalizeBookingRoomResource(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, booking = {}, options = {}) {
+    const businessContext = normalizeTimelineContext(context);
+    const requestedResourceId = bookingRoomResourceId(booking);
+    const requestedRoom = String(booking.room || '').trim();
+    const required = options.required === true;
+    const allowInactiveResourceId = String(options.allowInactiveResourceId || '').trim();
+
+    if (isTakeawayRoomIdentity(requestedResourceId, requestedRoom)) {
+        booking.roomResourceId = 'room-takeaway';
+        booking.room_resource_id = 'room-takeaway';
+        booking.roomResourceType = 'room';
+        booking.room = options.takeawayName || '\u041d\u0430 \u0432\u0438\u043d\u0456\u0441';
+        return {
+            resourceId: 'room-takeaway',
+            type: 'room',
+            name: booking.room,
+            isActive: true,
+            virtual: true
+        };
+    }
+
+    if (!requestedResourceId && !requestedRoom) {
+        if (!required) return null;
+        throw roomResourceWriteError('Room resource is required', 'ROOM_RESOURCE_REQUIRED');
+    }
+
+    const resources = await listTimelineResources(db, {
+        context: businessContext,
+        type: 'room',
+        includeInactive: true
+    });
+    let matches = [];
+    if (requestedResourceId) {
+        matches = resources.filter(resource => String(resource.resourceId || '') === requestedResourceId);
+        if (!matches.length) {
+            throw roomResourceWriteError('Unknown room resource', 'ROOM_RESOURCE_UNKNOWN', 400, {
+                resourceId: requestedResourceId
+            });
+        }
+    } else {
+        matches = resources.filter(resource => timelineResourceMatchesRoomValue(resource, requestedRoom));
+        if (matches.length > 1) {
+            throw roomResourceWriteError('Room name or alias is ambiguous', 'ROOM_RESOURCE_AMBIGUOUS', 409);
+        }
+        if (!matches.length) {
+            if (!required) return null;
+            throw roomResourceWriteError('Room must be selected from the active room catalog', 'ROOM_RESOURCE_UNRESOLVED');
+        }
+    }
+
+    const resource = matches[0];
+    if (resource.type !== 'room') {
+        throw roomResourceWriteError('Resource is not a room', 'ROOM_RESOURCE_TYPE_INVALID');
+    }
+    if (resource.isActive === false && resource.resourceId !== allowInactiveResourceId) {
+        throw roomResourceWriteError('Inactive room cannot be assigned to a booking', 'ROOM_RESOURCE_INACTIVE', 409, {
+            resourceId: resource.resourceId
+        });
+    }
+
+    booking.roomResourceId = resource.resourceId;
+    booking.room_resource_id = resource.resourceId;
+    booking.roomResourceType = 'room';
+    booking.room = resource.name;
+    return resource;
+}
+
 function resolveRoomTimelineResourceIdentity(resources = [], booking = {}, options = {}) {
     const safeResources = Array.isArray(resources) ? resources : [];
     const identity = booking.timelineIdentity || booking.timeline_identity || {};
@@ -800,7 +890,11 @@ async function countFutureActiveBookingsForTimelineResource(db = defaultPool, co
             AND ${activeBookingStatusSql('b')}
             AND (
                 b.line_id = $2
-                ${roomValues.length ? 'OR b.room = ANY($3::text[])' : ''}
+                ${roomValues.length ? `OR b.room_resource_id = $2
+                OR (
+                    b.room_resource_id IS NULL
+                    AND b.room = ANY($3::text[])
+                )` : ''}
             )`,
         roomValues.length
             ? [businessContext, resourceId, roomValues]
@@ -827,8 +921,15 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     if (!resourceIds.length) {
         return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
+    const roomIdentitySql = type === 'room'
+        ? `(b.room_resource_id = ANY($3::text[])
+            OR (
+                b.room_resource_id IS NULL
+                AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))
+            ))`
+        : 'b.line_id = ANY($3::text[])';
     const bookings = await db.query(
-        `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
+        `SELECT b.id, b.line_id, b.room, b.room_resource_id, b.time, b.duration, b.label, b.program_code, b.program_name,
                 b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
                 c.name AS customer_name,
                 bg.id AS banquet_group_id,
@@ -849,7 +950,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
-            AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
+            AND ${roomIdentitySql}`,
         [date, context, resourceIds, resourceNames]
     );
     const start = timeToMinutes(time);
@@ -857,7 +958,9 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const byResource = new Map(resources.map(resource => [resource.resourceId, []]));
     const dayBookingsByResource = new Map(resources.map(resource => [resource.resourceId, []]));
     for (const booking of bookings.rows) {
-        const direct = resources.find(resource => [booking.line_id].some(value => resource.resourceId === value));
+        const direct = resources.find(resource =>
+            [booking.room_resource_id, booking.line_id].some(value => resource.resourceId === value)
+        );
         const byName = direct || resources.find(resource => timelineResourceMatchesRoomValue(resource, booking.room));
         if (!byName) continue;
         if (!String(booking.linked_to || '').trim()) {
@@ -963,6 +1066,8 @@ module.exports = {
     timelineResourceMatchesRoomValue,
     mergeTimelineResourceRenameAliases,
     resolveRoomTimelineResourceIdentity,
+    canonicalizeBookingRoomResource,
+    bookingRoomResourceId,
     upsertTimelineResource,
     ensureDefaultTimelineResources,
     listTimelineResources,

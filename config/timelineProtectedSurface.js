@@ -100,17 +100,18 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'routes/bookings.js',
         start: 'function bookingTimelineIdentity(booking = {})',
         end: "function projectBookingForTimelineView(booking = {}, timelineView = 'animators')",
-        sha256: '764c26d20b67386bc93eabe0d65f2794bc0204311869b03a95175be160576af7',
+        sha256: '5578c4feda4f358ce32c7fb3f0633e11809176c98ab6375c89a7a854b017a850',
         approval: {
             approvedBy: 'Product owner (explicit Codex task approval)',
-            approvedOn: '2026-07-13',
-            reason: 'Task 5 makes room projection use canonical durable room resources and quarantines unmatched or inactive room identity instead of allowing a takeaway collision.'
+            approvedOn: '2026-07-17',
+            reason: 'Room identity Task 3 makes room_resource_id the first timeline projection identity while retaining the legacy room resolver as a recovery path.'
         },
         requiredNeedles: [
             'function bookingTimelineIdentity(booking = {})',
             'function bookingSourceLineId(booking = {})',
             'function bookingSourceResourceId(booking = {})',
             'const roomResolution = booking.roomTimelineResolution || booking.room_timeline_resolution || null',
+            'const roomResourceId = booking.roomResourceId',
             'diagnosticReason: view === \'rooms\' ? (roomResolution?.diagnosticReason || null) : null',
             'const linkedChild = Boolean(String(booking.linkedTo || booking.linked_to ||',
             "hiddenReason = 'linked_child_hidden_from_room_timeline'",
@@ -124,11 +125,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'services/booking.js',
         start: 'function mapBookingRow(row)',
         end: 'function lineColorForIndex(index, fallback)',
-        sha256: 'a0fc7826350cd28ae59ddccb9ac1935311f5871fc94850f0e3eebf6e66fe5ecb',
+        sha256: '152c2025e02ca5a145dfd7360ef15bbaaea8bc0c9a9e9a0552b2b56d42b93afa',
         approval: {
-            approvedBy: 'Serhii',
-            approvedOn: '2026-07-03',
-            reason: 'DB row mapper is the source for frontend booking identity fields.'
+            approvedBy: 'Product owner (explicit Codex task approval)',
+            approvedOn: '2026-07-17',
+            reason: 'Room identity Task 3 exposes the additive bookings.room_resource_id field to every frontend booking flow without changing legacy room text.'
         },
         requiredNeedles: [
             'function mapBookingRow(row)',
@@ -136,6 +137,7 @@ const PROTECTED_TIMELINE_BLOCKS = [
             '|| row.line_id',
             'businessContext: extraData?.timelineIdentity?.businessContext',
             'lineId: row.line_id',
+            'roomResourceId: row.room_resource_id || null',
             'timelineIdentity,',
             'linkedTo: row.linked_to'
         ]

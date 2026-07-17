@@ -55,6 +55,7 @@ function mapBookingRow(row = {}) {
         duration: row.duration,
         price: row.price,
         room: row.room,
+        roomResourceId: row.room_resource_id || null,
         status: row.status,
         createdBy: row.created_by,
         linkedTo: row.linked_to || null,
@@ -75,44 +76,23 @@ function mapBookingRow(row = {}) {
     };
 }
 
-function bookingRowFromInsert(params) {
-    const banquetStart = params.length >= 37 ? 33 : (params.length >= 36 ? 32 : -1);
+function bookingRowFromInsert(sql, params) {
+    const match = String(sql).match(/INSERT INTO bookings\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)/i);
+    assert.ok(match, 'booking insert columns and values must be parseable');
+    const columns = match[1].split(',').map(value => value.trim());
+    const values = match[2].split(',').map(value => value.trim());
+    const row = {};
+    columns.forEach((column, index) => {
+        const token = values[index] || 'NULL';
+        const placeholder = token.match(/^\$(\d+)$/);
+        if (placeholder) row[column] = params[Number(placeholder[1]) - 1];
+        else if (/^NULL$/i.test(token)) row[column] = null;
+        else if (/^'.*'$/.test(token)) row[column] = token.slice(1, -1);
+        else row[column] = token;
+    });
     return {
-        id: params[0],
-        business_context: params[1],
-        date: params[2],
-        time: params[3],
-        line_id: params[4],
-        program_id: params[5],
-        program_code: params[6],
-        label: params[7],
-        program_name: params[8],
-        category: params[9],
-        duration: params[10],
-        price: params[11],
-        hosts: params[12],
-        second_animator: params[13],
-        pinata_filler: params[14],
-        pinata_mode: params[15],
-        pinata_number: params[16],
-        pinata_filler_number: params[17],
-        client_pinata_service_price: params[18],
-        client_pinata_service_note: params[19],
-        room: params[21],
-        notes: params[22],
-        created_by: params[23],
-        linked_to: params[24],
-        status: params[25] || 'confirmed',
-        kids_count: params[26],
-        group_name: params[27],
-        extra_data: params[28],
-        skip_notification: params[29],
-        customer_id: params[30],
-        payment_method: params[31],
-        banquet_guests: banquetStart >= 0 ? params[banquetStart] : null,
-        banquet_adults: banquetStart >= 0 ? params[banquetStart + 1] : null,
-        banquet_tables: banquetStart >= 0 ? params[banquetStart + 2] : null,
-        banquet_menu: banquetStart >= 0 ? params[banquetStart + 3] : null,
+        ...row,
+        status: row.status || 'confirmed',
         created_at: '2099-01-01T00:00:00.000Z',
         updated_at: '2099-01-01T00:00:00.000Z'
     };
@@ -392,12 +372,12 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             return { rows: [], rowCount: 1 };
         }
         if (/^INSERT INTO bookings /i.test(sql) && /RETURNING \*/i.test(sql)) {
-            const row = bookingRowFromInsert(params);
+            const row = bookingRowFromInsert(sql, params);
             state.rows.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
         }
         if (/^INSERT INTO bookings /i.test(sql)) {
-            const row = bookingRowFromInsert(params);
+            const row = bookingRowFromInsert(sql, params);
             state.rows.push(row);
             return { rows: [], rowCount: 1 };
         }
@@ -562,7 +542,7 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             const optimistic = sql.includes("date_trunc('milliseconds'");
             const tailOffset = optimistic ? 1 : 0;
             const id = params[22];
-            const businessContext = params[params.length - 1];
+            const businessContext = params[34 + tailOffset];
             const row = state.rows.find(item =>
                 item.id === id &&
                 normalizeContext(item.business_context) === normalizeContext(businessContext)
@@ -602,6 +582,7 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
                 banquet_adults: params[31 + tailOffset],
                 banquet_tables: params[32 + tailOffset],
                 banquet_menu: params[33 + tailOffset],
+                room_resource_id: params[35 + tailOffset],
                 updated_at: '2099-01-02T00:00:00.000Z'
             });
             return { rows: [{ ...row }], rowCount: 1 };
@@ -653,6 +634,7 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
                     client_pinata_service_note: params[8],
                     pinata_number: params[9],
                     pinata_filler_number: params[10],
+                    room_resource_id: params[13],
                     updated_at: '2099-01-02T00:00:00.000Z'
                 });
             }
@@ -868,7 +850,6 @@ async function withApp(dbOptions, fn) {
             const room = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
             return Boolean(room && room !== 'інше' && room !== 'other' && room !== 'на виніс' && room !== 'room-takeaway');
         },
-        ALL_ROOMS: ['Room A', '\u041f\u043e\u043d\u0456'],
         BANQUET_SERVICE_LINE_ID: 'banquet-service',
         checkServerConflicts,
         checkServerDuplicate: async () => null,
@@ -883,6 +864,38 @@ async function withApp(dbOptions, fn) {
             { resourceId: 'room-a', type: 'room', name: 'Room A', isActive: true, metadata: {} },
             { resourceId: 'room-pony', type: 'room', name: '\u041f\u043e\u043d\u0456', isActive: true, metadata: {} }
         ]),
+        canonicalizeBookingRoomResource: async (_queryable, businessContext, booking, options = {}) => {
+            if (businessContext !== 'event_genix') return null;
+            const resources = [
+                { resourceId: 'room-a', type: 'room', name: 'Room A', isActive: true },
+                { resourceId: 'room-pony', type: 'room', name: '\u041f\u043e\u043d\u0456', isActive: true }
+            ];
+            const requestedId = booking.roomResourceId || booking.room_resource_id || '';
+            const resource = resources.find(item => item.resourceId === requestedId || item.name === booking.room)
+                || (requestedId && booking.room ? {
+                    resourceId: requestedId,
+                    type: 'room',
+                    name: booking.room,
+                    isActive: true
+                } : null)
+                || (!requestedId && booking.room ? {
+                    resourceId: `room-${String(booking.room).toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'legacy'}`,
+                    type: 'room',
+                    name: booking.room,
+                    isActive: true
+                } : null);
+            if (!resource) {
+                if (!options.required) return null;
+                const error = new Error('Room must be selected from the active room catalog');
+                error.code = 'ROOM_RESOURCE_UNRESOLVED';
+                error.statusCode = 400;
+                throw error;
+            }
+            booking.room = resource.name;
+            booking.roomResourceId = resource.resourceId;
+            booking.room_resource_id = resource.resourceId;
+            return resource;
+        },
         resolveRoomTimelineResourceIdentity: (resources, booking) => {
             const room = String(booking.room || '').trim();
             const resource = resources.find(item => item.name === room);

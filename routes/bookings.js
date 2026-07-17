@@ -18,7 +18,6 @@ const {
     isLineConflictBlockingLine,
     isRoomConflictBlockingRoom,
     findRoomConflictAmongCandidates,
-    ALL_ROOMS,
     BANQUET_SERVICE_LINE_ID,
     validateBanquetCreationContext
 } = require('../services/booking');
@@ -68,6 +67,7 @@ const {
     getTimelineDisplaySettings,
     listTimelineResources,
     resolveRoomTimelineResourceIdentity,
+    canonicalizeBookingRoomResource,
     resourceTypeForDisplayMode
 } = require('../services/timelineResources');
 const {
@@ -826,7 +826,12 @@ function bookingRoomConflictPolicyOptions(booking = {}, options = {}) {
     const context = banquetGroupConflictContextFromPayload(booking);
     const groupId = cleanRoomConflictPolicyValue(base.banquetGroupId || base.banquet_group_id || context.groupId);
     const sourceBookingId = cleanRoomConflictPolicyValue(base.sourceBookingId || base.source_booking_id || context.sourceBookingId);
-    if (!groupId && !sourceBookingId) return Object.keys(base).length ? base : null;
+    if (!groupId && !sourceBookingId) {
+        return {
+            ...base,
+            candidateBooking: booking
+        };
+    }
     return {
         ...base,
         banquetGroupId: groupId || undefined,
@@ -892,14 +897,14 @@ async function insertSecondAnimatorLinkedBooking(client, { booking, businessCont
     });
     const newLinkedId = await generateBookingNumber(client);
     const insert = await client.query(
-        `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+        `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
          RETURNING *`,
         [newLinkedId, businessContext, booking.date, booking.time, ensuredLine.lineId, booking.programId, booking.programCode,
          booking.label, booking.programName, booking.category, booking.duration, 0, booking.hosts,
          ensuredLine.name, booking.pinataFiller, booking.pinataMode, booking.pinataNumber,
          booking.pinataFillerNumber, booking.clientPinataServicePrice,
-         booking.clientPinataServiceNote, booking.costume || null, booking.room, booking.notes,
+         booking.clientPinataServiceNote, booking.costume || null, booking.room, booking.roomResourceId || booking.room_resource_id || null, booking.notes,
          booking.createdBy, mainBookingId, status, booking.kidsCount || null, booking.groupName || null,
          bookingExtraDataSqlValue(linkedBooking)]
     );
@@ -1144,6 +1149,7 @@ const ATOMIC_LINKED_FIELDS = new Map([
     ['time', 'time'],
     ['lineId', 'line_id'],
     ['room', 'room'],
+    ['roomResourceId', 'room_resource_id'],
     ['duration', 'duration']
 ]);
 
@@ -1379,6 +1385,7 @@ function buildAtomicLinkedCandidate(row, patch = {}) {
         line_id: Object.prototype.hasOwnProperty.call(patch, 'line_id') ? patch.line_id : row.line_id,
         duration: Object.prototype.hasOwnProperty.call(patch, 'duration') ? patch.duration : row.duration,
         room: Object.prototype.hasOwnProperty.call(patch, 'room') ? patch.room : row.room,
+        room_resource_id: Object.prototype.hasOwnProperty.call(patch, 'room_resource_id') ? patch.room_resource_id : row.room_resource_id,
         hosts: row.hosts,
         label: row.label,
         program_code: row.program_code,
@@ -1528,7 +1535,10 @@ function buildBookingTimelineProjection(booking = {}, timelineView = 'animators'
     const room = String(booking.room || '').trim();
     const hasRoom = isRealRoom(room);
     const roomResolution = booking.roomTimelineResolution || booking.room_timeline_resolution || null;
-    const roomResourceId = roomResolution?.resourceId || (hasRoom ? room : null);
+    const roomResourceId = booking.roomResourceId
+        || booking.room_resource_id
+        || roomResolution?.resourceId
+        || (hasRoom ? room : null);
     const roomResourceName = roomResolution?.resourceName || (hasRoom ? room : null);
     const banquetService = isBanquetServiceTimelineBooking(booking);
     const banquetServiceRoot = isBanquetServiceRootBooking(booking);
@@ -1855,6 +1865,27 @@ async function hydrateBookingRoomFromTimelineResource(queryable, payload, busine
         payload.lineId = resource.resourceId;
     }
     return payload;
+}
+
+async function validateBookingRoomResourceForWrite(queryable, payload, businessContext, options = {}) {
+    try {
+        await canonicalizeBookingRoomResource(queryable, businessContext, payload, {
+            required: businessContext === DEFAULT_TIMELINE_CONTEXT,
+            allowInactiveResourceId: options.allowInactiveResourceId || null
+        });
+        return null;
+    } catch (error) {
+        if (!String(error?.code || '').startsWith('ROOM_RESOURCE_')) throw error;
+        return {
+            status: Number(error.statusCode || 400),
+            body: {
+                success: false,
+                code: error.code,
+                error: error.message,
+                details: error.details || null
+            }
+        };
+    }
 }
 
 async function validateBookingTimelineResourceCapacity(queryable, payload, businessContext) {
@@ -2304,7 +2335,6 @@ async function attachRoomTimelineResourceResolution(queryable, bookings = [], bu
     return (Array.isArray(bookings) ? bookings : []).map(booking => ({
         ...booking,
         roomTimelineResolution: resolveRoomTimelineResourceIdentity(resources, booking, {
-            legacyRoomNames: ALL_ROOMS,
             quarantineResourceId: 'room-quarantine',
             quarantineName: 'Невідома / неактивна кімната',
             takeawayName: 'На виніс'
@@ -2879,6 +2909,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
     await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
+    const roomResourceError = await validateBookingRoomResourceForWrite(pool, b, businessContext);
+    if (roomResourceError) return res.status(roomResourceError.status).json(roomResourceError.body);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
     const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
@@ -3063,10 +3095,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user);
 
@@ -3074,14 +3106,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
             const linkedId = await generateBookingNumber(client);
             const linkedInsert = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
                  RETURNING *`,
                 [linkedId, businessContext, b.date, b.time, ensuredSecondAnimatorLine.lineId, b.programId, b.programCode,
                  b.label, b.programName, b.category, b.duration, 0, b.hosts,
                  b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                  b.pinataFillerNumber, b.clientPinataServicePrice,
-                 b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
+                 b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes,
                  b.createdBy, b.id, b.status, b.kidsCount || null, b.groupName || null,
                  null]
             );
@@ -3490,6 +3522,8 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             return res.status(400).json({ success: false, error: 'Неможливо створити заняття в минулому.' });
         }
         await hydrateBookingRoomFromTimelineResource(pool, candidate, businessContext);
+        const roomResourceError = await validateBookingRoomResourceForWrite(pool, candidate, businessContext);
+        if (roomResourceError) return res.status(roomResourceError.status).json(roomResourceError.body);
         const roomError = requireBookingRoom(candidate);
         if (roomError) return res.status(400).json({ success: false, error: roomError });
         const capacityError = await validateBookingTimelineResourceCapacity(pool, candidate, businessContext);
@@ -3582,10 +3616,10 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             }
 
             const insertResult = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
                  RETURNING *`,
-                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetAdults || null, candidate.banquetTables || null, candidate.banquetMenu || null]
+                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.roomResourceId || null, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetAdults || null, candidate.banquetTables || null, candidate.banquetMenu || null]
             );
             if (insertResult.rows[0]) insertedRows.push(insertResult.rows[0]);
         }
@@ -3710,6 +3744,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
         await hydrateBookingRoomFromTimelineResource(pool, main, businessContext);
+        const mainRoomResourceError = await validateBookingRoomResourceForWrite(pool, main, businessContext);
+        if (mainRoomResourceError) return res.status(mainRoomResourceError.status).json(mainRoomResourceError.body);
         const mainRoomError = requireBookingRoom(main);
         if (mainRoomError) { return res.status(400).json({ error: mainRoomError }); }
         const mainCapacityError = await validateBookingTimelineResourceCapacity(pool, main, businessContext);
@@ -3726,7 +3762,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 if (!String(lb.room || '').trim()) lb.room = main.room;
+                if (!String(lb.roomResourceId || lb.room_resource_id || '').trim()) {
+                    lb.roomResourceId = main.roomResourceId || main.room_resource_id || null;
+                }
                 if (!String(lb.room || '').trim()) await hydrateBookingRoomFromTimelineResource(pool, lb, businessContext);
+                const linkedRoomResourceError = await validateBookingRoomResourceForWrite(pool, lb, businessContext);
+                if (linkedRoomResourceError) return res.status(linkedRoomResourceError.status).json(linkedRoomResourceError.body);
                 const linkedRoomError = requireBookingRoom(lb);
                 if (linkedRoomError) return res.status(400).json({ error: linkedRoomError });
                 const linkedCapacityError = await validateBookingTimelineResourceCapacity(pool, lb, businessContext);
@@ -3743,6 +3784,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             if (!activity.time) activity.time = main.time;
             if (!activity.lineId) activity.lineId = main.lineId;
             if (!String(activity.room || '').trim()) activity.room = main.room;
+            if (!String(activity.roomResourceId || activity.room_resource_id || '').trim()) {
+                activity.roomResourceId = main.roomResourceId || main.room_resource_id || null;
+            }
             activity.businessContext = businessContext;
             if (!validateDate(activity.date)) return res.status(400).json({ success: false, error: 'Invalid activity date format' });
             if (!validateTime(activity.time)) return res.status(400).json({ success: false, error: 'Invalid activity time format' });
@@ -3751,6 +3795,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 return res.status(400).json({ success: false, error: 'Activity duration must be between 1 and 1440 minutes' });
             }
             await hydrateBookingRoomFromTimelineResource(pool, activity, businessContext);
+            const activityRoomResourceError = await validateBookingRoomResourceForWrite(pool, activity, businessContext);
+            if (activityRoomResourceError) return res.status(activityRoomResourceError.status).json(activityRoomResourceError.body);
             const activityRoomError = requireBookingRoom(activity);
             if (activityRoomError) return res.status(400).json({ error: activityRoomError });
             const activityCapacityError = await validateBookingTimelineResourceCapacity(pool, activity, businessContext);
@@ -3973,10 +4019,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetAdults || null, main.banquetTables || null, main.banquetMenu || null]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetAdults || null, main.banquetTables || null, main.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
 
@@ -4013,10 +4059,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
                 const lbId = await generateBookingNumber(client);
                 const lbInsert = await client.query(
-                    `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+                    `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
                      RETURNING *`,
-                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status, lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.roomResourceId || null, lb.notes, lb.createdBy, main.id, lb.status, lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
@@ -4067,10 +4113,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
             activity.id = await generateBookingNumber(client);
             const activityInsert = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
                  RETURNING *`,
-                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetAdults || null, activity.banquetTables || null, activity.banquetMenu || null]
+                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.roomResourceId || null, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetAdults || null, activity.banquetTables || null, activity.banquetMenu || null]
             );
             if (activityInsert.rows[0]) {
                 activityRows.push(activityInsert.rows[0]);
@@ -4584,6 +4630,17 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             await client.query('ROLLBACK');
             return res.status(400).json({ error: mainValidationError });
         }
+        if (hasMainPatch) {
+            const roomResourceError = await validateBookingRoomResourceForWrite(client, mainCandidate, businessContext, {
+                allowInactiveResourceId: oldMain.room_resource_id || null
+            });
+            if (roomResourceError) {
+                await client.query('ROLLBACK');
+                return res.status(roomResourceError.status).json(roomResourceError.body);
+            }
+            mainPatch.room = mainCandidate.room;
+            mainPatch.room_resource_id = mainCandidate.roomResourceId || mainCandidate.room_resource_id || null;
+        }
 
         const linkedCandidates = [];
         const allLinkedCandidates = [];
@@ -4596,7 +4653,18 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: validationError, conflictBookingId: row.id });
             }
-            if (Object.keys(patch).length > 0) linkedCandidates.push(candidate);
+            if (Object.keys(patch).length > 0) {
+                const roomResourceError = await validateBookingRoomResourceForWrite(client, candidate, businessContext, {
+                    allowInactiveResourceId: row.room_resource_id || null
+                });
+                if (roomResourceError) {
+                    await client.query('ROLLBACK');
+                    return res.status(roomResourceError.status).json(roomResourceError.body);
+                }
+                patch.room = candidate.room;
+                patch.room_resource_id = candidate.roomResourceId || candidate.room_resource_id || null;
+                linkedCandidates.push(candidate);
+            }
         }
 
         await lockBookingConflictResources(
@@ -4990,10 +5058,17 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (b.banquetAdults === undefined) b.banquetAdults = old.banquet_adults;
     if (b.banquetTables === undefined) b.banquetTables = old.banquet_tables;
     if (b.banquetMenu === undefined) b.banquetMenu = old.banquet_menu;
+    if (b.roomResourceId === undefined && b.room_resource_id === undefined) {
+        b.roomResourceId = old.room_resource_id || null;
+    }
 
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
     await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
+    const roomResourceError = await validateBookingRoomResourceForWrite(pool, b, businessContext, {
+        allowInactiveResourceId: old.room_resource_id || null
+    });
+    if (roomResourceError) return res.status(roomResourceError.status).json(roomResourceError.body);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
     const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
@@ -5193,6 +5268,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
+                 room_resource_id=$37,
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
                  payment_method=$26, pinata_mode=$27, client_pinata_service_price=$28,
                  client_pinata_service_note=$29, pinata_number=$30, pinata_filler_number=$31,
@@ -5207,7 +5283,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.kidsCount || null, b.groupName || null, updateExtraDataSql,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
-                 b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
+                 b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext,
+                 b.roomResourceId || b.room_resource_id || null]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -5215,6 +5292,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
+                 room_resource_id=$36,
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
                  payment_method=$25, pinata_mode=$26, client_pinata_service_price=$27,
                  client_pinata_service_note=$28, pinata_number=$29, pinata_filler_number=$30,
@@ -5226,7 +5304,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, updateExtraDataSql, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
-                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
+                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext,
+                 b.roomResourceId || b.room_resource_id || null]
             );
         }
 
@@ -5324,10 +5403,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5,
                          pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
                          client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
+                         room_resource_id=$14,
                            updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')} AND ${bookingActiveStatusSql()}`,
                         [b.date, b.time, b.duration, newStatus, b.room, b.pinataFiller, b.pinataMode,
                          b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber,
-                         b.pinataFillerNumber, linked.id, businessContext]
+                         b.pinataFillerNumber, linked.id, businessContext, b.roomResourceId || b.room_resource_id || null]
                     );
                 }
             } else if (shouldHaveSecondLink && linkedResult.rows.length === 0) {

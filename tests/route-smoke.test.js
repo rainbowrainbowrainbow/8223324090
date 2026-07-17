@@ -1425,6 +1425,30 @@ function createFakePool() {
             if (/SELECT resource_id, name, short_name, metadata\s+FROM timeline_resources/i.test(text)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND type = \$2/i.test(text)) {
+                if (params[0] === 'event_genix' && params[1] === 'room') {
+                    return {
+                        rows: [{
+                            id: 2001,
+                            business_context: 'event_genix',
+                            resource_id: 'room-marvel',
+                            type: 'room',
+                            name: 'Marvel',
+                            short_name: 'Marvel',
+                            color: '#6366F1',
+                            capacity: null,
+                            equipment: [],
+                            is_active: true,
+                            sort_order: 10,
+                            metadata: { aliases: [] },
+                            created_at: '2099-01-01T00:00:00.000Z',
+                            updated_at: '2099-01-01T00:00:00.000Z'
+                        }],
+                        rowCount: 1
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            }
             if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND resource_id = \$2/i.test(text)) {
                 const resourceId = String(params[1] || '');
                 if (params[0] === 'maysternya_doli' && resourceId === 'md-consult-room') {
@@ -1492,18 +1516,19 @@ function createFakePool() {
                 );
                 return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
             }
-            if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(text)) {
+            if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id, b\.room_resource_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(text)) {
                 const roomValues = new Set((Array.isArray(params[1]) ? params[1] : [params[1]]).map(String));
                 const resourceIds = new Set((Array.isArray(params[3]) ? params[3] : []).filter(Boolean).map(String));
                 const excluded = new Set((Array.isArray(params[4]) ? params[4] : []).map(String));
                 const rows = hrState.bookings
                     .filter(booking =>
                         booking.date === params[0]
-                        && (
-                            roomValues.has(String(booking.room || ''))
-                            || resourceIds.has(String(booking.resource_id || ''))
-                            || resourceIds.has(String(booking.line_id || ''))
-                        )
+                        && (String(booking.room_resource_id || '').trim()
+                            ? resourceIds.has(String(booking.room_resource_id))
+                            : (
+                                roomValues.has(String(booking.room || ''))
+                                || resourceIds.has(String(booking.line_id || ''))
+                            ))
                         && booking.business_context === params[2]
                         && booking.status !== 'cancelled'
                         && !excluded.has(String(booking.id))
@@ -1523,6 +1548,7 @@ function createFakePool() {
                             category: booking.category,
                             extra_data: booking.extra_data,
                             line_id: booking.line_id,
+                            room_resource_id: booking.room_resource_id || null,
                             banquet_group_id: membership?.group_id || null,
                             banquet_group_role: membership?.role || null
                         };
@@ -1535,17 +1561,18 @@ function createFakePool() {
                     .map(item => ({ group_id: item.group_id, role: item.role }));
                 return { rows, rowCount: rows.length };
             }
-            if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room = ANY\(\$2::text\[\]\)/i.test(text)
+            if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room_resource_id = ANY\(\$4::text\[\]\)/i.test(text)
                 || /SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
                 const roomValues = new Set((Array.isArray(params[1]) ? params[1] : [params[1]]).map(String));
                 const resourceIds = new Set((Array.isArray(params[3]) ? params[3] : []).filter(Boolean).map(String));
                 const rows = hrState.bookings.filter(booking =>
                     booking.date === params[0]
-                    && (
-                        roomValues.has(String(booking.room || ''))
-                        || resourceIds.has(String(booking.resource_id || ''))
-                        || resourceIds.has(String(booking.line_id || ''))
-                    )
+                    && (String(booking.room_resource_id || '').trim()
+                        ? resourceIds.has(String(booking.room_resource_id))
+                        : (
+                            roomValues.has(String(booking.room || ''))
+                            || resourceIds.has(String(booking.line_id || ''))
+                        ))
                     && booking.business_context === params[2]
                     && booking.status !== 'cancelled'
                 );
@@ -1572,7 +1599,8 @@ function createFakePool() {
                 return { rows: [{ id: row.id }], rowCount: 1 };
             }
             if (/INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(text)) {
-                const linkedChildInsert = /\$11,\s*0,\s*\$12/i.test(text) && params.length === 28;
+                const linkedChildInsert = /\$11,\s*0,\s*\$12/i.test(text) && params.length === 29;
+                const banquetRootInsert = params.length === 32 && /room_resource_id/i.test(text);
                 const row = linkedChildInsert ? {
                     id: params[0],
                     business_context: params[1],
@@ -1596,6 +1624,7 @@ function createFakePool() {
                     client_pinata_service_note: params[18],
                     costume: params[19],
                     room: params[20],
+                    room_resource_id: params[28],
                     notes: params[21],
                     created_by: params[22],
                     linked_to: params[23],
@@ -1628,16 +1657,17 @@ function createFakePool() {
                     client_pinata_service_note: params[19],
                     costume: params[20],
                     room: params[21],
+                    room_resource_id: banquetRootInsert ? params[31] : null,
                     notes: params[22],
                     created_by: params[23],
                     linked_to: params[24],
                     status: params[25],
                     kids_count: params[26],
                     group_name: params[27],
-                    extra_data: JSON.parse(params[28] || '{}'),
-                    skip_notification: params[29],
-                    customer_id: params[30],
-                    payment_method: params[31],
+                    extra_data: JSON.parse(params[banquetRootInsert ? 27 : 28] || '{}'),
+                    skip_notification: params[banquetRootInsert ? 28 : 29],
+                    customer_id: params[banquetRootInsert ? 29 : 30],
+                    payment_method: params[banquetRootInsert ? 30 : 31],
                     created_at: '2099-01-01T00:00:00.000Z',
                     updated_at: '2099-01-01T00:00:00.000Z'
                 };

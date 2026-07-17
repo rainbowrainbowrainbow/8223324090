@@ -75,9 +75,10 @@ function makeDb(initialRows) {
     const roomConflictMatches = (row, roomParam, resourceIdsParam = []) => {
         const rooms = new Set((Array.isArray(roomParam) ? roomParam : [roomParam]).map(String));
         const resourceIds = new Set((Array.isArray(resourceIdsParam) ? resourceIdsParam : [resourceIdsParam]).filter(Boolean).map(String));
-        return rooms.has(String(row.room || ''))
-            || resourceIds.has(String(row.resource_id || ''))
-            || resourceIds.has(String(row.line_id || ''));
+        if (String(row.room_resource_id || '').trim()) {
+            return resourceIds.has(String(row.room_resource_id));
+        }
+        return rooms.has(String(row.room || '')) || resourceIds.has(String(row.line_id || ''));
     };
     const hasScopedBusinessContext = sql =>
         sql.includes('business_context = $') ||
@@ -100,7 +101,29 @@ function makeDb(initialRows) {
         }
 
         if (/FROM timeline_resources/i.test(sql)) {
-            return { rows: [], rowCount: 0 };
+            const roomNames = [...new Set([
+                ...state.rows.map(row => row.room).filter(Boolean),
+                'Room A',
+                'Room B',
+                'Shared Room'
+            ])];
+            return {
+                rows: roomNames.map((name, index) => ({
+                    id: index + 1,
+                    business_context: 'event_genix',
+                    resource_id: `room-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+                    type: 'room',
+                    name,
+                    short_name: null,
+                    color: '#123456',
+                    capacity: null,
+                    equipment: [],
+                    is_active: true,
+                    sort_order: index + 1,
+                    metadata: {}
+                })),
+                rowCount: roomNames.length
+            };
         }
 
         if (/SELECT \* FROM bookings WHERE id = \$1(?: AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)?(?: FOR UPDATE)?$/i.test(sql)) {
@@ -160,7 +183,7 @@ function makeDb(initialRows) {
             };
         }
 
-        if (/FROM bookings\s+WHERE date = \$1\s+AND \(\s+room = ANY\(\$2::text\[\]\)/i.test(sql)
+        if (/FROM bookings\s+WHERE date = \$1\s+AND \(\s+room_resource_id = ANY\(\$4::text\[\]\)/i.test(sql)
             || /FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
             const hasBusinessContext = hasScopedBusinessContext(sql);
             const businessContext = hasBusinessContext ? params[2] : null;

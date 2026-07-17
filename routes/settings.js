@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, validateTime, validateSettingKey, mapBookingRow, timeToMinutes, ALL_ROOMS } = require('../services/booking');
+const { validateDate, validateTime, validateSettingKey, mapBookingRow, timeToMinutes } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
@@ -729,11 +729,9 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
                 duration: dur,
                 capacity: req.query.capacity || req.query.attendees || req.query.kidsCount
             });
-            if (resourceType || resourceAvailability.total > 0) {
-                return res.json((resourceType === 'room' || (!resourceType && display.mode === 'park'))
-                    ? roomAvailabilityPayloadFromResources(resourceAvailability)
-                    : resourceAvailability);
-            }
+            return res.json((resourceType === 'room' || (!resourceType && display.mode === 'park'))
+                ? roomAvailabilityPayloadFromResources(resourceAvailability)
+                : resourceAvailability);
         }
 
         const params = [date, context || DEFAULT_TIMELINE_CONTEXT];
@@ -807,14 +805,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         Object.values(dayBookingsByRoom).forEach(roomBookings => {
             roomBookings.sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')) || String(a.id || '').localeCompare(String(b.id || '')));
         });
-        const rooms = ALL_ROOMS.map(room => ({
-            name: room,
-            occupied: occupiedRooms.has(room),
-            free: !occupiedRooms.has(room),
-            dayBookings: dayBookingsByRoom[room] || []
-        }));
-        const free = ALL_ROOMS.filter(r => !occupiedRooms.has(r));
-        res.json({ free, occupied: Array.from(occupiedRooms), total: ALL_ROOMS.length, rooms, dayBookingsByRoom });
+        res.json({ free: [], occupied: [], total: 0, rooms: [], dayBookingsByRoom: {} });
     } catch (err) {
         log.error('Free rooms error', err);
         res.status(500).json({ error: 'Internal server error' });

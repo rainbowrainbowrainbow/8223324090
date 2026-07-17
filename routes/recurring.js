@@ -31,6 +31,8 @@ const { normalizePinataFields } = require('../services/pinataMode');
 const { insertHistory } = require('../services/historyLog');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
+const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
+const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 
 const log = createLogger('RecurringAPI');
 
@@ -143,12 +145,26 @@ router.post('/', async (req, res) => {
         const daysOfWeek = Array.isArray(b.daysOfWeek) ? b.daysOfWeek : null;
         const pinataFields = normalizeRecurringPinataFields(b);
         if (pinataFields.error) return res.status(400).json({ error: pinataFields.error });
+        const roomIdentity = {
+            room: b.room || null,
+            roomResourceId: b.roomResourceId || b.room_resource_id || null
+        };
+        if (roomIdentity.room || roomIdentity.roomResourceId) {
+            try {
+                await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, roomIdentity);
+            } catch (error) {
+                if (String(error?.code || '').startsWith('ROOM_RESOURCE_')) {
+                    return res.status(error.statusCode || 400).json({ error: error.message, code: error.code });
+                }
+                throw error;
+            }
+        }
 
         const result = await pool.query(
             `INSERT INTO recurring_templates
              (pattern, days_of_week, interval_weeks, monthly_rule,
               start_date, end_date, time_start, time_end,
-              preferred_line_name, room,
+              preferred_line_name, room, room_resource_id,
               product_id, product_code, product_label, product_name, category,
               duration, price, hosts,
               second_animator_name,
@@ -156,7 +172,7 @@ router.post('/', async (req, res) => {
               client_pinata_service_price, client_pinata_service_note,
               costume, kids_count, group_name, notes, extra_data,
               status, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$33,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
              RETURNING *`,
             [
                 b.pattern,
@@ -168,7 +184,7 @@ router.post('/', async (req, res) => {
                 b.timeStart,
                 timeEnd,
                 b.preferredLineName || null,
-                b.room || null,
+                roomIdentity.room || null,
                 b.productId,
                 b.productCode || null,
                 b.productLabel || null,
@@ -190,7 +206,8 @@ router.post('/', async (req, res) => {
                 b.notes || null,
                 b.extraData ? JSON.stringify(b.extraData) : null,
                 b.status || 'preliminary',
-                req.user?.username || 'system'
+                req.user?.username || 'system',
+                roomIdentity.roomResourceId || null
             ]
         );
 
@@ -280,6 +297,24 @@ router.put('/:id', async (req, res) => {
             : existingRow.client_pinata_service_note;
         const pinataFields = normalizeRecurringPinataFields(b);
         if (pinataFields.error) return res.status(400).json({ error: pinataFields.error });
+        const roomIdentity = {
+            room: b.room !== undefined ? b.room : existingRow.room,
+            roomResourceId: b.roomResourceId !== undefined
+                ? b.roomResourceId
+                : (b.room_resource_id !== undefined ? b.room_resource_id : existingRow.room_resource_id)
+        };
+        if (roomIdentity.room || roomIdentity.roomResourceId) {
+            try {
+                await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, roomIdentity, {
+                    allowInactiveResourceId: existingRow.room_resource_id || null
+                });
+            } catch (error) {
+                if (String(error?.code || '').startsWith('ROOM_RESOURCE_')) {
+                    return res.status(error.statusCode || 400).json({ error: error.message, code: error.code });
+                }
+                throw error;
+            }
+        }
 
         await pool.query(
             `UPDATE recurring_templates SET
@@ -293,6 +328,7 @@ router.put('/:id', async (req, res) => {
              time_end = $8,
              preferred_line_name = $9,
              room = $10,
+             room_resource_id = $33,
              product_id = COALESCE($11, product_id),
              product_code = $12,
              product_label = $13,
@@ -326,7 +362,7 @@ router.put('/:id', async (req, res) => {
                 b.timeStart || null,
                 timeEnd,
                 b.preferredLineName !== undefined ? b.preferredLineName : existing.rows[0].preferred_line_name,
-                b.room !== undefined ? b.room : existing.rows[0].room,
+                roomIdentity.room || null,
                 b.productId || null,
                 b.productCode !== undefined ? b.productCode : existing.rows[0].product_code,
                 b.productLabel !== undefined ? b.productLabel : existing.rows[0].product_label,
@@ -348,7 +384,8 @@ router.put('/:id', async (req, res) => {
                 b.notes !== undefined ? b.notes : existing.rows[0].notes,
                 b.extraData !== undefined ? (b.extraData ? JSON.stringify(b.extraData) : null) : existing.rows[0].extra_data,
                 b.status || null,
-                id
+                id,
+                roomIdentity.roomResourceId || null
             ]
         );
 

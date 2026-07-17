@@ -91,12 +91,6 @@ const BANQUET_SERVICE_LINE_ID = 'banquet-service';
 const TAKEAWAY_ROOM_ID = 'room-takeaway';
 const TAKEAWAY_ROOM_LABEL = 'На виніс';
 
-const ALL_ROOMS = [
-    'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
-    'Растішка', 'Рок', 'Міньйон', 'Поні', 'Фудкорт', 'Жовтий стіл',
-    'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
-];
-
 function normalizeBookingStatus(value, fallback = 'confirmed') {
     if (value === undefined || value === null || value === '') return fallback;
     const status = String(value).trim().toLowerCase();
@@ -122,6 +116,10 @@ function isLineConflictBlockingLine(value) {
     return Boolean(lineId && lineId !== BANQUET_SERVICE_LINE_ID && lineId !== TAKEAWAY_ROOM_ID);
 }
 
+function bookingRoomResourceId(booking = {}) {
+    return String(booking.roomResourceId || booking.room_resource_id || '').trim();
+}
+
 function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
     const date = bookingConflictLockPart(booking.date);
@@ -129,6 +127,11 @@ function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAUL
 
     const lineId = bookingConflictLockPart(booking.lineId || booking.line_id || booking.resourceId || booking.resource_id);
     if (isLineConflictBlockingLine(lineId)) keys.add(`line:${context}:${date}:${lineId}`);
+
+    const roomResourceId = bookingConflictLockPart(bookingRoomResourceId(booking));
+    if (roomResourceId && roomResourceId !== TAKEAWAY_ROOM_ID) {
+        keys.add(`room-resource:${context}:${date}:${roomResourceId}`);
+    }
 
     const room = bookingConflictLockPart(booking.room);
     if (isRoomConflictBlockingRoom(room)) keys.add(`room:${context}:${date}:${room}`);
@@ -147,14 +150,15 @@ function bookingRoomResourceMatchValues(row = {}) {
     ].map(value => String(value || '').trim()).filter(Boolean)));
 }
 
-async function resolveRoomConflictLookup(client, businessContext, room) {
+async function resolveRoomConflictLookup(client, businessContext, room, roomResourceId = null) {
     const context = normalizeTimelineContext(businessContext);
     const requestedRoom = String(room || '').trim();
+    const requestedResourceId = String(roomResourceId || '').trim();
     const roomValues = new Set();
     const resourceIds = new Set();
     if (requestedRoom) roomValues.add(requestedRoom);
-    if (!isRoomConflictBlockingRoom(requestedRoom) || !client?.query) {
-        return { roomValues: Array.from(roomValues), resourceIds: [] };
+    if ((!isRoomConflictBlockingRoom(requestedRoom) && !requestedResourceId) || !client?.query) {
+        return { roomValues: Array.from(roomValues), resourceIds: requestedResourceId ? [requestedResourceId] : [] };
     }
 
     const normalizedRoom = bookingConflictLockPart(requestedRoom);
@@ -168,10 +172,13 @@ async function resolveRoomConflictLookup(client, businessContext, room) {
         );
         for (const resource of result.rows || []) {
             const matchValues = bookingRoomResourceMatchValues(resource);
-            const matchesRoom = matchValues.some(value => bookingConflictLockPart(value) === normalizedRoom);
+            const resourceId = String(resource.resource_id || resource.resourceId || '').trim();
+            const matchesRoom = requestedResourceId
+                ? resourceId === requestedResourceId
+                : matchValues.some(value => bookingConflictLockPart(value) === normalizedRoom);
             if (!matchesRoom) continue;
             matchValues.forEach(value => roomValues.add(value));
-            addCleanSetValue(resourceIds, resource.resource_id || resource.resourceId);
+            addCleanSetValue(resourceIds, resourceId);
         }
     } catch {
         // Keep booking conflict checks operational if the room catalog is unavailable during migration/rollback.
@@ -186,11 +193,12 @@ async function resolveRoomConflictLookup(client, businessContext, room) {
 async function addBookingAliasConflictLockKeys(client, keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT, lookupCache = null) {
     const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
     const date = bookingConflictLockPart(booking.date);
-    if (!date || !isRoomConflictBlockingRoom(booking.room)) return keys;
-    const cacheKey = `${context}:${bookingConflictLockPart(booking.room)}`;
+    const roomResourceId = bookingRoomResourceId(booking);
+    if (!date || (!isRoomConflictBlockingRoom(booking.room) && !roomResourceId)) return keys;
+    const cacheKey = `${context}:${bookingConflictLockPart(roomResourceId || booking.room)}`;
     let lookup = lookupCache?.get(cacheKey);
     if (!lookup) {
-        lookup = await resolveRoomConflictLookup(client, context, booking.room);
+        lookup = await resolveRoomConflictLookup(client, context, booking.room, roomResourceId);
         lookupCache?.set(cacheKey, lookup);
     }
     lookup.roomValues.forEach(value => {
@@ -449,7 +457,13 @@ function findRoomConflictAmongCandidates(candidates = []) {
             const conflict = rows[rightIndex];
             if (normalizeBookingStatus(conflict.status) === 'cancelled' || !isRoomConflictBlockingRoom(conflict.room)) continue;
             if (String(candidate.date || '') !== String(conflict.date || '')) continue;
-            if (String(candidate.room || '') !== String(conflict.room || '')) continue;
+            const candidateRoomResourceId = bookingRoomResourceId(candidate);
+            const conflictRoomResourceId = bookingRoomResourceId(conflict);
+            if (candidateRoomResourceId && conflictRoomResourceId) {
+                if (candidateRoomResourceId !== conflictRoomResourceId) continue;
+            } else if (String(candidate.room || '') !== String(conflict.room || '')) {
+                continue;
+            }
             const candidateStart = timeToMinutes(candidate.time);
             const candidateEnd = candidateStart + (parseInt(candidate.duration, 10) || 0);
             const conflictStart = timeToMinutes(conflict.time);
@@ -465,8 +479,8 @@ function findRoomConflictAmongCandidates(candidates = []) {
     return null;
 }
 
-async function queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata) {
-    const lookup = await resolveRoomConflictLookup(client, context, room);
+async function queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata, roomResourceId = null) {
+    const lookup = await resolveRoomConflictLookup(client, context, room, roomResourceId);
     const roomValues = lookup.roomValues.length ? lookup.roomValues : [String(room || '').trim()];
     const resourceIds = lookup.resourceIds || [];
     const params = [date, roomValues, context, resourceIds];
@@ -479,8 +493,14 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
                FROM bookings
               WHERE date = $1
                 AND (
-                    room = ANY($2::text[])
-                    OR line_id = ANY($4::text[])
+                    room_resource_id = ANY($4::text[])
+                    OR (
+                        room_resource_id IS NULL
+                        AND (
+                            room = ANY($2::text[])
+                            OR line_id = ANY($4::text[])
+                        )
+                    )
                 )
                 AND COALESCE(business_context, 'event_genix') = $3
                 AND ${activeBookingStatusSql()}` +
@@ -489,7 +509,7 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
         );
     }
     return client.query(
-        `SELECT b.id, b.time, b.duration, b.label, b.program_code, b.program_name, b.category, b.extra_data, b.line_id,
+        `SELECT b.id, b.time, b.duration, b.label, b.program_code, b.program_name, b.category, b.extra_data, b.line_id, b.room_resource_id,
                 bgb.group_id AS banquet_group_id, bgb.role AS banquet_group_role
          FROM bookings b
          LEFT JOIN banquet_group_bookings bgb
@@ -497,8 +517,14 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
           AND COALESCE(bgb.business_context, 'event_genix') = $3
          WHERE b.date = $1
            AND (
-                b.room = ANY($2::text[])
-                OR b.line_id = ANY($4::text[])
+                b.room_resource_id = ANY($4::text[])
+                OR (
+                    b.room_resource_id IS NULL
+                    AND (
+                        b.room = ANY($2::text[])
+                        OR b.line_id = ANY($4::text[])
+                    )
+                )
            )
            AND COALESCE(b.business_context, 'event_genix') = $3
            AND ${activeBookingStatusSql('b.status')}` +
@@ -513,7 +539,16 @@ async function checkRoomConflictWithPolicy(client, date, room, time, duration, e
     const options = normalizeRoomConflictPolicyOptions(excludeId);
     const excludeIds = options.excludeIds || [];
     const includePolicyMetadata = Boolean(options.allowSameBanquetOperationalOverlap);
-    const result = await queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata);
+    const candidateRoomResourceId = bookingRoomResourceId(options.candidateBooking || options);
+    const result = await queryRoomConflictRows(
+        client,
+        date,
+        room,
+        context,
+        excludeIds,
+        includePolicyMetadata,
+        candidateRoomResourceId
+    );
     const candidateContext = includePolicyMetadata
         ? await roomConflictPolicyCandidateContext(client, options, context)
         : { groupIds: new Set(), role: '' };
@@ -751,6 +786,7 @@ function mapBookingRow(row) {
         services: buildPinataServices(pinataFields),
         costume: row.costume,
         room: row.room,
+        roomResourceId: row.room_resource_id || null,
         notes: row.notes,
         createdBy: row.created_by,
         createdAt: row.created_at,
@@ -1080,7 +1116,7 @@ function getKyivTimeStr() {
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     normalizeBanquetCreationContext, validateBanquetCreationContext,
-    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
+    timeToMinutes, minutesToTime, MIN_PAUSE, VALID_BOOKING_STATUSES,
     parseAvailabilityWindows, isBookingWithinAvailabilityWindows, isMinuteWithinAvailabilityWindows, availabilityWindowsLabel,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,

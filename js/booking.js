@@ -893,6 +893,7 @@ function renderBookingRoomCatalogOptions(resources = [], options = {}) {
     const select = document.getElementById('roomSelect');
     if (!select) return;
     const selectedRoom = String(options.selectedRoom ?? select.value ?? '').trim();
+    const selectedResourceId = String(options.selectedResourceId || options.currentResourceId || '').trim();
     const activeOptions = (Array.isArray(resources) ? resources : [])
         .filter(resource => resource && resource.isActive !== false)
         .map(bookingRoomResourceOptionData)
@@ -917,7 +918,12 @@ function renderBookingRoomCatalogOptions(resources = [], options = {}) {
         fragment.appendChild(group);
     }
 
-    const hasSelectedRoom = selectedRoom && activeOptions.some(option => option.value === selectedRoom);
+    const activeSelection = activeOptions.find(option =>
+        (selectedResourceId && option.resourceId === selectedResourceId)
+        || (selectedRoom && option.value === selectedRoom)
+    );
+    const effectiveSelectedRoom = activeSelection?.value || selectedRoom;
+    const hasSelectedRoom = Boolean(activeSelection);
     if (selectedRoom && !hasSelectedRoom && options.includeCurrentRoom) {
         const current = document.createElement('option');
         current.value = selectedRoom;
@@ -935,8 +941,8 @@ function renderBookingRoomCatalogOptions(resources = [], options = {}) {
 
     select.innerHTML = '';
     select.appendChild(fragment);
-    if (selectedRoom && Array.from(select.options).some(option => option.value === selectedRoom)) {
-        select.value = selectedRoom;
+    if (effectiveSelectedRoom && Array.from(select.options).some(option => option.value === effectiveSelectedRoom)) {
+        select.value = effectiveSelectedRoom;
     }
     BookingRoomAvailabilityState.baseGroups = null;
     snapshotBookingRoomOptions();
@@ -985,6 +991,18 @@ if (typeof window !== 'undefined') {
 function isOperationalBookingRoomValue(value) {
     const room = String(value || '').trim();
     return Boolean(room && !BOOKING_ROOM_NON_OPERATIONAL_VALUES.has(room));
+}
+
+function selectedBookingRoomResourceIdentity() {
+    const select = document.getElementById('roomSelect');
+    const option = select?.selectedOptions?.[0] || null;
+    const room = String(select?.value || '').trim();
+    const takeaway = room === BOOKING_TAKEAWAY_ROOM_VALUE;
+    return {
+        room,
+        roomResourceId: takeaway ? 'room-takeaway' : String(option?.dataset?.resourceId || '').trim(),
+        roomResourceType: takeaway ? 'room' : String(option?.dataset?.resourceType || '').trim()
+    };
 }
 
 function snapshotBookingRoomOptions() {
@@ -1354,6 +1372,8 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
         takeawayOption.textContent = BOOKING_TAKEAWAY_ROOM_VALUE;
         takeawayOption.dataset.roomLabel = BOOKING_TAKEAWAY_ROOM_VALUE;
         takeawayOption.dataset.serviceRoom = 'takeaway';
+        takeawayOption.dataset.resourceId = 'room-takeaway';
+        takeawayOption.dataset.resourceType = 'room';
         fragment.appendChild(takeawayOption);
         availableRooms.add(BOOKING_TAKEAWAY_ROOM_VALUE);
     }
@@ -1473,7 +1493,9 @@ async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
     const selectedRoom = String(options.selectedRoom ?? document.getElementById('roomSelect')?.value ?? '').trim();
     await loadBookingRoomResourcesForSelect({
         selectedRoom,
+        selectedResourceId: options.selectedResourceId || '',
         includeCurrentRoom: Boolean(selectedRoom && AppState.editingBookingId),
+        currentResourceId: options.selectedResourceId || '',
         currentRoomDisabled: true,
         force: options.forceRoomCatalog === true
     });
@@ -9917,7 +9939,8 @@ function getBookingFormData() {
     const kitchenEnabled = roomFirst && timelineKitchenEnabled();
     const leadDetailsEnabled = false;
     const programId = hasEvent ? selectedProgramId : '';
-    const room = document.getElementById('roomSelect')?.value || '';
+    const roomIdentity = selectedBookingRoomResourceIdentity();
+    const room = roomIdentity.room;
     const effectiveRoom = room || defaultTimelineBookingRoom(presentation);
     const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
@@ -10007,7 +10030,8 @@ function getBookingFormData() {
     const bookingComment = document.getElementById('bookingNotes')?.value || '';
     const baseFormData = {
         hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
-        programId, room: effectiveRoom, program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', lineResourceType: line?.resourceType || '', duration, label,
+        programId, room: effectiveRoom, roomResourceId: roomIdentity.roomResourceId, roomResourceType: roomIdentity.roomResourceType,
+        program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', lineResourceType: line?.resourceType || '', duration, label,
         activityPrograms: hasEvent ? (packageTotals.activityPrograms || (program ? [program] : [])) : [],
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
@@ -10526,6 +10550,8 @@ function buildBookingObject(formData, program) {
         clientPinataServiceNote: hasCatalogProgram && formData.pinataMode === 'client' ? formData.clientPinataServiceNote : null,
         costume: costume,
         room: formData.room,
+        roomResourceId: formData.roomResourceId || null,
+        roomResourceType: formData.roomResourceType || null,
         notes: shouldPersistLegacyNotes ? rawBookingComment : null,
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
@@ -14214,7 +14240,7 @@ async function editBooking(bookingId) {
     // Відкрити панель з даними бронювання
     const panelLineSource = banquetEditContext && !banquetEditContext.primaryIsActivity ? anchorBooking : booking;
     const panelLineId = isRoomFirstTimelineView()
-        ? (panelLineSource.resourceId || panelLineSource.room || panelLineSource.lineId)
+        ? (panelLineSource.roomResourceId || panelLineSource.room_resource_id || panelLineSource.resourceId || panelLineSource.room || panelLineSource.lineId)
         : panelLineSource.lineId;
     await openBookingPanel(booking.time, panelLineId);
     BookingDrawerState.banquetEditContext = banquetEditContext;
@@ -14236,14 +14262,18 @@ async function editBooking(bookingId) {
     // Заповнити форму
     if (booking.room) {
         ensureTimelineRoomOption(booking.room, {
-            resourceId: booking.resourceId || booking.resource_id || null,
+            resourceId: booking.roomResourceId || booking.room_resource_id || null,
             resourceType: 'room',
             currentBookingRoom: true,
-            disabled: true
+            disabled: false
         });
     }
     document.getElementById('roomSelect').value = booking.room || '';
-    await refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom: booking.room || '', excludeId: bookingId });
+    await refreshBookingRoomAvailabilityForSelectedDate({
+        selectedRoom: booking.room || '',
+        selectedResourceId: booking.roomResourceId || booking.room_resource_id || '',
+        excludeId: bookingId
+    });
     if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = bookingCommentValueForType(editComments, editCommentType) || booking.notes || '';
@@ -14351,7 +14381,9 @@ async function duplicateBooking(bookingId) {
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
 
-    const panelLineId = isRoomFirstTimelineView() ? (booking.resourceId || booking.room || booking.lineId) : booking.lineId;
+    const panelLineId = isRoomFirstTimelineView()
+        ? (booking.roomResourceId || booking.room_resource_id || booking.resourceId || booking.room || booking.lineId)
+        : booking.lineId;
     await openBookingPanel(booking.time, panelLineId);
 
     // Заголовок для дублювання
@@ -14365,8 +14397,10 @@ async function duplicateBooking(bookingId) {
     hydrateBookingWorkspace(booking);
 
     // Pre-fill форму (ідентично editBooking)
-    await loadBookingRoomResourcesForSelect({ selectedRoom: booking.room || '' });
-    document.getElementById('roomSelect').value = booking.room || '';
+    await loadBookingRoomResourcesForSelect({
+        selectedRoom: booking.room || '',
+        selectedResourceId: booking.roomResourceId || booking.room_resource_id || ''
+    });
     if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';
     const duplicateCommentType = bookingCommentTypeForBooking(booking);
@@ -14987,6 +15021,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 timeEnd: addMinutesToTime(booking.time, booking.duration),
                 lineId: booking.lineId,
                 room: booking.room,
+                roomResourceId: booking.roomResourceId || booking.room_resource_id || null,
                 productId: booking.programId,
                 productCode: booking.programCode,
                 productName: booking.programName,

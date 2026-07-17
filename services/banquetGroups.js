@@ -6,6 +6,7 @@ const {
     checkRoomConflict,
     checkServerConflicts,
     checkServerDuplicate,
+    lockBookingConflictResources,
     mapBookingRow,
     normalizeBookingStatus,
     BANQUET_SERVICE_LINE_ID,
@@ -25,6 +26,7 @@ const { applyEffectiveBookingPrice } = require('./productPricing');
 const { upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 const { normalizeCustomerSource } = require('./customerSource');
+const { canonicalizeBookingRoomResource } = require('./timelineResources');
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
 const WRITABLE_MEMBER_ROLES = new Set(['kitchen', 'activity', 'service', 'manual']);
@@ -253,6 +255,7 @@ function mapGroupRow(row = null) {
         customerId: row.customer_id || null,
         date: row.date || null,
         room: row.room || null,
+        roomResourceId: row.room_resource_id || null,
         guestArrivalTime: row.guest_arrival_time || null,
         groupName: row.group_name || null,
         status: row.status || 'active',
@@ -553,6 +556,23 @@ async function getMembershipRows(db, groupId, businessContext) {
         [groupId, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows || [];
+}
+
+async function canonicalizeBanquetBookingRoom(db, booking, businessContext, options = {}) {
+    try {
+        await canonicalizeBookingRoomResource(db, businessContext, booking, {
+            required: (businessContext || DEFAULT_TIMELINE_CONTEXT) === DEFAULT_TIMELINE_CONTEXT,
+            allowInactiveResourceId: options.allowInactiveResourceId || null
+        });
+        return booking;
+    } catch (error) {
+        if (!String(error?.code || '').startsWith('ROOM_RESOURCE_')) throw error;
+        throw new BanquetGroupError(error.message, {
+            status: error.statusCode || 400,
+            code: error.code,
+            details: error.details || null
+        });
+    }
 }
 
 async function getMembershipRowsForUpdate(db, groupId, businessContext) {
@@ -941,9 +961,9 @@ async function reconcileBanquetGroupForBooking({
             }
             const groupResult = await client.query(
                 `INSERT INTO banquet_groups
-                    (id, business_context, primary_booking_id, customer_id, date, room, guest_arrival_time, group_name, status, source, meta,
+                    (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, guest_arrival_time, group_name, status, source, meta,
                      created_by_user_id, created_by, updated_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
+                 VALUES ($1, $2, $3, $4, $5, $6, $13, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
                  RETURNING *`,
                 [
                     groupId,
@@ -962,7 +982,8 @@ async function reconcileBanquetGroupForBooking({
                         candidateBookingIds
                     }),
                     actorUserId(user),
-                    actorName(user)
+                    actorName(user),
+                    primary.room_resource_id || primary.roomResourceId || null
                 ]
             );
             group = groupResult.rows[0];
@@ -1274,6 +1295,7 @@ function normalizeRootActivityBooking(input = {}, { sourceBooking, group, busine
         clientPinataServiceNote: input.clientPinataServiceNote ?? input.client_pinata_service_note ?? null,
         costume: normalizeActivityText(input.costume, 100),
         room: normalizeActivityText(input.room || sourceBooking?.room, 100),
+        roomResourceId: cleanId(input.roomResourceId || input.room_resource_id || sourceBooking?.room_resource_id || sourceBooking?.roomResourceId),
         notes: normalizeActivityText(input.notes, 2000),
         createdBy: normalizeActivityText(input.createdBy || input.created_by || actorName(user), 100),
         status: normalizeBookingStatus(input.status, sourceBooking?.status || 'confirmed'),
@@ -1335,6 +1357,7 @@ function normalizeRootMemberBooking(input = {}, { sourceBooking, group, business
         clientPinataServiceNote: input.clientPinataServiceNote ?? input.client_pinata_service_note ?? null,
         costume: normalizeActivityText(input.costume, 100),
         room: normalizeActivityText(input.room || sourceBooking?.room || group?.room, 100),
+        roomResourceId: cleanId(input.roomResourceId || input.room_resource_id || sourceBooking?.room_resource_id || sourceBooking?.roomResourceId || group?.room_resource_id || group?.roomResourceId),
         notes: normalizeActivityText(input.notes, 2000),
         createdBy: normalizeActivityText(input.createdBy || input.created_by || actorName(user), 100),
         status: normalizeBookingStatus(input.status, sourceBooking?.status || 'confirmed'),
@@ -1385,6 +1408,7 @@ function normalizeLinkedActivityBooking(input = {}, rootBooking = {}, { business
         clientPinataServiceNote: input.clientPinataServiceNote ?? input.client_pinata_service_note ?? null,
         costume: normalizeActivityText(input.costume || rootBooking.costume, 100),
         room: normalizeActivityText(input.room || rootBooking.room, 100),
+        roomResourceId: cleanId(input.roomResourceId || input.room_resource_id || rootBooking.roomResourceId || rootBooking.room_resource_id),
         notes: normalizeActivityText(input.notes, 2000),
         createdBy: normalizeActivityText(input.createdBy || input.created_by || rootBooking.createdBy || actorName(user), 100),
         status: normalizeBookingStatus(input.status, rootBooking.status || 'confirmed'),
@@ -1449,6 +1473,7 @@ function assertCreateMemberBookingPayload(booking, role) {
 }
 
 async function assertActivitySlotAvailable(db, booking, businessContext, { groupId = null, sourceBookingId = null } = {}) {
+    await lockBookingConflictResources(db, [booking], businessContext);
     const lineConflict = await checkServerConflicts(db, booking.date, booking.lineId, booking.time, booking.duration || 0, null, businessContext);
     if (lineConflict.overlap) {
         throw new BanquetGroupError('Activity line slot is busy', {
@@ -1487,6 +1512,7 @@ async function assertActivitySlotAvailable(db, booking, businessContext, { group
 }
 
 async function assertMemberRoomSlotAvailable(db, booking, businessContext, { groupId = null, sourceBookingId = null } = {}) {
+    await lockBookingConflictResources(db, [booking], businessContext);
     const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, {
         banquetGroupId: groupId,
         sourceBookingId,
@@ -1511,12 +1537,12 @@ async function insertRootActivityBooking(db, booking, businessContext) {
         `INSERT INTO bookings
             (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
              duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number,
-             client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to,
+             client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to,
              status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method,
              banquet_guests, banquet_adults, banquet_tables, banquet_menu)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                  $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20, $21, $22, $23, $24, NULL,
+                 $19, $20, $21, $22, $32, $23, $24, NULL,
                  $25, $26, $27, $28, $29, $30, $31,
                  NULL, NULL, NULL, NULL)
          RETURNING *`,
@@ -1551,7 +1577,8 @@ async function insertRootActivityBooking(db, booking, businessContext) {
             normalizeActivityExtraData(booking.extraData),
             booking.skipNotification,
             booking.customerId,
-            booking.paymentMethod
+            booking.paymentMethod,
+            booking.roomResourceId || booking.room_resource_id || null
         ]
     );
     return result.rows[0] || null;
@@ -1563,12 +1590,12 @@ async function insertRootMemberBooking(db, booking, businessContext) {
         `INSERT INTO bookings
             (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
              duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number,
-             client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to,
+             client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to,
              status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method,
              banquet_guests, banquet_adults, banquet_tables, banquet_menu)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                  $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20, $21, $22, $23, $24, NULL,
+                 $19, $20, $21, $22, $35, $23, $24, NULL,
                  $25, $26, NULL, $27, $28, $29, $30,
                  $31, $32, $33, $34)
          RETURNING *`,
@@ -1606,7 +1633,8 @@ async function insertRootMemberBooking(db, booking, businessContext) {
             booking.banquetGuests,
             booking.banquetAdults,
             booking.banquetTables,
-            booking.banquetMenu
+            booking.banquetMenu,
+            booking.roomResourceId || booking.room_resource_id || null
         ]
     );
     return result.rows[0] || null;
@@ -1618,11 +1646,11 @@ async function insertLinkedActivityChildBooking(db, booking, rootBookingId, busi
         `INSERT INTO bookings
             (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
              duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number,
-             client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to,
+             client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to,
              status, kids_count, group_name, extra_data)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                  $11, 0, $12, $13, $14, $15, $16, $17,
-                 $18, $19, $20, $21, $22, $23, $24,
+                 $18, $19, $20, $21, $29, $22, $23, $24,
                  $25, $26, $27, $28)
          RETURNING *`,
         [
@@ -1653,7 +1681,8 @@ async function insertLinkedActivityChildBooking(db, booking, rootBookingId, busi
             booking.status,
             booking.kidsCount,
             booking.groupName,
-            normalizeActivityExtraData(booking.extraData)
+            normalizeActivityExtraData(booking.extraData),
+            booking.roomResourceId || booking.room_resource_id || null
         ]
     );
     return result.rows[0] || null;
@@ -1893,7 +1922,7 @@ async function updateBookingSetRoot(db, bookingId, booking, businessContext) {
             label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
             second_animator=$12, pinata_filler=$13, pinata_mode=$14, pinata_number=$15,
             pinata_filler_number=$16, client_pinata_service_price=$17,
-            client_pinata_service_note=$18, costume=$19, room=$20, notes=$21,
+            client_pinata_service_note=$18, costume=$19, room=$20, room_resource_id=$36, notes=$21,
             created_by=$22, status=$23, kids_count=$24, group_name=$25, extra_data=$26,
             skip_notification=$27, customer_id=$28, payment_method=$29,
             banquet_guests=$30, banquet_adults=$31, banquet_tables=$32, banquet_menu=$33,
@@ -1936,7 +1965,8 @@ async function updateBookingSetRoot(db, bookingId, booking, businessContext) {
             booking.banquetTables,
             booking.banquetMenu,
             bookingId,
-            businessContext || DEFAULT_TIMELINE_CONTEXT
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            booking.roomResourceId || booking.room_resource_id || null
         ]
     );
     return result.rows[0] || null;
@@ -1945,7 +1975,7 @@ async function updateBookingSetRoot(db, bookingId, booking, businessContext) {
 async function cascadeBookingSetTechnicalChildren(db, rootBookingId, booking, businessContext) {
     await db.query(
         `UPDATE bookings SET
-            date=$1, time=$2, duration=$3, status=$4, room=$5,
+            date=$1, time=$2, duration=$3, status=$4, room=$5, room_resource_id=$14,
             pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
             client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
             updated_at=NOW()
@@ -1965,7 +1995,8 @@ async function cascadeBookingSetTechnicalChildren(db, rootBookingId, booking, bu
             booking.pinataNumber,
             booking.pinataFillerNumber,
             rootBookingId,
-            businessContext || DEFAULT_TIMELINE_CONTEXT
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            booking.roomResourceId || booking.room_resource_id || null
         ]
     );
 }
@@ -2640,9 +2671,9 @@ async function createBanquetGroupInTransaction({
     const normalizedSource = normalizeShortText(source, 64) || 'booking_create';
     const groupResult = await db.query(
         `INSERT INTO banquet_groups
-            (id, business_context, primary_booking_id, customer_id, date, room, guest_arrival_time, group_name, status, source, meta,
+            (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, guest_arrival_time, group_name, status, source, meta,
              created_by_user_id, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $13, $7, $8, 'active', $9, $10::jsonb, $11, $12, $12)
          RETURNING *`,
         [
             id,
@@ -2656,7 +2687,8 @@ async function createBanquetGroupInTransaction({
             normalizedSource,
             JSON.stringify(normalizeMeta(meta)),
             actorUserId(user),
-            actorName(user)
+            actorName(user),
+            primaryBooking.room_resource_id || primaryBooking.roomResourceId || null
         ]
     );
     const membershipResult = await db.query(
@@ -3019,6 +3051,12 @@ async function updateBanquetBookingSet({
 
         const normalizedBookings = [primaryBooking, ...desiredActivities.map(item => item.booking)];
         for (const booking of normalizedBookings) {
+            const existingRoomResourceId = booking.id === primaryRow.id
+                ? primaryRow.room_resource_id
+                : existingActivityRows.get(String(booking.id))?.room_resource_id;
+            await canonicalizeBanquetBookingRoom(client, booking, context, {
+                allowInactiveResourceId: existingRoomResourceId || null
+            });
             assertCreateActivityPayload(booking);
             applyBookingSetPinataNormalization(booking);
             applyBookingPackage(booking);
@@ -3031,6 +3069,7 @@ async function updateBanquetBookingSet({
         }
 
         assertBookingSetPairwiseConflicts(normalizedBookings);
+        await lockBookingConflictResources(client, normalizedBookings, context);
         const conflictExcludeIds = [
             ...membershipRows.map(row => row.booking_id),
             ...technicalRows.map(row => row.id)
@@ -3148,6 +3187,7 @@ async function updateBanquetBookingSet({
                 customer_id=$3,
                 date=$4,
                 room=$5,
+                room_resource_id=$8,
                 group_name=$6,
                 updated_at=NOW(),
                 updated_by=$7
@@ -3161,7 +3201,8 @@ async function updateBanquetBookingSet({
                 primaryBooking.date,
                 primaryBooking.room,
                 primaryBooking.groupName || group.group_name || null,
-                actorName(user)
+                actorName(user),
+                primaryBooking.roomResourceId || primaryBooking.room_resource_id || null
             ]
         );
         const updatedGroup = updatedGroupResult.rows[0];
@@ -3541,6 +3582,7 @@ async function createMemberBookingFromSourceBooking({
             user,
             role: normalizedRole
         });
+        await canonicalizeBanquetBookingRoom(client, rootMember, context);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
         applyBookingPackage(rootMember);
         await applyBookingPackageEntryCharge(client, rootMember, {
@@ -3727,6 +3769,7 @@ async function createActivityBookingFromSourceBooking({
             user
         });
         rootActivity.extraData.banquetGroup.source = 'kitchen_first_activity_bridge';
+        await canonicalizeBanquetBookingRoom(client, rootActivity, context);
         assertCreateActivityPayload(rootActivity);
         await assertActivitySlotAvailable(client, rootActivity, context, {
             groupId: cleanGroupId,
@@ -3908,6 +3951,7 @@ async function createMemberBookingInBanquetGroup({
             user,
             role: normalizedRole
         });
+        await canonicalizeBanquetBookingRoom(client, rootMember, businessContext);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
         applyBookingPackage(rootMember);
         await applyBookingPackageEntryCharge(client, rootMember, {
@@ -4059,6 +4103,7 @@ async function createActivityBookingInBanquetGroup({
             businessContext,
             user
         });
+        await canonicalizeBanquetBookingRoom(client, rootActivity, businessContext);
         assertCreateActivityPayload(rootActivity);
         await assertActivitySlotAvailable(client, rootActivity, businessContext, {
             groupId: cleanGroupId,

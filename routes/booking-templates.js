@@ -7,6 +7,8 @@ const router = express.Router();
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
+const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 
 const log = createLogger('BookingTemplates');
 
@@ -21,6 +23,7 @@ function mapRow(r) {
         duration: r.duration,
         price: r.price ? parseFloat(r.price) : null,
         room: r.room,
+        roomResourceId: r.room_resource_id || null,
         kidsCount: r.kids_count,
         hosts: r.hosts,
         secondAnimatorName: r.second_animator_name,
@@ -52,25 +55,37 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
     try {
         const { name, productId, productCode, productName, category, duration,
-                price, room, kidsCount, hosts, secondAnimatorName,
+                price, room, roomResourceId, kidsCount, hosts, secondAnimatorName,
                 pinataFiller, costume, notes } = req.body;
 
         if (!name || name.trim().length === 0) {
             return res.status(400).json({ error: 'Назва шаблону обов\'язкова' });
         }
 
+        const roomIdentity = { room: room || null, roomResourceId: roomResourceId || null };
+        if (roomIdentity.room || roomIdentity.roomResourceId) {
+            try {
+                await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, roomIdentity);
+            } catch (error) {
+                if (String(error?.code || '').startsWith('ROOM_RESOURCE_')) {
+                    return res.status(error.statusCode || 400).json({ error: error.message, code: error.code });
+                }
+                throw error;
+            }
+        }
+
         const { rows } = await pool.query(`
             INSERT INTO booking_templates
                 (name, product_id, product_code, product_name, category, duration,
-                 price, room, kids_count, hosts, second_animator_name,
+                 price, room, room_resource_id, kids_count, hosts, second_animator_name,
                  pinata_filler, costume, notes, created_by)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$16,$9,$10,$11,$12,$13,$14,$15)
             RETURNING *
         `, [name.trim(), productId || null, productCode || null, productName || null,
-            category || null, duration || 60, price || null, room || null,
+            category || null, duration || 60, price || null, roomIdentity.room || null,
             kidsCount || null, hosts || 1, secondAnimatorName || null,
             pinataFiller || null, costume || null, notes || null,
-            req.user?.username || 'system']);
+            req.user?.username || 'system', roomIdentity.roomResourceId || null]);
 
         log.info(`Template created: "${name}" by ${req.user?.username}`);
         res.status(201).json(mapRow(rows[0]));
@@ -84,15 +99,39 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
     try {
         const { name, productId, productCode, productName, category, duration,
-                price, room, kidsCount, hosts, secondAnimatorName,
+                price, room, roomResourceId, kidsCount, hosts, secondAnimatorName,
                 pinataFiller, costume, notes, isFavorite } = req.body;
+
+        const existing = await pool.query(
+            'SELECT room, room_resource_id FROM booking_templates WHERE id = $1',
+            [req.params.id]
+        );
+        if (!existing.rows.length) {
+            return res.status(404).json({ error: 'Template not found' });
+        }
+        const roomIdentity = {
+            room: room === undefined ? existing.rows[0].room : room,
+            roomResourceId: roomResourceId === undefined ? existing.rows[0].room_resource_id : roomResourceId
+        };
+        if (roomIdentity.room || roomIdentity.roomResourceId) {
+            try {
+                await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, roomIdentity, {
+                    allowInactiveResourceId: existing.rows[0].room_resource_id || null
+                });
+            } catch (error) {
+                if (String(error?.code || '').startsWith('ROOM_RESOURCE_')) {
+                    return res.status(error.statusCode || 400).json({ error: error.message, code: error.code });
+                }
+                throw error;
+            }
+        }
 
         const { rows } = await pool.query(`
             UPDATE booking_templates SET
                 name = COALESCE($1, name),
                 product_id = $2, product_code = $3, product_name = $4,
                 category = $5, duration = COALESCE($6, duration),
-                price = $7, room = $8, kids_count = $9, hosts = $10,
+                price = $7, room = $8, room_resource_id = $17, kids_count = $9, hosts = $10,
                 second_animator_name = $11, pinata_filler = $12,
                 costume = $13, notes = $14,
                 is_favorite = COALESCE($15, is_favorite),
@@ -100,10 +139,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
             WHERE id = $16
             RETURNING *
         `, [name, productId || null, productCode || null, productName || null,
-            category || null, duration, price || null, room || null,
+            category || null, duration, price || null, roomIdentity.room || null,
             kidsCount || null, hosts || 1, secondAnimatorName || null,
             pinataFiller || null, costume || null, notes || null,
-            isFavorite, req.params.id]);
+            isFavorite, req.params.id, roomIdentity.roomResourceId || null]);
 
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Шаблон не знайдено' });

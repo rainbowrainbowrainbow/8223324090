@@ -158,6 +158,7 @@ function bookingRowFromMemberInsert(params) {
         client_pinata_service_note: params[19],
         costume: params[20],
         room: params[21],
+        room_resource_id: params[34],
         notes: params[22],
         created_by: params[23],
         linked_to: null,
@@ -201,6 +202,7 @@ function bookingRowFromRootActivityInsert(params) {
         client_pinata_service_note: params[19],
         costume: params[20],
         room: params[21],
+        room_resource_id: params[31],
         notes: params[22],
         created_by: params[23],
         linked_to: null,
@@ -250,9 +252,10 @@ function makeDb(rows, links = [], options = {}) {
         const roomConflictMatches = (row, roomParam, resourceIdsParam = []) => {
             const rooms = new Set((Array.isArray(roomParam) ? roomParam : [roomParam]).map(String));
             const resourceIds = new Set((Array.isArray(resourceIdsParam) ? resourceIdsParam : [resourceIdsParam]).filter(Boolean).map(String));
-            return rooms.has(String(row.room || ''))
-                || resourceIds.has(String(row.resource_id || ''))
-                || resourceIds.has(String(row.line_id || ''));
+            if (String(row.room_resource_id || '').trim()) {
+                return resourceIds.has(String(row.room_resource_id));
+            }
+            return rooms.has(String(row.room || '')) || resourceIds.has(String(row.line_id || ''));
         };
         if (sql === 'BEGIN') {
             state.tx.push(sql);
@@ -296,7 +299,7 @@ function makeDb(rows, links = [], options = {}) {
             }
             return { rows: [], rowCount: 0 };
         }
-        if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(sql)) {
+        if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id, b\.room_resource_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(sql)) {
             const [date, room, businessContext] = params;
             const aliasMode = Array.isArray(room);
             const resourceIds = aliasMode ? params[3] : [];
@@ -549,6 +552,9 @@ function makeDb(rows, links = [], options = {}) {
         if (/SELECT \*\s+FROM \(\s+SELECT l\.\*, 0 AS match_priority/i.test(sql)) {
             return { rows: [], rowCount: 0 };
         }
+        if (/pg_advisory_xact_lock/i.test(sql)) {
+            return { rows: [{ pg_advisory_xact_lock: true }], rowCount: 1 };
+        }
         if (/SELECT b\.\*\s+FROM bookings b\s+WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(sql)) {
             const ids = new Set((params[0] || []).map(String));
             const businessContext = params[1];
@@ -570,7 +576,7 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
-        if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room = ANY\(\$2::text\[\]\)/i.test(sql)
+        if (/SELECT id, time, duration, label, program_code\s+FROM bookings\s+WHERE date = \$1\s+AND \(\s+room_resource_id = ANY\(\$4::text\[\]\)/i.test(sql)
             || /SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
             const [date, room, businessContext] = params;
             const aliasMode = Array.isArray(room);
@@ -766,7 +772,7 @@ function makeDb(rows, links = [], options = {}) {
             group.updated_at = new Date('2099-01-01T00:02:00Z').toISOString();
             return { rows: [{ id: group.id }], rowCount: 1 };
         }
-        if (/UPDATE banquet_groups SET customer_id=\$3, date=\$4, room=\$5, group_name=\$6, updated_at=NOW\(\), updated_by=\$7/i.test(sql)) {
+        if (/UPDATE banquet_groups SET customer_id=\$3, date=\$4, room=\$5, room_resource_id=\$8, group_name=\$6, updated_at=NOW\(\), updated_by=\$7/i.test(sql)) {
             const group = state.banquetGroups.find(item =>
                 item.id === params[0]
                 && normalizeContext(item.business_context) === normalizeContext(params[1])
@@ -775,6 +781,7 @@ function makeDb(rows, links = [], options = {}) {
             group.customer_id = params[2];
             group.date = params[3];
             group.room = params[4];
+            group.room_resource_id = params[7];
             group.group_name = params[5];
             group.updated_by = params[6];
             group.updated_at = options.nextGroupUpdatedAt || '2099-03-01T00:00:00.000Z';
@@ -869,6 +876,7 @@ function makeDb(rows, links = [], options = {}) {
                 hosts: params[10], second_animator: params[11], pinata_filler: params[12], pinata_mode: params[13],
                 pinata_number: params[14], pinata_filler_number: params[15], client_pinata_service_price: params[16],
                 client_pinata_service_note: params[17], costume: params[18], room: params[19], notes: params[20],
+                room_resource_id: params[35],
                 created_by: params[21], status: params[22], kids_count: params[23], group_name: params[24],
                 extra_data: params[25], skip_notification: params[26], customer_id: params[27], payment_method: params[28],
                 banquet_guests: params[29], banquet_adults: params[30], banquet_tables: params[31], banquet_menu: params[32],
@@ -885,6 +893,7 @@ function makeDb(rows, links = [], options = {}) {
                 row.duration = params[2];
                 row.status = params[3];
                 row.room = params[4];
+                row.room_resource_id = params[13];
                 row.pinata_filler = params[5];
                 row.pinata_mode = params[6];
                 row.client_pinata_service_price = params[7];

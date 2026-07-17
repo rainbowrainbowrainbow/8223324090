@@ -284,7 +284,13 @@ window.BookingForm = {
         // Fill form fields
         if (t.room) {
             const roomSel = document.getElementById('roomSelect');
-            if (roomSel) roomSel.value = t.room;
+            if (roomSel) {
+                const option = Array.from(roomSel.options || []).find(item =>
+                    (t.roomResourceId && item.dataset.resourceId === t.roomResourceId)
+                    || item.value === t.room
+                );
+                roomSel.value = option?.value || '';
+            }
         }
         if (t.productId) {
             const progSel = document.getElementById('selectedProgram');
@@ -340,6 +346,7 @@ window.BookingForm = {
             name: name.trim(),
             productId: programSel?.value || null,
             room: roomSel?.value || null,
+            roomResourceId: roomSel?.selectedOptions?.[0]?.dataset?.resourceId || null,
             kidsCount: document.getElementById('kidsCountInput')?.value || null,
             costume: document.getElementById('costumeSelect')?.value || null,
             notes: document.getElementById('bookingNotes')?.value || null

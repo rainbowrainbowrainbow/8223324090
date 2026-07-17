@@ -26,6 +26,7 @@ const {
     timelineResourceRoomMatchValues,
     mergeTimelineResourceRenameAliases,
     resolveRoomTimelineResourceIdentity,
+    canonicalizeBookingRoomResource,
     upsertTimelineResource,
     countFutureActiveBookingsForTimelineResource
 } = require('../services/timelineResources');
@@ -43,8 +44,7 @@ const {
     isRoomConflictBlockingRoom,
     isTakeawayRoomValue,
     lockBookingConflictResources,
-    findRoomConflictAmongCandidates,
-    ALL_ROOMS
+    findRoomConflictAmongCandidates
 } = require('../services/booking');
 const banquetConflictMatrix = require('./fixtures/banquet-conflict-matrix');
 
@@ -984,19 +984,94 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
 });
 
-test('legacy ALL_ROOMS fallback stays aligned with seeded room resources for one-release fallback', () => {
+test('operational room catalog no longer uses ALL_ROOMS or static HTML options', () => {
     const migration = read('db/migrations/263_event_genix_room_timeline_resources.sql');
     const html = read('index.html');
+    const bookingRoutes = read('routes/bookings.js');
+    const linesRoutes = read('routes/lines.js');
+    const settingsRoutes = read('routes/settings.js');
     const seededRoomNames = Array.from(
         migration.matchAll(/\('event_genix', 'room-[^']+', 'room', '([^']+)'/g),
         match => match[1]
     );
 
     assert.ok(seededRoomNames.length >= 10, 'room timeline resource seed must contain the operational room catalog');
-    assert.deepEqual(ALL_ROOMS, seededRoomNames);
+    assert.doesNotMatch(bookingRoutes, /\bALL_ROOMS\b/);
+    assert.doesNotMatch(linesRoutes, /\bALL_ROOMS\b/);
+    assert.doesNotMatch(settingsRoutes, /\bALL_ROOMS\b/);
     assert.match(html, /id="roomSelect"[^>]*data-room-catalog="timeline_resources"/);
     assert.doesNotMatch(html, /<option value="Марвел">/);
     assert.doesNotMatch(html, /<option value="Інше">/);
+});
+
+test('room resource id schema migration is additive and stays outside db startup surface', () => {
+    const migration = read('db/migrations/296_room_resource_id_schema.sql');
+    const migrationSql = migration
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/^\s*--.*$/gm, ' ');
+    const dbIndex = read('db/index.js');
+
+    assert.match(migration, /-- MIGRATION_KIND:\s*schema/i);
+    assert.match(migration, /-- SAFETY:/i);
+    assert.match(migration, /-- ROLLBACK:/i);
+
+    for (const table of ['bookings', 'banquet_groups', 'booking_templates', 'recurring_templates']) {
+        assert.match(
+            migration,
+            new RegExp(`ALTER TABLE ${table}[\\s\\S]*ADD COLUMN IF NOT EXISTS room_resource_id VARCHAR\\(100\\)`, 'i')
+        );
+        assert.match(
+            migration,
+            new RegExp(`${table}_room_resource_id_not_blank[\\s\\S]*CHECK \\(room_resource_id IS NULL OR BTRIM\\(room_resource_id\\) <> ''\\)`, 'i')
+        );
+    }
+
+    assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_bookings_room_resource_active_v296[\s\S]*ON bookings \(business_context, date, room_resource_id\)[\s\S]*status[\s\S]*<> 'cancelled'/i);
+    assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_banquet_groups_room_resource_active_v296[\s\S]*ON banquet_groups \(business_context, date, room_resource_id\)[\s\S]*status[\s\S]*<> 'cancelled'/i);
+    assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_booking_templates_room_resource_v296[\s\S]*ON booking_templates \(room_resource_id\)/i);
+    assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_recurring_templates_room_resource_active_v296[\s\S]*ON recurring_templates \(room_resource_id, is_active\)/i);
+    assert.match(migration, /Validated by backend because templates do not currently carry business_context/i);
+    assert.match(migration, /Validated by backend because recurring templates do not currently carry business_context/i);
+
+    assert.doesNotMatch(migrationSql, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/i);
+    assert.doesNotMatch(migrationSql, /\bREFERENCES\s+timeline_resources\b/i);
+    assert.doesNotMatch(migrationSql, /\bALTER TABLE\s+\w+[^;]*DROP\b/i);
+    assert.doesNotMatch(dbIndex, /room_resource_id/);
+});
+
+test('durable room identity is carried by every booking write surface', () => {
+    const bookingFrontend = read('js/booking.js');
+    const bookingForm = read('js/booking-form.js');
+    const bookingRoutes = read('routes/bookings.js');
+    const banquetService = read('services/banquetGroups.js');
+    const templateRoutes = read('routes/booking-templates.js');
+    const recurringRoutes = read('routes/recurring.js');
+    const recurringService = read('services/recurring.js');
+    const bookingService = read('services/booking.js');
+
+    assert.match(bookingFrontend, /roomResourceId:\s*roomIdentity\.roomResourceId/);
+    assert.match(bookingFrontend, /roomResourceId:\s*formData\.roomResourceId \|\| null/);
+    assert.match(bookingFrontend, /roomResourceId:\s*booking\.roomResourceId \|\| booking\.room_resource_id \|\| null/);
+    assert.match(bookingForm, /roomResourceId:\s*roomSel\?\.selectedOptions/);
+
+    assert.match(bookingRoutes, /validateBookingRoomResourceForWrite/);
+    assert.match(bookingRoutes, /canonicalizeBookingRoomResource/);
+    assert.match(bookingRoutes, /INSERT INTO bookings[\s\S]*room_resource_id/);
+    assert.match(bookingRoutes, /UPDATE bookings SET[\s\S]*room_resource_id=/);
+    assert.match(bookingRoutes, /\['roomResourceId', 'room_resource_id'\]/);
+
+    assert.match(banquetService, /canonicalizeBanquetBookingRoom/);
+    assert.match(banquetService, /INSERT INTO banquet_groups[\s\S]*room_resource_id/);
+    assert.match(banquetService, /INSERT INTO bookings[\s\S]*room_resource_id/);
+    assert.match(banquetService, /UPDATE bookings SET[\s\S]*room_resource_id=/);
+
+    assert.match(templateRoutes, /INSERT INTO booking_templates[\s\S]*room_resource_id/);
+    assert.match(templateRoutes, /UPDATE booking_templates SET[\s\S]*room_resource_id =/);
+    assert.match(recurringRoutes, /INSERT INTO recurring_templates[\s\S]*room_resource_id/);
+    assert.match(recurringRoutes, /UPDATE recurring_templates SET[\s\S]*room_resource_id =/);
+    assert.match(recurringService, /canonicalizeBookingRoomResource\(pool, DEFAULT_TIMELINE_CONTEXT, template, \{\s*required: true\s*\}\)/);
+    assert.match(recurringService, /INSERT INTO bookings[\s\S]*room_resource_id/);
+    assert.match(bookingService, /roomResourceId:\s*row\.room_resource_id \|\| null/);
 });
 
 test('booking room selector and settings manager use timeline room resources as source of truth', () => {
@@ -1430,11 +1505,11 @@ test('polluted room lines are quarantined from park animator timeline reads', ()
     const linesRoute = read('routes/lines.js');
     const timeline = read('js/timeline.js');
 
-    assert.match(linesRoute, /const ROOM_TIMELINE_ROOM_NAMES = new Set/);
+    assert.doesNotMatch(linesRoute, /ROOM_TIMELINE_ROOM_NAMES/);
     assert.match(linesRoute, /function isLegacyRoomTimelineLineRow/);
     assert.match(linesRoute, /lineId\.toLowerCase\(\) === 'room-takeaway'/);
     assert.match(linesRoute, /lineValueStartsWithRoomId\(lineId\)/);
-    assert.match(linesRoute, /ROOM_TIMELINE_ROOM_NAMES\.has\(visibleName\)/);
+    assert.match(linesRoute, /lineValueStartsWithRoomId\(resourceId\)/);
     assert.match(linesRoute, /const quarantinedRoomRows = result\.rows\.filter\(isLegacyRoomTimelineLineRow\)/);
     assert.match(linesRoute, /const filteredRows = result\.rows\.filter/);
     assert.match(linesRoute, /!isLegacyRoomTimelineLineRow\(row\)/);
@@ -1528,7 +1603,8 @@ test('room conflict checks can exclude same-banquet source ids without hiding un
     assert.equal(conflict.id, 'BK-OTHER');
     assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
     assert.match(bookingQuery.sql, /line_id = ANY\(\$4::text\[\]\)/);
-    assert.doesNotMatch(bookingQuery.sql, /resource_id = ANY/);
+    assert.match(bookingQuery.sql, /room_resource_id = ANY\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /room_resource_id IS NULL/);
     assert.deepEqual(bookingQuery.params[4], ['BK-SOURCE']);
     assert.match(bookingQuery.sql, /id != ALL\(\$5::text\[\]\)/);
 });
@@ -1573,7 +1649,8 @@ test('room conflict checks and advisory locks use room resource aliases after re
     assert.deepEqual(bookingQuery.params[3], ['room-marvel']);
     assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
     assert.match(bookingQuery.sql, /line_id = ANY\(\$4::text\[\]\)/);
-    assert.doesNotMatch(bookingQuery.sql, /resource_id = ANY/);
+    assert.match(bookingQuery.sql, /room_resource_id = ANY\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /room_resource_id IS NULL/);
 
     const lockClient = {
         query: async (sql, params) => {
@@ -1594,6 +1671,63 @@ test('room conflict checks and advisory locks use room resource aliases after re
         'room:event_genix:2099-07-01:марвел',
         'room:event_genix:2099-07-01:марвел prime'
     ]);
+});
+
+test('durable room id is the primary conflict and advisory-lock identity', async () => {
+    const queries = [];
+    const resourceRow = {
+        resource_id: 'room-a',
+        type: 'room',
+        name: 'Room A Prime',
+        short_name: 'A',
+        metadata: { aliases: ['Room A'] }
+    };
+    const client = {
+        query: async (sql, params) => {
+            queries.push({ sql, params });
+            if (/FROM timeline_resources/i.test(sql)) return { rows: [resourceRow], rowCount: 1 };
+            if (/FROM bookings/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 'BK-LEGACY',
+                        room_resource_id: null,
+                        room: 'Room A',
+                        time: '10:00',
+                        duration: 60,
+                        label: 'Legacy room booking'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/pg_advisory_xact_lock/i.test(sql)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-08-01',
+        'Untrusted snapshot',
+        '10:15',
+        30,
+        { candidateBooking: { roomResourceId: 'room-a' } }
+    );
+    assert.equal(conflict.id, 'BK-LEGACY');
+    const bookingQuery = queries.find(query => /FROM bookings/i.test(query.sql));
+    assert.deepEqual(bookingQuery.params[3], ['room-a']);
+    assert.deepEqual(bookingQuery.params[1], ['Untrusted snapshot', 'Room A Prime', 'A', 'Room A']);
+    assert.match(bookingQuery.sql, /room_resource_id = ANY\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /room_resource_id IS NULL/);
+
+    const lockKeys = await lockBookingConflictResources(client, [{
+        businessContext: 'event_genix',
+        date: '2099-08-01',
+        room: 'Untrusted snapshot',
+        roomResourceId: 'room-a'
+    }]);
+    assert.ok(lockKeys.includes('room-resource:event_genix:2099-08-01:room-a'));
+    assert.ok(lockKeys.includes('room:event_genix:2099-08-01:room a'));
+    assert.ok(lockKeys.includes('room:event_genix:2099-08-01:room a prime'));
 });
 
 test('room conflict policy keeps legacy room conflicts strict without allow flag', async () => {
@@ -2978,6 +3112,87 @@ test('room identity resolver quarantines inactive, unmatched and custom rooms wi
     assert.equal(takeaway.resourceId, 'room-takeaway');
     assert.equal(takeaway.diagnosticReason, null);
     assert.equal(takeaway.assignmentAllowed, true);
+});
+
+test('booking room writes persist durable IDs and canonical catalog names', async () => {
+    const fakeDb = {
+        async query(sql) {
+            assert.match(String(sql), /FROM timeline_resources/);
+            return {
+                rows: [{
+                    id: 1,
+                    business_context: 'event_genix',
+                    resource_id: 'room-marvel',
+                    type: 'room',
+                    name: 'Marvel Hall',
+                    short_name: 'Marvel',
+                    is_active: true,
+                    sort_order: 10,
+                    metadata: { aliases: ['Old Marvel'] }
+                }]
+            };
+        }
+    };
+
+    const byId = { room: 'Untrusted client text', roomResourceId: 'room-marvel' };
+    await canonicalizeBookingRoomResource(fakeDb, 'event_genix', byId, { required: true });
+    assert.equal(byId.roomResourceId, 'room-marvel');
+    assert.equal(byId.room_resource_id, 'room-marvel');
+    assert.equal(byId.room, 'Marvel Hall');
+
+    const legacyAlias = { room: 'Old Marvel' };
+    await canonicalizeBookingRoomResource(fakeDb, 'event_genix', legacyAlias, { required: true });
+    assert.equal(legacyAlias.roomResourceId, 'room-marvel');
+    assert.equal(legacyAlias.room, 'Marvel Hall');
+});
+
+test('booking room writes reject unknown and inactive resources but preserve current inactive identity', async () => {
+    const fakeDb = {
+        async query() {
+            return {
+                rows: [{
+                    id: 2,
+                    business_context: 'event_genix',
+                    resource_id: 'room-retired',
+                    type: 'room',
+                    name: 'Retired Room',
+                    is_active: false,
+                    sort_order: 20,
+                    metadata: {}
+                }]
+            };
+        }
+    };
+
+    await assert.rejects(
+        canonicalizeBookingRoomResource(fakeDb, 'event_genix', { roomResourceId: 'room-missing' }, { required: true }),
+        error => error.code === 'ROOM_RESOURCE_UNKNOWN'
+    );
+    await assert.rejects(
+        canonicalizeBookingRoomResource(fakeDb, 'event_genix', { roomResourceId: 'room-retired' }, { required: true }),
+        error => error.code === 'ROOM_RESOURCE_INACTIVE'
+    );
+
+    const current = { roomResourceId: 'room-retired', room: 'Legacy snapshot' };
+    await canonicalizeBookingRoomResource(fakeDb, 'event_genix', current, {
+        required: true,
+        allowInactiveResourceId: 'room-retired'
+    });
+    assert.equal(current.room, 'Retired Room');
+    assert.equal(current.roomResourceId, 'room-retired');
+});
+
+test('takeaway room write uses a virtual durable identity without querying the physical catalog', async () => {
+    const fakeDb = {
+        async query() {
+            throw new Error('physical room catalog must not be queried for takeaway');
+        }
+    };
+    const booking = { room: 'На виніс' };
+    const resource = await canonicalizeBookingRoomResource(fakeDb, 'event_genix', booking, { required: true });
+    assert.equal(resource.virtual, true);
+    assert.equal(booking.roomResourceId, 'room-takeaway');
+    assert.equal(booking.room, 'На виніс');
 });
 
 test('timeline resource rename metadata preserves old and incoming aliases', () => {

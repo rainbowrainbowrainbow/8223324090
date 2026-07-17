@@ -6,7 +6,6 @@ const { pool } = require('../db');
 const {
     validateDate,
     getAnimatorTimelineLines,
-    ALL_ROOMS,
     BANQUET_SERVICE_LINE_ID
 } = require('../services/booking');
 const { broadcastLineEvent } = require('../services/websocket');
@@ -69,15 +68,6 @@ const ROOM_TIMELINE_QUARANTINE_LINE = Object.freeze({
     metadata: { quarantine: true, roomIdentityQuarantine: true }
 });
 
-function normalizeRoomLineText(value) {
-    return String(value || '').trim().toLowerCase();
-}
-
-const ROOM_TIMELINE_ROOM_NAMES = new Set([
-    ROOM_TIMELINE_TAKEAWAY_LINE.name,
-    ...ALL_ROOMS
-].map(normalizeRoomLineText));
-
 const MAYSTERNYA_DEFAULT_LINES = [
     { id: 'md-consult-room', name: 'Олександр', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
 ];
@@ -128,14 +118,12 @@ function isLegacyRoomTimelineLineRow(row = {}) {
     const resourceId = String(row.resource_id || row.resourceId || '').trim();
     const source = String(row.source || row.resource_source || row.resourceSource || '').trim().toLowerCase();
     const resourceType = String(row.resource_type || row.resourceType || row.type || '').trim().toLowerCase();
-    const visibleName = normalizeRoomLineText(row.name || row.short_name || row.shortName);
     const takeawayLineId = lineId.toLowerCase() === 'room-takeaway';
     const roomLikeLineId = lineValueStartsWithRoomId(lineId);
     const roomLikeResourceId = lineValueStartsWithRoomId(resourceId);
-    const knownRoomName = ROOM_TIMELINE_ROOM_NAMES.has(visibleName);
     return takeawayLineId
         || roomLikeLineId
-        || (roomLikeResourceId && knownRoomName)
+        || roomLikeResourceId
         || resourceType === 'room'
         || ['rooms_virtual', 'rooms_fallback'].includes(source)
         || (source === 'timeline_resource' && resourceType === 'room');
@@ -169,23 +157,7 @@ function withTakeawayRoomLine(lines = [], businessContext = DEFAULT_TIMELINE_CON
 }
 
 function fallbackRoomLines(businessContext) {
-    const colors = ['#10B981', '#3B82F6', '#F97316', '#8B5CF6', '#06B6D4'];
-    return withTakeawayRoomLine(ALL_ROOMS.map((name, index) => ({
-        id: name,
-        resourceId: name,
-        resourceType: 'room',
-        businessContext,
-        name,
-        shortName: name,
-        color: colors[index % colors.length],
-        fromSheet: false,
-        staffId: null,
-        shiftStart: null,
-        shiftEnd: null,
-        shiftStatus: null,
-        source: 'rooms_fallback',
-        sortOrder: index * 10
-    })), businessContext);
+    return withTakeawayRoomLine([], businessContext);
 }
 
 async function roomTimelineLinesForContext(businessContext) {

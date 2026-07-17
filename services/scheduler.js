@@ -7,6 +7,7 @@
  * All times are in Europe/Kyiv timezone (getKyivTimeStr returns "HH:MM").
  */
 const { pool } = require('../db');
+const { runAttendanceReviewTasks } = require('./attendanceReviewTasks');
 const { checkHrAttendancePrintAutomations } = require('./hrAttendanceDocumentAutomation');
 const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
@@ -40,6 +41,12 @@ function getRecurringService() {
 
 function getKleshnya() {
     return require('./kleshnya');
+}
+
+async function checkAttendanceReviewTasks() {
+    const result = await runAttendanceReviewTasks();
+    if (result?.reason === 'before_cutoff') return skipSchedulerTracking();
+    return result;
 }
 
 const log = createLogger('Scheduler');
@@ -2506,6 +2513,7 @@ module.exports = {
     checkNpsFollowUp,
     checkCleaningTasks,
     checkGraduationOpsAutomation,
+    checkAttendanceReviewTasks,
     checkHrAttendancePrintAutomations,
     checkBirthdayTagSync,
     DIGEST_SEND_MESSAGES,

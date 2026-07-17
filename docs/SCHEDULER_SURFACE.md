@@ -64,6 +64,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkNpsFollowUp` | `services/scheduler.js` | customers | `60000` | `hourly` |
 | `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
 | `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
+| `checkAttendanceReviewTasks` | `services/scheduler.js` | hr | `60000` | none |
 | `checkHrAttendancePrintAutomations` | `services/scheduler.js` | hr | `60000` | none |
 | `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
 | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
@@ -100,6 +101,20 @@ The database guarantee is exercised by
 `tests/integration/hr-attendance-document-automation-concurrency.integration.test.js`,
 which starts two independent PostgreSQL pools and proves that concurrent
 scheduled/manual enqueue attempts converge on one idempotency key and one job.
+
+`checkAttendanceReviewTasks` performs an immediate startup catch-up and then
+runs every minute. Before 08:30 Europe/Kyiv it returns without scheduler
+tracking. After the cutoff, `services/attendanceReviewTasks.js` targets the
+previous full Kyiv calendar day, takes a transaction-scoped advisory lock, and
+checks `attendance_daily_review:<reportDate>:<ownerUserId>` ownership through
+the task `source_type`/`source_id` fields across every status, including
+completed tasks. It creates one private routine task per active director or
+art-director account, including roles from `extra_roles`; director reports use
+the company scope, while art-director reports are restricted to the
+`animators`/`creative` staff departments. Task creation disables both legacy
+notifications and Hermes notification outbox delivery, so the employee list is
+not sent to Telegram. Direct behavior coverage lives in
+`tests/attendance-review-tasks.test.js`.
 
 `checkBookingPushReminders` intentionally uses no guard-level dedup so the
 60-second interval can evaluate bookings due in the next 30 minutes. Its direct
@@ -228,6 +243,7 @@ The manifest records test files where direct coverage exists:
 - `tests/telegram-callbacks.test.js`
 - `tests/graduation-ops-automation.test.js`
 - `tests/hr-attendance-document-automation.test.js`
+- `tests/attendance-review-tasks.test.js`
 - `tests/training.test.js`
 - `tests/guardian-ops.test.js`
 - `tests/guardian-convergence.test.js`

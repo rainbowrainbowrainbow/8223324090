@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.54",
+  "version": "0.79.55",
   "eventGenix": {
-    "releaseLabel": "Banquet Deposit and Pinata Reliability"
+    "releaseLabel": "Banquet Activity Details"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

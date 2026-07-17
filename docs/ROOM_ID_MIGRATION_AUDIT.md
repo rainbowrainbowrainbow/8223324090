@@ -11,8 +11,12 @@ The read-only audit is complete and the additive schema migration
 The migration added nullable `room_resource_id` columns and indexes only. It did not
 rewrite `room`, assign room IDs, or modify booking/customer data.
 
-The production backfill has **not** been applied yet. The final dry-run below is the
-approval boundary for `--apply`.
+The production backfill was applied after explicit owner confirmation:
+`Підтверджую production apply room_resource_id: safe=737`.
+
+The backfill filled only rows that were classified as safe in the immediately
+preceding dry-run. It did not rewrite legacy `room` text and did not repair
+ambiguous, custom, empty or mojibake values.
 
 ## Migration Scope
 
@@ -32,7 +36,7 @@ No FK was added because template tables do not carry `business_context` and
 All booking write paths validate context, resource type and active state in the
 backend.
 
-## Final Production Dry-Run
+## Final Pre-Apply Production Dry-Run
 
 Command mode: read-only `--dry-run --json`  
 PII included: no  
@@ -40,8 +44,8 @@ Customer names, phones and other customer fields were not queried or reported.
 
 | Metric | Count |
 |---|---:|
-| Scanned | 758 |
-| Already assigned | 0 |
+| Scanned | 770 |
+| Already assigned | 12 |
 | Safe automatic backfill | 737 |
 | Unresolved, left unchanged | 21 |
 | Banquet group ↔ primary booking mismatches | 0 |
@@ -70,14 +74,18 @@ Per table:
 
 | Table | Scanned | Safe | Unresolved |
 |---|---:|---:|---:|
-| `bookings` | 718 | 700 | 18 |
+| `bookings` | 730 | 700 | 18 |
 | `banquet_groups` | 40 | 37 | 3 |
 | `booking_templates` | 0 | 0 | 0 |
 | `recurring_templates` | 0 | 0 | 0 |
 
-## Planned Catalog Alias Repair
+The increase from the earlier `scanned=758` snapshot was caused by 12 historical
+Codex QA rows. Those rows already had `room_resource_id`, were cancelled/inactive,
+and did not change the `safeBackfill=737` guard.
 
-The apply transaction will add these one-to-one legacy aliases without changing
+## Catalog Alias Repair
+
+The apply transaction added these one-to-one legacy aliases without changing
 current room names or resource IDs:
 
 | Resource ID | Alias |
@@ -92,13 +100,54 @@ current room names or resource IDs:
 | `room-pony` | `Pony` |
 | `room-foodcourt` | `Food Court` |
 
-The alias change and safe ID assignments run in one transaction. Apply requires both
-`--confirm=BACKFILL_ROOM_RESOURCE_ID` and the exact dry-run guard
-`--expected-safe=737`.
+The alias change and safe ID assignments ran in one transaction with
+`--confirm=BACKFILL_ROOM_RESOURCE_ID` and `--expected-safe=737`.
 
 The earlier owner confirmation for `safe=718` was not used because the guard detected
-19 new safe records before apply. Production data remains unchanged pending a new
-confirmation for the current `safe=737` snapshot.
+19 new safe records before apply. The owner later confirmed the current
+`safe=737` snapshot and that exact guard was used.
+
+## Production Backfill Apply Result
+
+Command:
+
+```bash
+railway run --service Postgres node scripts/backfill-room-resource-id.js --apply --confirm=BACKFILL_ROOM_RESOURCE_ID --expected-safe=737 --json
+```
+
+PII included: no.
+
+| Metric | Count |
+|---|---:|
+| Expected safe | 737 |
+| Updated total | 737 |
+| Catalog alias resources updated | 9 |
+| `bookings` updated | 700 |
+| `banquet_groups` updated | 37 |
+| `booking_templates` updated | 0 |
+| `recurring_templates` updated | 0 |
+
+## Post-Apply Production Dry-Run
+
+Immediately after apply, the dry-run was repeated.
+
+| Metric | Count |
+|---|---:|
+| Scanned | 770 |
+| Already assigned | 749 |
+| Safe automatic backfill | 0 |
+| Unresolved, left unchanged | 21 |
+| Banquet group ↔ primary booking mismatches | 0 |
+| Planned catalog aliases | 0 |
+
+Remaining `room_resource_id IS NULL` rows are exactly the unresolved set:
+
+| Table | Total | NULL room_resource_id |
+|---|---:|---:|
+| `bookings` | 730 | 18 |
+| `banquet_groups` | 40 | 3 |
+| `booking_templates` | 0 | 0 |
+| `recurring_templates` | 0 | 0 |
 
 ## Unresolved Technical IDs
 

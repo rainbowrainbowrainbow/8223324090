@@ -50,7 +50,7 @@ jobs:
   hr-team-browser:
     name: HR Team browser smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -80,10 +80,13 @@ jobs:
       - name: Run HR onboarding cross-surface browser smoke
         run: npm run test:browser:hr-onboarding
 
+      - name: Run staff schedule overlap and paid-role browser smoke
+        run: npm run test:browser:staff-schedule
+
   hr-onboarding-postgres:
     name: HR onboarding PostgreSQL integration
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -133,6 +136,12 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:hr-legacy-backfill:isolated
+
+      - name: Run payroll profession and reversal integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:payroll-profiles:isolated
 
       - name: Install Chromium for full-stack onboarding smoke
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"

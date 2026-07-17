@@ -174,7 +174,15 @@ function normalizedSegments(entry = {}) {
         shiftEnd: time5(segment.shiftEnd ?? segment.shift_end ?? segment.planned_end),
         breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
         note: segment.note ?? segment.notes ?? null,
-        additionalProfessionKeys: [...(segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? [])].map(String).sort()
+        additionalProfessionKeys: [...(segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? [])].map(String).sort(),
+        additionalRoles: [...(segment.additionalRoles ?? segment.additional_roles ?? [])]
+            .map(role => ({
+                professionKey: String(role.professionKey ?? role.profession_key ?? ''),
+                compensationMode: String(role.compensationMode ?? role.compensation_mode ?? 'unpaid'),
+                payMultiplier: Number(role.payMultiplier ?? role.pay_multiplier ?? 1),
+                policyVersion: role.policyVersion ?? role.policy_version ?? null
+            }))
+            .sort((left, right) => left.professionKey.localeCompare(right.professionKey))
     }));
 }
 
@@ -190,12 +198,34 @@ async function loadScheduleEntry(base, token, staffId, date, options = {}) {
 function schedulePayload(staffId, date, entry = null) {
     const segments = entry ? normalizedSegments(entry) : [
         {
-            professionKey: 'reception', shiftStart: '09:00', shiftEnd: '13:00', breakMinutes: 0,
-            note: MARKER, additionalProfessionKeys: ['animator']
+            professionKey: 'reception', shiftStart: '11:00', shiftEnd: '11:30', breakMinutes: 0,
+            note: MARKER,
+            additionalProfessionKeys: ['animator'],
+            additionalRoles: [{
+                professionKey: 'animator',
+                compensationMode: 'unpaid',
+                payMultiplier: 1,
+                policyVersion: null
+            }]
         },
         {
-            professionKey: 'manager', shiftStart: '15:00', shiftEnd: '20:00', breakMinutes: 30,
-            note: MARKER, additionalProfessionKeys: ['animator']
+            professionKey: 'reception', shiftStart: '11:30', shiftEnd: '20:00', breakMinutes: 0,
+            note: MARKER,
+            additionalProfessionKeys: ['animator', 'manager'],
+            additionalRoles: [
+                {
+                    professionKey: 'animator',
+                    compensationMode: 'unpaid',
+                    payMultiplier: 1,
+                    policyVersion: null
+                },
+                {
+                    professionKey: 'manager',
+                    compensationMode: 'paid_hourly',
+                    payMultiplier: 1,
+                    policyVersion: null
+                }
+            ]
         }
     ];
     return {
@@ -205,7 +235,7 @@ function schedulePayload(staffId, date, entry = null) {
         note: MARKER,
         professionKey: 'reception',
         primaryProfessionKey: 'reception',
-        shiftStart: '09:00',
+        shiftStart: '11:00',
         shiftEnd: '20:00',
         segments,
         ...(entry ? { expectedUpdatedAt: planVersion(entry) } : {})
@@ -215,15 +245,20 @@ function schedulePayload(staffId, date, entry = null) {
 function assertPlan(entry, expectedDate, label) {
     assert.ok(entry, `${label}: schedule entry exists`);
     assert.equal(String(entry.date).slice(0, 10), expectedDate, `${label}: exact date`);
-    assert.equal(plannedMinutes(entry), 510, `${label}: 540 minutes minus one 30-minute segment break`);
+    assert.equal(plannedMinutes(entry), 540, `${label}: nine non-overlapping physical hours`);
     const segments = normalizedSegments(entry);
     assert.equal(segments.length, 2, `${label}: two segments`);
     assert.ok(segments.every(segment => Number.isInteger(segment.id) && segment.id > 0), `${label}: stable segment IDs`);
     assert.deepEqual(segments.map(segment => [segment.professionKey, segment.shiftStart, segment.shiftEnd, segment.breakMinutes]), [
-        ['reception', '09:00', '13:00', 0],
-        ['manager', '15:00', '20:00', 30]
+        ['reception', '11:00', '11:30', 0],
+        ['reception', '11:30', '20:00', 0]
     ], `${label}: role/time windows`);
     assert.ok(segments.every(segment => segment.additionalProfessionKeys.includes('animator')), `${label}: animator windows follow both segments`);
+    assert.deepEqual(
+        segments[1].additionalRoles.map(role => [role.professionKey, role.compensationMode, role.payMultiplier]),
+        [['animator', 'unpaid', 1], ['manager', 'paid_hourly', 1]],
+        `${label}: paid manager and unpaid animator retain distinct compensation modes`
+    );
     assert.ok(planVersion(entry), `${label}: optimistic version token`);
     return segments;
 }
@@ -382,10 +417,10 @@ async function run() {
         assert.ok(animator, 'animator-qualified disposable staff is available');
         const windows = animator.availabilityWindows || animator.availability_windows || [];
         assert.deepEqual(windows.map(window => [time5(window.start), time5(window.end)]), [
-            ['09:00', '13:00'], ['15:00', '20:00']
-        ], 'timeline returns exact animator windows');
-        const gapMinute = 14 * 60;
-        assert.equal(windows.some(window => gapMinute >= windowMinutes(window.start) && gapMinute < windowMinutes(window.end)), false, '13:00-15:00 gap is unavailable');
+            ['11:00', '11:30'], ['11:30', '20:00']
+        ], 'timeline returns exact adjacent animator windows');
+        const coveredMinute = 14 * 60;
+        assert.equal(windows.some(window => coveredMinute >= windowMinutes(window.start) && coveredMinute < windowMinutes(window.end)), true, 'adjacent blocks preserve continuous availability');
         results.push('timeline_windows');
 
         const attendanceCreated = await api(base, '/api/hr/qa/multi-segment/attendance', {
@@ -394,32 +429,53 @@ async function run() {
                 runId: RUN_ID,
                 staffId,
                 date: SOURCE_MONDAY,
-                clockInTime: '09:00',
+                clockInTime: '11:00',
                 clockOutTime: '20:00',
                 confirmation: LIVE_MULTI_SEGMENT_QA_CONFIRMATION
             }
         });
         assert.equal(attendanceCreated.body?.data?.allocation_source, 'clock_interval', 'attendance allocation uses clock interval');
-        assert.equal(Number(attendanceCreated.body?.data?.actual_minutes), 510, 'attendance excludes gap and segment break');
+        assert.equal(Number(attendanceCreated.body?.data?.actual_minutes), 540, 'attendance keeps nine physical hours');
         const attendanceRead = await api(base, `/api/staff/attendance?from=${SOURCE_MONDAY}&to=${SOURCE_MONDAY}`, { token: session.token });
         const attendanceRows = (attendanceRead.body?.data || []).filter(row => Number(row.staff_id) === staffId);
         assert.equal(attendanceRows.length, 1, 'one daily attendance record');
         const allocations = attendanceRows[0].segment_allocations || attendanceRows[0].segmentAllocations || [];
         assert.deepEqual(allocations.map(row => [row.professionKey, Number(row.actualMinutes)]), [
-            ['reception', 240], ['manager', 270]
-        ], 'attendance is allocated to two paid professions without gap minutes');
+            ['reception', 30], ['reception', 510]
+        ], 'attendance allocates adjacent physical segments without duplicating minutes');
+        const compensationSnapshot = attendanceRows[0].compensation_snapshot || attendanceRows[0].compensationSnapshot || {};
+        const snapshotAllocations = compensationSnapshot.compensationAllocations
+            || compensationSnapshot.compensation_allocations
+            || attendanceRows[0].compensation_allocations
+            || attendanceRows[0].compensationAllocations
+            || [];
+        const paidManagerAllocation = snapshotAllocations.find(row =>
+            (row.allocationType || row.allocation_type) === 'simultaneous_additional'
+            && (row.professionKey || row.profession_key) === 'manager');
+        assert.equal(Number(paidManagerAllocation?.actualMinutes ?? paidManagerAllocation?.actual_minutes), 510, 'attendance snapshot stores 8.5 paid manager hours');
+        assert.equal(Number(paidManagerAllocation?.rate), 200, 'attendance snapshot freezes the manager profession rate');
         results.push('attendance');
 
         const month = SOURCE_MONDAY.slice(0, 7);
         const hourlyPreview = await api(base, `/api/payroll/preview?staffId=${staffId}&month=${month}`, { token: session.token });
         const hourly = hourlyPreview.body?.preview;
         assert.equal(Number(hourly?.daysWorked), 1, 'hourly payroll counts one day worked');
-        const hourlyRows = (hourly?.professionRateSummary || []).filter(row => row.kind === 'base');
-        assert.deepEqual(hourlyRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
-            ['manager', 270, 200, 900],
-            ['reception', 240, 100, 400]
-        ], 'hourly payroll uses profession minutes and rates');
-        assert.equal(Number(hourly?.baseAmount), 1300, 'additional animator role does not double pay');
+        assert.equal(Number(hourly?.physicalMinutes), 540, 'payroll preview keeps nine physical hours');
+        const hourlyRows = (hourly?.professionRateSummary || []);
+        const baseRows = hourlyRows.filter(row => row.kind === 'base');
+        const additionalRows = hourlyRows.filter(row => row.kind === 'simultaneous_additional');
+        assert.deepEqual(baseRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
+            ['reception', 540, 100, 900]
+        ], 'hourly payroll pays nine base-role hours at the reception rate');
+        assert.deepEqual(additionalRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
+            ['manager', 510, 200, 1700]
+        ], 'hourly payroll pays 8.5 simultaneous manager hours at its profession rate');
+        assert.equal(Number(hourly?.baseAmount), 900, 'base role amount is not duplicated');
+        assert.equal(Number(hourly?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
+        assert.equal(Number(hourly?.netAmount), 2600, 'preview totals the two role amounts without changing physical hours');
+        assert.equal(Number(hourly?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
+        assert.equal(Number(hourly?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
+        assert.equal(Number(hourly?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
 
         await api(base, `/api/hr/staff/${staffId}`, {
             method: 'PUT', token: session.token, body: { hourly_rate: 700, rate_unit: 'day' }
@@ -429,13 +485,14 @@ async function run() {
         assert.equal(Number(day?.daysWorked), 1, 'day-rate preview still counts one day');
         assert.equal(day?.rate_unit, 'day', 'day-rate unit is explicit');
         assert.equal(Number(day?.baseAmount), 700, 'day rate is applied once');
+        assert.equal(Number(day?.additionalAmount), 0, 'per-shift policy does not enable simultaneous pay without a formula');
         assert.equal((day?.professionRateSummary || []).filter(row => row.kind === 'base').length, 1, 'day rate has one base breakdown row');
         results.push('payroll_preview');
 
         const reportHours = await api(base, `/api/staff/schedule/hours?from=${SOURCE_MONDAY}&to=${SOURCE_MONDAY}`, { token: session.token });
         const reportRow = reportHours.body?.data?.[String(staffId)] || reportHours.body?.data?.[staffId];
         assert.equal(Number(reportRow?.totalHours), plannedMinutes(afterStale) / 60, 'Reports-compatible planned hours match Staff Schedule');
-        assert.equal(Number(reportRow?.totalHours), 8.5, 'Reports-compatible hours exclude the envelope gap');
+        assert.equal(Number(reportRow?.totalHours), 9, 'Reports-compatible hours remain physical and single-counted');
         results.push('reports_planned_hours');
 
         console.log(`Live multi-segment QA assertions passed: ${results.join(', ')}`);

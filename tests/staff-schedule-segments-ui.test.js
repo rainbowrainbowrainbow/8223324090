@@ -31,6 +31,7 @@ test('segment cards separate unpaid and paid simultaneous roles and keep keyboar
     assert.match(page, /data-segment-field="note"/);
     assert.match(page, /Додаткова роль без доплати/);
     assert.match(page, /data-segment-field="additional-unpaid"/);
+    assert.match(page, /без окремої оплати/);
     assert.match(page, /Додаткова оплачувана професія/);
     assert.match(page, /data-segment-field="paid-profession"/);
     assert.match(page, /data-segment-field="paid-start"/);
@@ -50,11 +51,14 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
     assert.match(page, /Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня/);
     assert.match(page, /errorCodes: \[\.\.\.new Set\(errorCodes\)\]/);
-    assert.match(page, /current\.startMinutes < previous\.endMinutes/);
-    assert.match(page, /Ці блоки описують один фізичний час\. Додайте другу професію як оплачувану роль/);
+    assert.match(page, /left\.startMinutes < right\.endMinutes && right\.startMinutes < left\.endMinutes/);
+    assert.match(page, /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/);
+    assert.match(page, /function scheduleOverlappingSegmentIndexes/);
+    assert.match(page, /function applySchedulePlanOverlapState/);
+    assert.match(page, /card\.setAttribute\('aria-invalid', 'true'\)/);
     assert.match(page, /function scheduleContainedOverlapCandidate/);
     assert.match(page, /data-schedule-overlap-convert/);
-    assert.match(page, /Об’єднати в один фізичний блок із додатковою оплатою/);
+    assert.match(page, /Перетворити на одночасні ролі/);
     assert.match(page, /function normalizeSchedulePaidRoleSegments/);
     assert.match(page, /Оплачуваний інтервал має повністю бути в межах основного фізичного блоку/);
     assert.match(page, /HR_SHIFT_PAID_ROLE_RATE_REQUIRED/);
@@ -66,6 +70,10 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
     assert.match(page, /Основна роль дня має бути основною професією одного з блоків/);
     assert.match(page, /saveButton\.disabled = pending \|\| readOnly \|\| !validation\.valid/);
+    assert.match(page, /Фізичний час/);
+    assert.match(page, /Оплачувані роль-години/);
+    assert.match(page, /paidRoleMinutes/);
+    assert.match(page, /role\.professionKey !== inner\.professionKey/);
     assert.match(hrPage, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
 });
@@ -140,6 +148,7 @@ test('cells, role sections, export and print use segments instead of envelope du
 
 test('segment editor keeps dark and 320-390px layouts explicit', () => {
     assert.match(css, /\.sch-segment-card\.is-active/);
+    assert.match(css, /\.sch-segment-card\.has-overlap/);
     assert.match(css, /\.sch-plan-summary\.has-error/);
     assert.match(css, /body\.dark-mode \.sch-segment-card/);
     assert.match(css, /@media \(max-width: 390px\)/);

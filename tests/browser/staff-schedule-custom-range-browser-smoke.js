@@ -3435,16 +3435,21 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'overlapping physical blocks cannot be saved directly');
         assert.match(
             await page.locator('#schPlanSummary').innerText(),
-            /Ці блоки описують один фізичний час\. Додайте другу професію як оплачувану роль/,
+            /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/,
             'top summary explains how to model simultaneous paid work'
         );
         assert.match(
             await page.locator('[data-schedule-save-validation]').innerText(),
-            /Не можна зберегти:/,
+            /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/,
             'sticky save area explains why save is disabled'
         );
         const convertButton = page.locator('[data-schedule-overlap-convert]');
         assert.equal(await convertButton.isEnabled(), true, 'contained overlap exposes an explicit safe conversion');
+        await captureStableScheduleScreenshot(
+            page,
+            'screenshot-case-overlap-invalid.png',
+            '#schModalOverlay .sch-modal--schedule'
+        );
         await convertButton.click();
 
         assert.equal(await cards.count(), 2, 'conversion normalizes one physical block into two adjacent physical segments');
@@ -3463,6 +3468,11 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             'payroll-authorized user sees rate, minutes, multiplier and estimated amount'
         );
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'normalized paid-role plan is saveable');
+        await captureStableScheduleScreenshot(
+            page,
+            'screenshot-case-paid-role-normalized.png',
+            '#schModalOverlay .sch-modal--schedule'
+        );
 
         const callsBeforeSave = apiCalls.scheduleBodies.length;
         await page.locator('#schSaveBtn').click();
@@ -3722,7 +3732,11 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await simultaneousRole.check();
         assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} simultaneous role does not add paid time`);
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('15:00');
-        assert.match(await page.locator('#schPlanSummary').innerText(), /1 год[\s\S]*прогалини/, `${label} reports gaps outside paid time`);
+        assert.match(
+            await page.locator('#schPlanSummary').innerText(),
+            /9 год[\s\S]*Фізичний час[\s\S]*9 год[\s\S]*Оплачувані роль-години/,
+            `${label} excludes the one-hour gap from physical and paid role time`
+        );
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('22:00');
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('02:00');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, `${label} rejects multi-segment plans containing an overnight block without day offsets`);

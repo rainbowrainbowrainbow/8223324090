@@ -4701,6 +4701,9 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
             return `<label class="sch-additional-role ${isPrimary ? 'is-primary-role' : ''}">
                 <input type="checkbox" data-segment-field="additional-unpaid" value="${escapeHtml(option.value)}" data-compensation-mode="${escapeHtml(role?.compensationMode || 'unpaid')}" data-pay-multiplier="${escapeHtml(role?.payMultiplier ?? '')}" data-policy-version="${escapeHtml(role?.policyVersion || '')}" ${checked ? 'checked' : ''} ${isPrimary ? 'disabled' : ''}>
                 <span>${escapeHtml(option.label)}</span>
+                <span class="sch-role-pay-status ${isPrimary ? 'is-primary' : 'is-unpaid'}">
+                    ${isPrimary ? 'основна роль' : 'без окремої оплати'}
+                </span>
             </label>`;
         }).join('')
         : '<span class="sch-segment-empty-roles">У HR-картці немає доступних професій.</span>';
@@ -4777,6 +4780,11 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                         <label for="${escapeHtml(paidMultiplierId)}">Multiplier</label>
                         <input type="number" id="${escapeHtml(paidMultiplierId)}" data-segment-field="paid-multiplier" min="1" max="1" step="0.1" value="${paidMultiplier.toFixed(1)}" readonly aria-readonly="true">
                     </div>
+                </div>
+                <div class="sch-paid-role-status ${paidRole ? 'is-paid' : 'is-empty'}">
+                    ${paidRole
+                        ? `${escapeHtml(professionLabel(paidRole.professionKey))} · оплачувана`
+                        : 'Оберіть професію, щоб увімкнути окрему оплату'}
                 </div>
                 <div class="sch-paid-role-preview" data-paid-role-preview>${escapeHtml(schedulePaidRolePreview(scope, paidRole, segment))}</div>
                 ${paidRateError}
@@ -4985,7 +4993,10 @@ function convertContainedScheduleOverlap(scope, candidate) {
     const rateInfo = schedulePaidRoleRate(scope, inner.professionKey);
     if (!rateInfo.available || Number(outer.breakMinutes || 0) > 0) return null;
     outer.additionalRoles = [
-        ...(outer.additionalRoles || []).filter(role => role.compensationMode !== 'paid_hourly'),
+        ...(outer.additionalRoles || []).filter(role => (
+            role.compensationMode !== 'paid_hourly'
+            && role.professionKey !== inner.professionKey
+        )),
         {
             professionKey: inner.professionKey,
             compensationMode: 'paid_hourly',
@@ -5015,6 +5026,33 @@ function schedulePlanMetrics(segments = []) {
         const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
         return total + (duration && duration > 0 ? Math.max(0, duration - Number(segment.breakMinutes || 0)) : 0);
     }, 0);
+    const mergedTimeline = [];
+    timeline.forEach(item => {
+        const last = mergedTimeline[mergedTimeline.length - 1];
+        if (!last || item.startMinutes >= last.endMinutes) {
+            mergedTimeline.push({ startMinutes: item.startMinutes, endMinutes: item.endMinutes });
+            return;
+        }
+        last.endMinutes = Math.max(last.endMinutes, item.endMinutes);
+    });
+    const grossPhysicalMinutes = mergedTimeline.reduce(
+        (total, item) => total + Math.max(0, item.endMinutes - item.startMinutes),
+        0
+    );
+    const totalBreakMinutes = segments.reduce(
+        (total, segment) => total + Math.max(0, Number(segment.breakMinutes || 0)),
+        0
+    );
+    const physicalMinutes = Math.max(0, grossPhysicalMinutes - Math.min(grossPhysicalMinutes, totalBreakMinutes));
+    const additionalPaidMinutes = segments.reduce((total, segment) => {
+        const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
+        if (!duration || duration <= 0) return total;
+        const effectiveMinutes = Math.max(0, duration - Number(segment.breakMinutes || 0));
+        const paidRoleCount = (segment.additionalRoles || [])
+            .filter(role => role.compensationMode === 'paid_hourly')
+            .length;
+        return total + (effectiveMinutes * paidRoleCount);
+    }, 0);
     const startMinutes = timeline[0]?.startMinutes ?? null;
     const endMinutes = timeline.length ? Math.max(...timeline.map(item => item.endMinutes)) : null;
     const occupiedMinutes = timeline.reduce((total, item) => total + Math.max(0, item.endMinutes - item.startMinutes), 0);
@@ -5024,11 +5062,28 @@ function schedulePlanMetrics(segments = []) {
     return {
         timeline,
         plannedMinutes,
+        physicalMinutes,
+        paidRoleMinutes: plannedMinutes + additionalPaidMinutes,
         gapMinutes,
         roleCount: roleKeys.length,
         envelopeStart: toTime(startMinutes),
         envelopeEnd: toTime(endMinutes)
     };
+}
+
+function scheduleOverlappingSegmentIndexes(timeline = []) {
+    const indexes = new Set();
+    for (let leftIndex = 0; leftIndex < timeline.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < timeline.length; rightIndex += 1) {
+            const left = timeline[leftIndex];
+            const right = timeline[rightIndex];
+            if (left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes) {
+                indexes.add(left.index);
+                indexes.add(right.index);
+            }
+        }
+    }
+    return [...indexes].sort((left, right) => left - right);
 }
 
 const STAFF_SCHEDULE_PLAN_ERROR_MESSAGES = Object.freeze({
@@ -5138,15 +5193,12 @@ function validateSchedulePlan(scope, options = {}) {
         );
     }
     const metrics = schedulePlanMetrics(segments);
+    const sourceMetrics = schedulePlanMetrics(sourceSegments);
+    const overlapIndexes = scheduleOverlappingSegmentIndexes(sourceMetrics.timeline);
     let overlapCandidate = null;
-    for (let index = 1; index < metrics.timeline.length; index += 1) {
-        const previous = metrics.timeline[index - 1];
-        const current = metrics.timeline[index];
-        if (current.startMinutes < previous.endMinutes) {
-            errors.push('Ці блоки описують один фізичний час. Додайте другу професію як оплачувану роль');
-            overlapCandidate = scheduleContainedOverlapCandidate(sourceSegments);
-            break;
-        }
+    if (overlapIndexes.length) {
+        errors.push('Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок');
+        overlapCandidate = scheduleContainedOverlapCandidate(sourceSegments);
     }
     if (working && (!primaryProfessionKey || !segments.some(segment => segment.professionKey === primaryProfessionKey))) {
         errors.push('Основна роль дня має бути основною професією одного з блоків.');
@@ -5156,6 +5208,7 @@ function validateSchedulePlan(scope, options = {}) {
         errors: [...new Set(errors)],
         errorCodes: [...new Set(errorCodes)],
         fieldErrors,
+        overlapIndexes,
         overlapCandidate,
         sourceSegments,
         segments,
@@ -5224,6 +5277,24 @@ function applySchedulePlanFieldErrors(scope, fieldErrors = []) {
     });
 }
 
+function applySchedulePlanOverlapState(scope, overlapIndexes = [], descriptionId = '') {
+    const config = schedulePlanScopeConfig(scope);
+    const list = document.getElementById(config.listId);
+    if (!list) return;
+    list.querySelectorAll('.sch-segment-card').forEach(card => {
+        card.classList.remove('has-overlap');
+        card.removeAttribute('aria-invalid');
+        card.removeAttribute('aria-describedby');
+    });
+    overlapIndexes.forEach(index => {
+        const card = list.querySelector(`[data-segment-index="${Number(index)}"]`);
+        if (!card) return;
+        card.classList.add('has-overlap');
+        card.setAttribute('aria-invalid', 'true');
+        if (descriptionId) card.setAttribute('aria-describedby', descriptionId);
+    });
+}
+
 function updateScheduleSaveValidation(scope, validation) {
     const config = schedulePlanScopeConfig(scope);
     const saveButton = document.getElementById(config.saveButtonId);
@@ -5240,10 +5311,15 @@ function updateScheduleSaveValidation(scope, validation) {
         message.setAttribute('aria-live', 'polite');
         actions.prepend(message);
     }
-    const firstError = validation.errors[0] || '';
+    if (!message.id) message.id = `${scope}-save-validation`;
+    const overlapError = validation.overlapIndexes?.length
+        ? 'Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок'
+        : '';
+    const firstError = overlapError || validation.errors[0] || '';
     message.hidden = !firstError;
-    message.textContent = firstError ? `Не можна зберегти: ${firstError}` : '';
+    message.textContent = firstError;
     actions.classList.toggle('has-validation-message', Boolean(firstError));
+    return message.id;
 }
 
 function updateSchedulePlanSummary(scope) {
@@ -5255,13 +5331,21 @@ function updateSchedulePlanSummary(scope) {
         const envelope = metrics.envelopeStart && metrics.envelopeEnd
             ? `${metrics.envelopeStart}–${metrics.envelopeEnd}`
             : '—';
+        const hasOverlap = validation.overlapIndexes.length > 0;
+        const paidRoleHours = hasOverlap
+            ? '—'
+            : formatScheduleMinutes(metrics.paidRoleMinutes);
         summary.classList.toggle('has-error', !validation.valid);
         summary.innerHTML = `
             <div class="sch-plan-summary-metrics">
-                <span><b>${escapeHtml(envelope)}</b> envelope</span>
-                <span><b>${escapeHtml(formatScheduleMinutes(metrics.plannedMinutes))}</b> оплачувано</span>
-                <span><b>${escapeHtml(formatScheduleMinutes(metrics.gapMinutes))}</b> прогалини</span>
-                <span><b>${metrics.roleCount}</b> ролей</span>
+                <span><b>${escapeHtml(envelope)}</b> Період дня</span>
+                <span><b>${escapeHtml(formatScheduleMinutes(metrics.physicalMinutes))}</b> Фізичний час</span>
+                <span class="${hasOverlap ? 'is-unavailable' : ''}">
+                    <b>${escapeHtml(paidRoleHours)}</b>
+                    Оплачувані роль-години
+                    ${hasOverlap ? '<small>після нормалізації</small>' : ''}
+                </span>
+                <span><b>${metrics.roleCount}</b> Ролей</span>
             </div>
             ${validation.errors.length ? `<ul>${validation.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '<div class="sch-plan-valid">План дня коректний.</div>'}
             ${validation.overlapCandidate ? (() => {
@@ -5275,7 +5359,7 @@ function updateSchedulePlanSummary(scope) {
                     : (!rateInfo.available ? rateInfo.reason : '');
                 return `<div class="sch-overlap-conversion">
                     <button type="button" class="btn-page-secondary" data-schedule-overlap-convert ${disabled ? 'disabled' : ''}>
-                        Об’єднати в один фізичний блок із додатковою оплатою
+                        Перетворити на одночасні ролі
                     </button>
                     ${reason ? `<span>${escapeHtml(reason)}</span>` : `<span>${escapeHtml(professionLabel(candidate.professionKey))}: ${escapeHtml(candidate.start)}–${escapeHtml(candidate.end)}</span>`}
                 </div>`;
@@ -5291,7 +5375,8 @@ function updateSchedulePlanSummary(scope) {
         const readOnly = scope === 'schedule' && !StaffState.canManage;
         saveButton.disabled = pending || readOnly || !validation.valid;
     }
-    updateScheduleSaveValidation(scope, validation);
+    const validationMessageId = updateScheduleSaveValidation(scope, validation);
+    applySchedulePlanOverlapState(scope, validation.overlapIndexes, validationMessageId);
     return validation;
 }
 
@@ -5403,7 +5488,7 @@ function bindSchedulePlanEditor(scope) {
                 return;
             }
             const candidate = validation.overlapCandidate;
-            const primaryProfessionKey = converted[0]?.professionKey || '';
+            const primaryProfessionKey = validation.primaryProfessionKey || converted[0]?.professionKey || '';
             rerender(converted, {
                 primaryProfessionKey,
                 activeIndex: Math.max(0, Math.min(candidate?.outerIndex || 0, converted.length - 1))

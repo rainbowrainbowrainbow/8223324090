@@ -1625,6 +1625,17 @@ function attachSimultaneousAdditionalPay(result, metrics = {}) {
     };
 }
 
+function applySimultaneousAdditionalPayPolicy(result, metrics = {}, schemeType = 'hourly') {
+    if (schemeType === 'hourly') return attachSimultaneousAdditionalPay(result, metrics);
+    return {
+        ...result,
+        additionalLines: [],
+        additionalAmount: 0,
+        totalAmount: toNumber(result.baseAmount, 0) + toNumber(result.overtimeAmount, 0),
+        blockingIssues: []
+    };
+}
+
 function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
     const physicalMinutes = Math.max(0, toNumber(
         metrics.physicalMinutes ?? metrics.physical_minutes ?? metrics.totalMinutes ?? metrics.total_minutes,
@@ -2046,7 +2057,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
     const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
     if (payrollProfileContextEnabled(payrollProfileContext)) {
-        return attachSimultaneousAdditionalPay(calculateProfessionPayWithResolver(
+        return applySimultaneousAdditionalPayPolicy(calculateProfessionPayWithResolver(
             staff,
             activeScheme,
             metrics,
@@ -2054,7 +2065,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
             payrollProfileContext,
             rateUnit,
             fallbackProfessionKey
-        ), metrics);
+        ), metrics, schemeType);
     }
     const baseLines = [];
     const overtimeLines = [];
@@ -2199,7 +2210,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         ));
         if (!exists) reconciliation.warnings.push(issue);
     }
-    return attachSimultaneousAdditionalPay({
+    return applySimultaneousAdditionalPayPolicy({
         applies: true,
         rateUnit,
         baseLines,
@@ -2210,7 +2221,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         professionRateSummary,
         allocationIssues,
         reconciliation
-    }, metrics);
+    }, metrics, schemeType);
 }
 
 async function fetchTimeMetrics(month) {

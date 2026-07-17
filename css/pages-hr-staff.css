@@ -5533,6 +5533,13 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     box-shadow: none;
 }
 
+.sch-segment-card.has-overlap,
+.sch-segment-card.has-overlap.is-active {
+    border-color: rgba(239, 68, 68, 0.72);
+    background: rgba(254, 242, 242, 0.86);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
+}
+
 .sch-segment-card-head {
     display: flex;
     align-items: center;
@@ -5638,6 +5645,45 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
 
 .sch-additional-role.is-primary-role {
     opacity: 0.58;
+}
+
+.sch-role-pay-status,
+.sch-paid-role-status {
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 850;
+    line-height: 1.2;
+}
+
+.sch-role-pay-status {
+    padding: 3px 6px;
+}
+
+.sch-role-pay-status.is-unpaid {
+    background: rgba(100, 116, 139, 0.12);
+    color: var(--gray-500);
+}
+
+.sch-role-pay-status.is-primary {
+    background: rgba(59, 130, 246, 0.1);
+    color: #1d4ed8;
+}
+
+.sch-paid-role-status {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 5px 8px;
+}
+
+.sch-paid-role-status.is-paid {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.sch-paid-role-status.is-empty {
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--gray-500);
 }
 
 .sch-paid-role-editor {
@@ -5766,6 +5812,17 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     color: #047857;
     font-size: 11px;
     font-weight: 750;
+}
+
+.sch-plan-summary-metrics small {
+    color: #b91c1c;
+    font-size: 9px;
+    font-weight: 750;
+    line-height: 1.2;
+}
+
+.sch-plan-summary-metrics .is-unavailable {
+    border: 1px solid rgba(239, 68, 68, 0.18);
 }
 
 .sch-overlap-conversion {
@@ -6973,6 +7030,15 @@ body.dark-mode .sch-additional-roles,
     border-color: rgba(148, 163, 184, 0.25);
 }
 
+body.dark-mode .sch-segment-card.has-overlap,
+body.dark-mode .sch-segment-card.has-overlap.is-active,
+[data-theme="dark"] .sch-segment-card.has-overlap,
+[data-theme="dark"] .sch-segment-card.has-overlap.is-active {
+    border-color: rgba(248, 113, 113, 0.68);
+    background: rgba(127, 29, 29, 0.2);
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.1);
+}
+
 body.dark-mode .sch-paid-role-editor,
 [data-theme="dark"] .sch-paid-role-editor {
     border-color: rgba(45, 212, 191, 0.28);
@@ -6984,6 +7050,26 @@ body.dark-mode .sch-overlap-conversion span,
 [data-theme="dark"] .sch-paid-role-preview,
 [data-theme="dark"] .sch-overlap-conversion span {
     color: #94a3b8;
+}
+
+body.dark-mode .sch-role-pay-status.is-unpaid,
+body.dark-mode .sch-paid-role-status.is-empty,
+[data-theme="dark"] .sch-role-pay-status.is-unpaid,
+[data-theme="dark"] .sch-paid-role-status.is-empty {
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+}
+
+body.dark-mode .sch-role-pay-status.is-primary,
+[data-theme="dark"] .sch-role-pay-status.is-primary {
+    background: rgba(96, 165, 250, 0.14);
+    color: #93c5fd;
+}
+
+body.dark-mode .sch-paid-role-status.is-paid,
+[data-theme="dark"] .sch-paid-role-status.is-paid {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6ee7b7;
 }
 
 body.dark-mode .sch-paid-rate-error,
@@ -7328,6 +7414,11 @@ body.dark-mode .hr-shift-multi-guard__segments span,
     .sch-modal .sch-additional-role {
         width: 100%;
         box-sizing: border-box;
+    }
+
+    .sch-role-pay-status {
+        margin-left: auto;
+        text-align: right;
     }
 
     .sch-paid-rate-error {

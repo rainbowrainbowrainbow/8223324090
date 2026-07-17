@@ -296,7 +296,7 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     });
 });
 
-test('per-shift and monthly base amounts remain unchanged while simultaneous additional pay stays hourly', () => {
+test('per-shift, monthly and hybrid schemes do not enable simultaneous additional pay without an approved formula', () => {
     const exactMetrics = metrics({
         physicalMinutes: 540,
         totalMinutes: 540,
@@ -320,13 +320,23 @@ test('per-shift and monthly base amounts remain unchanged while simultaneous add
         exactMetrics,
         rateMap({ hallkeeper: 999 })
     );
+    const hybrid = calculateProfessionPay(
+        staff({ roleType: 'wardrobe', rateUnit: 'hour', hourlyRate: 100 }),
+        { schemeType: 'hybrid', config: { hourlyRate: 100, perShiftRate: 900 }, isFallback: false },
+        exactMetrics,
+        rateMap({ hallkeeper: 999 })
+    );
 
     assert.equal(perShift.baseAmount, 900);
-    assert.equal(perShift.additionalAmount, 1700);
-    assert.equal(perShift.totalAmount, 2600);
+    assert.equal(perShift.additionalAmount, 0);
+    assert.equal(perShift.additionalLines.length, 0);
+    assert.equal(perShift.totalAmount, 900);
     assert.equal(monthly.baseAmount, 30000);
-    assert.equal(monthly.additionalAmount, 1700);
-    assert.equal(monthly.totalAmount, 31700);
+    assert.equal(monthly.additionalAmount, 0);
+    assert.equal(monthly.additionalLines.length, 0);
+    assert.equal(monthly.totalAmount, 30000);
+    assert.equal(hybrid.applies, false);
+    assert.equal(hybrid.professionRateSummary.length, 0);
 });
 
 test('simultaneous additional pay applies the immutable snapshot multiplier', () => {

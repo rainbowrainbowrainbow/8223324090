@@ -12,6 +12,10 @@ const {
     normalizeLiveQaRunId,
     normalizeLiveQaTime
 } = require('../services/liveMultiSegmentQa');
+const {
+    normalizedSegments,
+    schedulePayload
+} = require('../scripts/live-multi-segment-qa');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -88,4 +92,38 @@ test('live runner covers the full read/write contract and always uses server cle
     assert.doesNotMatch(script, /\/api\/payroll\/(generate|report)/);
     assert.doesNotMatch(script, /\/api\/bookings/);
     assert.doesNotMatch(script, /\/api\/finance/);
+});
+
+test('live runner models the screenshot case as nine physical hours plus an 8.5-hour paid role', () => {
+    const payload = schedulePayload(42, '2026-11-02');
+    assert.deepEqual(
+        payload.segments.map(segment => [segment.professionKey, segment.shiftStart, segment.shiftEnd]),
+        [
+            ['reception', '11:00', '11:30'],
+            ['reception', '11:30', '20:00']
+        ]
+    );
+    assert.deepEqual(
+        payload.segments[1].additionalRoles.map(role => [role.professionKey, role.compensationMode]),
+        [
+            ['animator', 'unpaid'],
+            ['manager', 'paid_hourly']
+        ]
+    );
+    assert.equal(
+        payload.segments.reduce((sum, segment) => {
+            const [startHour, startMinute] = segment.shiftStart.split(':').map(Number);
+            const [endHour, endMinute] = segment.shiftEnd.split(':').map(Number);
+            return sum + ((endHour * 60 + endMinute) - (startHour * 60 + startMinute));
+        }, 0),
+        540
+    );
+    assert.deepEqual(
+        normalizedSegments({ segments: payload.segments })[1].additionalRoles
+            .map(role => [role.professionKey, role.compensationMode, role.payMultiplier]),
+        [
+            ['animator', 'unpaid', 1],
+            ['manager', 'paid_hourly', 1]
+        ]
+    );
 });

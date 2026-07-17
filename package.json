@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.60",
+  "version": "0.79.61",
   "eventGenix": {
-    "releaseLabel": "Simultaneous Profession Pay"
+    "releaseLabel": "Simultaneous Pay Safety"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

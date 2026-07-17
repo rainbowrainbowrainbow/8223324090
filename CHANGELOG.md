@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.61 - Simultaneous Pay Safety
+
+### HR / Графік / Attendance / Payroll / (18.07.2026) [codex]
+- **Конфліктні часові блоки не можна зберегти** — обидва блоки підсвічуються, Save лишається disabled, а дія «Перетворити на одночасні ролі» створює валідні суміжні фізичні сегменти.
+- **Фізичні години не дублюються** — план, attendance і payroll preview окремо показують 9 фізичних годин, 9 годин основної ролі та 8 год 30 хв оплачуваної додаткової ролі.
+- **Оплачувані рольові allocations рахуються окремо** — лише hourly-схема застосовує власну професійну ставку до кожної allocation; `per_shift`, `monthly_fixed` і `hybrid` не отримують непогодженої подвійної оплати.
+- **Регресії включено до CI** — browser smoke відтворює точний overlap-кейс, а disposable PostgreSQL suite перевіряє preview → generate → reverse без дублювання payroll entries.
+
+---
+
 ## v0.79.60 - Simultaneous Profession Pay
 
 ### HR / Табель / Payroll / (18.07.2026) [codex]

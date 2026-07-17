@@ -61,6 +61,43 @@ Automated coverage includes:
 - consistent Today, monthly report, payroll, and CSV presentation rules.
 - stable CSV column count and formula-prefix escaping.
 
+## Post-release QA v0.79.51
+
+Release sanity evidence:
+
+- Commit: `a61e7b275180023626f8510b1da21c068774a6f0`.
+- Branch: `codex/performance-hardening`.
+- Deployed version: `v0.79.51` / `Attendance Review Reliability`.
+- CI: GitHub Actions passed for the deployed commit. The first attempt had a flaky HR onboarding browser smoke failure; the failed job was rerun and passed before production QA was accepted.
+- Runtime: Railway resolved Node `22.23.1`.
+
+Production QA was performed only with disposable test staff and marker-bound attendance fixtures. No payroll periods were created or closed, no mass data-fix was run, and no production config was changed.
+
+Verified production surfaces:
+
+- HR Today and KPI `present`: open attendance (`clock_in` without `clock_out`) is counted; closed attendance remains visible in the Today list but does not count as present.
+- Daily HR report and `/api/staff/attendance`: normalized attendance facts match for the same records.
+- Monthly HR report: late, early leave, and overtime totals match the detailed day rows.
+- Payroll preview/workspace: attendance overtime is consumed from attendance facts; allocation overtime is not treated as an attendance event.
+- CSV export: rows keep a stable 17-column shape and report the same late, early leave, overtime, and plan-source values as the screen-backed report APIs.
+
+Verified boundary scenarios:
+
+- late arrival: five minutes is not reportable late, six minutes is reportable late;
+- early leave: fifteen minutes is not reportable early leave, sixteen minutes is reportable early leave;
+- overtime: fifteen minutes is not reportable attendance overtime, sixteen minutes is reportable attendance overtime;
+- allocation overtime can exist without attendance overtime;
+- a day can contain late arrival plus early leave;
+- a day can contain late arrival plus overtime;
+- `profession_card` and `unscheduled` warnings are present and user-facing.
+
+Post-release backlog:
+
+- Historical data-fix/backfill is a separate task and requires explicit approval before any recalculation.
+- Browser/DOM visual smoke for the HR report pages remains optional follow-up; this release QA verified the production API surfaces that drive those screens and CSV.
+- The live QA cleanup helper should be extended before any future live QA that creates `staff_shift_preferences`, because the current helper cleans attendance, check-ins, shifts, schedules, and archives disposable staff, but does not delete preference rows.
+- Base CSV escaping and stable-column tests exist; extend route-level CSV coverage only if the export contract changes.
+
 ## Known limitations
 
 - Historical attendance and payroll records are not recalculated automatically.

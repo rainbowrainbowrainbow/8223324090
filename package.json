@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.57",
+  "version": "0.79.58",
   "eventGenix": {
-    "releaseLabel": "Deposit Clear Safety"
+    "releaseLabel": "Pinata Reconciliation QA"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

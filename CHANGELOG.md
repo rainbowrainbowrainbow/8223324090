@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.59 - Durable Room Identity
+
+### Кімнати / Durable ID / Конфлікти / (17.07.2026) [codex]
+- **Нові бронювання кімнат отримують `room_resource_id`** — create, edit, duplicate, full/linked booking, banquet activity/kitchen і recurring/template flows передають стабільний room resource ID.
+- **Backend сам визначає канонічну назву кімнати** — frontend більше не є джерелом довільного room text для нових записів; legacy `room` лишається display snapshot.
+- **Конфлікти й availability працюють по durable ID** — advisory locks, strict room conflict і `/api/rooms/free` використовують `room_resource_id`, а legacy name/alias fallback лишився тільки для NULL-записів.
+- **Quarantine лишився safety-механізмом** — порожній рядок не показується, проблемні legacy записи не падають у «На виніс» або першу фізичну кімнату.
+- **Backfill ще не виконано** — production apply винесений в окремий guarded task після свіжого dry-run і точного підтвердження safe-count.
+
+---
+
 ## v0.79.58 - Pinata Reconciliation QA
 
 ### Банкетки / Піньята / Unicode-зали / Observability / (17.07.2026) [codex]

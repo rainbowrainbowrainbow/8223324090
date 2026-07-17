@@ -6740,6 +6740,55 @@ body.dark-mode .hr-staff-row.hr-staff-row--arrived {
 }
 body.dark-mode .hr-clock-btn { background: #3D3D5C; color: #E2E8F0; border-color: #4A4A6A; }
 body.dark-mode .hr-clock-btn:hover { background: #4A4A6A; }
+body.dark-mode .hr-clock-btn.clock-in,
+html[data-theme="dark"] body .hr-clock-btn.clock-in {
+    background: #334155;
+    color: #E2E8F0;
+    box-shadow: inset 0 0 0 1px rgba(148,163,184,0.24);
+}
+body.dark-mode .hr-clock-btn.clock-in:hover,
+html[data-theme="dark"] body .hr-clock-btn.clock-in:hover {
+    background: #475569;
+}
+body.dark-mode .hr-clock-btn.clock-out,
+html[data-theme="dark"] body .hr-clock-btn.clock-out {
+    background: #047857;
+    color: #ECFDF5;
+    box-shadow: inset 0 0 0 1px rgba(110,231,183,0.20);
+}
+body.dark-mode .hr-clock-btn.clock-out:hover,
+html[data-theme="dark"] body .hr-clock-btn.clock-out:hover {
+    background: #059669;
+}
+body.dark-mode .hr-clock-btn.clock-out.late,
+html[data-theme="dark"] body .hr-clock-btn.clock-out.late {
+    background: #B45309;
+    color: #FFFBEB;
+    box-shadow: inset 0 0 0 1px rgba(252,211,77,0.22);
+}
+body.dark-mode .hr-clock-btn.clock-out.late:hover,
+html[data-theme="dark"] body .hr-clock-btn.clock-out.late:hover {
+    background: #D97706;
+}
+body.dark-mode .hr-clock-btn.done,
+html[data-theme="dark"] body .hr-clock-btn.done,
+body.dark-mode .hr-clock-btn.done:hover,
+html[data-theme="dark"] body .hr-clock-btn.done:hover {
+    background: rgba(37,99,235,0.28);
+    color: #BFDBFE;
+    cursor: default;
+    box-shadow: inset 0 0 0 1px rgba(147,197,253,0.22);
+}
+body.dark-mode .hr-clock-btn:focus-visible,
+html[data-theme="dark"] body .hr-clock-btn:focus-visible {
+    outline: 3px solid rgba(147,197,253,0.72);
+    outline-offset: 2px;
+}
+body.dark-mode .hr-clock-btn:disabled,
+html[data-theme="dark"] body .hr-clock-btn:disabled {
+    opacity: 0.82;
+    cursor: default;
+}
 body.dark-mode .hr-view-btn,
 body.dark-mode .hr-schedule-controls .btn-nav,
 body.dark-mode .hr-schedule-actions button {

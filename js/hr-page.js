@@ -556,6 +556,7 @@ let staffLifecycleLoadSeq = 0;
 let staffProfileHistoryLoadSeq = 0;
 let staffEditOpenSeq = 0;
 let hrRealtimeRefreshTimer = null;
+let hrRealtimeSubscribedDate = null;
 const STAFF_PROFILE_DEFAULT_TAB = 'main';
 const STAFF_PROFILE_TABS = [
     { id: 'main', label: 'Основне', scopes: ['main'] },
@@ -3481,9 +3482,35 @@ async function handleClock(staffId, action, name, workedMin) {
     await loadToday();
 }
 
+function hrTodayKyivDate(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(now);
+    const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${map.year}-${map.month}-${map.day}`;
+}
+
+function syncHrRealtimeDateSubscription(now = new Date()) {
+    if (typeof ParkWS === 'undefined' || !ParkWS || typeof ParkWS.subscribeDate !== 'function') return null;
+    const nextDate = hrTodayKyivDate(now);
+    if (hrRealtimeSubscribedDate === nextDate) return nextDate;
+
+    const previousDate = hrRealtimeSubscribedDate;
+    ParkWS.subscribeDate(nextDate);
+    hrRealtimeSubscribedDate = nextDate;
+    if (previousDate && typeof ParkWS.unsubscribeDate === 'function') {
+        ParkWS.unsubscribeDate(previousDate);
+    }
+    return nextDate;
+}
+
 function startPolling() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => {
+        syncHrRealtimeDateSubscription();
         const activeTab = document.querySelector('.hr-tab.active');
         if (activeTab && activeTab.dataset.tab === 'today') loadToday();
     }, 30000);
@@ -3501,6 +3528,7 @@ function initHrRealtime() {
         }, 150);
     });
     if (typeof ParkWS !== 'undefined' && ParkWS && typeof ParkWS.connect === 'function') {
+        syncHrRealtimeDateSubscription();
         ParkWS.connect();
     }
 }

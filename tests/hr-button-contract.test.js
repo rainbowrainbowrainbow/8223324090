@@ -181,6 +181,43 @@ test('HR Today metrics expose people lists and count only open shifts as on shif
     });
 });
 
+test('HR Today owns one Kyiv date subscription and preserves other WebSocket consumers', () => {
+    const pollingBlock = HR_JS.slice(
+        HR_JS.indexOf('function startPolling'),
+        HR_JS.indexOf('function initHrRealtime')
+    );
+    const realtimeBlock = HR_JS.slice(
+        HR_JS.indexOf('function hrTodayKyivDate'),
+        HR_JS.indexOf('// ==========================================\n// CONTEXT MENU')
+    );
+    const initBlock = HR_JS.slice(
+        HR_JS.indexOf('function initHrRealtime'),
+        HR_JS.indexOf('// ==========================================\n// CONTEXT MENU')
+    );
+
+    assert.match(realtimeBlock, /timeZone:\s*'Europe\/Kyiv'/);
+    assert.match(realtimeBlock, /ParkWS\.subscribeDate\(nextDate\)/);
+    assert.match(realtimeBlock, /ParkWS\.unsubscribeDate\(previousDate\)/);
+    assert.doesNotMatch(realtimeBlock, /setSubscribedDates/);
+    assert.match(pollingBlock, /syncHrRealtimeDateSubscription\(\)/);
+    assert.ok(
+        initBlock.indexOf('syncHrRealtimeDateSubscription();') < initBlock.indexOf('ParkWS.connect();'),
+        'HR subscribes before connect so authentication can restore the date membership'
+    );
+
+    for (const selector of [
+        'body.dark-mode .hr-clock-btn.clock-in',
+        'html[data-theme="dark"] body .hr-clock-btn.clock-in',
+        'body.dark-mode .hr-clock-btn.clock-out',
+        'body.dark-mode .hr-clock-btn.clock-out.late',
+        'body.dark-mode .hr-clock-btn.done',
+        'body.dark-mode .hr-clock-btn:focus-visible',
+        'body.dark-mode .hr-clock-btn:disabled'
+    ]) {
+        assert.ok(HR_HTML.includes(selector), `missing HR Today dark state selector ${selector}`);
+    }
+});
+
 test('attendance mutation routes expose stable planSource from the shared service', () => {
     assert.match(HR_ATTENDANCE_SERVICE, /async function loadInitialAttendancePlanSource/);
     assert.match(HR_ATTENDANCE_SERVICE, /FROM hr_audit_log/);

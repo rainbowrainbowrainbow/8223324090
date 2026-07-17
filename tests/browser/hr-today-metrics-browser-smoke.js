@@ -65,6 +65,30 @@ async function installHarness(page) {
     await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body data-page-group="hr"></body></html>`);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
+        const parkWsDates = new Set(['2026-07-30']);
+        const parkWsEvents = [];
+        window.ParkWS = {
+            connect() {
+                parkWsEvents.push({ type: 'connect' });
+            },
+            subscribeDate(date) {
+                parkWsDates.add(date);
+                parkWsEvents.push({ type: 'subscribe', date });
+            },
+            unsubscribeDate(date) {
+                parkWsDates.delete(date);
+                parkWsEvents.push({ type: 'unsubscribe', date });
+            },
+            subscribedDates() {
+                return [...parkWsDates].sort();
+            },
+            events() {
+                return structuredClone(parkWsEvents);
+            },
+            clearEvents() {
+                parkWsEvents.length = 0;
+            }
+        };
         window.__hrTodayWindowIdentity = `hr-today-${Date.now()}-${Math.random()}`;
         window.__nativeSetInterval = window.setInterval.bind(window);
         window.setInterval = (callback, delay, ...args) => window.__nativeSetInterval(
@@ -165,6 +189,10 @@ async function installHarness(page) {
                 const openRecord = rows.find(item => item.staff_id === 11).record;
                 openRecord.clock_out = '2026-07-16T15:00:00.000Z';
                 openRecord.total_worked_minutes = 480;
+            } else if (mode === 'late-open') {
+                const lateRecord = rows.find(item => item.staff_id === 12).record;
+                lateRecord.clock_out = null;
+                lateRecord.total_worked_minutes = null;
             }
             return rows;
         }
@@ -190,7 +218,7 @@ async function installHarness(page) {
         window.__hrTodayBrowserSmoke = {
             identity: window.__hrTodayWindowIdentity,
             setMode(nextMode) {
-                mode = nextMode === 'closed' ? 'closed' : 'open';
+                mode = ['closed', 'late-open'].includes(nextMode) ? nextMode : 'open';
             },
             async refresh() {
                 await loadToday();
@@ -204,6 +232,18 @@ async function installHarness(page) {
             },
             dispatchAttendanceUpdate() {
                 window.dispatchEvent(new CustomEvent('ws:hr-attendance'));
+            },
+            subscribedDates() {
+                return window.ParkWS.subscribedDates();
+            },
+            realtimeEvents() {
+                return window.ParkWS.events();
+            },
+            clearRealtimeEvents() {
+                window.ParkWS.clearEvents();
+            },
+            syncRealtimeDate(iso) {
+                return syncHrRealtimeDateSubscription(new Date(iso));
             },
             requestCount() {
                 return requests.filter(request => request.path === '/today').length;
@@ -283,6 +323,39 @@ async function assertCurrentFilters(page) {
     assert.equal(await page.locator('#todayLateMetric').textContent(), '1');
 }
 
+async function assertRealtimeDateSubscriptions(page) {
+    const initial = await page.evaluate(() => ({
+        today: hrTodayKyivDate(new Date()),
+        dates: window.__hrTodayBrowserSmoke.subscribedDates(),
+        events: window.__hrTodayBrowserSmoke.realtimeEvents()
+    }));
+    assert.deepEqual(initial.dates, [initial.today, '2026-07-30'].sort(), 'HR adds only its Kyiv date to existing subscriptions');
+    const subscribeIndex = initial.events.findIndex(event => event.type === 'subscribe' && event.date === initial.today);
+    const connectIndex = initial.events.findIndex(event => event.type === 'connect');
+    assert.ok(subscribeIndex >= 0 && connectIndex > subscribeIndex, 'HR subscribes before opening the WebSocket');
+
+    const rollover = await page.evaluate(() => {
+        window.__hrTodayBrowserSmoke.clearRealtimeEvents();
+        const before = window.__hrTodayBrowserSmoke.syncRealtimeDate('2026-07-16T20:59:59.000Z');
+        const after = window.__hrTodayBrowserSmoke.syncRealtimeDate('2026-07-16T21:00:01.000Z');
+        return {
+            before,
+            after,
+            dates: window.__hrTodayBrowserSmoke.subscribedDates(),
+            events: window.__hrTodayBrowserSmoke.realtimeEvents()
+        };
+    });
+    assert.equal(rollover.before, '2026-07-16', 'Kyiv date remains on the old day before midnight');
+    assert.equal(rollover.after, '2026-07-17', 'Kyiv date advances after midnight');
+    assert.deepEqual(rollover.dates, ['2026-07-17', '2026-07-30'], 'date rollover replaces only the HR-owned subscription');
+    assert.ok(rollover.events.some(event => event.type === 'subscribe' && event.date === '2026-07-16'));
+    assert.ok(rollover.events.some(event => event.type === 'subscribe' && event.date === '2026-07-17'));
+    assert.ok(rollover.events.some(event => event.type === 'unsubscribe' && event.date === '2026-07-16'));
+    assert.equal(rollover.events.some(event => event.type === 'unsubscribe' && event.date === '2026-07-30'), false, 'unrelated date subscription is preserved');
+
+    await page.evaluate(() => syncHrRealtimeDateSubscription(new Date()));
+}
+
 async function assertPollingAndRealtime(page) {
     const identity = await page.evaluate(() => window.__hrTodayBrowserSmoke.identity);
     const requestsBeforePolling = await page.evaluate(() => window.__hrTodayBrowserSmoke.requestCount());
@@ -327,6 +400,68 @@ async function assertPollingAndRealtime(page) {
     assert.equal(await page.evaluate(() => window.__hrTodayBrowserSmoke.mutationCount()), 0, 'browser smoke remains read-only');
 }
 
+async function setThemeAndMode(page, theme, mode) {
+    await page.evaluate(async ({ nextTheme, nextMode }) => {
+        document.documentElement.dataset.theme = nextTheme;
+        document.body.classList.toggle('dark-mode', nextTheme === 'dark');
+        window.__hrTodayBrowserSmoke.setMode(nextMode);
+        await window.__hrTodayBrowserSmoke.refresh();
+    }, { nextTheme: theme, nextMode: mode });
+}
+
+async function buttonStyle(page, staffId) {
+    return page.locator(`#todayList [data-staff-id="${staffId}"] .hr-clock-btn`).evaluate(element => {
+        const style = getComputedStyle(element);
+        return {
+            className: element.className,
+            backgroundColor: style.backgroundColor,
+            color: style.color,
+            cursor: style.cursor,
+            opacity: style.opacity,
+            disabled: element.disabled
+        };
+    });
+}
+
+async function assertButtonThemeStates(page) {
+    await setThemeAndMode(page, 'light', 'open');
+    const lightClockIn = await buttonStyle(page, 13);
+    const lightOpen = await buttonStyle(page, 11);
+    const lightDone = await buttonStyle(page, 12);
+    assert.match(lightClockIn.className, /clock-in/);
+    assert.match(lightOpen.className, /clock-out/);
+    assert.match(lightDone.className, /done/);
+    assert.notEqual(lightClockIn.backgroundColor, lightOpen.backgroundColor, 'light clock-in and open states remain distinct');
+    assert.notEqual(lightOpen.backgroundColor, lightDone.backgroundColor, 'light open and done states remain distinct');
+
+    await setThemeAndMode(page, 'dark', 'open');
+    const darkClockIn = await buttonStyle(page, 13);
+    const darkOpen = await buttonStyle(page, 11);
+    const darkDone = await buttonStyle(page, 12);
+    assert.notEqual(darkClockIn.backgroundColor, darkOpen.backgroundColor, 'dark clock-in and open states are distinct');
+    assert.notEqual(darkOpen.backgroundColor, darkDone.backgroundColor, 'dark open and done states are distinct');
+    assert.notEqual(darkClockIn.backgroundColor, darkDone.backgroundColor, 'dark clock-in and done states are distinct');
+
+    await setThemeAndMode(page, 'dark', 'late-open');
+    const darkLate = await buttonStyle(page, 12);
+    assert.match(darkLate.className, /clock-out late/);
+    assert.notEqual(darkLate.backgroundColor, darkOpen.backgroundColor, 'dark late state is distinct from regular open state');
+
+    await setThemeAndMode(page, 'dark', 'closed');
+    const disabledDone = await buttonStyle(page, 11);
+    assert.equal(disabledDone.disabled, true, 'completed state remains disabled');
+    assert.equal(disabledDone.cursor, 'default', 'completed state keeps a non-action cursor');
+    assert.ok(Number(disabledDone.opacity) < 1, 'disabled dark state has explicit visual treatment');
+
+    await setThemeAndMode(page, 'dark', 'open');
+    const openButton = page.locator('#todayList [data-staff-id="11"] .hr-clock-btn');
+    const darkOpenBeforeHover = (await buttonStyle(page, 11)).backgroundColor;
+    await openButton.hover();
+    await page.waitForTimeout(180);
+    const darkOpenAfterHover = (await buttonStyle(page, 11)).backgroundColor;
+    assert.notEqual(darkOpenAfterHover, darkOpenBeforeHover, 'dark open hover has a visible state');
+}
+
 async function assertMobileThemeAndReducedMotion(page) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
@@ -358,7 +493,9 @@ async function run() {
         await assertMetricLists(page);
         await assertKeyboardAndFocus(page);
         await assertCurrentFilters(page);
+        await assertRealtimeDateSubscriptions(page);
         await assertPollingAndRealtime(page);
+        await assertButtonThemeStates(page);
         await assertMobileThemeAndReducedMotion(page);
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {

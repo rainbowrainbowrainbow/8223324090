@@ -5398,6 +5398,96 @@ function normalizeBookingDepositAmount(value) {
     return Math.round(normalized);
 }
 
+const BOOKING_DEPOSIT_FIELD_IDS = [
+    'bookingDepositExpectedAmount',
+    'bookingDepositDueDate',
+    'bookingDepositManagerStatus',
+    'bookingDepositManagerNote'
+];
+
+function bookingDepositFieldElements() {
+    return BOOKING_DEPOSIT_FIELD_IDS
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+}
+
+function setBookingDepositFieldsLocked(locked) {
+    const disabled = Boolean(locked);
+    bookingDepositFieldElements().forEach(el => {
+        el.disabled = disabled;
+        el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    });
+}
+
+function ensureBookingDepositHydrationStatusElement() {
+    const section = document.getElementById('bookingDepositSection');
+    if (!section) return null;
+    let statusEl = document.getElementById('bookingDepositHydrationStatus');
+    if (statusEl) return statusEl;
+
+    statusEl = document.createElement('div');
+    statusEl.id = 'bookingDepositHydrationStatus';
+    statusEl.className = 'booking-menu-serving-warning';
+    statusEl.setAttribute('role', 'status');
+    statusEl.setAttribute('aria-live', 'polite');
+    statusEl.hidden = true;
+
+    const message = document.createElement('span');
+    message.id = 'bookingDepositHydrationMessage';
+    statusEl.appendChild(message);
+
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.id = 'bookingDepositRetryBtn';
+    retry.className = 'booking-menu-serving-action booking-menu-serving-action--primary';
+    retry.textContent = 'Повторити завантаження';
+    retry.hidden = true;
+    statusEl.appendChild(retry);
+
+    const heading = section.querySelector('.booking-section-heading');
+    if (heading?.nextSibling) {
+        section.insertBefore(statusEl, heading.nextSibling);
+    } else {
+        section.prepend(statusEl);
+    }
+    return statusEl;
+}
+
+function renderBookingDepositHydrationStatus(state = BookingDrawerState.depositHydration || {}) {
+    const statusEl = ensureBookingDepositHydrationStatusElement();
+    if (!statusEl) return;
+    const message = statusEl.querySelector('#bookingDepositHydrationMessage');
+    const retry = statusEl.querySelector('#bookingDepositRetryBtn');
+    const status = String(state.status || 'idle');
+    const hasBookingId = Boolean(String(state.bookingId || '').trim());
+    const shouldLock = hasBookingId && (status === 'loading' || status === 'failed');
+    setBookingDepositFieldsLocked(shouldLock);
+
+    if (!hasBookingId || !['loading', 'failed'].includes(status)) {
+        statusEl.hidden = true;
+        if (retry) retry.hidden = true;
+        return;
+    }
+
+    statusEl.hidden = false;
+    if (status === 'loading') {
+        if (message) message.textContent = 'Завантажуємо завдаток. Поля завдатку тимчасово заблоковані.';
+        if (retry) {
+            retry.hidden = true;
+            retry.disabled = true;
+        }
+        return;
+    }
+
+    if (message) {
+        message.textContent = 'Завдаток не завантажився. Поля завдатку заблоковані, інші зміни банкетки можна зберегти без зміни завдатку.';
+    }
+    if (retry) {
+        retry.hidden = false;
+        retry.disabled = false;
+    }
+}
+
 function getBookingDepositFormData() {
     const status = document.getElementById('bookingDepositManagerStatus')?.value || 'Очікуємо оплату';
     const expectedAmount = normalizeBookingDepositAmount(document.getElementById('bookingDepositExpectedAmount')?.value);
@@ -5441,13 +5531,15 @@ function setBookingDepositFormData(source = null) {
     renderBookingPackageSummary();
 }
 
-function setBookingDepositHydrationState(bookingId, status, hadDeposit = false) {
+function setBookingDepositHydrationState(bookingId, status, hadDeposit = false, error = null) {
     const state = {
         bookingId: String(bookingId || ''),
         status: String(status || 'idle'),
-        hadDeposit: Boolean(hadDeposit)
+        hadDeposit: Boolean(hadDeposit),
+        error: error ? String(error) : null
     };
     BookingDrawerState.depositHydration = state;
+    renderBookingDepositHydrationStatus(state);
     return state;
 }
 
@@ -5470,7 +5562,7 @@ async function hydrateBookingDepositFromServer(bookingId) {
         setBookingDepositFormData(hadDeposit ? projection : null);
         return setBookingDepositHydrationState(cleanBookingId, 'loaded', hadDeposit);
     } catch (err) {
-        setBookingDepositHydrationState(cleanBookingId, 'failed', false);
+        setBookingDepositHydrationState(cleanBookingId, 'failed', false, err?.message || err);
         console.warn('Booking deposit hydrate skipped', err);
         return null;
     }
@@ -6391,6 +6483,16 @@ function initBookingPackageWorkspace() {
         renderBookingPackageSummary();
         renderBookingCustomerSearchState('Бронювання буде створено окремо, без прив’язки до активного банкету.');
         if (window.BookingForm) BookingForm._dirty = true;
+    });
+    document.addEventListener('click', (event) => {
+        const retryBtn = event.target.closest('#bookingDepositRetryBtn');
+        if (!retryBtn) return;
+        event.preventDefault();
+        const state = BookingDrawerState.depositHydration || {};
+        const bookingId = String(state.bookingId || AppState.editingBookingId || '').trim();
+        if (!bookingId) return;
+        retryBtn.disabled = true;
+        hydrateBookingDepositFromServer(bookingId);
     });
     ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
      'secondAnimatorSelect', 'extraHostToggle', 'extraHostAnimatorSelect', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
@@ -13870,8 +13972,14 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
     const primaryPatch = buildBanquetEditPrimaryPatch(adjustedPrimary, context);
     const depositHydration = BookingDrawerState.depositHydration || {};
     const primaryBookingId = String(context?.primaryBookingId || '').trim();
+    const depositHydrationMatches = String(depositHydration.bookingId || '') === primaryBookingId;
+    const depositCanMutate = depositHydration.status === 'loaded' && depositHydrationMatches;
     const depositWasLoaded = depositHydration.status === 'loaded'
-        && String(depositHydration.bookingId || '') === primaryBookingId;
+        && depositHydrationMatches;
+    if (formData.deposit?.provided && primaryBookingId && !depositCanMutate) {
+        delete primaryPatch.deposit;
+        delete primaryPatch.banquetDeposit;
+    }
     if (!formData.deposit?.provided) {
         if (depositWasLoaded && depositHydration.hadDeposit) {
             primaryPatch.deposit = {

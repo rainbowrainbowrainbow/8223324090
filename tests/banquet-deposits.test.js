@@ -91,6 +91,21 @@ test('269 migration copies explicit deposit JSON only and keeps paid_amount as w
     assert.doesNotMatch(normalizedBlock, /booking_paid_amount/i);
 });
 
+test('manager deposit upsert does not overwrite accounting-confirmed amount fields', () => {
+    const service = fs.readFileSync(path.join(ROOT, 'services', 'banquetDeposits.js'), 'utf8');
+    const updateStart = service.indexOf('UPDATE banquet_deposits');
+    assert.ok(updateStart >= 0, 'manager deposit update SQL should exist');
+    const updateBlock = service.slice(updateStart, service.indexOf('WHERE id = $13', updateStart));
+
+    assert.match(updateBlock, /expected_amount = \$1/);
+    assert.match(updateBlock, /amount = CASE/);
+    assert.match(updateBlock, /paid_amount IS NULL/);
+    assert.match(updateBlock, /payment_method IS NULL/);
+    assert.match(updateBlock, /verified_at IS NULL/);
+    assert.match(updateBlock, /verified_by IS NULL/);
+    assert.doesNotMatch(updateBlock, /amount = \$1,\s*manager_status/);
+});
+
 test('getDepositProjectionForBooking reads copied deposit and ignores paid_amount as amount', async () => {
     const fixture = fakeDb(async text => {
         if (/FROM bookings b/i.test(text)) {

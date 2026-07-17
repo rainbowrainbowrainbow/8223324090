@@ -899,7 +899,13 @@ async function upsertManagerBookingDeposit(input = {}, options = {}) {
             const result = await db.query(
                 `UPDATE banquet_deposits
                     SET expected_amount = $1,
-                        amount = $1,
+                        amount = CASE
+                            WHEN paid_amount IS NULL
+                             AND payment_method IS NULL
+                             AND verified_at IS NULL
+                             AND verified_by IS NULL THEN $1
+                            ELSE amount
+                        END,
                         manager_status = $2,
                         due_date = $3::date,
                         manager_note = $4,

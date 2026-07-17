@@ -908,7 +908,9 @@ function makeDb(rows, links = [], options = {}) {
             );
             if (!row) return { rows: [], rowCount: 0 };
             row.expected_amount = params[0];
-            row.amount = params[0];
+            if (!row.paid_amount && !row.payment_method && !row.verified_at && !row.verified_by) {
+                row.amount = params[0];
+            }
             row.manager_status = params[1];
             row.due_date = params[2];
             row.manager_note = params[3];
@@ -4058,6 +4060,7 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
         });
         assert.equal(state.banquetDeposits.length, 1);
         assert.equal(state.banquetDeposits[0].expected_amount, null);
+        assert.equal(state.banquetDeposits[0].amount, 1800);
         assert.equal(state.banquetDeposits[0].due_date, null);
         assert.equal(state.banquetDeposits[0].manager_note, null);
         assert.equal(state.banquetDeposits[0].manager_status, 'Очікуємо оплату');

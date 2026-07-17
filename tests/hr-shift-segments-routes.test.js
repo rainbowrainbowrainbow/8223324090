@@ -13,6 +13,12 @@ const staffRoute = read('routes', 'staff.js');
 const service = read('services', 'hrShiftSegments.js');
 const staffScheduleMutations = read('services', 'staffScheduleMutations.js');
 const reconciliationService = read('services', 'hrShiftReconciliation.js');
+const authRoute = read('routes', 'auth.js');
+const centerRoute = read('routes', 'center.js');
+const dashboardRoute = read('routes', 'dashboard.js');
+const attendanceService = read('services', 'hrAttendance.js');
+const kleshnyaChat = read('services', 'kleshnya-chat.js');
+const staffPage = read('js', 'staff-page.js');
 
 function sourceSlice(source, startNeedle, endNeedle) {
     const start = source.indexOf(startNeedle);
@@ -88,6 +94,8 @@ test('read and copy flows preserve ordered segments and simultaneous roles', () 
     assert.match(hrRoute, /hydrateHrShiftDayPlans\(db, rows\)/);
     assert.match(staffRoute, /attachScheduleDayPlans\(result\.rows\)/);
     assert.match(staffRoute, /additionalProfessionKeys: \[\.\.\.\(segment\.additionalProfessionKeys \|\| \[\]\)\]/);
+    assert.match(staffRoute, /additionalRoles: \(segment\.additionalRoles \|\| \[\]\)\.map/);
+    assert.match(hrRoute, /function publicHrShiftSegment[^]*?additionalRoles/);
     assert.match(hrRoute, /payload: dayPlanPayload\(loaded\.plan/);
     assert.match(staffRoute, /const sourcePlanPayload = copyableDayPlanPayload\(loadedSourcePlan\)/);
     assert.match(service, /to_jsonb\(hs\) AS shift_row/);
@@ -107,6 +115,39 @@ test('Staff schedule GET aggregates segments without multiplying parent rows and
     assert.match(staffRoute, /shift_end: plannedEnd/);
     assert.match(staffRoute, /planUpdatedAt/);
     assert.match(staffRoute, /hrShiftUpdatedAt/);
+});
+
+test('segment API consumers preserve explicit compensation metadata and compatibility keys', () => {
+    for (const source of [authRoute, centerRoute, dashboardRoute, staffRoute, kleshnyaChat]) {
+        assert.match(source, /'additionalRoles'/);
+        assert.match(source, /'compensationMode'/);
+        assert.match(source, /'payMultiplier'/);
+        assert.match(source, /'policyVersion'/);
+        assert.match(source, /'additionalProfessionKeys'/);
+    }
+    assert.match(attendanceService, /additionalRoles: additionalRoles\.map/);
+    assert.match(staffScheduleMutations, /segmentAdditionalRoleCompensation/);
+    assert.match(staffPage, /data-compensation-mode=/);
+    assert.match(staffPage, /data-pay-multiplier=/);
+    assert.match(staffPage, /data-policy-version=/);
+    assert.match(staffPage, /additionalRoles: checkedRoles\.map/);
+});
+
+test('downstream schedule consumers distinguish physical segments from simultaneous role time', () => {
+    for (const source of [authRoute, centerRoute, dashboardRoute]) {
+        assert.match(source, /'countsAsPhysicalTime', false/);
+        assert.match(source, /'countsAsPhysicalTime', true/);
+        assert.match(source, /'physicalTimeSource', 'segment'/);
+    }
+    assert.match(staffRoute, /countsAsPhysicalTime: false/);
+    assert.match(staffRoute, /countsAsPhysicalTime: true/);
+    assert.match(staffRoute, /physicalTimeSource: 'segment'/);
+    assert.match(hrRoute, /countsAsPhysicalTime: false/);
+    assert.match(hrRoute, /countsAsPhysicalTime: true/);
+    assert.match(hrRoute, /physicalTimeSource: 'segment'/);
+    assert.match(kleshnyaChat, /фізичний час не додається/);
+    assert.match(service, /paid_role_assigned/);
+    assert.match(service, /paid_role_removed/);
 });
 
 test('single-save routes enforce optimistic plan versions while bulk and copy use fresh locked state', () => {

@@ -962,11 +962,24 @@ router.get('/operations/today', async (req, res) => {
                             'end', LEFT(hss.planned_end::text, 5),
                             'segmentId', hss.id,
                             'professionKey', hss.profession_key,
+                            'additionalRoles', COALESCE((
+                                SELECT jsonb_agg(jsonb_build_object(
+                                    'professionKey', hssr.profession_key,
+                                    'compensationMode', hssr.compensation_mode,
+                                    'payMultiplier', hssr.pay_multiplier,
+                                    'policyVersion', hssr.policy_version,
+                                    'countsAsPhysicalTime', false
+                                ) ORDER BY hssr.profession_key)
+                                FROM hr_shift_segment_roles hssr
+                                WHERE hssr.segment_id = hss.id
+                            ), '[]'::jsonb),
                             'additionalProfessionKeys', COALESCE((
                                 SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
                                 FROM hr_shift_segment_roles hssr
                                 WHERE hssr.segment_id = hss.id
-                            ), '[]'::jsonb)
+                            ), '[]'::jsonb),
+                            'countsAsPhysicalTime', true,
+                            'physicalTimeSource', 'segment'
                         ) ORDER BY hss.sort_order, hss.planned_start, hss.id)
                         FROM hr_shifts hs
                         JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id

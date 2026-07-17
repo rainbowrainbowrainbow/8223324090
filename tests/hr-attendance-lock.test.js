@@ -235,6 +235,25 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
     ], 'PUT /api/hr/records/:id/correct');
 });
 
+test('HR auto-close finalizes attendance through the canonical compensation snapshot path', () => {
+    const source = read('services', 'hr.js');
+
+    assert.match(source, /require\('\.\/hrAttendance'\)/);
+    assertInOrder(source, [
+        /await client\.query\('BEGIN'\)/,
+        /await lockAttendanceWriteTarget\(client,/,
+        /recordAttendanceClockOut\(client,/,
+        /auto_closed = TRUE/,
+        /VALUES \('auto_close'/,
+        /await client\.query\('COMMIT'\)/
+    ], 'services/hr.js auto-close');
+    assert.doesNotMatch(
+        source,
+        /clock_out = \$1, total_worked_minutes = \$2,[\s\S]{0,120}status = 'auto_closed'/,
+        'auto-close must not bypass canonical clock-out allocation'
+    );
+});
+
 test('backup restore takes the exclusive attendance gate before maintenance mutations', () => {
     const source = read('services', 'backupRecovery.js');
     assert.match(source, /require\('\.\/attendanceWriteLock'\)/);

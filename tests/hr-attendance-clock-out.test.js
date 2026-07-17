@@ -45,7 +45,8 @@ function createClockOutDb(existing, options = {}) {
                     late_minutes: params[2],
                     early_leave_minutes: params[3],
                     overtime_minutes: params[4],
-                    status: params[5]
+                    status: params[5],
+                    compensation_snapshot: params[6] ? JSON.parse(params[6]) : existing.compensation_snapshot
                 }] };
             }
             if (text.startsWith('INSERT INTO hr_audit_log')) {
@@ -283,4 +284,132 @@ test('repeated clock-out preserves the first departure and reuses initial plan s
     assert.equal(result.record.plan_source, 'profession_card');
     assert.equal(calls.length, 2);
     assert.equal(audits.length, 0);
+});
+
+test('clock-out settles the clock-in compensation snapshot without rereading a changed schedule', async () => {
+    const compensationSnapshot = {
+        schemaVersion: 1,
+        state: 'planned',
+        legacyBaseOnly: false,
+        staffId: 7,
+        recordDate: '2026-07-17',
+        capturedAt: '2026-07-17T08:00:00.000Z',
+        finalizedAt: null,
+        planSource: 'hr_shift',
+        plan: {
+            source: 'hr_shift',
+            primaryProfessionKey: 'wardrobe',
+            plannedStart: '11:00',
+            plannedEnd: '20:00',
+            segments: [
+                {
+                    id: 501,
+                    professionKey: 'wardrobe',
+                    shiftStart: '11:00',
+                    shiftEnd: '11:30',
+                    breakMinutes: 0,
+                    plannedMinutes: 30,
+                    additionalRoles: [],
+                    additionalProfessionKeys: []
+                },
+                {
+                    id: 502,
+                    professionKey: 'wardrobe',
+                    shiftStart: '11:30',
+                    shiftEnd: '20:00',
+                    breakMinutes: 0,
+                    plannedMinutes: 510,
+                    additionalRoles: [{
+                        professionKey: 'hallkeeper',
+                        compensationMode: 'paid_hourly',
+                        payMultiplier: 1,
+                        policyVersion: 'simultaneous-profession-pay-v1'
+                    }],
+                    additionalProfessionKeys: ['hallkeeper']
+                }
+            ]
+        },
+        physicalAllocation: null,
+        compensationAllocations: [
+            {
+                allocationType: 'base',
+                segmentId: 501,
+                segmentIndex: 0,
+                professionKey: 'wardrobe',
+                plannedMinutes: 30,
+                actualMinutes: 0,
+                compensationMode: 'base',
+                payMultiplier: 1,
+                rate: null,
+                rateUnit: null,
+                rateSource: 'base_payroll_contract',
+                policyVersion: null,
+                overtimeMinutes: 0
+            },
+            {
+                allocationType: 'base',
+                segmentId: 502,
+                segmentIndex: 1,
+                professionKey: 'wardrobe',
+                plannedMinutes: 510,
+                actualMinutes: 0,
+                compensationMode: 'base',
+                payMultiplier: 1,
+                rate: null,
+                rateUnit: null,
+                rateSource: 'base_payroll_contract',
+                policyVersion: null,
+                overtimeMinutes: 0
+            },
+            {
+                allocationType: 'simultaneous_additional',
+                segmentId: 502,
+                segmentIndex: 1,
+                professionKey: 'hallkeeper',
+                plannedMinutes: 510,
+                actualMinutes: 0,
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1,
+                rate: 180,
+                rateUnit: 'hour',
+                rateSource: 'staff_profession_rates.hourly_rate',
+                policyVersion: 'simultaneous-profession-pay-v1',
+                overtimeMinutes: 0
+            }
+        ],
+        totals: {
+            physicalMinutes: 0,
+            baseMinutes: 0,
+            simultaneousAdditionalMinutes: 0,
+            compensationMinutes: 0
+        },
+        issues: [],
+        manualReview: false
+    };
+    const existing = {
+        ...baseRecord,
+        clock_in: '2026-07-17T08:00:00.000Z',
+        planned_start: '11:00',
+        planned_end: '20:00',
+        compensation_snapshot: compensationSnapshot
+    };
+    const { db, calls } = createClockOutDb(existing);
+
+    const result = await recordAttendanceClockOut(db, {
+        staffId: 7,
+        recordDate: '2026-07-17',
+        now: '2026-07-17T17:00:00.000Z',
+        settlementMode: 'actual_time'
+    });
+
+    assert.equal(calls.some(call => call.text.includes('FROM hr_shifts hs')), false);
+    assert.equal(result.record.total_worked_minutes, 540);
+    assert.equal(result.record.compensation_snapshot.totals.physicalMinutes, 540);
+    assert.equal(result.record.compensation_snapshot.totals.baseMinutes, 540);
+    assert.equal(result.record.compensation_snapshot.totals.simultaneousAdditionalMinutes, 510);
+    assert.equal(
+        result.record.compensation_snapshot.compensationAllocations
+            .find(allocation => allocation.allocationType === 'simultaneous_additional').rate,
+        180
+    );
 });

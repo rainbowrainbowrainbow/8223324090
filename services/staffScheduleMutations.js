@@ -2,6 +2,7 @@ const { reconcileScheduledAnimatorLines } = require('./booking');
 const {
     saveHrShiftDayPlan,
     loadHrShiftDayPlan,
+    loadPaidRoleValidationContext,
     isHrShiftPlanError,
     hrShiftPlanErrorPayload
 } = require('./hrShiftSegments');
@@ -264,6 +265,12 @@ function normalizeScheduleAuditPlan(plan = null) {
             shiftEnd: segment.shiftEnd || null,
             breakMinutes: Number(segment.breakMinutes || 0),
             note: segment.note || null,
+            additionalRoles: (segment.additionalRoles || []).map(role => ({
+                professionKey: role.professionKey || null,
+                compensationMode: role.compensationMode || 'unpaid',
+                payMultiplier: role.payMultiplier ?? null,
+                policyVersion: role.policyVersion || null
+            })),
             additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])].sort()
         }))
     };
@@ -299,6 +306,9 @@ function schedulePlanAuditChanges(beforePlan, afterPlan) {
     addChange('segmentAdditionalRoles',
         (before.segments || []).map(segment => segment.additionalProfessionKeys || []),
         (after.segments || []).map(segment => segment.additionalProfessionKeys || []));
+    addChange('segmentAdditionalRoleCompensation',
+        (before.segments || []).map(segment => segment.additionalRoles || []),
+        (after.segments || []).map(segment => segment.additionalRoles || []));
     addChange('segmentBreaks',
         (before.segments || []).map(segment => Number(segment.breakMinutes || 0)),
         (after.segments || []).map(segment => Number(segment.breakMinutes || 0)));
@@ -477,16 +487,20 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
         }
     }
     try {
+        const actorMetadata = normalizeActorMetadata(actor);
         const saved = await saveHrShiftDayPlan(client, {
             staffId,
             shiftDate: date,
             status,
             payload: { ...entry, status }
         }, {
-            actor: normalizeActorMetadata(actor).username,
+            actor: actorMetadata.username,
+            ipAddress: actorMetadata.ipAddress,
+            auditSource: options.auditSource || 'staff_schedule',
             requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
             ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
-            professionCard: options.professionCard || null
+            professionCard: options.professionCard || null,
+            paidRoleValidationContext: options.paidRoleValidationContext
         });
         return { ok: true, shift: saved.shift || null, plan: saved.plan };
     } catch (error) {
@@ -523,7 +537,8 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         skipStaffValidation: true,
         requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
         ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
-        professionCard: options.professionCard || null
+        professionCard: options.professionCard || null,
+        paidRoleValidationContext: options.paidRoleValidationContext
     });
     if (hrSync?.ok === false) return hrSync;
     const previous = Object.prototype.hasOwnProperty.call(options, 'previousScheduleEntry')
@@ -578,6 +593,15 @@ async function mutateStaffScheduleBatch(client, entries = [], options = {}) {
     if (options.staffRowsLocked !== true) {
         await lockScheduleStaffRows(client, orderedEntries.map(entry => entry.staffId ?? entry.staff_id));
     }
+    const batchStaffIds = orderedEntries.map(entry => entry.staffId ?? entry.staff_id);
+    const hasPaidAdditionalRoles = orderedEntries.some(entry =>
+        (entry?.segments || []).some(segment =>
+            (segment.additionalRoles || segment.additional_roles || [])
+                .some(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly')));
+    const paidRoleValidationContext = options.paidRoleValidationContext
+        || (hasPaidAdditionalRoles
+            ? await loadPaidRoleValidationContext(client, batchStaffIds)
+            : undefined);
     const changes = [];
     for (const entry of orderedEntries) {
         const entryMetadata = typeof options.sourceMetadataForEntry === 'function'
@@ -595,7 +619,8 @@ async function mutateStaffScheduleBatch(client, entries = [], options = {}) {
             auditWithEnriched: options.auditWithEnriched === true,
             forUpdate: false,
             requireExpectedUpdatedAt: false,
-            ignoreExpectedUpdatedAt: true
+            ignoreExpectedUpdatedAt: true,
+            paidRoleValidationContext
         });
         if (!mutation.ok) {
             return {

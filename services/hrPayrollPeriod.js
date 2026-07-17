@@ -63,7 +63,12 @@ function buildPayrollSourceReconciliation(sourceDays = []) {
                 planned_minutes: Math.max(0, Number(source.plannedMinutes ?? source.planned_minutes ?? 0) || 0),
                 planned_hours: 0,
                 attendance_ref: source.attendanceRef ?? source.attendance_ref ?? null,
-                allocation_source: source.allocationSource || source.allocation_source || 'none'
+                allocation_source: source.allocationSource || source.allocation_source || 'none',
+                physical_minutes: 0,
+                base_profession_minutes: 0,
+                additional_profession_minutes: 0,
+                role_minutes: 0,
+                role_minutes_exceed_physical: false
             });
         }
         const target = byDate.get(date);
@@ -96,10 +101,32 @@ function buildPayrollSourceReconciliation(sourceDays = []) {
             target.planned_minutes,
             Math.max(0, Number(source.plannedMinutes ?? source.planned_minutes ?? 0) || 0)
         );
+        target.physical_minutes = Math.max(
+            target.physical_minutes,
+            Math.max(0, Number(source.physicalMinutes ?? source.physical_minutes
+                ?? source.actualMinutes ?? source.actual_minutes ?? 0) || 0)
+        );
+        target.base_profession_minutes = Math.max(
+            target.base_profession_minutes,
+            Math.max(0, Number(source.baseProfessionMinutes ?? source.base_profession_minutes
+                ?? source.actualMinutes ?? source.actual_minutes ?? 0) || 0)
+        );
+        target.additional_profession_minutes += Math.max(
+            0,
+            Number(source.additionalProfessionMinutes ?? source.additional_profession_minutes ?? 0) || 0
+        );
     }
     const days = [...byDate.values()]
         .sort((left, right) => left.date.localeCompare(right.date))
-        .map(day => ({ ...day, planned_hours: Math.round((day.planned_minutes / 60) * 100) / 100 }));
+        .map(day => {
+            const roleMinutes = day.base_profession_minutes + day.additional_profession_minutes;
+            return {
+                ...day,
+                planned_hours: Math.round((day.planned_minutes / 60) * 100) / 100,
+                role_minutes: roleMinutes,
+                role_minutes_exceed_physical: roleMinutes > day.physical_minutes
+            };
+        });
     return { days, warnings };
 }
 

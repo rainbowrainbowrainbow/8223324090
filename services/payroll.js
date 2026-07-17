@@ -7,6 +7,9 @@ const { normalizeProfessionKey } = require('./professions');
 const log = createLogger('Payroll');
 const OVERTIME_MULTIPLIER = 1.5;
 const WORKED_ATTENDANCE_STATUSES = new Set(['present', 'late', 'early_leave', 'auto_closed', 'unscheduled', 'clocked_in']);
+const SIMULTANEOUS_ADDITIONAL_LINE_TYPE = 'simultaneous_additional';
+const EXPLICIT_ADDITIONAL_RATE_SOURCES = new Set(['staff_profession_rates.hourly_rate']);
+const PAYROLL_ROLE_HOURS_EXPLANATION = 'Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу';
 
 const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
@@ -49,6 +52,10 @@ function isMissingTableError(err) {
     return err && err.code === '42P01';
 }
 
+function isMissingPayrollProfileSchemaError(err) {
+    return err && (err.code === '42P01' || err.code === '42703');
+}
+
 function toNumber(value, fallback = 0) {
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -63,6 +70,15 @@ function normalizeStaffRateUnit(value) {
 
 function roundMoney(value) {
     return Math.round(toNumber(value, 0));
+}
+
+function roundHoursFromMinutes(value) {
+    return Math.round((Math.max(0, toNumber(value, 0)) / 60) * 100) / 100;
+}
+
+function nullableNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
 }
 
 function parseConfig(value) {
@@ -325,7 +341,7 @@ function buildEntryLines(entries) {
 
 function calcPayrollPreview(lines) {
     const gross = lines
-        .filter(item => ['base', 'overtime', 'bonus', 'percent', 'manual'].includes(item.group))
+        .filter(item => ['base', 'additional', 'overtime', 'bonus', 'percent', 'manual'].includes(item.group))
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const base = lines
         .filter(item => item.group === 'base')
@@ -335,6 +351,9 @@ function calcPayrollPreview(lines) {
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const overtime = lines
         .filter(item => item.group === 'overtime')
+        .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
+    const additional = lines
+        .filter(item => item.group === 'additional')
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const percent = lines
         .filter(item => item.group === 'percent')
@@ -351,6 +370,7 @@ function calcPayrollPreview(lines) {
 
     return {
         base: roundMoney(base),
+        additional: roundMoney(additional),
         overtime: roundMoney(overtime),
         bonuses: roundMoney(bonuses),
         percent: roundMoney(percent),
@@ -365,7 +385,11 @@ function calcPayrollPreview(lines) {
 function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
     const baseLines = professionPay?.applies
-        ? [...professionPay.baseLines, ...professionPay.overtimeLines]
+        ? [
+            ...professionPay.baseLines,
+            ...(professionPay.additionalLines || []),
+            ...professionPay.overtimeLines
+        ]
         : buildSchemeLines(staff, activeScheme, metrics);
     const lines = [
         ...baseLines,
@@ -442,6 +466,7 @@ async function fetchStaffList(month) {
 function payrollMetricBucket(staffId) {
     return {
         staffId: Number(staffId),
+        physicalMinutes: 0,
         totalMinutes: 0,
         allocatedMinutes: 0,
         plannedMinutes: 0,
@@ -450,12 +475,72 @@ function payrollMetricBucket(staffId) {
         hoursWorked: 0,
         overtimeHours: 0,
         professionAllocations: [],
+        baseProfessionAllocations: [],
+        additionalProfessionAllocations: [],
+        compensationMinutes: 0,
+        roleMinutes: 0,
         overtimeAllocations: [],
         primaryDays: [],
         attendanceDays: [],
         breakPolicies: [],
         allocationIssues: [],
+        payrollBlockingIssues: [],
         reconciliation: { days: [], warnings: [] }
+    };
+}
+
+function payrollIssue(code, message, details = {}, severity = 'warning') {
+    return { code, message, severity, ...details };
+}
+
+function explicitAdditionalRateSource(value) {
+    const source = String(value || '').trim();
+    return EXPLICIT_ADDITIONAL_RATE_SOURCES.has(source) || source.startsWith('payroll_profile.');
+}
+
+function resolveSimultaneousAdditionalRate(allocation = {}) {
+    const professionKey = normalizeProfessionKey(allocation.professionKey || allocation.profession_key);
+    const rate = Number(allocation.rate);
+    const rateUnit = String(allocation.rateUnit || allocation.rate_unit || '').trim().toLowerCase();
+    const rateSource = String(allocation.rateSource || allocation.rate_source || '').trim();
+    const multiplier = Number(allocation.payMultiplier ?? allocation.pay_multiplier);
+    const policyVersion = String(allocation.policyVersion || allocation.policy_version || '').trim();
+    const compensationMode = String(
+        allocation.compensationMode || allocation.compensation_mode || ''
+    ).trim();
+    const invalidFields = [];
+    if (!professionKey) invalidFields.push('professionKey');
+    if (compensationMode !== 'paid_hourly') invalidFields.push('compensationMode');
+    if (!Number.isFinite(rate) || rate <= 0) invalidFields.push('rate');
+    if (rateUnit !== 'hour') invalidFields.push('rateUnit');
+    if (!explicitAdditionalRateSource(rateSource)) invalidFields.push('rateSource');
+    if (!Number.isFinite(multiplier) || multiplier <= 0) invalidFields.push('payMultiplier');
+    if (!policyVersion) invalidFields.push('policyVersion');
+    if (invalidFields.length) {
+        return {
+            ok: false,
+            issue: payrollIssue(
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SNAPSHOT_INVALID',
+                'Paid simultaneous role has no complete immutable rate snapshot',
+                {
+                    professionKey: professionKey || null,
+                    attendanceRef: allocation.attendanceRef ?? allocation.attendance_ref ?? null,
+                    segmentRef: allocation.segmentRef ?? allocation.segment_ref
+                        ?? allocation.segmentId ?? allocation.segment_id ?? null,
+                    invalidFields
+                },
+                'error'
+            )
+        };
+    }
+    return {
+        ok: true,
+        professionKey,
+        rate,
+        rateUnit: 'hour',
+        rateSource,
+        multiplier,
+        policyVersion
     };
 }
 
@@ -519,6 +604,13 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const segmentAllocations = Array.isArray(row.segment_allocations)
             ? row.segment_allocations
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
+        const rawCompensationSnapshot = row.compensation_snapshot || row.compensationSnapshot || null;
+        const compensationSnapshot = rawCompensationSnapshot ? parseConfig(rawCompensationSnapshot) : null;
+        const compensationAllocations = Array.isArray(compensationSnapshot?.compensationAllocations)
+            ? compensationSnapshot.compensationAllocations
+            : (Array.isArray(compensationSnapshot?.compensation_allocations)
+                ? compensationSnapshot.compensation_allocations
+                : []);
         const actualMinutes = Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes ?? row.total_worked_minutes, 0));
         const allocatedMinutes = Math.max(0, toNumber(row.allocatedMinutes ?? row.allocated_minutes, 0));
         const overtimeMinutes = attendanceFactMinutes(row).overtimeMinutes;
@@ -527,6 +619,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
         if (worked && date) workedDates.get(staffId).add(date);
 
+        bucket.physicalMinutes += actualMinutes;
         bucket.totalMinutes += actualMinutes;
         bucket.allocatedMinutes += allocatedMinutes;
         bucket.overtimeMinutes += overtimeMinutes;
@@ -540,6 +633,74 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             const entry = professionMap.get(professionKey);
             entry.minutes += minutes;
             entry.sources.add(source);
+        }
+
+        const attendanceRef = row.attendance_ref || row.id || null;
+        const additionalAllocations = compensationAllocations.filter(allocation => (
+            allocation.allocationType || allocation.allocation_type
+        ) === SIMULTANEOUS_ADDITIONAL_LINE_TYPE);
+        const additionalProfessionMinutes = additionalAllocations.reduce(
+            (sum, allocation) => sum + Math.max(
+                0,
+                toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0)
+            ),
+            0
+        );
+        const snapshotAdditionalMinutes = Math.max(
+            0,
+            toNumber(
+                compensationSnapshot?.totals?.simultaneousAdditionalMinutes
+                ?? compensationSnapshot?.totals?.simultaneous_additional_minutes,
+                0
+            )
+        );
+        if (snapshotAdditionalMinutes > 0 && additionalAllocations.length === 0) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_ALLOCATIONS_MISSING',
+                'Compensation snapshot totals contain additional minutes without allocation details',
+                { date, attendanceRef, snapshotAdditionalMinutes },
+                'error'
+            ));
+        }
+        if (compensationSnapshot && row.clock_out
+            && !['final', 'legacy_base_only'].includes(String(compensationSnapshot.state || ''))) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_COMPENSATION_SNAPSHOT_NOT_FINAL',
+                'Closed attendance has no final compensation snapshot',
+                { date, attendanceRef, snapshotState: compensationSnapshot.state || null },
+                'error'
+            ));
+        }
+        if (compensationSnapshot?.manualReview === true
+            || compensationSnapshot?.manual_review === true) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_COMPENSATION_SNAPSHOT_MANUAL_REVIEW',
+                'Attendance compensation snapshot requires manual review',
+                { date, attendanceRef },
+                'error'
+            ));
+        }
+        for (const allocation of additionalAllocations) {
+            bucket.additionalProfessionAllocations.push({
+                allocationType: SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+                professionKey: normalizeProfessionKey(allocation.professionKey || allocation.profession_key),
+                minutes: Math.max(0, toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0)),
+                plannedMinutes: Math.max(0, toNumber(allocation.plannedMinutes ?? allocation.planned_minutes, 0)),
+                compensationMode: allocation.compensationMode || allocation.compensation_mode || null,
+                payMultiplier: allocation.payMultiplier ?? allocation.pay_multiplier ?? null,
+                rate: allocation.rate ?? null,
+                rateUnit: allocation.rateUnit || allocation.rate_unit || null,
+                rateSource: allocation.rateSource || allocation.rate_source || null,
+                policyVersion: allocation.policyVersion || allocation.policy_version || null,
+                attendanceRef,
+                date,
+                segmentRef: allocation.segmentId ?? allocation.segment_id ?? null,
+                segmentIndex: allocation.segmentIndex ?? allocation.segment_index ?? null,
+                roleRef: allocation.roleId ?? allocation.role_id ?? null,
+                snapshotVersion: compensationSnapshot?.schemaVersion
+                    ?? compensationSnapshot?.schema_version
+                    ?? null
+            });
         }
 
         const overtimeAllocation = row.overtime_allocation || row.overtimeAllocation || null;
@@ -574,11 +735,14 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         }
         bucket.attendanceDays.push({
             date,
-            attendanceRef: row.attendance_ref || row.id || null,
+            attendanceRef,
             plannedShiftRef: row.planned_shift_ref || null,
             segmentRefs: segmentAllocations.map(allocation => allocation.segmentId ?? allocation.segment_id)
                 .filter(ref => ref !== null && ref !== undefined),
             plannedMinutes,
+            physicalMinutes: actualMinutes,
+            baseProfessionMinutes: actualMinutes,
+            additionalProfessionMinutes,
             actualMinutes,
             overtimeMinutes,
             allocationSource: source,
@@ -599,6 +763,18 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
                 allocationSources: [...value.sources].sort()
             }))
             .sort((left, right) => left.professionKey.localeCompare(right.professionKey));
+        bucket.baseProfessionAllocations = bucket.professionAllocations.map(allocation => ({ ...allocation }));
+        bucket.additionalProfessionAllocations.sort((left, right) => (
+            String(left.date || '').localeCompare(String(right.date || ''))
+            || String(left.professionKey || '').localeCompare(String(right.professionKey || ''))
+            || Number(left.segmentIndex || 0) - Number(right.segmentIndex || 0)
+        ));
+        const additionalMinutes = bucket.additionalProfessionAllocations.reduce(
+            (sum, allocation) => sum + Math.max(0, toNumber(allocation.minutes, 0)),
+            0
+        );
+        bucket.compensationMinutes = bucket.physicalMinutes + additionalMinutes;
+        bucket.roleMinutes = bucket.compensationMinutes;
         bucket.overtimeAllocations = [...overtimeMaps.get(staffId).entries()]
             .map(([professionKey, value]) => ({
                 professionKey: professionKey || null,
@@ -610,8 +786,10 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             .sort((left, right) => left.date.localeCompare(right.date));
         bucket.breakPolicies = [...new Set(bucket.attendanceDays.map(day => day.breakPolicy).filter(Boolean))].sort();
         bucket.allocationIssues = compactAllocationIssues(bucket.allocationIssues);
+        bucket.payrollBlockingIssues = compactAllocationIssues(bucket.payrollBlockingIssues);
         bucket.reconciliation = buildPayrollSourceReconciliation(bucket.attendanceDays);
         bucket.reconciliation.warnings.push(...bucket.allocationIssues);
+        bucket.reconciliation.blockingIssues = [...bucket.payrollBlockingIssues];
     }
     return buckets;
 }
@@ -629,6 +807,229 @@ async function loadProfessionRateMap(staffIds = [], db = pool) {
         `${Number(row.staff_id)}:${normalizeProfessionKey(row.profession_key)}`,
         toNumber(row.hourly_rate, 0)
     ]));
+}
+
+function emptyPayrollProfileContext(range = {}, enabled = true) {
+    return {
+        enabled,
+        from: normalizeDateValue(range.from) || null,
+        to: normalizeDateValue(range.to) || null,
+        profilesById: new Map(),
+        assignmentsByStaffProfession: new Map(),
+        defaultProfilesByProfession: new Map(),
+        warnings: []
+    };
+}
+
+function normalizePayrollProfileRange(period) {
+    if (typeof period === 'string') {
+        return getMonthBounds(assertPayrollMonth(normalizePayrollMonth(period)));
+    }
+    const from = normalizeDateValue(period?.from);
+    const to = normalizeDateValue(period?.to);
+    if (from && to) return { from, to };
+    if (period?.month) return getMonthBounds(assertPayrollMonth(normalizePayrollMonth(period.month)));
+    return getMonthBounds(normalizePayrollMonth());
+}
+
+function mapPayrollProfileFromRow(row) {
+    if (!row) return null;
+    const id = nullableNumber(row.profile_id ?? row.id);
+    if (!id) return null;
+    return {
+        id,
+        title: row.profile_title || row.title || '',
+        professionKey: normalizeProfessionKey(row.profile_profession_key || row.profession_key),
+        profileKind: row.profile_kind || 'shared',
+        ownerStaffId: nullableNumber(row.owner_staff_id),
+        isDefaultForProfession: row.is_default_for_profession === true,
+        sourceProfileId: nullableNumber(row.source_profile_id),
+        sourceVersionId: nullableNumber(row.source_version_id),
+        status: row.profile_status || row.status || 'draft',
+        versions: []
+    };
+}
+
+function mapPayrollProfileVersion(row, dayRateMap = new Map()) {
+    const id = nullableNumber(row.id ?? row.version_id);
+    const profileId = nullableNumber(row.profile_id);
+    const dayRates = dayRateMap.get(id) || new Map();
+    return {
+        id,
+        profileId,
+        versionNumber: Number(row.version_number || 0),
+        rateUnit: normalizeStaffRateUnit(row.rate_unit),
+        defaultRate: toNumber(row.default_rate, 0),
+        effectiveFrom: normalizeDateValue(row.effective_from),
+        effectiveTo: normalizeDateValue(row.effective_to),
+        changeReason: row.change_reason || null,
+        dayRates,
+        day_rates: [...dayRates.entries()]
+            .map(([isoWeekday, rate]) => ({ iso_weekday: isoWeekday, isoWeekday, rate }))
+            .sort((left, right) => left.iso_weekday - right.iso_weekday)
+    };
+}
+
+function mapPayrollProfileAssignment(row, profile) {
+    return {
+        id: nullableNumber(row.assignment_id ?? row.id),
+        staffId: Number(row.staff_id),
+        professionKey: normalizeProfessionKey(row.assignment_profession_key || row.profession_key),
+        profileId: nullableNumber(row.profile_id),
+        assignmentKind: row.assignment_kind || 'explicit',
+        effectiveFrom: normalizeDateValue(row.effective_from),
+        effectiveTo: normalizeDateValue(row.effective_to),
+        profile
+    };
+}
+
+function payrollProfileContextEnabled(context) {
+    return context && context.enabled === true;
+}
+
+function addPayrollProfileToContext(context, row) {
+    const profile = mapPayrollProfileFromRow(row);
+    if (!profile) return null;
+    const existing = context.profilesById.get(profile.id);
+    if (existing) return existing;
+    context.profilesById.set(profile.id, profile);
+    return profile;
+}
+
+async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) {
+    const ids = [...new Set((staffIds || []).map(Number).filter(Number.isInteger))];
+    const range = normalizePayrollProfileRange(period);
+    const context = emptyPayrollProfileContext(range, true);
+    if (!ids.length) return context;
+
+    try {
+        const [assignmentResult, defaultResult] = await Promise.all([
+            db.query(
+                `SELECT assignment.id AS assignment_id,
+                        assignment.staff_id,
+                        assignment.profession_key AS assignment_profession_key,
+                        assignment.profile_id,
+                        assignment.assignment_kind,
+                        assignment.effective_from,
+                        assignment.effective_to,
+                        profile.id AS profile_id,
+                        profile.title AS profile_title,
+                        profile.profession_key AS profile_profession_key,
+                        profile.profile_kind,
+                        profile.owner_staff_id,
+                        profile.is_default_for_profession,
+                        profile.source_profile_id,
+                        profile.source_version_id,
+                        profile.status AS profile_status
+                 FROM staff_payroll_profile_assignments assignment
+                 JOIN payroll_profiles profile ON profile.id = assignment.profile_id
+                 WHERE assignment.staff_id = ANY($1::int[])
+                   AND profile.status = 'active'
+                   AND assignment.effective_from <= $3::date
+                   AND (assignment.effective_to IS NULL OR assignment.effective_to >= $2::date)
+                 ORDER BY assignment.staff_id,
+                          assignment.profession_key,
+                          assignment.assignment_kind DESC,
+                          assignment.effective_from DESC,
+                          assignment.id DESC`,
+                [ids, range.from, range.to]
+            ),
+            db.query(
+                `SELECT profile.id AS profile_id,
+                        profile.title AS profile_title,
+                        profile.profession_key AS profile_profession_key,
+                        profile.profile_kind,
+                        profile.owner_staff_id,
+                        profile.is_default_for_profession,
+                        profile.source_profile_id,
+                        profile.source_version_id,
+                        profile.status AS profile_status
+                 FROM payroll_profiles profile
+                 WHERE profile.status = 'active'
+                   AND profile.profile_kind = 'shared'
+                   AND profile.is_default_for_profession = true
+                 ORDER BY profile.profession_key, profile.updated_at DESC, profile.id DESC`
+            )
+        ]);
+
+        for (const row of assignmentResult.rows || []) {
+            const profile = addPayrollProfileToContext(context, row);
+            if (!profile) continue;
+            const assignment = mapPayrollProfileAssignment(row, profile);
+            const key = `${assignment.staffId}:${assignment.professionKey}`;
+            if (!context.assignmentsByStaffProfession.has(key)) {
+                context.assignmentsByStaffProfession.set(key, []);
+            }
+            context.assignmentsByStaffProfession.get(key).push(assignment);
+        }
+
+        for (const row of defaultResult.rows || []) {
+            const profile = addPayrollProfileToContext(context, row);
+            if (profile && !context.defaultProfilesByProfession.has(profile.professionKey)) {
+                context.defaultProfilesByProfession.set(profile.professionKey, profile);
+            }
+        }
+
+        const profileIds = [...context.profilesById.keys()];
+        if (!profileIds.length) return context;
+
+        const versionResult = await db.query(
+            `SELECT id,
+                    profile_id,
+                    version_number,
+                    rate_unit,
+                    default_rate,
+                    effective_from,
+                    effective_to,
+                    change_reason
+             FROM payroll_profile_versions
+             WHERE profile_id = ANY($1::bigint[])
+               AND effective_from <= $3::date
+               AND (effective_to IS NULL OR effective_to >= $2::date)
+             ORDER BY profile_id, effective_from ASC, version_number ASC, id ASC`,
+            [profileIds, range.from, range.to]
+        );
+        const versionIds = (versionResult.rows || []).map(row => Number(row.id)).filter(Number.isInteger);
+        const dayRateMap = new Map();
+        if (versionIds.length) {
+            const dayRateResult = await db.query(
+                `SELECT profile_version_id, iso_weekday, rate
+                 FROM payroll_profile_day_rates
+                 WHERE profile_version_id = ANY($1::bigint[])
+                 ORDER BY profile_version_id, iso_weekday`,
+                [versionIds]
+            );
+            for (const row of dayRateResult.rows || []) {
+                const versionId = Number(row.profile_version_id);
+                if (!dayRateMap.has(versionId)) dayRateMap.set(versionId, new Map());
+                dayRateMap.get(versionId).set(Number(row.iso_weekday), toNumber(row.rate, 0));
+            }
+        }
+        for (const row of versionResult.rows || []) {
+            const version = mapPayrollProfileVersion(row, dayRateMap);
+            const profile = context.profilesById.get(version.profileId);
+            if (profile) profile.versions.push(version);
+        }
+        for (const profile of context.profilesById.values()) {
+            profile.versions.sort((left, right) => (
+                String(left.effectiveFrom || '').localeCompare(String(right.effectiveFrom || ''))
+                || left.versionNumber - right.versionNumber
+                || left.id - right.id
+            ));
+        }
+        return context;
+    } catch (err) {
+        if (!isMissingPayrollProfileSchemaError(err)) {
+            log.warn('payroll profile context query failed:', err.message);
+        }
+        return {
+            ...emptyPayrollProfileContext(range, false),
+            warnings: [{
+                code: 'PAYROLL_PROFILE_CONTEXT_UNAVAILABLE',
+                message: err.message
+            }]
+        };
+    }
 }
 
 function schemeRateFallback(scheme, rateUnit) {
@@ -671,8 +1072,195 @@ function resolveProfessionPayRate(staff, professionKey, scheme, professionRateMa
     };
 }
 
-function professionSummaryRow({ professionKey, minutes, days = 0, rate, amount, rateUnit, sources, rateSource, kind = 'base' }) {
+function isDateWithinRange(date, from, to) {
+    const value = normalizeDateValue(date);
+    if (!value) return false;
+    return (!from || value >= from) && (!to || value <= to);
+}
+
+function isoWeekdayForDate(date) {
+    const value = normalizeDateValue(date);
+    if (!value) return null;
+    const weekday = new Date(`${value}T00:00:00.000Z`).getUTCDay();
+    return weekday === 0 ? 7 : weekday;
+}
+
+function payrollProfileVersionForDate(profile, workDate) {
+    const date = normalizeDateValue(workDate);
+    if (!profile || !date) return null;
+    return [...(profile.versions || [])]
+        .filter(version => isDateWithinRange(date, version.effectiveFrom, version.effectiveTo))
+        .sort((left, right) => (
+            String(right.effectiveFrom || '').localeCompare(String(left.effectiveFrom || ''))
+            || right.versionNumber - left.versionNumber
+            || right.id - left.id
+        ))[0] || null;
+}
+
+function activePayrollProfileAssignments(context, staffId, professionKey, workDate, assignmentKind) {
+    const date = normalizeDateValue(workDate);
+    const key = `${Number(staffId)}:${normalizeProfessionKey(professionKey)}`;
+    const assignments = context?.assignmentsByStaffProfession?.get(key) || [];
+    return assignments
+        .filter(assignment => assignment.assignmentKind === assignmentKind)
+        .filter(assignment => isDateWithinRange(date, assignment.effectiveFrom, assignment.effectiveTo))
+        .sort((left, right) => (
+            String(right.effectiveFrom || '').localeCompare(String(left.effectiveFrom || ''))
+            || Number(right.id || 0) - Number(left.id || 0)
+        ));
+}
+
+function payrollProfileRateSource(sourceOrder, appliedRule) {
+    const base = {
+        temporary_assignment: 'payroll_profile.assignment.temporary',
+        explicit_assignment: 'payroll_profile.assignment.explicit',
+        default_profile: 'payroll_profile.default'
+    }[sourceOrder] || 'payroll_profile';
+    return appliedRule === 'weekday_override' ? `${base}.day_rate` : `${base}.default_rate`;
+}
+
+function profileResolution(profile, version, workDate, sourceOrder, assignment = null, warnings = []) {
+    const isoWeekday = isoWeekdayForDate(workDate);
+    const hasDayOverride = version.rateUnit !== 'month'
+        && isoWeekday
+        && version.dayRates instanceof Map
+        && version.dayRates.has(isoWeekday);
+    const appliedRule = hasDayOverride ? 'weekday_override' : 'default_rate';
+    const rate = hasDayOverride ? version.dayRates.get(isoWeekday) : version.defaultRate;
+    return {
+        applies: true,
+        rate: toNumber(rate, 0),
+        source: payrollProfileRateSource(sourceOrder, appliedRule),
+        rateSource: payrollProfileRateSource(sourceOrder, appliedRule),
+        sourceOrder,
+        rateUnit: version.rateUnit,
+        professionKey: profile.professionKey,
+        workDate: normalizeDateValue(workDate),
+        isoWeekday,
+        appliedRule,
+        profileId: profile.id,
+        profileVersionId: version.id,
+        profileTitle: profile.title,
+        profileKind: profile.profileKind,
+        sourceProfileId: profile.sourceProfileId,
+        sourceVersionId: profile.sourceVersionId,
+        assignmentId: assignment?.id || null,
+        assignmentKind: assignment?.assignmentKind || null,
+        warnings
+    };
+}
+
+function legacySourceOrder(source) {
+    if (source === 'staff_profession_rates.hourly_rate') return 'legacy_staff_profession_rates';
+    if (source === 'payroll_scheme') return 'legacy_payroll_schemes';
+    if (source === 'staff.hourly_rate') return 'legacy_staff_hourly_rate';
+    return 'unresolved';
+}
+
+function unresolvedRateWarning(staff, professionKey, workDate, rateUnit) {
+    return {
+        code: 'PAYROLL_RATE_UNRESOLVED',
+        staffId: Number(staff?.id ?? staff?.staff_id) || null,
+        professionKey: normalizeProfessionKey(professionKey || staff?.roleType || staff?.role_type) || null,
+        date: normalizeDateValue(workDate),
+        rateUnit: normalizeStaffRateUnit(rateUnit),
+        message: 'Payroll base rate is unresolved for staff/profession/date'
+    };
+}
+
+function resolveEffectivePayrollProfile(staff, profession, workDate, options = {}) {
+    const context = options.payrollProfileContext || options.profileContext || null;
+    const staffId = Number(staff?.id ?? staff?.staff_id);
+    const professionKey = normalizeProfessionKey(profession || staff?.roleType || staff?.role_type);
+    const date = normalizeDateValue(workDate) || context?.from || null;
+    const warnings = [];
+
+    if (payrollProfileContextEnabled(context) && staffId && professionKey && date) {
+        const orderedProfileSources = [
+            ...activePayrollProfileAssignments(context, staffId, professionKey, date, 'temporary')
+                .map(assignment => ({ sourceOrder: 'temporary_assignment', assignment, profile: assignment.profile })),
+            ...activePayrollProfileAssignments(context, staffId, professionKey, date, 'explicit')
+                .map(assignment => ({ sourceOrder: 'explicit_assignment', assignment, profile: assignment.profile })),
+            {
+                sourceOrder: 'default_profile',
+                assignment: null,
+                profile: context.defaultProfilesByProfession?.get(professionKey) || null
+            }
+        ];
+
+        for (const candidate of orderedProfileSources) {
+            if (!candidate.profile || candidate.profile.status !== 'active') continue;
+            const version = payrollProfileVersionForDate(candidate.profile, date);
+            if (!version) {
+                warnings.push({
+                    code: 'PAYROLL_PROFILE_VERSION_UNRESOLVED',
+                    staffId,
+                    professionKey,
+                    profileId: candidate.profile.id,
+                    date,
+                    sourceOrder: candidate.sourceOrder,
+                    message: 'Payroll profile has no active version for this date'
+                });
+                continue;
+            }
+            return profileResolution(candidate.profile, version, date, candidate.sourceOrder, candidate.assignment, warnings);
+        }
+    }
+
+    const legacyRateUnit = normalizeStaffRateUnit(options.preferredRateUnit || options.rateUnit || staff?.rateUnit || staff?.rate_unit);
+    const legacy = resolveProfessionPayRate(
+        staff || {},
+        professionKey,
+        options.scheme || null,
+        options.professionRateMap || new Map(),
+        legacyRateUnit
+    );
+    const sourceOrder = legacySourceOrder(legacy.source);
+    if (sourceOrder === 'unresolved' || toNumber(legacy.rate, 0) <= 0) {
+        warnings.push(unresolvedRateWarning(staff, professionKey, date, legacy.rateUnit));
+    }
+    return {
+        applies: false,
+        rate: legacy.rate,
+        source: legacy.source,
+        rateSource: legacy.source,
+        sourceOrder,
+        rateUnit: legacy.rateUnit,
+        professionKey,
+        workDate: date,
+        isoWeekday: isoWeekdayForDate(date),
+        appliedRule: sourceOrder === 'unresolved' ? 'unresolved' : 'legacy_rate',
+        profileId: null,
+        profileVersionId: null,
+        profileTitle: null,
+        profileKind: null,
+        sourceProfileId: null,
+        sourceVersionId: null,
+        assignmentId: null,
+        assignmentKind: null,
+        warnings
+    };
+}
+
+function professionSummaryRow({
+    professionKey,
+    minutes,
+    days = 0,
+    rate,
+    amount,
+    rateUnit,
+    sources,
+    rateSource,
+    kind = 'base',
+    resolution = null,
+    workDate = null,
+    appliedRule = null,
+    formula = null
+}) {
     const allocationSources = [...new Set((sources || []).filter(Boolean))].sort();
+    const profileId = nullableNumber(resolution?.profileId);
+    const profileVersionId = nullableNumber(resolution?.profileVersionId);
+    const normalizedWorkDate = normalizeDateValue(workDate || resolution?.workDate);
     return {
         profession: professionKey || null,
         profession_key: professionKey || null,
@@ -687,14 +1275,765 @@ function professionSummaryRow({ professionKey, minutes, days = 0, rate, amount, 
         allocation_source: allocationSources.length === 1 ? allocationSources[0] : allocationSources.join(','),
         allocation_sources: allocationSources,
         rate_source: rateSource,
+        rate_source_order: resolution?.sourceOrder || null,
+        profile_id: profileId,
+        profileId,
+        profile_version_id: profileVersionId,
+        profileVersionId,
+        profile_title: resolution?.profileTitle || null,
+        profileTitle: resolution?.profileTitle || null,
+        profile_kind: resolution?.profileKind || null,
+        assignment_id: nullableNumber(resolution?.assignmentId),
+        assignment_kind: resolution?.assignmentKind || null,
+        work_date: normalizedWorkDate,
+        workDate: normalizedWorkDate,
+        iso_weekday: resolution?.isoWeekday || isoWeekdayForDate(normalizedWorkDate),
+        applied_rule: appliedRule || resolution?.appliedRule || null,
+        formula: formula || null,
         kind
     };
 }
 
-function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(staff?.id), professionRateMap = new Map()) {
+function firstPositiveSegmentProfession(segmentAllocations = []) {
+    return normalizeProfessionKey(
+        segmentAllocations.find(allocation => toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0) > 0)?.professionKey
+        || segmentAllocations.find(allocation => toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0) > 0)?.profession_key
+        || segmentAllocations[0]?.professionKey
+        || segmentAllocations[0]?.profession_key
+    );
+}
+
+function addDailyAllocation(map, { date, professionKey, minutes, source }) {
+    const normalizedDate = normalizeDateValue(date);
+    const normalizedProfession = normalizeProfessionKey(professionKey);
+    const actualMinutes = Math.max(0, toNumber(minutes, 0));
+    if (!normalizedDate || !normalizedProfession || actualMinutes <= 0) return;
+    const key = `${normalizedDate}:${normalizedProfession}`;
+    if (!map.has(key)) {
+        map.set(key, {
+            date: normalizedDate,
+            professionKey: normalizedProfession,
+            minutes: 0,
+            allocationSources: new Set()
+        });
+    }
+    const entry = map.get(key);
+    entry.minutes += actualMinutes;
+    if (source) entry.allocationSources.add(source);
+}
+
+function buildDailyProfessionAllocations(metrics, fallbackProfessionKey) {
+    const map = new Map();
+    for (const day of metrics.attendanceDays || []) {
+        const date = normalizeDateValue(day.date);
+        const source = day.allocationSource || day.allocation_source || 'attendance_day';
+        const segmentAllocations = Array.isArray(day.segmentAllocations)
+            ? day.segmentAllocations
+            : (Array.isArray(day.segment_allocations) ? day.segment_allocations : []);
+        let segmentMinutes = 0;
+        for (const allocation of segmentAllocations) {
+            const minutes = Math.max(0, toNumber(allocation.actualMinutes ?? allocation.actual_minutes, 0));
+            segmentMinutes += minutes;
+            addDailyAllocation(map, {
+                date,
+                professionKey: allocation.professionKey || allocation.profession_key,
+                minutes,
+                source
+            });
+        }
+        if (segmentMinutes <= 0) {
+            addDailyAllocation(map, {
+                date,
+                professionKey: day.primaryProfessionKey || day.primary_profession_key || fallbackProfessionKey,
+                minutes: day.actualMinutes ?? day.actual_minutes ?? day.allocatedMinutes ?? day.allocated_minutes,
+                source
+            });
+        }
+    }
+    if (!map.size) {
+        const fallbackDate = normalizeDateValue(metrics.primaryDays?.[0]?.date || metrics.attendanceDays?.[0]?.date);
+        for (const allocation of metrics.professionAllocations || []) {
+            addDailyAllocation(map, {
+                date: fallbackDate,
+                professionKey: allocation.professionKey || fallbackProfessionKey,
+                minutes: allocation.minutes,
+                source: (allocation.allocationSources || [])[0] || 'legacy_profession_allocation'
+            });
+        }
+    }
+    return [...map.values()]
+        .map(entry => ({
+            ...entry,
+            allocationSources: [...entry.allocationSources].sort()
+        }))
+        .sort((left, right) => (
+            left.date.localeCompare(right.date)
+            || left.professionKey.localeCompare(right.professionKey)
+        ));
+}
+
+function buildPrimaryDayEntries(metrics, fallbackProfessionKey, dailyAllocations = []) {
+    const map = new Map();
+    for (const day of metrics.primaryDays || []) {
+        const date = normalizeDateValue(day.date);
+        if (!date || map.has(date)) continue;
+        map.set(date, {
+            date,
+            professionKey: normalizeProfessionKey(day.professionKey || fallbackProfessionKey),
+            allocationSources: new Set(['primary_day'])
+        });
+    }
+    for (const day of metrics.attendanceDays || []) {
+        const date = normalizeDateValue(day.date);
+        if (!date || map.has(date)) continue;
+        const segmentAllocations = Array.isArray(day.segmentAllocations)
+            ? day.segmentAllocations
+            : (Array.isArray(day.segment_allocations) ? day.segment_allocations : []);
+        const professionKey = normalizeProfessionKey(
+            day.primaryProfessionKey
+            || day.primary_profession_key
+            || firstPositiveSegmentProfession(segmentAllocations)
+            || fallbackProfessionKey
+        );
+        map.set(date, {
+            date,
+            professionKey,
+            allocationSources: new Set([day.allocationSource || day.allocation_source || 'attendance_day'])
+        });
+    }
+    if (!map.size && metrics.daysWorked > 0) {
+        const dates = (metrics.attendanceDays || []).map(day => normalizeDateValue(day.date)).filter(Boolean);
+        if (dates.length) {
+            for (const date of [...new Set(dates)].sort()) {
+                map.set(date, {
+                    date,
+                    professionKey: fallbackProfessionKey,
+                    allocationSources: new Set(['legacy_day_count'])
+                });
+            }
+        } else {
+            map.set('', {
+                date: null,
+                professionKey: fallbackProfessionKey,
+                allocationSources: new Set(['legacy_day_count']),
+                days: metrics.daysWorked
+            });
+        }
+    }
+    for (const allocation of dailyAllocations) {
+        if (!map.has(allocation.date)) continue;
+        for (const source of allocation.allocationSources || []) {
+            map.get(allocation.date).allocationSources.add(source);
+        }
+    }
+    return [...map.values()]
+        .map(entry => ({
+            ...entry,
+            allocationSources: [...entry.allocationSources].filter(Boolean).sort(),
+            days: Number(entry.days || 1)
+        }))
+        .sort((left, right) => String(left.date || '').localeCompare(String(right.date || '')));
+}
+
+function buildDailyOvertimeEntries(metrics, fallbackProfessionKey) {
+    const map = new Map();
+    for (const day of metrics.attendanceDays || []) {
+        const date = normalizeDateValue(day.date);
+        const overtimeMinutes = Math.max(0, toNumber(day.overtimeMinutes ?? day.overtime_minutes, 0));
+        if (!date || overtimeMinutes <= 0) continue;
+        const segmentAllocations = Array.isArray(day.segmentAllocations)
+            ? day.segmentAllocations
+            : (Array.isArray(day.segment_allocations) ? day.segment_allocations : []);
+        const professionKey = normalizeProfessionKey(
+            day.primaryProfessionKey
+            || day.primary_profession_key
+            || firstPositiveSegmentProfession(segmentAllocations)
+            || fallbackProfessionKey
+        );
+        const key = `${date}:${professionKey}`;
+        if (!map.has(key)) {
+            map.set(key, {
+                date,
+                professionKey,
+                minutes: 0,
+                allocationSources: new Set()
+            });
+        }
+        const entry = map.get(key);
+        entry.minutes += overtimeMinutes;
+        entry.allocationSources.add(day.allocationSource || day.allocation_source || 'attendance_day');
+    }
+    if (!map.size) {
+        const fallbackDate = normalizeDateValue(metrics.primaryDays?.[0]?.date || metrics.attendanceDays?.[0]?.date);
+        for (const allocation of metrics.overtimeAllocations || []) {
+            const professionKey = normalizeProfessionKey(allocation.professionKey || fallbackProfessionKey);
+            const key = `${fallbackDate || ''}:${professionKey}`;
+            if (!map.has(key)) {
+                map.set(key, {
+                    date: fallbackDate,
+                    professionKey,
+                    minutes: 0,
+                    allocationSources: new Set()
+                });
+            }
+            const entry = map.get(key);
+            entry.minutes += Math.max(0, toNumber(allocation.minutes, 0));
+            for (const source of allocation.allocationSources || []) entry.allocationSources.add(source);
+        }
+    }
+    return [...map.values()]
+        .map(entry => ({
+            ...entry,
+            allocationSources: [...entry.allocationSources].filter(Boolean).sort()
+        }))
+        .filter(entry => entry.minutes > 0)
+        .sort((left, right) => (
+            String(left.date || '').localeCompare(String(right.date || ''))
+            || String(left.professionKey || '').localeCompare(String(right.professionKey || ''))
+        ));
+}
+
+function sumAllocationMinutesForDate(dailyAllocations, date) {
+    const normalizedDate = normalizeDateValue(date);
+    return dailyAllocations
+        .filter(allocation => normalizeDateValue(allocation.date) === normalizedDate)
+        .reduce((sum, allocation) => sum + Math.max(0, toNumber(allocation.minutes, 0)), 0);
+}
+
+function collectResolutionWarnings(target, resolution) {
+    for (const warning of resolution?.warnings || []) target.push(warning);
+}
+
+function payrollFormula(type, quantity, rate, multiplier = null) {
+    const roundedQuantity = Math.round(toNumber(quantity, 0) * 100) / 100;
+    if (type === 'hour') return `${roundedQuantity}h × ${rate}`;
+    if (type === 'overtime') return `${roundedQuantity}h × ${rate} × ${multiplier}`;
+    if (type === 'day') return `${roundedQuantity}d × ${rate}`;
+    if (type === 'month') return `1 × ${rate}`;
+    return `${roundedQuantity} × ${rate}`;
+}
+
+function buildSimultaneousAdditionalPay(metrics = {}) {
+    const lines = [];
+    const professionRateSummary = [];
+    const blockingIssues = [...(metrics.payrollBlockingIssues || [])];
+    for (const allocation of metrics.additionalProfessionAllocations || []) {
+        const resolved = resolveSimultaneousAdditionalRate(allocation);
+        if (!resolved.ok) {
+            blockingIssues.push({
+                date: allocation.date || null,
+                ...resolved.issue
+            });
+            continue;
+        }
+        const minutes = Math.max(0, toNumber(allocation.minutes, 0));
+        if (minutes <= 0) continue;
+        const hours = minutes / 60;
+        const amount = roundMoney(hours * resolved.rate * resolved.multiplier);
+        const formula = `${minutes} / 60 * ${resolved.rate} * ${resolved.multiplier}`;
+        const common = {
+            professionKey: resolved.professionKey,
+            minutes,
+            rate: resolved.rate,
+            rateSource: resolved.rateSource,
+            multiplier: resolved.multiplier,
+            attendanceRef: allocation.attendanceRef ?? null,
+            segmentRef: allocation.segmentRef ?? null,
+            segmentIndex: allocation.segmentIndex ?? null,
+            roleRef: allocation.roleRef ?? null,
+            policyVersion: resolved.policyVersion,
+            workDate: allocation.date || null,
+            formula
+        };
+        lines.push({
+            ...line(
+                'additional',
+                SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+                `Simultaneous additional: ${resolved.professionKey}`,
+                amount,
+                {
+                    quantity: hours,
+                    rate: resolved.rate,
+                    source: resolved.rateSource,
+                    meta: {
+                        ...common,
+                        snapshotVersion: allocation.snapshotVersion ?? null,
+                        compensationMode: allocation.compensationMode || null
+                    }
+                }
+            ),
+            ...common
+        });
+        professionRateSummary.push(professionSummaryRow({
+            professionKey: resolved.professionKey,
+            minutes,
+            rate: resolved.rate,
+            amount,
+            rateUnit: 'hour',
+            sources: ['attendance_compensation_snapshot'],
+            rateSource: resolved.rateSource,
+            kind: SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+            workDate: allocation.date,
+            appliedRule: 'immutable_attendance_snapshot',
+            formula
+        }));
+    }
+    return {
+        lines,
+        amount: lines.reduce((sum, item) => sum + toNumber(item.amount, 0), 0),
+        professionRateSummary,
+        blockingIssues: compactAllocationIssues(blockingIssues)
+    };
+}
+
+function attachSimultaneousAdditionalPay(result, metrics = {}) {
+    const additional = buildSimultaneousAdditionalPay(metrics);
+    const allocationIssues = compactAllocationIssues([
+        ...(result.allocationIssues || []),
+        ...additional.blockingIssues
+    ]);
+    const reconciliation = {
+        ...(result.reconciliation || metrics.reconciliation || {}),
+        days: [...(result.reconciliation?.days || metrics.reconciliation?.days || [])],
+        warnings: [...(result.reconciliation?.warnings || metrics.reconciliation?.warnings || [])],
+        ...(additional.blockingIssues.length
+            ? { blockingIssues: [...additional.blockingIssues] }
+            : {})
+    };
+    for (const issue of additional.blockingIssues) {
+        const exists = reconciliation.warnings.some(warning => (
+            warning.code === issue.code
+            && String(warning.date || '') === String(issue.date || '')
+            && String(warning.professionKey || '') === String(issue.professionKey || '')
+        ));
+        if (!exists) reconciliation.warnings.push(issue);
+    }
+    return {
+        ...result,
+        additionalLines: additional.lines,
+        additionalAmount: additional.amount,
+        totalAmount: toNumber(result.baseAmount, 0)
+            + toNumber(result.overtimeAmount, 0)
+            + additional.amount,
+        professionRateSummary: [
+            ...(result.professionRateSummary || []),
+            ...additional.professionRateSummary
+        ],
+        allocationIssues,
+        blockingIssues: additional.blockingIssues,
+        reconciliation
+    };
+}
+
+function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
+    const physicalMinutes = Math.max(0, toNumber(
+        metrics.physicalMinutes ?? metrics.physical_minutes ?? metrics.totalMinutes ?? metrics.total_minutes,
+        0
+    ));
+    const baseAllocations = Array.isArray(metrics.baseProfessionAllocations)
+        ? metrics.baseProfessionAllocations
+        : (Array.isArray(metrics.base_profession_allocations)
+            ? metrics.base_profession_allocations
+            : []);
+    const additionalAllocations = Array.isArray(metrics.additionalProfessionAllocations)
+        ? metrics.additionalProfessionAllocations
+        : (Array.isArray(metrics.additional_profession_allocations)
+            ? metrics.additional_profession_allocations
+            : []);
+    const baseAllocatedMinutes = baseAllocations.reduce(
+        (sum, allocation) => sum + Math.max(
+            0,
+            toNumber(allocation.minutes ?? allocation.actualMinutes ?? allocation.actual_minutes, 0)
+        ),
+        0
+    );
+    const baseRoleMinutes = baseAllocations.length ? baseAllocatedMinutes : physicalMinutes;
+    const additionalRoleMinutes = additionalAllocations.reduce(
+        (sum, allocation) => sum + Math.max(
+            0,
+            toNumber(allocation.minutes ?? allocation.actualMinutes ?? allocation.actual_minutes, 0)
+        ),
+        0
+    );
+    const additionalLines = [
+        ...(professionPay.additionalLines || []),
+        ...(professionPay.lines || []).filter(lineItem =>
+            lineItem?.lineType === SIMULTANEOUS_ADDITIONAL_LINE_TYPE
+            || lineItem?.line_type === SIMULTANEOUS_ADDITIONAL_LINE_TYPE)
+    ];
+    const uniqueAdditionalLines = [...new Map(additionalLines.map(lineItem => [
+        [
+            lineItem.attendanceRef ?? lineItem.attendance_ref ?? '',
+            lineItem.segmentRef ?? lineItem.segment_ref ?? '',
+            lineItem.roleRef ?? lineItem.role_ref ?? '',
+            lineItem.professionKey ?? lineItem.profession_key ?? ''
+        ].join(':'),
+        lineItem
+    ])).values()];
+    const roleDetails = additionalAllocations.map(allocation => {
+        const professionKey = normalizeProfessionKey(
+            allocation.professionKey || allocation.profession_key
+        );
+        const attendanceRef = allocation.attendanceRef ?? allocation.attendance_ref ?? null;
+        const segmentRef = allocation.segmentRef ?? allocation.segment_ref
+            ?? allocation.segmentId ?? allocation.segment_id ?? null;
+        const roleRef = allocation.roleRef ?? allocation.role_ref
+            ?? allocation.roleId ?? allocation.role_id ?? null;
+        const lineItem = uniqueAdditionalLines.find(candidate => (
+            normalizeProfessionKey(candidate.professionKey || candidate.profession_key) === professionKey
+            && String(candidate.attendanceRef ?? candidate.attendance_ref ?? '') === String(attendanceRef ?? '')
+            && String(candidate.segmentRef ?? candidate.segment_ref ?? '') === String(segmentRef ?? '')
+            && String(candidate.roleRef ?? candidate.role_ref ?? '') === String(roleRef ?? '')
+        )) || uniqueAdditionalLines.find(candidate => (
+            normalizeProfessionKey(candidate.professionKey || candidate.profession_key) === professionKey
+            && String(candidate.attendanceRef ?? candidate.attendance_ref ?? '') === String(attendanceRef ?? '')
+        ));
+        const minutes = Math.max(0, toNumber(
+            allocation.minutes ?? allocation.actualMinutes ?? allocation.actual_minutes,
+            0
+        ));
+        const rate = nullableNumber(lineItem?.rate ?? allocation.rate);
+        const multiplier = nullableNumber(
+            lineItem?.multiplier ?? allocation.payMultiplier ?? allocation.pay_multiplier
+        );
+        const amount = lineItem ? roundMoney(lineItem.amount) : null;
+        return {
+            allocationType: SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+            professionKey,
+            minutes,
+            hours: roundHoursFromMinutes(minutes),
+            rate,
+            rateSource: lineItem?.rateSource || lineItem?.rate_source
+                || allocation.rateSource || allocation.rate_source || null,
+            multiplier,
+            amount,
+            attendanceRef,
+            segmentRef,
+            roleRef,
+            policyVersion: lineItem?.policyVersion || lineItem?.policy_version
+                || allocation.policyVersion || allocation.policy_version || null,
+            workDate: lineItem?.workDate || lineItem?.work_date || allocation.date || null,
+            formula: lineItem?.formula || null,
+            status: lineItem ? 'ready' : 'blocked'
+        };
+    });
+    for (const lineItem of uniqueAdditionalLines) {
+        const professionKey = normalizeProfessionKey(lineItem.professionKey || lineItem.profession_key);
+        const attendanceRef = lineItem.attendanceRef ?? lineItem.attendance_ref ?? null;
+        const segmentRef = lineItem.segmentRef ?? lineItem.segment_ref ?? null;
+        const roleRef = lineItem.roleRef ?? lineItem.role_ref ?? null;
+        const exists = roleDetails.some(role => (
+            role.professionKey === professionKey
+            && String(role.attendanceRef ?? '') === String(attendanceRef ?? '')
+            && String(role.segmentRef ?? '') === String(segmentRef ?? '')
+            && String(role.roleRef ?? '') === String(roleRef ?? '')
+        ));
+        if (exists) continue;
+        const minutes = Math.max(0, toNumber(lineItem.minutes, 0));
+        roleDetails.push({
+            allocationType: SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+            professionKey,
+            minutes,
+            hours: roundHoursFromMinutes(minutes),
+            rate: nullableNumber(lineItem.rate),
+            rateSource: lineItem.rateSource || lineItem.rate_source || null,
+            multiplier: nullableNumber(lineItem.multiplier),
+            amount: roundMoney(lineItem.amount),
+            attendanceRef,
+            segmentRef,
+            roleRef,
+            policyVersion: lineItem.policyVersion || lineItem.policy_version || null,
+            workDate: lineItem.workDate || lineItem.work_date || null,
+            formula: lineItem.formula || null,
+            status: 'ready'
+        });
+    }
+    roleDetails.sort((left, right) => (
+        String(left.workDate || '').localeCompare(String(right.workDate || ''))
+        || String(left.professionKey || '').localeCompare(String(right.professionKey || ''))
+        || Number(left.segmentRef || 0) - Number(right.segmentRef || 0)
+    ));
+    const professions = [...new Set(roleDetails.map(role => role.professionKey).filter(Boolean))];
+    const rates = [...new Set(roleDetails.map(role => role.rate).filter(value => value !== null))];
+    const multipliers = [...new Set(roleDetails.map(role => role.multiplier).filter(value => value !== null))];
+    const calculatedAdditionalMinutes = roleDetails.reduce((sum, role) => sum + role.minutes, 0);
+    return {
+        physicalMinutes,
+        physicalHours: roundHoursFromMinutes(physicalMinutes),
+        baseRoleMinutes,
+        baseRoleHours: roundHoursFromMinutes(baseRoleMinutes),
+        additionalRoleMinutes: additionalRoleMinutes || calculatedAdditionalMinutes,
+        additionalRoleHours: roundHoursFromMinutes(additionalRoleMinutes || calculatedAdditionalMinutes),
+        additionalProfession: professions.length === 1 ? professions[0] : null,
+        additionalRate: rates.length === 1 ? rates[0] : null,
+        additionalMultiplier: multipliers.length === 1 ? multipliers[0] : null,
+        additionalAmount: roundMoney(
+            professionPay.additionalAmount
+            ?? professionPay.additional_amount
+            ?? roleDetails.reduce((sum, role) => sum + toNumber(role.amount, 0), 0)
+        ),
+        additionalRoles: roleDetails,
+        explanation: PAYROLL_ROLE_HOURS_EXPLANATION
+    };
+}
+
+function finalizeProfessionPayResult({ metrics, fallbackProfessionKey, rateUnit, baseLines, overtimeLines, professionRateSummary, allocationIssues }) {
+    const baseAmount = baseLines.reduce((sum, item) => sum + item.amount, 0);
+    const overtimeAmount = overtimeLines.reduce((sum, item) => sum + item.amount, 0);
+    const issues = compactAllocationIssues([...(metrics.allocationIssues || []), ...(allocationIssues || [])]);
+    if (metrics.overtimeMinutes > 0 && !issues.some(issue => issue.code === 'PAYROLL_OVERTIME_RECONCILIATION_REQUIRED')) {
+        issues.push({
+            code: 'PAYROLL_OVERTIME_RECONCILIATION_REQUIRED',
+            professionKey: metrics.primaryDays[0]?.professionKey || fallbackProfessionKey || null,
+            overtimeMinutes: metrics.overtimeMinutes,
+            message: 'Overtime Р·Р°СЃС‚РѕСЃРѕРІР°РЅРѕ РѕРґРёРЅ СЂР°Р· РґРѕ РѕСЃРЅРѕРІРЅРѕС— РїСЂРѕС„РµСЃС–С—; РїРѕС‚СЂС–Р±РЅР° Р·РІС–СЂРєР°'
+        });
+    }
+    issues.push(...buildPayrollRateUnitWarnings(professionRateSummary));
+    const reconciliation = {
+        ...(metrics.reconciliation || {}),
+        days: [...(metrics.reconciliation?.days || [])],
+        warnings: [...(metrics.reconciliation?.warnings || [])]
+    };
+    for (const issue of issues) {
+        const exists = reconciliation.warnings.some(warning => (
+            warning.code === issue.code
+            && String(warning.date || '') === String(issue.date || '')
+            && String(warning.professionKey || '') === String(issue.professionKey || '')
+            && String(warning.profileId || '') === String(issue.profileId || '')
+        ));
+        if (!exists) reconciliation.warnings.push(issue);
+    }
+    return {
+        applies: true,
+        rateUnit,
+        baseLines,
+        overtimeLines,
+        baseAmount,
+        overtimeAmount,
+        totalAmount: baseAmount + overtimeAmount,
+        professionRateSummary,
+        allocationIssues: issues,
+        reconciliation
+    };
+}
+
+function calculateProfessionPayWithResolver(staff, activeScheme, metrics, professionRateMap, payrollProfileContext, legacyRateUnit, fallbackProfessionKey) {
+    const baseLines = [];
+    const overtimeLines = [];
+    const professionRateSummary = [];
+    const allocationIssues = [];
+    const periodStart = payrollProfileContext?.from
+        || normalizeDateValue(metrics.attendanceDays?.[0]?.date || metrics.primaryDays?.[0]?.date)
+        || normalizeDateValue(`${normalizePayrollMonth()}-01`);
+
+    const resolveRate = (professionKey, workDate, preferredRateUnit = legacyRateUnit) => {
+        const resolution = resolveEffectivePayrollProfile(staff, professionKey, workDate || periodStart, {
+            payrollProfileContext,
+            scheme: activeScheme,
+            professionRateMap,
+            preferredRateUnit
+        });
+        collectResolutionWarnings(allocationIssues, resolution);
+        return resolution;
+    };
+
+    const monthlyResolution = resolveRate(fallbackProfessionKey, periodStart, legacyRateUnit);
+    if (monthlyResolution.rateUnit === 'month') {
+        const amount = roundMoney(monthlyResolution.rate);
+        const formula = payrollFormula('month', 1, monthlyResolution.rate);
+        baseLines.push(line('base', 'profession_month', 'Monthly profile salary', amount, {
+            quantity: 1,
+            rate: monthlyResolution.rate,
+            source: monthlyResolution.rateSource,
+            meta: {
+                professionKey: fallbackProfessionKey,
+                profileId: monthlyResolution.profileId,
+                profileVersionId: monthlyResolution.profileVersionId,
+                profileTitle: monthlyResolution.profileTitle,
+                workDate: periodStart,
+                appliedRule: monthlyResolution.appliedRule,
+                formula
+            }
+        }));
+        professionRateSummary.push(professionSummaryRow({
+            professionKey: fallbackProfessionKey,
+            minutes: metrics.allocatedMinutes,
+            days: metrics.daysWorked,
+            rate: monthlyResolution.rate,
+            amount,
+            rateUnit: 'month',
+            sources: metrics.attendanceDays.map(day => day.allocationSource || day.allocation_source),
+            rateSource: monthlyResolution.rateSource,
+            resolution: monthlyResolution,
+            workDate: periodStart,
+            formula
+        }));
+        return finalizeProfessionPayResult({
+            metrics,
+            fallbackProfessionKey,
+            rateUnit: 'month',
+            baseLines,
+            overtimeLines,
+            professionRateSummary,
+            allocationIssues
+        });
+    }
+
+    const dailyAllocations = buildDailyProfessionAllocations(metrics, fallbackProfessionKey);
+    const primaryDays = buildPrimaryDayEntries(metrics, fallbackProfessionKey, dailyAllocations);
+    const dayPaidDates = new Set();
+
+    for (const day of primaryDays) {
+        const resolution = resolveRate(day.professionKey, day.date || periodStart, legacyRateUnit);
+        if (resolution.rateUnit !== 'day') continue;
+        if (day.date) dayPaidDates.add(day.date);
+        const amount = roundMoney(day.days * resolution.rate);
+        const minutes = day.date
+            ? sumAllocationMinutesForDate(dailyAllocations, day.date)
+            : metrics.allocatedMinutes;
+        const formula = payrollFormula('day', day.days, resolution.rate);
+        baseLines.push(line('base', 'profession_day', `Day rate: ${day.professionKey}`, amount, {
+            quantity: day.days,
+            rate: resolution.rate,
+            source: resolution.rateSource,
+            meta: {
+                professionKey: day.professionKey,
+                date: day.date,
+                profileId: resolution.profileId,
+                profileVersionId: resolution.profileVersionId,
+                profileTitle: resolution.profileTitle,
+                appliedRule: resolution.appliedRule,
+                formula
+            }
+        }));
+        professionRateSummary.push(professionSummaryRow({
+            professionKey: day.professionKey,
+            minutes,
+            days: day.days,
+            rate: resolution.rate,
+            amount,
+            rateUnit: 'day',
+            sources: day.allocationSources,
+            rateSource: resolution.rateSource,
+            resolution,
+            workDate: day.date || periodStart,
+            formula
+        }));
+    }
+
+    for (const allocation of dailyAllocations) {
+        if (allocation.date && dayPaidDates.has(allocation.date)) continue;
+        const resolution = resolveRate(allocation.professionKey, allocation.date || periodStart, legacyRateUnit);
+        if (resolution.rateUnit === 'day') {
+            allocationIssues.push({
+                code: 'PAYROLL_DAY_RATE_SECONDARY_PROFESSION_SKIPPED',
+                date: allocation.date,
+                professionKey: allocation.professionKey,
+                profileId: resolution.profileId,
+                message: 'Day-rate payroll pays only the primary profession for a staff date'
+            });
+            continue;
+        }
+        if (resolution.rateUnit !== 'hour') continue;
+        const hours = allocation.minutes / 60;
+        const amount = roundMoney(hours * resolution.rate);
+        const formula = payrollFormula('hour', hours, resolution.rate);
+        baseLines.push(line('base', 'profession_hourly', `Hourly: ${allocation.professionKey}`, amount, {
+            quantity: hours,
+            rate: resolution.rate,
+            source: resolution.rateSource,
+            meta: {
+                professionKey: allocation.professionKey,
+                date: allocation.date,
+                allocationSources: allocation.allocationSources,
+                profileId: resolution.profileId,
+                profileVersionId: resolution.profileVersionId,
+                profileTitle: resolution.profileTitle,
+                appliedRule: resolution.appliedRule,
+                formula
+            }
+        }));
+        professionRateSummary.push(professionSummaryRow({
+            professionKey: allocation.professionKey,
+            minutes: allocation.minutes,
+            rate: resolution.rate,
+            amount,
+            rateUnit: 'hour',
+            sources: allocation.allocationSources,
+            rateSource: resolution.rateSource,
+            resolution,
+            workDate: allocation.date || periodStart,
+            formula
+        }));
+    }
+
+    for (const overtime of buildDailyOvertimeEntries(metrics, fallbackProfessionKey)) {
+        if (overtime.date && dayPaidDates.has(overtime.date)) continue;
+        const resolution = resolveRate(overtime.professionKey, overtime.date || periodStart, legacyRateUnit);
+        if (resolution.rateUnit !== 'hour') continue;
+        const hours = overtime.minutes / 60;
+        const amount = roundMoney(hours * resolution.rate * OVERTIME_MULTIPLIER);
+        const formula = payrollFormula('overtime', hours, resolution.rate, OVERTIME_MULTIPLIER);
+        overtimeLines.push(line('overtime', 'overtime', `Overtime: ${overtime.professionKey}`, amount, {
+            quantity: hours,
+            rate: resolution.rate * OVERTIME_MULTIPLIER,
+            source: resolution.rateSource,
+            meta: {
+                professionKey: overtime.professionKey,
+                date: overtime.date,
+                baseRate: resolution.rate,
+                multiplier: OVERTIME_MULTIPLIER,
+                allocationSources: overtime.allocationSources,
+                profileId: resolution.profileId,
+                profileVersionId: resolution.profileVersionId,
+                profileTitle: resolution.profileTitle,
+                appliedRule: resolution.appliedRule,
+                formula
+            }
+        }));
+        professionRateSummary.push(professionSummaryRow({
+            professionKey: overtime.professionKey,
+            minutes: overtime.minutes,
+            rate: resolution.rate * OVERTIME_MULTIPLIER,
+            amount,
+            rateUnit: 'hour',
+            sources: overtime.allocationSources,
+            rateSource: resolution.rateSource,
+            kind: 'overtime',
+            resolution,
+            workDate: overtime.date || periodStart,
+            formula
+        }));
+    }
+
+    const resolvedRateUnit = professionRateSummary.some(row => row.rate_unit === 'hour')
+        ? 'hour'
+        : (professionRateSummary.some(row => row.rate_unit === 'day') ? 'day' : legacyRateUnit);
+    return finalizeProfessionPayResult({
+        metrics,
+        fallbackProfessionKey,
+        rateUnit: resolvedRateUnit,
+        baseLines,
+        overtimeLines,
+        professionRateSummary,
+        allocationIssues
+    });
+}
+
+function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(staff?.id), professionRateMap = new Map(), payrollProfileContext = null) {
     const metricDefaults = payrollMetricBucket(staff?.id);
     metrics = { ...metricDefaults, ...(metrics || {}) };
-    for (const key of ['professionAllocations', 'overtimeAllocations', 'primaryDays', 'attendanceDays', 'allocationIssues']) {
+    for (const key of [
+        'professionAllocations',
+        'baseProfessionAllocations',
+        'additionalProfessionAllocations',
+        'overtimeAllocations',
+        'primaryDays',
+        'attendanceDays',
+        'allocationIssues',
+        'payrollBlockingIssues'
+    ]) {
         if (!Array.isArray(metrics[key])) metrics[key] = metricDefaults[key];
     }
     if (!metrics.reconciliation || typeof metrics.reconciliation !== 'object') {
@@ -706,6 +2045,17 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     if (!standardType) return { applies: false, baseLines: [], overtimeLines: [], professionRateSummary: [] };
     const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
     const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
+    if (payrollProfileContextEnabled(payrollProfileContext)) {
+        return attachSimultaneousAdditionalPay(calculateProfessionPayWithResolver(
+            staff,
+            activeScheme,
+            metrics,
+            professionRateMap,
+            payrollProfileContext,
+            rateUnit,
+            fallbackProfessionKey
+        ), metrics);
+    }
     const baseLines = [];
     const overtimeLines = [];
     const professionRateSummary = [];
@@ -849,7 +2199,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         ));
         if (!exists) reconciliation.warnings.push(issue);
     }
-    return {
+    return attachSimultaneousAdditionalPay({
         applies: true,
         rateUnit,
         baseLines,
@@ -860,7 +2210,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         professionRateSummary,
         allocationIssues,
         reconciliation
-    };
+    }, metrics);
 }
 
 async function fetchTimeMetrics(month) {
@@ -997,9 +2347,20 @@ async function fetchReportsByMonth(month) {
 function applyReportSnapshot(row, report) {
     if (!report || !['reviewed', 'approved', 'paid'].includes(report.status)) return row;
     const breakdown = parseConfig(report.breakdown_json);
+    const snapshotMetrics = {
+        physicalMinutes: breakdown.metrics?.physicalMinutes ?? row.physicalMinutes,
+        baseProfessionAllocations: breakdown.metrics?.baseProfessionAllocations ?? row.baseProfessionAllocations,
+        additionalProfessionAllocations: breakdown.metrics?.additionalProfessionAllocations ?? row.additionalProfessionAllocations
+    };
+    const transparency = breakdown.transparency
+        || buildPayrollTransparencyMetrics(snapshotMetrics, {
+            additionalAmount: breakdown.summary?.additional ?? row.additionalAmount,
+            lines: breakdown.lines || row.lines
+        });
     return {
         ...row,
         baseAmount: roundMoney(breakdown.summary?.base ?? row.baseAmount),
+        additionalAmount: roundMoney(breakdown.summary?.additional ?? row.additionalAmount),
         bonusesAmount: roundMoney(breakdown.summary?.bonuses ?? row.bonusesAmount),
         percentAmount: roundMoney(breakdown.summary?.percent ?? row.percentAmount),
         deductionsAmount: roundMoney(report.deductions_amount),
@@ -1018,7 +2379,33 @@ function applyReportSnapshot(row, report) {
         reconciliation: breakdown.reconciliation || row.reconciliation,
         allocationIssues: Array.isArray(breakdown.allocationIssues)
             ? breakdown.allocationIssues
-            : row.allocationIssues
+            : row.allocationIssues,
+        payrollBlockingIssues: Array.isArray(breakdown.payrollBlockingIssues)
+            ? breakdown.payrollBlockingIssues
+            : row.payrollBlockingIssues,
+        physicalMinutes: toNumber(breakdown.metrics?.physicalMinutes ?? row.physicalMinutes, 0),
+        baseProfessionAllocations: Array.isArray(breakdown.metrics?.baseProfessionAllocations)
+            ? breakdown.metrics.baseProfessionAllocations
+            : row.baseProfessionAllocations,
+        additionalProfessionAllocations: Array.isArray(breakdown.metrics?.additionalProfessionAllocations)
+            ? breakdown.metrics.additionalProfessionAllocations
+            : row.additionalProfessionAllocations,
+        payrollTransparency: transparency,
+        payroll_transparency: transparency,
+        physicalHours: transparency.physicalHours,
+        physical_hours: transparency.physicalHours,
+        baseRoleHours: transparency.baseRoleHours,
+        base_role_hours: transparency.baseRoleHours,
+        additionalRoleHours: transparency.additionalRoleHours,
+        additional_role_hours: transparency.additionalRoleHours,
+        additionalProfession: transparency.additionalProfession,
+        additional_profession: transparency.additionalProfession,
+        additionalRate: transparency.additionalRate,
+        additional_rate: transparency.additionalRate,
+        additionalMultiplier: transparency.additionalMultiplier,
+        additional_multiplier: transparency.additionalMultiplier,
+        additionalRoles: transparency.additionalRoles,
+        additional_roles: transparency.additionalRoles
     };
 }
 
@@ -1026,7 +2413,7 @@ async function buildPayrollContext(month) {
     const normalizedMonth = assertPayrollMonth(normalizePayrollMonth(month));
     const staff = await fetchStaffList(normalizedMonth);
     const staffIds = staff.map(item => item.id);
-    const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap] = await Promise.all([
+    const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap, payrollProfileContext] = await Promise.all([
         fetchTimeMetrics(normalizedMonth),
         fetchAdjustments(normalizedMonth),
         fetchPayrollEntries(normalizedMonth),
@@ -1034,15 +2421,20 @@ async function buildPayrollContext(month) {
         fetchReportsByMonth(normalizedMonth),
         fetchPeriodIncome(normalizedMonth),
         fetchAllSchemes(),
-        loadProfessionRateMap(staffIds)
+        loadProfessionRateMap(staffIds),
+        loadPayrollProfileContext(staffIds, normalizedMonth)
     ]);
 
-    return { month: normalizedMonth, staff, timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap };
+    return { month: normalizedMonth, staff, timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap, payrollProfileContext };
 }
 
 function rowFromCalculation(staff, calculation, metrics, report) {
     const scheme = calculation.scheme;
     const summary = calculation.summary;
+    const transparency = buildPayrollTransparencyMetrics(metrics, {
+        ...(calculation.professionPay || {}),
+        lines: calculation.lines
+    });
     const row = {
         id: staff.id,
         staffId: staff.id,
@@ -1059,6 +2451,7 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         rateUnit: calculation.professionPay?.rateUnit || staff.rateUnit,
         rate_unit: calculation.professionPay?.rateUnit || staff.rateUnit,
         totalMinutes: metrics.totalMinutes || 0,
+        physicalMinutes: metrics.physicalMinutes ?? metrics.totalMinutes ?? 0,
         totalHours: metrics.hoursWorked || 0,
         hoursWorked: metrics.hoursWorked || 0,
         shifts: metrics.daysWorked || 0,
@@ -1067,6 +2460,7 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         allocatedMinutes: metrics.allocatedMinutes || 0,
         overtimeMinutes: metrics.overtimeMinutes || 0,
         baseAmount: summary.base,
+        additionalAmount: summary.additional || 0,
         overtimeAmount: summary.overtime || 0,
         bonusesAmount: summary.bonuses + summary.percent + summary.manual,
         percentAmount: summary.percent,
@@ -1084,6 +2478,28 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         profession_rate_summary: calculation.professionPay?.professionRateSummary || [],
         allocationIssues: calculation.professionPay?.allocationIssues || [],
         allocation_issues: calculation.professionPay?.allocationIssues || [],
+        payrollBlockingIssues: calculation.professionPay?.blockingIssues || [],
+        payroll_blocking_issues: calculation.professionPay?.blockingIssues || [],
+        baseProfessionAllocations: metrics.baseProfessionAllocations || metrics.professionAllocations || [],
+        additionalProfessionAllocations: metrics.additionalProfessionAllocations || [],
+        compensationMinutes: metrics.compensationMinutes ?? metrics.totalMinutes ?? 0,
+        roleMinutes: metrics.roleMinutes ?? metrics.totalMinutes ?? 0,
+        payrollTransparency: transparency,
+        payroll_transparency: transparency,
+        physicalHours: transparency.physicalHours,
+        physical_hours: transparency.physicalHours,
+        baseRoleHours: transparency.baseRoleHours,
+        base_role_hours: transparency.baseRoleHours,
+        additionalRoleHours: transparency.additionalRoleHours,
+        additional_role_hours: transparency.additionalRoleHours,
+        additionalProfession: transparency.additionalProfession,
+        additional_profession: transparency.additionalProfession,
+        additionalRate: transparency.additionalRate,
+        additional_rate: transparency.additionalRate,
+        additionalMultiplier: transparency.additionalMultiplier,
+        additional_multiplier: transparency.additionalMultiplier,
+        additionalRoles: transparency.additionalRoles,
+        additional_roles: transparency.additionalRoles,
         reconciliation: calculation.professionPay?.reconciliation || metrics.reconciliation || { days: [], warnings: [] },
         attendanceDays: metrics.attendanceDays || [],
         summary
@@ -1099,7 +2515,7 @@ async function getSalaryReport(month) {
             periodIncome: context.periodIncome
         };
         const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-        const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap);
+        const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
         const calculation = calculatePayroll(
             staff,
             scheme,
@@ -1113,12 +2529,13 @@ async function getSalaryReport(month) {
 
     const totals = staffRows.reduce((acc, row) => ({
         base: acc.base + row.baseAmount,
+        additional: acc.additional + row.additionalAmount,
         bonuses: acc.bonuses + row.bonusesAmount,
         deductions: acc.deductions + row.deductionsAmount,
         advances: acc.advances + row.advancesAmount,
         gross: acc.gross + row.grossAmount,
         net: acc.net + row.netAmount
-    }), { base: 0, bonuses: 0, deductions: 0, advances: 0, gross: 0, net: 0 });
+    }), { base: 0, additional: 0, bonuses: 0, deductions: 0, advances: 0, gross: 0, net: 0 });
 
     return {
         month: context.month,
@@ -1126,6 +2543,7 @@ async function getSalaryReport(month) {
         totalSalary: roundMoney(totals.net),
         totals: {
             base: roundMoney(totals.base),
+            additional: roundMoney(totals.additional),
             bonuses: roundMoney(totals.bonuses),
             deductions: roundMoney(totals.deductions),
             advances: roundMoney(totals.advances),
@@ -1155,7 +2573,7 @@ async function getPayrollPreview(staffId, month) {
         periodIncome: context.periodIncome
     };
     const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-    const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap);
+    const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
     const calculation = calculatePayroll(
         staff,
         scheme,
@@ -1316,13 +2734,20 @@ async function generatePayrollReports(month, user) {
                     hoursWorked: row.hoursWorked,
                     daysWorked: row.daysWorked,
                     totalMinutes: row.totalMinutes,
+                    physicalMinutes: row.physicalMinutes,
                     allocatedMinutes: row.allocatedMinutes,
                     overtimeMinutes: row.overtimeMinutes,
-                    plannedMinutes: row.plannedMinutes
+                    plannedMinutes: row.plannedMinutes,
+                    compensationMinutes: row.compensationMinutes,
+                    roleMinutes: row.roleMinutes,
+                    baseProfessionAllocations: row.baseProfessionAllocations,
+                    additionalProfessionAllocations: row.additionalProfessionAllocations
                 },
                 professionRateSummary: row.professionRateSummary,
                 reconciliation: row.reconciliation,
                 allocationIssues: row.allocationIssues,
+                payrollBlockingIssues: row.payrollBlockingIssues,
+                transparency: row.payrollTransparency,
                 lines: row.lines,
                 summary: row.summary
             };
@@ -1355,6 +2780,31 @@ async function generatePayrollReports(month, user) {
                 `, [report.month, row.staffId, row.schemeId, row.grossAmount, row.deductionsAmount,
                     row.advancesAmount, row.netAmount, JSON.stringify(breakdown), user?.username || null]);
             }
+            const additionalLines = (row.lines || []).filter(lineItem =>
+                lineItem.lineType === SIMULTANEOUS_ADDITIONAL_LINE_TYPE
+                || lineItem.line_type === SIMULTANEOUS_ADDITIONAL_LINE_TYPE);
+            if (additionalLines.length) {
+                await client.query(
+                    `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+                     VALUES ('payroll_additional_line_generated', $1, $2, $3::jsonb, NULL)`,
+                    [
+                        row.staffId,
+                        user?.username || null,
+                        JSON.stringify({
+                            eventVersion: 1,
+                            month: report.month,
+                            reportId: Number(result.rows[0].id),
+                            reportStatus: 'draft',
+                            regenerated: existing.rowCount > 0,
+                            physicalMinutes: row.physicalMinutes,
+                            baseRoleMinutes: row.payrollTransparency?.baseRoleMinutes,
+                            additionalRoleMinutes: row.payrollTransparency?.additionalRoleMinutes,
+                            additionalAmount: row.additionalAmount,
+                            lines: additionalLines
+                        })
+                    ]
+                );
+            }
             generated.push(result.rows[0]);
         }
         await client.query('COMMIT');
@@ -1374,6 +2824,41 @@ async function generatePayrollReports(month, user) {
     };
 }
 
+function payrollCommitBlockingIssues(value = {}) {
+    const breakdown = value.breakdown_json !== undefined
+        ? parseConfig(value.breakdown_json)
+        : value;
+    const direct = breakdown.payrollBlockingIssues || breakdown.payroll_blocking_issues;
+    if (Array.isArray(direct)) return direct;
+    const reconciliationIssues = breakdown.reconciliation?.blockingIssues
+        || breakdown.reconciliation?.blocking_issues;
+    return Array.isArray(reconciliationIssues) ? reconciliationIssues : [];
+}
+
+function payrollCommitBlockedError(blockingIssues = []) {
+    const err = new Error('Payroll commit blocked: compensation snapshot requires correction');
+    err.status = 409;
+    err.statusCode = 409;
+    err.code = 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED';
+    err.details = { blockingIssues };
+    return err;
+}
+
+function assertPayrollRowsCommitReady(rows = []) {
+    const blockingIssues = [];
+    for (const row of rows || []) {
+        for (const issue of payrollCommitBlockingIssues(row)) {
+            blockingIssues.push({
+                staffId: row.staff_id ?? row.staffId ?? null,
+                staffName: row.staff_name ?? row.name ?? null,
+                ...issue
+            });
+        }
+    }
+    if (blockingIssues.length) throw payrollCommitBlockedError(blockingIssues);
+    return true;
+}
+
 async function updatePayrollReportStatus(id, status, user) {
     const reportId = Number(id);
     if (!reportId || !REPORT_STATUSES.includes(status)) {
@@ -1381,30 +2866,54 @@ async function updatePayrollReportStatus(id, status, user) {
         err.status = 400;
         throw err;
     }
-    const result = await pool.query(`
-        UPDATE payroll_reports
-        SET status = $1, updated_by = $2, updated_at = NOW()
-        WHERE id = $3
-        RETURNING *
-    `, [status, user?.username || null, reportId]);
-    if (!result.rowCount) {
-        const err = new Error('report not found');
-        err.status = 404;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const current = await client.query(
+            'SELECT * FROM payroll_reports WHERE id = $1 FOR UPDATE',
+            [reportId]
+        );
+        if (!current.rowCount) {
+            const err = new Error('report not found');
+            err.status = 404;
+            throw err;
+        }
+        if (['approved', 'paid'].includes(status)) {
+            assertPayrollRowsCommitReady(current.rows);
+        }
+        const result = await client.query(`
+            UPDATE payroll_reports
+            SET status = $1, updated_by = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING *
+        `, [status, user?.username || null, reportId]);
+        await client.query('COMMIT');
+        return result.rows[0];
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         throw err;
+    } finally {
+        client.release();
     }
-    return result.rows[0];
 }
 
 module.exports = {
     OVERTIME_MULTIPLIER,
     SCHEME_TYPES,
     REPORT_STATUSES,
+    SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
+    PAYROLL_ROLE_HOURS_EXPLANATION,
+    assertPayrollRowsCommitReady,
+    buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     calculatePayroll,
     loadActivePayrollSchemeMap,
     loadPayrollAttendanceMetrics,
+    loadPayrollProfileContext,
     loadProfessionRateMap,
+    resolveEffectivePayrollProfile,
     resolveProfessionPayRate,
+    resolveSimultaneousAdditionalRate,
     normalizePayrollMonth,
     getSalaryReport,
     getPayrollWorkspace,

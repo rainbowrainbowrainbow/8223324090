@@ -44,6 +44,41 @@ The HR monthly report shows separate counts for profession-card fallback days an
 
 The first check-in and first check-out are idempotent. Manual correction recalculates all facts through the same attendance calculation used by normal clock-out.
 
+## Physical time and compensation allocations
+
+`segmentAllocations` remains the physical-time source of truth. A minute of presence is counted once even
+when the employee performs two professions simultaneously.
+
+`compensationAllocations` is a separate immutable payroll input:
+
+- `base` records the main profession's compensated minutes;
+- `simultaneous_additional` records an explicitly paid additional profession;
+- each allocation stores profession, planned and actual minutes, compensation mode, multiplier, explicit
+  rate source, policy version, attendance reference, segment reference, and role reference;
+- additional-role minutes never increase `total_worked_minutes`, physical hours, or worked days;
+- the sum of compensation minutes may legitimately exceed the physical minutes.
+
+The first check-in snapshots the dated plan. Clock-out intersects the actual interval with that saved plan
+and stores the final result in the same attendance transaction. Later schedule or rate edits do not
+silently recalculate a closed attendance record. Manual correction stores before/after compensation
+snapshots, a reason, and an explicit `compensation_snapshot_corrected` audit event.
+
+Legacy attendance rows without a compensation snapshot use base-only payroll logic and must not acquire
+retroactive paid additional roles. An invalid or incomplete paid-role snapshot requires manual review and
+blocks payroll commit instead of resolving to zero or falling back to the employee's general hourly rate.
+
+For the canonical `11:00–20:00` base interval with a simultaneous paid role from `11:30–20:00`:
+
+| Metric | Result |
+| --- | ---: |
+| Physical minutes | 540 |
+| Base-role minutes | 540 |
+| Additional-role minutes | 510 |
+| Physical hours shown in payroll | 9 |
+| Total role-compensation hours | 17.5 |
+
+The 17.5 role-compensation hours must never be labeled simply as “worked hours”.
+
 ## Regression matrix
 
 Automated coverage includes:
@@ -95,7 +130,7 @@ Post-release backlog:
 
 - Historical data-fix/backfill is a separate task and requires explicit approval before any recalculation.
 - Browser/DOM visual smoke for the HR report pages remains optional follow-up; this release QA verified the production API surfaces that drive those screens and CSV.
-- The live QA cleanup helper should be extended before any future live QA that creates `staff_shift_preferences`, because the current helper cleans attendance, check-ins, shifts, schedules, and archives disposable staff, but does not delete preference rows.
+- The live QA cleanup helper deletes marker-bound fixture attendance, check-ins, shifts, schedules, and `staff_shift_preferences`, then archives the disposable staff row. Cleanup remains scoped to a staff row that passes the disposable QA name and exact `runId` guard.
 - Base CSV escaping and stable-column tests exist; extend route-level CSV coverage only if the export contract changes.
 
 ## Known limitations

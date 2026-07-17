@@ -6,17 +6,20 @@ const test = require('node:test');
 const {
     HR_SHIFT_BREAK_POLICY,
     HR_SHIFT_OVERNIGHT_POLICY,
+    HR_SHIFT_PAID_ROLE_POLICY_VERSION,
     HR_SHIFT_PLAN_MESSAGES,
     MAX_HR_SHIFT_SEGMENTS_PER_DAY,
     durationAcrossMidnight,
     hydrateHrShiftDayPlans,
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
+    loadPaidRoleValidationContext,
     normalizeHrShiftDayPlan,
     normalizeShiftTime,
     replaceHrShiftSegments,
     saveHrShiftDayPlan,
-    timeToMinutes
+    timeToMinutes,
+    validatePaidAdditionalRoles
 } = require('../services/hrShiftSegments');
 const { resolveStaffProfessionAssignments } = require('../services/professions');
 
@@ -128,6 +131,7 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
                 return { rows: [{ id: nextSegmentId }] };
             }
             if (/^INSERT INTO hr_shift_segment_roles/.test(text)) return { rows: [] };
+            if (/^INSERT INTO hr_audit_log/.test(text)) return { rows: [] };
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };
@@ -248,6 +252,12 @@ test('additional simultaneous roles do not add hours and cannot duplicate the ma
 
     assert.equal(plan.plannedMinutes, 240);
     assert.deepEqual(plan.professionKeys, ['reception', 'manager']);
+    assert.deepEqual(plan.segments[0].additionalRoles, [{
+        professionKey: 'manager',
+        compensationMode: 'unpaid',
+        payMultiplier: null,
+        policyVersion: null
+    }]);
 
     assert.throws(
         () => normalize({
@@ -482,7 +492,13 @@ test('batch hydration restores stable segment order and additional roles', async
                         break_minutes: 0,
                         notes: 'Morning',
                         sort_order: 0,
-                        additional_profession_keys: ['manager']
+                        additional_profession_keys: ['manager'],
+                        additional_roles: [{
+                            professionKey: 'manager',
+                            compensationMode: 'paid_hourly',
+                            payMultiplier: 1,
+                            policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION
+                        }]
                     },
                     {
                         shift_row: shiftRow,
@@ -513,6 +529,8 @@ test('batch hydration restores stable segment order and additional roles', async
     assert.equal(queries, 1);
     assert.deepEqual(hydrated[0].plan.segments.map(item => item.id), [71, 72]);
     assert.deepEqual(hydrated[0].plan.segments[0].additionalProfessionKeys, ['manager']);
+    assert.equal(hydrated[0].plan.segments[0].additionalRoles[0].compensationMode, 'paid_hourly');
+    assert.equal(hydrated[0].plan.segments[0].additionalRoles[0].policyVersion, HR_SHIFT_PAID_ROLE_POLICY_VERSION);
     assert.equal(hydrated[0].plan.plannedMinutes, 540);
     assert.equal(hydrated[0].plan.gapMinutes, 120);
 });
@@ -697,6 +715,143 @@ test('every legacy mutation rejects an existing multi-segment plan before parent
     const parentLockIndex = lockOrder.findIndex(text => /^SELECT .* FROM hr_shifts WHERE id = \$1 FOR UPDATE$/.test(text));
     assert.ok(observedParentIndex >= 0 && observedParentIndex < staffLockIndex);
     assert.ok(staffLockIndex < parentLockIndex);
+});
+
+test('normalizes explicit paid additional roles without changing physical planned minutes', () => {
+    const plan = normalize({
+        primaryProfessionKey: 'reception',
+        segments: [segment('reception', '11:00', '20:00', {
+            additionalRoles: [{
+                professionKey: 'manager',
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1
+            }]
+        })]
+    });
+
+    assert.equal(plan.plannedMinutes, 540);
+    assert.deepEqual(plan.segments[0].additionalProfessionKeys, ['manager']);
+    assert.deepEqual(plan.segments[0].additionalRoles, [{
+        professionKey: 'manager',
+        compensationMode: 'paid_hourly',
+        payMultiplier: 1,
+        policyVersion: null
+    }]);
+});
+
+test('rejects duplicate and multiple paid additional roles with stable error codes', () => {
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '09:00', '13:00', {
+                additionalRoles: [{
+                    professionKey: 'reception',
+                    compensationMode: 'paid_hourly',
+                    payMultiplier: 1
+                }]
+            })]
+        }),
+        error => error.code === 'HR_SHIFT_PAID_ROLE_DUPLICATE'
+    );
+
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '09:00', '13:00', {
+                additionalRoles: [
+                    { professionKey: 'manager', compensationMode: 'paid_hourly', payMultiplier: 1 },
+                    { professionKey: 'animator', compensationMode: 'paid_hourly', payMultiplier: 1 }
+                ]
+            })]
+        }),
+        error => error.code === 'HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED'
+    );
+});
+
+test('paid-role validation requires approved assignment and explicit profession rate', () => {
+    const buildPlan = () => normalize({
+        primaryProfessionKey: 'reception',
+        segments: [segment('reception', '11:00', '20:00', {
+            additionalRoles: [{
+                professionKey: 'manager',
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1
+            }]
+        })]
+    });
+    const policies = [{
+        policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION,
+        compensationMode: 'paid_hourly',
+        payMultiplier: 1,
+        effectiveFrom: '2026-07-01',
+        status: 'active'
+    }];
+    const assignmentKey = '17:manager';
+
+    assert.throws(
+        () => validatePaidAdditionalRoles(buildPlan(), 17, '2026-07-22', {
+            policies,
+            approvedAssignments: new Set(),
+            professionRates: new Map()
+        }),
+        error => error.code === 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED'
+    );
+    assert.throws(
+        () => validatePaidAdditionalRoles(buildPlan(), 17, '2026-07-22', {
+            policies,
+            approvedAssignments: new Set([assignmentKey]),
+            professionRates: new Map()
+        }),
+        error => error.code === 'HR_SHIFT_PAID_ROLE_RATE_REQUIRED'
+    );
+
+    const validPlan = buildPlan();
+    validatePaidAdditionalRoles(validPlan, 17, '2026-07-22', {
+        policies,
+        approvedAssignments: new Set([assignmentKey]),
+        professionRates: new Map([[assignmentKey, 180]])
+    });
+    assert.equal(validPlan.segments[0].additionalRoles[0].policyVersion, HR_SHIFT_PAID_ROLE_POLICY_VERSION);
+});
+
+test('paid-role validation context reads only approved assignments and explicit profession rates', async () => {
+    const calls = [];
+    const db = {
+        async query(sql, params = []) {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            calls.push({ text, params });
+            if (/FROM hr_compensation_policies/.test(text)) {
+                return { rows: [{
+                    policy_version: HR_SHIFT_PAID_ROLE_POLICY_VERSION,
+                    compensation_mode: 'paid_hourly',
+                    pay_multiplier: '1.0000',
+                    effective_from: '2026-07-01',
+                    status: 'active'
+                }] };
+            }
+            if (/FROM staff_role_assignments/.test(text)) {
+                return { rows: [
+                    { staff_id: 17, profession_key: 'manager', status: 'active', admission_status: 'approved' },
+                    { staff_id: 17, profession_key: 'animator', status: 'active', admission_status: 'pending' }
+                ] };
+            }
+            if (/FROM staff_profession_rates/.test(text)) {
+                return { rows: [{ staff_id: 17, profession_key: 'manager', hourly_rate: '180.00' }] };
+            }
+            throw new Error(`Unexpected SQL: ${text}`);
+        }
+    };
+
+    const context = await loadPaidRoleValidationContext(db, [17, 17, 0]);
+
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls[1].params, [[17]]);
+    assert.deepEqual(calls[2].params, [[17]]);
+    assert.ok(calls.every(call => /FOR SHARE/.test(call.text)));
+    assert.ok(calls.every(call => !/\bstaff\.hourly_rate\b/.test(call.text)));
+    assert.equal(context.approvedAssignments.has('17:manager'), true);
+    assert.equal(context.approvedAssignments.has('17:animator'), false);
+    assert.equal(context.professionRates.get('17:manager'), 180);
 });
 
 test('staff/date plan loader hydrates many source days with one query', async () => {
@@ -920,6 +1075,117 @@ test('new-plan persistence locks parent, updates envelope, then inserts children
     assert.ok(lockIndex < childLoadIndex);
     assert.ok(childLoadIndex < segmentInsertIndex);
     assert.ok(segmentInsertIndex < roleInsertIndex);
+    assert.match(calls[roleInsertIndex].text, /compensation_mode, pay_multiplier, policy_version/);
+    assert.deepEqual(calls[roleInsertIndex].params.slice(1), [
+        ['manager'],
+        ['unpaid'],
+        [null],
+        [null]
+    ]);
+});
+
+test('paid additional role survives canonical save metadata and receives the active policy version', async () => {
+    const state = createExistingMultiSegmentClient('regular', [
+        {
+            id: 71,
+            hr_shift_id: 42,
+            profession_key: 'reception',
+            planned_start: '09:00',
+            planned_end: '13:00',
+            break_minutes: 0,
+            notes: null,
+            sort_order: 0,
+            additional_profession_keys: ['manager'],
+            additional_roles: [{
+                professionKey: 'manager',
+                compensationMode: 'unpaid',
+                payMultiplier: null,
+                policyVersion: null
+            }]
+        },
+        {
+            id: 72,
+            hr_shift_id: 42,
+            profession_key: 'manager',
+            planned_start: '15:00',
+            planned_end: '20:00',
+            break_minutes: 0,
+            notes: null,
+            sort_order: 1,
+            additional_profession_keys: [],
+            additional_roles: []
+        }
+    ]);
+    const assignmentKey = '17:manager';
+    const saved = await saveHrShiftDayPlan(state.client, {
+        hrShiftId: 42,
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '09:00', '13:00', {
+                    id: 71,
+                    additionalRoles: [{
+                        professionKey: 'manager',
+                        compensationMode: 'paid_hourly',
+                        payMultiplier: 1
+                    }]
+                }),
+                segment('manager', '15:00', '20:00', { id: 72 })
+            ]
+        }
+    }, {
+        actor: 'unit-test',
+        paidRoleValidationContext: {
+            policies: [{
+                policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION,
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1,
+                effectiveFrom: '2026-07-01',
+                status: 'active'
+            }],
+            approvedAssignments: new Set([assignmentKey]),
+            professionRates: new Map([[assignmentKey, 180]])
+        }
+    });
+
+    assert.deepEqual(saved.plan.segments[0].additionalRoles, [{
+        professionKey: 'manager',
+        compensationMode: 'paid_hourly',
+        payMultiplier: 1,
+        policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION
+    }]);
+    const roleDelete = state.calls.find(call => /^DELETE FROM hr_shift_segment_roles/.test(call.text));
+    const roleInsert = state.calls.find(call => /^INSERT INTO hr_shift_segment_roles/.test(call.text));
+    assert.deepEqual(roleDelete.params, [[71]]);
+    assert.deepEqual(roleInsert.params, [
+        [71],
+        ['manager'],
+        ['paid_hourly'],
+        [1],
+        [HR_SHIFT_PAID_ROLE_POLICY_VERSION]
+    ]);
+    const paidRoleAudit = state.calls.find(call =>
+        /^INSERT INTO hr_audit_log/.test(call.text)
+        && call.params[0] === 'paid_role_assigned'
+    );
+    assert.ok(paidRoleAudit);
+    assert.equal(paidRoleAudit.params[1], 17);
+    assert.equal(paidRoleAudit.params[2], 'unit-test');
+    assert.deepEqual(JSON.parse(paidRoleAudit.params[3]), {
+        eventVersion: 1,
+        source: 'hr_shift_segments.replace',
+        shiftId: 42,
+        shiftDate: '2026-07-13',
+        segmentId: 71,
+        segmentIndex: 0,
+        shiftStart: '09:00',
+        shiftEnd: '13:00',
+        professionKey: 'manager',
+        compensationMode: 'paid_hourly',
+        payMultiplier: 1,
+        policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION,
+        countsAsPhysicalTime: false
+    });
 });
 
 test('diff persistence keeps an unchanged segment id and rejects a foreign segment id', async () => {

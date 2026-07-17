@@ -55,6 +55,16 @@ test('live QA API helper is creator/director-only, marker guarded, atomic, and r
     assert.match(route, /live_multi_segment_qa_cleanup/);
     assert.match(route, /await reconcileRosterDates\(client, affectedDates\)[\s\S]{0,1500}await client\.query\('COMMIT'\)/);
     assert.match(route, /const after = await loadLiveQaFixtureStatus\(pool, staff\.id, runId\)/);
+    assert.match(route, /FROM staff_shift_preferences[\s\S]{0,150}WHERE staff_id = \$1[\s\S]{0,150}ORDER BY profession_key, day_type, id/);
+    assert.match(route, /shiftPreferences: shiftPreferenceResult\.rows/);
+    const staffGuardIndex = route.indexOf('const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });');
+    const preferenceDeleteIndex = route.indexOf("DELETE FROM staff_shift_preferences WHERE staff_id = $1");
+    assert.ok(staffGuardIndex >= 0, 'cleanup keeps the marker-bound disposable staff guard');
+    assert.ok(preferenceDeleteIndex > staffGuardIndex, 'preference cleanup happens only after disposable staff guard');
+    assert.deepEqual(
+        [...route.matchAll(/DELETE FROM staff_shift_preferences[^'`\n]*/g)].map(match => match[0]),
+        ['DELETE FROM staff_shift_preferences WHERE staff_id = $1']
+    );
     assert.doesNotMatch(route, /DELETE FROM bookings[\s\S]{0,1000}live_multi_segment_qa_cleanup/);
     assert.doesNotMatch(route, /DELETE FROM finance_transactions[\s\S]{0,1000}live_multi_segment_qa_cleanup/);
 });

@@ -11,6 +11,7 @@ const { getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { lockAttendanceWriteTarget } = require('./attendanceWriteLock');
+const { recordAttendanceClockOut } = require('./hrAttendance');
 
 const log = createLogger('HR');
 
@@ -109,23 +110,29 @@ async function checkHrAutoClose() {
                     closeTime = ci.toISOString();
                 }
 
-                const clockInDate = new Date(current.clock_in);
-                const clockOutDate = new Date(closeTime);
-                const totalWorked = Math.max(0, Math.round((clockOutDate - clockInDate) / 60000));
+                const clockOutResult = await recordAttendanceClockOut(client, {
+                    staffId: rec.staff_id,
+                    recordDate: todayStr,
+                    now: closeTime,
+                    settlementMode: 'actual_time',
+                    performedBy: 'system',
+                    method: 'auto_close',
+                    source: 'hr_auto_close'
+                });
+                const totalWorked = Number(clockOutResult.record?.total_worked_minutes || 0);
                 const updated = await client.query(
                     `UPDATE hr_time_records SET
-                        clock_out = $1, total_worked_minutes = $2,
-                        auto_closed = TRUE, status = 'auto_closed', updated_at = NOW()
-                     WHERE id = $3
-                       AND staff_id = $4
-                       AND record_date = $5::date
-                       AND COALESCE(business_context, 'event_genix') = $6
+                        auto_closed = TRUE,
+                        status = CASE WHEN status = 'manual_review' THEN status ELSE 'auto_closed' END,
+                        updated_at = NOW()
+                     WHERE id = $1
+                       AND staff_id = $2
+                       AND record_date = $3::date
+                       AND COALESCE(business_context, 'event_genix') = $4
                        AND clock_in IS NOT NULL
-                       AND clock_out IS NULL
+                       AND clock_out IS NOT NULL
                      RETURNING id`,
                     [
-                        closeTime,
-                        totalWorked,
                         current.id,
                         rec.staff_id,
                         todayStr,
@@ -140,7 +147,11 @@ async function checkHrAutoClose() {
                 await client.query(
                     `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)
                      VALUES ('auto_close', $1, 'system', $2)`,
-                    [rec.staff_id, JSON.stringify({ clock_out: closeTime, total_worked_minutes: totalWorked })]
+                    [rec.staff_id, JSON.stringify({
+                        clock_out: closeTime,
+                        total_worked_minutes: totalWorked,
+                        compensation_snapshot_state: clockOutResult.record?.compensation_snapshot?.state || null
+                    })]
                 );
                 await client.query('COMMIT');
                 names.push(rec.staff_name);

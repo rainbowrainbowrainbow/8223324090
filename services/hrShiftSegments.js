@@ -16,6 +16,15 @@ const WORKING_DAY_STATUSES = new Set(['working', 'remote']);
 const NON_WORKING_DAY_STATUSES = new Set(['dayoff', 'vacation', 'sick']);
 const HR_SHIFT_BREAK_POLICY = 'segment_minutes_mvp';
 const HR_SHIFT_OVERNIGHT_POLICY = 'single_overnight_segment_only';
+const HR_SHIFT_PAID_ROLE_POLICY_VERSION = 'simultaneous-profession-pay-v1';
+const HR_SHIFT_COMPENSATION_MODES = new Set(['unpaid', 'paid_hourly']);
+const HR_SHIFT_PAID_ROLE_MESSAGES = Object.freeze({
+    HR_SHIFT_PAID_ROLE_RATE_REQUIRED: 'Для оплачуваної додаткової професії потрібна явна погодинна ставка',
+    HR_SHIFT_PAID_ROLE_DUPLICATE: 'Професія не може дублювати основну або іншу додаткову роль сегмента',
+    HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED: 'В одному сегменті дозволена максимум одна оплачувана додаткова професія',
+    HR_SHIFT_PAID_ROLE_POLICY_INVALID: 'Оплачувана додаткова професія не відповідає активній політиці оплати',
+    HR_SHIFT_PAID_ROLE_NOT_ALLOWED: 'Оплачувана додаткова професія не має активного погодженого допуску'
+});
 const HR_SHIFT_PLAN_MESSAGES = Object.freeze({
     HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION: 'Перерва має бути коротшою за тривалість сегмента',
     HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT: 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня'
@@ -178,6 +187,173 @@ function normalizeAdditionalProfessionKeys(value, professionKey, segmentIndex, o
     return keys.sort((a, b) => a.localeCompare(b, 'en'));
 }
 
+function normalizeCompensationMode(value, segmentIndex, professionKey) {
+    const mode = String(value ?? 'unpaid').trim().toLowerCase();
+    if (!HR_SHIFT_COMPENSATION_MODES.has(mode)) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+            HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+            { segmentIndex, professionKey, compensationMode: value }
+        );
+    }
+    return mode;
+}
+
+function normalizePayMultiplier(value, compensationMode, segmentIndex, professionKey) {
+    if (compensationMode === 'unpaid') {
+        if (value !== undefined && value !== null && value !== '') {
+            fail(
+                'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+                { segmentIndex, professionKey, compensationMode, payMultiplier: value }
+            );
+        }
+        return null;
+    }
+    const multiplier = Number(value);
+    if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+            HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+            { segmentIndex, professionKey, compensationMode, payMultiplier: value }
+        );
+    }
+    return multiplier;
+}
+
+function normalizePolicyVersion(value, compensationMode, segmentIndex, professionKey) {
+    const policyVersion = value === undefined || value === null ? '' : String(value).trim();
+    if (compensationMode === 'unpaid') {
+        if (policyVersion) {
+            fail(
+                'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+                { segmentIndex, professionKey, compensationMode, policyVersion }
+            );
+        }
+        return null;
+    }
+    if (policyVersion.length > 64) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+            HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+            { segmentIndex, professionKey, compensationMode, policyVersion: policyVersion || null }
+        );
+    }
+    return policyVersion || null;
+}
+
+function normalizeAdditionalRole(rawRole, professionKey, segmentIndex, options = {}) {
+    if (!rawRole || typeof rawRole !== 'object' || Array.isArray(rawRole)) {
+        fail(
+            'HR_SHIFT_SEGMENT_INVALID_ADDITIONAL_PROFESSION',
+            'additionalRoles має містити об’єкти додаткових професій',
+            { segmentIndex }
+        );
+    }
+    const rawProfessionKey = firstDefined(rawRole.professionKey, rawRole.profession_key);
+    const roleProfessionKey = options.strictProfessionKeys === false
+        ? normalizeProfessionKey(rawProfessionKey)
+        : normalizeRequestedProfessionKey(rawProfessionKey);
+    if (!roleProfessionKey) {
+        fail(
+            'HR_SHIFT_SEGMENT_INVALID_ADDITIONAL_PROFESSION',
+            'Додаткова професія сегмента має некоректний ключ',
+            { segmentIndex, professionKey: rawProfessionKey }
+        );
+    }
+    const compensationMode = normalizeCompensationMode(
+        firstDefined(rawRole.compensationMode, rawRole.compensation_mode, 'unpaid'),
+        segmentIndex,
+        roleProfessionKey
+    );
+    if (roleProfessionKey === professionKey) {
+        fail(
+            compensationMode === 'paid_hourly'
+                ? 'HR_SHIFT_PAID_ROLE_DUPLICATE'
+                : 'HR_SHIFT_SEGMENT_DUPLICATE_ROLE',
+            compensationMode === 'paid_hourly'
+                ? HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_DUPLICATE
+                : 'Додаткова професія не може дублювати основну професію сегмента',
+            { segmentIndex, professionKey: roleProfessionKey }
+        );
+    }
+    const payMultiplier = normalizePayMultiplier(
+        firstDefined(rawRole.payMultiplier, rawRole.pay_multiplier),
+        compensationMode,
+        segmentIndex,
+        roleProfessionKey
+    );
+    const policyVersion = normalizePolicyVersion(
+        firstDefined(rawRole.policyVersion, rawRole.policy_version),
+        compensationMode,
+        segmentIndex,
+        roleProfessionKey
+    );
+    return {
+        professionKey: roleProfessionKey,
+        compensationMode,
+        payMultiplier,
+        policyVersion
+    };
+}
+
+function normalizeAdditionalRoles(segment = {}, professionKey, segmentIndex, options = {}) {
+    const rawAdditionalRoles = firstDefined(segment.additionalRoles, segment.additional_roles, []);
+    const parsedAdditionalRoles = parseJsonArray(rawAdditionalRoles, null);
+    if (!Array.isArray(parsedAdditionalRoles)) {
+        fail(
+            'HR_SHIFT_SEGMENT_INVALID_ADDITIONAL_PROFESSIONS',
+            'additionalRoles має бути масивом',
+            { segmentIndex }
+        );
+    }
+    const rolesByProfession = new Map();
+    for (const rawRole of parsedAdditionalRoles) {
+        const role = normalizeAdditionalRole(rawRole, professionKey, segmentIndex, options);
+        if (rolesByProfession.has(role.professionKey)) {
+            fail(
+                'HR_SHIFT_PAID_ROLE_DUPLICATE',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_DUPLICATE,
+                { segmentIndex, professionKey: role.professionKey }
+            );
+        }
+        rolesByProfession.set(role.professionKey, role);
+    }
+
+    const legacyKeys = normalizeAdditionalProfessionKeys(
+        firstDefined(segment.additionalProfessionKeys, segment.additional_profession_keys, []),
+        professionKey,
+        segmentIndex,
+        options
+    );
+    for (const legacyKey of legacyKeys) {
+        if (!rolesByProfession.has(legacyKey)) {
+            rolesByProfession.set(legacyKey, {
+                professionKey: legacyKey,
+                compensationMode: 'unpaid',
+                payMultiplier: null,
+                policyVersion: null
+            });
+        }
+    }
+
+    const roles = [...rolesByProfession.values()]
+        .sort((left, right) => left.professionKey.localeCompare(right.professionKey, 'en'));
+    const paidRoles = roles.filter(role => role.compensationMode === 'paid_hourly');
+    if (paidRoles.length > 1) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED',
+            HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED,
+            {
+                segmentIndex,
+                professionKeys: paidRoles.map(role => role.professionKey)
+            }
+        );
+    }
+    return roles;
+}
+
 function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
     if (!segment || typeof segment !== 'object' || Array.isArray(segment)) {
         fail('HR_SHIFT_SEGMENT_INVALID_SHAPE', 'Кожен елемент segments має бути об’єктом', {
@@ -244,12 +420,13 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         });
     }
 
-    const additionalProfessionKeys = normalizeAdditionalProfessionKeys(
-        firstDefined(segment.additionalProfessionKeys, segment.additional_profession_keys, []),
+    const additionalRoles = normalizeAdditionalRoles(
+        segment,
         professionKey,
         segmentIndex,
         options
     );
+    const additionalProfessionKeys = additionalRoles.map(role => role.professionKey);
 
     return {
         id: normalizeSegmentId(segment.id),
@@ -258,6 +435,7 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         shiftEnd,
         breakMinutes,
         note: normalizeSegmentNote(firstDefined(segment.note, segment.notes)),
+        additionalRoles,
         additionalProfessionKeys,
         sortOrder: segmentIndex,
         startMinutes,
@@ -532,6 +710,227 @@ function normalizeShiftDate(value) {
     return match ? match[1] : null;
 }
 
+function paidAdditionalRoles(plan = null) {
+    return (plan?.segments || []).flatMap((segment, segmentIndex) =>
+        (segment.additionalRoles || [])
+            .filter(role => role.compensationMode === 'paid_hourly')
+            .map(role => ({ ...role, segmentIndex })));
+}
+
+function paidRoleAuditRows(plan = null) {
+    return (plan?.segments || []).flatMap((segment, segmentIndex) =>
+        (segment.additionalRoles || segment.additional_roles || [])
+            .filter(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly')
+            .map(role => ({
+                segmentId: segment.id ?? segment.segmentId ?? segment.segment_id ?? null,
+                segmentIndex,
+                shiftStart: segment.shiftStart || segment.planned_start || null,
+                shiftEnd: segment.shiftEnd || segment.planned_end || null,
+                professionKey: normalizeProfessionKey(role.professionKey || role.profession_key),
+                compensationMode: 'paid_hourly',
+                payMultiplier: Number(role.payMultiplier ?? role.pay_multiplier),
+                policyVersion: role.policyVersion || role.policy_version || null
+            }))
+            .filter(role => role.professionKey));
+}
+
+function paidRoleAuditKey(role = {}) {
+    return `${String(role.segmentId ?? `index:${role.segmentIndex}`)}:${role.professionKey}`;
+}
+
+async function recordPaidRoleAuditEvents(client, input = {}) {
+    assertDbClient(client);
+    const before = new Map(paidRoleAuditRows(input.beforePlan).map(role => [paidRoleAuditKey(role), role]));
+    const after = new Map(paidRoleAuditRows(input.afterPlan).map(role => [paidRoleAuditKey(role), role]));
+    const events = [];
+    for (const [key, role] of before) {
+        const next = after.get(key);
+        if (!next || rolePersistenceSignature([role]) !== rolePersistenceSignature([next])) {
+            events.push({ action: 'paid_role_removed', role });
+        }
+    }
+    for (const [key, role] of after) {
+        const previous = before.get(key);
+        if (!previous || rolePersistenceSignature([previous]) !== rolePersistenceSignature([role])) {
+            events.push({ action: 'paid_role_assigned', role });
+        }
+    }
+    for (const event of events) {
+        await client.query(
+            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+             VALUES ($1, $2, $3, $4::jsonb, $5)`,
+            [
+                event.action,
+                Number(input.staffId) || null,
+                input.actor || null,
+                JSON.stringify({
+                    eventVersion: 1,
+                    source: input.source || 'hr_shift_segments',
+                    shiftId: Number(input.shiftId) || null,
+                    shiftDate: normalizeShiftDate(input.shiftDate),
+                    segmentId: event.role.segmentId,
+                    segmentIndex: event.role.segmentIndex,
+                    shiftStart: event.role.shiftStart,
+                    shiftEnd: event.role.shiftEnd,
+                    professionKey: event.role.professionKey,
+                    compensationMode: event.role.compensationMode,
+                    payMultiplier: event.role.payMultiplier,
+                    policyVersion: event.role.policyVersion,
+                    countsAsPhysicalTime: false
+                }),
+                input.ipAddress || input.ip || null
+            ]
+        );
+    }
+    return events;
+}
+
+function normalizeCompensationPolicyRow(row = {}) {
+    return {
+        policyVersion: String(row.policy_version || row.policyVersion || '').trim(),
+        compensationMode: String(row.compensation_mode || row.compensationMode || '').trim(),
+        payMultiplier: Number(row.pay_multiplier ?? row.payMultiplier),
+        effectiveFrom: normalizeShiftDate(row.effective_from ?? row.effectiveFrom),
+        status: String(row.status || '').trim()
+    };
+}
+
+async function loadPaidRoleValidationContext(db, staffIds = []) {
+    assertDbClient(db);
+    const ids = [...new Set((staffIds || [])
+        .map(Number)
+        .filter(id => Number.isInteger(id) && id > 0))]
+        .sort((left, right) => left - right);
+    const policyResult = await db.query(
+        `SELECT policy_version, compensation_mode, pay_multiplier, effective_from, status
+         FROM hr_compensation_policies
+         WHERE status = 'active'
+         ORDER BY effective_from DESC, policy_version
+         FOR SHARE`
+    );
+    const context = {
+        policies: (policyResult.rows || []).map(normalizeCompensationPolicyRow),
+        approvedAssignments: new Set(),
+        professionRates: new Map()
+    };
+    if (!ids.length) return context;
+
+    const assignmentResult = await db.query(
+        `SELECT staff_id, profession_key, status, admission_status
+         FROM staff_role_assignments
+         WHERE staff_id = ANY($1::int[])
+         ORDER BY staff_id, profession_key
+         FOR SHARE`,
+        [ids]
+    );
+    for (const row of assignmentResult.rows || []) {
+        if (String(row.status || '') !== 'active' || String(row.admission_status || '') !== 'approved') continue;
+        const professionKey = normalizeProfessionKey(row.profession_key);
+        if (!professionKey) continue;
+        context.approvedAssignments.add(`${Number(row.staff_id)}:${professionKey}`);
+    }
+
+    const rateResult = await db.query(
+        `SELECT staff_id, profession_key, hourly_rate
+         FROM staff_profession_rates
+         WHERE staff_id = ANY($1::int[])
+           AND hourly_rate > 0
+         ORDER BY staff_id, profession_key
+         FOR SHARE`,
+        [ids]
+    );
+    for (const row of rateResult.rows || []) {
+        const professionKey = normalizeProfessionKey(row.profession_key);
+        const rate = Number(row.hourly_rate);
+        if (!professionKey || !Number.isFinite(rate) || rate <= 0) continue;
+        context.professionRates.set(`${Number(row.staff_id)}:${professionKey}`, rate);
+    }
+    return context;
+}
+
+function activePaidRolePolicy(context, shiftDate) {
+    const date = normalizeShiftDate(shiftDate);
+    if (!date) return null;
+    return (context?.policies || [])
+        .filter(policy => policy.status === 'active'
+            && policy.compensationMode === 'paid_hourly'
+            && policy.effectiveFrom
+            && policy.effectiveFrom <= date)
+        .sort((left, right) => (
+            right.effectiveFrom.localeCompare(left.effectiveFrom)
+            || right.policyVersion.localeCompare(left.policyVersion)
+        ))[0] || null;
+}
+
+function validatePaidAdditionalRoles(plan, staffId, shiftDate, context) {
+    const paidRoles = paidAdditionalRoles(plan);
+    if (!paidRoles.length) return;
+    const normalizedStaffId = Number(staffId);
+    const normalizedDate = normalizeShiftDate(shiftDate);
+    const policy = activePaidRolePolicy(context, normalizedDate);
+    if (!policy) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+            HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+            {
+                staffId: normalizedStaffId,
+                shiftDate: normalizedDate,
+                requestedPolicyVersions: [...new Set(paidRoles.map(role => role.policyVersion))]
+            }
+        );
+    }
+
+    for (const role of paidRoles) {
+        if ((role.policyVersion && role.policyVersion !== policy.policyVersion)
+            || role.compensationMode !== policy.compensationMode
+            || role.payMultiplier !== policy.payMultiplier) {
+            fail(
+                'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
+                {
+                    staffId: normalizedStaffId,
+                    shiftDate: normalizedDate,
+                    segmentIndex: role.segmentIndex,
+                    professionKey: role.professionKey,
+                    requestedPolicyVersion: role.policyVersion,
+                    activePolicyVersion: policy.policyVersion,
+                    requestedPayMultiplier: role.payMultiplier,
+                    activePayMultiplier: policy.payMultiplier
+                }
+            );
+        }
+        role.policyVersion = policy.policyVersion;
+        const persistedRole = plan?.segments?.[role.segmentIndex]?.additionalRoles
+            ?.find(candidate => candidate.professionKey === role.professionKey);
+        if (persistedRole) persistedRole.policyVersion = policy.policyVersion;
+        const key = `${normalizedStaffId}:${role.professionKey}`;
+        if (!context?.approvedAssignments?.has(key)) {
+            fail(
+                'HR_SHIFT_PAID_ROLE_NOT_ALLOWED',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_NOT_ALLOWED,
+                {
+                    staffId: normalizedStaffId,
+                    shiftDate: normalizedDate,
+                    segmentIndex: role.segmentIndex,
+                    professionKey: role.professionKey
+                }
+            );
+        }
+        if (!context?.professionRates?.has(key)) {
+            fail(
+                'HR_SHIFT_PAID_ROLE_RATE_REQUIRED',
+                HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_RATE_REQUIRED,
+                {
+                    staffId: normalizedStaffId,
+                    shiftDate: normalizedDate,
+                    segmentIndex: role.segmentIndex,
+                    professionKey: role.professionKey
+                }
+            );
+        }
+    }
+}
+
 function shiftSelector(input = {}) {
     const hrShiftId = Number(firstDefined(input.hrShiftId, input.hr_shift_id, input.shiftId, input.shift_id));
     if (Number.isInteger(hrShiftId) && hrShiftId > 0) return { hrShiftId };
@@ -652,7 +1051,19 @@ async function loadHrShiftSegments(db, hrShiftId) {
                     ARRAY_AGG(hssr.profession_key ORDER BY hssr.profession_key)
                         FILTER (WHERE hssr.profession_key IS NOT NULL),
                     ARRAY[]::varchar[]
-                ) AS additional_profession_keys
+                ) AS additional_profession_keys,
+                COALESCE(
+                    JSONB_AGG(
+                        JSONB_BUILD_OBJECT(
+                            'professionKey', hssr.profession_key,
+                            'compensationMode', hssr.compensation_mode,
+                            'payMultiplier', hssr.pay_multiplier,
+                            'policyVersion', hssr.policy_version
+                        )
+                        ORDER BY hssr.profession_key
+                    ) FILTER (WHERE hssr.profession_key IS NOT NULL),
+                    '[]'::jsonb
+                ) AS additional_roles
          FROM hr_shift_segments hss
          LEFT JOIN hr_shift_segment_roles hssr ON hssr.segment_id = hss.id
          WHERE hss.hr_shift_id = $1
@@ -682,7 +1093,23 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
                     FROM hr_shift_segment_roles hssr
                     WHERE hssr.segment_id = hss.id
                     ORDER BY hssr.profession_key
-                )::varchar[] AS additional_profession_keys
+                )::varchar[] AS additional_profession_keys,
+                COALESCE(
+                    (
+                        SELECT JSONB_AGG(
+                            JSONB_BUILD_OBJECT(
+                                'professionKey', hssr.profession_key,
+                                'compensationMode', hssr.compensation_mode,
+                                'payMultiplier', hssr.pay_multiplier,
+                                'policyVersion', hssr.policy_version
+                            )
+                            ORDER BY hssr.profession_key
+                        )
+                        FROM hr_shift_segment_roles hssr
+                        WHERE hssr.segment_id = hss.id
+                    ),
+                    '[]'::jsonb
+                ) AS additional_roles
          FROM hr_shifts hs
          LEFT JOIN hr_shift_segments hss ON hss.hr_shift_id = hs.id
          WHERE ${whereSql}
@@ -707,7 +1134,8 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
                 break_minutes: row.break_minutes,
                 notes: row.notes,
                 sort_order: row.sort_order,
-                additional_profession_keys: row.additional_profession_keys || []
+                additional_profession_keys: row.additional_profession_keys || [],
+                additional_roles: row.additional_roles || []
             });
         }
     }
@@ -793,8 +1221,18 @@ function segmentPayloadFromRow(row = {}) {
         shiftEnd: row.planned_end,
         breakMinutes: row.break_minutes,
         note: row.notes,
+        additionalRoles: row.additional_roles || [],
         additionalProfessionKeys: row.additional_profession_keys || []
     };
+}
+
+function rolePersistenceSignature(roles = []) {
+    return JSON.stringify((roles || []).map(role => ({
+        professionKey: role.professionKey,
+        compensationMode: role.compensationMode,
+        payMultiplier: role.payMultiplier,
+        policyVersion: role.policyVersion
+    })));
 }
 
 async function loadHrShiftDayPlan(db, input = {}, options = {}) {
@@ -881,6 +1319,17 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         }, 409);
     }
 
+    if (paidAdditionalRoles(normalizedPlan).length) {
+        const paidRoleValidationContext = options.paidRoleValidationContext
+            || await loadPaidRoleValidationContext(client, [expectedStaffId]);
+        validatePaidAdditionalRoles(
+            normalizedPlan,
+            expectedStaffId,
+            locked.rows[0].shift_date,
+            paidRoleValidationContext
+        );
+    }
+
     const actor = options.actor || null;
     const parent = await client.query(
         `UPDATE hr_shifts SET
@@ -901,6 +1350,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
     );
 
     const existingRows = await loadHrShiftSegments(client, hrShiftId);
+    const beforePlan = {
+        segments: existingRows.map(segmentPayloadFromRow)
+    };
     const existingById = new Map(existingRows.map(row => [String(row.id), row]));
     const retainedIds = new Set();
     const persistedSegments = [];
@@ -950,12 +1402,14 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                     ]
                 );
             }
-            const existingRoles = [...(existing.additional_profession_keys || [])]
-                .map(normalizeProfessionKey).filter(Boolean).sort();
-            if (JSON.stringify(existingRoles) !== JSON.stringify(segment.additionalProfessionKeys)) {
+            const existingRoles = normalizeAdditionalRoles({
+                additionalRoles: existing.additional_roles || [],
+                additionalProfessionKeys: existing.additional_profession_keys || []
+            }, segment.professionKey, segment.sortOrder, { strictProfessionKeys: false });
+            if (rolePersistenceSignature(existingRoles) !== rolePersistenceSignature(segment.additionalRoles)) {
                 roleResetIds.push(segmentId);
-                for (const professionKey of segment.additionalProfessionKeys) {
-                    roleInsertPairs.push([segmentId, professionKey]);
+                for (const role of segment.additionalRoles) {
+                    roleInsertPairs.push({ segmentId, ...role });
                 }
             }
         } else {
@@ -978,8 +1432,8 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                 ]
             );
             segmentId = inserted.rows[0].id;
-            for (const professionKey of segment.additionalProfessionKeys) {
-                roleInsertPairs.push([segmentId, professionKey]);
+            for (const role of segment.additionalRoles) {
+                roleInsertPairs.push({ segmentId, ...role });
             }
         }
         persistedSegments.push({ ...segment, id: segmentId });
@@ -1002,16 +1456,52 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
     }
     if (roleInsertPairs.length) {
         await client.query(
-            `INSERT INTO hr_shift_segment_roles (segment_id, profession_key)
-             SELECT roles.segment_id, roles.profession_key
-             FROM UNNEST($1::bigint[], $2::varchar[]) AS roles(segment_id, profession_key)`,
-            [roleInsertPairs.map(pair => pair[0]), roleInsertPairs.map(pair => pair[1])]
+            `INSERT INTO hr_shift_segment_roles (
+                segment_id, profession_key, compensation_mode, pay_multiplier, policy_version
+             )
+             SELECT
+                roles.segment_id,
+                roles.profession_key,
+                roles.compensation_mode,
+                roles.pay_multiplier,
+                roles.policy_version
+             FROM UNNEST(
+                $1::bigint[],
+                $2::varchar[],
+                $3::varchar[],
+                $4::numeric[],
+                $5::varchar[]
+             ) AS roles(
+                segment_id,
+                profession_key,
+                compensation_mode,
+                pay_multiplier,
+                policy_version
+             )`,
+            [
+                roleInsertPairs.map(pair => pair.segmentId),
+                roleInsertPairs.map(pair => pair.professionKey),
+                roleInsertPairs.map(pair => pair.compensationMode),
+                roleInsertPairs.map(pair => pair.payMultiplier),
+                roleInsertPairs.map(pair => pair.policyVersion)
+            ]
         );
     }
 
+    const persistedPlan = { ...normalizedPlan, segments: persistedSegments };
+    await recordPaidRoleAuditEvents(client, {
+        staffId: expectedStaffId,
+        shiftId: hrShiftId,
+        shiftDate: locked.rows[0].shift_date,
+        beforePlan,
+        afterPlan: persistedPlan,
+        actor,
+        ipAddress: options.ipAddress,
+        source: options.auditSource || 'hr_shift_segments.replace'
+    });
     return {
         shift: parent.rows[0],
-        plan: { ...normalizedPlan, segments: persistedSegments }
+        plan: persistedPlan
     };
 }
 
@@ -1245,6 +1735,17 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
 
     if (NON_WORKING_DAY_STATUSES.has(plan.status)) {
         if (currentShift) {
+            const beforePlan = await loadHrShiftDayPlan(client, { hrShiftId: currentShift.id });
+            await recordPaidRoleAuditEvents(client, {
+                staffId,
+                shiftId: currentShift.id,
+                shiftDate,
+                beforePlan: beforePlan?.plan,
+                afterPlan: { segments: [] },
+                actor: firstDefined(options.actor, input.actor, null),
+                ipAddress: options.ipAddress,
+                source: options.auditSource || 'hr_shift_segments.non_working'
+            });
             await client.query('DELETE FROM hr_shifts WHERE id = $1', [currentShift.id]);
         }
         return { shift: null, plan, deletedShift: currentShift || null };
@@ -1301,15 +1802,21 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
 
     return replaceHrShiftSegments(client, parent.id, plan, {
         actor,
+        ipAddress: options.ipAddress,
+        auditSource: options.auditSource,
         requireActiveStaff: options.requireActiveStaff,
-        professionCard
+        professionCard,
+        paidRoleValidationContext: options.paidRoleValidationContext
     });
 }
 
 module.exports = {
     HrShiftPlanError,
     HR_SHIFT_BREAK_POLICY,
+    HR_SHIFT_COMPENSATION_MODES,
     HR_SHIFT_OVERNIGHT_POLICY,
+    HR_SHIFT_PAID_ROLE_MESSAGES,
+    HR_SHIFT_PAID_ROLE_POLICY_VERSION,
     HR_SHIFT_PLAN_MESSAGES,
     MAX_HR_SHIFT_SEGMENTS_PER_DAY,
     WORKING_DAY_STATUSES,
@@ -1325,13 +1832,17 @@ module.exports = {
     isHrShiftPlanError,
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
+    loadPaidRoleValidationContext,
     normalizeDayStatus,
     normalizeHrShiftDayPlan,
+    recordPaidRoleAuditEvents,
     normalizeShiftTime,
+    paidAdditionalRoles,
     professionCardFromStaff,
     replaceHrShiftSegments,
     saveHrShiftDayPlan,
     sortSegmentsChronologically,
     timeToMinutes,
+    validatePaidAdditionalRoles,
     validateHrShiftDayPlanProfessions
 };

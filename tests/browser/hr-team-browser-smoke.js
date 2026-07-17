@@ -83,6 +83,49 @@ const HARNESS_CODE = String.raw`
     const downloads = [];
     const offboardingSubmissions = [];
     const workspace = { documents: [], medical: [], resources: [] };
+    const payrollProfiles = [{
+        id: 901,
+        title: 'QA Animator Base',
+        profession_key: 'animator',
+        professionKey: 'animator',
+        profession_title: 'Аніматор',
+        profile_kind: 'shared',
+        profileKind: 'shared',
+        status: 'active',
+        is_default_for_profession: true,
+        isDefaultForProfession: true,
+        affected_staff_count: 1,
+        affectedStaffCount: 1,
+        active_assignment_count: 0,
+        activeAssignmentCount: 0,
+        default_staff_count: 1,
+        defaultStaffCount: 1,
+        current_version: {
+            id: 9011,
+            profile_id: 901,
+            profileId: 901,
+            version_number: 1,
+            versionNumber: 1,
+            rate_unit: 'hour',
+            rateUnit: 'hour',
+            default_rate: 150,
+            defaultRate: 150,
+            effective_from: '2026-07-01',
+            effectiveFrom: '2026-07-01',
+            effective_to: null,
+            effectiveTo: null,
+            day_rates: [{ iso_weekday: 6, isoWeekday: 6, rate: 200 }],
+            dayRates: [{ iso_weekday: 6, isoWeekday: 6, rate: 200 }]
+        },
+        currentVersion: null,
+        latest_version: null,
+        latestVersion: null,
+        versions: []
+    }];
+    payrollProfiles[0].currentVersion = payrollProfiles[0].current_version;
+    payrollProfiles[0].latest_version = payrollProfiles[0].current_version;
+    payrollProfiles[0].latestVersion = payrollProfiles[0].current_version;
+    payrollProfiles[0].versions = [payrollProfiles[0].current_version];
     let holdProfileLoads = false;
     let holdHistoryLoads = false;
     let holdLazyTabLoads = false;
@@ -341,7 +384,42 @@ const HARNESS_CODE = String.raw`
         }
         if (String(path).includes('/role-assignments')) return { success: true, data: [] };
         if (String(path).includes('/shift-preferences')) return { success: true, data: [] };
+        if (String(path).includes('/payroll-profiles?include_archived=true')) return { success: true, data: payrollProfiles.map(profile => ({ ...profile })) };
+        if (String(path).includes('/payroll-profile-assignments?include_past=true')) {
+            const staffId = Number(String(path).match(/\/staff\/(\d+)\/payroll-profile-assignments/)?.[1] || 0);
+            return { success: true, data: { staff: { id: staffId, name: staffProfiles.get(staffId)?.name || 'QA staff' }, assignments: [] } };
+        }
         if (String(path).includes('/payroll-scheme')) return { success: true, data: { fallback_hourly_rate: 100, fallback_rate_unit: 'hour' } };
+        if (String(path).includes('/salary?')) {
+            return {
+                success: true,
+                data: [{
+                    staff_id: Number(activeEditStaffId()),
+                    staffId: Number(activeEditStaffId()),
+                    staff_name: 'QA payroll staff',
+                    days_worked: 1,
+                    hours_worked: 2,
+                    planned_days: 1,
+                    base_salary: 300,
+                    overtime_pay: 0,
+                    total_salary: 300,
+                    profession_rate_summary: [{
+                        profession_key: 'animator',
+                        work_date: '2026-07-18',
+                        rate: 150,
+                        rate_unit: 'hour',
+                        hours: 2,
+                        amount: 300,
+                        rate_source: 'payroll_profile.default.default_rate',
+                        profile_id: 901,
+                        profile_title: 'QA Animator Base',
+                        profile_version_id: 9011,
+                        applied_rule: 'default_rate',
+                        formula: '2h × 150'
+                    }]
+                }]
+            };
+        }
         return { success: true, data: [] };
     };
 
@@ -989,6 +1067,11 @@ async function assertScopedSavesAndActionStates(page) {
     assert.equal('hourly_rate' in workPayload, false, 'work save does not resend rates');
 
     await page.locator('#staffProfileTabPayroll').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffPayrollProfiles')?.textContent.includes('QA Animator Base'));
+    const payrollProfilePanel = await page.locator('#editStaffPayrollProfiles').textContent();
+    assert.match(payrollProfilePanel, /QA Animator Base/, 'staff payroll tab shows inherited default payroll profile');
+    assert.match(payrollProfilePanel, /legacy не використовується/, 'staff payroll tab makes profile-only base explicit');
+    assert.equal(await page.locator('#editPayrollProfileSimulator').isVisible(), true, 'staff payroll tab exposes the payroll profile simulator');
     await page.fill('#editHourlyRate', '145');
     const payrollSave = page.locator('#editPayrollSchemeSave');
     assert.equal(await payrollSave.textContent(), 'Зберегти оплату', 'payroll action names every payload it can save');

@@ -846,6 +846,7 @@ function renderSalaryOverview(panel) {
         </div>
         <div class="salary-summary-grid">
             <div class="salary-summary-card"><b>${formatMoney(totals.base || 0)}</b><span>База</span></div>
+            <div class="salary-summary-card"><b>${formatMoney(totals.additional || 0)}</b><span>Одночасна доплата</span></div>
             <div class="salary-summary-card"><b>${formatMoney(totals.bonuses || 0)}</b><span>Бонуси / %</span></div>
             <div class="salary-summary-card"><b>${formatMoney((totals.deductions || 0) + (totals.advances || 0))}</b><span>Утримано</span></div>
             <div class="salary-summary-card"><b>${formatMoney(totals.net || data.totalSalary || 0)}</b><span>До виплати</span></div>
@@ -1182,6 +1183,7 @@ function renderSalaryPreviewPanel() {
         </div>
         <div class="salary-preview-card">
             <div class="salary-preview-row"><span>База</span><b>${formatMoney(summary.base || 0)}</b></div>
+            <div class="salary-preview-row"><span>Одночасна додаткова професія</span><b class="salary-plus">+ ${formatMoney(summary.additional || 0)}</b></div>
             <div class="salary-preview-row"><span>Бонуси / %</span><b class="salary-plus">+ ${formatMoney((summary.bonuses || 0) + (summary.percent || 0) + (summary.manual || 0))}</b></div>
             <div class="salary-preview-row"><span>Утримання</span><b class="salary-minus">- ${formatMoney(summary.deductions || 0)}</b></div>
             <div class="salary-preview-row"><span>Аванси</span><b class="salary-minus">- ${formatMoney(summary.advances || 0)}</b></div>
@@ -1273,6 +1275,78 @@ async function exportPayrollCSV() {
     }
 }
 
+async function exportPayrollXLSX() {
+    const month = document.getElementById('salaryMonth')?.value;
+    if (!month) return;
+    let touchWindow = null;
+    try {
+        touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Payroll Excel')
+            : null;
+        const token = localStorage.getItem('pzp_token');
+        const response = await fetch(`/api/payroll/export-xlsx?month=${encodeURIComponent(month)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Payroll Excel export failed');
+        const blob = await response.blob();
+        const filename = `payroll_${month}.xlsx`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Payroll Excel підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = filename;
+            anchor.click();
+            URL.revokeObjectURL(url);
+        }
+    } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Не вдалося експортувати payroll Excel', 'error');
+    }
+}
+
+function payrollTransparency(row = {}) {
+    return row.payrollTransparency || row.payroll_transparency || {
+        physicalHours: row.physicalHours ?? row.physical_hours ?? row.hoursWorked ?? 0,
+        baseRoleHours: row.baseRoleHours ?? row.base_role_hours ?? row.hoursWorked ?? 0,
+        additionalRoleHours: row.additionalRoleHours ?? row.additional_role_hours ?? 0,
+        additionalAmount: row.additionalAmount ?? row.additional_amount ?? 0,
+        additionalRoles: row.additionalRoles || row.additional_roles || []
+    };
+}
+
+function renderPayrollTimeBreakdown(row = {}) {
+    const transparency = payrollTransparency(row);
+    return `<div class="salary-time-breakdown">
+        <span><b>${salaryNumber(transparency.physicalHours).toLocaleString('uk-UA')}</b> фізичних год</span>
+        <span>${salaryNumber(transparency.baseRoleHours).toLocaleString('uk-UA')} год основної професії</span>
+        <span>${salaryNumber(transparency.additionalRoleHours).toLocaleString('uk-UA')} год додаткової професії</span>
+    </div>`;
+}
+
+function renderPayrollAdditionalBreakdown(row = {}) {
+    const transparency = payrollTransparency(row);
+    const roles = Array.isArray(transparency.additionalRoles) ? transparency.additionalRoles : [];
+    if (!roles.length) return '<span class="salary-muted">Немає</span>';
+    return roles.map(role => {
+        const trace = [
+            role.attendanceRef ? `attendance #${role.attendanceRef}` : '',
+            role.segmentRef ? `segment #${role.segmentRef}` : '',
+            role.roleRef ? `role #${role.roleRef}` : ''
+        ].filter(Boolean).join(' · ');
+        const status = role.status === 'blocked'
+            ? '<span class="salary-additional-warning">Потрібна перевірка</span>'
+            : '';
+        return `<div class="salary-additional-line">
+            <div><b>${escapeHtml(role.professionKey || '—')}</b>${status}</div>
+            <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${formatMoney(role.rate || 0)} × ${salaryNumber(role.multiplier || 0).toLocaleString('uk-UA')}</div>
+            <strong>+ ${formatMoney(role.amount || 0)}</strong>
+            <small>${escapeHtml(trace || role.policyVersion || 'Немає snapshot reference')}</small>
+        </div>`;
+    }).join('');
+}
+
 function renderPayrollProfessionBreakdown(row = {}) {
     const items = row.professionRateSummary || row.profession_rate_summary || [];
     if (!Array.isArray(items) || !items.length) return '<span class="salary-muted">—</span>';
@@ -1304,9 +1378,11 @@ function renderSalaryReportTable(data) {
             <div>
                 <div style="font-weight:900">Звіт за ${escapeHtml(data.month || '')}</div>
                 <div class="salary-muted">Breakdown по схемах, нарахуваннях, утриманнях і авансах.</div>
+                <div class="salary-role-hours-note">Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу.</div>
             </div>
             <div>
                 <button type="button" class="btn-page-secondary" id="salaryReportExportBtn">CSV</button>
+                <button type="button" class="btn-page-secondary" id="salaryReportExportXlsxBtn">Excel</button>
                 <button type="button" class="btn-page-secondary" id="salaryReportRefreshBtn">Оновити</button>
             </div>
         </div>
@@ -1318,8 +1394,10 @@ function renderSalaryReportTable(data) {
                         <th>Відділ</th>
                         <th>Посада</th>
                         <th>Схема</th>
+                        <th>Час</th>
                         <th>Професії / фактична оплата</th>
                         <th>База</th>
+                        <th>Додаткова одночасна оплата</th>
                         <th>Бонуси / %</th>
                         <th>Утримання</th>
                         <th>Аванс</th>
@@ -1334,8 +1412,10 @@ function renderSalaryReportTable(data) {
                             <td>${escapeHtml(DEPT_LABELS[row.department] || row.department || '—')}</td>
                             <td>${escapeHtml(row.position || row.roleType || '—')}</td>
                             <td>${salarySchemePill(row.schemeType)}</td>
+                            <td>${renderPayrollTimeBreakdown(row)}</td>
                             <td>${renderPayrollProfessionBreakdown(row)}</td>
                             <td>${formatMoney(row.baseAmount || 0)}</td>
+                            <td class="salary-plus">${renderPayrollAdditionalBreakdown(row)}</td>
                             <td class="salary-plus">${formatMoney(row.bonusesAmount || 0)}</td>
                             <td class="salary-minus">${formatMoney(row.deductionsAmount || 0)}</td>
                             <td class="salary-minus">${formatMoney(row.advancesAmount || 0)}</td>
@@ -1346,8 +1426,9 @@ function renderSalaryReportTable(data) {
                 </tbody>
                 <tfoot id="salaryTableFoot">
                     <tr>
-                        <td colspan="5" style="text-align:right;font-weight:900">Разом:</td>
+                        <td colspan="6" style="text-align:right;font-weight:900">Разом:</td>
                         <td>${formatMoney(totals.base || 0)}</td>
+                        <td class="salary-plus">${formatMoney(totals.additional || 0)}</td>
                         <td class="salary-plus">${formatMoney(totals.bonuses || 0)}</td>
                         <td class="salary-minus">${formatMoney(totals.deductions || 0)}</td>
                         <td class="salary-minus">${formatMoney(totals.advances || 0)}</td>
@@ -2004,6 +2085,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (event.target.id === 'salaryReportRefreshBtn') fetchSalaryReport();
         if (event.target.id === 'salaryReportExportBtn') exportPayrollCSV();
+        if (event.target.id === 'salaryReportExportXlsxBtn') exportPayrollXLSX();
     });
 
     // v30.6: Shift buttons

@@ -1,9 +1,11 @@
 const {
     HR_SHIFT_BREAK_POLICY,
     hydrateHrShiftDayPlans,
-    loadHrShiftDayPlan
+    loadHrShiftDayPlan,
+    loadPaidRoleValidationContext
 } = require('./hrShiftSegments');
 const { loadPrimaryStaffShiftPreference } = require('./professions');
+const { normalizeBusinessContext } = require('./businessContext');
 const { isAttendanceRecordOpen } = require('../js/hr-attendance-state');
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -32,6 +34,9 @@ const HR_ATTENDANCE_RESPONSE_PLAN_SOURCE_VALUES = new Set([
 // that segment, and never by more than the touched minutes. Exact break windows
 // require a separate protected schema decision.
 const HR_ATTENDANCE_BREAK_POLICY = HR_SHIFT_BREAK_POLICY;
+const HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION = 1;
+const HR_ATTENDANCE_COMPENSATION_RATE_SOURCE = 'staff_profession_rates.hourly_rate';
+const HR_ATTENDANCE_BASE_RATE_SOURCE = 'base_payroll_contract';
 const kyivDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: KYIV_TIME_ZONE,
     year: 'numeric',
@@ -228,12 +233,21 @@ function normalizeAttendanceSegments(input = {}) {
         const additionalProfessionKeys = Array.isArray(segment.additionalProfessionKeys)
             ? segment.additionalProfessionKeys
             : (Array.isArray(segment.additional_profession_keys) ? segment.additional_profession_keys : []);
+        const additionalRoles = Array.isArray(segment.additionalRoles)
+            ? segment.additionalRoles
+            : (Array.isArray(segment.additional_roles) ? segment.additional_roles : []);
         return {
             id: segment.id ?? null,
             professionKey,
             shiftStart: String(shiftStart).slice(0, 5),
             shiftEnd: String(shiftEnd).slice(0, 5),
             breakMinutes,
+            additionalRoles: additionalRoles.map(role => ({
+                professionKey: role.professionKey ?? role.profession_key ?? null,
+                compensationMode: role.compensationMode ?? role.compensation_mode ?? 'unpaid',
+                payMultiplier: role.payMultiplier ?? role.pay_multiplier ?? null,
+                policyVersion: role.policyVersion ?? role.policy_version ?? null
+            })),
             additionalProfessionKeys: [...new Set(additionalProfessionKeys.filter(Boolean))],
             startMinutes,
             endMinutes,
@@ -246,6 +260,332 @@ function normalizeAttendanceSegments(input = {}) {
         || left.endMinutes - right.endMinutes
         || left.sortOrder - right.sortOrder
     ));
+}
+
+function assertNonOverlappingAttendanceSegments(segments = []) {
+    for (let index = 1; index < segments.length; index += 1) {
+        const previous = segments[index - 1];
+        const current = segments[index];
+        if (current.startMinutes >= previous.endMinutes) continue;
+        const error = new Error('Фізичні сегменти attendance не можуть перетинатися');
+        error.code = 'HR_SHIFT_PLAN_SEGMENTS_OVERLAP';
+        error.statusCode = 400;
+        error.details = {
+            firstSegment: {
+                id: previous.id ?? null,
+                shiftStart: previous.shiftStart,
+                shiftEnd: previous.shiftEnd
+            },
+            secondSegment: {
+                id: current.id ?? null,
+                shiftStart: current.shiftStart,
+                shiftEnd: current.shiftEnd
+            }
+        };
+        throw error;
+    }
+}
+
+function parseAttendanceCompensationSnapshot(value) {
+    if (!value) return null;
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function publicAttendancePlanSegment(segment = {}) {
+    return {
+        id: segment.id ?? null,
+        professionKey: segment.professionKey || null,
+        shiftStart: segment.shiftStart || null,
+        shiftEnd: segment.shiftEnd || null,
+        breakMinutes: normalizeNonNegativeMinutes(segment.breakMinutes),
+        plannedMinutes: normalizeNonNegativeMinutes(segment.plannedMinutes),
+        additionalRoles: (segment.additionalRoles || []).map(role => ({
+            professionKey: role.professionKey || null,
+            compensationMode: role.compensationMode || 'unpaid',
+            payMultiplier: role.payMultiplier === null || role.payMultiplier === undefined
+                ? null
+                : Number(role.payMultiplier),
+            policyVersion: role.policyVersion || null
+        })),
+        additionalProfessionKeys: [...new Set((segment.additionalProfessionKeys || []).filter(Boolean))]
+    };
+}
+
+function attendancePlanFromCompensationSnapshot(snapshotValue) {
+    const snapshot = parseAttendanceCompensationSnapshot(snapshotValue);
+    const plan = snapshot?.plan;
+    if (!plan || !Array.isArray(plan.segments)) return null;
+    return attendancePlanPayload({
+        plannedStart: plan.plannedStart || null,
+        plannedEnd: plan.plannedEnd || null,
+        professionKey: plan.primaryProfessionKey || null,
+        segments: plan.segments.map(segment => ({
+            ...segment,
+            additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
+            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+        })),
+        source: snapshot.planSource || plan.source || HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT
+    });
+}
+
+function attendanceCompensationIssue(code, message, details = {}, severity = 'warning') {
+    return { code, message, severity, ...details };
+}
+
+function attendanceCompensationPlan(plan = {}) {
+    const normalizedSegments = normalizeAttendanceSegments({
+        segments: plan.segments,
+        plannedStart: plan.plannedStart,
+        plannedEnd: plan.plannedEnd,
+        primaryProfessionKey: plan.professionKey || plan.primaryProfessionKey
+    });
+    return {
+        primaryProfessionKey: plan.professionKey || plan.primaryProfessionKey || null,
+        plannedStart: plan.plannedStart || null,
+        plannedEnd: plan.plannedEnd || null,
+        source: plan.source || HR_ATTENDANCE_PLAN_SOURCES.UNSCHEDULED,
+        segments: normalizedSegments.map(publicAttendancePlanSegment)
+    };
+}
+
+function baseCompensationAllocation(segment, actualMinutes = 0, segmentIndex = null) {
+    return {
+        allocationType: 'base',
+        segmentId: segment.id ?? null,
+        segmentIndex: Number.isInteger(segmentIndex) ? segmentIndex : null,
+        professionKey: segment.professionKey || null,
+        plannedMinutes: normalizeNonNegativeMinutes(segment.plannedMinutes),
+        actualMinutes: normalizeNonNegativeMinutes(actualMinutes),
+        compensationMode: 'base',
+        payMultiplier: 1,
+        rate: null,
+        rateUnit: null,
+        rateSource: HR_ATTENDANCE_BASE_RATE_SOURCE,
+        policyVersion: null,
+        overtimeMinutes: 0
+    };
+}
+
+function additionalCompensationAllocation(segment, role, rateSnapshot = {}, actualMinutes = 0, segmentIndex = null) {
+    return {
+        allocationType: 'simultaneous_additional',
+        segmentId: segment.id ?? null,
+        segmentIndex: Number.isInteger(segmentIndex) ? segmentIndex : null,
+        professionKey: role.professionKey || null,
+        plannedMinutes: normalizeNonNegativeMinutes(segment.plannedMinutes),
+        actualMinutes: normalizeNonNegativeMinutes(actualMinutes),
+        compensationMode: role.compensationMode || 'paid_hourly',
+        payMultiplier: Number(role.payMultiplier),
+        rate: rateSnapshot.rate ?? null,
+        rateUnit: rateSnapshot.rateUnit || 'hour',
+        rateSource: rateSnapshot.rateSource || null,
+        policyVersion: role.policyVersion || null,
+        overtimeMinutes: 0
+    };
+}
+
+async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
+    const staffId = Number(input.staffId ?? input.staff_id);
+    const recordDate = normalizeAttendancePlanDate(input.recordDate ?? input.record_date);
+    const plan = attendanceCompensationPlan(input.plan || {});
+    const capturedAt = timestampAuditValue(input.capturedAt || input.captured_at || new Date());
+    const paidRoles = plan.segments.flatMap(segment =>
+        (segment.additionalRoles || [])
+            .filter(role => role.compensationMode === 'paid_hourly')
+            .map(role => ({ segment, role })));
+    const context = paidRoles.length
+        ? await loadPaidRoleValidationContext(db, [staffId])
+        : { policies: [], professionRates: new Map() };
+    const issues = [];
+    const compensationAllocations = [];
+
+    for (const [segmentIndex, segment] of plan.segments.entries()) {
+        compensationAllocations.push(baseCompensationAllocation(segment, 0, segmentIndex));
+        for (const role of segment.additionalRoles || []) {
+            if (role.compensationMode !== 'paid_hourly') continue;
+            const policy = (context.policies || []).find(item =>
+                item.policyVersion === role.policyVersion
+                && item.compensationMode === 'paid_hourly'
+                && item.status === 'active'
+                && item.effectiveFrom
+                && item.effectiveFrom <= recordDate
+                && Number(item.payMultiplier) === Number(role.payMultiplier));
+            const rate = context.professionRates?.get(`${staffId}:${role.professionKey}`);
+            if (!policy) {
+                issues.push(attendanceCompensationIssue(
+                    'ATTENDANCE_COMPENSATION_POLICY_REQUIRED',
+                    'Не вдалося зафіксувати активну політику додаткової оплати',
+                    { professionKey: role.professionKey, policyVersion: role.policyVersion || null },
+                    'manual_review'
+                ));
+            }
+            if (!Number.isFinite(Number(rate)) || Number(rate) <= 0) {
+                issues.push(attendanceCompensationIssue(
+                    'ATTENDANCE_COMPENSATION_RATE_REQUIRED',
+                    'Не вдалося зафіксувати явну погодинну ставку додаткової професії',
+                    { professionKey: role.professionKey, rateSource: HR_ATTENDANCE_COMPENSATION_RATE_SOURCE },
+                    'manual_review'
+                ));
+            }
+            compensationAllocations.push(additionalCompensationAllocation(segment, role, {
+                rate: Number.isFinite(Number(rate)) && Number(rate) > 0 ? Number(rate) : null,
+                rateUnit: 'hour',
+                rateSource: Number.isFinite(Number(rate)) && Number(rate) > 0
+                    ? HR_ATTENDANCE_COMPENSATION_RATE_SOURCE
+                    : null
+            }, 0, segmentIndex));
+        }
+    }
+
+    return {
+        schemaVersion: HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION,
+        state: issues.some(issue => issue.severity === 'manual_review') ? 'manual_review' : 'planned',
+        legacyBaseOnly: false,
+        staffId,
+        recordDate,
+        capturedAt,
+        finalizedAt: null,
+        correctedAt: null,
+        planSource: plan.source,
+        plan,
+        physicalAllocation: null,
+        compensationAllocations,
+        totals: {
+            physicalMinutes: 0,
+            baseMinutes: 0,
+            simultaneousAdditionalMinutes: 0,
+            compensationMinutes: 0
+        },
+        issues,
+        manualReview: issues.some(issue => issue.severity === 'manual_review')
+    };
+}
+
+function buildLegacyAttendanceCompensationSnapshot(input = {}) {
+    const plan = attendanceCompensationPlan(input.plan || {});
+    plan.segments = plan.segments.map(segment => ({
+        ...segment,
+        additionalRoles: (segment.additionalRoles || []).map(role => ({
+            ...role,
+            compensationMode: 'unpaid',
+            payMultiplier: null,
+            policyVersion: null
+        }))
+    }));
+    return {
+        schemaVersion: HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION,
+        state: 'legacy_base_only',
+        legacyBaseOnly: true,
+        staffId: Number(input.staffId ?? input.staff_id) || null,
+        recordDate: normalizeAttendancePlanDate(input.recordDate ?? input.record_date),
+        capturedAt: timestampAuditValue(input.capturedAt || input.captured_at || new Date()),
+        finalizedAt: null,
+        correctedAt: null,
+        planSource: input.planSource || input.plan_source || HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT,
+        plan,
+        physicalAllocation: null,
+        compensationAllocations: plan.segments.map((segment, segmentIndex) =>
+            baseCompensationAllocation(segment, 0, segmentIndex)),
+        totals: {
+            physicalMinutes: 0,
+            baseMinutes: 0,
+            simultaneousAdditionalMinutes: 0,
+            compensationMinutes: 0
+        },
+        issues: [attendanceCompensationIssue(
+            'ATTENDANCE_COMPENSATION_LEGACY_BASE_ONLY',
+            'Запис створено без compensation snapshot; додаткову оплату заднім числом не нараховано'
+        )],
+        manualReview: false
+    };
+}
+
+function finalizeAttendanceCompensationSnapshot(snapshotValue, physicalAllocation, options = {}) {
+    const source = parseAttendanceCompensationSnapshot(snapshotValue)
+        || buildLegacyAttendanceCompensationSnapshot(options);
+    const segmentAllocations = Array.isArray(physicalAllocation?.segmentAllocations)
+        ? physicalAllocation.segmentAllocations
+        : [];
+    const compensationAllocations = (source.compensationAllocations || []).map(allocation => {
+        const segmentIndex = source.plan?.segments?.findIndex(segment =>
+            allocation.segmentId !== null && allocation.segmentId !== undefined
+                ? String(segment.id) === String(allocation.segmentId)
+                : false);
+        const physical = segmentIndex >= 0
+            ? segmentAllocations[segmentIndex]
+            : segmentAllocations[Number(allocation.segmentIndex)];
+        return {
+            ...allocation,
+            actualMinutes: normalizeNonNegativeMinutes(physical?.actualMinutes),
+            overtimeMinutes: 0
+        };
+    });
+    const overtimeMinutes = normalizeNonNegativeMinutes(physicalAllocation?.overtimeMinutes);
+    if (overtimeMinutes > 0) {
+        const primaryProfessionKey = source.plan?.primaryProfessionKey || null;
+        let primaryBase = compensationAllocations.find(allocation =>
+            allocation.allocationType === 'base'
+            && allocation.professionKey === primaryProfessionKey);
+        if (!primaryBase) {
+            primaryBase = baseCompensationAllocation({
+                id: null,
+                professionKey: primaryProfessionKey,
+                plannedMinutes: 0
+            });
+            compensationAllocations.push(primaryBase);
+        }
+        primaryBase.actualMinutes += overtimeMinutes;
+        primaryBase.overtimeMinutes = overtimeMinutes;
+    }
+    const physicalMinutes = normalizeNonNegativeMinutes(physicalAllocation?.actualMinutes);
+    const physicalAllocationMinutes = segmentAllocations.reduce(
+        (sum, allocation) => sum + normalizeNonNegativeMinutes(allocation.actualMinutes),
+        0
+    ) + overtimeMinutes;
+    const baseMinutes = compensationAllocations
+        .filter(allocation => allocation.allocationType === 'base')
+        .reduce((sum, allocation) => sum + normalizeNonNegativeMinutes(allocation.actualMinutes), 0);
+    const simultaneousAdditionalMinutes = compensationAllocations
+        .filter(allocation => allocation.allocationType === 'simultaneous_additional')
+        .reduce((sum, allocation) => sum + normalizeNonNegativeMinutes(allocation.actualMinutes), 0);
+    const issues = [...(source.issues || [])];
+    if (physicalAllocationMinutes !== physicalMinutes) {
+        issues.push(attendanceCompensationIssue(
+            'ATTENDANCE_PHYSICAL_ALLOCATION_INVARIANT_FAILED',
+            'Сума фізичних allocations не збігається з фактичними хвилинами',
+            { physicalAllocationMinutes, physicalMinutes },
+            'manual_review'
+        ));
+    }
+    const manualReview = issues.some(issue => issue.severity === 'manual_review');
+    return {
+        ...source,
+        state: manualReview ? 'manual_review' : 'final',
+        finalizedAt: timestampAuditValue(options.finalizedAt || options.finalized_at || new Date()),
+        correctedAt: options.correctedAt || options.corrected_at
+            ? timestampAuditValue(options.correctedAt || options.corrected_at)
+            : (source.correctedAt || null),
+        physicalAllocation: {
+            ...physicalAllocation,
+            segmentAllocations: segmentAllocations.map(allocation => ({ ...allocation }))
+        },
+        compensationAllocations,
+        totals: {
+            physicalMinutes,
+            physicalAllocationMinutes,
+            baseMinutes,
+            simultaneousAdditionalMinutes,
+            compensationMinutes: baseMinutes + simultaneousAdditionalMinutes
+        },
+        issues,
+        manualReview
+    };
 }
 
 function normalizeAttendancePlanDate(value) {
@@ -447,7 +787,8 @@ async function recordAttendanceClockIn(db, input = {}) {
     const existing = existingResult.rows?.[0] || null;
     if (existing?.clock_in) {
         const planSource = await loadInitialAttendancePlanSource(db, existing);
-        const plan = attendancePlanPayload({
+        const plan = attendancePlanFromCompensationSnapshot(existing.compensation_snapshot)
+            || attendancePlanPayload({
             plannedStart: existing.planned_start || null,
             plannedEnd: existing.planned_end || null,
             professionKey: existing.primary_profession_key || null,
@@ -472,15 +813,25 @@ async function recordAttendanceClockIn(db, input = {}) {
     }
     const fields = calculateAttendanceClockIn(plan, clockInDate, recordDate);
     const clockIn = clockInDate.toISOString();
-    const businessContext = input.businessContext ?? input.business_context ?? null;
+    const compensationSnapshot = await buildAttendanceCompensationPlanSnapshot(db, {
+        staffId,
+        recordDate,
+        plan,
+        capturedAt: clockIn
+    });
+    if (compensationSnapshot.manualReview) fields.status = 'manual_review';
+    const businessContext = normalizeBusinessContext(
+        input.businessContext ?? input.business_context
+    );
     let writeResult;
     if (existing) {
         writeResult = await db.query(
             `UPDATE hr_time_records SET
                 clock_in = $1, planned_start = $2, planned_end = $3,
                 late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
-                business_context = COALESCE(business_context, $8), updated_at = NOW()
-             WHERE id = $9 RETURNING *`,
+                business_context = COALESCE(business_context, $8),
+                compensation_snapshot = $9::jsonb, updated_at = NOW()
+             WHERE id = $10 RETURNING *`,
             [
                 clockIn,
                 fields.plannedStart,
@@ -490,6 +841,7 @@ async function recordAttendanceClockIn(db, input = {}) {
                 input.ip || null,
                 input.userAgent || input.user_agent || null,
                 businessContext,
+                JSON.stringify(compensationSnapshot),
                 existing.id
             ]
         );
@@ -497,8 +849,8 @@ async function recordAttendanceClockIn(db, input = {}) {
         writeResult = await db.query(
             `INSERT INTO hr_time_records
                 (business_context, staff_id, record_date, clock_in, planned_start, planned_end,
-                 late_minutes, status, ip_address, user_agent)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 late_minutes, status, ip_address, user_agent, compensation_snapshot)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
              RETURNING *`,
             [
                 businessContext,
@@ -510,7 +862,8 @@ async function recordAttendanceClockIn(db, input = {}) {
                 fields.lateMinutes,
                 fields.status,
                 input.ip || null,
-                input.userAgent || input.user_agent || null
+                input.userAgent || input.user_agent || null,
+                JSON.stringify(compensationSnapshot)
             ]
         );
     }
@@ -529,7 +882,10 @@ async function recordAttendanceClockIn(db, input = {}) {
         method,
         source,
         plan_source: plan.source,
-        profession_key: plan.professionKey || null
+        profession_key: plan.professionKey || null,
+        compensation_snapshot_state: compensationSnapshot.state,
+        compensation_manual_review: compensationSnapshot.manualReview,
+        compensation_issues: compensationSnapshot.issues
     };
     await db.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
@@ -541,10 +897,34 @@ async function recordAttendanceClockIn(db, input = {}) {
             input.ip || null
         ]
     );
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('compensation_snapshot_created', $1, $2, $3, $4)`,
+        [
+            staffId,
+            input.performedBy || input.performed_by || method,
+            JSON.stringify({
+                eventVersion: 1,
+                recordId: record?.id ?? null,
+                recordDate,
+                source,
+                trigger: 'clock_in',
+                snapshotState: compensationSnapshot.state,
+                snapshotSchemaVersion: compensationSnapshot.schemaVersion,
+                planSource: compensationSnapshot.planSource,
+                compensationSnapshot
+            }),
+            input.ip || null
+        ]
+    );
 
     return {
         record: record ? decorateAttendanceRecord(
-            { ...record, plan_source: plan.source },
+            {
+                ...record,
+                compensation_snapshot: record.compensation_snapshot || compensationSnapshot,
+                plan_source: plan.source
+            },
             attendancePlanForDecoration(plan)
         ) : null,
         plan,
@@ -590,6 +970,7 @@ function segmentAllocationPayload(segment, actualMinutes, overlapMinutes = null)
         plannedMinutes: segment.plannedMinutes,
         actualMinutes: normalizeNonNegativeMinutes(actualMinutes),
         overlapMinutes: overlapMinutes === null ? null : normalizeNonNegativeMinutes(overlapMinutes),
+        additionalRoles: segment.additionalRoles,
         additionalProfessionKeys: segment.additionalProfessionKeys
     };
 }
@@ -622,6 +1003,7 @@ function allocateAttendanceToSegments(input = {}) {
         breakMinutes: input.breakMinutes ?? input.break_minutes,
         primaryProfessionKey
     });
+    assertNonOverlappingAttendanceSegments(segments);
     const plannedMinutes = segments.reduce((sum, segment) => sum + segment.plannedMinutes, 0);
     const base = emptyAttendanceAllocation(segments, primaryProfessionKey);
     const recordDate = dateOnly(input.recordDate || input.record_date);
@@ -787,23 +1169,50 @@ function attendanceAllocationFields(allocation) {
 }
 
 function decorateAttendanceRecord(record = {}, loadedShift = null) {
-    const plan = loadedShift?.plan || loadedShift || null;
+    const compensationSnapshot = parseAttendanceCompensationSnapshot(
+        record.compensation_snapshot || record.compensationSnapshot
+    );
+    const snapshotPlan = attendancePlanFromCompensationSnapshot(compensationSnapshot);
+    const plan = snapshotPlan || loadedShift?.plan || loadedShift || null;
     const shift = loadedShift?.shift || {};
-    const allocation = allocateAttendanceToSegments({
-        recordDate: record.record_date || record.date,
-        clockIn: record.clock_in || record.checkin_at,
-        clockOut: record.clock_out || record.checkout_at,
-        totalWorkedMinutes: record.total_worked_minutes,
-        segments: plan?.segments,
-        primaryProfessionKey: plan?.primaryProfessionKey || shift.profession_key || record.primary_profession_key,
-        plannedStart: record.planned_start || shift.planned_start,
-        plannedEnd: record.planned_end || shift.planned_end,
-        breakMinutes: shift.break_minutes || 0
-    });
+    const allocation = compensationSnapshot?.physicalAllocation
+        ? {
+            ...compensationSnapshot.physicalAllocation,
+            segmentAllocations: compensationSnapshot.physicalAllocation.segmentAllocations || [],
+            allocationIssues: compensationSnapshot.physicalAllocation.allocationIssues || []
+        }
+        : allocateAttendanceToSegments({
+            recordDate: record.record_date || record.date,
+            clockIn: record.clock_in || record.checkin_at,
+            clockOut: record.clock_out || record.checkout_at,
+            totalWorkedMinutes: record.total_worked_minutes,
+            segments: plan?.segments,
+            primaryProfessionKey: plan?.professionKey || plan?.primaryProfessionKey
+                || shift.profession_key || record.primary_profession_key,
+            plannedStart: snapshotPlan?.plannedStart || record.planned_start || shift.planned_start,
+            plannedEnd: snapshotPlan?.plannedEnd || record.planned_end || shift.planned_end,
+            breakMinutes: shift.break_minutes || 0
+        });
     const reporting = attendanceReportingFacts(record, loadedShift);
+    const legacyCompensationWarning = compensationSnapshot
+        ? null
+        : attendanceCompensationIssue(
+            'ATTENDANCE_COMPENSATION_LEGACY_BASE_ONLY',
+            'Запис не має compensation snapshot; додаткова оплата не застосовується ретроактивно'
+        );
+    const compensationIssues = compensationSnapshot?.issues
+        || (legacyCompensationWarning ? [legacyCompensationWarning] : []);
     return {
         ...record,
         ...attendanceAllocationFields(allocation),
+        compensationSnapshot,
+        compensation_snapshot: compensationSnapshot,
+        compensationAllocations: compensationSnapshot?.compensationAllocations || [],
+        compensation_allocations: compensationSnapshot?.compensationAllocations || [],
+        compensationIssues,
+        compensation_issues: compensationIssues,
+        compensationManualReview: Boolean(compensationSnapshot?.manualReview),
+        compensation_manual_review: Boolean(compensationSnapshot?.manualReview),
         overtimeMinutes: reporting.overtimeMinutes,
         overtime_minutes: reporting.overtimeMinutes,
         planned_start: reporting.plannedStart,
@@ -1027,8 +1436,10 @@ async function recordAttendanceClockOut(db, input = {}) {
         );
     }
     const initialPlanSource = await loadInitialAttendancePlanSource(db, record);
+    const storedCompensationSnapshot = parseAttendanceCompensationSnapshot(record.compensation_snapshot);
+    const storedPlan = attendancePlanFromCompensationSnapshot(storedCompensationSnapshot);
     if (record.clock_out) {
-        const plan = attendancePlanPayload({
+        const plan = storedPlan || attendancePlanPayload({
             plannedStart: record.planned_start || null,
             plannedEnd: record.planned_end || null,
             professionKey: record.primary_profession_key || null,
@@ -1047,14 +1458,16 @@ async function recordAttendanceClockOut(db, input = {}) {
         };
     }
 
-    const resolvedPlan = await resolveAttendancePlan(db, staffId, recordDate);
-    const plannedStart = record.planned_start || resolvedPlan.plannedStart || null;
-    const plannedEnd = record.planned_end || resolvedPlan.plannedEnd || null;
+    const resolvedPlan = storedPlan || await resolveAttendancePlan(db, staffId, recordDate);
+    const plannedStart = storedPlan?.plannedStart || record.planned_start || resolvedPlan.plannedStart || null;
+    const plannedEnd = storedPlan?.plannedEnd || record.planned_end || resolvedPlan.plannedEnd || null;
     const plan = {
-        primaryProfessionKey: resolvedPlan.professionKey || null,
+        primaryProfessionKey: resolvedPlan.professionKey || resolvedPlan.primaryProfessionKey || null,
         plannedStart,
         plannedEnd,
-        segments: resolvedPlan.source === HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT
+        segments: storedPlan
+            ? (storedPlan.segments || [])
+            : resolvedPlan.source === HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT
             ? (resolvedPlan.segments || [])
             : []
     };
@@ -1083,12 +1496,35 @@ async function recordAttendanceClockOut(db, input = {}) {
         recordDate,
         settlementMode: input.settlementMode ?? input.settlement_mode
     });
+    const compensationBaseSnapshot = storedCompensationSnapshot
+        || buildLegacyAttendanceCompensationSnapshot({
+            staffId,
+            recordDate,
+            plan: {
+                ...plan,
+                professionKey: plan.primaryProfessionKey,
+                source: initialPlanSource
+            },
+            planSource: initialPlanSource,
+            capturedAt: record.clock_in
+        });
+    const compensationSnapshot = finalizeAttendanceCompensationSnapshot(
+        compensationBaseSnapshot,
+        payroll.allocation,
+        {
+            staffId,
+            recordDate,
+            finalizedAt: clockOut
+        }
+    );
+    if (compensationSnapshot.manualReview) payroll.status = 'manual_review';
 
     const writeResult = await db.query(
         `UPDATE hr_time_records SET
             clock_out = $1, total_worked_minutes = $2, late_minutes = $3,
-            early_leave_minutes = $4, overtime_minutes = $5, status = $6, updated_at = NOW()
-         WHERE id = $7 RETURNING *`,
+            early_leave_minutes = $4, overtime_minutes = $5, status = $6,
+            compensation_snapshot = $7::jsonb, updated_at = NOW()
+         WHERE id = $8 RETURNING *`,
         [
             clockOut,
             payroll.totalWorkedMinutes,
@@ -1096,6 +1532,7 @@ async function recordAttendanceClockOut(db, input = {}) {
             payroll.earlyLeaveMinutes,
             payroll.overtimeMinutes,
             payroll.status,
+            JSON.stringify(compensationSnapshot),
             record.id
         ]
     );
@@ -1117,6 +1554,10 @@ async function recordAttendanceClockOut(db, input = {}) {
         requested_settlement_mode: payroll.requestedSettlementMode,
         allocation_source: payroll.allocation.allocationSource,
         segment_allocations: payroll.allocation.segmentAllocations,
+        compensation_allocations: compensationSnapshot.compensationAllocations,
+        compensation_totals: compensationSnapshot.totals,
+        compensation_snapshot_state: compensationSnapshot.state,
+        compensation_issues: compensationSnapshot.issues,
         allocation_issues: payroll.allocation.allocationIssues,
         status: payroll.status,
         method,
@@ -1133,10 +1574,36 @@ async function recordAttendanceClockOut(db, input = {}) {
             input.ip || null
         ]
     );
+    if (!storedCompensationSnapshot) {
+        await db.query(
+            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+             VALUES ('compensation_snapshot_created', $1, $2, $3, $4)`,
+            [
+                staffId,
+                input.performedBy || input.performed_by || method,
+                JSON.stringify({
+                    eventVersion: 1,
+                    recordId: record.id,
+                    recordDate,
+                    source,
+                    trigger: 'legacy_clock_out',
+                    snapshotState: compensationSnapshot.state,
+                    snapshotSchemaVersion: compensationSnapshot.schemaVersion,
+                    planSource: compensationSnapshot.planSource,
+                    compensationSnapshot
+                }),
+                input.ip || null
+            ]
+        );
+    }
 
     return {
         record: writtenRecord
-            ? decorateAttendanceRecord({ ...writtenRecord, plan_source: initialPlanSource }, attendancePlanForDecoration({
+            ? decorateAttendanceRecord({
+                ...writtenRecord,
+                compensation_snapshot: writtenRecord.compensation_snapshot || compensationSnapshot,
+                plan_source: initialPlanSource
+            }, attendancePlanForDecoration({
                 professionKey: plan.primaryProfessionKey,
                 plannedStart,
                 plannedEnd,
@@ -1161,6 +1628,7 @@ async function recordAttendanceClockOut(db, input = {}) {
 module.exports = {
     HR_ATTENDANCE_GRACE_MINUTES,
     HR_ATTENDANCE_BREAK_POLICY,
+    HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION,
     HR_ATTENDANCE_PLAN_SOURCES,
     allocateAttendanceToSegments,
     actualWorkedMinutes,
@@ -1170,13 +1638,18 @@ module.exports = {
     attendanceCsvRow,
     attendanceFactMinutes,
     attendancePlanWarningMessage,
+    attendancePlanFromCompensationSnapshot,
     attendanceReportingFacts,
+    buildAttendanceCompensationPlanSnapshot,
+    buildLegacyAttendanceCompensationSnapshot,
     calculateAttendanceClockIn,
     calculateHrClockOutPayroll,
     decorateAttendanceRecord,
+    finalizeAttendanceCompensationSnapshot,
     hydrateAttendanceRecords,
     isAttendanceRecordOpen,
     normalizeHrSettlementMode,
+    parseAttendanceCompensationSnapshot,
     paidMinutesAfterSegmentBreak,
     plannedShiftWorkedMinutes,
     recordAttendanceClockIn,

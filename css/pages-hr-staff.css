@@ -5640,6 +5640,69 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     opacity: 0.58;
 }
 
+.sch-paid-role-editor {
+    border-style: solid;
+    border-color: rgba(16, 185, 129, 0.26);
+    background: rgba(16, 185, 129, 0.035);
+}
+
+.sch-paid-role-grid {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.5fr) repeat(3, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.sch-paid-role-grid .form-group {
+    margin: 0;
+}
+
+.sch-paid-role-preview {
+    margin-top: 8px;
+    color: var(--gray-600);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.sch-paid-rate-error {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.06);
+    color: #b91c1c;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.4;
+}
+
+.sch-paid-rate-error a {
+    flex: 0 0 auto;
+    color: inherit;
+    text-decoration: underline;
+}
+
+.sch-field-error {
+    margin-top: 4px;
+    color: #b91c1c;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.35;
+}
+
+.sch-field-error:empty {
+    display: none;
+}
+
+.sch-modal .form-group.has-error input,
+.sch-modal .form-group.has-error select {
+    border-color: #ef4444;
+}
+
 .sch-segment-empty-roles {
     color: var(--gray-500);
     font-size: 11px;
@@ -5703,6 +5766,22 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     color: #047857;
     font-size: 11px;
     font-weight: 750;
+}
+
+.sch-overlap-conversion {
+    display: grid;
+    gap: 5px;
+}
+
+.sch-overlap-conversion button {
+    justify-self: start;
+    min-height: 38px;
+}
+
+.sch-overlap-conversion span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 650;
 }
 
 .sch-shift-preferences {
@@ -5887,6 +5966,7 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
 
 #schModalOverlay .sch-primary-actions {
     flex: 0 0 auto;
+    flex-wrap: wrap;
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid rgba(148, 163, 184, 0.22);
@@ -5895,6 +5975,23 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
 
 #schModalOverlay .sch-primary-actions > button {
     min-height: 44px;
+}
+
+.sch-save-validation {
+    flex: 1 0 100%;
+    margin-bottom: 2px;
+    padding: 8px 10px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.07);
+    color: #b91c1c;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.4;
+}
+
+.sch-save-validation[hidden] {
+    display: none;
 }
 
 /* Dark mode overrides */
@@ -6876,6 +6973,28 @@ body.dark-mode .sch-additional-roles,
     border-color: rgba(148, 163, 184, 0.25);
 }
 
+body.dark-mode .sch-paid-role-editor,
+[data-theme="dark"] .sch-paid-role-editor {
+    border-color: rgba(45, 212, 191, 0.28);
+    background: rgba(13, 148, 136, 0.08);
+}
+
+body.dark-mode .sch-paid-role-preview,
+body.dark-mode .sch-overlap-conversion span,
+[data-theme="dark"] .sch-paid-role-preview,
+[data-theme="dark"] .sch-overlap-conversion span {
+    color: #94a3b8;
+}
+
+body.dark-mode .sch-paid-rate-error,
+body.dark-mode .sch-save-validation,
+[data-theme="dark"] .sch-paid-rate-error,
+[data-theme="dark"] .sch-save-validation {
+    border-color: rgba(248, 113, 113, 0.32);
+    background: rgba(239, 68, 68, 0.1);
+    color: #fecaca;
+}
+
 body.dark-mode .sch-plan-summary,
 [data-theme="dark"] .sch-plan-summary {
     background: rgba(16, 185, 129, 0.09);
@@ -7023,6 +7142,14 @@ body.dark-mode .sch-segment-more.is-section-role,
 
     .sch-segment-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sch-paid-role-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sch-paid-profession-field {
+        grid-column: 1 / -1;
     }
 
     .sch-segment-profession-field,
@@ -7180,6 +7307,14 @@ body.dark-mode .hr-shift-multi-guard__segments span,
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .sch-paid-role-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sch-paid-profession-field {
+        grid-column: auto;
+    }
+
     .sch-segment-profession-field,
     .sch-segment-note-field {
         grid-column: auto;
@@ -7193,6 +7328,16 @@ body.dark-mode .hr-shift-multi-guard__segments span,
     .sch-modal .sch-additional-role {
         width: 100%;
         box-sizing: border-box;
+    }
+
+    .sch-paid-rate-error {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .sch-overlap-conversion button {
+        justify-self: stretch;
+        white-space: normal;
     }
 
     #schModalOverlay .sch-primary-actions,

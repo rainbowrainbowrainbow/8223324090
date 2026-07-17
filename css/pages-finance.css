@@ -1,0 +1,56 @@
+.salary-role-hours-note {
+    margin-top: 7px;
+    padding: 8px 10px;
+    border: 1px solid rgba(14, 165, 233, 0.22);
+    border-radius: 9px;
+    background: rgba(14, 165, 233, 0.08);
+    color: #0c4a6e;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.salary-time-breakdown,
+.salary-additional-line {
+    display: grid;
+    gap: 3px;
+    min-width: 170px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.salary-time-breakdown span:not(:first-child),
+.salary-additional-line small {
+    color: var(--gray-500);
+}
+
+.salary-additional-line + .salary-additional-line {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.salary-additional-line strong {
+    color: #047857;
+}
+
+.salary-additional-warning {
+    display: inline-flex;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.14);
+    color: #92400e;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+body.dark-mode .salary-role-hours-note {
+    border-color: rgba(56, 189, 248, 0.26);
+    background: rgba(14, 165, 233, 0.12);
+    color: #bae6fd;
+}
+
+body.dark-mode .salary-additional-warning {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fde68a;
+}

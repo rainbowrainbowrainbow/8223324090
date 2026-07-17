@@ -27,6 +27,16 @@ const migration = readMigration();
 const migrationSql = stripSqlComments(migration);
 const initialSchema = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
 const hrModuleSchema = fs.readFileSync(path.join(MIGRATIONS_DIR, '007_hr_module.sql'), 'utf8');
+const paidAdditionalRolesMigration = fs.readFileSync(
+    path.join(MIGRATIONS_DIR, '298_hr_paid_additional_roles_foundation.sql'),
+    'utf8'
+);
+const paidAdditionalRolesSql = stripSqlComments(paidAdditionalRolesMigration);
+const paidAdditionalRolesActivation = fs.readFileSync(
+    path.join(MIGRATIONS_DIR, '299_activate_simultaneous_profession_pay_v1.sql'),
+    'utf8'
+);
+const paidAdditionalRolesActivationSql = stripSqlComments(paidAdditionalRolesActivation);
 
 test('HR shift segments migration is additive and governed', () => {
     assert.match(migration, /-- MIGRATION_KIND: mixed/);
@@ -128,4 +138,40 @@ test('backup inventory orders shift segments parent-first', () => {
     assert.ok(result.order.indexOf('hr_shifts') < result.order.indexOf('hr_shift_segments'));
     assert.ok(result.order.indexOf('hr_shift_segments') < result.order.indexOf('hr_shift_segment_roles'));
     assert.deepEqual(result.deferredForeignKeys, []);
+});
+
+test('paid additional-role foundation is additive, fail-closed and non-retroactive', () => {
+    assert.match(paidAdditionalRolesMigration, /-- MIGRATION_KIND: mixed/);
+    assert.match(paidAdditionalRolesMigration, /-- SAFETY:/);
+    assert.match(paidAdditionalRolesMigration, /-- ROLLBACK:/);
+    assert.match(paidAdditionalRolesSql, /CREATE TABLE IF NOT EXISTS hr_compensation_policies/);
+    assert.match(paidAdditionalRolesSql, /status VARCHAR\(16\) NOT NULL DEFAULT 'draft'/);
+    assert.match(paidAdditionalRolesSql, /'simultaneous-profession-pay-v1'[\s\S]*'paid_hourly'[\s\S]*1\.0[\s\S]*NULL[\s\S]*'draft'/);
+    assert.match(paidAdditionalRolesSql, /ADD COLUMN IF NOT EXISTS compensation_mode VARCHAR\(32\) NOT NULL DEFAULT 'unpaid'/);
+    assert.match(paidAdditionalRolesSql, /ADD COLUMN IF NOT EXISTS pay_multiplier NUMERIC\(10,4\)/);
+    assert.match(paidAdditionalRolesSql, /ADD COLUMN IF NOT EXISTS policy_version VARCHAR\(64\)/);
+    assert.match(paidAdditionalRolesSql, /compensation_mode IN \('unpaid', 'paid_hourly'\)/);
+    assert.match(paidAdditionalRolesSql, /compensation_mode = 'unpaid'[\s\S]*pay_multiplier IS NULL[\s\S]*policy_version IS NULL/);
+    assert.match(paidAdditionalRolesSql, /compensation_mode = 'paid_hourly'[\s\S]*pay_multiplier > 0/);
+    assert.match(paidAdditionalRolesSql, /ADD COLUMN IF NOT EXISTS compensation_snapshot JSONB/);
+    assert.doesNotMatch(paidAdditionalRolesSql, /UPDATE hr_shift_segment_roles[\s\S]*SET compensation_mode = 'paid_hourly'/);
+    assert.doesNotMatch(paidAdditionalRolesSql, /UPDATE hr_time_records SET compensation_snapshot/);
+});
+
+test('paid additional-role activation is scoped, idempotent and preserves historical rows', () => {
+    assert.match(paidAdditionalRolesActivation, /-- MIGRATION_KIND: data-fix/);
+    assert.match(paidAdditionalRolesActivation, /-- OPERATOR_APPROVAL: required/);
+    assert.match(paidAdditionalRolesActivation, /-- DATA_SCOPE:/);
+    assert.match(
+        paidAdditionalRolesActivationSql,
+        /WHERE policy_version = 'simultaneous-profession-pay-v1'[\s\S]*compensation_mode = 'paid_hourly'[\s\S]*pay_multiplier = 1\.0/
+    );
+    assert.match(paidAdditionalRolesActivationSql, /effective_from = DATE '2026-07-18'/);
+    assert.match(paidAdditionalRolesActivationSql, /status = 'active'/);
+    assert.match(paidAdditionalRolesActivationSql, /status = 'draft'[\s\S]*OR[\s\S]*status = 'active'/);
+    assert.match(paidAdditionalRolesActivationSql, /RAISE EXCEPTION[\s\S]*activation failed closed/);
+    assert.doesNotMatch(paidAdditionalRolesActivationSql, /UPDATE hr_shift_segment_roles/);
+    assert.doesNotMatch(paidAdditionalRolesActivationSql, /UPDATE hr_time_records/);
+    assert.doesNotMatch(paidAdditionalRolesActivationSql, /UPDATE payroll_reports/);
+    assert.doesNotMatch(paidAdditionalRolesActivationSql, /UPDATE finance_transactions/);
 });

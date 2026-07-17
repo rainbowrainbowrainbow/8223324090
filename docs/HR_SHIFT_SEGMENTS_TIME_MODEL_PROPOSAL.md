@@ -2,6 +2,12 @@
 
 Status: proposal only. No migration is authorized by this document.
 
+This exact-time proposal does not itself enable pay for simultaneous additional roles. Current production
+remains base-only. If the separately versioned
+[`simultaneous-profession-pay-v1`](HR_SIMULTANEOUS_PROFESSION_PAY_POLICY.md) policy is later approved,
+implemented, and activated, that policy governs compensation semantics while this document continues to
+govern exact break windows and day offsets.
+
 ## Problem
 
 The current normalized segment model deliberately stores only `break_minutes` and wall-clock `TIME` values.

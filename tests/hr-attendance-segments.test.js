@@ -7,6 +7,9 @@ const {
     HR_ATTENDANCE_BREAK_POLICY,
     allocateAttendanceToSegments,
     attendanceAllocationFields,
+    buildAttendanceCompensationPlanSnapshot,
+    buildLegacyAttendanceCompensationSnapshot,
+    finalizeAttendanceCompensationSnapshot,
     calculateHrClockOutPayroll
 } = require('../services/hrAttendance');
 
@@ -22,6 +25,67 @@ function allocate(options = {}) {
         primaryProfessionKey: 'reception',
         ...options
     });
+}
+
+function paidRoleContextDb({ rate = 180, policy = true } = {}) {
+    return {
+        async query(sql) {
+            const text = String(sql);
+            if (text.includes('FROM hr_compensation_policies')) {
+                return {
+                    rows: policy ? [{
+                        policy_version: 'simultaneous-profession-pay-v1',
+                        compensation_mode: 'paid_hourly',
+                        pay_multiplier: '1.0000',
+                        effective_from: '2026-07-01',
+                        status: 'active'
+                    }] : []
+                };
+            }
+            if (text.includes('FROM staff_role_assignments')) {
+                return {
+                    rows: [{
+                        staff_id: 17,
+                        profession_key: 'hallkeeper',
+                        status: 'active',
+                        admission_status: 'approved'
+                    }]
+                };
+            }
+            if (text.includes('FROM staff_profession_rates')) {
+                return {
+                    rows: rate === null ? [] : [{
+                        staff_id: 17,
+                        profession_key: 'hallkeeper',
+                        hourly_rate: String(rate)
+                    }]
+                };
+            }
+            throw new Error(`Unexpected SQL: ${text}`);
+        }
+    };
+}
+
+function simultaneousProfessionPlan({ breakMinutes = 0 } = {}) {
+    return {
+        source: 'hr_shift',
+        professionKey: 'wardrobe',
+        plannedStart: '11:00',
+        plannedEnd: '20:00',
+        segments: [
+            segment('wardrobe', '11:00', '11:30'),
+            {
+                ...segment('wardrobe', '11:30', '20:00', breakMinutes, ['hallkeeper']),
+                id: 502,
+                additionalRoles: [{
+                    professionKey: 'hallkeeper',
+                    compensationMode: 'paid_hourly',
+                    payMultiplier: 1,
+                    policyVersion: 'simultaneous-profession-pay-v1'
+                }]
+            }
+        ]
+    };
 }
 
 test('attendance allocates late arrival and early leave to the touched segments', () => {
@@ -147,6 +211,23 @@ test('additional simultaneous professions do not receive duplicate actual minute
     assert.equal(result.actualMinutes, 240);
 });
 
+test('attendance allocation fails closed when physical segments overlap', () => {
+    assert.throws(
+        () => allocate({
+            clockIn: '2026-07-13T08:00:00.000Z',
+            clockOut: '2026-07-13T17:00:00.000Z',
+            segments: [
+                segment('wardrobe', '11:00', '20:00'),
+                segment('hallkeeper', '11:30', '20:00')
+            ]
+        }),
+        error => error.code === 'HR_SHIFT_PLAN_SEGMENTS_OVERLAP'
+            && error.statusCode === 400
+            && error.details.firstSegment.shiftStart === '11:00'
+            && error.details.secondSegment.shiftStart === '11:30'
+    );
+});
+
 test('time outside the day envelope becomes overtime of the primary profession', () => {
     const result = allocate({
         clockIn: '2026-07-13T05:30:00.000Z',
@@ -163,6 +244,147 @@ test('time outside the day envelope becomes overtime of the primary profession',
     assert.equal(result.overtimeMinutes, 60);
     assert.deepEqual(result.overtimeAllocation, { professionKey: 'reception', actualMinutes: 60 });
     assert.ok(result.allocationIssues.some(issue => issue.code === 'ACTUAL_TIME_OUTSIDE_PLANNED_SEGMENTS'));
+});
+
+test('compensation allocations keep 540 physical minutes and add 510 simultaneous minutes', async () => {
+    const plan = simultaneousProfessionPlan();
+    const snapshot = await buildAttendanceCompensationPlanSnapshot(paidRoleContextDb(), {
+        staffId: 17,
+        recordDate: DAY,
+        capturedAt: '2026-07-13T08:00:00.000Z',
+        plan
+    });
+    const physical = allocate({
+        clockIn: '2026-07-13T08:00:00.000Z',
+        clockOut: '2026-07-13T17:00:00.000Z',
+        primaryProfessionKey: 'wardrobe',
+        segments: plan.segments
+    });
+    const finalSnapshot = finalizeAttendanceCompensationSnapshot(snapshot, physical, {
+        finalizedAt: '2026-07-13T17:00:00.000Z'
+    });
+
+    assert.equal(physical.actualMinutes, 540);
+    assert.equal(finalSnapshot.totals.physicalMinutes, 540);
+    assert.equal(finalSnapshot.totals.physicalAllocationMinutes, 540);
+    assert.equal(finalSnapshot.totals.baseMinutes, 540);
+    assert.equal(finalSnapshot.totals.simultaneousAdditionalMinutes, 510);
+    assert.equal(finalSnapshot.totals.compensationMinutes, 1050);
+    assert.deepEqual(
+        finalSnapshot.compensationAllocations.map(allocation => ({
+            type: allocation.allocationType,
+            profession: allocation.professionKey,
+            actual: allocation.actualMinutes,
+            rate: allocation.rate,
+            rateSource: allocation.rateSource
+        })),
+        [
+            { type: 'base', profession: 'wardrobe', actual: 30, rate: null, rateSource: 'base_payroll_contract' },
+            { type: 'base', profession: 'wardrobe', actual: 510, rate: null, rateSource: 'base_payroll_contract' },
+            {
+                type: 'simultaneous_additional',
+                profession: 'hallkeeper',
+                actual: 510,
+                rate: 180,
+                rateSource: 'staff_profession_rates.hourly_rate'
+            }
+        ]
+    );
+    assert.equal(finalSnapshot.manualReview, false);
+});
+
+test('break, late arrival and early leave reduce every compensation role in the touched segment', async () => {
+    const plan = simultaneousProfessionPlan({ breakMinutes: 30 });
+    const snapshot = await buildAttendanceCompensationPlanSnapshot(paidRoleContextDb(), {
+        staffId: 17,
+        recordDate: DAY,
+        plan
+    });
+    const scenarios = [
+        {
+            label: 'full with break',
+            clockIn: '2026-07-13T08:00:00.000Z',
+            clockOut: '2026-07-13T17:00:00.000Z',
+            base: 510,
+            additional: 480
+        },
+        {
+            label: 'late',
+            clockIn: '2026-07-13T08:45:00.000Z',
+            clockOut: '2026-07-13T17:00:00.000Z',
+            base: 465,
+            additional: 465
+        },
+        {
+            label: 'early',
+            clockIn: '2026-07-13T08:00:00.000Z',
+            clockOut: '2026-07-13T16:00:00.000Z',
+            base: 450,
+            additional: 420
+        }
+    ];
+
+    for (const scenario of scenarios) {
+        const physical = allocate({
+            clockIn: scenario.clockIn,
+            clockOut: scenario.clockOut,
+            primaryProfessionKey: 'wardrobe',
+            segments: plan.segments
+        });
+        const finalSnapshot = finalizeAttendanceCompensationSnapshot(snapshot, physical);
+        assert.equal(finalSnapshot.totals.baseMinutes, scenario.base, `${scenario.label}: base`);
+        assert.equal(
+            finalSnapshot.totals.simultaneousAdditionalMinutes,
+            scenario.additional,
+            `${scenario.label}: additional`
+        );
+        assert.equal(finalSnapshot.totals.physicalMinutes, scenario.base, `${scenario.label}: physical`);
+    }
+});
+
+test('missing policy or explicit rate marks compensation for manual review without fallback', async () => {
+    for (const options of [{ policy: false, rate: 180 }, { policy: true, rate: null }]) {
+        const snapshot = await buildAttendanceCompensationPlanSnapshot(paidRoleContextDb(options), {
+            staffId: 17,
+            recordDate: DAY,
+            plan: simultaneousProfessionPlan()
+        });
+        const additional = snapshot.compensationAllocations
+            .find(allocation => allocation.allocationType === 'simultaneous_additional');
+
+        assert.equal(snapshot.manualReview, true);
+        assert.equal(snapshot.state, 'manual_review');
+        if (options.rate === null) {
+            assert.equal(additional.rate, null);
+            assert.equal(additional.rateSource, null);
+            assert.ok(snapshot.issues.some(issue => issue.code === 'ATTENDANCE_COMPENSATION_RATE_REQUIRED'));
+        } else {
+            assert.ok(snapshot.issues.some(issue => issue.code === 'ATTENDANCE_COMPENSATION_POLICY_REQUIRED'));
+        }
+    }
+});
+
+test('legacy compensation snapshot stays base-only and warns instead of activating paid roles', () => {
+    const legacy = buildLegacyAttendanceCompensationSnapshot({
+        staffId: 17,
+        recordDate: DAY,
+        plan: simultaneousProfessionPlan()
+    });
+    const physical = allocate({
+        clockIn: '2026-07-13T08:00:00.000Z',
+        clockOut: '2026-07-13T17:00:00.000Z',
+        primaryProfessionKey: 'wardrobe',
+        segments: simultaneousProfessionPlan().segments
+    });
+    const finalSnapshot = finalizeAttendanceCompensationSnapshot(legacy, physical);
+
+    assert.equal(finalSnapshot.legacyBaseOnly, true);
+    assert.equal(finalSnapshot.compensationAllocations.some(
+        allocation => allocation.allocationType === 'simultaneous_additional'
+    ), false);
+    assert.equal(finalSnapshot.totals.baseMinutes, 540);
+    assert.equal(finalSnapshot.totals.simultaneousAdditionalMinutes, 0);
+    assert.ok(finalSnapshot.issues.some(issue => issue.code === 'ATTENDANCE_COMPENSATION_LEGACY_BASE_ONLY'));
 });
 
 test('allocation fields expose allocation overtime without attendance overtime aliases', () => {
@@ -279,9 +501,13 @@ test('HR, face checkout and attendance UI reuse the shared allocation contract',
         hrRoute.indexOf('// REPORTS')
     );
 
-    assert.match(hrRoute, /plan: loadedShift\?\.plan/);
+    assert.match(hrRoute, /plan: calculationPlan/);
+    assert.match(correctionBlock, /compensation_snapshot_before: compensationBefore/);
+    assert.match(correctionBlock, /compensation_snapshot_after: compensationAfter/);
+    assert.match(correctionBlock, /compensation_snapshot = \$12::jsonb/);
+    assert.match(correctionBlock, /const loadedShift = snapshotPlan\s*\?\s*null/);
     assert.match(correctionBlock, /calculateHrClockOutPayroll\(original/);
-    assert.match(correctionBlock, /decorateAttendanceRecord\(result\.rows\[0\], loadedShift\)/);
+    assert.match(correctionBlock, /decorateAttendanceRecord\(\{[\s\S]*compensation_snapshot:[\s\S]*\}, loadedShift\)/);
     assert.match(staffRoute, /hydrateAttendanceRecords\(pool, result\.rows\)/);
     assert.match(staffRoute, /data: attendanceRows/);
     assert.match(staffRoute, /recordAttendanceClockOut\(client/);

@@ -383,6 +383,7 @@
                                 <label><span>Джерело ставки</span><select id="accountOnboardingRateMode"><option value="keep">Не змінювати наявні умови</option><option value="unchanged">Ставку не змінювати, оновити час</option><option value="fallback">Базова ставка staff</option><option value="explicit">Індивідуальна ставка професії</option></select></label>
                                 <label><span id="accountOnboardingHourlyRateLabel">Ставка за годину</span><input id="accountOnboardingHourlyRate" type="number" min="0" step="0.01" disabled><small id="accountOnboardingRateHint">Для існуючого staff умови лишаться без змін.</small></label>
                             </div>
+                            <div id="accountOnboardingPayrollProfileHint" class="hr-account-payroll-profile-hint" role="status" aria-live="polite"></div>
                             <div class="hr-account-time-grid">
                                 <fieldset><legend>Будні</legend><label><span>Початок</span><input id="accountOnboardingWeekdayStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekdayEnd" type="time"></label></fieldset>
                                 <fieldset><legend>Вихідні</legend><label><span>Початок</span><input id="accountOnboardingWeekendStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekendEnd" type="time"></label></fieldset>
@@ -600,6 +601,59 @@
                     <div id="salaryDepartmentFilters" class="hr-payroll-dept-filter" role="group" aria-label="Фільтр зарплати за відділом"></div>
                 </section>
                 <div id="salaryList" class="hr-payroll-list" aria-live="polite"></div>
+            </div>
+
+            <!-- TAB 7A: PAYROLL PROFILES -->
+            <div id="tab-profiles" class="hr-tab-content">
+                <div class="hr-salary-toolbar hr-payroll-profiles-toolbar">
+                    <div class="hr-payroll-profiles-title">
+                        <strong>Зарплатні профілі</strong>
+                        <span>Базові, персональні та архівні умови оплати без змішування з legacy-ставками.</span>
+                    </div>
+                    <button type="button" id="btnRefreshPayrollProfiles" class="btn-add hr-salary-secondary">Оновити</button>
+                    <button type="button" id="btnPayrollProfileDiagnostics" class="btn-add hr-salary-secondary">Діагностика</button>
+                    <button type="button" id="btnPayrollProfileForecast" class="btn-add hr-salary-secondary">Forecast</button>
+                    <button type="button" id="btnPayrollProfileBulk" class="btn-add hr-salary-secondary">Bulk</button>
+                    <button type="button" id="btnNewPayrollProfile" class="btn-add">+ Базовий профіль</button>
+                </div>
+                <section class="hr-payroll-profile-filters" aria-label="Фільтри зарплатних профілів">
+                    <input type="search" id="payrollProfileSearch" class="hr-payroll-search" aria-label="Пошук профілю" placeholder="Пошук: назва, професія, власник..." autocomplete="off">
+                    <select id="payrollProfileProfessionFilter" class="hr-team-select" aria-label="Професія">
+                        <option value="all">Усі професії</option>
+                    </select>
+                    <select id="payrollProfileKindFilter" class="hr-team-select" aria-label="Тип профілю">
+                        <option value="all">Shared + personal</option>
+                        <option value="shared">Shared</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                    <select id="payrollProfileStatusFilter" class="hr-team-select" aria-label="Статус">
+                        <option value="all">Усі статуси</option>
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                    <select id="payrollProfileUsageFilter" class="hr-team-select" aria-label="Використання">
+                        <option value="all">Використовується + ні</option>
+                        <option value="used">Використовується</option>
+                        <option value="unused">Не використовується</option>
+                    </select>
+                    <select id="payrollProfileReadinessFilter" class="hr-team-select" aria-label="Статус профілю">
+                        <option value="all">Legacy + profile-ready</option>
+                        <option value="ready">Profile-ready</option>
+                        <option value="legacy">Legacy gap</option>
+                    </select>
+                    <div id="payrollProfilesFilterInfo" class="hr-payroll-filter-info" role="status" aria-live="polite" aria-atomic="true">0 профілів</div>
+                    <button type="button" id="payrollProfilesFilterReset" class="hr-payroll-filter-reset" hidden>Скинути</button>
+                </section>
+                <div id="payrollProfilesSummary" class="hr-payroll-profiles-summary" aria-live="polite"></div>
+                <div class="hr-payroll-profiles-workspace">
+                    <section id="payrollProfilesList" class="hr-payroll-profiles-list" aria-live="polite"></section>
+                    <aside id="payrollProfileInspector" class="hr-payroll-profile-inspector" aria-live="polite">
+                        <div class="hr-payroll-profile-empty-state">
+                            Виберіть профіль у каталозі, щоб редагувати ставку, створити персональний клон або порівняти з базою.
+                        </div>
+                    </aside>
+                </div>
             </div>
 
             <!-- TAB 7B: ZRS -->
@@ -1178,6 +1232,30 @@
                     </div>
                     <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
                 </div>
+                <section class="hr-staff-payroll-profile-panel" aria-label="Зарплатні профілі працівника">
+                    <div class="hr-staff-payroll-profile-head">
+                        <div>
+                            <strong>Зарплатні профілі</strong>
+                            <span>Канонічна базова оплата по кожній професії: default, персональний профіль або тимчасове призначення.</span>
+                        </div>
+                        <button type="button" id="editPayrollProfilesRefresh" class="btn-secondary">Оновити профілі</button>
+                    </div>
+                    <div id="editStaffPayrollProfiles" class="hr-staff-payroll-profile-list" aria-live="polite"></div>
+                    <div class="hr-staff-payroll-preview">
+                        <div class="hr-staff-payroll-preview-controls">
+                            <div>
+                                <strong>Payroll preview</strong>
+                                <span>Попередній розрахунок через єдиний salary endpoint.</span>
+                            </div>
+                            <label>Період
+                                <input type="month" id="editPayrollProfilePreviewMonth" aria-label="Період payroll preview">
+                            </label>
+                            <button type="button" id="editPayrollProfileSimulator" class="btn-secondary">Симулятор</button>
+                            <button type="button" id="editPayrollProfilePreviewRefresh" class="btn-secondary">Порахувати</button>
+                        </div>
+                        <div id="editStaffPayrollProfilePreview" class="hr-staff-payroll-profile-preview-result" aria-live="polite"></div>
+                    </div>
+                </section>
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Зарплатна схема</strong>

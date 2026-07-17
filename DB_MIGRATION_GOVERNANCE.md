@@ -91,6 +91,25 @@ on a one-time operational assumption, also include:
 - Do not change production credentials, staff identities, schedules, payroll, finance, or customer data without explicit operator approval.
 - If a data fix can fail safely, make it idempotent and auditable.
 
+## Payroll Profile Transition
+
+The payroll-profile schema introduced by migration `297` is an additive
+foundation, not an automatic cutover of current payroll calculations.
+
+- Do not backfill `payroll_profiles`, versions, weekday overrides, or staff
+  assignments from `staff`, `payroll_schemes`, `staff_profession_rates`, or
+  `payroll_reports` inside a schema migration.
+- Keep legacy payroll reads and reports unchanged until a separate resolver
+  task defines precedence, fallback, and snapshot behavior and is explicitly
+  rolled out.
+- Any production backfill must be a separate governed `data-fix` or `mixed`
+  migration with an exact `DATA_SCOPE` and operator approval where required.
+- Preserve payroll history through new profile versions and dated assignments;
+  do not recalculate or rewrite existing `payroll_reports` snapshots.
+- Treat profession defaults as fallback conditions. Staff assignments are
+  non-overlapping dated overrides, and temporary assignments must have an end
+  date.
+
 ## Automated Check
 
 Run:

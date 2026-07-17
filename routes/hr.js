@@ -26,13 +26,17 @@ const {
     lockAttendanceWriteTargets
 } = require('../services/attendanceWriteLock');
 const {
+    attendancePlanFromCompensationSnapshot,
+    buildLegacyAttendanceCompensationSnapshot,
     calculateAttendanceClockIn,
     calculateHrClockOutPayroll,
     attendanceCsvRow,
     attendanceFactMinutes,
     attendancePlanWarningMessage,
     decorateAttendanceRecord,
+    finalizeAttendanceCompensationSnapshot,
     hydrateAttendanceRecords,
+    parseAttendanceCompensationSnapshot,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     summarizeHrTodayItems,
@@ -112,9 +116,12 @@ const {
     setPayrollPeriodLock
 } = require('../services/hrPayrollPeriod');
 const {
+    assertPayrollRowsCommitReady,
+    buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     loadActivePayrollSchemeMap,
     loadPayrollAttendanceMetrics,
+    loadPayrollProfileContext,
     loadProfessionRateMap
 } = require('../services/payroll');
 const {
@@ -122,14 +129,34 @@ const {
     loadStaffPayrollSchemeWorkspace
 } = require('../services/hrPayrollSchemes');
 const {
+    applyPayrollProfileBulk,
+    archivePayrollProfile,
+    createPayrollProfile,
+    createPayrollProfileClone,
+    createPayrollProfileVersion,
+    diagnosePayrollProfiles,
+    forecastPayrollProfiles,
+    getPayrollProfile,
+    impactPayrollProfilePreview,
+    listPayrollProfiles,
+    listStaffPayrollProfileAssignments,
+    listStaffPayrollProfileHistory,
+    previewPayrollProfileBulk,
+    saveStaffPayrollProfileAssignments,
+    simulatePayrollProfiles,
+    syncPayrollProfileFromBase
+} = require('../services/hrPayrollProfiles');
+const {
     hrShiftPlanErrorPayload,
     hrShiftPlanUpdatedAt,
     hydrateHrShiftDayPlans,
     isHrShiftPlanError,
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
+    loadPaidRoleValidationContext,
     normalizeHrShiftDayPlan,
     professionCardFromStaff,
+    recordPaidRoleAuditEvents,
     saveHrShiftDayPlan,
     validateHrShiftDayPlanProfessions
 } = require('../services/hrShiftSegments');
@@ -197,6 +224,39 @@ router.use(requireRole(...HR_VIEW_ROLES));
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
 const log = createLogger('HR');
+
+function canViewPayrollDetails(user = {}) {
+    return PAYROLL_CONTROL_ROLES.includes(String(user.role || '').trim());
+}
+
+function redactPayrollAuditValue(value) {
+    if (Array.isArray(value)) return value.map(redactPayrollAuditValue);
+    if (!value || typeof value !== 'object') return value;
+    const result = {};
+    for (const [key, nested] of Object.entries(value)) {
+        const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const sensitive = normalized === 'rate'
+            || normalized.endsWith('rate')
+            || normalized.endsWith('rates')
+            || normalized.endsWith('amount')
+            || normalized.endsWith('multiplier')
+            || normalized.endsWith('formula');
+        if (sensitive) continue;
+        result[key] = redactPayrollAuditValue(nested);
+    }
+    return result;
+}
+
+function publicHrAuditRow(row = {}, user = {}) {
+    if (canViewPayrollDetails(user)) return row;
+    return {
+        ...row,
+        details: {
+            ...redactPayrollAuditValue(row.details || {}),
+            payrollDetailsRedacted: true
+        }
+    };
+}
 
 function rosterDates(values = []) {
     return [...new Set(values.map(toDateOnly).filter(Boolean))].sort();
@@ -1437,6 +1497,33 @@ function sendHrMutationFailure(res, error) {
     return true;
 }
 
+function payrollProfileActor(req) {
+    return {
+        username: req.user?.username || null,
+        ipAddress: req.ip || null
+    };
+}
+
+function payrollProfileQueryWithIds(query = {}) {
+    const staffIds = query.staffIds ?? query.staff_ids;
+    if (!staffIds || Array.isArray(staffIds)) return query;
+    return {
+        ...query,
+        staffIds: String(staffIds).split(',').map(item => item.trim()).filter(Boolean)
+    };
+}
+
+function sendPayrollProfileFailure(res, error, logContext) {
+    const status = Number(error?.statusCode || error?.status || 500);
+    if (status >= 500) log.error(logContext, error);
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+        success: false,
+        code: error?.code || 'PAYROLL_PROFILE_REQUEST_FAILED',
+        error: status < 500 ? error.message : 'Помилка роботи із зарплатним профілем',
+        ...(error?.details ? { details: error.details } : {})
+    });
+}
+
 function sendProfessionChecklistFailure(res, error, logContext) {
     if (sendHrMutationFailure(res, error)) return true;
     if (isProfessionChecklistError(error)) {
@@ -1509,11 +1596,18 @@ async function loadLiveQaStaff(db, staffId, runId, options = {}) {
 
 async function loadLiveQaFixtureStatus(db, staffId, runId) {
     const staff = await loadLiveQaStaff(db, staffId, runId);
-    const [shiftResult, scheduleResult, attendanceResult, checkinResult, lineResult] = await Promise.all([
+    const [shiftResult, scheduleResult, attendanceResult, checkinResult, shiftPreferenceResult, lineResult] = await Promise.all([
         db.query('SELECT id, shift_date::text AS date FROM hr_shifts WHERE staff_id = $1 ORDER BY shift_date, id', [staff.id]),
         db.query('SELECT id, date::text AS date FROM staff_schedule WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
         db.query('SELECT id, record_date::text AS date FROM hr_time_records WHERE staff_id = $1 ORDER BY record_date, id', [staff.id]),
         db.query('SELECT id, date::text AS date FROM staff_checkins WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
+        db.query(
+            `SELECT id, profession_key, day_type
+             FROM staff_shift_preferences
+             WHERE staff_id = $1
+             ORDER BY profession_key, day_type, id`,
+            [staff.id]
+        ),
         db.query(
             `SELECT id, date::text AS date
              FROM lines_by_date
@@ -1528,6 +1622,7 @@ async function loadLiveQaFixtureStatus(db, staffId, runId) {
         schedule: scheduleResult.rows,
         attendance: attendanceResult.rows,
         checkins: checkinResult.rows,
+        shiftPreferences: shiftPreferenceResult.rows,
         timelineLines: lineResult.rows
     };
     const counts = Object.fromEntries(Object.entries(rows).map(([key, value]) => [key, value.length]));
@@ -1860,16 +1955,115 @@ function normalizePayrollMonth(value) {
 function payrollTotals(rows = []) {
     return rows.reduce((acc, row) => ({
         total_base: acc.total_base + Number(row.base_salary || 0),
+        total_additional: acc.total_additional + Number(row.additional_pay || 0),
         total_overtime: acc.total_overtime + Number(row.overtime_pay || 0),
         total_bonuses: acc.total_bonuses + Number(row.bonuses || 0) + Number(row.tips || 0),
         total_deductions: acc.total_deductions + Number(row.deductions || 0) + Number(row.penalties || 0),
         total_advances: acc.total_advances + Number(row.advances || 0),
         total_salary: acc.total_salary + Number(row.total_salary || 0)
-    }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_advances: 0, total_salary: 0 });
+    }), {
+        total_base: 0,
+        total_additional: 0,
+        total_overtime: 0,
+        total_bonuses: 0,
+        total_deductions: 0,
+        total_advances: 0,
+        total_salary: 0
+    });
 }
 
 function payrollActor(user = {}) {
     return user.username || user.name || user.email || 'crm';
+}
+
+function parsePayrollSnapshot(value) {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try { return JSON.parse(value); } catch { return {}; }
+}
+
+function roundPayrollAmount(value, fallback = 0) {
+    const num = Number(value);
+    return Math.round(Number.isFinite(num) ? num : fallback);
+}
+
+function applyHrPayrollSnapshot(row, reportRow = {}) {
+    if (!['reviewed', 'approved', 'paid'].includes(reportRow.payroll_status)) return row;
+    const breakdown = parsePayrollSnapshot(reportRow.breakdown_json);
+    const summary = breakdown.summary || {};
+    const hasDetailedAdjustments = ['bonuses', 'tips', 'deductions', 'penalties', 'advances']
+        .some(key => Object.prototype.hasOwnProperty.call(breakdown, key));
+    const baseSalary = roundPayrollAmount(breakdown.base_salary ?? summary.base, row.base_salary);
+    const additionalPay = roundPayrollAmount(
+        breakdown.additional_pay ?? summary.additional,
+        row.additional_pay
+    );
+    const overtimePay = roundPayrollAmount(breakdown.overtime_pay ?? summary.overtime, row.overtime_pay);
+    const bonuses = hasDetailedAdjustments
+        ? roundPayrollAmount(breakdown.bonuses, row.bonuses)
+        : roundPayrollAmount(
+            Number(summary.bonuses || 0) + Number(summary.percent || 0) + Number(summary.manual || 0),
+            row.bonuses
+        );
+    const tips = hasDetailedAdjustments ? roundPayrollAmount(breakdown.tips, row.tips) : 0;
+    const deductions = hasDetailedAdjustments
+        ? roundPayrollAmount(breakdown.deductions, row.deductions)
+        : roundPayrollAmount(summary.deductions ?? reportRow.deductions_amount, row.deductions);
+    const penalties = hasDetailedAdjustments ? roundPayrollAmount(breakdown.penalties, row.penalties) : 0;
+    const advances = roundPayrollAmount(breakdown.advances ?? summary.advances ?? reportRow.advances_amount, row.advances);
+    const totalSalary = roundPayrollAmount(
+        summary.net ?? reportRow.net_amount,
+        baseSalary + additionalPay + overtimePay + bonuses + tips - deductions - penalties - advances
+    );
+    const transparency = breakdown.transparency || buildPayrollTransparencyMetrics({
+        physicalMinutes: breakdown.metrics?.physicalMinutes ?? row.physical_minutes,
+        baseProfessionAllocations: breakdown.metrics?.baseProfessionAllocations ?? row.base_profession_allocations,
+        additionalProfessionAllocations: breakdown.metrics?.additionalProfessionAllocations ?? row.additional_profession_allocations
+    }, {
+        additionalAmount: additionalPay,
+        lines: breakdown.lines || row.payroll_lines
+    });
+    return {
+        ...row,
+        base_salary: baseSalary,
+        additional_pay: additionalPay,
+        overtime_pay: overtimePay,
+        bonuses,
+        tips,
+        deductions,
+        penalties,
+        advances,
+        total_salary: totalSalary,
+        profession_rate_summary: Array.isArray(breakdown.professionRateSummary)
+            ? breakdown.professionRateSummary
+            : (Array.isArray(breakdown.profession_rates) ? breakdown.profession_rates : row.profession_rate_summary),
+        allocation_issues: Array.isArray(breakdown.allocationIssues)
+            ? breakdown.allocationIssues
+            : row.allocation_issues,
+        payroll_blocking_issues: Array.isArray(breakdown.payrollBlockingIssues)
+            ? breakdown.payrollBlockingIssues
+            : row.payroll_blocking_issues,
+        payroll_lines: Array.isArray(breakdown.lines) ? breakdown.lines : row.payroll_lines,
+        physical_minutes: Number(breakdown.metrics?.physicalMinutes ?? row.physical_minutes ?? 0),
+        base_profession_allocations: Array.isArray(breakdown.metrics?.baseProfessionAllocations)
+            ? breakdown.metrics.baseProfessionAllocations
+            : row.base_profession_allocations,
+        additional_profession_allocations: Array.isArray(breakdown.metrics?.additionalProfessionAllocations)
+            ? breakdown.metrics.additionalProfessionAllocations
+            : row.additional_profession_allocations,
+        compensation_minutes: Number(breakdown.metrics?.compensationMinutes ?? row.compensation_minutes ?? 0),
+        role_minutes: Number(breakdown.metrics?.roleMinutes ?? row.role_minutes ?? 0),
+        payroll_transparency: transparency,
+        physical_hours: Number(transparency.physicalHours || 0),
+        base_role_hours: Number(transparency.baseRoleHours || 0),
+        additional_role_hours: Number(transparency.additionalRoleHours || 0),
+        additional_profession: transparency.additionalProfession || null,
+        additional_rate: transparency.additionalRate ?? null,
+        additional_multiplier: transparency.additionalMultiplier ?? null,
+        additional_roles: transparency.additionalRoles || [],
+        reconciliation: breakdown.reconciliation || row.reconciliation,
+        snapshot_locked: true
+    };
 }
 
 // Payroll period range, lock, event, and reconciliation helpers live in services/hrPayrollPeriod.js.
@@ -1981,7 +2175,14 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         ),
         report_snapshots AS (
             SELECT DISTINCT ON (pr.staff_id)
-                   pr.staff_id, pr.status AS payroll_status, pr.id AS payroll_report_id
+                   pr.staff_id,
+                   pr.status AS payroll_status,
+                   pr.id AS payroll_report_id,
+                   pr.gross_amount,
+                   pr.deductions_amount,
+                   pr.advances_amount,
+                   pr.net_amount,
+                   pr.breakdown_json
             FROM payroll_reports pr
             JOIN params p ON pr.period_month >= p.month_from AND pr.period_month <= p.month_to
             WHERE pr.voided_at IS NULL
@@ -2006,7 +2207,12 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                ROUND(COALESCE(at.advances, 0))::int AS advances,
                ROUND(COALESCE(tt.base_salary, 0) + COALESCE(tt.overtime_pay, 0) + COALESCE(at.bonuses, 0) + COALESCE(at.tips, 0) - COALESCE(at.deductions, 0) - COALESCE(at.penalties, 0) - COALESCE(at.advances, 0))::int AS total_salary,
                rs.payroll_status,
-               rs.payroll_report_id
+               rs.payroll_report_id,
+               rs.gross_amount,
+               rs.deductions_amount AS report_deductions_amount,
+               rs.advances_amount AS report_advances_amount,
+               rs.net_amount,
+               rs.breakdown_json
         FROM active_staff s
         LEFT JOIN time_totals tt ON tt.staff_id = s.id
         LEFT JOIN adjustment_totals at ON at.staff_id = s.id
@@ -2014,12 +2220,14 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         ORDER BY s.name
     `, [month, period.from, period.to, period.month_from, period.month_to]);
     const staffIds = result.rows.map(row => Number(row.staff_id)).filter(Number.isInteger);
-    const [attendanceMetrics, professionRateMap, activeSchemeMap] = await Promise.all([
+    const [attendanceMetrics, professionRateMap, activeSchemeMap, payrollProfileContext] = await Promise.all([
         loadPayrollAttendanceMetrics({ from: period.from, to: period.to, staffIds }, db),
         loadProfessionRateMap(staffIds, db),
-        loadActivePayrollSchemeMap(staffIds, month, db)
+        loadActivePayrollSchemeMap(staffIds, month, db),
+        loadPayrollProfileContext(staffIds, { from: period.from, to: period.to }, db)
     ]);
     const emptyMetrics = () => ({
+        physicalMinutes: 0,
         totalMinutes: 0,
         allocatedMinutes: 0,
         plannedMinutes: 0,
@@ -2028,10 +2236,15 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         overtimeHours: 0,
         daysWorked: 0,
         professionAllocations: [],
+        baseProfessionAllocations: [],
+        additionalProfessionAllocations: [],
+        compensationMinutes: 0,
+        roleMinutes: 0,
         overtimeAllocations: [],
         primaryDays: [],
         attendanceDays: [],
         allocationIssues: [],
+        payrollBlockingIssues: [],
         reconciliation: { days: [], warnings: [] }
     });
     const data = result.rows.map(row => {
@@ -2049,16 +2262,18 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             isFallback: true
         };
         const metrics = attendanceMetrics.get(staffId) || emptyMetrics();
-        const professionPay = calculateProfessionPay(staff, scheme, metrics, professionRateMap);
+        const professionPay = calculateProfessionPay(staff, scheme, metrics, professionRateMap, payrollProfileContext);
+        const transparency = buildPayrollTransparencyMetrics(metrics, professionPay);
         const payrollRateUnit = professionPay.rateUnit || rateUnit;
         const baseSalary = Number(professionPay.baseAmount || 0);
+        const additionalPay = Number(professionPay.additionalAmount || 0);
         const overtimePay = Number(professionPay.overtimeAmount || 0);
         const bonuses = Number(row.bonuses || 0);
         const tips = Number(row.tips || 0);
         const deductions = Number(row.deductions || 0);
         const penalties = Number(row.penalties || 0);
         const advances = Number(row.advances || 0);
-        return {
+        const calculatedRow = {
             staff_id: staffId,
             staff_name: row.staff_name,
             role_type: row.role_type,
@@ -2068,21 +2283,42 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             profession_rate_summary: professionPay.professionRateSummary,
             days_worked: Number(metrics.daysWorked || 0),
             hours_worked: Math.round((Number(metrics.totalMinutes || 0) / 60) * 10) / 10,
+            physical_minutes: Number(metrics.physicalMinutes ?? metrics.totalMinutes ?? 0),
+            base_profession_allocations: metrics.baseProfessionAllocations || metrics.professionAllocations || [],
+            additional_profession_allocations: metrics.additionalProfessionAllocations || [],
+            compensation_minutes: Number(metrics.compensationMinutes ?? metrics.totalMinutes ?? 0),
+            role_minutes: Number(metrics.roleMinutes ?? metrics.totalMinutes ?? 0),
+            payroll_transparency: transparency,
+            physical_hours: Number(transparency.physicalHours || 0),
+            base_role_hours: Number(transparency.baseRoleHours || 0),
+            additional_role_hours: Number(transparency.additionalRoleHours || 0),
+            additional_profession: transparency.additionalProfession || null,
+            additional_rate: transparency.additionalRate ?? null,
+            additional_multiplier: transparency.additionalMultiplier ?? null,
+            additional_roles: transparency.additionalRoles || [],
             planned_hours: Math.round((Number(metrics.plannedMinutes || 0) / 60) * 10) / 10,
             overtime_hours: Math.round((Number(metrics.overtimeMinutes || 0) / 60) * 10) / 10,
             base_salary: baseSalary,
+            additional_pay: additionalPay,
             overtime_pay: overtimePay,
             bonuses,
             tips,
             deductions,
             penalties,
             advances,
-            total_salary: Math.round(baseSalary + overtimePay + bonuses + tips - deductions - penalties - advances),
+            total_salary: Math.round(baseSalary + additionalPay + overtimePay + bonuses + tips - deductions - penalties - advances),
             allocation_issues: professionPay.allocationIssues,
+            payroll_blocking_issues: professionPay.blockingIssues || [],
+            payroll_lines: [
+                ...(professionPay.baseLines || []),
+                ...(professionPay.additionalLines || []),
+                ...(professionPay.overtimeLines || [])
+            ],
             reconciliation: professionPay.reconciliation,
             payroll_status: row.payroll_status || null,
             payroll_report_id: row.payroll_report_id || null
         };
+        return applyHrPayrollSnapshot(calculatedRow, row);
     });
     return { month, period, data, totals: payrollTotals(data) };
 }
@@ -2374,6 +2610,7 @@ async function mirrorHrDayPlanToStaffSchedule(saved, staffId, shiftDate, note = 
 function publicHrShiftSegment(segment = {}) {
     const shiftStart = segment.shiftStart ?? segment.planned_start ?? null;
     const shiftEnd = segment.shiftEnd ?? segment.planned_end ?? null;
+    const additionalRoles = segment.additionalRoles ?? segment.additional_roles ?? [];
     return {
         id: segment.id ?? null,
         professionKey: segment.professionKey ?? segment.profession_key ?? null,
@@ -2381,7 +2618,16 @@ function publicHrShiftSegment(segment = {}) {
         shiftEnd: shiftEnd === null ? null : String(shiftEnd).slice(0, 5),
         breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
         note: segment.note ?? segment.notes ?? null,
-        additionalProfessionKeys: segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? []
+        additionalRoles: additionalRoles.map(role => ({
+            professionKey: role.professionKey ?? role.profession_key ?? null,
+            compensationMode: role.compensationMode ?? role.compensation_mode ?? 'unpaid',
+            payMultiplier: role.payMultiplier ?? role.pay_multiplier ?? null,
+            policyVersion: role.policyVersion ?? role.policy_version ?? null,
+            countsAsPhysicalTime: false
+        })),
+        additionalProfessionKeys: segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? [],
+        countsAsPhysicalTime: true,
+        physicalTimeSource: 'segment'
     };
 }
 
@@ -2854,6 +3100,12 @@ async function handleStaffProfessionChecklistToggle(req, res) {
     }
 }
 
+function dayPlanHasPaidAdditionalRoles(plan = null) {
+    return (plan?.segments || []).some(segment =>
+        (segment.additionalRoles || segment.additional_roles || [])
+            .some(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly'));
+}
+
 router.put(
     '/professions/:professionKey/staff/:staffId/checklist/:itemKey',
     requireHrManage,
@@ -2928,7 +3180,10 @@ router.get('/staff/:id/history', async (req, res) => {
              LIMIT $2`,
             [req.params.id, limit]
         );
-        res.json({ success: true, data: result.rows });
+        res.json({
+            success: true,
+            data: result.rows.map(row => publicHrAuditRow(row, req.user))
+        });
     } catch (err) {
         log.error('GET /hr/staff/:id/history error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3224,6 +3479,156 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
             log.error('PUT /hr/staff/:id/resources/:assignmentId/return error', err);
         }
         res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
+    }
+});
+
+router.get('/payroll-profiles', requireHrManage, async (req, res) => {
+    try {
+        const data = await listPayrollProfiles(req.query);
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/payroll-profiles error');
+    }
+});
+
+router.get('/payroll-profiles/diagnostics', requireHrManage, async (req, res) => {
+    try {
+        const data = await diagnosePayrollProfiles(req.query);
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/payroll-profiles/diagnostics error');
+    }
+});
+
+router.post('/payroll-profiles/simulator', requireHrManage, async (req, res) => {
+    try {
+        const data = await simulatePayrollProfiles(req.body || {});
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/simulator error');
+    }
+});
+
+router.get('/payroll-profiles/forecast', requireHrManage, async (req, res) => {
+    try {
+        const data = await forecastPayrollProfiles(payrollProfileQueryWithIds(req.query));
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/payroll-profiles/forecast error');
+    }
+});
+
+router.post('/payroll-profiles/bulk/preview', requireHrManage, async (req, res) => {
+    try {
+        const data = await previewPayrollProfileBulk(req.body || {});
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/bulk/preview error');
+    }
+});
+
+router.post('/payroll-profiles/bulk/apply', requireHrManage, async (req, res) => {
+    try {
+        const data = await applyPayrollProfileBulk(req.body || {}, payrollProfileActor(req));
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/bulk/apply error');
+    }
+});
+
+router.get('/payroll-profiles/:id', requireHrManage, async (req, res) => {
+    try {
+        const data = await getPayrollProfile(req.params.id, {
+            asOfDate: req.query.asOfDate || req.query.as_of_date
+        });
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/payroll-profiles/:id error');
+    }
+});
+
+router.post('/payroll-profiles', requireHrManage, async (req, res) => {
+    try {
+        const data = await createPayrollProfile(req.body, payrollProfileActor(req));
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles error');
+    }
+});
+
+router.post('/payroll-profiles/:id/impact-preview', requireHrManage, async (req, res) => {
+    try {
+        const data = await impactPayrollProfilePreview(req.params.id, req.body || {});
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/:id/impact-preview error');
+    }
+});
+
+router.post('/payroll-profiles/:id/clone', requireHrManage, async (req, res) => {
+    try {
+        const data = await createPayrollProfileClone(req.params.id, req.body, payrollProfileActor(req));
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/:id/clone error');
+    }
+});
+
+router.post('/payroll-profiles/:id/versions', requireHrManage, async (req, res) => {
+    try {
+        const data = await createPayrollProfileVersion(req.params.id, req.body, payrollProfileActor(req));
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/:id/versions error');
+    }
+});
+
+router.post('/payroll-profiles/:id/sync-from-base', requireHrManage, async (req, res) => {
+    try {
+        const data = await syncPayrollProfileFromBase(req.params.id, req.body, payrollProfileActor(req));
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/:id/sync-from-base error');
+    }
+});
+
+router.put('/payroll-profiles/:id/archive', requireHrManage, async (req, res) => {
+    try {
+        const data = await archivePayrollProfile(req.params.id, req.body, payrollProfileActor(req));
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'PUT /hr/payroll-profiles/:id/archive error');
+    }
+});
+
+router.get('/staff/:id/payroll-profile-assignments', requireHrManage, async (req, res) => {
+    try {
+        const data = await listStaffPayrollProfileAssignments(req.params.id, {
+            includePast: req.query.include_past !== 'false'
+        });
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/staff/:id/payroll-profile-assignments error');
+    }
+});
+
+router.put('/staff/:id/payroll-profile-assignments', requireHrManage, async (req, res) => {
+    try {
+        const data = await saveStaffPayrollProfileAssignments(req.params.id, req.body, payrollProfileActor(req));
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'PUT /hr/staff/:id/payroll-profile-assignments error');
+    }
+});
+
+router.get('/staff/:id/payroll-profile-history', requireHrManage, async (req, res) => {
+    try {
+        const data = await listStaffPayrollProfileHistory(req.params.id, {
+            limit: req.query.limit
+        });
+        res.json({ success: true, data });
+    } catch (err) {
+        sendPayrollProfileFailure(res, err, 'GET /hr/staff/:id/payroll-profile-history error');
     }
 });
 
@@ -4242,6 +4647,8 @@ router.post('/shifts', requireHrManage, async (req, res) => {
             payload: req.body
         }, {
             actor: req.user?.username || null,
+            ipAddress: req.ip,
+            auditSource: 'hr.shift.create',
             requireExpectedUpdatedAt: true
         });
         await mirrorHrDayPlanToStaffSchedule(
@@ -4327,6 +4734,8 @@ router.put('/shifts/:id', requireHrManage, async (req, res) => {
             payload: req.body
         }, {
             actor: req.user?.username || null,
+            ipAddress: req.ip,
+            auditSource: 'hr.shift.update',
             requireExpectedUpdatedAt: true
         });
         await mirrorHrDayPlanToStaffSchedule(
@@ -4397,6 +4806,16 @@ router.delete('/shifts/:id', requireHrManage, async (req, res) => {
             });
         }
         const beforeDelete = await loadHrShiftDayPlan(client, { hrShiftId: req.params.id });
+        await recordPaidRoleAuditEvents(client, {
+            staffId: existing.rows[0].staff_id,
+            shiftId: req.params.id,
+            shiftDate: existing.rows[0].shift_date,
+            beforePlan: beforeDelete?.plan,
+            afterPlan: { segments: [] },
+            actor: req.user?.username || null,
+            ipAddress: req.ip,
+            source: 'hr.shift.delete'
+        });
         await client.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
         await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date, client);
         await reconcileRosterDates(client, [existing.rows[0].shift_date]);
@@ -4474,6 +4893,27 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'У підмінного співробітника вже є зміна на цю дату' });
         }
+
+        await recordPaidRoleAuditEvents(client, {
+            staffId: oldShift.staff_id,
+            shiftId: req.params.id,
+            shiftDate: oldShift.shift_date,
+            beforePlan: loaded.plan,
+            afterPlan: { segments: [] },
+            actor: req.user?.username || null,
+            ipAddress: req.ip,
+            source: 'hr.shift.replace.old_staff'
+        });
+        await recordPaidRoleAuditEvents(client, {
+            staffId: replacementStaffId,
+            shiftId: req.params.id,
+            shiftDate: oldShift.shift_date,
+            beforePlan: { segments: [] },
+            afterPlan: loaded.plan,
+            actor: req.user?.username || null,
+            ipAddress: req.ip,
+            source: 'hr.shift.replace.new_staff'
+        });
 
         const updated = await client.query(
             `UPDATE hr_shifts SET
@@ -4580,6 +5020,9 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
             const targetEntries = orderedStaffIds.flatMap(staffId => orderedDates.map(date => ({ staffId, date })));
             const staffCards = await loadStaffScheduleabilityCards(client, orderedStaffIds);
             const previousPlans = await loadHrShiftDayPlansForStaffDates(client, targetEntries);
+            const paidRoleValidationContext = dayPlanHasPaidAdditionalRoles(req.body)
+                ? await loadPaidRoleValidationContext(client, orderedStaffIds)
+                : undefined;
             for (const sid of orderedStaffIds) {
                 for (const d of orderedDates) {
                     failedEntry = { staff_id: sid, shift_date: d };
@@ -4605,8 +5048,11 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
                         payload
                     }, {
                         actor: req.user?.username || null,
+                        ipAddress: req.ip,
+                        auditSource: 'hr.shift.bulk',
                         ignoreExpectedUpdatedAt: true,
-                        professionCard: professionCardFromStaff(staffRow)
+                        professionCard: professionCardFromStaff(staffRow),
+                        paidRoleValidationContext
                     });
                     await mirrorHrDayPlanToStaffSchedule(
                         saved,
@@ -4719,6 +5165,9 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
             }
             const freshSourceRows = freshSource.rows;
             const sourcePlans = await hydrateHrShiftDayPlans(client, freshSourceRows);
+            const paidRoleValidationContext = sourcePlans.some(loaded => dayPlanHasPaidAdditionalRoles(loaded.plan))
+                ? await loadPaidRoleValidationContext(client, sourceStaffIds)
+                : undefined;
             const targetEntries = sourcePlans.map(loaded => {
                 const sourceDate = toDateOnly(loaded.shift.shift_date);
                 const dayIndex = srcDates.indexOf(sourceDate);
@@ -4751,8 +5200,11 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                     })
                 }, {
                     actor: req.user?.username || null,
+                    ipAddress: req.ip,
+                    auditSource: 'hr.shift.copy_week',
                     ignoreExpectedUpdatedAt: true,
-                    professionCard: professionCardFromStaff(staffRow)
+                    professionCard: professionCardFromStaff(staffRow),
+                    paidRoleValidationContext
                 });
                 await mirrorHrShiftToStaffSchedule(saved.shift, client, {
                     staffValidation: shiftValidation
@@ -5018,6 +5470,10 @@ router.get('/today', async (req, res) => {
                     allocation_source: record.allocation_source,
                     allocation_issues: record.allocation_issues,
                     overtime_allocation: record.overtime_allocation,
+                    compensation_snapshot: record.compensation_snapshot,
+                    compensation_allocations: record.compensation_allocations,
+                    compensation_issues: record.compensation_issues,
+                    compensation_manual_review: record.compensation_manual_review,
                     is_late: record.is_late,
                     is_early_leave: record.is_early_leave,
                     has_overtime: record.has_overtime,
@@ -5213,6 +5669,7 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
         await client.query('DELETE FROM staff_checkins WHERE staff_id = $1', [staff.id]);
         await client.query('DELETE FROM hr_shifts WHERE staff_id = $1', [staff.id]);
         await client.query('DELETE FROM staff_schedule WHERE staff_id = $1', [staff.id]);
+        await client.query('DELETE FROM staff_shift_preferences WHERE staff_id = $1', [staff.id]);
         await reconcileRosterDates(client, affectedDates);
         await client.query(
             `UPDATE staff
@@ -5385,6 +5842,14 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             settlementMode,
             notes
         } = req.body;
+        const correctionReason = String(notes || '').trim();
+        if (!correctionReason) {
+            return res.status(400).json({
+                success: false,
+                code: 'ATTENDANCE_CORRECTION_REASON_REQUIRED',
+                error: 'Причина корекції обов’язкова'
+            });
+        }
         await client.query('BEGIN');
 
         // Resolve the advisory-lock target before taking the row lock so all
@@ -5413,13 +5878,31 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         }
 
         const original = rec.rows[0];
-        const loadedShift = await loadHrShiftDayPlan(client, {
-            staffId: original.staff_id,
-            shiftDate: original.record_date
-        });
+        const compensationBefore = parseAttendanceCompensationSnapshot(original.compensation_snapshot);
+        const snapshotPlan = attendancePlanFromCompensationSnapshot(compensationBefore);
+        const loadedShift = snapshotPlan
+            ? null
+            : await loadHrShiftDayPlan(client, {
+                staffId: original.staff_id,
+                shiftDate: original.record_date
+            });
         const shiftRow = loadedShift?.shift || {};
-        const plannedStart = original.planned_start || shiftRow.planned_start || null;
-        const plannedEnd = original.planned_end || shiftRow.planned_end || null;
+        const plannedStart = snapshotPlan?.plannedStart || original.planned_start || shiftRow.planned_start || null;
+        const plannedEnd = snapshotPlan?.plannedEnd || original.planned_end || shiftRow.planned_end || null;
+        const calculationPlan = snapshotPlan
+            ? {
+                primaryProfessionKey: snapshotPlan.professionKey || null,
+                plannedStart: snapshotPlan.plannedStart,
+                plannedEnd: snapshotPlan.plannedEnd,
+                segments: snapshotPlan.segments || []
+            }
+            : loadedShift?.plan;
+        const calculationPlannedMinutes = Array.isArray(calculationPlan?.segments)
+            ? calculationPlan.segments.reduce(
+                (sum, segment) => sum + Math.max(0, Number(segment.plannedMinutes || 0)),
+                0
+            )
+            : null;
         const normalizeCorrectionTime = value => {
             const match = String(value || '').trim().match(/^(\d{2}):(\d{2})$/);
             if (!match) return null;
@@ -5478,9 +5961,10 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             || 'actual_time';
         let effectiveSettlementMode = correctionSettlementMode;
 
-        // Recalculate from the corrected day interval and normalized shift segments.
+        // Recalculate from the immutable attendance plan; legacy rows use base-only current-plan fallback.
         let totalWorked = 0, lateMin = 0, earlyLeave = 0, overtime = 0;
         let status = original.status || 'present';
+        let compensationAfter = compensationBefore;
         if (newClockIn && newClockOut) {
             const payroll = calculateHrClockOutPayroll(original, {
                 clockIn: newClockIn,
@@ -5488,9 +5972,9 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
                 breakMinutes: shiftRow.break_minutes || 0,
                 plannedStart,
                 plannedEnd,
-                scheduledWorkedMinutes: loadedShift?.plan?.plannedMinutes,
-                plan: loadedShift?.plan,
-                primaryProfessionKey: loadedShift?.plan?.primaryProfessionKey || shiftRow.profession_key,
+                scheduledWorkedMinutes: calculationPlannedMinutes || calculationPlan?.plannedMinutes,
+                plan: calculationPlan,
+                primaryProfessionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
                 recordDate: original.record_date,
                 settlementMode: correctionSettlementMode
             });
@@ -5500,6 +5984,27 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             overtime = payroll.overtimeMinutes;
             status = payroll.status;
             effectiveSettlementMode = payroll.settlementMode;
+            const compensationBase = compensationBefore
+                || buildLegacyAttendanceCompensationSnapshot({
+                    staffId: original.staff_id,
+                    recordDate: original.record_date,
+                    plan: {
+                        ...(calculationPlan || {}),
+                        professionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
+                        source: 'attendance_snapshot'
+                    },
+                    planSource: 'attendance_snapshot',
+                    capturedAt: original.clock_in || newClockIn
+                });
+            compensationAfter = finalizeAttendanceCompensationSnapshot(
+                compensationBase,
+                payroll.allocation,
+                {
+                    finalizedAt: newClockOut,
+                    correctedAt: new Date()
+                }
+            );
+            if (compensationAfter.manualReview) status = 'manual_review';
         } else if (newClockIn) {
             const arrival = calculateAttendanceClockIn({
                 source: plannedStart && plannedEnd ? 'attendance_snapshot' : 'unscheduled',
@@ -5508,6 +6013,19 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             }, newClockIn, original.record_date);
             lateMin = arrival.lateMinutes;
             status = arrival.status;
+            compensationAfter = compensationBefore
+                ? { ...compensationBefore, correctedAt: new Date().toISOString() }
+                : buildLegacyAttendanceCompensationSnapshot({
+                    staffId: original.staff_id,
+                    recordDate: original.record_date,
+                    plan: {
+                        ...(calculationPlan || {}),
+                        professionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
+                        source: 'attendance_snapshot'
+                    },
+                    planSource: 'attendance_snapshot',
+                    capturedAt: original.clock_in || newClockIn
+                });
         }
 
         const result = await client.query(
@@ -5518,10 +6036,11 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
                 original_clock_in = COALESCE(original_clock_in, $8),
                 original_clock_out = COALESCE(original_clock_out, $9),
                 corrected_by = $10, corrected_at = NOW(), correction_reason = $11,
-                updated_at = NOW()
-             WHERE id = $12 RETURNING *`,
+                compensation_snapshot = $12::jsonb, updated_at = NOW()
+             WHERE id = $13 RETURNING *`,
             [newClockIn, newClockOut, totalWorked, lateMin, earlyLeave, overtime, status,
-             original.clock_in, original.clock_out, req.user?.username, notes, req.params.id]
+             original.clock_in, original.clock_out, req.user?.username, correctionReason,
+             JSON.stringify(compensationAfter), req.params.id]
         );
 
         await auditLog('correction', original.staff_id, req.user?.username,
@@ -5536,10 +6055,26 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
                 overtime_minutes: overtime,
                 total_worked_minutes: totalWorked,
                 settlement_mode: effectiveSettlementMode,
-                notes
+                correction_reason: correctionReason,
+                compensation_snapshot_before: compensationBefore,
+                compensation_snapshot_after: compensationAfter
             }, req.ip, client);
+        await auditLog('compensation_snapshot_corrected', original.staff_id, req.user?.username, {
+            eventVersion: 1,
+            recordId: original.id,
+            recordDate: toDateOnly(original.record_date),
+            correctionReason,
+            compensationSnapshotBefore: compensationBefore,
+            compensationSnapshotAfter: compensationAfter
+        }, req.ip, client);
         await client.query('COMMIT');
-        res.json({ success: true, data: decorateAttendanceRecord(result.rows[0], loadedShift) });
+        res.json({
+            success: true,
+            data: decorateAttendanceRecord({
+                ...result.rows[0],
+                compensation_snapshot: result.rows[0].compensation_snapshot || compensationAfter
+            }, loadedShift)
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/records/:id/correct error', err);
@@ -6533,7 +7068,13 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
     } catch (err) {
         log.error('POST /hr/salary/adjustment error', err);
         if (err.statusCode) {
-            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null,
+                period_lock: err.payrollLock || null
+            });
         }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
@@ -6988,6 +7529,7 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
         }
 
         const calculation = await loadPayrollCalculation(month, client);
+        assertPayrollRowsCommitReady(calculation.data);
 
         // Find salary expense category
         const salCat = await client.query(
@@ -6999,11 +7541,16 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
         for (const row of calculation.data) {
             const totalSalary = Number(row.total_salary || 0);
             if (totalSalary <= 0) continue;
-            const grossAmount = Number(row.base_salary || 0) + Number(row.overtime_pay || 0) + Number(row.bonuses || 0) + Number(row.tips || 0);
+            const grossAmount = Number(row.base_salary || 0)
+                + Number(row.additional_pay || 0)
+                + Number(row.overtime_pay || 0)
+                + Number(row.bonuses || 0)
+                + Number(row.tips || 0);
             const deductionsAmount = Number(row.deductions || 0) + Number(row.penalties || 0);
             const advancesAmount = Number(row.advances || 0);
             const breakdown = {
                 base_salary: row.base_salary,
+                additional_pay: row.additional_pay,
                 overtime_pay: row.overtime_pay,
                 bonuses: row.bonuses,
                 tips: row.tips,
@@ -7013,10 +7560,20 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 hours_worked: row.hours_worked,
                 planned_hours: row.planned_hours,
                 overtime_hours: row.overtime_hours,
+                metrics: {
+                    physicalMinutes: row.physical_minutes,
+                    compensationMinutes: row.compensation_minutes,
+                    roleMinutes: row.role_minutes,
+                    baseProfessionAllocations: row.base_profession_allocations,
+                    additionalProfessionAllocations: row.additional_profession_allocations
+                },
+                transparency: row.payroll_transparency,
                 profession_rates: row.profession_rate_summary,
                 professionRateSummary: row.profession_rate_summary,
+                lines: row.payroll_lines,
                 reconciliation: row.reconciliation,
-                allocationIssues: row.allocation_issues
+                allocationIssues: row.allocation_issues,
+                payrollBlockingIssues: row.payroll_blocking_issues
             };
 
             const reportResult = await client.query(
@@ -7044,9 +7601,35 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                  RETURNING id`,
                 [month, row.staff_id, grossAmount, deductionsAmount, advancesAmount, totalSalary, JSON.stringify(breakdown), actor]
             );
+            const generatedAdditionalLines = (row.payroll_lines || [])
+                .filter(line => line.lineType === 'simultaneous_additional');
+            if (generatedAdditionalLines.length) {
+                await auditLog('payroll_additional_line_generated', row.staff_id, actor, {
+                    eventVersion: 1,
+                    month,
+                    reportId: Number(reportResult.rows[0].id),
+                    reportStatus: 'paid',
+                    physicalMinutes: row.physical_minutes,
+                    baseRoleMinutes: row.payroll_transparency?.baseRoleMinutes,
+                    additionalRoleMinutes: row.payroll_transparency?.additionalRoleMinutes,
+                    additionalAmount: row.additional_pay,
+                    lines: generatedAdditionalLines
+                }, req.ip, client);
+            }
 
             await client.query('DELETE FROM payroll_entries WHERE staff_id = $1 AND period_month = $2', [row.staff_id, month]);
             const entryRows = [
+                {
+                    type: 'adjustment',
+                    label: 'Simultaneous additional pay',
+                    amount: row.additional_pay,
+                    quantity: (row.additional_profession_allocations || []).length,
+                    meta: {
+                        payrollLineType: 'simultaneous_additional',
+                        lines: (row.payroll_lines || [])
+                            .filter(line => line.lineType === 'simultaneous_additional')
+                    }
+                },
                 { type: 'base', label: 'Базова зарплата', amount: row.base_salary, quantity: row.hours_worked, meta: { profession_rates: row.profession_rate_summary } },
                 { type: 'adjustment', label: 'Переробка', amount: row.overtime_pay, quantity: row.overtime_hours },
                 { type: 'bonus', label: 'Бонуси', amount: row.bonuses },
@@ -7101,7 +7684,13 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
         await client.query('ROLLBACK').catch(() => {});
         log.error('[SalaryCommit] Error', err);
         if (err.statusCode) {
-            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null,
+                period_lock: err.payrollLock || null
+            });
         }
         res.status(500).json({ success: false, error: 'Internal server error' });
     } finally {

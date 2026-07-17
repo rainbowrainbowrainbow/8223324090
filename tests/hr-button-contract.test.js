@@ -1156,7 +1156,7 @@ test('HR Salary and KPI use compact accessible master-detail lists', () => {
         assert.ok(!HR_JS.includes(`getElementById('${obsoleteId}')`), `${obsoleteId} must not be used by the renderer`);
     }
 
-    const salaryBlock = HR_JS.slice(HR_JS.indexOf('function renderSalaryEmployeeItem'), HR_JS.indexOf('function renderSalaryRows'));
+    const salaryBlock = HR_JS.slice(HR_JS.indexOf('function salaryTransparency'), HR_JS.indexOf('function renderSalaryRows'));
     const salaryContext = vm.createContext({
         ROLE_LABELS: { animator: 'Аніматор' },
         departmentLabel: value => value === 'animators' ? 'Аніматори' : 'Без відділу',

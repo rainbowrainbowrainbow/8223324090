@@ -64,7 +64,11 @@ function createClockInDb(options = {}) {
                 }] };
             }
             if (text.startsWith('INSERT INTO hr_audit_log')) {
-                audits.push(JSON.parse(params[2]));
+                const action = text.match(/VALUES \('([^']+)'/)?.[1] || null;
+                audits.push({
+                    action,
+                    ...JSON.parse(params[2])
+                });
                 return { rows: [] };
             }
             throw new Error(`Unexpected SQL: ${text}`);
@@ -84,7 +88,7 @@ test('HR Today and face check-in use the same profession-card snapshot and five-
         { method: 'manual', source: 'hr_today' },
         { method: 'face', source: 'staff_checkin' }
     ]) {
-        const { db, audits } = createClockInDb(professionCard);
+        const { db, audits, calls } = createClockInDb(professionCard);
         const result = await recordAttendanceClockIn(db, {
             staffId: 7,
             recordDate: '2026-07-17',
@@ -102,11 +106,21 @@ test('HR Today and face check-in use the same profession-card snapshot and five-
         assert.equal(result.planSource, 'profession_card');
         assert.equal(result.plan.source, 'profession_card');
         assert.equal(result.record.plan_source, 'profession_card');
-        assert.equal(audits.length, 1);
-        assert.equal(audits[0].record_id, 901);
-        assert.equal(audits[0].record_date, '2026-07-17');
-        assert.equal(audits[0].plan_source, 'profession_card');
-        assert.equal(audits[0].source, routeInput.source);
+        assert.equal(result.record.compensation_snapshot.state, 'planned');
+        assert.equal(result.record.compensation_snapshot.plan.segments.length, 1);
+        assert.equal(result.record.compensation_snapshot.compensationAllocations[0].allocationType, 'base');
+        assert.ok(calls.some(call => /compensation_snapshot/.test(call.text)));
+        assert.equal(audits.length, 2);
+        const clockInAudit = audits.find(audit => audit.action === 'clock_in');
+        const snapshotAudit = audits.find(audit => audit.action === 'compensation_snapshot_created');
+        assert.equal(clockInAudit.record_id, 901);
+        assert.equal(clockInAudit.record_date, '2026-07-17');
+        assert.equal(clockInAudit.plan_source, 'profession_card');
+        assert.equal(clockInAudit.compensation_snapshot_state, 'planned');
+        assert.equal(clockInAudit.source, routeInput.source);
+        assert.equal(snapshotAudit.recordId, 901);
+        assert.equal(snapshotAudit.compensationSnapshot.state, 'planned');
+        assert.equal(snapshotAudit.trigger, 'clock_in');
     }
 
     assert.deepEqual(
@@ -133,6 +147,20 @@ test('six minutes after the planned start is late', () => {
 
     assert.equal(result.lateMinutes, 6);
     assert.equal(result.status, 'late');
+});
+
+test('clock-in defaults a missing business context to the canonical context', async () => {
+    const { db, calls } = createClockInDb(professionCard);
+    await recordAttendanceClockIn(db, {
+        staffId: 7,
+        recordDate: '2026-07-17',
+        now: '2026-07-17T09:05:00.000Z',
+        performedBy: 'unit-test'
+    });
+
+    const insert = calls.find(call => call.text.startsWith('INSERT INTO hr_time_records'));
+    assert.ok(insert);
+    assert.equal(insert.params[0], 'event_genix');
 });
 
 test('repeated check-in reuses the initial clock-in audit plan source', async () => {

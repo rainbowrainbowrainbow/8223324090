@@ -41,7 +41,7 @@ function staffShiftBlocks(row = {}) {
     if (segments.length) {
         return segments.map(segment => {
             const additional = Array.isArray(segment.additionalProfessionKeys) && segment.additionalProfessionKeys.length
-                ? ` + ${segment.additionalProfessionKeys.join(', ')}`
+                ? ` + ${segment.additionalProfessionKeys.join(', ')} (одночасно; фізичний час не додається)`
                 : '';
             const profession = segment.professionKey ? ` ${segment.professionKey}${additional}` : '';
             return `${segment.start || '?'}–${segment.end || '?'}${profession}`;
@@ -145,6 +145,15 @@ async function gatherAIContext(username, dateStr, actor = null, pageContext = nu
                             'professionKey', hss.profession_key,
                             'start', LEFT(hss.planned_start::text, 5),
                             'end', LEFT(hss.planned_end::text, 5),
+                            'additionalRoles', COALESCE((
+                                SELECT jsonb_agg(jsonb_build_object(
+                                    'professionKey', hssr.profession_key,
+                                    'compensationMode', hssr.compensation_mode,
+                                    'payMultiplier', hssr.pay_multiplier,
+                                    'policyVersion', hssr.policy_version
+                                ) ORDER BY hssr.profession_key)
+                                FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id
+                            ), '[]'::jsonb),
                             'additionalProfessionKeys', COALESCE((
                                 SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
                                 FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id
@@ -976,6 +985,15 @@ async function handleTeam(lower, username) {
                         'professionKey', hss.profession_key,
                         'start', LEFT(hss.planned_start::text, 5),
                         'end', LEFT(hss.planned_end::text, 5),
+                        'additionalRoles', COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'professionKey', hssr.profession_key,
+                                'compensationMode', hssr.compensation_mode,
+                                'payMultiplier', hssr.pay_multiplier,
+                                'policyVersion', hssr.policy_version
+                            ) ORDER BY hssr.profession_key)
+                            FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id
+                        ), '[]'::jsonb),
                         'additionalProfessionKeys', COALESCE((
                             SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
                             FROM hr_shift_segment_roles hssr WHERE hssr.segment_id = hss.id

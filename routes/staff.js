@@ -61,6 +61,7 @@ const {
 const {
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
+    loadPaidRoleValidationContext,
     hydrateHrShiftDayPlans,
     normalizeHrShiftDayPlan,
     validateHrShiftDayPlanProfessions,
@@ -510,9 +511,16 @@ function copyableDayPlanPayload(loadedPlan) {
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
             note: segment.note,
+            additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
             additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
         }))
     };
+}
+
+function dayPlanHasPaidAdditionalRoles(plan = null) {
+    return (plan?.segments || []).some(segment =>
+        (segment.additionalRoles || segment.additional_roles || [])
+            .some(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly'));
 }
 
 function scheduleEntryWithDayPlan(entry, plan = null) {
@@ -548,7 +556,13 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
             note: segment.note,
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+            additionalRoles: (segment.additionalRoles || []).map(role => ({
+                ...role,
+                countsAsPhysicalTime: false
+            })),
+            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])],
+            countsAsPhysicalTime: true,
+            physicalTimeSource: 'segment'
         })) || [],
         professionKeys,
         profession_keys: professionKeys,
@@ -779,6 +793,19 @@ router.get('/schedule', async (req, res) => {
                                 'shiftEnd', LEFT(hss.planned_end::text, 5),
                                 'breakMinutes', hss.break_minutes,
                                 'note', hss.notes,
+                                'additionalRoles', COALESCE((
+                                    SELECT jsonb_agg(
+                                        jsonb_build_object(
+                                            'professionKey', hssr.profession_key,
+                                            'compensationMode', hssr.compensation_mode,
+                                            'payMultiplier', hssr.pay_multiplier,
+                                            'policyVersion', hssr.policy_version
+                                        )
+                                        ORDER BY hssr.profession_key
+                                    )
+                                    FROM hr_shift_segment_roles hssr
+                                    WHERE hssr.segment_id = hss.id
+                                ), '[]'::jsonb),
                                 'additionalProfessionKeys', COALESCE((
                                     SELECT jsonb_agg(hssr.profession_key ORDER BY hssr.profession_key)
                                     FROM hr_shift_segment_roles hssr
@@ -1363,6 +1390,9 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
             const staffCards = await loadStaffScheduleabilityCards(client, bulkStaffIds);
             const previousPlans = await loadHrShiftDayPlansForStaffDates(client, orderedEntries);
             const previousScheduleEntries = await loadScheduleEntriesForUpdate(client, orderedEntries);
+            const paidRoleValidationContext = orderedEntries.some(dayPlanHasPaidAdditionalRoles)
+                ? await loadPaidRoleValidationContext(client, bulkStaffIds)
+                : undefined;
             for (const e of orderedEntries) {
                 const staffRow = staffCards.get(Number(e.staffId)) || null;
                 const staffValidation = validateStaffScheduleabilityCardForDate(staffRow, e.date);
@@ -1384,6 +1414,7 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                     ignoreExpectedUpdatedAt: true,
                     staffValidation,
                     professionCard: professionCardFromStaff(staffRow),
+                    paidRoleValidationContext,
                     previousPlan: previousPlans.get(`${e.staffId}:${e.date}`) || null,
                     previousScheduleEntry: previousScheduleEntries.get(`${e.staffId}:${e.date}`) || null
                 });
@@ -1553,6 +1584,10 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                 conflicts = Number(conflictResult.rows[0]?.count || 0);
             }
             const sourcePlans = await loadHrShiftDayPlansForStaffDates(client, freshSourceRows);
+            const paidRoleValidationContext = [...sourcePlans.values()]
+                .some(loaded => dayPlanHasPaidAdditionalRoles(loaded.plan))
+                ? await loadPaidRoleValidationContext(client, sourceStaffIds)
+                : undefined;
             const targetEntries = freshSourceRows.map(row => {
                 const sourceDate = normalizeScheduleDate(row.date);
                 const dayIndex = fromDates.indexOf(sourceDate);
@@ -1601,7 +1636,8 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     // Copy-week uses the freshly locked target state, not a browser snapshot.
                     requireExpectedUpdatedAt: false,
                     ignoreExpectedUpdatedAt: true,
-                    professionCard: professionCardFromStaff(staffRow)
+                    professionCard: professionCardFromStaff(staffRow),
+                    paidRoleValidationContext
                 });
                 if (hrSync?.ok === false) {
                     await client.query('ROLLBACK');
@@ -1802,6 +1838,7 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
                 tr.corrected_by,
                 tr.corrected_at,
                 tr.correction_reason,
+                tr.compensation_snapshot,
                 tr.notes,
                 sc.id AS checkin_id,
                 sc.check_in AS checkin_at,

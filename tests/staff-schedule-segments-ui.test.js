@@ -23,13 +23,19 @@ test('staff schedule exposes one day status and reusable segment editors', () =>
     assert.match(shell, /повний шаблон застосовується|Повний шаблон застосовується/);
 });
 
-test('segment cards cover role, time, break, note, simultaneous roles and keyboard-safe reorder controls', () => {
+test('segment cards separate unpaid and paid simultaneous roles and keep keyboard-safe controls', () => {
     assert.match(page, /data-segment-field="profession"/);
     assert.match(page, /data-segment-field="start"/);
     assert.match(page, /data-segment-field="end"/);
     assert.match(page, /data-segment-field="break"/);
     assert.match(page, /data-segment-field="note"/);
-    assert.match(page, /data-segment-field="additional"/);
+    assert.match(page, /Додаткова роль без доплати/);
+    assert.match(page, /data-segment-field="additional-unpaid"/);
+    assert.match(page, /Додаткова оплачувана професія/);
+    assert.match(page, /data-segment-field="paid-profession"/);
+    assert.match(page, /data-segment-field="paid-start"/);
+    assert.match(page, /data-segment-field="paid-end"/);
+    assert.match(page, /data-segment-field="paid-multiplier"/);
     assert.match(page, /data-segment-action="up"/);
     assert.match(page, /data-segment-action="down"/);
     assert.match(page, /data-segment-action="remove"/);
@@ -38,14 +44,25 @@ test('segment cards cover role, time, break, note, simultaneous roles and keyboa
 
 test('client validation blocks invalid and overlapping paid plans before save', () => {
     assert.match(page, /function validateSchedulePlan/);
-    assert.match(page, /початок і завершення не можуть збігатися/);
+    assert.match(page, /Початок і завершення не можуть збігатися/);
     assert.match(page, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(page, /Перерва має бути коротшою за тривалість сегмента/);
     assert.match(page, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
     assert.match(page, /Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня/);
     assert.match(page, /errorCodes: \[\.\.\.new Set\(errorCodes\)\]/);
     assert.match(page, /current\.startMinutes < previous\.endMinutes/);
-    assert.match(page, /перетинаються/);
+    assert.match(page, /Ці блоки описують один фізичний час\. Додайте другу професію як оплачувану роль/);
+    assert.match(page, /function scheduleContainedOverlapCandidate/);
+    assert.match(page, /data-schedule-overlap-convert/);
+    assert.match(page, /Об’єднати в один фізичний блок із додатковою оплатою/);
+    assert.match(page, /function normalizeSchedulePaidRoleSegments/);
+    assert.match(page, /Оплачуваний інтервал має повністю бути в межах основного фізичного блоку/);
+    assert.match(page, /HR_SHIFT_PAID_ROLE_RATE_REQUIRED/);
+    assert.match(page, /rateSource === 'staff_profession_rates\.hourly_rate'/);
+    assert.match(page, /STAFF_SCHEDULE_PAYROLL_READ_ROLES/);
+    assert.match(page, /scheduleCanViewPayrollAmounts/);
+    assert.match(page, /data-schedule-save-validation/);
+    assert.match(page, /applySchedulePlanFieldErrors/);
     assert.match(page, /qualifiedStaff\.some\(staff => !staffHasProfession\(staff, role\)\)/);
     assert.match(page, /Основна роль дня має бути основною професією одного з блоків/);
     assert.match(page, /saveButton\.disabled = pending \|\| readOnly \|\| !validation\.valid/);
@@ -58,7 +75,7 @@ test('single and fill-week saves send the normalized segment contract', () => {
     assert.match(page, /payload\.primaryProfessionKey = dayPlan\.primaryProfessionKey/);
     assert.match(page, /segments:\s*validation\.segments\.map/);
     assert.match(page, /primaryProfessionKey:\s*professionKey/);
-    assert.match(page, /segments:\s*segmentTemplate\.map/);
+    assert.match(page, /scheduleSegmentsWithShiftPreferences\(segmentTemplate, preferences, date\)/);
     assert.match(page, /_staffFillMutationPending = true/);
     assert.match(page, /finally\s*\{[\s\S]*_staffFillMutationPending = false/);
 });
@@ -97,8 +114,8 @@ test('cells, role sections, export and print use segments instead of envelope du
     assert.match(page, /class="schedule-day-cell status-\$\{status\}/);
     assert.match(page, /class="sch-cell-main"/);
     assert.match(page, /class="sch-cell-meta"/);
-    assert.match(page, /function sortScheduleSegmentsForUi\(segments = \[\], fallbackProfessionKey = ''\)/);
-    assert.match(page, /return sortScheduleSegmentsForUi\(rawSegments, fallbackProfessionKey\)/);
+    assert.match(page, /function sortScheduleSegmentsForUi\(segments = \[\], fallbackProfessionKey = '', options = \{\}\)/);
+    assert.match(page, /return sortScheduleSegmentsForUi\(rawSegments, fallbackProfessionKey,/);
     assert.match(page, /aria-current="true"/);
     assert.doesNotMatch(page, /metaContent\.push\(cellHealthBadges\)/);
     assert.match(page, /\$\{cellHealthBadges\}\s*<\/td>/);
@@ -128,6 +145,9 @@ test('segment editor keeps dark and 320-390px layouts explicit', () => {
     assert.match(css, /@media \(max-width: 390px\)/);
     assert.match(css, /#schModalOverlay \.sch-modal--schedule/);
     assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\)/);
+    assert.match(css, /\.sch-paid-role-grid/);
+    assert.match(css, /\.sch-save-validation/);
+    assert.match(css, /\.sch-field-error/);
 });
 
 test('schedule health and forecast use segment roles and time windows', () => {

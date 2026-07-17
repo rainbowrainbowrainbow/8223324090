@@ -458,6 +458,13 @@ const CSS_SURFACE = [
         reason: 'Analytics chart readout, HR vacancy workspace, and salary period picker styles imported by pages.css.'
     },
     {
+        file: 'css/pages-finance.css',
+        owner: 'finance',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles.'
+    },
+    {
         file: 'css/pages-art.css',
         owner: 'shared-ui',
         category: 'shared',

@@ -76,11 +76,40 @@ token and unique run ID, uses payroll preview only, and fails unless transaction
   `max(0, overlap(actual interval, segment) - min(overlap, break_minutes))`.
 - Because the current model has no break window, partial attendance before and after an assumed break is intentionally indistinguishable. The same deterministic deduction is used in both cases.
 - An untouched segment contributes neither worked minutes nor a break deduction.
-- Simultaneous additional roles share the main segment interval. They do not receive another break allocation, worked-minute allocation, or payroll line.
+- Simultaneous additional roles share the main segment interval and never create another physical-time allocation.
+- An `unpaid` additional role remains informational and does not create a payroll line.
+- An explicitly assigned `paid_hourly` role creates a separate compensation allocation and payroll line from the immutable attendance snapshot. Its minutes are role-compensation minutes, not extra physical minutes.
+- The same segment break, late arrival, and early leave reduce every role active in the affected interval. Overtime belongs to the base profession unless a later policy explicitly assigns additional-role overtime.
 - Payroll consumes the main-profession actual minutes produced by attendance. It must not subtract `break_minutes` a second time.
 - `shift_end < shift_start` means the segment ends on the next calendar day. `shift_end = shift_start` remains invalid and does not mean a 24-hour shift.
 - A single overnight segment is supported. Any multi-segment day containing an overnight segment is rejected with `HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT` until explicit day offsets are approved and migrated.
 - Time inside an envelope gap is not paid and is not overtime. Actual time before the first segment or after the last segment is overtime attributed once to the primary profession and requires reconciliation.
+
+The versioned [`simultaneous-profession-pay-v1`](HR_SIMULTANEOUS_PROFESSION_PAY_POLICY.md) policy applies
+only to roles explicitly saved with `compensationMode = paid_hourly`. Legacy
+`additionalProfessionKeys` writes and pre-policy rows remain `unpaid`; they never create retroactive
+salary. A paid role must have an explicit profession rate, policy version, and multiplier. The runtime
+must fail closed and block payroll commit when any of those snapshots is missing or invalid.
+Migration 299 activates this policy from `2026-07-18`. The non-destructive rollback procedure is
+documented in
+[`PAYROLL_SIMULTANEOUS_ADDITIONAL_ROLLBACK.md`](PAYROLL_SIMULTANEOUS_ADDITIONAL_ROLLBACK.md).
+
+All downstream schedule payloads expose `countsAsPhysicalTime = true` and
+`physicalTimeSource = segment` on the segment, and `countsAsPhysicalTime = false` on each simultaneous
+additional role. Consumers may display or group profession keys, but must not sum additional-role
+intervals into attendance, worked days, or physical hours.
+
+## Reporting and audit contract
+
+- Payroll reports keep physical, base-role, and additional-role minutes as separate metrics.
+- The canonical explanation is: `Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу`.
+- CSV and Excel exports append stable simultaneous-pay fields without replacing legacy columns.
+- Every paid-role assignment/removal, compensation snapshot creation/correction, and generated payroll
+  additional line has an explicit audit event.
+- Rates, multipliers, formulas, and amounts are returned only through existing payroll-authorized
+  surfaces. This feature does not widen route or role permissions.
+- The full UI/API/export contract is documented in
+  [`PAYROLL_SIMULTANEOUS_ADDITIONAL_REPORTING.md`](PAYROLL_SIMULTANEOUS_ADDITIONAL_REPORTING.md).
 
 ### Validation contract
 

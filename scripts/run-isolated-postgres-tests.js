@@ -21,12 +21,17 @@ const MODES = {
     api: ['tests/api.test.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
+        'tests/integration/hr-attendance-compensation-snapshot.integration.test.js',
         'tests/integration/hr-attendance-document-automation-concurrency.integration.test.js',
         'tests/integration/attendance-backup-roundtrip.integration.test.js',
         'tests/integration/full-backup-recovery.integration.test.js'
     ],
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
+    payroll: [
+        'tests/integration/payroll-profiles.integration.test.js',
+        'tests/integration/payroll-simultaneous-additional.integration.test.js'
+    ],
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
         'tests/integration/hr-onboarding-hire.integration.test.js',
@@ -41,7 +46,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|recovery|hr|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|recovery|hr|payroll|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -257,9 +262,12 @@ async function runSuite(testDb, testFile) {
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
+        RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION: testFile.includes('hr-attendance-compensation-snapshot') ? 'true' : 'false',
         RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION: testFile.includes('hr-attendance-document-automation-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
+        RUN_PAYROLL_PROFILES_INTEGRATION: testFile.includes('payroll-profiles') ? 'true' : 'false',
+        RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION: testFile.includes('payroll-simultaneous-additional') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
@@ -335,10 +343,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'recovery', 'hr', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'recovery', 'hr', 'payroll', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.payroll, ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

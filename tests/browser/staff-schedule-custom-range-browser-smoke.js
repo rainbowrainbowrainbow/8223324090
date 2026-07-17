@@ -160,9 +160,54 @@ const STAFF_API_ROWS = [
 ];
 
 const PROFESSIONS = [
-    { key: 'senior_manager', title: 'Старший менеджер', department: 'reception', is_active: true },
-    { key: 'animator', title: 'Аніматор', department: 'animators', is_active: true },
-    { key: 'reception', title: 'Рецепція', department: 'reception', is_active: true },
+    {
+        key: 'senior_manager',
+        title: 'Старший менеджер',
+        department: 'reception',
+        is_active: true,
+        people: [{
+            id: 101,
+            isActive: true,
+            assignmentStatus: 'active',
+            admissionStatus: 'approved',
+            explicitRate: null,
+            hourlyRate: 200,
+            rateSource: 'staff.hourly_rate',
+            rateUnit: 'hour'
+        }]
+    },
+    {
+        key: 'animator',
+        title: 'Аніматор',
+        department: 'animators',
+        is_active: true,
+        people: [{
+            id: 101,
+            isActive: true,
+            assignmentStatus: 'active',
+            admissionStatus: 'approved',
+            explicitRate: 160,
+            hourlyRate: 160,
+            rateSource: 'staff_profession_rates.hourly_rate',
+            rateUnit: 'hour'
+        }]
+    },
+    {
+        key: 'reception',
+        title: 'Рецепція',
+        department: 'reception',
+        is_active: true,
+        people: [{
+            id: 101,
+            isActive: true,
+            assignmentStatus: 'active',
+            admissionStatus: 'approved',
+            explicitRate: 180,
+            hourlyRate: 180,
+            rateSource: 'staff_profession_rates.hourly_rate',
+            rateUnit: 'hour'
+        }]
+    },
     { key: 'manager', title: 'Менеджер', department: 'reception', is_active: true },
     { key: 'admin', title: 'Адміністратор', department: 'admin', is_active: true },
     { key: 'barista', title: 'Бариста', department: 'cafe', is_active: true },
@@ -306,6 +351,9 @@ function fixtureSavedSegments(body = {}) {
             shiftEnd: segment.shiftEnd,
             breakMinutes: Number(segment.breakMinutes || 0),
             note: segment.note || null,
+            additionalRoles: Array.isArray(segment.additionalRoles)
+                ? segment.additionalRoles.map(role => ({ ...role }))
+                : [],
             additionalProfessionKeys: Array.isArray(segment.additionalProfessionKeys)
                 ? [...segment.additionalProfessionKeys]
                 : []
@@ -1030,6 +1078,7 @@ async function openStaffPage(browser, base, viewport, options = {}) {
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
     page.on('pageerror', err => {
+        console.error('Staff schedule browser page error:', err.stack || err.message);
         throw err;
     });
     const search = String(options.search || '').trim();
@@ -3357,6 +3406,108 @@ async function runMultiSegmentPersistenceFlow(browser, base) {
     }
 }
 
+async function runPaidAdditionalProfessionFlow(browser, base) {
+    const originalEntries = SCHEDULE_FIXTURE_ENTRIES.map(entry => structuredClone(entry));
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
+    const targetCell = () => page.locator(
+        '#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-16"]'
+    );
+    const openTargetPlan = async () => {
+        await applyManualRange(page, '2026-07-16', '2026-07-17');
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        await targetCell().click();
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+    };
+
+    try {
+        await openTargetPlan();
+        const cards = page.locator('#schSegmentsList .sch-segment-card');
+        assert.equal(await cards.count(), 1, 'paid-role scenario starts with one physical block');
+        await page.locator('#schAddSegmentBtn').click();
+        await cards.nth(0).locator('[data-segment-field="profession"]').selectOption('animator');
+        await cards.nth(0).locator('[data-segment-field="start"]').fill('11:00');
+        await cards.nth(0).locator('[data-segment-field="end"]').fill('20:00');
+        await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('reception');
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('11:30');
+        await cards.nth(1).locator('[data-segment-field="end"]').fill('20:00');
+
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'overlapping physical blocks cannot be saved directly');
+        assert.match(
+            await page.locator('#schPlanSummary').innerText(),
+            /Ці блоки описують один фізичний час\. Додайте другу професію як оплачувану роль/,
+            'top summary explains how to model simultaneous paid work'
+        );
+        assert.match(
+            await page.locator('[data-schedule-save-validation]').innerText(),
+            /Не можна зберегти:/,
+            'sticky save area explains why save is disabled'
+        );
+        const convertButton = page.locator('[data-schedule-overlap-convert]');
+        assert.equal(await convertButton.isEnabled(), true, 'contained overlap exposes an explicit safe conversion');
+        await convertButton.click();
+
+        assert.equal(await cards.count(), 2, 'conversion normalizes one physical block into two adjacent physical segments');
+        assert.equal(await cards.nth(0).locator('[data-segment-field="start"]').inputValue(), '11:00');
+        assert.equal(await cards.nth(0).locator('[data-segment-field="end"]').inputValue(), '11:30');
+        assert.equal(await cards.nth(1).locator('[data-segment-field="start"]').inputValue(), '11:30');
+        assert.equal(await cards.nth(1).locator('[data-segment-field="end"]').inputValue(), '20:00');
+        assert.equal(
+            await cards.nth(1).locator('[data-segment-field="paid-profession"]').inputValue(),
+            'reception',
+            'contained profession becomes the explicit paid role'
+        );
+        assert.match(
+            await cards.nth(1).locator('[data-paid-role-preview]').innerText(),
+            /180 грн\/год[\s\S]*510 хв[\s\S]*multiplier 1\.0[\s\S]*1.?530 грн/,
+            'payroll-authorized user sees rate, minutes, multiplier and estimated amount'
+        );
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'normalized paid-role plan is saveable');
+
+        const callsBeforeSave = apiCalls.scheduleBodies.length;
+        await page.locator('#schSaveBtn').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        const savedBody = apiCalls.scheduleBodies.slice(callsBeforeSave)
+            .find(body => Number(body.staffId) === 101 && body.date === '2026-07-16');
+        assert.ok(savedBody, 'paid-role plan reaches the schedule API');
+        assert.equal(savedBody.segments.length, 2, 'API receives non-overlapping physical segments');
+        assert.deepEqual(
+            savedBody.segments.map(segment => [segment.shiftStart, segment.shiftEnd]),
+            [['11:00', '11:30'], ['11:30', '20:00']]
+        );
+        assert.deepEqual(savedBody.segments[1].additionalRoles, [{
+            professionKey: 'reception',
+            compensationMode: 'paid_hourly',
+            payMultiplier: 1,
+            policyVersion: null
+        }]);
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForDayColumns(page, 9);
+        await openTargetPlan();
+        assert.equal(await cards.count(), 2, 'reload keeps normalized physical segments');
+        assert.equal(
+            await cards.nth(1).locator('[data-segment-field="paid-profession"]').inputValue(),
+            'reception',
+            'reload keeps paid status instead of flattening it into a legacy tag'
+        );
+
+        await cards.nth(1).locator('[data-segment-field="paid-profession"]').selectOption('senior_manager');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'paid mode is blocked when the explicit profession rate is missing');
+        assert.match(
+            await cards.nth(1).locator('[data-field-error="paid-profession"]').innerText(),
+            /немає явної погодинної ставки/,
+            'missing-rate error is shown next to the profession field'
+        );
+        assert.match(await page.locator('#schPlanSummary').innerText(), /Старший менеджер[\s\S]*немає явної погодинної ставки/);
+        assert.match(await page.locator('[data-schedule-save-validation]').innerText(), /немає явної погодинної ставки/);
+        await page.locator('#schCancelBtn').click();
+    } finally {
+        SCHEDULE_FIXTURE_ENTRIES.splice(0, SCHEDULE_FIXTURE_ENTRIES.length, ...originalEntries);
+        await context.close();
+    }
+}
+
 async function runDesktopFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
@@ -3566,7 +3717,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="end"]').fill('20:00');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, `${label} accepts adjacent non-overlapping segments`);
         assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} summary adds segment duration instead of envelope duplication`);
-        const simultaneousRole = page.locator('#schSegmentsList .sch-segment-card').first().locator('[data-segment-field="additional"]:not([disabled])').first();
+        const simultaneousRole = page.locator('#schSegmentsList .sch-segment-card').first().locator('[data-segment-field="additional-unpaid"]:not([disabled])').first();
         assert.ok(await simultaneousRole.count(), `${label} exposes simultaneous roles from the HR card`);
         await simultaneousRole.check();
         assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} simultaneous role does not add paid time`);
@@ -3679,6 +3830,7 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
         await runDeterministicSubgroupReadinessFlow(browser, base);
         await runSegmentCellPresentationFlow(browser, base);
         await runMultiSegmentPersistenceFlow(browser, base);
+        await runPaidAdditionalProfessionFlow(browser, base);
         await runDesktopFlow(browser, base);
         await runSidebarIdentityWrapFlow(browser, base, { width: 1440, height: 900 }, 'desktop-light', false);
         await runSidebarIdentityWrapFlow(browser, base, { width: 1024, height: 768 }, 'laptop-dark', true);

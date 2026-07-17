@@ -26,6 +26,7 @@ function clearModules() {
         '../services/bookingAutomation',
         '../services/leadBookingLink',
         '../services/bookingPackage',
+        '../services/banquetGroups',
         '../services/banquetTerms',
         '../services/websocket',
         '../services/eventBus',
@@ -426,6 +427,14 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
         if (/^INSERT INTO banquet_group_bookings/i.test(sql) && /RETURNING \*/i.test(sql)) {
             if (failBanquetMembershipInsert) throw new Error('simulated banquet membership insert failure');
             const constantRole = sql.match(/VALUES \(\$1, \$2, \$3, '([^']+)',\s*(\d+)/i);
+            const duplicate = state.banquetMemberships.find(item =>
+                item.group_id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+                && item.booking_id === params[2]
+            );
+            if (duplicate && /ON CONFLICT DO NOTHING/i.test(sql)) {
+                return { rows: [], rowCount: 0 };
+            }
             const row = {
                 id: state.banquetMemberships.length + 1,
                 group_id: params[0],
@@ -439,6 +448,68 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             };
             state.banquetMemberships.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
+        }
+        if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1/i.test(sql) && /FOR UPDATE/i.test(sql)) {
+            const [id, businessContext] = params;
+            const row = state.rows.find(item =>
+                item.id === id
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            );
+            return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/SELECT b\.\* FROM bookings b WHERE/i.test(sql)
+            && /b\.date = \$2/i.test(sql)
+            && /b\.customer_id = \$4/i.test(sql)
+            && /FOR UPDATE/i.test(sql)) {
+            const [businessContext, date, room, customerId, banquetServiceLineId] = params;
+            const rows = state.rows
+                .filter(row =>
+                    normalizeContext(row.business_context) === normalizeContext(businessContext)
+                    && row.date === date
+                    && String(row.room || '').trim() === String(room || '').trim()
+                    && Number(row.customer_id) === Number(customerId)
+                    && String(row.status || 'confirmed').toLowerCase() !== 'cancelled'
+                    && !String(row.linked_to || '').trim()
+                )
+                .sort((left, right) => {
+                    const leftPriority = left.line_id === banquetServiceLineId ? 0 : 2;
+                    const rightPriority = right.line_id === banquetServiceLineId ? 0 : 2;
+                    return leftPriority - rightPriority
+                        || String(left.time || '').localeCompare(String(right.time || ''))
+                        || String(left.id || '').localeCompare(String(right.id || ''));
+                });
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT bgb\.id, bgb\.group_id/i.test(sql)
+            && /JOIN banquet_groups bg ON bg\.id = bgb\.group_id/i.test(sql)
+            && /bgb\.booking_id = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const ids = new Set((params[0] || []).map(String));
+            const businessContext = params[1];
+            const rows = state.banquetMemberships.flatMap(membership => {
+                if (!ids.has(String(membership.booking_id))
+                    || normalizeContext(membership.business_context) !== normalizeContext(businessContext)) {
+                    return [];
+                }
+                const group = state.banquetGroups.find(item =>
+                    item.id === membership.group_id
+                    && normalizeContext(item.business_context) === normalizeContext(businessContext)
+                );
+                if (!group) return [];
+                return [{
+                    ...membership,
+                    primary_booking_id: group.primary_booking_id,
+                    group_status: group.status
+                }];
+            });
+            return { rows, rowCount: rows.length };
+        }
+        if (/SELECT bg\.\* FROM banquet_groups bg WHERE bg\.id = \$1/i.test(sql) && /FOR UPDATE/i.test(sql)) {
+            const [id, businessContext] = params;
+            const row = state.banquetGroups.find(item =>
+                item.id === id
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            );
+            return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
         }
         if (/SELECT bgb\.\* FROM banquet_group_bookings bgb WHERE bgb\.group_id = \$1/i.test(sql)) {
             const [groupId, businessContext] = params;
@@ -656,8 +727,29 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             );
             return { rows: found ? [{ '?column?': 1 }] : [], rowCount: found ? 1 : 0 };
         }
+        if (/^DELETE FROM booking_banquet_links/i.test(sql)) {
+            const [businessContext, bookingA, bookingB, relationType] = params;
+            const before = state.links.length;
+            state.links = state.links.filter(link =>
+                !(link.business_context === businessContext
+                    && link.booking_a_id === bookingB
+                    && link.booking_b_id === bookingA
+                    && link.relation_type === relationType)
+            );
+            return { rows: [], rowCount: before - state.links.length };
+        }
         if (/INSERT INTO booking_banquet_links/i.test(sql)) {
             const [businessContext, bookingA, bookingB, relationType, label, createdByUserId, createdBy] = params;
+            const existing = state.links.find(link =>
+                link.business_context === businessContext
+                && link.booking_a_id === bookingA
+                && link.booking_b_id === bookingB
+                && link.relation_type === relationType
+            );
+            if (existing) {
+                existing.label = label || existing.label;
+                return { rows: [{ ...existing }], rowCount: 1 };
+            }
             const row = {
                 id: state.links.length + 1,
                 business_context: businessContext,
@@ -671,6 +763,18 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             };
             state.links.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
+        }
+        if (/^UPDATE banquet_groups SET updated_at = NOW\(\), updated_by = \$3/i.test(sql)) {
+            const [groupId, businessContext, updatedBy] = params;
+            const row = state.banquetGroups.find(item =>
+                item.id === groupId
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            );
+            if (row) {
+                row.updated_at = '2099-01-02T00:00:00.000Z';
+                row.updated_by = updatedBy;
+            }
+            return { rows: [], rowCount: row ? 1 : 0 };
         }
         if (/^INSERT INTO lines_by_date \(business_context, date, line_id, name, color, from_sheet\)/i.test(sql)) {
             return { rows: [], rowCount: 1 };
@@ -998,6 +1102,48 @@ async function createFullBooking(baseUrl, overrides = {}, options = {}) {
     return { status: res.status, data, timelineView: res.headers.get('x-timeline-view') };
 }
 
+function earlierPinataRow(overrides = {}) {
+    return {
+        id: 'BK-2099-PINATA-EARLIER',
+        business_context: 'event_genix',
+        date: '2099-02-13',
+        time: '13:40',
+        line_id: 'line-second',
+        program_id: 'pinata',
+        program_code: 'PIN',
+        label: 'Pinata',
+        program_name: 'Pinata',
+        category: 'pinata',
+        duration: 15,
+        price: 700,
+        hosts: 1,
+        second_animator: null,
+        pinata_filler: null,
+        pinata_mode: 'park',
+        pinata_number: 'QA-EARLIER-01',
+        pinata_filler_number: null,
+        client_pinata_service_price: null,
+        client_pinata_service_note: null,
+        room: 'Room A',
+        notes: null,
+        created_by: 'creator-user',
+        linked_to: null,
+        status: 'confirmed',
+        kids_count: null,
+        group_name: null,
+        extra_data: null,
+        customer_id: 701,
+        payment_method: null,
+        banquet_guests: null,
+        banquet_adults: null,
+        banquet_tables: null,
+        banquet_menu: null,
+        created_at: '2099-01-01T00:00:00.000Z',
+        updated_at: '2099-01-01T00:00:00.000Z',
+        ...overrides
+    };
+}
+
 async function updateBooking(baseUrl, id, payload) {
     const res = await fetch(`${baseUrl}/api/bookings/${id}`, {
         method: 'PUT',
@@ -1075,6 +1221,44 @@ test('POST /api/bookings creates booking and banquet arrival atomically from exp
         assert.equal(state.banquetMemberships[0].booking_id, res.data.booking.id);
         assert.equal(state.banquetMemberships[0].role, 'primary');
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings reconciles an earlier exact-match pinata after explicit banquet creation', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.customers.push({
+            id: 701,
+            business_context: 'event_genix',
+            name: 'Banquet Test Customer',
+            phone: '+380990000701'
+        });
+        state.nextCustomerId = 702;
+        state.rows.push(earlierPinataRow({
+            date: '2099-02-10',
+            time: '16:45'
+        }));
+
+        const res = await createBooking(baseUrl, {
+            customerId: 701,
+            time: '16:00',
+            programId: 'bubble',
+            programCode: 'BUBBLE',
+            label: 'Bubble show',
+            programName: 'Bubble show',
+            category: 'show',
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '15:30' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const groupId = res.data.banquetGroup?.group?.id;
+        assert.ok(groupId);
+        assert.deepEqual(
+            state.banquetMemberships
+                .filter(row => row.group_id === groupId)
+                .map(row => `${row.booking_id}:${row.role}`)
+                .sort(),
+            [`${res.data.booking.id}:primary`, 'BK-2099-PINATA-EARLIER:activity'].sort()
+        );
     });
 });
 
@@ -2781,9 +2965,193 @@ test('POST /api/bookings/full creates Bubble and Pinata in one new banquet membe
         const pinataExtra = JSON.parse(state.rows.find(row => row.id === pinataId).extra_data);
         assert.deepEqual(mainExtra.multiActivity.activityIds, ['bubble', 'pinata']);
         assert.deepEqual(pinataExtra.multiActivity.activityIds, ['bubble', 'pinata']);
-        assert.equal(state.tx.filter(item => item === 'BEGIN').length, 1);
-        assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
-        assert.equal(state.tx.includes('ROLLBACK'), false);
+        assert.ok(state.tx.filter(item => item === 'BEGIN').length >= 1);
+        assert.ok(state.tx.filter(item => item === 'COMMIT').length >= 1);
+    });
+});
+
+test('POST /api/bookings/full reconciles an earlier exact-match pinata into a newly created banquet group', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.customers.push({
+            id: 701,
+            business_context: 'event_genix',
+            name: 'Banquet Test Customer',
+            phone: '+380990000701'
+        });
+        state.nextCustomerId = 702;
+        state.rows.push(
+            earlierPinataRow(),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-OTHER-ROOM',
+                room: 'Room B',
+                pinata_number: 'QA-OTHER-ROOM'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-OTHER-CUSTOMER',
+                customer_id: 702,
+                pinata_number: 'QA-OTHER-CUSTOMER'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-OTHER-DATE',
+                date: '2099-02-14',
+                pinata_number: 'QA-OTHER-DATE'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-CANCELLED',
+                status: 'cancelled',
+                pinata_number: 'QA-CANCELLED'
+            })
+        );
+
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                customerId: 701,
+                programId: 'bubble',
+                programCode: 'BUBBLE',
+                label: 'Bubble show',
+                programName: 'Bubble show',
+                category: 'show',
+                duration: 30,
+                price: 2400,
+                hosts: 1,
+                secondAnimator: null
+            },
+            linked: [],
+            banquetActivities: [],
+            banquetContext: {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '12:30'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        const groupId = res.data.banquetGroup?.group?.id;
+        const mainId = res.data.mainBooking.id;
+        assert.ok(groupId);
+        assert.deepEqual(
+            state.banquetMemberships
+                .filter(row => row.group_id === groupId)
+                .map(row => `${row.booking_id}:${row.role}`)
+                .sort(),
+            [`${mainId}:primary`, 'BK-2099-PINATA-EARLIER:activity'].sort()
+        );
+        for (const excludedId of [
+            'BK-2099-PINATA-OTHER-ROOM',
+            'BK-2099-PINATA-OTHER-CUSTOMER',
+            'BK-2099-PINATA-OTHER-DATE',
+            'BK-2099-PINATA-CANCELLED'
+        ]) {
+            assert.equal(
+                state.banquetMemberships.some(row => row.group_id === groupId && row.booking_id === excludedId),
+                false,
+                `${excludedId} must remain outside the new group`
+            );
+        }
+
+        const { reconcileBanquetGroupForBooking } = require('../services/banquetGroups');
+        const repeated = await reconcileBanquetGroupForBooking({
+            bookingId: mainId,
+            businessContext: 'event_genix',
+            user: { id: 1, username: 'creator-user' },
+            source: 'booking_write_auto_group'
+        });
+        assert.equal(repeated.groupId, groupId);
+        assert.deepEqual(repeated.attachedBookingIds, []);
+        assert.equal(
+            state.banquetMemberships.filter(row =>
+                row.group_id === groupId
+                && row.booking_id === 'BK-2099-PINATA-EARLIER'
+            ).length,
+            1
+        );
+    });
+});
+
+test('POST /api/bookings/full leaves an exact-match pinata in place when canonical groups are ambiguous', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.customers.push({
+            id: 701,
+            business_context: 'event_genix',
+            name: 'Banquet Test Customer',
+            phone: '+380990000701'
+        });
+        state.nextCustomerId = 702;
+        state.rows.push(earlierPinataRow());
+        state.banquetGroups.push({
+            id: 'BQ-EXISTING',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-2099-OTHER-PRIMARY',
+            customer_id: 701,
+            date: '2099-02-13',
+            room: 'Room A',
+            guest_arrival_time: '12:00',
+            group_name: 'Existing banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            created_by_user_id: 1,
+            created_by: 'creator-user',
+            updated_by: 'creator-user',
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+        state.banquetMemberships.push({
+            id: 1,
+            group_id: 'BQ-EXISTING',
+            business_context: 'event_genix',
+            booking_id: 'BK-2099-PINATA-EARLIER',
+            role: 'activity',
+            sort_order: 100,
+            created_by_user_id: 1,
+            created_by: 'creator-user',
+            created_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                customerId: 701,
+                programId: 'bubble',
+                programCode: 'BUBBLE',
+                label: 'Bubble show',
+                programName: 'Bubble show',
+                category: 'show',
+                duration: 30,
+                price: 2400,
+                hosts: 1,
+                secondAnimator: null
+            },
+            linked: [],
+            banquetActivities: [],
+            banquetContext: {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '12:30'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const newGroupId = res.data.banquetGroup?.group?.id;
+        assert.ok(newGroupId);
+        assert.equal(
+            state.banquetMemberships.some(row =>
+                row.group_id === newGroupId
+                && row.booking_id === 'BK-2099-PINATA-EARLIER'
+            ),
+            false
+        );
+        assert.equal(
+            state.banquetMemberships.some(row =>
+                row.group_id === 'BQ-EXISTING'
+                && row.booking_id === 'BK-2099-PINATA-EARLIER'
+            ),
+            true
+        );
+        assert.equal(
+            state.banquetMemberships.filter(row => row.booking_id === 'BK-2099-PINATA-EARLIER').length,
+            1
+        );
     });
 });
 

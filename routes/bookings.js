@@ -3169,13 +3169,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        if (!createdBanquetGroup) {
-            await reconcileBookingBanquetGroupsSafely(
-                [booking.id || b.id, ...linkedBookings.map(item => item.id)],
-                businessContext,
-                req.user
-            );
-        }
+        await reconcileBookingBanquetGroupsSafely(
+            [
+                booking.id || b.id,
+                ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id))
+            ],
+            businessContext,
+            req.user
+        );
         let allCreatedBookings = [booking, ...linkedBookings];
         await Promise.all(allCreatedBookings.map(async createdBooking => {
             createdBooking.timelineProjection = await bookingDayProjectionStatus(client, {
@@ -4223,13 +4224,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        if (!createdBanquetGroup) {
-            await reconcileBookingBanquetGroupsSafely(
-                [mainBooking.id || main.id, ...linkedBookings.map(item => item.id), ...activityBookings.map(item => item.id)],
-                businessContext,
-                req.user
-            );
-        }
+        await reconcileBookingBanquetGroupsSafely(
+            [
+                mainBooking.id || main.id,
+                ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id)),
+                ...(createdBanquetGroup ? [] : activityBookings.map(item => item.id))
+            ],
+            businessContext,
+            req.user
+        );
         let allBookings = [mainBooking, ...linkedBookings, ...activityBookings];
         await Promise.all(allBookings.map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {

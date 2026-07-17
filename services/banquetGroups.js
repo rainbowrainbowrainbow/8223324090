@@ -886,10 +886,6 @@ async function reconcileBanquetGroupForBooking({
             await client.query('ROLLBACK');
             return banquetAutoGroupSkip(cleanBookingId, context, 'not_enough_candidates', { candidateBookingIds });
         }
-        if (!candidates.some(isBanquetAnchor)) {
-            await client.query('ROLLBACK');
-            return banquetAutoGroupSkip(cleanBookingId, context, 'missing_banquet_anchor', { candidateBookingIds });
-        }
 
         const memberships = await getMembershipRowsForBookings(client, candidateBookingIds, context);
         const groupIds = [...new Set(memberships.map(row => cleanId(row.group_id)).filter(Boolean))];
@@ -899,6 +895,10 @@ async function reconcileBanquetGroupForBooking({
                 candidateBookingIds,
                 existingGroupIds: groupIds
             });
+        }
+        if (!candidates.some(isBanquetAnchor) && groupIds.length !== 1) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'missing_banquet_anchor', { candidateBookingIds });
         }
 
         let group = null;
@@ -3168,6 +3168,14 @@ async function updateBanquetBookingSet({
         if (!updatedGroup) {
             throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
         }
+
+        await syncManagerDepositForMemberBooking(
+            client,
+            resolvedPrimaryPatch,
+            updatedPrimaryRow,
+            context,
+            user
+        );
 
         const derived = await persistDerivedBookingSetMetadata(client, updatedGroup, context);
         await logBanquetHistory(client, context, 'banquet_booking_set_updated', user, {

@@ -39,6 +39,7 @@ function clearModules() {
         '../middleware/auth',
         '../services/bookingVisibility',
         '../services/banquetGroups',
+        '../services/banquetDeposits',
         '../services/banquetSummary',
         '../services/productPricing',
         '../services/telegram',
@@ -213,6 +214,7 @@ function makeDb(rows, links = [], options = {}) {
         queries: [],
         nextLinkId: links.length + 1,
         nextBanquetMembershipId: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships.length : 0) + 1,
+        nextBanquetDepositId: Math.max(0, ...(Array.isArray(options.banquetDeposits) ? options.banquetDeposits : []).map(row => Number(row.id) || 0)) + 1,
         nextCustomerId: Math.max(0, ...(Array.isArray(options.customers) ? options.customers : []).map(row => Number(row.id) || 0)) + 1,
         released: 0
     };
@@ -245,6 +247,7 @@ function makeDb(rows, links = [], options = {}) {
                 histories: cloneStateValue(state.histories),
                 nextLinkId: state.nextLinkId,
                 nextBanquetMembershipId: state.nextBanquetMembershipId,
+                nextBanquetDepositId: state.nextBanquetDepositId,
                 nextCustomerId: state.nextCustomerId
             };
             return { rows: [], rowCount: 0 };
@@ -267,6 +270,7 @@ function makeDb(rows, links = [], options = {}) {
                 state.histories = cloneStateValue(txSnapshot.histories);
                 state.nextLinkId = txSnapshot.nextLinkId;
                 state.nextBanquetMembershipId = txSnapshot.nextBanquetMembershipId;
+                state.nextBanquetDepositId = txSnapshot.nextBanquetDepositId;
                 state.nextCustomerId = txSnapshot.nextCustomerId;
                 txSnapshot = null;
             }
@@ -324,6 +328,26 @@ function makeDb(rows, links = [], options = {}) {
                     normalizeContext(row.business_context) === normalizeContext(params[1]) &&
                     row.status !== 'cancelled'
                 )
+            };
+        }
+        if (/SELECT b\.\*, c\.name AS customer_name, c\.lead_id AS customer_lead_id\s+FROM bookings b\s+LEFT JOIN customers c/i.test(sql)) {
+            const row = state.rows.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+            );
+            const customer = row
+                ? state.customers.find(item =>
+                    Number(item.id) === Number(row.customer_id)
+                    && normalizeContext(item.business_context || 'event_genix') === normalizeContext(params[1])
+                )
+                : null;
+            return {
+                rows: row ? [{
+                    ...row,
+                    customer_name: customer?.name || null,
+                    customer_lead_id: customer?.lead_id || null
+                }] : [],
+                rowCount: row ? 1 : 0
             };
         }
         if (/SELECT \* FROM bookings WHERE id = \$1(?: AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)?(?: FOR UPDATE)?$/i.test(sql)) {
@@ -473,6 +497,37 @@ function makeDb(rows, links = [], options = {}) {
                 normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+        }
+        if (/SELECT bgb\.group_id,\s+bgb\.role AS group_role,\s+bg\.business_context AS group_business_context/i.test(sql)) {
+            const membership = state.banquetMemberships
+                .filter(item =>
+                    item.booking_id === params[0]
+                    && normalizeContext(item.business_context) === normalizeContext(params[1])
+                )
+                .sort((a, b) => Number(a.role !== 'primary') - Number(b.role !== 'primary') || Number(a.id) - Number(b.id))[0];
+            const group = membership
+                ? state.banquetGroups.find(item =>
+                    item.id === membership.group_id
+                    && normalizeContext(item.business_context) === normalizeContext(params[1])
+                )
+                : null;
+            return {
+                rows: group ? [{
+                    group_id: membership.group_id,
+                    group_role: membership.role,
+                    group_business_context: group.business_context,
+                    primary_booking_id: group.primary_booking_id,
+                    group_customer_id: group.customer_id,
+                    group_date: group.date,
+                    group_name: group.group_name,
+                    group_status: group.status,
+                    group_source: group.source
+                }] : [],
+                rowCount: group ? 1 : 0
+            };
+        }
+        if (/SELECT \*\s+FROM \(\s+SELECT l\.\*, 0 AS match_priority/i.test(sql)) {
+            return { rows: [], rowCount: 0 };
         }
         if (/SELECT b\.\*\s+FROM bookings b\s+WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(sql)) {
             const ids = new Set((params[0] || []).map(String));
@@ -845,6 +900,70 @@ function makeDb(rows, links = [], options = {}) {
             return {
                 rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
             };
+        }
+        if (/UPDATE banquet_deposits SET expected_amount = \$1,/i.test(sql)) {
+            const row = state.banquetDeposits.find(item =>
+                Number(item.id) === Number(params[12])
+                && normalizeContext(item.business_context) === normalizeContext(params[13])
+            );
+            if (!row) return { rows: [], rowCount: 0 };
+            row.expected_amount = params[0];
+            row.amount = params[0];
+            row.manager_status = params[1];
+            row.due_date = params[2];
+            row.manager_note = params[3];
+            if (['manager_reported', 'needs_booking_link'].includes(row.status)) row.status = params[4];
+            row.client_name_snapshot = params[5] || row.client_name_snapshot;
+            row.event_date = params[6] || row.event_date;
+            row.banquet_number_snapshot = params[7] || row.banquet_number_snapshot;
+            row.source_kind = row.source_kind || 'manager_booking_form';
+            row.source_payload = JSON.parse(params[8]);
+            row.manager_reported_at = params[9];
+            row.manager_reported_by = params[10] || row.manager_reported_by;
+            row.meta = JSON.parse(params[11]);
+            row.updated_at = new Date('2099-01-01T00:04:00Z').toISOString();
+            return { rows: [{ ...row }], rowCount: 1 };
+        }
+        if (/INSERT INTO banquet_deposits \(/i.test(sql) && /RETURNING \*/i.test(sql)) {
+            if (options.failBanquetDepositInsert) {
+                throw new Error('simulated canonical deposit insert failure');
+            }
+            const row = {
+                id: state.nextBanquetDepositId++,
+                business_context: params[0],
+                banquet_group_id: params[1],
+                primary_booking_id: params[2],
+                lead_id: params[3],
+                customer_id: params[4],
+                accountant_task_id: null,
+                client_name_snapshot: params[5],
+                event_date: params[6],
+                banquet_number_snapshot: params[7],
+                amount: params[8],
+                expected_amount: params[8],
+                paid_amount: null,
+                payment_method: null,
+                status: params[13],
+                manager_status: params[9],
+                accounting_status: params[10],
+                due_date: params[11],
+                manager_note: params[12],
+                accounting_note: null,
+                source_kind: params[14],
+                source_payload: JSON.parse(params[15]),
+                manager_reported_at: params[16],
+                manager_reported_by: params[17],
+                verified_at: null,
+                verified_by: null,
+                corrected_at: null,
+                corrected_by: null,
+                finance_transaction_id: null,
+                meta: JSON.parse(params[18]),
+                created_at: new Date('2099-01-01T00:04:00Z').toISOString(),
+                updated_at: new Date('2099-01-01T00:04:00Z').toISOString()
+            };
+            state.banquetDeposits.push(row);
+            return { rows: [{ ...row }], rowCount: 1 };
         }
         if (/FROM banquet_deposits/i.test(sql)) {
             const [businessContext, identityValue] = params;
@@ -3854,6 +3973,190 @@ test('PUT banquet booking-set atomically updates primary and creates activity me
             id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
         }, {
             id: 2, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-KITCHEN', role: 'kitchen', sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set creates, updates, and safely clears the canonical manager deposit', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const savedGroupUpdatedAt = '2099-01-01T00:10:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            duration: 90,
+            customer_id: 101,
+            room: 'Room A'
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const updateDeposit = async (expectedGroupUpdatedAt, deposit) => {
+            const response = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/booking-set?businessContext=event_genix`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-ROOT',
+                    expectedGroupUpdatedAt,
+                    primaryPatch: { deposit },
+                    activities: []
+                })
+            });
+            const data = await response.json();
+            assert.equal(response.status, 200, JSON.stringify(data));
+            return data;
+        };
+
+        await updateDeposit(groupUpdatedAt, {
+            expectedAmount: 1500,
+            dueDate: '2099-05-20',
+            managerStatus: 'Клієнт повідомив про оплату',
+            managerNote: 'First manager note'
+        });
+        assert.equal(state.banquetDeposits.length, 1);
+        assert.equal(state.banquetDeposits[0].primary_booking_id, 'BK-ROOT');
+        assert.equal(state.banquetDeposits[0].banquet_group_id, 'BQ-ROOT');
+        assert.equal(state.banquetDeposits[0].expected_amount, 1500);
+
+        const createdProjectionResponse = await fetch(
+            `${baseUrl}/api/banquets/by-booking/BK-ROOT/deposit?businessContext=event_genix`
+        );
+        const createdProjection = await createdProjectionResponse.json();
+        assert.equal(createdProjectionResponse.status, 200, JSON.stringify(createdProjection));
+        assert.equal(createdProjection.deposit.expectedAmount, 1500);
+
+        await updateDeposit(savedGroupUpdatedAt, {
+            expectedAmount: 1800,
+            dueDate: '2099-05-22',
+            managerStatus: 'Потрібна перевірка бухгалтерії',
+            managerNote: 'Updated manager note'
+        });
+        assert.equal(state.banquetDeposits.length, 1);
+        assert.equal(state.banquetDeposits[0].expected_amount, 1800);
+        assert.equal(state.banquetDeposits[0].due_date, '2099-05-22');
+        assert.equal(state.banquetDeposits[0].manager_note, 'Updated manager note');
+
+        Object.assign(state.banquetDeposits[0], {
+            amount: 1800,
+            paid_amount: 1800,
+            payment_method: 'cash',
+            status: 'accountant_verified',
+            accounting_status: 'Підтверджено',
+            verified_at: '2099-05-21T10:00:00.000Z',
+            verified_by: 9
+        });
+
+        await updateDeposit(savedGroupUpdatedAt, {
+            provided: true,
+            expectedAmount: null,
+            dueDate: null,
+            managerStatus: 'Очікуємо оплату',
+            managerNote: null
+        });
+        assert.equal(state.banquetDeposits.length, 1);
+        assert.equal(state.banquetDeposits[0].expected_amount, null);
+        assert.equal(state.banquetDeposits[0].due_date, null);
+        assert.equal(state.banquetDeposits[0].manager_note, null);
+        assert.equal(state.banquetDeposits[0].manager_status, 'Очікуємо оплату');
+        assert.equal(state.banquetDeposits[0].paid_amount, 1800);
+        assert.equal(state.banquetDeposits[0].payment_method, 'cash');
+        assert.equal(state.banquetDeposits[0].accounting_status, 'Підтверджено');
+        assert.equal(state.banquetDeposits[0].verified_at, '2099-05-21T10:00:00.000Z');
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);
+    }, {
+        mockProductPricing: true,
+        nextGroupUpdatedAt: savedGroupUpdatedAt,
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Deposit banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set rolls back booking and group updates when canonical deposit sync fails', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            duration: 90,
+            customer_id: 101,
+            room: 'Room A',
+            notes: 'Original note'
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/booking-set?businessContext=event_genix`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                primaryBookingId: 'BK-ROOT',
+                expectedGroupUpdatedAt: groupUpdatedAt,
+                primaryPatch: {
+                    notes: 'Must roll back',
+                    deposit: {
+                        expectedAmount: 1500,
+                        managerStatus: 'Клієнт повідомив про оплату'
+                    }
+                },
+                activities: []
+            })
+        });
+        const data = await response.json();
+
+        assert.equal(response.status, 500, JSON.stringify(data));
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').notes, 'Original note');
+        assert.equal(state.banquetGroups[0].updated_at, groupUpdatedAt);
+        assert.equal(state.banquetDeposits.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockProductPricing: true,
+        failBanquetDepositInsert: true,
+        nextGroupUpdatedAt: '2099-01-01T00:10:00.000Z',
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Deposit rollback banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
         }]
     });
 });

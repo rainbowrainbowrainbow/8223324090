@@ -5377,6 +5377,7 @@ function resetBookingPackageWorkspace() {
     });
     const depositStatus = document.getElementById('bookingDepositManagerStatus');
     if (depositStatus) depositStatus.value = 'Очікуємо оплату';
+    resetBookingDepositHydrationState();
     const catalogSearch = document.getElementById('bookingMenuCatalogSearch');
     if (catalogSearch) catalogSearch.value = '';
     setBookingMenuCatalogOpen(false, { skipCommit: true });
@@ -5440,15 +5441,38 @@ function setBookingDepositFormData(source = null) {
     renderBookingPackageSummary();
 }
 
+function setBookingDepositHydrationState(bookingId, status, hadDeposit = false) {
+    const state = {
+        bookingId: String(bookingId || ''),
+        status: String(status || 'idle'),
+        hadDeposit: Boolean(hadDeposit)
+    };
+    BookingDrawerState.depositHydration = state;
+    return state;
+}
+
+function resetBookingDepositHydrationState() {
+    return setBookingDepositHydrationState('', 'idle', false);
+}
+
 async function hydrateBookingDepositFromServer(bookingId) {
-    if (!bookingId || typeof apiGetBanquetDepositByBooking !== 'function') return;
+    const cleanBookingId = String(bookingId || '').trim();
+    if (!cleanBookingId || typeof apiGetBanquetDepositByBooking !== 'function') {
+        return setBookingDepositHydrationState(cleanBookingId, 'unavailable', false);
+    }
+    setBookingDepositHydrationState(cleanBookingId, 'loading', false);
     try {
-        const projection = await apiGetBanquetDepositByBooking(bookingId);
-        if (projection?.success !== false && projection?.deposit) {
-            setBookingDepositFormData(projection);
+        const projection = await apiGetBanquetDepositByBooking(cleanBookingId);
+        if (projection?.success === false) {
+            throw new Error(projection.error || 'Deposit projection is unavailable');
         }
+        const hadDeposit = Boolean(projection?.deposit);
+        setBookingDepositFormData(hadDeposit ? projection : null);
+        return setBookingDepositHydrationState(cleanBookingId, 'loaded', hadDeposit);
     } catch (err) {
+        setBookingDepositHydrationState(cleanBookingId, 'failed', false);
         console.warn('Booking deposit hydrate skipped', err);
+        return null;
     }
 }
 
@@ -13843,9 +13867,29 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
         adjustedPrimary.duration = Number(primaryFields.duration || scheduleRows[0].duration || adjustedPrimary.duration);
         adjustedPrimary.lineId = primaryFields.lineId || adjustedPrimary.lineId;
     }
+    const primaryPatch = buildBanquetEditPrimaryPatch(adjustedPrimary, context);
+    const depositHydration = BookingDrawerState.depositHydration || {};
+    const primaryBookingId = String(context?.primaryBookingId || '').trim();
+    const depositWasLoaded = depositHydration.status === 'loaded'
+        && String(depositHydration.bookingId || '') === primaryBookingId;
+    if (!formData.deposit?.provided) {
+        if (depositWasLoaded && depositHydration.hadDeposit) {
+            primaryPatch.deposit = {
+                provided: true,
+                expectedAmount: null,
+                dueDate: null,
+                managerStatus: 'Очікуємо оплату',
+                managerNote: null
+            };
+            primaryPatch.banquetDeposit = primaryPatch.deposit;
+        } else {
+            delete primaryPatch.deposit;
+            delete primaryPatch.banquetDeposit;
+        }
+    }
     return {
         primaryBookingId: context?.primaryBookingId,
-        primaryPatch: buildBanquetEditPrimaryPatch(adjustedPrimary, context),
+        primaryPatch,
         activities: buildBanquetEditActivityBookings(adjustedPrimary, formData, context),
         expectedGroupUpdatedAt: context?.expectedGroupUpdatedAt
     };

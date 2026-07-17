@@ -800,7 +800,6 @@ async function countFutureActiveBookingsForTimelineResource(db = defaultPool, co
             AND ${activeBookingStatusSql('b')}
             AND (
                 b.line_id = $2
-                OR b.resource_id = $2
                 ${roomValues.length ? 'OR b.room = ANY($3::text[])' : ''}
             )`,
         roomValues.length
@@ -829,7 +828,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
     const bookings = await db.query(
-        `SELECT b.id, b.line_id, b.resource_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
+        `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
                 b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
                 c.name AS customer_name,
                 bg.id AS banquet_group_id,
@@ -850,7 +849,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
-            AND (b.line_id = ANY($3::text[]) OR b.resource_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
+            AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
         [date, context, resourceIds, resourceNames]
     );
     const start = timeToMinutes(time);
@@ -858,7 +857,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const byResource = new Map(resources.map(resource => [resource.resourceId, []]));
     const dayBookingsByResource = new Map(resources.map(resource => [resource.resourceId, []]));
     for (const booking of bookings.rows) {
-        const direct = resources.find(resource => [booking.resource_id, booking.line_id].some(value => resource.resourceId === value));
+        const direct = resources.find(resource => [booking.line_id].some(value => resource.resourceId === value));
         const byName = direct || resources.find(resource => timelineResourceMatchesRoomValue(resource, booking.room));
         if (!byName) continue;
         if (!String(booking.linked_to || '').trim()) {

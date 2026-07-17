@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.53 - Room Timeline Catalog Hotfix
+
+### Кімнати / Hotfix / (17.07.2026) [codex]
+- **`/api/rooms/free` знову сумісний із поточною production schema** — endpoint більше не звертається до майбутньої колонки `bookings.resource_id`, яка належить до окремо погодженого Task 5.
+- **Конфлікти кімнат лишаються безпечними без schema migration** — до durable `room_resource_id` використовується `line_id` плюс room name/shortName/aliases fallback.
+- **Room Timeline Catalog v0.79.52 superseded** — каталог кімнат лишається на `timeline_resources`, але hotfix гарантує роботу на чинній текстовій моделі `bookings.room`.
+
+---
+
 ## v0.79.52 - Room Timeline Catalog
 
 ### Кімнати / Таймлайн / Бронювання / (17.07.2026) [codex]

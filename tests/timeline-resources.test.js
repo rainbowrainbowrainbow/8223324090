@@ -786,7 +786,8 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /async function findTimelineResourceByName/);
     assert.match(service, /function timelineResourceRoomMatchValues/);
     assert.match(service, /function timelineResourceMatchesRoomValue/);
-    assert.match(service, /b\.line_id = ANY\(\$3::text\[\]\) OR b\.resource_id = ANY\(\$3::text\[\]\) OR b\.room = ANY\(\$4::text\[\]\)/);
+    assert.match(service, /b\.line_id = ANY\(\$3::text\[\]\) OR b\.room = ANY\(\$4::text\[\]\)/);
+    assert.doesNotMatch(service, /b\.resource_id = ANY/);
     assert.match(service, /requestedCapacity/);
     assert.match(service, /capacityAvailable/);
     assert.match(service, /overCapacity/);
@@ -1526,7 +1527,8 @@ test('room conflict checks can exclude same-banquet source ids without hiding un
     const bookingQuery = queries.find(query => /FROM bookings/i.test(query.sql));
     assert.equal(conflict.id, 'BK-OTHER');
     assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
-    assert.match(bookingQuery.sql, /resource_id = ANY\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /line_id = ANY\(\$4::text\[\]\)/);
+    assert.doesNotMatch(bookingQuery.sql, /resource_id = ANY/);
     assert.deepEqual(bookingQuery.params[4], ['BK-SOURCE']);
     assert.match(bookingQuery.sql, /id != ALL\(\$5::text\[\]\)/);
 });
@@ -1570,7 +1572,8 @@ test('room conflict checks and advisory locks use room resource aliases after re
     assert.deepEqual(bookingQuery.params[1], ['Марвел Prime', 'Марвел']);
     assert.deepEqual(bookingQuery.params[3], ['room-marvel']);
     assert.match(bookingQuery.sql, /room = ANY\(\$2::text\[\]\)/);
-    assert.match(bookingQuery.sql, /resource_id = ANY\(\$4::text\[\]\)/);
+    assert.match(bookingQuery.sql, /line_id = ANY\(\$4::text\[\]\)/);
+    assert.doesNotMatch(bookingQuery.sql, /resource_id = ANY/);
 
     const lockClient = {
         query: async (sql, params) => {
@@ -2034,8 +2037,9 @@ test('room resource availability resolves legacy room aliases and durable resour
     assert.deepEqual(availability.free, []);
     assert.equal(availability.resources[0].dayBookings[0].room, 'Марвел');
     const bookingQuery = queries.find(query => /FROM bookings b/i.test(query.sql));
-    assert.match(bookingQuery.sql, /b\.resource_id = ANY\(\$3::text\[\]\)/);
+    assert.match(bookingQuery.sql, /b\.line_id = ANY\(\$3::text\[\]\)/);
     assert.match(bookingQuery.sql, /b\.room = ANY\(\$4::text\[\]\)/);
+    assert.doesNotMatch(bookingQuery.sql, /b\.resource_id = ANY/);
     assert.deepEqual(bookingQuery.params[2], ['room-marvel-prime']);
     assert.deepEqual(bookingQuery.params[3], ['Марвел Prime', 'Марвел+', 'Марвел']);
 });
@@ -3071,7 +3075,7 @@ test('room resource deactivate guard counts future bookings by durable id and al
 
     assert.equal(count, 2);
     assert.match(queries[0].sql, /b\.line_id = \$2/);
-    assert.match(queries[0].sql, /b\.resource_id = \$2/);
+    assert.doesNotMatch(queries[0].sql, /b\.resource_id = \$2/);
     assert.match(queries[0].sql, /b\.room = ANY\(\$3::text\[\]\)/);
     assert.deepEqual(queries[0].params, ['event_genix', 'room-marvel-prime', ['Марвел Prime', 'Марвел+', 'Марвел']]);
 });

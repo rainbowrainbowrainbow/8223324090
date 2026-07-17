@@ -480,7 +480,6 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
               WHERE date = $1
                 AND (
                     room = ANY($2::text[])
-                    OR resource_id = ANY($4::text[])
                     OR line_id = ANY($4::text[])
                 )
                 AND COALESCE(business_context, 'event_genix') = $3
@@ -499,7 +498,6 @@ async function queryRoomConflictRows(client, date, room, context, excludeIds, in
          WHERE b.date = $1
            AND (
                 b.room = ANY($2::text[])
-                OR b.resource_id = ANY($4::text[])
                 OR b.line_id = ANY($4::text[])
            )
            AND COALESCE(b.business_context, 'event_genix') = $3

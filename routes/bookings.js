@@ -389,6 +389,24 @@ function sideEffectsAllowedForContext(context) {
     return crmSideEffectsAllowedForContext(context);
 }
 
+function technicalLogToken(value, maxLength = 96) {
+    const token = String(value || '').trim().replace(/[^a-zA-Z0-9_.:/-]/g, '_');
+    return token ? token.slice(0, maxLength) : null;
+}
+
+function banquetReconciliationFailureLogData({ bookingId, businessContext, source, err } = {}) {
+    return {
+        metric: 'banquet_auto_group.reconciliation_failed',
+        event: 'banquet_auto_group_reconciliation_failed',
+        bookingId: technicalLogToken(bookingId),
+        businessContext: technicalLogToken(businessContext || DEFAULT_TIMELINE_CONTEXT, 64),
+        source: technicalLogToken(source || 'booking_write_auto_group', 64),
+        errorName: technicalLogToken(err?.name || 'Error', 80),
+        errorCode: technicalLogToken(err?.code || err?.statusCode || err?.status || 'unknown', 80),
+        errorStatus: Number(err?.statusCode || err?.status || 0) || null
+    };
+}
+
 async function reconcileBookingBanquetGroupsSafely(bookingIds, businessContext, user) {
     if (!sideEffectsAllowedForContext(businessContext)) return [];
     const uniqueIds = [...new Set((Array.isArray(bookingIds) ? bookingIds : [bookingIds])
@@ -396,23 +414,29 @@ async function reconcileBookingBanquetGroupsSafely(bookingIds, businessContext, 
         .filter(Boolean))];
     const results = [];
     for (const bookingId of uniqueIds) {
+        const source = 'booking_write_auto_group';
         try {
             const result = await reconcileBanquetGroupForBooking({
                 bookingId,
                 businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
                 user,
-                source: 'booking_write_auto_group'
+                source
             });
             results.push(result);
         } catch (err) {
-            log.warn(`Banquet auto-group reconciliation failed for ${bookingId}: ${err.message}`);
+            log.warn('Banquet auto-group reconciliation failed', banquetReconciliationFailureLogData({
+                bookingId,
+                businessContext,
+                source,
+                err
+            }));
             results.push({
                 success: false,
                 reconciled: false,
                 skipped: true,
                 reason: 'reconciliation_failed',
                 bookingId,
-                error: err.message
+                errorCode: technicalLogToken(err?.code || err?.statusCode || err?.status || 'unknown', 80)
             });
         }
     }

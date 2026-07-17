@@ -28,6 +28,26 @@ test('frontend arrival API uses the dedicated PATCH endpoint', () => {
     assert.match(apiSource, /timelineApiPayload\(\{ guestArrivalTime, updatedAt \}\)/);
 });
 
+test('booking create reconciliation failure logging is structured and PII-free', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'bookings.js'), 'utf8');
+    const helperStart = source.indexOf('function banquetReconciliationFailureLogData');
+    const helperEnd = source.indexOf('async function reconcileBookingBanquetGroupsSafely');
+    assert.ok(helperStart >= 0, 'missing reconciliation failure log helper');
+    assert.ok(helperEnd > helperStart, 'missing reconciliation failure log call site');
+    const helper = source.slice(helperStart, helperEnd);
+    const callSite = source.slice(helperEnd, helperEnd + 1800);
+
+    assert.match(helper, /metric:\s*'banquet_auto_group\.reconciliation_failed'/);
+    assert.match(helper, /event:\s*'banquet_auto_group_reconciliation_failed'/);
+    assert.match(helper, /bookingId:\s*technicalLogToken\(bookingId\)/);
+    assert.match(helper, /businessContext:\s*technicalLogToken\(businessContext \|\| DEFAULT_TIMELINE_CONTEXT/);
+    assert.match(helper, /errorCode:\s*technicalLogToken/);
+    assert.doesNotMatch(helper, /err\??\.message|errorMessage|stack/);
+    assert.doesNotMatch(helper, /customer(Id|Name)?|client(Name)?|phone|instagram|label|room/i);
+    assert.match(callSite, /log\.warn\('Banquet auto-group reconciliation failed', banquetReconciliationFailureLogData\(\{/);
+    assert.doesNotMatch(callSite, /err\??\.message|error:\s*err\.message/);
+});
+
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
     require.cache[id] = { id, filename: id, loaded: true, exports };

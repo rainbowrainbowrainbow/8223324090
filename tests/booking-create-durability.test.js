@@ -1233,14 +1233,32 @@ test('POST /api/bookings reconciles an earlier exact-match pinata after explicit
             phone: '+380990000701'
         });
         state.nextCustomerId = 702;
-        state.rows.push(earlierPinataRow({
-            date: '2099-02-10',
-            time: '16:45'
-        }));
+        state.rows.push(
+            earlierPinataRow({
+                date: '2099-02-10',
+                time: '16:45',
+                room: 'Ніндзя'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-UNICODE-OTHER-ROOM',
+                date: '2099-02-10',
+                time: '17:10',
+                room: 'Ельза',
+                pinata_number: 'QA-ELZA'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-UNICODE-LOWER-ROOM',
+                date: '2099-02-10',
+                time: '17:30',
+                room: 'ніндзя',
+                pinata_number: 'QA-LOWER-NINJA'
+            })
+        );
 
         const res = await createBooking(baseUrl, {
             customerId: 701,
             time: '16:00',
+            room: '  Ніндзя  ',
             programId: 'bubble',
             programCode: 'BUBBLE',
             label: 'Bubble show',
@@ -1259,6 +1277,16 @@ test('POST /api/bookings reconciles an earlier exact-match pinata after explicit
                 .sort(),
             [`${res.data.booking.id}:primary`, 'BK-2099-PINATA-EARLIER:activity'].sort()
         );
+        for (const excludedId of [
+            'BK-2099-PINATA-UNICODE-OTHER-ROOM',
+            'BK-2099-PINATA-UNICODE-LOWER-ROOM'
+        ]) {
+            assert.equal(
+                state.banquetMemberships.some(row => row.group_id === groupId && row.booking_id === excludedId),
+                false,
+                `${excludedId} must remain outside the new group`
+            );
+        }
     });
 });
 
@@ -2980,11 +3008,18 @@ test('POST /api/bookings/full reconciles an earlier exact-match pinata into a ne
         });
         state.nextCustomerId = 702;
         state.rows.push(
-            earlierPinataRow(),
+            earlierPinataRow({
+                room: 'Ніндзя'
+            }),
             earlierPinataRow({
                 id: 'BK-2099-PINATA-OTHER-ROOM',
-                room: 'Room B',
+                room: 'Ельза',
                 pinata_number: 'QA-OTHER-ROOM'
+            }),
+            earlierPinataRow({
+                id: 'BK-2099-PINATA-LOWER-ROOM',
+                room: 'ніндзя',
+                pinata_number: 'QA-LOWER-ROOM'
             }),
             earlierPinataRow({
                 id: 'BK-2099-PINATA-OTHER-CUSTOMER',
@@ -3006,6 +3041,7 @@ test('POST /api/bookings/full reconciles an earlier exact-match pinata into a ne
         const res = await createFullBooking(baseUrl, {
             main: {
                 customerId: 701,
+                room: '  Ніндзя  ',
                 programId: 'bubble',
                 programCode: 'BUBBLE',
                 label: 'Bubble show',
@@ -3039,6 +3075,7 @@ test('POST /api/bookings/full reconciles an earlier exact-match pinata into a ne
         );
         for (const excludedId of [
             'BK-2099-PINATA-OTHER-ROOM',
+            'BK-2099-PINATA-LOWER-ROOM',
             'BK-2099-PINATA-OTHER-CUSTOMER',
             'BK-2099-PINATA-OTHER-DATE',
             'BK-2099-PINATA-CANCELLED'

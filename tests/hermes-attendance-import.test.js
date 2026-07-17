@@ -172,7 +172,7 @@ function createPreviewDb(options = {}) {
                         source_type: params[3],
                         source_reference: JSON.parse(params[4]),
                         source_dedupe_key: params[5],
-                        document_date: params[6],
+                        document_date: options.storedDocumentDate ?? params[6],
                         extracted_rows: JSON.parse(params[7]),
                         preview_rows: JSON.parse(params[8]),
                         current_state_snapshot: JSON.parse(params[9]),
@@ -452,13 +452,14 @@ describe('Hermes arrival-sheet preview contract', () => {
     });
 
     it('persists only immutable preview metadata and returns zero attendance/schedule writes', async () => {
-        const db = createPreviewDb();
+        const db = createPreviewDb({ storedDocumentDate: new Date(2026, 6, 15) });
         const result = await previewHermesAttendanceImport(db, previewPayload(), {
             actorUserId: 42,
             businessContext: 'event_genix'
         });
 
         assert.equal(result.success, true);
+        assert.equal(result.documentDate, '2026-07-15');
         assert.match(result.previewId, /^hai_/);
         assert.equal(result.status, 'ready');
         assert.equal(result.summary.ready_to_apply, 1);
@@ -525,7 +526,9 @@ describe('Hermes arrival-sheet apply contract', () => {
     });
 
     it('writes canonical hr_time_records in Europe/Kyiv, audits it, and never mutates schedule/check-in/staff tables', async () => {
-        const db = createApplyDb();
+        const db = createApplyDb(createReadyImportRow({
+            document_date: new Date(2026, 6, 15)
+        }));
         const result = await applyHermesAttendanceImport(db, {
             previewId: PREVIEW_ID,
             selectedRowIds: [READY_ROW_ID]
@@ -539,6 +542,7 @@ describe('Hermes arrival-sheet apply contract', () => {
         });
 
         assert.equal(result.response.attendanceWrites, 1);
+        assert.equal(result.response.documentDate, '2026-07-15');
         assert.equal(result.response.scheduleWrites, 0);
         assert.equal(result.response.scheduleTouched, false);
         assert.equal(result.response.applied[0].staffId, 101);
@@ -600,7 +604,18 @@ describe('Hermes arrival-sheet apply contract', () => {
         assert.equal(auditInsert.params[0], 'attendance_hermes_apply');
         const auditDetails = JSON.parse(auditInsert.params[3]);
         assert.equal(auditDetails.previewId, PREVIEW_ID);
+        assert.equal(auditDetails.documentDate, '2026-07-15');
+        assert.equal(auditDetails.attendanceRecordId, 8801);
         assert.equal(auditDetails.scheduleWrites, 0);
+
+        const sealUpdate = db.calls.find(call => (
+            /UPDATE hermes_attendance_imports[\s\S]*SET status = 'applied'/.test(call.sql)
+        ));
+        const sealedApplyResult = JSON.parse(sealUpdate.params[2]);
+        assert.equal(sealedApplyResult.documentDate, '2026-07-15');
+        assert.equal(sealedApplyResult.applied[0].attendanceRecordId, 8801);
+        assert.equal(attendanceInsert.params[2], sealedApplyResult.documentDate);
+        assert.equal(attendanceInsert.params[2], auditDetails.documentDate);
 
         const forbiddenMutations = db.calls.filter(call => {
             return /\b(?:INSERT INTO|UPDATE|DELETE FROM)\s+(?:staff_schedule|staff_checkins|hr_shifts|staff)\b/i.test(call.sql);

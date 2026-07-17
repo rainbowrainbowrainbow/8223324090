@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
+const { toPostgresDateOnly } = require('./postgresDateOnly');
 const { staffProfessionKeys } = require('./professions');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 const {
@@ -304,10 +305,7 @@ function normalizeHermesPreviewRow(value, index) {
 }
 
 function normalizeScheduleCellDate(value) {
-    if (!value) return null;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    const match = String(value).trim().match(/^\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : null;
+    return toPostgresDateOnly(value);
 }
 
 function normalizeScheduleCellTime(value) {
@@ -836,7 +834,7 @@ function normalizeRows(value, fieldName) {
 
 function normalizeDocumentDate(value) {
     if (value === undefined || value === null || value === '') return null;
-    const normalized = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).trim();
+    const normalized = value instanceof Date ? toPostgresDateOnly(value) : String(value).trim();
     const parsed = new Date(`${normalized}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)
         || Number.isNaN(parsed.getTime())

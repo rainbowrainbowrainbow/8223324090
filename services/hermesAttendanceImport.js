@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 const { lockAttendanceWriteTargets } = require('./attendanceWriteLock');
+const { toPostgresDateOnly } = require('./postgresDateOnly');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const HERMES_ATTENDANCE_PREVIEW_MAX_ROWS = 100;
@@ -554,9 +555,7 @@ function mapPreviewRecord(row, options = {}) {
         success: true,
         previewId: row.public_id,
         status: row.status,
-        documentDate: row.document_date instanceof Date
-            ? row.document_date.toISOString().slice(0, 10)
-            : (row.document_date ? String(row.document_date).slice(0, 10) : null),
+        documentDate: toPostgresDateOnly(row.document_date),
         expiresAt: row.expires_at instanceof Date ? row.expires_at.toISOString() : String(row.expires_at),
         created: options.created === true,
         replayed: options.replayed === true,
@@ -761,9 +760,7 @@ function normalizeHermesAttendanceApplyBody(input = {}) {
 
 function storedPreviewHash(importRow) {
     return buildAttendancePreviewHash({
-        documentDate: importRow.document_date instanceof Date
-            ? importRow.document_date.toISOString().slice(0, 10)
-            : (importRow.document_date ? String(importRow.document_date).slice(0, 10) : null),
+        documentDate: toPostgresDateOnly(importRow.document_date),
         source: importRow.source_reference,
         extractedRows: importRow.extracted_rows,
         previewRows: importRow.preview_rows,
@@ -880,9 +877,7 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
             'Select at least one ready_to_apply row'
         );
     }
-    const documentDate = importRow.document_date instanceof Date
-        ? importRow.document_date.toISOString().slice(0, 10)
-        : String(importRow.document_date).slice(0, 10);
+    const documentDate = toPostgresDateOnly(importRow.document_date);
 
     await lockAttendanceWriteTargets(db, readyRows.map(row => ({
         staffId: row.writePlan.staffId,

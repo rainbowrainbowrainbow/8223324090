@@ -103,7 +103,7 @@ function createApplyFixture(options = {}) {
         public_id: PREVIEW_ID,
         business_context: 'event_genix',
         status: options.importStatus || 'needs_review',
-        document_date: '2026-07-13',
+        document_date: options.documentDateValue ?? '2026-07-13',
         preview_rows: options.previewRows || [row],
         preview_hash: PREVIEW_HASH,
         expires_at: options.expiresAt || new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -242,7 +242,9 @@ describe('Hermes schedule apply service', () => {
     });
 
     it('applies the immutable selected batch through the shared service and records audit metadata', async () => {
-        const { state, service, db } = createApplyFixture();
+        const { state, service, db } = createApplyFixture({
+            documentDateValue: new Date(2026, 6, 13)
+        });
         const result = await service.applyHermesScheduleImport(db, {
             previewId: PREVIEW_ID,
             selectedRowIds: [ROW_ID],

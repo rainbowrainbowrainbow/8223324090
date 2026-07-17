@@ -4580,8 +4580,8 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(document.querySelectorAll('.booking-banquet-section--summary .booking-banquet-member--primary').length, 1);
     const menuSection = document.querySelector('.booking-banquet-section--menu');
     const menuText = menuSection?.textContent || '';
-    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 3);
-    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row--entertainment').length, 2);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 1);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row--entertainment').length, 0);
     assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-head').length, 1);
     assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-serving-title').length, 0);
     assert.match(menuText, /Загальна сума/);
@@ -4593,15 +4593,8 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.doesNotMatch(menuText, /РОЗВАГИ/);
     assert.doesNotMatch(menuText, /1\s*позиці/);
     assert.match(menuText, /Ковбаски гриль/);
-    assert.match(menuText, /АН\(60\)/);
-    assert.match(menuText, /Бульбашкове шоу/);
-    assert.match(menuText, /8\s*680/);
-    const animationRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
-        .find(row => (row.textContent || '').includes('АН(60)'));
-    assert.ok(animationRow, 'flat activity row renders inside menu');
-    assert.match(animationRow.querySelector('[role="cell"]:nth-child(2)')?.textContent || '', /1\s*програма/);
-    assert.match(animationRow.querySelector('[role="cell"]:nth-child(3)')?.textContent || '', /1\s*500\s*₴/);
-    assert.match(animationRow.querySelector('[role="cell"]:nth-child(4)')?.textContent || '', /1\s*500\s*₴/);
+    assert.doesNotMatch(menuText, /АН\(60\)|Бульбашкове шоу/);
+    assert.match(menuText, /4\s*780/);
     assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
@@ -4615,8 +4608,16 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.match(commentsSection?.textContent || '', /Попросити аніматора прийти раніше/);
     assert.match(commentsSection?.textContent || '', /Внутрішній коментар/);
     assert.match(commentsSection?.textContent || '', /Перевірити оплату перед листом/);
-    assert.equal(document.querySelectorAll('.booking-banquet-section--activities .booking-banquet-member--activity').length, 0);
-    assert.equal(document.querySelector('.booking-banquet-section--activities'), null);
+    const activitiesSection = document.querySelector('.booking-banquet-section--activities');
+    assert.ok(activitiesSection, 'canonical banquet activities section renders');
+    assert.equal(activitiesSection.querySelectorAll('.booking-banquet-member--activity').length, 2);
+    assert.equal(activitiesSection.querySelectorAll('[data-booking-id="BK-UX-AN"]').length, 1);
+    assert.equal(activitiesSection.querySelectorAll('[data-booking-id="BK-UX-BUBBLES"]').length, 1);
+    assert.match(activitiesSection.textContent || '', /Активності банкету/);
+    assert.match(activitiesSection.textContent || '', /13:45\s*·\s*АН\(60\)/);
+    assert.match(activitiesSection.textContent || '', /Бульбашкове шоу/);
+    assert.match(activitiesSection.textContent || '', /#BK-UX-AN\s*·\s*Марвел/);
+    assert.equal(document.querySelectorAll('[data-booking-id="BK-UX-AN"]').length, 1);
     assert.equal(document.querySelector('.booking-banquet-section--service')?.textContent.includes('Бульбашкове шоу'), false);
     assert.equal(text.includes('Кухня / меню не прив'), false);
     assert.equal(text.includes('Service / manual'), false);
@@ -4789,8 +4790,8 @@ function renderScreenshotBanquetMenuRegressionFixture() {
     return { document, menuSection, menuText };
 }
 
-test('banquet menu regression keeps one table header across serving groups', () => {
-    const { menuSection, menuText } = renderScreenshotBanquetMenuRegressionFixture();
+test('banquet menu regression keeps one table header and separates activities', () => {
+    const { document, menuSection, menuText } = renderScreenshotBanquetMenuRegressionFixture();
 
     assert.ok(menuSection, 'banquet menu section renders');
     assert.match(menuText, /Асорті домашніх різносолів/);
@@ -4798,18 +4799,17 @@ test('banquet menu regression keeps one table header across serving groups', () 
     assert.match(menuText, /Ананас консервований/);
     assert.match(menuText, /Картопляне пюре/);
     assert.match(menuText, /Спагеті/);
-    assert.match(menuText, /Цукерки\(90\)/);
+    assert.doesNotMatch(menuText, /Цукерки\(90\)/);
     assert.match(menuText, /Вхід/);
     assert.match(menuText, /1\s*600\s*₴/);
     assert.match(menuText, /4\s*500\s*₴/);
-    assert.match(menuText, /4\s*070\s*₴/);
-    assert.match(menuText, /11\s*230\s*₴/);
+    assert.match(menuText, /7\s*160\s*₴/);
     assert.doesNotMatch(menuText, /UAH|11230|4070|4500|1600/);
     assert.equal(menuSection.querySelectorAll('.booking-detail-package-table-head').length, 1);
     const packageRows = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'));
     assert.ok(
         packageRows.every(row => row.querySelectorAll('.booking-detail-package-money').length === 2),
-        'menu and activity rows share the same money styling hook'
+        'menu rows share the same money styling hook'
     );
     assert.ok(
         menuSection.querySelector('.booking-detail-package-entry-row .booking-detail-package-money--subtotal'),
@@ -4819,23 +4819,123 @@ test('banquet menu regression keeps one table header across serving groups', () 
         menuSection.querySelector('.booking-detail-package-total .booking-detail-package-money--total'),
         'banquet total shares the banquet money styling hook'
     );
+    const activitySection = document.querySelector('.booking-banquet-section--activities');
+    assert.equal(activitySection?.querySelectorAll('[data-booking-id="BK-SCREENSHOT-CANDY"]').length, 1);
+    assert.match(activitySection?.textContent || '', /12:30\s*·\s*МК Цукерки/);
+    assert.match(activitySection?.textContent || '', /#BK-SCREENSHOT-CANDY\s*·\s*Марвел/);
+    assert.match(activitySection?.textContent || '', /Активність/);
+    assert.match(activitySection?.textContent || '', /4\s*070\s*₴/);
 });
 
-test('banquet menu regression shows per-child activity quantity instead of duration', () => {
-    const { menuSection } = renderScreenshotBanquetMenuRegressionFixture();
+test('booking modal renders the attached pinata once and ignores cancelled or foreign activities', () => {
+    const context = createBanquetModalDetailHarness();
+    const primary = {
+        id: 'BK-PINATA-PRIMARY',
+        businessContext: 'event_genix',
+        date: '2026-07-20',
+        time: '14:00',
+        room: 'Марвел',
+        label: 'Кухня',
+        status: 'confirmed',
+        extraData: {
+            bookingPackage: {
+                finalTotal: 1200,
+                menuPositions: [{
+                    id: 'menu-pinata-test',
+                    title: 'Дитяче меню',
+                    quantity: 1,
+                    servingUnit: 'порція',
+                    unitPrice: 1200,
+                    subtotal: 1200
+                }]
+            }
+        }
+    };
+    const pinata = {
+        time: '15:30',
+        room: 'Марвел',
+        label: 'Піньята XL',
+        programName: 'Піньята',
+        status: 'confirmed',
+        price: 1800
+    };
+    const cancelledPinata = {
+        id: 'BK-PINATA-CANCELLED',
+        time: '16:00',
+        room: 'Марвел',
+        programName: 'Піньята скасована',
+        status: 'cancelled'
+    };
+    const foreignPinata = {
+        id: 'BK-PINATA-FOREIGN',
+        time: '17:00',
+        room: 'Інший зал',
+        programName: 'Піньята стороння',
+        status: 'confirmed'
+    };
+    const snapshot = {
+        source: 'group',
+        groupId: 'BQ-PINATA-ACTIVITIES',
+        group: {
+            id: 'BQ-PINATA-ACTIVITIES',
+            date: '2026-07-20',
+            room: 'Марвел',
+            status: 'active'
+        },
+        members: [
+            { bookingId: primary.id, role: 'primary', isPrimary: true, isKitchenCandidate: true, booking: primary },
+            { bookingId: 'BK-PINATA-ATTACHED', role: 'activity', booking: pinata },
+            { bookingId: 'BK-PINATA-ATTACHED', role: 'activity', booking: { ...pinata, id: 'BK-PINATA-ATTACHED' } },
+            { bookingId: cancelledPinata.id, role: 'activity', booking: cancelledPinata }
+        ],
+        bookings: {
+            activities: [{ ...pinata, id: 'BK-PINATA-ATTACHED' }, cancelledPinata, foreignPinata]
+        },
+        warnings: []
+    };
 
-    const candyRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
-        .find(row => (row.textContent || '').includes('Цукерки(90)'));
-    assert.ok(candyRow, 'per-child candy activity row renders inside menu');
-    const candyQuantityCell = candyRow.querySelector('[role="cell"]:nth-child(2)');
-    const candyPriceCell = candyRow.querySelector('[role="cell"]:nth-child(3)');
-    const candySubtotalCell = candyRow.querySelector('[role="cell"]:nth-child(4)');
-    const candyMetaText = candyRow.querySelector('.booking-detail-package-item small')?.textContent || '';
-    assert.doesNotMatch(candyQuantityCell?.textContent || '', /90\s*хв/);
-    assert.match(candyQuantityCell?.textContent || '', /11\s*дітей/);
-    assert.match(candyPriceCell?.textContent || '', /370\s*₴\/дит/);
-    assert.match(candySubtotalCell?.textContent || '', /4\s*070\s*₴/);
-    assert.match(candyMetaText, /90\s*хв/);
+    const render = () => new JSDOM(
+        `<main>${context.renderFullBanquetDetail(primary, [], snapshot)}</main>`
+    ).window.document;
+    const document = render();
+    const activitiesSection = document.querySelector('.booking-banquet-section--activities');
+    const activityCards = activitiesSection?.querySelectorAll('.booking-banquet-member') || [];
+    const activityText = activitiesSection?.textContent || '';
+
+    assert.ok(activitiesSection, 'attached activity membership renders in the canonical section');
+    assert.equal(activityCards.length, 1);
+    assert.equal(activitiesSection.querySelectorAll('[data-booking-id="BK-PINATA-ATTACHED"]').length, 1);
+    assert.match(activityText, /15:30\s*·\s*Піньята/);
+    assert.match(activityText, /#BK-PINATA-ATTACHED\s*·\s*Марвел/);
+    assert.match(activityText, /Активність/);
+    assert.doesNotMatch(activityText, /Піньята XL/);
+    assert.doesNotMatch(document.body.textContent || '', /BK-PINATA-CANCELLED|BK-PINATA-FOREIGN/);
+    assert.equal(
+        document.querySelectorAll('.booking-banquet-section--summary [data-booking-id="BK-PINATA-PRIMARY"]').length,
+        1
+    );
+
+    const repeatedDocument = render();
+    assert.equal(
+        repeatedDocument.querySelectorAll('.booking-banquet-section--activities [data-booking-id="BK-PINATA-ATTACHED"]').length,
+        1
+    );
+});
+
+test('banquet activity regression renders membership card once outside menu', () => {
+    const { document, menuSection } = renderScreenshotBanquetMenuRegressionFixture();
+    const candyActivity = document.querySelector(
+        '.booking-banquet-section--activities [data-booking-id="BK-SCREENSHOT-CANDY"]'
+    );
+
+    assert.ok(candyActivity, 'per-child candy activity renders from canonical membership');
+    assert.equal(menuSection.textContent.includes('Цукерки(90)'), false);
+    assert.equal(document.querySelectorAll('[data-booking-id="BK-SCREENSHOT-CANDY"]').length, 1);
+    assert.match(candyActivity.textContent || '', /МК Цукерки/);
+    assert.match(candyActivity.textContent || '', /12:30/);
+    assert.match(candyActivity.textContent || '', /Марвел/);
+    assert.match(candyActivity.textContent || '', /Активність/);
+    assert.match(candyActivity.textContent || '', /#BK-SCREENSHOT-CANDY/);
 });
 
 test('banquet menu warning highlights per-child activity and entry children mismatch', () => {
@@ -4845,7 +4945,7 @@ test('banquet menu warning highlights per-child activity and entry children mism
     assert.match(warningsText, /Цукерки\(90\): ціна відповідає 11 дітям, але Вхід рахується на 15 дітей/);
 });
 
-test('booking modal puts primary banquet activity into unified menu without duplicate banquet card', () => {
+test('booking modal puts primary banquet activity into canonical activities section without duplicates', () => {
     const context = createBanquetModalDetailHarness();
     const activity = {
         id: 'BK-ACTIVITY-PRIMARY',
@@ -4928,13 +5028,19 @@ test('booking modal puts primary banquet activity into unified menu without dupl
     assert.ok(commentsSection.querySelector('.booking-banquet-comments--compact'), 'activity-first kitchen note uses compact layout');
     assert.match(commentsSection.textContent || '', /Кухня/);
     assert.match(commentsSection.textContent || '', /тест примітка/);
-    assert.equal(document.querySelector('.booking-banquet-section--activities'), null);
-    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 2);
-    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row--entertainment').length, 1);
+    const activitiesSection = document.querySelector('.booking-banquet-section--activities');
+    assert.ok(activitiesSection, 'primary activity is visible in the canonical activities section');
+    assert.equal(activitiesSection.querySelectorAll('[data-booking-id="BK-ACTIVITY-PRIMARY"]').length, 1);
+    assert.equal(activitiesSection.querySelectorAll('.booking-banquet-member--primary').length, 1);
+    assert.match(activitiesSection.textContent || '', /15:00\s*·\s*Мафія/);
+    assert.match(activitiesSection.textContent || '', /#BK-ACTIVITY-PRIMARY\s*·\s*Диван 3/);
+    assert.match(activitiesSection.textContent || '', /Основна/);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 1);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row--entertainment').length, 0);
     assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-head').length, 1);
     assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-serving-title').length, 0);
     assert.match(menuText, /Овочева тарілка/);
-    assert.match(menuText, /Мафія\(90\)/);
+    assert.doesNotMatch(menuText, /Мафія\(90\)/);
     assert.match(menuText, /Вхід/);
     assert.doesNotMatch(menuText, /РОЗВАГИ/);
     assert.doesNotMatch(menuText, /Меню:\s*1/);
@@ -4942,12 +5048,12 @@ test('booking modal puts primary banquet activity into unified menu without dupl
     assert.doesNotMatch(menuText, /Позиції меню/);
     assert.doesNotMatch(menuText, /Розважальні позиції/);
     assert.doesNotMatch(menuText, /1\s*позиці/);
-    assert.match(menuText, /9\s*300/);
-    const flatActivityRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
-        .find(row => (row.textContent || '').includes('Мафія(90)'));
-    assert.ok(flatActivityRow, 'flat activity row renders inside menu');
-    assert.match(flatActivityRow.querySelector('[role="cell"]:nth-child(2)')?.textContent || '', /1\s*програма/);
-    assert.match(flatActivityRow.querySelector('[role="cell"]:nth-child(3)')?.textContent || '', /2\s*700\s*₴/);
+    assert.match(menuText, /6\s*600/);
+    assert.equal(document.querySelector('.booking-banquet-section--summary'), null);
+    assert.doesNotMatch(
+        document.querySelector('details.booking-banquet-technical')?.textContent || '',
+        /BK-ACTIVITY-PRIMARY/
+    );
     assert.equal(document.querySelector('.booking-banquet-section--warnings'), null);
 });
 
@@ -5104,10 +5210,11 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /candidates\.find\(booking => booking && bookingDetailCanOwnBanquetPackage\(booking\)\)/);
     assert.match(bookingJs, /function bookingDetailEntertainmentRowsFromMembers\(/);
     assert.match(bookingJs, /function bookingDetailEntertainmentMembers\(/);
-    assert.match(bookingBanquetDetailJs, /bookingDetailEntertainmentMembers\(primaryMembers, activityMembers\)/);
-    assert.match(bookingBanquetDetailJs, /if \(\(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) && !entertainmentRows\.length\) return '';/);
+    assert.match(bookingBanquetDetailJs, /function banquetDetailActivityMembers\(/);
+    assert.match(bookingBanquetDetailJs, /const members = banquetDetailVisibleMembers\(snapshot\?\.members\)/);
+    assert.match(bookingBanquetDetailJs, /if \(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) return '';/);
     assert.match(bookingBanquetDetailJs, /renderBanquetWorkSection\('Банкет'/);
-    assert.match(bookingBanquetDetailJs, /renderBanquetMenuSection\(packageBooking, entertainmentMembers\)/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetMenuSection\(packageBooking\)/);
     assert.match(bookingBanquetDetailJs, /renderBanquetServiceSection\(packageBooking, serviceManualMembers\)/);
     assert.match(bookingBanquetDetailJs, /renderBanquetActivitiesSection\(visibleActivityMembers\)/);
     assert.match(bookingBanquetDetailJs, /renderBanquetWarningsSection\(warnings\)/);

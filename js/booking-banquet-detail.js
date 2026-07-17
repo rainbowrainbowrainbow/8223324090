@@ -80,11 +80,59 @@ function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, 
     `;
 }
 
+function banquetDetailMemberBookingId(member = {}) {
+    return bookingDetailId(member.booking || member)
+        || String(member.bookingId || '').trim();
+}
+
+function banquetDetailVisibleMembers(members = []) {
+    const result = [];
+    const seenBookingIds = new Set();
+    (Array.isArray(members) ? members : []).forEach(member => {
+        if (!member) return;
+        const booking = member.booking || member;
+        if (String(booking?.status || '').trim().toLowerCase() === 'cancelled') return;
+        const bookingId = banquetDetailMemberBookingId(member);
+        if (bookingId && seenBookingIds.has(bookingId)) return;
+        if (bookingId) seenBookingIds.add(bookingId);
+        const normalizedBooking = bookingId && !bookingDetailId(booking)
+            ? { ...booking, id: bookingId }
+            : booking;
+        result.push({
+            ...member,
+            booking: normalizedBooking,
+            bookingId
+        });
+    });
+    return result;
+}
+
+function banquetDetailActivityMembers(primaryMembers = [], activityMembers = []) {
+    return banquetDetailVisibleMembers([...primaryMembers, ...activityMembers])
+        .filter(member => {
+            const booking = member.booking || member;
+            if (member.isKitchenCandidate || bookingDetailIsKitchenCandidate(booking)) return false;
+            const role = String(member.role || (member.isPrimary ? 'primary' : '')).trim().toLowerCase();
+            return role === 'activity'
+                || (member.isPrimary && bookingDetailIsEntertainmentBooking(booking, role));
+        });
+}
+
 function renderBanquetMemberCard(member = {}, roleOverride = null, options = {}) {
     const booking = member.booking || member;
-    const bookingId = bookingDetailId(booking);
+    const bookingId = bookingDetailId(booking) || String(member.bookingId || '').trim();
     if (!bookingId) return '';
     const role = roleOverride || member.role || (member.isPrimary ? 'primary' : 'manual');
+    const activityProgram = String(
+        booking.programName
+        || booking.program_name
+        || booking.programCode
+        || booking.program_code
+        || ''
+    ).trim();
+    const memberTitle = options.preferProgramTitle && activityProgram
+        ? [booking.time, activityProgram].filter(Boolean).join(' · ')
+        : bookingDetailTitle(booking);
     const technicalChildren = member.technicalChildren || [];
     const showTechnicalMeta = Boolean(options.showTechnicalMeta);
     const showRoleBadge = options.showRoleBadge ?? showTechnicalMeta;
@@ -110,10 +158,12 @@ function renderBanquetMemberCard(member = {}, roleOverride = null, options = {})
         booking.customerName ? booking.customerName : ''
     ].filter(Boolean);
     return `
-        <div class="booking-banquet-member booking-banquet-member--${escapeHtml(role)}${showTechnicalMeta ? ' booking-banquet-member--technical' : ''}">
+        <div class="booking-banquet-member booking-banquet-member--${escapeHtml(role)}${showTechnicalMeta ? ' booking-banquet-member--technical' : ''}"
+             data-booking-id="${escapeHtml(bookingId)}"
+             data-banquet-role="${escapeHtml(role)}">
             <div class="booking-banquet-member-main">
                 <div>
-                    <div class="booking-banquet-member-title">${escapeHtml(bookingDetailTitle(booking))}</div>
+                    <div class="booking-banquet-member-title">${escapeHtml(memberTitle)}</div>
                     ${metaParts.length ? `<div class="booking-banquet-member-meta">${escapeHtml(metaParts.join(' · '))}</div>` : ''}
                 </div>
                 <div class="booking-banquet-member-badges">
@@ -151,12 +201,11 @@ function renderBanquetWorkSection(title, bodyHtml, modifier = '') {
     `;
 }
 
-function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
-    const entertainmentRows = bookingDetailEntertainmentRowsFromMembers(entertainmentMembers, packageBooking);
-    if ((!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) && !entertainmentRows.length) return '';
+function renderBanquetMenuSection(packageBooking) {
+    if (!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) return '';
     return renderBanquetWorkSection(
         'Меню',
-        renderBookingPackageDetailSafe(packageBooking || {}, {
+        renderBookingPackageDetailSafe(packageBooking, {
             title: 'Меню',
             compact: true,
             includeServiceEvents: false,
@@ -166,7 +215,7 @@ function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
             showEntertainmentTitle: false,
             showEntertainmentTableHead: false,
             showEntertainmentKindBadge: false,
-            entertainmentRows
+            entertainmentRows: []
         }),
         'menu'
     );
@@ -201,14 +250,19 @@ function renderBanquetServiceSection(packageBooking, serviceManualMembers = []) 
 
 function renderBanquetActivitiesSection(activityMembers = []) {
     const rows = (activityMembers || [])
-        .map(member => renderBanquetMemberCard(member, 'activity', {
-            showPackage: false,
-            showRoleBadge: false,
-            showTechnicalMeta: false,
-            showTechnicalChildren: false
-        }))
+        .map(member => renderBanquetMemberCard(
+            member,
+            member.isPrimary ? 'primary' : (member.role || 'activity'),
+            {
+                showPackage: false,
+                showRoleBadge: true,
+                showTechnicalMeta: true,
+                showTechnicalChildren: false,
+                preferProgramTitle: true
+            }
+        ))
         .join('');
-    return renderBanquetWorkSection('Активності', rows, 'activities');
+    return renderBanquetWorkSection('Активності банкету', rows, 'activities');
 }
 
 function renderFullBanquetCommentsSection(context = {}) {
@@ -364,7 +418,7 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
     const hasGroup = banquetSnapshotHasGroup(snapshot);
     const isLegacy = snapshot?.legacyFallback || snapshot?.source === 'legacy_booking_banquet_links';
     const isSingle = snapshot?.source === 'single_booking' || !snapshot;
-    const members = Array.isArray(snapshot?.members) ? snapshot.members : [];
+    const members = banquetDetailVisibleMembers(snapshot?.members);
     const hasExplicitLinks = [
         anchorBooking?.bookingLinks,
         anchorBooking?.banquetLinks,
@@ -383,20 +437,20 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
     const primaryIds = new Set(primaryMembers.map(member => String(member.bookingId)));
     const kitchenMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && (member.role === 'kitchen' || member.isKitchenCandidate));
     const activityMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && member.role === 'activity' && !member.isKitchenCandidate);
-    const entertainmentMembers = bookingDetailEntertainmentMembers(primaryMembers, activityMembers);
-    const entertainmentIds = new Set(entertainmentMembers.map(member => bookingDetailId(member.booking || member)).filter(Boolean).map(String));
+    const visibleActivityMembers = banquetDetailActivityMembers(primaryMembers, activityMembers);
+    const visibleActivityIds = new Set(visibleActivityMembers.map(banquetDetailMemberBookingId).filter(Boolean).map(String));
     const visiblePrimaryMembers = primaryMembers.filter(member => {
         const bookingId = String(member.bookingId || bookingDetailId(member.booking || member) || '');
-        return !bookingId || !entertainmentIds.has(bookingId);
-    });
-    const visibleActivityMembers = activityMembers.filter(member => {
-        const bookingId = String(member.bookingId || bookingDetailId(member.booking || member) || '');
-        return !bookingId || !entertainmentIds.has(bookingId);
+        return !bookingId || !visibleActivityIds.has(bookingId);
     });
     const serviceManualMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && ['service', 'manual'].includes(member.role) && !member.isKitchenCandidate);
-    const technicalChildren = members.flatMap(member => (member.technicalChildren || []).map(child => ({ ...child, parentId: member.bookingId })));
+    const technicalChildren = members.flatMap(member => (member.technicalChildren || [])
+        .filter(child => String(child?.status || '').trim().toLowerCase() !== 'cancelled')
+        .map(child => ({ ...child, parentId: member.bookingId })));
+    const technicalMembers = members.filter(member => !visibleActivityIds.has(String(banquetDetailMemberBookingId(member))));
     const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members);
-    const warnings = buildBanquetDetailWarnings(snapshot, anchorBooking)
+    const visibleSnapshot = snapshot ? { ...snapshot, members } : snapshot;
+    const warnings = buildBanquetDetailWarnings(visibleSnapshot, anchorBooking)
         .filter(message => hasGroup || isLegacy || message !== banquetWarningText({ code: 'kitchen_booking_missing' }));
     const sourceLabel = hasGroup
         ? 'Обʼєднано в банкетну групу'
@@ -433,14 +487,14 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
             </div>
             ${renderBanquetDepositStatusSection(anchorBooking, snapshot)}
             ${renderBanquetWorkSection('Банкет', primaryBody, 'summary')}
-            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}
-            ${renderBanquetMenuSection(packageBooking, entertainmentMembers)}
+            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers: visibleActivityMembers, serviceManualMembers, members })}
+            ${renderBanquetMenuSection(packageBooking)}
             ${renderBanquetServiceSection(packageBooking, serviceManualMembers)}
             ${renderBanquetActivitiesSection(visibleActivityMembers)}
             ${renderBanquetWarningsSection(warnings)}
             ${renderBanquetTechnicalSection({
                 snapshot,
-                members,
+                members: technicalMembers,
                 technicalChildren,
                 controlsHtml: technicalControls,
                 hasGroup,

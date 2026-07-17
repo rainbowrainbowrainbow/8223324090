@@ -5376,7 +5376,7 @@ function resetBookingPackageWorkspace() {
         if (el) el.value = '';
     });
     const depositStatus = document.getElementById('bookingDepositManagerStatus');
-    if (depositStatus) depositStatus.value = 'Очікуємо оплату';
+    if (depositStatus) depositStatus.value = '';
     resetBookingDepositHydrationState();
     const catalogSearch = document.getElementById('bookingMenuCatalogSearch');
     if (catalogSearch) catalogSearch.value = '';
@@ -5489,19 +5489,19 @@ function renderBookingDepositHydrationStatus(state = BookingDrawerState.depositH
 }
 
 function getBookingDepositFormData() {
-    const status = document.getElementById('bookingDepositManagerStatus')?.value || 'Очікуємо оплату';
+    const status = document.getElementById('bookingDepositManagerStatus')?.value || '';
     const expectedAmount = normalizeBookingDepositAmount(document.getElementById('bookingDepositExpectedAmount')?.value);
     const dueDate = document.getElementById('bookingDepositDueDate')?.value || '';
     const managerNote = document.getElementById('bookingDepositManagerNote')?.value?.trim() || '';
     const provided = expectedAmount !== null
         || Boolean(dueDate)
         || Boolean(managerNote)
-        || status !== 'Очікуємо оплату';
+        || Boolean(status);
     return {
         provided,
         expectedAmount,
         dueDate: dueDate || null,
-        managerStatus: status,
+        managerStatus: status || null,
         managerNote: managerNote || null
     };
 }
@@ -5510,10 +5510,21 @@ function bookingDepositFromProjection(source = null) {
     const projection = source?.deposit ? source : (source?.banquetDeposit || source?.bookingDeposit || source?.deposit || null);
     const deposit = projection?.deposit || projection || null;
     if (!deposit || typeof deposit !== 'object') return null;
+    const hasOwn = (target, key) => Boolean(target && Object.prototype.hasOwnProperty.call(target, key));
+    let managerStatus = 'Очікуємо оплату';
+    if (hasOwn(projection, 'managerStatus')) {
+        managerStatus = projection.managerStatus || '';
+    } else if (hasOwn(deposit, 'managerStatus')) {
+        managerStatus = deposit.managerStatus || '';
+    } else if (hasOwn(deposit, 'manager_status')) {
+        managerStatus = deposit.manager_status || '';
+    } else if (hasOwn(projection?.display, 'managerStatus')) {
+        managerStatus = projection.display.managerStatus || '';
+    }
     return {
         expectedAmount: deposit.expectedAmount ?? deposit.expected_amount ?? deposit.amount ?? projection?.display?.amount ?? null,
         dueDate: deposit.dueDate || deposit.due_date || projection?.display?.dueDate || null,
-        managerStatus: deposit.managerStatus || deposit.manager_status || projection?.managerStatus || projection?.display?.managerStatus || 'Очікуємо оплату',
+        managerStatus,
         managerNote: deposit.managerNote || deposit.manager_note || null
     };
 }
@@ -5525,7 +5536,7 @@ function setBookingDepositFormData(source = null) {
     const dueInput = document.getElementById('bookingDepositDueDate');
     if (dueInput) dueInput.value = deposit.dueDate ? String(deposit.dueDate).slice(0, 10) : '';
     const statusSelect = document.getElementById('bookingDepositManagerStatus');
-    if (statusSelect) statusSelect.value = deposit.managerStatus || 'Очікуємо оплату';
+    if (statusSelect) statusSelect.value = deposit.managerStatus || '';
     const noteInput = document.getElementById('bookingDepositManagerNote');
     if (noteInput) noteInput.value = deposit.managerNote || '';
     renderBookingPackageSummary();
@@ -13986,7 +13997,7 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
                 provided: true,
                 expectedAmount: null,
                 dueDate: null,
-                managerStatus: 'Очікуємо оплату',
+                managerStatus: null,
                 managerNote: null
             };
             primaryPatch.banquetDeposit = primaryPatch.deposit;

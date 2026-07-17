@@ -55,11 +55,13 @@ test('deposit UI uses group projection first and never treats paid_amount as dep
 
 test('banquet booking-set only clears manager deposit fields after a successful existing projection load', () => {
     const booking = read('js/booking.js');
+    const html = read('index.html');
     const hydrateBlock = functionBlock(booking, 'hydrateBookingDepositFromServer');
     const stateBlock = functionBlock(booking, 'setBookingDepositHydrationState');
     const renderBlock = functionBlock(booking, 'renderBookingDepositHydrationStatus');
     const payloadBlock = functionBlock(booking, 'buildBanquetBookingSetPayload');
 
+    assert.match(html, /<option value="">Не задано<\/option>/);
     assert.match(hydrateBlock, /setBookingDepositHydrationState\(cleanBookingId, 'loaded', hadDeposit\)/);
     assert.match(hydrateBlock, /setBookingDepositHydrationState\(cleanBookingId, 'failed', false, err\?\.message \|\| err\)/);
     assert.match(stateBlock, /renderBookingDepositHydrationStatus\(state\)/);
@@ -73,6 +75,7 @@ test('banquet booking-set only clears manager deposit fields after a successful 
     assert.match(payloadBlock, /depositWasLoaded && depositHydration\.hadDeposit/);
     assert.match(payloadBlock, /provided:\s*true/);
     assert.match(payloadBlock, /expectedAmount:\s*null/);
+    assert.match(payloadBlock, /managerStatus:\s*null/);
     assert.match(payloadBlock, /delete primaryPatch\.deposit/);
     assert.match(payloadBlock, /delete primaryPatch\.banquetDeposit/);
 });

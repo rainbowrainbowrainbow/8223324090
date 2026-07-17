@@ -159,6 +159,70 @@ test('getDepositProjectionForBooking reads copied deposit and ignores paid_amoun
     assert.equal(projection.display.amount, 1000);
 });
 
+test('cleared manager deposit fields project manager status as empty without deleting canonical row', async () => {
+    const fixture = fakeDb(async text => {
+        if (/FROM bookings b/i.test(text)) {
+            return {
+                rows: [{
+                    id: 'BK-1',
+                    business_context: 'event_genix',
+                    customer_id: 7,
+                    date: '2099-06-23',
+                    label: 'Banquet booking',
+                    program_name: 'Banquet booking'
+                }]
+            };
+        }
+        if (/FROM banquet_group_bookings bgb/i.test(text)) {
+            return {
+                rows: [{
+                    group_id: 'BQ-1',
+                    group_role: 'primary',
+                    group_business_context: 'event_genix',
+                    primary_booking_id: 'BK-1',
+                    group_customer_id: 7,
+                    group_date: '2099-06-23',
+                    group_name: 'Banquet group',
+                    group_status: 'active',
+                    group_source: 'manual'
+                }]
+            };
+        }
+        if (/FROM \(\s*SELECT l\.\*/i.test(text)) {
+            return { rows: [] };
+        }
+        if (/FROM customers\s+WHERE id = \$1/i.test(text)) {
+            return { rows: [{ id: 7, business_context: 'event_genix', name: 'Customer Client', lead_id: null }] };
+        }
+        if (/FROM banquet_deposits/i.test(text)) {
+            return {
+                rows: [depositRow({
+                    amount: 1800,
+                    expected_amount: null,
+                    paid_amount: 1800,
+                    payment_method: 'cash',
+                    manager_status: 'Очікуємо оплату',
+                    due_date: null,
+                    manager_note: null,
+                    status: 'accountant_verified',
+                    accounting_status: 'Підтверджено'
+                })]
+            };
+        }
+        throw new Error(`Unexpected query: ${text}`);
+    });
+
+    const projection = await getDepositProjectionForBooking('BK-1', 'event_genix', { db: fixture.db });
+
+    assert.ok(projection.deposit, 'canonical row should still project');
+    assert.equal(projection.deposit.id, 10);
+    assert.equal(projection.deposit.expectedAmount, null);
+    assert.equal(projection.deposit.paidAmount, 1800);
+    assert.equal(projection.deposit.managerStatus, null);
+    assert.equal(projection.managerStatus, null);
+    assert.equal(projection.display.managerStatus, null);
+});
+
 test('createOrLoadDepositHandoff reuses existing handoff instead of duplicating deposit rows', async () => {
     const fixture = fakeDb(async text => {
         if (/FROM leads\s+WHERE id = \$1/i.test(text)) {

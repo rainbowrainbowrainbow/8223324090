@@ -4055,7 +4055,7 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
             provided: true,
             expectedAmount: null,
             dueDate: null,
-            managerStatus: 'Очікуємо оплату',
+            managerStatus: null,
             managerNote: null
         });
         assert.equal(state.banquetDeposits.length, 1);
@@ -4068,6 +4068,17 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
         assert.equal(state.banquetDeposits[0].payment_method, 'cash');
         assert.equal(state.banquetDeposits[0].accounting_status, 'Підтверджено');
         assert.equal(state.banquetDeposits[0].verified_at, '2099-05-21T10:00:00.000Z');
+
+        const clearedProjectionResponse = await fetch(
+            `${baseUrl}/api/banquets/by-booking/BK-ROOT/deposit?businessContext=event_genix`
+        );
+        const clearedProjection = await clearedProjectionResponse.json();
+        assert.equal(clearedProjectionResponse.status, 200, JSON.stringify(clearedProjection));
+        assert.equal(clearedProjection.deposit.expectedAmount, null);
+        assert.equal(clearedProjection.deposit.dueDate, null);
+        assert.equal(clearedProjection.deposit.managerNote, null);
+        assert.equal(clearedProjection.deposit.managerStatus, null);
+        assert.equal(clearedProjection.managerStatus, null);
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);
     }, {
         mockProductPricing: true,

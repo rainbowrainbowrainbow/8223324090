@@ -378,6 +378,18 @@ function mapDepositRow(row = null) {
     };
 }
 
+function managerStatusForProjection(deposit = null) {
+    if (!deposit) return DEFAULT_MANAGER_DEPOSIT_STATUS;
+    const hasManagerAmount = deposit.expectedAmount !== null && deposit.expectedAmount !== undefined;
+    const hasManagerDueDate = Boolean(deposit.dueDate);
+    const hasManagerNote = Boolean(deposit.managerNote);
+    const managerStatus = deposit.managerStatus || DEFAULT_MANAGER_DEPOSIT_STATUS;
+    if (!hasManagerAmount && !hasManagerDueDate && !hasManagerNote && managerStatus === DEFAULT_MANAGER_DEPOSIT_STATUS) {
+        return null;
+    }
+    return managerStatus;
+}
+
 function projectionState(status) {
     if (!status) return 'missing';
     if (status === 'Підтверджено') return 'verified';
@@ -394,6 +406,7 @@ function displayProjection(deposit, context = {}) {
     const eventDate = deposit?.eventDate || context.eventDate || null;
     const clientName = deposit?.clientNameSnapshot || context.clientName || null;
     const banquetNumber = deposit?.banquetNumberSnapshot || context.banquetNumber || null;
+    const managerStatus = managerStatusForProjection(deposit);
     return {
         clientName,
         eventDate,
@@ -402,7 +415,7 @@ function displayProjection(deposit, context = {}) {
         amountLabel: amount === null || amount === undefined ? null : String(amount),
         paymentMethod,
         paymentMethodLabel: paymentMethod,
-        managerStatus: deposit?.managerStatus || DEFAULT_MANAGER_DEPOSIT_STATUS,
+        managerStatus,
         accountingStatus: deposit?.accountingStatus || DEFAULT_ACCOUNTING_DEPOSIT_STATUS,
         dueDate: deposit?.dueDate || null,
         isVerified: projectionState(deposit?.accountingStatus || deposit?.status) === 'verified',
@@ -426,19 +439,21 @@ function depositProjection(depositRow, context = {}) {
             display: displayProjection(null, context)
         };
     }
+    const managerStatus = managerStatusForProjection(deposit);
+    const projectedDeposit = { ...deposit, managerStatus };
     return {
         state: projectionState(deposit.accountingStatus || deposit.status),
         status: deposit.status,
-        managerStatus: deposit.managerStatus,
+        managerStatus,
         accountingStatus: deposit.accountingStatus,
-        deposit,
+        deposit: projectedDeposit,
         businessContext: deposit.businessContext,
         leadId: deposit.leadId,
         bookingId: deposit.primaryBookingId,
         banquetGroupId: deposit.banquetGroupId,
         customerId: deposit.customerId,
         needsBookingLink: deposit.status === 'needs_booking_link',
-        display: displayProjection(deposit, context)
+        display: displayProjection(projectedDeposit, context)
     };
 }
 

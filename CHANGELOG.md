@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.56 - Deposit Hydration Safety
+
+### Банкетки / Завдатки / UX-безпека / (17.07.2026) [codex]
+- **Помилка завантаження завдатку стала видимою** — форма показує менеджеру, що canonical deposit projection не завантажилась, і не залишає це тихим станом.
+- **Поля завдатку блокуються до retry** — при loading або failed hydration менеджер може зберегти інші поля банкетки, але `booking-set` не відправляє неявний update або clear завдатку.
+- **Додано повторне завантаження projection** — кнопка retry використовує чинний deposit API без нового endpoint або зміни формату відповіді.
+- **Очищення лишається manager-only** — canonical row не видаляється, а бухгалтерські `paid_amount`, `payment_method`, `accounting_status`, verification і legacy confirmed amount не перезаписуються manager clear.
+
+---
+
 ## v0.79.55 - Banquet Activity Details
 
 ### Банкетки / Деталі бронювання / Піньяти / (17.07.2026) [codex]

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.57 - Deposit Clear Safety
+
+### Банкетки / Завдатки / Очищення manager-полів / (17.07.2026) [codex]
+- **Очищення завдатку тепер прибирає manager-facing статус** — після explicit clear canonical projection повертає `managerStatus: null`, тож форма не показує дефолтний статус як збережене рішення менеджера.
+- **Canonical row не видаляється** — чинний DB constraint `manager_status NOT NULL` лишається без змін, а safe projection відділяє технічний дефолт від очищених manager-полів.
+- **Бухгалтерські дані не перезаписуються** — `paid_amount`, payment method, accounting status і verification залишаються незмінними при manager clear.
+- **UI отримав стан «Не задано»** — поле статусу може коректно показати очищений стан після повторного відкриття банкетки.
+
+---
+
 ## v0.79.56 - Deposit Hydration Safety
 
 ### Банкетки / Завдатки / UX-безпека / (17.07.2026) [codex]

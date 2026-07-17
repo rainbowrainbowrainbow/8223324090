@@ -1,45 +1,51 @@
 # Room Domain Audit
 
 Date: 2026-07-17
-Scope: read-only room-domain audit for Event Genix production and local code.
-Production impact: yes, read-only only. No schema, data, booking, or production configuration changes were made.
+Scope: original read-only room-domain audit plus pre-release durable room identity follow-up.
+Production impact: yes. Schema migration 296 has been applied after explicit owner approval; production backfill has not been applied.
 
 ## Executive Summary
 
-The room system does not need a full rewrite before the quarantine-row UX fix. The current room timeline, room projection, room conflict policy, banquet/kitchen overlap policy, and view isolation are covered by focused tests and those tests pass.
+Pre-release status: durable `room_resource_id` support is implemented locally and the additive production schema exists. New and edited room bookings now use validated `timeline_resources(type='room')` identity, while legacy `room` text is retained as a display snapshot.
 
-The weak part is the room identity model: park bookings still store the physical room as free text in `bookings.room`. There are three active catalogs that currently match each other locally and in production, but they are not one durable source of truth:
+The original screenshot issue was a UX symptom, not a broken physical room: `room-quarantine` is a virtual diagnostic line and should render only when at least one visible booking needs quarantine. That behavior is now covered by focused room timeline tests.
 
-- static `#roomSelect` in `index.html`;
-- `ALL_ROOMS` in `services/booking.js`;
-- `timeline_resources` rows with `type = 'room'`.
+The remaining production boundary is data, not schema or UI code:
 
-Production API audit found 15 active room resources and no inactive room resources. The active resource names match the static HTML room list and `ALL_ROOMS`.
+- production backfill has not been applied;
+- latest dry-run scanned 758 records;
+- 737 records are safe automatic mappings;
+- 21 records remain unresolved and must stay in quarantine/manual repair;
+- 9 room resources will receive one-to-one English legacy aliases during apply.
 
-The screenshot issue is not evidence of a broken physical room. The room timeline always receives a virtual quarantine line from `routes/lines.js`; the UI can show that row even when there are no current problem bookings.
-
-However, real quarantined bookings do exist in historical active production data. The API sample for `2026-02-04` returned one room-timeline booking with `custom_room`. The broader active-primary booking slice also shows 47 rows with old English room names such as `Marvel`, `Ninja`, `Minecraft`, `Monster High`, `Elsa`, `Rock`, `Minion`, `Pony`, and `Food Court`. Those are unambiguous legacy aliases, but production `timeline_resources` currently has no aliases, so the current resolver treats them as custom/unmatched rooms.
-
-Recommended decision:
-
-- Short term: catalog consolidation is enough to fix the visible quarantine-row problem and stabilize the UI.
-- Medium term: add legacy aliases for English room names and make room selection use `timeline_resources`.
-- Durable rename-safe model: add `room_resource_id` only after explicit approval for schema/backfill work.
+Do not use the stale `safe=718` approval. The apply boundary is now a fresh dry-run and exact owner confirmation for the current safe count.
 
 ## Data Safety
 
-Production audit used live API `GET` requests only. No customer names, phone numbers, booking IDs, notes, or other PII are included in this file.
-
-Direct SQL production audit was not possible in this run because the local secrets file exposes live URL and smoke/creator credentials, but not `DATABASE_URL`, `PGHOST`, or another read-only database connection string.
-
-Because of that, these DB-only checks remain incomplete:
-
-- all raw `bookings.room` rows including linked and cancelled bookings;
-- direct `banquet_groups.room` vs `bookings.room` mismatch scan;
-- raw `booking_templates` and `recurring_templates` table scan beyond available API results;
-- exact all-row `room_resource_id` backfill count, because the column does not exist yet and raw tables were not available.
+The original audit used live API `GET` requests only. The later migration audit used read-only PostgreSQL access and reports only counts and technical IDs. No customer names, phone numbers, notes, or other PII are included.
 
 ## Source Map
+
+Current pre-release source map:
+
+| Area | Current pre-release behavior | Evidence |
+|---|---|---|
+| Booking form catalog | Dynamic active room resources from `timeline_resources(type='room')`; selected option carries `data-resource-id`. | `js/booking.js`, `js/booking-form.js` |
+| Backend room catalog | Active `timeline_resources(type='room')`; operational `ALL_ROOMS` usage/export removed. | `services/timelineResources.js`, `routes/settings.js`, `services/booking.js` |
+| Stored booking room | `bookings.room_resource_id` is the canonical identity; `bookings.room` remains display/legacy text. | `db/migrations/296_room_resource_id_schema.sql`, `routes/bookings.js` |
+| Banquet group room | `banquet_groups.room_resource_id` mirrors durable group identity; `banquet_groups.room` remains display/legacy text. | `db/migrations/296_room_resource_id_schema.sql`, `services/banquetGroups.js` |
+| Booking templates | `booking_templates.room_resource_id` is persisted and validated before template writes. | `routes/booking-templates.js` |
+| Recurring templates | `recurring_templates.room_resource_id` is persisted, validated, and copied into generated bookings. | `routes/recurring.js`, `services/recurring.js` |
+| Room timeline lines | Keeps virtual `room-takeaway`; keeps `room-quarantine` for matching but hides empty quarantine rows in render. | `routes/lines.js`, `js/timeline.js` |
+| Room identity resolver | Uses `room_resource_id` first, then controlled legacy name/shortName/alias fallback, then quarantine. | `services/timelineResources.js`, `routes/bookings.js` |
+| Room conflict lock | Advisory lock key uses `business_context + date + room_resource_id`, with controlled legacy fallback only for NULL IDs. | `services/booking.js` |
+| Room SQL conflict | Primary conflict query compares `room_resource_id`; text/line fallback is restricted to rows with `room_resource_id IS NULL`. | `services/booking.js` |
+| Free rooms endpoint | Park mode availability uses the same active room resource catalog and durable IDs as timeline. | `routes/settings.js`, `services/timelineResources.js` |
+| Create/full/edit flows | Backend validates room resource, canonicalizes display room name, and persists `room_resource_id`. | `routes/bookings.js`, `services/timelineResources.js` |
+| Frontend submit | Booking form sends selected `roomResourceId` from the dynamic room select. | `js/booking.js`, `js/booking-form.js` |
+| Banquet/kitchen paths | Banquet groups, activities, kitchen/member rows carry `room_resource_id` atomically with legacy room text. | `services/banquetGroups.js`, `routes/bookings.js` |
+
+Historical source map below is retained as the original audit baseline before the durable-id implementation.
 
 | Area | Current behavior | Evidence |
 |---|---|---|
@@ -234,12 +240,12 @@ Live read-only API checks performed:
 - `/api/lines/:date?timelineView=rooms`;
 - `/api/rooms/free/:date/12:00/60`.
 
-## Remaining Gaps
+## Final Durable-ID Follow-up
 
-These require read-only DB access or a dedicated safe audit endpoint:
+The raw production audit is now closed through direct read-only PostgreSQL access.
+Migration 296 added nullable durable IDs without rewriting room text. The latest
+dry-run scanned 758 rows: 737 are safe automatic mappings and 21 remain unresolved.
+There are no banquet group ↔ primary booking room mismatches.
 
-- raw `SELECT DISTINCT room` across all `bookings`, including linked and cancelled rows;
-- raw `banquet_groups.room` mismatch report against primary booking rooms;
-- exact count of all bookings that would currently get `inactive_room`, `unmatched_room`, or `custom_room`;
-- direct validation of any inactive-room bookings if inactive resources are introduced later;
-- exact backfill report for a future `room_resource_id` migration.
+The exact counts, technical IDs, alias plan and rollback rules are maintained in
+`docs/ROOM_ID_MIGRATION_AUDIT.md`.

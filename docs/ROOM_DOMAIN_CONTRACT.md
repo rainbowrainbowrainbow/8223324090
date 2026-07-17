@@ -1,8 +1,8 @@
 # Room Domain Contract
 
 Date: 2026-07-17
-Status: contract for the next room-timeline fixes.
-Production impact: yes, documentation only. No schema, data, API, UI, or protected booking identity changes are made by this document.
+Status: implemented durable room identity contract.
+Production impact: yes.
 
 ## Decision
 
@@ -14,8 +14,10 @@ The park room feature still has legacy text fields, so this contract separates d
 - `timeline_resources.name` is the current operator-facing room name.
 - `timeline_resources.short_name` is a display helper only.
 - `timeline_resources.metadata.aliases` holds old names and other accepted legacy labels.
-- `bookings.room` remains a legacy/display snapshot until an approved schema migration adds durable room ids to bookings.
-- `banquet_groups.room`, `booking_templates.room`, and `recurring_templates.room` remain legacy/display snapshots until the same durable-id migration is approved.
+- `bookings.room_resource_id` is the canonical booking room identity.
+- `banquet_groups.room_resource_id`, `booking_templates.room_resource_id`, and
+  `recurring_templates.room_resource_id` carry the same durable identity.
+- The corresponding `room` fields remain display/legacy snapshots and are not deleted.
 
 Do not create a new abstract room subsystem. Extend the existing timeline resource model and existing booking flows incrementally.
 
@@ -88,24 +90,17 @@ Unknown legacy room:
 - Unknown non-empty room text that cannot match `resource_id`, `name`, `short_name`, or `aliases` resolves to quarantine.
 - The booking must never fall into the first physical room row or the takeaway row.
 
-## Current Compatibility Rules
+## Legacy Compatibility Rules
 
-These changes are allowed without schema migration:
-
-- hide empty quarantine row in the frontend render layer;
-- source the room dropdown from active `timeline_resources(type=room)` while still submitting `bookings.room` text;
-- make `/api/rooms/free` read active room resources instead of `ALL_ROOMS`;
-- add legacy aliases to room resources through metadata;
-- keep `ALL_ROOMS` only as a temporary fallback and guard it with a drift test;
-- add contract/characterization tests for catalog alignment, aliases, quarantine, and free-room behavior.
-
-These changes require explicit approval before implementation:
-
-- adding `room_resource_id` or similar columns to `bookings`, `banquet_groups`, templates, or recurring templates;
-- backfilling production data;
-- changing protected booking/timeline identity priority rules;
-- changing conflict locks or SQL conflict checks from text room to durable room id;
-- deleting or rewriting production room names.
+- New and edited park bookings must carry a validated `room_resource_id`.
+- The backend derives the canonical display `room` name and does not trust arbitrary
+  frontend room text.
+- Conflict, lock and availability identity use `room_resource_id` first.
+- Name/short-name/unique-alias fallback applies only to legacy rows with a `NULL` ID.
+- Operational room lists come from active `timeline_resources(type='room')`;
+  `ALL_ROOMS` and static HTML options are not catalog sources.
+- Legacy unresolved rows stay visible through quarantine and are never remapped to
+  takeaway or the first physical room.
 
 ## Regression Matrix
 
@@ -114,7 +109,7 @@ These changes require explicit approval before implementation:
 | Create room booking | Active physical room or takeaway only; no inactive room selection. | Characterize current non-empty text behavior, then cover resource-backed selection. |
 | Edit booking | Existing valid room remains editable; problem room can be repaired. | Cover active room edit and legacy/problem repair path before UI change. |
 | Duplicate booking | Valid source room can carry over; invalid source room requires explicit choice. | Add characterization before disabling `Інше`/inactive choices. |
-| Availability | Free-room list uses the same active room catalog as timeline. | Current park mode still uses `ALL_ROOMS`; add regression when consolidating. |
+| Availability | Free-room list uses the same active room catalog as timeline. | Implemented through active `timeline_resources(type='room')`; `ALL_ROOMS` was removed. |
 | Strict room conflict | Unrelated overlapping physical room bookings conflict. | Covered by focused room conflict tests. |
 | Same-banquet overlap | Kitchen/service and activity overlap in the same banquet can be allowed by policy. | Covered by existing same-banquet room policy tests. |
 | Takeaway | Does not block physical rooms and never resolves to quarantine. | Covered by existing takeaway room tests. |

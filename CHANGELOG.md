@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.81 - Payroll Scheme Matrix QA
+
+### HR / Зарплата / Одночасні ролі / (18.07.2026) [codex]
+- **Перевірено payroll scheme matrix** — guarded runner проходить `hourly`, `per_shift`, `monthly_fixed`, `hybrid`, `percent` і `manual` через окремі disposable fixtures.
+- **Supported schemes рахують рольові години без подвоєння фізичного часу** — canonical case лишає `540` physical minutes, `540` base paid minutes і `510` additional paid minutes.
+- **Unsupported schemes залишаються fail-closed** — `hybrid`, `percent` і `manual` показують `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED` з 510 unresolved minutes замість тихого `0 грн`.
+- **Cleanup proof посилено** — кожен live QA scenario має власний runId, майбутню дату, cleanup у `finally` і нульові payroll/payment/finance counters.
+- **Snapshot audit став release-gate** — post-fix cohort окремо від історичних винятків і падає на missing snapshot, invalid paid allocation або unknown writer.
+
+---
+
 ## v0.79.80 - Booking Time and Banquet Recovery
 
 ### Бронювання / Таймінг / Банкетки / (18.07.2026) [codex]

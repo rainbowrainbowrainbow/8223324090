@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.71",
+  "version": "0.79.72",
   "eventGenix": {
-    "releaseLabel": "Ticket Finance Sync"
+    "releaseLabel": "Simultaneous Pay Safety Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

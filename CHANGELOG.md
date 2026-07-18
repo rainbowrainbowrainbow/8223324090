@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.72 - Simultaneous Pay Safety Guard
+
+### Payroll / Безпека / (18.07.2026) [codex]
+- **Жодної мовчазної нульової доплати** — paid simultaneous role автоматично розраховується лише для погодинної payroll-схеми.
+- **Fail-closed для непогоджених формул** — `per_shift`, `monthly_fixed`, `hybrid`, `percent` і `manual` показують години другої професії, але блокують generation, approve, pay і finance commit зі стабільним кодом `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`.
+- **Прозорі UI та експорти** — Finance показує «Не розраховано» з причиною, а CSV/XLSX містять blocker code і details.
+
+---
+
 ## v0.79.71 - Ticket Finance Sync
 
 ### Квитки / Фінанси / (18.07.2026) [codex]

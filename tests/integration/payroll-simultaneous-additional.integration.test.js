@@ -569,7 +569,6 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                 generation.data.details.blockingIssues[0].schemeType,
                 scenario.schemeType
             );
-
             const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
             assert.equal(financeCommit.status, 409, JSON.stringify(financeCommit.data));
             assert.equal(financeCommit.data.code, 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED');
@@ -601,5 +600,11 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             ),
             false
         );
+        const hourlyGeneration = await authRequest(
+            'POST',
+            `/api/payroll/generate?month=${MONTH}`,
+            { month: MONTH }
+        );
+        assert.equal(hourlyGeneration.status, 200, JSON.stringify(hourlyGeneration.data));
     });
 });

@@ -2623,6 +2623,12 @@ function publicHrShiftSegment(segment = {}) {
     const shiftStart = segment.shiftStart ?? segment.planned_start ?? null;
     const shiftEnd = segment.shiftEnd ?? segment.planned_end ?? null;
     const additionalRoles = segment.additionalRoles ?? segment.additional_roles ?? [];
+    const paidAdditionalProfessionKeys = segment.paidAdditionalProfessionKeys
+        ?? segment.paid_additional_profession_keys
+        ?? additionalRoles
+            .filter(role => (role.compensationMode ?? role.compensation_mode) === 'paid_hourly')
+            .map(role => role.professionKey ?? role.profession_key)
+            .filter(Boolean);
     return {
         id: segment.id ?? null,
         professionKey: segment.professionKey ?? segment.profession_key ?? null,
@@ -2638,6 +2644,7 @@ function publicHrShiftSegment(segment = {}) {
             countsAsPhysicalTime: false
         })),
         additionalProfessionKeys: segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? [],
+        paidAdditionalProfessionKeys,
         countsAsPhysicalTime: true,
         physicalTimeSource: 'segment'
     };

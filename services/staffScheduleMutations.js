@@ -596,6 +596,8 @@ async function mutateStaffScheduleBatch(client, entries = [], options = {}) {
     const batchStaffIds = orderedEntries.map(entry => entry.staffId ?? entry.staff_id);
     const hasPaidAdditionalRoles = orderedEntries.some(entry =>
         (entry?.segments || []).some(segment =>
+            (segment.paidAdditionalProfessionKeys || segment.paid_additional_profession_keys || []).length > 0
+            ||
             (segment.additionalRoles || segment.additional_roles || [])
                 .some(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly')));
     const paidRoleValidationContext = options.paidRoleValidationContext

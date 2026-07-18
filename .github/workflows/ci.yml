@@ -83,8 +83,8 @@ jobs:
       - name: Run staff schedule overlap and paid-role browser smoke
         run: npm run test:browser:staff-schedule
 
-  hr-onboarding-postgres:
-    name: HR onboarding PostgreSQL integration
+  hr-payroll-postgres:
+    name: HR and payroll PostgreSQL integration
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

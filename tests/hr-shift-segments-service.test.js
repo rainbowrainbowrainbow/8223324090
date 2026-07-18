@@ -529,6 +529,7 @@ test('batch hydration restores stable segment order and additional roles', async
     assert.equal(queries, 1);
     assert.deepEqual(hydrated[0].plan.segments.map(item => item.id), [71, 72]);
     assert.deepEqual(hydrated[0].plan.segments[0].additionalProfessionKeys, ['manager']);
+    assert.deepEqual(hydrated[0].plan.segments[0].paidAdditionalProfessionKeys, ['manager']);
     assert.equal(hydrated[0].plan.segments[0].additionalRoles[0].compensationMode, 'paid_hourly');
     assert.equal(hydrated[0].plan.segments[0].additionalRoles[0].policyVersion, HR_SHIFT_PAID_ROLE_POLICY_VERSION);
     assert.equal(hydrated[0].plan.plannedMinutes, 540);
@@ -731,12 +732,85 @@ test('normalizes explicit paid additional roles without changing physical planne
 
     assert.equal(plan.plannedMinutes, 540);
     assert.deepEqual(plan.segments[0].additionalProfessionKeys, ['manager']);
+    assert.deepEqual(plan.segments[0].paidAdditionalProfessionKeys, ['manager']);
     assert.deepEqual(plan.segments[0].additionalRoles, [{
         professionKey: 'manager',
         compensationMode: 'paid_hourly',
         payMultiplier: 1,
         policyVersion: null
     }]);
+});
+
+test('accepts paidAdditionalProfessionKeys as validated compatibility input', () => {
+    const plan = normalize({
+        primaryProfessionKey: 'reception',
+        segments: [segment('reception', '11:00', '20:00', {
+            additionalProfessionKeys: ['manager', 'animator'],
+            paidAdditionalProfessionKeys: ['manager']
+        })]
+    });
+
+    assert.deepEqual(plan.segments[0].additionalProfessionKeys, ['animator', 'manager']);
+    assert.deepEqual(plan.segments[0].paidAdditionalProfessionKeys, ['manager']);
+    assert.deepEqual(plan.segments[0].additionalRoles, [{
+        professionKey: 'animator',
+        compensationMode: 'unpaid',
+        payMultiplier: null,
+        policyVersion: null
+    }, {
+        professionKey: 'manager',
+        compensationMode: 'paid_hourly',
+        payMultiplier: 1,
+        policyVersion: null
+    }]);
+});
+
+test('rejects conflicting additional-role compatibility fields instead of guessing', () => {
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '11:00', '20:00', {
+                additionalProfessionKeys: ['manager'],
+                paidAdditionalProfessionKeys: ['manager', 'animator']
+            })]
+        }),
+        error => error.code === 'HR_SHIFT_PAID_ROLE_COMPATIBILITY_SUBSET_INVALID'
+            && error.statusCode === 400
+    );
+
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '11:00', '20:00', {
+                additionalRoles: [{
+                    professionKey: 'manager',
+                    compensationMode: 'paid_hourly',
+                    payMultiplier: 1
+                }],
+                additionalProfessionKeys: ['manager'],
+                paidAdditionalProfessionKeys: []
+            })]
+        }),
+        error => error.code === 'HR_SHIFT_ADDITIONAL_ROLE_COMPATIBILITY_CONFLICT'
+            && error.statusCode === 400
+    );
+
+    assert.throws(
+        () => normalize({
+            primaryProfessionKey: 'reception',
+            segments: [segment('reception', '11:00', '20:00', {
+                additionalRoles: [{
+                    professionKey: 'manager',
+                    compensationMode: 'paid_hourly',
+                    payMultiplier: 1
+                }],
+                additionalProfessionKeys: ['animator'],
+                paidAdditionalProfessionKeys: ['animator']
+            })]
+        }),
+        error => error.code === 'HR_SHIFT_ADDITIONAL_ROLE_COMPATIBILITY_CONFLICT'
+            && error.statusCode === 400
+    );
 });
 
 test('rejects duplicate and multiple paid additional roles with stable error codes', () => {
@@ -1063,6 +1137,7 @@ test('new-plan persistence locks parent, updates envelope, then inserts children
     assert.equal(saved.shift.planned_start, '09:00');
     assert.equal(saved.shift.planned_end, '20:00');
     assert.equal(saved.plan.segments.length, 2);
+    assert.deepEqual(saved.plan.segments[0].paidAdditionalProfessionKeys, []);
 
     const observedIndex = calls.findIndex(call => /^SELECT id, staff_id FROM hr_shifts/.test(call.text));
     const staffLockIndex = calls.findIndex(call => /FROM staff/.test(call.text) && /FOR SHARE/.test(call.text));
@@ -1154,6 +1229,7 @@ test('paid additional role survives canonical save metadata and receives the act
         payMultiplier: 1,
         policyVersion: HR_SHIFT_PAID_ROLE_POLICY_VERSION
     }]);
+    assert.deepEqual(saved.plan.segments[0].paidAdditionalProfessionKeys, ['manager']);
     const roleDelete = state.calls.find(call => /^DELETE FROM hr_shift_segment_roles/.test(call.text));
     const roleInsert = state.calls.find(call => /^INSERT INTO hr_shift_segment_roles/.test(call.text));
     assert.deepEqual(roleDelete.params, [[71]]);
@@ -1207,6 +1283,22 @@ test('diff persistence keeps an unchanged segment id and rejects a foreign segme
     assert.equal(Number(childUpdates[0].params[7]), 72);
     assert.equal(state.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
     assert.equal(state.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
+
+    const idless = createExistingMultiSegmentClient('regular');
+    const idlessSaved = await saveHrShiftDayPlan(idless.client, {
+        hrShiftId: 42,
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '09:00', '13:00'),
+                segment('manager', '16:00', '20:00')
+            ]
+        }
+    }, { actor: 'unit-test' });
+
+    assert.deepEqual(idlessSaved.plan.segments.map(item => Number(item.id)), [71, 72]);
+    assert.equal(idless.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
+    assert.equal(idless.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
 
     const foreign = createExistingMultiSegmentClient('regular');
     await assert.rejects(

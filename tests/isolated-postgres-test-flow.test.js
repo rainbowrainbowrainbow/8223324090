@@ -149,7 +149,8 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(accountOnboardingSuite, /rolls the entire transaction back/);
         assert.match(onboardingSuite, /one corporate and three profession processes exist/);
         assert.match(onboardingSuite, /cook progress remains unchanged/);
-        assert.match(workflow, /hr-onboarding-postgres:/);
+        assert.match(workflow, /hr-payroll-postgres:/);
+        assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
         assert.match(workflow, /test:integration:attendance-lock:isolated/);
         assert.match(attendanceLockSuite, /pg_locks/);
         assert.match(attendanceLockSuite, /RUN_ATTENDANCE_LOCK_INTEGRATION/);

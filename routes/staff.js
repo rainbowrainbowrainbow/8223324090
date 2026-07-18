@@ -512,13 +512,16 @@ function copyableDayPlanPayload(loadedPlan) {
             breakMinutes: segment.breakMinutes,
             note: segment.note,
             additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
-            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+            additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])],
+            paidAdditionalProfessionKeys: [...(segment.paidAdditionalProfessionKeys || [])]
         }))
     };
 }
 
 function dayPlanHasPaidAdditionalRoles(plan = null) {
     return (plan?.segments || []).some(segment =>
+        (segment.paidAdditionalProfessionKeys || segment.paid_additional_profession_keys || []).length > 0
+        ||
         (segment.additionalRoles || segment.additional_roles || [])
             .some(role => (role.compensationMode || role.compensation_mode) === 'paid_hourly'));
 }
@@ -561,6 +564,7 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
                 countsAsPhysicalTime: false
             })),
             additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])],
+            paidAdditionalProfessionKeys: [...(segment.paidAdditionalProfessionKeys || [])],
             countsAsPhysicalTime: true,
             physicalTimeSource: 'segment'
         })) || [],

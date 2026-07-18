@@ -299,6 +299,11 @@ function normalizeAdditionalRole(rawRole, professionKey, segmentIndex, options =
 }
 
 function normalizeAdditionalRoles(segment = {}, professionKey, segmentIndex, options = {}) {
+    const hasAdditionalRoles = hasOwn(segment, 'additionalRoles') || hasOwn(segment, 'additional_roles');
+    const hasAdditionalProfessionKeys = hasOwn(segment, 'additionalProfessionKeys')
+        || hasOwn(segment, 'additional_profession_keys');
+    const hasPaidAdditionalProfessionKeys = hasOwn(segment, 'paidAdditionalProfessionKeys')
+        || hasOwn(segment, 'paid_additional_profession_keys');
     const rawAdditionalRoles = firstDefined(segment.additionalRoles, segment.additional_roles, []);
     const parsedAdditionalRoles = parseJsonArray(rawAdditionalRoles, null);
     if (!Array.isArray(parsedAdditionalRoles)) {
@@ -327,12 +332,70 @@ function normalizeAdditionalRoles(segment = {}, professionKey, segmentIndex, opt
         segmentIndex,
         options
     );
-    for (const legacyKey of legacyKeys) {
-        if (!rolesByProfession.has(legacyKey)) {
+    const paidCompatibilityKeys = normalizeAdditionalProfessionKeys(
+        firstDefined(segment.paidAdditionalProfessionKeys, segment.paid_additional_profession_keys, []),
+        professionKey,
+        segmentIndex,
+        options
+    );
+    const legacyKeySet = new Set(legacyKeys);
+    const paidKeysOutsideLegacy = paidCompatibilityKeys
+        .filter(key => !legacyKeySet.has(key));
+    if (paidKeysOutsideLegacy.length) {
+        fail(
+            'HR_SHIFT_PAID_ROLE_COMPATIBILITY_SUBSET_INVALID',
+            'paidAdditionalProfessionKeys має бути підмножиною additionalProfessionKeys',
+            {
+                segmentIndex,
+                paidAdditionalProfessionKeys: paidCompatibilityKeys,
+                additionalProfessionKeys: legacyKeys,
+                invalidProfessionKeys: paidKeysOutsideLegacy
+            }
+        );
+    }
+
+    const canonicalRoleKeys = [...rolesByProfession.keys()]
+        .sort((left, right) => left.localeCompare(right, 'en'));
+    const canonicalPaidKeys = [...rolesByProfession.values()]
+        .filter(role => role.compensationMode === 'paid_hourly')
+        .map(role => role.professionKey)
+        .sort((left, right) => left.localeCompare(right, 'en'));
+    if (options.validateCompatibilityFields !== false
+        && hasAdditionalRoles && hasAdditionalProfessionKeys
+        && JSON.stringify(canonicalRoleKeys) !== JSON.stringify(legacyKeys)) {
+        fail(
+            'HR_SHIFT_ADDITIONAL_ROLE_COMPATIBILITY_CONFLICT',
+            'additionalRoles конфліктує з additionalProfessionKeys',
+            {
+                segmentIndex,
+                canonicalProfessionKeys: canonicalRoleKeys,
+                additionalProfessionKeys: legacyKeys
+            }
+        );
+    }
+    if (options.validateCompatibilityFields !== false
+        && hasAdditionalRoles && hasPaidAdditionalProfessionKeys
+        && JSON.stringify(canonicalPaidKeys) !== JSON.stringify(paidCompatibilityKeys)) {
+        fail(
+            'HR_SHIFT_ADDITIONAL_ROLE_COMPATIBILITY_CONFLICT',
+            'additionalRoles конфліктує з paidAdditionalProfessionKeys',
+            {
+                segmentIndex,
+                canonicalPaidProfessionKeys: canonicalPaidKeys,
+                paidAdditionalProfessionKeys: paidCompatibilityKeys
+            }
+        );
+    }
+
+    if (!hasAdditionalRoles || options.validateCompatibilityFields === false) {
+        const paidCompatibilitySet = new Set(paidCompatibilityKeys);
+        for (const legacyKey of legacyKeys) {
+            if (rolesByProfession.has(legacyKey)) continue;
+            const isPaid = paidCompatibilitySet.has(legacyKey);
             rolesByProfession.set(legacyKey, {
                 professionKey: legacyKey,
-                compensationMode: 'unpaid',
-                payMultiplier: null,
+                compensationMode: isPaid ? 'paid_hourly' : 'unpaid',
+                payMultiplier: isPaid ? 1 : null,
                 policyVersion: null
             });
         }
@@ -427,6 +490,9 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         options
     );
     const additionalProfessionKeys = additionalRoles.map(role => role.professionKey);
+    const paidAdditionalProfessionKeys = additionalRoles
+        .filter(role => role.compensationMode === 'paid_hourly')
+        .map(role => role.professionKey);
 
     return {
         id: normalizeSegmentId(segment.id),
@@ -437,6 +503,7 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         note: normalizeSegmentNote(firstDefined(segment.note, segment.notes)),
         additionalRoles,
         additionalProfessionKeys,
+        paidAdditionalProfessionKeys,
         sortOrder: segmentIndex,
         startMinutes,
         endMinutes,
@@ -598,7 +665,9 @@ function normalizeHrShiftDayPlan(payload = {}, options = {}) {
     }
 
     const professionOptions = {
-        strictProfessionKeys: options.strictProfessionKeys !== false
+        strictProfessionKeys: options.strictProfessionKeys !== false,
+        validateCompatibilityFields: options.validateCompatibilityFields !== false
+            && options.strictProfessionKeys !== false
     };
     const normalizedSegments = rawSegments.map((segment, index) =>
         normalizeSegment(segment, index, professionOptions));
@@ -1214,16 +1283,19 @@ function planStatusFromShift(shift = {}) {
 }
 
 function segmentPayloadFromRow(row = {}) {
-    return {
+    const payload = {
         id: row.id,
         professionKey: row.profession_key,
         shiftStart: row.planned_start,
         shiftEnd: row.planned_end,
         breakMinutes: row.break_minutes,
         note: row.notes,
-        additionalRoles: row.additional_roles || [],
         additionalProfessionKeys: row.additional_profession_keys || []
     };
+    if (hasOwn(row, 'additional_roles') || hasOwn(row, 'additionalRoles')) {
+        payload.additionalRoles = row.additional_roles || row.additionalRoles || [];
+    }
+    return payload;
 }
 
 function rolePersistenceSignature(roles = []) {
@@ -1354,13 +1426,17 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         segments: existingRows.map(segmentPayloadFromRow)
     };
     const existingById = new Map(existingRows.map(row => [String(row.id), row]));
+    const existingBySortOrder = new Map(existingRows.map(row => [Number(row.sort_order || 0), row]));
     const retainedIds = new Set();
     const persistedSegments = [];
     const roleResetIds = [];
     const roleInsertPairs = [];
     for (const segment of normalizedPlan.segments) {
         const requestedId = segment.id === null || segment.id === undefined ? null : String(segment.id);
-        const existing = requestedId ? existingById.get(requestedId) : null;
+        let existing = requestedId
+            ? existingById.get(requestedId)
+            : existingBySortOrder.get(segment.sortOrder);
+        if (existing && retainedIds.has(String(existing.id))) existing = null;
         if (requestedId && !existing) {
             fail('HR_SHIFT_SEGMENT_ID_NOT_ON_PARENT', 'Сегмент не належить поточній HR-зміні', {
                 hrShiftId: Number(hrShiftId),
@@ -1405,7 +1481,10 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             const existingRoles = normalizeAdditionalRoles({
                 additionalRoles: existing.additional_roles || [],
                 additionalProfessionKeys: existing.additional_profession_keys || []
-            }, segment.professionKey, segment.sortOrder, { strictProfessionKeys: false });
+            }, segment.professionKey, segment.sortOrder, {
+                strictProfessionKeys: false,
+                validateCompatibilityFields: false
+            });
             if (rolePersistenceSignature(existingRoles) !== rolePersistenceSignature(segment.additionalRoles)) {
                 roleResetIds.push(segmentId);
                 for (const role of segment.additionalRoles) {

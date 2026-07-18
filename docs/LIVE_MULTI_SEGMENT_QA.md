@@ -2,6 +2,9 @@
 
 `npm run qa:live:multi-segment -- https://<crm-host>` is the controlled end-to-end acceptance runner for the normalized HR day plan.
 
+The runner verifies the active `simultaneous-profession-pay-v1` contract with
+`effectiveFrom = 2026-07-18`.
+
 ## Safety contract
 
 - The runner requires `LIVE_MULTI_SEGMENT_QA_CONFIRM=I_CONFIRM_LIVE_MULTI_SEGMENT_QA`.
@@ -29,19 +32,23 @@ Use a different run ID for every attempt. A bearer token may replace the usernam
 
 ## Assertions
 
-The runner creates one disposable staff member qualified for `reception`, `manager`, and `animator`, explicitly marks those QA-only role assignments as active and approved, then verifies:
+The business case starts as overlapping role windows: `11:00-20:00 wardrobe` plus
+`11:30-20:00 cleaner`. The valid saved day plan represents that simultaneous work as adjacent
+physical segments with the second profession attached as a paid role.
 
-- `09:00-13:00 reception` plus `15:00-20:00 manager`;
-- a 30-minute break on the manager segment, producing 510 planned minutes;
+The runner creates one disposable hourly staff member qualified for `wardrobe` (Гардеробник) and `cleaner` (Господарочка залу), explicitly marks both QA-only role assignments as active and approved, then verifies:
+
+- `11:00-11:30 wardrobe`;
+- `11:30-20:00 wardrobe` plus the explicitly paid simultaneous `cleaner` role;
+- 540 non-overlapping physical minutes;
 - one distinct headcount row;
-- stable segment IDs after refresh and canonical update;
-- `409 HR_SHIFT_PLAN_STALE` for the stale writer;
-- exact copy-week dates and new copied segment IDs;
-- animator availability only in the two real windows, not in the `13:00-15:00` gap;
-- one attendance row with 240 reception minutes and 270 manager minutes;
-- hourly payroll preview with two profession breakdown rows and no additional-role double pay;
-- day-rate preview applied once;
-- Reports-compatible planned hours equal Staff Schedule planned minutes.
+- stable segment IDs after save/reload;
+- one attendance row with 540 physical wardrobe minutes;
+- an immutable compensation snapshot with 510 paid cleaner minutes;
+- hourly payroll preview with 9 wardrobe hours and 8.5 cleaner role-hours;
+- 9 physical hours rather than 17.5 physical hours;
+- separate role amounts calculated from the two explicit profession rates;
+- Reports-compatible planned hours equal 9 physical Staff Schedule hours.
 
 ## Cleanup
 

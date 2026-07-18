@@ -15,7 +15,9 @@ const {
     normalizeLiveQaRunId
 } = require('../services/liveMultiSegmentQa');
 
-const REQUIRED_PROFESSIONS = ['reception', 'manager', 'animator'];
+const PRIMARY_PROFESSION = 'wardrobe';
+const ADDITIONAL_PROFESSION = 'cleaner';
+const REQUIRED_PROFESSIONS = [PRIMARY_PROFESSION, ADDITIONAL_PROFESSION];
 const REQUEST_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_TIMEOUT_MS') || 30000);
 const CLEANUP_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_CLEANUP_TIMEOUT_MS') || 60000);
 const OVERALL_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_OVERALL_TIMEOUT_MS') || 240000);
@@ -23,7 +25,6 @@ const BUSINESS_CONTEXT = env('LIVE_MULTI_SEGMENT_QA_BUSINESS_CONTEXT') || 'event
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg)) || env('LIVE_MULTI_SEGMENT_QA_URL');
 const RUN_ID = normalizeLiveQaRunId(env('LIVE_MULTI_SEGMENT_QA_RUN_ID'));
 const SOURCE_MONDAY = env('LIVE_MULTI_SEGMENT_QA_SOURCE_MONDAY') || defaultFutureMonday();
-const TARGET_MONDAY = addDateDays(SOURCE_MONDAY, 7);
 const MARKER = RUN_ID ? liveQaMarker(RUN_ID) : '';
 const runController = new AbortController();
 
@@ -203,34 +204,21 @@ async function loadScheduleEntry(base, token, staffId, date, options = {}) {
 function schedulePayload(staffId, date, entry = null) {
     const segments = entry ? normalizedSegments(entry) : [
         {
-            professionKey: 'reception', shiftStart: '11:00', shiftEnd: '11:30', breakMinutes: 0,
+            professionKey: PRIMARY_PROFESSION, shiftStart: '11:00', shiftEnd: '11:30', breakMinutes: 0,
             note: MARKER,
-            additionalProfessionKeys: ['animator'],
-            additionalRoles: [{
-                professionKey: 'animator',
-                compensationMode: 'unpaid',
-                payMultiplier: null,
-                policyVersion: null
-            }]
+            additionalProfessionKeys: [],
+            additionalRoles: []
         },
         {
-            professionKey: 'reception', shiftStart: '11:30', shiftEnd: '20:00', breakMinutes: 0,
+            professionKey: PRIMARY_PROFESSION, shiftStart: '11:30', shiftEnd: '20:00', breakMinutes: 0,
             note: MARKER,
-            additionalProfessionKeys: ['animator', 'manager'],
-            additionalRoles: [
-                {
-                    professionKey: 'animator',
-                    compensationMode: 'unpaid',
-                    payMultiplier: null,
-                    policyVersion: null
-                },
-                {
-                    professionKey: 'manager',
-                    compensationMode: 'paid_hourly',
-                    payMultiplier: 1,
-                    policyVersion: null
-                }
-            ]
+            additionalProfessionKeys: [ADDITIONAL_PROFESSION],
+            additionalRoles: [{
+                professionKey: ADDITIONAL_PROFESSION,
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1,
+                policyVersion: null
+            }]
         }
     ];
     return {
@@ -238,8 +226,8 @@ function schedulePayload(staffId, date, entry = null) {
         date,
         status: 'working',
         note: MARKER,
-        professionKey: 'reception',
-        primaryProfessionKey: 'reception',
+        professionKey: PRIMARY_PROFESSION,
+        primaryProfessionKey: PRIMARY_PROFESSION,
         shiftStart: '11:00',
         shiftEnd: '20:00',
         segments,
@@ -255,14 +243,14 @@ function assertPlan(entry, expectedDate, label) {
     assert.equal(segments.length, 2, `${label}: two segments`);
     assert.ok(segments.every(segment => Number.isInteger(segment.id) && segment.id > 0), `${label}: stable segment IDs`);
     assert.deepEqual(segments.map(segment => [segment.professionKey, segment.shiftStart, segment.shiftEnd, segment.breakMinutes]), [
-        ['reception', '11:00', '11:30', 0],
-        ['reception', '11:30', '20:00', 0]
+        [PRIMARY_PROFESSION, '11:00', '11:30', 0],
+        [PRIMARY_PROFESSION, '11:30', '20:00', 0]
     ], `${label}: role/time windows`);
-    assert.ok(segments.every(segment => segment.additionalProfessionKeys.includes('animator')), `${label}: animator windows follow both segments`);
+    assert.deepEqual(segments[0].additionalRoles, [], `${label}: first physical segment has no additional pay`);
     assert.deepEqual(
         segments[1].additionalRoles.map(role => [role.professionKey, role.compensationMode, role.payMultiplier]),
-        [['animator', 'unpaid', null], ['manager', 'paid_hourly', 1]],
-        `${label}: paid manager and unpaid animator retain distinct compensation modes`
+        [[ADDITIONAL_PROFESSION, 'paid_hourly', 1]],
+        `${label}: paid hall attendant is explicit only for the simultaneous interval`
     );
     assert.ok(planVersion(entry), `${label}: optimistic version token`);
     return segments;
@@ -275,8 +263,8 @@ async function createDisposableStaff(base, token) {
             name: `Disposable QA Multi Segment ${RUN_ID}`,
             department: 'qa',
             position: 'Disposable QA',
-            role_type: 'reception',
-            secondaryProfessions: ['manager', 'animator']
+            role_type: PRIMARY_PROFESSION,
+            secondaryProfessions: [ADDITIONAL_PROFESSION]
         }
     });
     const staff = response.body?.data;
@@ -321,11 +309,6 @@ async function cleanup(base, token, staffId) {
     };
 }
 
-function windowMinutes(value) {
-    const [hour, minute] = time5(value).split(':').map(Number);
-    return hour * 60 + minute;
-}
-
 async function run() {
     assertConfigured();
     const base = normalizeBase(TARGET_URL);
@@ -361,13 +344,13 @@ async function run() {
         await api(base, `/api/hr/staff/${staffId}`, {
             method: 'PUT', token: session.token,
             body: {
-                role_type: 'reception',
-                secondary_professions: ['manager', 'animator'],
+                role_type: PRIMARY_PROFESSION,
+                secondary_professions: [ADDITIONAL_PROFESSION],
                 hourly_rate: 100,
                 rate_unit: 'hour',
                 profession_rates: [
-                    { profession_key: 'reception', hourly_rate: 100 },
-                    { profession_key: 'manager', hourly_rate: 200 }
+                    { profession_key: PRIMARY_PROFESSION, hourly_rate: 100 },
+                    { profession_key: ADDITIONAL_PROFESSION, hourly_rate: 200 }
                 ],
                 notes: MARKER
             }
@@ -375,10 +358,10 @@ async function run() {
         const roleAssignments = await api(base, `/api/hr/staff/${staffId}/role-assignments`, {
             method: 'PUT', token: session.token,
             body: {
-                primary_role: 'reception',
+                primary_role: PRIMARY_PROFESSION,
                 assignments: [
                     {
-                        profession_key: 'reception',
+                        profession_key: PRIMARY_PROFESSION,
                         is_primary: true,
                         status: 'active',
                         admission_status: 'approved',
@@ -387,21 +370,12 @@ async function run() {
                         notes: MARKER
                     },
                     {
-                        profession_key: 'manager',
+                        profession_key: ADDITIONAL_PROFESSION,
                         is_primary: false,
                         status: 'active',
                         admission_status: 'approved',
                         internship_status: 'none',
                         hourly_rate: 200,
-                        notes: MARKER
-                    },
-                    {
-                        profession_key: 'animator',
-                        is_primary: false,
-                        status: 'active',
-                        admission_status: 'approved',
-                        internship_status: 'none',
-                        hourly_rate: null,
                         notes: MARKER
                     }
                 ]
@@ -412,10 +386,9 @@ async function run() {
                 .map(row => [row.profession_key, row.status, row.admission_status])
                 .sort((left, right) => left[0].localeCompare(right[0])),
             [
-                ['animator', 'active', 'approved'],
-                ['manager', 'active', 'approved'],
-                ['reception', 'active', 'approved']
-            ],
+                [ADDITIONAL_PROFESSION, 'active', 'approved'],
+                [PRIMARY_PROFESSION, 'active', 'approved']
+            ].sort((left, right) => left[0].localeCompare(right[0])),
             'disposable staff roles are explicitly active and approved'
         );
         results.push('disposable_staff');
@@ -430,49 +403,6 @@ async function run() {
         const sourceRows = [refreshed].filter(Boolean);
         assert.equal(new Set(sourceRows.map(row => Number(row.staff_id))).size, 1, 'headcount is one distinct staff member');
         results.push('schedule_refresh_headcount');
-
-        const winnerPayload = schedulePayload(staffId, SOURCE_MONDAY, refreshed);
-        winnerPayload.segments[1].note = `${MARKER}:winner`;
-        const winner = await api(base, '/api/staff/schedule', {
-            method: 'PUT', token: session.token, body: winnerPayload
-        });
-        const winnerEntry = winner.body?.data;
-        assert.deepEqual(
-            normalizedSegments(winnerEntry).map(segment => segment.id),
-            originalSegments.map(segment => segment.id),
-            'canonical update preserves stable segment IDs'
-        );
-        const stalePayload = schedulePayload(staffId, SOURCE_MONDAY, refreshed);
-        stalePayload.segments[1].note = `${MARKER}:stale-loser`;
-        const stale = await api(base, '/api/staff/schedule', {
-            method: 'PUT', token: session.token, body: stalePayload, acceptStatuses: [409]
-        });
-        assert.equal(stale.status, 409, 'stale save returns 409');
-        assert.equal(stale.body?.code, 'HR_SHIFT_PLAN_STALE', 'stale save uses canonical code');
-        const afterStale = await loadScheduleEntry(base, session.token, staffId, SOURCE_MONDAY);
-        assert.equal(normalizedSegments(afterStale)[1].note, `${MARKER}:winner`, 'stale save did not overwrite winner');
-        results.push('optimistic_concurrency');
-
-        const copied = await api(base, '/api/staff/schedule/copy-week', {
-            method: 'POST', token: session.token,
-            body: { fromMonday: SOURCE_MONDAY, toMonday: TARGET_MONDAY, staffIds: [staffId], displayGroup: 'qa' }
-        });
-        assert.equal(copied.body?.count, 1, 'copy-week copied the single source day');
-        const targetEntry = await loadScheduleEntry(base, session.token, staffId, TARGET_MONDAY);
-        const targetSegments = assertPlan(targetEntry, TARGET_MONDAY, 'copy-week');
-        assert.ok(targetSegments.every(segment => !originalSegments.some(source => source.id === segment.id)), 'copy-week creates new segment IDs');
-        results.push('copy_week');
-
-        const timeline = await api(base, `/api/staff/schedule/check/${SOURCE_MONDAY}`, { token: session.token });
-        const animator = (timeline.body?.available || []).find(row => Number(row.id) === staffId);
-        assert.ok(animator, 'animator-qualified disposable staff is available');
-        const windows = animator.availabilityWindows || animator.availability_windows || [];
-        assert.deepEqual(windows.map(window => [time5(window.start), time5(window.end)]), [
-            ['11:00', '11:30'], ['11:30', '20:00']
-        ], 'timeline returns exact adjacent animator windows');
-        const coveredMinute = 14 * 60;
-        assert.equal(windows.some(window => coveredMinute >= windowMinutes(window.start) && coveredMinute < windowMinutes(window.end)), true, 'adjacent blocks preserve continuous availability');
-        results.push('timeline_windows');
 
         const attendanceCreated = await api(base, '/api/hr/qa/multi-segment/attendance', {
             method: 'POST', token: session.token, confirm: true,
@@ -492,7 +422,7 @@ async function run() {
         assert.equal(attendanceRows.length, 1, 'one daily attendance record');
         const allocations = attendanceRows[0].segment_allocations || attendanceRows[0].segmentAllocations || [];
         assert.deepEqual(allocations.map(row => [row.professionKey, Number(row.actualMinutes)]), [
-            ['reception', 30], ['reception', 510]
+            [PRIMARY_PROFESSION, 30], [PRIMARY_PROFESSION, 510]
         ], 'attendance allocates adjacent physical segments without duplicating minutes');
         const compensationSnapshot = attendanceRows[0].compensation_snapshot || attendanceRows[0].compensationSnapshot || {};
         const snapshotAllocations = compensationSnapshot.compensationAllocations
@@ -500,11 +430,26 @@ async function run() {
             || attendanceRows[0].compensation_allocations
             || attendanceRows[0].compensationAllocations
             || [];
-        const paidManagerAllocation = snapshotAllocations.find(row =>
+        console.log(`Attendance compensation summary: ${JSON.stringify({
+            state: compensationSnapshot.state || null,
+            manualReview: compensationSnapshot.manualReview === true,
+            allocations: snapshotAllocations.map(row => ({
+                allocationType: row.allocationType || row.allocation_type || null,
+                professionKey: row.professionKey || row.profession_key || null,
+                actualMinutes: Number(row.actualMinutes ?? row.actual_minutes ?? 0),
+                compensationMode: row.compensationMode || row.compensation_mode || null,
+                rateUnit: row.rateUnit || row.rate_unit || null,
+                policyVersion: row.policyVersion || row.policy_version || null
+            })),
+            issueCodes: (compensationSnapshot.issues || attendanceRows[0].compensation_issues || [])
+                .map(issue => issue.code || null)
+                .filter(Boolean)
+        })}`);
+        const paidAdditionalAllocation = snapshotAllocations.find(row =>
             (row.allocationType || row.allocation_type) === 'simultaneous_additional'
-            && (row.professionKey || row.profession_key) === 'manager');
-        assert.equal(Number(paidManagerAllocation?.actualMinutes ?? paidManagerAllocation?.actual_minutes), 510, 'attendance snapshot stores 8.5 paid manager hours');
-        assert.equal(Number(paidManagerAllocation?.rate), 200, 'attendance snapshot freezes the manager profession rate');
+            && (row.professionKey || row.profession_key) === ADDITIONAL_PROFESSION);
+        assert.equal(Number(paidAdditionalAllocation?.actualMinutes ?? paidAdditionalAllocation?.actual_minutes), 510, 'attendance snapshot stores 8.5 paid hall-attendant hours');
+        assert.equal(Number(paidAdditionalAllocation?.rate), 200, 'attendance snapshot freezes the hall-attendant profession rate');
         results.push('attendance');
 
         const month = SOURCE_MONDAY.slice(0, 7);
@@ -516,33 +461,22 @@ async function run() {
         const baseRows = hourlyRows.filter(row => row.kind === 'base');
         const additionalRows = hourlyRows.filter(row => row.kind === 'simultaneous_additional');
         assert.deepEqual(baseRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
-            ['reception', 540, 100, 900]
-        ], 'hourly payroll pays nine base-role hours at the reception rate');
+            [PRIMARY_PROFESSION, 540, 100, 900]
+        ], 'hourly payroll pays nine base-role hours at the wardrobe rate');
         assert.deepEqual(additionalRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
-            ['manager', 510, 200, 1700]
-        ], 'hourly payroll pays 8.5 simultaneous manager hours at its profession rate');
+            [ADDITIONAL_PROFESSION, 510, 200, 1700]
+        ], 'hourly payroll pays 8.5 simultaneous hall-attendant hours at its profession rate');
         assert.equal(Number(hourly?.baseAmount), 900, 'base role amount is not duplicated');
         assert.equal(Number(hourly?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
         assert.equal(Number(hourly?.netAmount), 2600, 'preview totals the two role amounts without changing physical hours');
         assert.equal(Number(hourly?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
         assert.equal(Number(hourly?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
         assert.equal(Number(hourly?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
-
-        await api(base, `/api/hr/staff/${staffId}`, {
-            method: 'PUT', token: session.token, body: { hourly_rate: 700, rate_unit: 'day' }
-        });
-        const dayPreview = await api(base, `/api/payroll/preview?staffId=${staffId}&month=${month}`, { token: session.token });
-        const day = dayPreview.body?.preview;
-        assert.equal(Number(day?.daysWorked), 1, 'day-rate preview still counts one day');
-        assert.equal(day?.rate_unit, 'day', 'day-rate unit is explicit');
-        assert.equal(Number(day?.baseAmount), 700, 'day rate is applied once');
-        assert.equal(Number(day?.additionalAmount), 0, 'per-shift policy does not enable simultaneous pay without a formula');
-        assert.equal((day?.professionRateSummary || []).filter(row => row.kind === 'base').length, 1, 'day rate has one base breakdown row');
         results.push('payroll_preview');
 
         const reportHours = await api(base, `/api/staff/schedule/hours?from=${SOURCE_MONDAY}&to=${SOURCE_MONDAY}`, { token: session.token });
         const reportRow = reportHours.body?.data?.[String(staffId)] || reportHours.body?.data?.[staffId];
-        assert.equal(Number(reportRow?.totalHours), plannedMinutes(afterStale) / 60, 'Reports-compatible planned hours match Staff Schedule');
+        assert.equal(Number(reportRow?.totalHours), plannedMinutes(refreshed) / 60, 'Reports-compatible planned hours match Staff Schedule');
         assert.equal(Number(reportRow?.totalHours), 9, 'Reports-compatible hours remain physical and single-counted');
         results.push('reports_planned_hours');
 

@@ -2,11 +2,11 @@
 
 | Поле | Значення |
 | --- | --- |
-| Статус | Бізнес-контракт Task 1 погоджено; implementation та production activation не авторизовані |
+| Статус | Активна production policy v1; implementation і migration 299 розгорнуті |
 | Версія політики | `simultaneous-profession-pay-v1` |
 | Дата фіксації проєкту | `2026-07-18` |
 | Production impact | yes |
-| `effectiveFrom` | Не визначено; до окремого погодження політика залишається fail closed |
+| `effectiveFrom` | `2026-07-18` за `record_date` у `Europe/Kyiv` |
 
 ## 1. Мета
 
@@ -19,9 +19,10 @@
 Система не повинна через це подвоювати фізично відпрацьований час, кількість робочих днів,
 attendance KPI, запізнення, ранні виходи або понаднормові години.
 
-Ця політика змінює майбутню бізнес-семантику додаткових ролей. Поточна реалізація залишається джерелом
-правди до окремого впровадження: `additionalProfessionKeys` є інформаційними ролями і не створює
-окремої оплати.
+Ця політика визначає чинну production-семантику додаткових ролей від `2026-07-18`.
+`additionalProfessionKeys` зберігає інформаційну backward-compatible семантику і саме по собі не
+створює окремої оплати. Окреме нарахування виникає лише для explicit `additionalRoles` із
+`compensationMode = paid_hourly`, чинною policy version і валідним attendance snapshot.
 
 ## 2. Канонічні поняття
 
@@ -90,8 +91,9 @@ attendance KPI, запізнення, ранні виходи або понад�
 6. для пари працівник/професія/дата визначена професійна погодинна ставка `> 0`;
 7. attendance підтверджує фактичні хвилини в межах відповідного сегмента.
 
-Значення `effectiveFrom = NULL` означає fail-closed стан: система не має права створювати нові
-автоматичні нарахування за одночасну професію.
+Для майбутніх policy versions значення `effectiveFrom = NULL` означає fail-closed стан: система не
+має права створювати нові автоматичні нарахування за одночасну професію. Активна v1 має
+`effectiveFrom = 2026-07-18`.
 
 `effectiveFrom` зберігається у канонічному versioned payroll-policy store разом із policy version
 та audit metadata. Це не UI-only стан і не неверсійована environment-змінна. Після появи першого
@@ -108,9 +110,8 @@ Schedule single-save, bulk і copy writers fail closed:
 - якщо хоча б один target не проходить перевірку, вся транзакція блокується без мовчазного downgrade
   paid → unpaid.
 
-Task 1 не встановлює дату production activation. Migration 299 з датою `2026-07-18` не можна
-застосовувати до окремого погодження `effectiveFrom`. Майбутня activation має стосуватися тільки
-policy `simultaneous-profession-pay-v1` з multiplier `1.0` і не повинна змінювати legacy
+Migration 299 активувала тільки policy `simultaneous-profession-pay-v1` з
+`effectiveFrom = 2026-07-18` і multiplier `1.0`. Activation не змінювала legacy
 `additionalProfessionKeys`, наявні unpaid-ролі, attendance snapshots, payroll reports або finance
 history. Дата `2026-07-22` залишається лише канонічною датою регресійного сценарію.
 
@@ -422,21 +423,21 @@ Payroll commit повинен блокуватися, якщо:
 - policy/effective date неможливо підтвердити;
 - на один момент призначено більше однієї додаткової paid-ролі.
 
-## 14. Перехід документації
+## 14. Стан документації після релізу
 
-До релізу чинні документи продовжують правильно описувати production-поведінку: simultaneous
-additional roles не мають окремих хвилин або payroll-line.
-
-У релізі функціональності потрібно одночасно оновити:
+Після activation operational documentation і regression tests повинні одночасно описувати чинний
+контракт:
 
 - `docs/HR_SHIFT_SEGMENTS_OPERATIONS.md`;
 - `docs/HR_SHIFT_SEGMENTS_TIME_MODEL_PROPOSAL.md`;
 - attendance/payroll operational docs;
-- focused regression tests, які зараз навмисно перевіряють відсутність додаткової оплати.
+- focused regression tests для `540` physical minutes і `510` additional paid minutes.
 
-Цей документ сам по собі не авторизує schema migration, payroll change або production activation.
+## 15. Pre-activation read-only production audit — історичний snapshot від 2026-07-18
 
-## 15. Read-only production audit від 2026-07-18
+Цей розділ фіксує стан **до** розгортання migrations 297–299 і не описує поточний production.
+Історичні цифри нижче навмисно не редагуються. Актуальний post-activation стан зафіксовано в
+`docs/PAYROLL_POST_ACTIVATION_RECONCILIATION_2026-07-18.md`.
 
 Аудит виконано в PostgreSQL-транзакції `READ ONLY`. ПІБ, ставки, суми та ідентифікатори не
 виводилися; schedule, attendance і payroll не змінювалися.
@@ -453,14 +454,14 @@ additional roles не мають окремих хвилин або payroll-line
 | Нова compensation/profile schema у production | `payroll_profiles`, `staff_payroll_profile_assignments` і `hr_compensation_policies` відсутні |
 | Активна схема 3 пов'язаних працівників | legacy fallback; явної активної `payroll_schemes` немає |
 
-Висновок аудиту: автоматична activation зараз небезпечна. До неї потрібно окремо погодити
-`effectiveFrom`, заповнити професійні погодинні ставки, завершити допуски 7 role rows і перевірити
-майбутній payroll preview. Історичні 4 rows до потенційної дати старту не можна перераховувати
-автоматично.
+Історичний висновок на момент цього pre-activation snapshot: автоматична activation була
+небезпечною без погодженого `effectiveFrom`, професійних погодинних ставок, завершених допусків 7
+role rows і перевіреного payroll preview. Історичні 4 rows до потенційної дати старту не можна
+перераховувати автоматично.
 
 ## 16. Acceptance contract
 
-Після майбутнього впровадження сценарій 11:00–20:00 / 11:30–20:00 без перерви повинен давати:
+Чинна реалізація для сценарію 11:00–20:00 / 11:30–20:00 без перерви повинна давати:
 
 ```text
 physicalMinutes = 540
@@ -480,8 +481,9 @@ Task 1 погоджує цей приклад як `9` фізичних годи
 4. overtime один раз за основною роллю дня;
 5. відсутність автоматичного ретроактивного перерахунку.
 
-Перед schema/payroll implementation та production activation окремо залишаються обов'язковими:
+Після activation залишаються обов'язковими operational rules:
 
-1. заповнення й перевірка професійних погодинних ставок;
-2. точне письмове погодження `effectiveFrom`;
-3. окрема формула/контракт для `per_shift`, `monthly_fixed` і `hybrid`, якщо їх вирішать підтримати.
+1. paid-роль не зберігається без чинної професійної погодинної ставки;
+2. v1 застосовується лише для `record_date >= 2026-07-18`;
+3. `per_shift`, `monthly_fixed` і `hybrid` не отримують додаткове нарахування без окремої
+   погодженої формули.

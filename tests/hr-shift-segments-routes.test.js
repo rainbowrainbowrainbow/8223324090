@@ -94,8 +94,9 @@ test('read and copy flows preserve ordered segments and simultaneous roles', () 
     assert.match(hrRoute, /hydrateHrShiftDayPlans\(db, rows\)/);
     assert.match(staffRoute, /attachScheduleDayPlans\(result\.rows\)/);
     assert.match(staffRoute, /additionalProfessionKeys: \[\.\.\.\(segment\.additionalProfessionKeys \|\| \[\]\)\]/);
+    assert.match(staffRoute, /paidAdditionalProfessionKeys: \[\.\.\.\(segment\.paidAdditionalProfessionKeys \|\| \[\]\)\]/);
     assert.match(staffRoute, /additionalRoles: \(segment\.additionalRoles \|\| \[\]\)\.map/);
-    assert.match(hrRoute, /function publicHrShiftSegment[^]*?additionalRoles/);
+    assert.match(hrRoute, /function publicHrShiftSegment[^]*?paidAdditionalProfessionKeys/);
     assert.match(hrRoute, /payload: dayPlanPayload\(loaded\.plan/);
     assert.match(staffRoute, /const sourcePlanPayload = copyableDayPlanPayload\(loadedSourcePlan\)/);
     assert.match(service, /to_jsonb\(hs\) AS shift_row/);
@@ -131,6 +132,41 @@ test('segment API consumers preserve explicit compensation metadata and compatib
     assert.match(staffPage, /data-pay-multiplier=/);
     assert.match(staffPage, /data-policy-version=/);
     assert.match(staffPage, /additionalRoles: checkedRoles\.map/);
+});
+
+test('single save, reload, bulk and copy-week share the paid-role compatibility contract', () => {
+    const singleSave = sourceSlice(
+        staffRoute,
+        "router.put('/schedule'",
+        '// GET /api/staff/schedule/history/:staffId/:date'
+    );
+    const reload = sourceSlice(
+        staffRoute,
+        "router.get('/schedule'",
+        '// POST /api/staff/schedule/export-xlsx'
+    );
+    const bulk = sourceSlice(
+        staffRoute,
+        "router.post('/schedule/bulk'",
+        "router.post('/schedule/copy-week'"
+    );
+    const copyWeek = sourceSlice(
+        staffRoute,
+        "router.post('/schedule/copy-week'",
+        "router.get('/schedule/hours'"
+    );
+
+    assert.match(singleSave, /mutateStaffScheduleEntry\(client, \{[^]*?\.\.\.req\.body/);
+    assert.match(singleSave, /scheduleEntryWithDayPlan\(/);
+    assert.match(reload, /attachScheduleDayPlans\(result\.rows\)/);
+    assert.match(bulk, /mutateStaffScheduleEntry\(client, \{[^]*?\.\.\.e/);
+    assert.match(copyWeek, /copyableDayPlanPayload\(loadedSourcePlan\)/);
+    assert.match(bulk, /dayPlanHasPaidAdditionalRoles/);
+    assert.match(staffRoute, /segment\.paidAdditionalProfessionKeys \|\| segment\.paid_additional_profession_keys/);
+    assert.match(staffScheduleMutations, /segment\.paidAdditionalProfessionKeys \|\| segment\.paid_additional_profession_keys/);
+    assert.match(service, /paidAdditionalProfessionKeys/);
+    assert.match(service, /HR_SHIFT_PAID_ROLE_COMPATIBILITY_SUBSET_INVALID/);
+    assert.match(service, /HR_SHIFT_ADDITIONAL_ROLE_COMPATIBILITY_CONFLICT/);
 });
 
 test('downstream schedule consumers distinguish physical segments from simultaneous role time', () => {

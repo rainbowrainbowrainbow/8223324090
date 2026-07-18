@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.74 - Payroll Profiles
+
+### HR / Зарплата / Профілі / (18.07.2026) [codex]
+- **Додано зарплатні профілі як нове джерело базових умов** — базовий профіль професії, персональний snapshot-клон і тимчасове призначення працюють через versioned records із датами дії.
+- **Розрахунок зарплати читає профіль перед legacy-ставками** — якщо профіль призначено, він стає єдиною базою оплати; якщо профілю немає, старий legacy fallback лишається незмінним.
+- **Ставки можна розкладати по днях тижня** — `hour` і `day` підтримують Пн–Нд overrides, `month` лишається фіксом за payroll-період без денних правил.
+- **HR отримав керування й діагностику** — каталог профілів, картка персоналу, clone/sync/history, simulator, impact preview, diagnostics, bulk preview і forecast використовують один payroll resolver.
+- **Regression coverage закрито** — migration/API/UI/browser checks покривають shared default, personal clone, manual sync, temporary assignment, preview=commit, snapshot immutability, legacy fallback і query budget.
+
+---
+
 ## v0.79.73 - Attendance Snapshot and Additional Pay Reliability
 
 ### HR / Attendance / Payroll / (18.07.2026) [codex]

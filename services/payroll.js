@@ -421,7 +421,6 @@ async function fetchStaffList(month) {
                       FROM hr_shifts hs
                       WHERE hs.staff_id = s.id
                         AND hs.shift_date >= $2 AND hs.shift_date <= $3
-                        AND hs.status IN ('working', 'remote')
                   )
                   OR EXISTS (
                       SELECT 1

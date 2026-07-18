@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.81",
+  "version": "0.79.82",
   "eventGenix": {
-    "releaseLabel": "Payroll Scheme Matrix QA"
+    "releaseLabel": "Admission Tickets Release Gate"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -112,6 +112,7 @@
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
     "smoke:staff-schedule:write": "npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js",
     "qa:live:multi-segment": "node scripts/live-multi-segment-qa.js",
+    "qa:live:tickets": "npx --yes --package playwright node scripts/live-ticket-release-gate.js",
     "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",

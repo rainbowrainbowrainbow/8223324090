@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.82 - Admission Tickets Release Gate
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Live-QA квитків став повторюваним release gate** — runner перенесено з ignored `output/` у `scripts/live-ticket-release-gate.js` і підключено як `npm run qa:live:tickets`.
+- **Версія більше не захардкожена** — production перевіряється проти поточного `package.json` або явного `LIVE_TICKET_QA_EXPECTED_VERSION`.
+- **Покрито матрицю тарифів** — gate перевіряє всі типи квитків, weekday/weekend, standard/reserved context, weekend blocker для дітей до 3 років, summary/detail/PDF і фінансовий total.
+- **QA стало безпечнішим для production** — runner шукає вільний майбутній тестовий слот, збирає browser console/page/auth errors і гарантовано soft-delete-ить disposable booking у `finally`.
+- **P1 regression coverage підтверджено локально** — ticket contract, booking package contract і повний `npm test` проходять перед release bump.
+
+---
+
 ## v0.79.81 - Payroll Scheme Matrix QA
 
 ### HR / Зарплата / Одночасні ролі / (18.07.2026) [codex]

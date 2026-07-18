@@ -182,14 +182,14 @@ payroll запис має отримати blocking reconciliation error.
 | Основна схема | Основна оплата | Додаткова професія |
 | --- | --- | --- |
 | `hourly` | Чинний base payroll result не змінюється | Окрема погодинна line за фактичні `additionalRoleMinutes` |
-| `per_shift` | Чинний base payroll result не змінюється | Автоматична подвійна оплата заблокована до окремої формули |
-| `monthly_fixed` | Чинний base payroll result не змінюється | Автоматична подвійна оплата заблокована до окремої формули |
+| `per_shift` | Чинний base payroll result не змінюється | Окрема snapshot hourly top-up line за фактичні `additionalRoleMinutes` |
+| `monthly_fixed` | Чинний base payroll result не змінюється | Окрема snapshot hourly top-up line за фактичні `additionalRoleMinutes` |
 | `hybrid` | Чинний base payroll result не змінюється | Автоматична подвійна оплата заблокована до окремої формули |
 
-Автоматична одночасна доплата для всіх схем, крім `hourly`, не входить у MVP. Для `per_shift`,
-`monthly_fixed`, `hybrid`, `percent` і `manual` система повинна заблокувати автоматичне призначення
-`paid_hourly` або вимагати окреме аудоване ручне коригування. Вона не повинна самостійно вигадувати
-формулу чи конвертувати денну/місячну ставку в погодинну.
+Автоматична одночасна доплата v1 підтримується для `hourly`, `per_shift` і `monthly_fixed` лише як
+окрема погодинна top-up line з immutable snapshot ставки додаткової професії. Вона не конвертує
+денну або місячну базову ставку в погодинну. Для `hybrid`, `percent` і `manual` система повинна
+блокувати автоматичне призначення `paid_hourly` або вимагати окреме аудоване ручне коригування.
 
 Режим attendance settlement `scheduled_shift` може зберігати чинну базову денну або місячну
 виплату, але не має права створювати планові додаткові хвилини. `additionalRoleMinutes` завжди
@@ -459,6 +459,59 @@ Payroll commit повинен блокуватися, якщо:
 role rows і перевіреного payroll preview. Історичні 4 rows до потенційної дати старту не можна
 перераховувати автоматично.
 
+## 15.1 Non-hourly simultaneous pay decision
+
+Production impact: yes.
+
+Рішення станом на `2026-07-18`: `per_shift` і `monthly_fixed` підтримують simultaneous additional
+pay тільки як окрему snapshot hourly top-up line з formula version
+`simultaneous-profession-pay-v1`. `hybrid` залишається fail-closed і повинен створювати
+reconciliation blocker `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`, а не суму `0` і не
+вигаданий fallback.
+
+| Payroll scheme | Погоджене рішення v1 | Що явно не робимо | effectiveFrom |
+| --- | --- | --- | --- |
+| `per_shift` | Додаткова роль оплачується пропорційно хвилинам за immutable hourly snapshot ставки додаткової професії | Не рахуємо окрему повну зміну, не ділимо base day rate і не створюємо фіксовану доплату | `2026-07-18` |
+| `monthly_fixed` | Додаткова роль створює окрему погодинну top-up line за immutable hourly snapshot ставки додаткової професії | Не включаємо роль у місячну ставку і не створюємо monthly allowance | `2026-07-18` |
+| `hybrid` | Залишити fail-closed для paid additional role | Не дублюємо base-компонент і не обираємо пріоритет між компонентами без окремої формули | Немає; потрібне окреме policy-рішення |
+
+Для всіх non-hourly схем фізичні факти залишаються одинарними:
+
+- `actualMinutes`, `hoursWorked` і `daysWorked` не збільшуються через paid additional role;
+- break, запізнення і ранній вихід зменшують фізичні хвилини інтервалу та відповідні
+  `additionalRoleMinutes`;
+- overtime не дублюється і до окремого рішення лишається один раз на основній ролі дня, без
+  додаткового overtime multiplier для simultaneous line;
+- missing immutable hourly snapshot ставки додаткової професії є blocker-ом, а не ставкою `0`;
+- preview може показати чинний base payroll result, але generation/commit має блокуватися, якщо
+  є unsupported paid additional role.
+
+Acceptance-приклад для `540` physical minutes / `510` additional paid minutes:
+
+```text
+physicalMinutes = 540
+baseRoleMinutes = 540
+additionalRoleMinutes = 510
+additionalHourlyRate = 200
+
+per_shift:
+  baseAmount = 900
+  additionalAmount = 510 / 60 * 200 * 1 = 1700
+  totalAmount = 2600
+
+monthly_fixed:
+  baseAmount = 30000
+  additionalAmount = 510 / 60 * 200 * 1 = 1700
+  totalAmount = 31700
+
+hybrid:
+  additionalAmount = blocked by PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+  payrollGeneration = blocked until a formula version is explicitly approved
+```
+
+Нова non-hourly formula для `hybrid` може з'явитися лише після окремого письмового рішення з
+формулою, числовим прикладом, `effectiveFrom` і правилом retroactivity.
+
 ## 16. Acceptance contract
 
 Чинна реалізація для сценарію 11:00–20:00 / 11:30–20:00 без перерви повинна давати:
@@ -476,7 +529,8 @@ Task 1 погоджує цей приклад як `9` фізичних годи
 Також погоджено:
 
 1. `payMultiplier = 1.0`;
-2. автоматичну подвійну оплату тільки для `hourly`;
+2. автоматичну simultaneous top-up оплату для `hourly`, `per_shift` і `monthly_fixed` через
+   immutable hourly snapshot ставки додаткової професії;
 3. blocker замість ставки `0` або fallback на ставку основної професії;
 4. overtime один раз за основною роллю дня;
 5. відсутність автоматичного ретроактивного перерахунку.
@@ -485,5 +539,5 @@ Task 1 погоджує цей приклад як `9` фізичних годи
 
 1. paid-роль не зберігається без чинної професійної погодинної ставки;
 2. v1 застосовується лише для `record_date >= 2026-07-18`;
-3. `per_shift`, `monthly_fixed` і `hybrid` не отримують додаткове нарахування без окремої
-   погодженої формули.
+3. `hybrid`, `percent` і `manual` не отримують додаткове нарахування без окремої погодженої
+   формули.

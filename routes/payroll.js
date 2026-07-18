@@ -136,6 +136,23 @@ function payrollExportFields(row = {}) {
     };
 }
 
+function offRosterDraftReports(report = {}) {
+    const payload = report.reconciliation?.offRosterDraftReports
+        || report.reconciliation?.off_roster_draft_reports;
+    return Array.isArray(payload?.reports) ? payload.reports : [];
+}
+
+function offRosterStaffStatus(row = {}) {
+    const status = row.staffStatus || row.staff_status || {};
+    return [
+        status.missingHrCard || status.missing_hr_card ? 'missing_hr_card' : '',
+        status.isFreelance || status.is_freelance ? 'freelance' : '',
+        status.isActive === false || status.is_active === false ? 'inactive' : '',
+        status.hasTerminationDate || status.has_termination_date ? 'terminated' : '',
+        status.hrPoolStatus || status.hr_pool_status || ''
+    ].filter(Boolean).join('|');
+}
+
 router.get('/schemes', async (req, res) => {
     try {
         const month = normalizePayrollMonth(req.query.month);
@@ -200,7 +217,8 @@ router.get('/export', async (req, res) => {
             'physical_hours', 'base_role_hours', 'additional_role_hours',
             'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount',
             'payroll_blocking_codes', 'payroll_blocking_details',
-            'additional_line_status', 'blocker_code', 'blocker_message'
+            'additional_line_status', 'blocker_code', 'blocker_message',
+            'reconciliation_scope', 'payroll_report_id', 'report_status', 'off_roster_reason', 'staff_status'
         ];
         const rows = report.staff.map(row => {
             const exportFields = payrollExportFields(row);
@@ -249,9 +267,31 @@ router.get('/export', async (req, res) => {
                 exportFields.payroll_blocking_details,
                 exportFields.additional_line_status,
                 exportFields.blocker_code,
-                exportFields.blocker_message
+                exportFields.blocker_message,
+                'active_roster',
+                row.reportId || row.report_id || '',
+                row.status || '',
+                '',
+                ''
             ].map(csvCell).join(';');
         });
+        for (const row of offRosterDraftReports(report)) {
+            rows.push([
+                row.staffId ?? row.staff_id ?? '',
+                '',
+                '', '', '', '', '', '', '', '',
+                '', '',
+                '', '', '',
+                '', '', '', '',
+                '', '',
+                '', '', '',
+                'off_active_roster',
+                row.reportId ?? row.report_id ?? '',
+                row.reportStatus || row.report_status || 'draft',
+                row.reason || '',
+                offRosterStaffStatus(row)
+            ].map(csvCell).join(';'));
+        }
         const csv = '\uFEFF' + [header.map(csvCell).join(';'), ...rows].join('\r\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="payroll_${month}.csv"`);
@@ -294,7 +334,12 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'payroll_blocking_details', key: 'payroll_blocking_details', width: 64 },
             { header: 'additional_line_status', key: 'additional_line_status', width: 24 },
             { header: 'blocker_code', key: 'blocker_code', width: 48 },
-            { header: 'blocker_message', key: 'blocker_message', width: 64 }
+            { header: 'blocker_message', key: 'blocker_message', width: 64 },
+            { header: 'reconciliation_scope', key: 'reconciliation_scope', width: 24 },
+            { header: 'payroll_report_id', key: 'payroll_report_id', width: 18 },
+            { header: 'report_status', key: 'report_status', width: 18 },
+            { header: 'off_roster_reason', key: 'off_roster_reason', width: 24 },
+            { header: 'staff_status', key: 'staff_status', width: 36 }
         ];
         for (const row of report.staff) {
             const exportFields = payrollExportFields(row);
@@ -309,11 +354,16 @@ router.get('/export-xlsx', async (req, res) => {
                 deductions_amount: row.deductionsAmount,
                 advances_amount: row.advancesAmount,
                 net_amount: row.netAmount,
-                ...exportFields
+                ...exportFields,
+                reconciliation_scope: 'active_roster',
+                payroll_report_id: row.reportId || null,
+                report_status: row.status || null,
+                off_roster_reason: null,
+                staff_status: null
             });
         }
         summary.views = [{ state: 'frozen', ySplit: 1 }];
-        summary.autoFilter = { from: 'A1', to: 'V1' };
+        summary.autoFilter = { from: 'A1', to: 'AA1' };
         summary.getRow(1).font = { bold: true };
 
         const additionalLines = workbook.addWorksheet('Additional lines');
@@ -364,6 +414,35 @@ router.get('/export-xlsx', async (req, res) => {
         additionalLines.views = [{ state: 'frozen', ySplit: 1 }];
         additionalLines.autoFilter = { from: 'A1', to: 'R1' };
         additionalLines.getRow(1).font = { bold: true };
+
+        const reconciliationSheet = workbook.addWorksheet('Reconciliation');
+        reconciliationSheet.columns = [
+            { header: 'reconciliation_scope', key: 'reconciliation_scope', width: 24 },
+            { header: 'payroll_report_id', key: 'payroll_report_id', width: 18 },
+            { header: 'staff_id', key: 'staff_id', width: 12 },
+            { header: 'period_month', key: 'period_month', width: 14 },
+            { header: 'report_status', key: 'report_status', width: 18 },
+            { header: 'off_roster_reason', key: 'off_roster_reason', width: 24 },
+            { header: 'staff_status', key: 'staff_status', width: 36 },
+            { header: 'generated_at', key: 'generated_at', width: 28 },
+            { header: 'updated_at', key: 'updated_at', width: 28 }
+        ];
+        for (const row of offRosterDraftReports(report)) {
+            reconciliationSheet.addRow({
+                reconciliation_scope: 'off_active_roster',
+                payroll_report_id: row.reportId ?? row.report_id ?? null,
+                staff_id: row.staffId ?? row.staff_id ?? null,
+                period_month: row.periodMonth || row.period_month || null,
+                report_status: row.reportStatus || row.report_status || 'draft',
+                off_roster_reason: row.reason || null,
+                staff_status: offRosterStaffStatus(row),
+                generated_at: row.generatedAt || row.generated_at || null,
+                updated_at: row.updatedAt || row.updated_at || null
+            });
+        }
+        reconciliationSheet.views = [{ state: 'frozen', ySplit: 1 }];
+        reconciliationSheet.autoFilter = { from: 'A1', to: 'I1' };
+        reconciliationSheet.getRow(1).font = { bold: true };
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

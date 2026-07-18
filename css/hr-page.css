@@ -1437,6 +1437,43 @@ body.dark-mode .hr-org-detail {
 .hr-salary-status { color: var(--gray-500); font-weight: 800; margin-bottom: 12px; }
 .hr-salary-status.is-locked { color: #F59E0B; }
 .hr-salary-reconciliation { margin-bottom: 16px; }
+.hr-salary-off-roster {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid rgba(245,158,11,.34);
+    border-radius: 16px;
+    background: rgba(245,158,11,.08);
+}
+.hr-salary-off-roster-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+.hr-salary-off-roster-head strong { display: block; color: var(--gray-900); }
+.hr-salary-off-roster-head span,
+.hr-salary-reconciliation-note { color: var(--gray-600); font-size: 13px; font-weight: 700; }
+.hr-salary-off-roster-head b { font-size: 24px; color: #B45309; }
+.hr-salary-reconciliation-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.hr-salary-reconciliation-chip {
+    display: inline-flex;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(15,23,42,.08);
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 800;
+}
+.hr-salary-reconciliation-table-wrap { overflow-x: auto; margin-top: 10px; }
+.hr-salary-reconciliation-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hr-salary-reconciliation-table th,
+.hr-salary-reconciliation-table td {
+    padding: 7px 8px;
+    border-top: 1px solid rgba(148,163,184,.22);
+    text-align: left;
+    white-space: nowrap;
+}
+.hr-salary-reconciliation-table th { color: var(--gray-500); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .hr-salary-events { margin: 0 0 16px; }
 .hr-salary-event { padding: 8px 0; border-top: 1px solid rgba(148,163,184,.18); font-size: 13px; }
 .hr-salary-event small, .hr-salary-event .meta { color: var(--gray-500); font-weight: 700; }

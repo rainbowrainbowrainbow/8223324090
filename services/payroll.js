@@ -9,6 +9,7 @@ const OVERTIME_MULTIPLIER = 1.5;
 const WORKED_ATTENDANCE_STATUSES = new Set(['present', 'late', 'early_leave', 'auto_closed', 'unscheduled', 'clocked_in']);
 const SIMULTANEOUS_ADDITIONAL_LINE_TYPE = 'simultaneous_additional';
 const EXPLICIT_ADDITIONAL_RATE_SOURCES = new Set(['staff_profession_rates.hourly_rate']);
+const SIMULTANEOUS_PROFESSION_PAY_EFFECTIVE_FROM = '2026-07-18';
 const PAYROLL_ROLE_HOURS_EXPLANATION = 'Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE = 'Формула подвійної оплати для цієї схеми не налаштована';
@@ -95,6 +96,20 @@ function normalizeDateValue(value) {
     if (!value) return null;
     if (value instanceof Date) return value.toISOString().slice(0, 10);
     return String(value).slice(0, 10);
+}
+
+function isPostSimultaneousPayActivationDate(value) {
+    const date = normalizeDateValue(value);
+    return Boolean(date && date >= SIMULTANEOUS_PROFESSION_PAY_EFFECTIVE_FROM);
+}
+
+function segmentHasPaidHourlyAdditionalRole(segment = {}) {
+    const roles = Array.isArray(segment.additionalRoles)
+        ? segment.additionalRoles
+        : (Array.isArray(segment.additional_roles) ? segment.additional_roles : []);
+    return roles.some(role => (
+        role?.compensationMode || role?.compensation_mode
+    ) === 'paid_hourly');
 }
 
 function mapScheme(row) {
@@ -439,6 +454,7 @@ async function fetchStaffList(month) {
                       WHERE pr.staff_id = s.id
                         AND pr.period_month = $1
                         AND pr.voided_at IS NULL
+                        AND pr.status <> 'draft'
                   )
               )
             ORDER BY s.name
@@ -609,6 +625,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
         const rawCompensationSnapshot = row.compensation_snapshot || row.compensationSnapshot || null;
         const compensationSnapshot = rawCompensationSnapshot ? parseConfig(rawCompensationSnapshot) : null;
+        const hasPaidHourlyAdditionalRole = segmentAllocations.some(segmentHasPaidHourlyAdditionalRole);
         const compensationAllocations = Array.isArray(compensationSnapshot?.compensationAllocations)
             ? compensationSnapshot.compensationAllocations
             : (Array.isArray(compensationSnapshot?.compensation_allocations)
@@ -662,6 +679,14 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
                 'PAYROLL_SIMULTANEOUS_ADDITIONAL_ALLOCATIONS_MISSING',
                 'Compensation snapshot totals contain additional minutes without allocation details',
                 { date, attendanceRef, snapshotAdditionalMinutes },
+                'error'
+            ));
+        }
+        if (!compensationSnapshot && isPostSimultaneousPayActivationDate(date) && (row.clock_out || hasPaidHourlyAdditionalRole)) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_COMPENSATION_SNAPSHOT_MISSING',
+                'Attendance after simultaneous profession pay activation requires an immutable compensation snapshot',
+                { date, attendanceRef, hasPaidHourlyAdditionalRole },
                 'error'
             ));
         }
@@ -2492,6 +2517,113 @@ async function fetchReportsByMonth(month) {
     }
 }
 
+const OFF_ROSTER_DRAFT_CATEGORIES = Object.freeze([
+    'freelance',
+    'inactive',
+    'archived',
+    'terminated',
+    'missing_hr_card',
+    'outside_active_roster'
+]);
+
+function classifyOffRosterDraftReport(row = {}) {
+    if (row.missing_hr_card === true || !row.staff_id) return 'missing_hr_card';
+    if (row.is_freelance === true) return 'freelance';
+    if (row.termination_date) return 'terminated';
+    const poolStatus = String(row.hr_pool_status || '').trim().toLowerCase();
+    if (['archived', 'blacklisted', 'dismissed'].includes(poolStatus)) return 'archived';
+    if (row.is_active === false) return 'inactive';
+    return 'outside_active_roster';
+}
+
+function summarizeOffRosterDraftReports(rows = []) {
+    const categoryCounts = Object.fromEntries(OFF_ROSTER_DRAFT_CATEGORIES.map(category => [category, 0]));
+    const reports = rows.map(row => {
+        const reason = classifyOffRosterDraftReport(row);
+        categoryCounts[reason] = (categoryCounts[reason] || 0) + 1;
+        return {
+            reportId: Number(row.report_id || row.id),
+            staffId: row.staff_id === null || row.staff_id === undefined ? null : Number(row.staff_id),
+            periodMonth: row.period_month || null,
+            reportStatus: row.report_status || row.status || null,
+            staffStatus: {
+                isActive: row.is_active === null || row.is_active === undefined ? null : row.is_active === true,
+                isFreelance: row.is_freelance === null || row.is_freelance === undefined ? null : row.is_freelance === true,
+                hrPoolStatus: row.hr_pool_status || null,
+                hasTerminationDate: Boolean(row.termination_date),
+                missingHrCard: row.missing_hr_card === true
+            },
+            reason,
+            generatedAt: row.generated_at || null,
+            updatedAt: row.updated_at || null
+        };
+    });
+    return {
+        title: 'Draft reports поза активним HR roster',
+        count: reports.length,
+        categoryCounts,
+        reports
+    };
+}
+
+async function loadOffRosterDraftReportReconciliation(month, activeStaffIds = [], db = pool) {
+    const normalizedIds = [...new Set((activeStaffIds || [])
+        .map(id => Number(id))
+        .filter(Number.isInteger))];
+    const params = [month, normalizedIds];
+    const queryWithLifecycle = `
+        SELECT pr.id AS report_id,
+               pr.staff_id,
+               pr.period_month,
+               pr.status AS report_status,
+               pr.generated_at,
+               pr.updated_at,
+               s.id IS NULL AS missing_hr_card,
+               s.is_active,
+               s.is_freelance,
+               s.hr_pool_status,
+               s.termination_date
+        FROM payroll_reports pr
+        LEFT JOIN staff s ON s.id = pr.staff_id
+        WHERE pr.period_month = $1
+          AND pr.status = 'draft'
+          AND pr.voided_at IS NULL
+          AND NOT (pr.staff_id = ANY($2::int[]))
+        ORDER BY pr.id
+    `;
+    const fallbackQuery = `
+        SELECT pr.id AS report_id,
+               pr.staff_id,
+               pr.period_month,
+               pr.status AS report_status,
+               pr.generated_at,
+               pr.updated_at,
+               s.id IS NULL AS missing_hr_card,
+               s.is_active,
+               s.is_freelance,
+               NULL::text AS hr_pool_status,
+               NULL::date AS termination_date
+        FROM payroll_reports pr
+        LEFT JOIN staff s ON s.id = pr.staff_id
+        WHERE pr.period_month = $1
+          AND pr.status = 'draft'
+          AND pr.voided_at IS NULL
+          AND NOT (pr.staff_id = ANY($2::int[]))
+        ORDER BY pr.id
+    `;
+    try {
+        const result = await db.query(queryWithLifecycle, params);
+        return summarizeOffRosterDraftReports(result.rows);
+    } catch (err) {
+        if (err.code === '42703') {
+            const result = await db.query(fallbackQuery, params);
+            return summarizeOffRosterDraftReports(result.rows);
+        }
+        if (!isMissingTableError(err)) log.warn('off-roster payroll draft reconciliation query failed:', err.message);
+        return summarizeOffRosterDraftReports([]);
+    }
+}
+
 function applyReportSnapshot(row, report) {
     if (!report || !['reviewed', 'approved', 'paid'].includes(report.status)) return row;
     const breakdown = parseConfig(report.breakdown_json);
@@ -2684,6 +2816,10 @@ async function getSalaryReport(month) {
         gross: acc.gross + row.grossAmount,
         net: acc.net + row.netAmount
     }), { base: 0, additional: 0, bonuses: 0, deductions: 0, advances: 0, gross: 0, net: 0 });
+    const offRosterDraftReports = await loadOffRosterDraftReportReconciliation(
+        context.month,
+        staffRows.map(row => row.staffId)
+    );
 
     return {
         month: context.month,
@@ -2698,7 +2834,10 @@ async function getSalaryReport(month) {
             gross: roundMoney(totals.gross),
             net: roundMoney(totals.net)
         },
-        schemeTypes: SCHEME_TYPES
+        schemeTypes: SCHEME_TYPES,
+        reconciliation: {
+            offRosterDraftReports
+        }
     };
 }
 
@@ -3136,6 +3275,7 @@ module.exports = {
     calculateProfessionPay,
     calculatePayroll,
     loadActivePayrollSchemeMap,
+    loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
     loadPayrollProfileContext,
     loadProfessionRateMap,

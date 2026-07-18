@@ -127,6 +127,7 @@ const {
     buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     loadActivePayrollSchemeMap,
+    loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
     loadPayrollProfileContext,
     loadProfessionRateMap
@@ -2135,6 +2136,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                       WHERE pr.staff_id = s.id
                         AND pr.period_month >= p.month_from AND pr.period_month <= p.month_to
                         AND pr.voided_at IS NULL
+                        AND pr.status <> 'draft'
                   )
               )
         ),
@@ -2344,7 +2346,20 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         };
         return applyHrPayrollSnapshot(calculatedRow, row);
     });
-    return { month, period, data, totals: payrollTotals(data) };
+    const offRosterDraftReports = await loadOffRosterDraftReportReconciliation(
+        month,
+        data.map(row => row.staff_id),
+        db
+    );
+    return {
+        month,
+        period,
+        data,
+        totals: payrollTotals(data),
+        reconciliation: {
+            offRosterDraftReports
+        }
+    };
 }
 
 async function loadKpiSnapshot(monthValue, db = pool) {
@@ -6996,7 +7011,16 @@ router.get('/salary', requirePayrollControl, async (req, res) => {
             loadPayrollReconciliation(calculation.month),
             loadPayrollPeriodEvents(calculation.month)
         ]);
-        res.json({ success: true, ...calculation, period_lock: periodLock, reconciliation, events });
+        res.json({
+            success: true,
+            ...calculation,
+            period_lock: periodLock,
+            reconciliation: {
+                ...reconciliation,
+                ...(calculation.reconciliation || {})
+            },
+            events
+        });
     } catch (err) {
         log.error('GET /hr/salary error', err);
         if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
@@ -7408,12 +7432,22 @@ router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => 
     try {
         const month = requirePayrollMonth(req.query.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
-        const [periodLock, reconciliation, events] = await Promise.all([
+        const [periodLock, reconciliation, events, calculation] = await Promise.all([
             loadPayrollPeriodLock(month),
             loadPayrollReconciliation(month),
-            loadPayrollPeriodEvents(month)
+            loadPayrollPeriodEvents(month),
+            loadPayrollCalculation(month, pool)
         ]);
-        res.json({ success: true, month, period_lock: periodLock, reconciliation, events });
+        res.json({
+            success: true,
+            month,
+            period_lock: periodLock,
+            reconciliation: {
+                ...reconciliation,
+                ...(calculation.reconciliation || {})
+            },
+            events
+        });
     } catch (err) {
         log.error('GET /hr/salary/reconciliation error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

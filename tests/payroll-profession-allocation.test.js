@@ -19,6 +19,7 @@ const {
     calculateProfessionPay,
     calculatePayroll,
     loadActivePayrollSchemeMap,
+    loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
     loadPayrollProfileContext,
     resolveEffectivePayrollProfile,
@@ -1432,6 +1433,128 @@ test('attendance metrics separate physical, base, and simultaneous additional al
     assert.deepEqual(row.payrollBlockingIssues, []);
 });
 
+test('payroll blocks post-activation attendance without immutable compensation snapshot', async () => {
+    const shift = {
+        id: 91,
+        staff_id: 7,
+        shift_date: '2026-07-22',
+        profession_key: 'wardrobe',
+        planned_start: '11:00',
+        planned_end: '20:00',
+        break_minutes: 0,
+        shift_type: 'regular'
+    };
+    const db = {
+        async query(sql) {
+            if (sql.includes('FROM hr_time_records tr')) {
+                return { rows: [{
+                    id: 44,
+                    attendance_ref: 44,
+                    planned_shift_ref: 91,
+                    staff_id: 7,
+                    record_date: '2026-07-22',
+                    date: '2026-07-22',
+                    clock_in: '2026-07-22T08:00:00.000Z',
+                    clock_out: '2026-07-22T17:00:00.000Z',
+                    status: 'present',
+                    total_worked_minutes: 540,
+                    primary_profession_key: 'wardrobe',
+                    compensation_snapshot: null
+                }] };
+            }
+            if (sql.startsWith('SELECT * FROM hr_shifts')) return { rows: [shift] };
+            if (sql.includes('SELECT to_jsonb(hs) AS shift_row')) {
+                return { rows: [{
+                    shift_row: shift,
+                    segment_id: 501,
+                    profession_key: 'wardrobe',
+                    planned_start: '11:00',
+                    planned_end: '20:00',
+                    break_minutes: 0,
+                    sort_order: 0,
+                    additional_profession_keys: [],
+                    additional_roles: []
+                }] };
+            }
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+
+    const result = await loadPayrollAttendanceMetrics({
+        from: '2026-07-22',
+        to: '2026-07-22',
+        staffIds: [7]
+    }, db);
+    const row = result.get(7);
+
+    assert.equal(row.payrollBlockingIssues[0].code, 'PAYROLL_COMPENSATION_SNAPSHOT_MISSING');
+    assert.equal(row.payrollBlockingIssues[0].attendanceRef, 44);
+});
+
+test('payroll blocks paid simultaneous role without snapshot before it can settle as zero pay', async () => {
+    const shift = {
+        id: 91,
+        staff_id: 7,
+        shift_date: '2026-07-22',
+        profession_key: 'wardrobe',
+        planned_start: '11:00',
+        planned_end: '20:00',
+        break_minutes: 0,
+        shift_type: 'regular'
+    };
+    const db = {
+        async query(sql) {
+            if (sql.includes('FROM hr_time_records tr')) {
+                return { rows: [{
+                    id: 45,
+                    attendance_ref: 45,
+                    planned_shift_ref: 91,
+                    staff_id: 7,
+                    record_date: '2026-07-22',
+                    date: '2026-07-22',
+                    clock_in: '2026-07-22T08:00:00.000Z',
+                    clock_out: null,
+                    status: 'present',
+                    total_worked_minutes: 0,
+                    primary_profession_key: 'wardrobe',
+                    compensation_snapshot: null
+                }] };
+            }
+            if (sql.startsWith('SELECT * FROM hr_shifts')) return { rows: [shift] };
+            if (sql.includes('SELECT to_jsonb(hs) AS shift_row')) {
+                return { rows: [{
+                    shift_row: shift,
+                    segment_id: 502,
+                    profession_key: 'wardrobe',
+                    planned_start: '11:30',
+                    planned_end: '20:00',
+                    break_minutes: 0,
+                    sort_order: 0,
+                    additional_profession_keys: ['hallkeeper'],
+                    additional_roles: [{
+                        professionKey: 'hallkeeper',
+                        compensationMode: 'paid_hourly',
+                        payMultiplier: 1,
+                        policyVersion: 'simultaneous-profession-pay-v1'
+                    }]
+                }] };
+            }
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+
+    const result = await loadPayrollAttendanceMetrics({
+        from: '2026-07-22',
+        to: '2026-07-22',
+        staffIds: [7]
+    }, db);
+    const row = result.get(7);
+
+    assert.equal(row.payrollBlockingIssues[0].code, 'PAYROLL_COMPENSATION_SNAPSHOT_MISSING');
+    assert.equal(row.payrollBlockingIssues[0].attendanceRef, 45);
+    assert.equal(row.payrollBlockingIssues[0].hasPaidHourlyAdditionalRole, true);
+});
+
 test('payroll reconciliation remains in attention while allocation warnings exist', async () => {
     const result = await loadPayrollReconciliation('2026-07', {
         async query(sql) {
@@ -1495,6 +1618,100 @@ test('payroll reconciliation accounts for stored freelance drafts without mixing
     }]);
 });
 
+test('off-roster payroll draft reconciliation exposes safe categories without PII or amounts', async () => {
+    const queries = [];
+    const result = await loadOffRosterDraftReportReconciliation('2026-05', [1, 2], {
+        async query(text, params) {
+            queries.push({ text, params });
+            return { rows: [
+                {
+                    report_id: 101,
+                    staff_id: 7,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    generated_at: '2026-05-31T10:00:00Z',
+                    updated_at: '2026-05-31T11:00:00Z',
+                    missing_hr_card: false,
+                    is_active: true,
+                    is_freelance: true,
+                    hr_pool_status: 'core',
+                    termination_date: null,
+                    name: 'Must Not Leak',
+                    net_amount: 9999
+                },
+                {
+                    report_id: 102,
+                    staff_id: 8,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    missing_hr_card: false,
+                    is_active: false,
+                    is_freelance: false,
+                    hr_pool_status: 'core',
+                    termination_date: null
+                },
+                {
+                    report_id: 103,
+                    staff_id: 9,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    missing_hr_card: false,
+                    is_active: true,
+                    is_freelance: false,
+                    hr_pool_status: 'core',
+                    termination_date: '2026-05-20'
+                },
+                {
+                    report_id: 104,
+                    staff_id: 10,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    missing_hr_card: false,
+                    is_active: true,
+                    is_freelance: false,
+                    hr_pool_status: 'blacklisted',
+                    termination_date: null
+                },
+                {
+                    report_id: 105,
+                    staff_id: 999,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    missing_hr_card: true,
+                    is_active: null,
+                    is_freelance: null,
+                    hr_pool_status: null,
+                    termination_date: null
+                }
+            ] };
+        }
+    });
+
+    assert.equal(queries[0].params[0], '2026-05');
+    assert.deepEqual(queries[0].params[1], [1, 2]);
+    assert.equal(result.title, 'Draft reports поза активним HR roster');
+    assert.equal(result.count, 5);
+    assert.deepEqual(result.categoryCounts, {
+        freelance: 1,
+        inactive: 1,
+        archived: 1,
+        terminated: 1,
+        missing_hr_card: 1,
+        outside_active_roster: 0
+    });
+    assert.deepEqual(result.reports.map(row => row.reason), [
+        'freelance',
+        'inactive',
+        'terminated',
+        'archived',
+        'missing_hr_card'
+    ]);
+    const serialized = JSON.stringify(result);
+    assert.doesNotMatch(serialized, /Must Not Leak|9999|net_amount|hourly_rate|gross_amount/);
+    assert.equal(result.reports[0].reportId, 101);
+    assert.equal(result.reports[0].staffId, 7);
+});
+
 test('payroll routes use the shared allocation service and export one employee row with breakdown', () => {
     const root = path.join(__dirname, '..');
     const hrRoute = fs.readFileSync(path.join(root, 'routes', 'hr.js'), 'utf8');
@@ -1512,6 +1729,8 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(hrRoute, /router\.get\('\/salary\/reconciliation', requirePayrollControl/);
     assert.match(hrRoute, /router\.post\('\/salary\/commit'[\s\S]*const calculation = await loadPayrollCalculation\(month, client\)/);
     assert.match(hrRoute, /assertPayrollRowsCommitReady\(calculation\.data\)/);
+    assert.match(hrRoute, /loadOffRosterDraftReportReconciliation\(\s*month,\s*data\.map\(row => row\.staff_id\),\s*db\s*\)/);
+    assert.match(hrRoute, /offRosterDraftReports/);
     assert.match(hrRoute, /PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED|err\.code \|\| null/);
     assert.match(hrRoute, /breakdown_json[\s\S]*professionRateSummary[\s\S]*row\.profession_rate_summary/);
     assert.match(hrRoute, /loadActivePayrollSchemeMap\(staffIds, month, db\)/);
@@ -1527,6 +1746,10 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(payrollRoute, /'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount'/);
     assert.match(payrollRoute, /'payroll_blocking_codes', 'payroll_blocking_details'/);
     assert.match(payrollRoute, /'additional_line_status', 'blocker_code', 'blocker_message'/);
+    assert.match(payrollRoute, /'reconciliation_scope', 'payroll_report_id', 'report_status', 'off_roster_reason', 'staff_status'/);
+    assert.match(payrollRoute, /offRosterDraftReports\(report\)/);
+    assert.match(payrollRoute, /workbook\.addWorksheet\('Reconciliation'\)/);
+    assert.match(payrollRoute, /router\.use\(requireRole\('creator', 'director', 'accountant'\)\)/);
     assert.match(payrollRoute, /router\.get\('\/export-xlsx'/);
     assert.match(payrollRoute, /workbook\.addWorksheet\('Additional lines'\)/);
     assert.match(payrollRoute, /function payrollAdditionalLineRows/);
@@ -1547,6 +1770,9 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(hrPage, /salaryAdditionalRoleBlocker/);
     assert.match(hrPage, /blocker\.code/);
     assert.match(hrPage, /Оплачувані години професій можуть перевищувати фізичні години/);
+    assert.match(hrPage, /Draft reports поза активним HR roster/);
+    assert.match(hrPage, /salaryOffRosterDraftReports/);
+    assert.match(hrPage, /Drill-down без ПІБ, ставок і сум/);
     assert.match(financePage, /renderPayrollProfessionBreakdown/);
     assert.match(financePage, /\/api\/payroll\/export\?month=/);
     assert.match(financePage, /\/api\/payroll\/export-xlsx\?month=/);

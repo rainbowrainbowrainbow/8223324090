@@ -15630,6 +15630,72 @@ function renderSalaryPeriodEvents(events = []) {
     }).join('');
 }
 
+function salaryOffRosterDraftReports(reconciliation = {}) {
+    const payload = reconciliation.offRosterDraftReports || reconciliation.off_roster_draft_reports || {};
+    return {
+        count: Number(payload.count || 0),
+        categoryCounts: payload.categoryCounts || payload.category_counts || {},
+        reports: Array.isArray(payload.reports) ? payload.reports : []
+    };
+}
+
+function renderSalaryOffRosterDraftReports(reconciliation = {}) {
+    const payload = salaryOffRosterDraftReports(reconciliation);
+    if (!payload.count) return '';
+    const labels = {
+        freelance: 'freelance',
+        inactive: 'inactive',
+        archived: 'archived',
+        terminated: 'terminated',
+        missing_hr_card: 'missing HR card',
+        outside_active_roster: 'outside active roster'
+    };
+    const chips = Object.entries(labels)
+        .map(([key, label]) => {
+            const count = Number(payload.categoryCounts[key] || 0);
+            return count ? `<span class="hr-salary-reconciliation-chip">${escapeHtml(label)}: ${count}</span>` : '';
+        })
+        .filter(Boolean)
+        .join('');
+    const rows = payload.reports.slice(0, 24).map(row => {
+        const status = row.staffStatus || row.staff_status || {};
+        const staffStatus = [
+            status.missingHrCard || status.missing_hr_card ? 'missing_hr_card' : '',
+            status.isFreelance || status.is_freelance ? 'freelance' : '',
+            status.isActive === false || status.is_active === false ? 'inactive' : '',
+            status.hasTerminationDate || status.has_termination_date ? 'terminated' : '',
+            status.hrPoolStatus || status.hr_pool_status || ''
+        ].filter(Boolean).join(' · ') || '—';
+        return `<tr>
+            <td>#${escapeHtml(row.reportId ?? row.report_id ?? '—')}</td>
+            <td>${escapeHtml(row.staffId ?? row.staff_id ?? '—')}</td>
+            <td>${escapeHtml(row.reportStatus || row.report_status || 'draft')}</td>
+            <td>${escapeHtml(row.reason || 'outside_active_roster')}</td>
+            <td>${escapeHtml(staffStatus)}</td>
+        </tr>`;
+    }).join('');
+    const overflow = payload.reports.length > 24
+        ? `<p class="hr-salary-reconciliation-note">Показано 24 з ${payload.reports.length}; повний список доступний в export reconciliation fields.</p>`
+        : '';
+    return `<section class="hr-salary-off-roster" aria-label="Draft reports поза активним HR roster">
+        <div class="hr-salary-off-roster-head">
+            <div>
+                <strong>Draft reports поза активним HR roster</strong>
+                <span>Не змішуються з активною зарплатною відомістю. Drill-down без ПІБ, ставок і сум.</span>
+            </div>
+            <b>${payload.count}</b>
+        </div>
+        <div class="hr-salary-reconciliation-chips">${chips || '<span class="hr-salary-reconciliation-chip">uncategorized: 0</span>'}</div>
+        <div class="hr-salary-reconciliation-table-wrap">
+            <table class="hr-salary-reconciliation-table">
+                <thead><tr><th>Report ID</th><th>Staff ID</th><th>Status</th><th>Reason</th><th>Staff status</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+        ${overflow}
+    </section>`;
+}
+
 function renderSalaryPeriodControls(data = {}) {
     const lock = data.period_lock || { is_locked: false };
     const reconciliation = data.reconciliation || {};
@@ -15689,6 +15755,7 @@ function renderSalaryPeriodControls(data = {}) {
             ${reconciliationWarnings.length ? `<div class="hr-payroll-additional-warning" role="alert">
                 ${reconciliationWarnings.map(warning => `<div><code>${escapeHtml(warning.code || 'PAYROLL_RECONCILIATION_WARNING')}</code> — ${escapeHtml(warning.message || '')}</div>`).join('')}
             </div>` : ''}
+            ${renderSalaryOffRosterDraftReports(reconciliation)}
         `;
         }
     }

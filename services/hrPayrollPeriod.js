@@ -278,7 +278,36 @@ async function setPayrollPeriodLock(month, locked, actor, note = '', db = pool) 
 async function loadPayrollReconciliation(month, db = pool) {
     const range = payrollMonthRange(month);
     const result = await db.query(
-        `WITH active_reports AS (
+        `WITH stored_reports AS (
+            SELECT pr.id,
+                   pr.status,
+                   (s.id IS NOT NULL) AS staff_exists,
+                   COALESCE(s.is_freelance, false) AS is_freelance
+            FROM payroll_reports pr
+            LEFT JOIN staff s ON s.id = pr.staff_id
+            WHERE pr.period_month = $1
+              AND pr.voided_at IS NULL
+        ),
+        stored_report_coverage AS (
+            SELECT COUNT(*)::int AS stored_report_count,
+                   COUNT(*) FILTER (WHERE status = 'draft')::int AS stored_draft_count,
+                   COUNT(*) FILTER (
+                       WHERE status = 'draft'
+                         AND staff_exists
+                         AND NOT is_freelance
+                   )::int AS regular_draft_count,
+                   COUNT(*) FILTER (
+                       WHERE status = 'draft'
+                         AND staff_exists
+                         AND is_freelance
+                   )::int AS freelance_draft_count,
+                   COUNT(*) FILTER (
+                       WHERE status = 'draft'
+                         AND NOT staff_exists
+                   )::int AS missing_staff_draft_count
+            FROM stored_reports
+        ),
+        active_reports AS (
             SELECT id, staff_id, net_amount, finance_transaction_id, breakdown_json
             FROM payroll_reports
             WHERE period_month = $1
@@ -337,7 +366,12 @@ async function loadPayrollReconciliation(month, db = pool) {
             COALESCE((SELECT SUM(amount) FROM reversal_finance), 0)::numeric AS finance_reversal_total,
             COALESCE((SELECT COUNT(*) FROM missing_finance), 0)::int AS missing_finance_count,
             COALESCE((SELECT COUNT(*) FROM orphan_salary), 0)::int AS orphan_salary_count,
-            COALESCE((SELECT warning_count FROM source_warnings), 0)::int AS source_warning_count`,
+            COALESCE((SELECT warning_count FROM source_warnings), 0)::int AS source_warning_count,
+            COALESCE((SELECT stored_report_count FROM stored_report_coverage), 0)::int AS stored_report_count,
+            COALESCE((SELECT stored_draft_count FROM stored_report_coverage), 0)::int AS stored_draft_count,
+            COALESCE((SELECT regular_draft_count FROM stored_report_coverage), 0)::int AS regular_draft_count,
+            COALESCE((SELECT freelance_draft_count FROM stored_report_coverage), 0)::int AS freelance_draft_count,
+            COALESCE((SELECT missing_staff_draft_count FROM stored_report_coverage), 0)::int AS missing_staff_draft_count`,
         [month, range.from, range.to]
     );
     const row = result.rows[0] || {};
@@ -349,6 +383,35 @@ async function loadPayrollReconciliation(month, db = pool) {
     const missingFinanceCount = Number(row.missing_finance_count || 0);
     const orphanSalaryCount = Number(row.orphan_salary_count || 0);
     const sourceWarningCount = Number(row.source_warning_count || 0);
+    const storedReportCount = Number(row.stored_report_count || 0);
+    const storedDraftCount = Number(row.stored_draft_count || 0);
+    const regularDraftCount = Number(row.regular_draft_count || 0);
+    const freelanceDraftCount = Number(row.freelance_draft_count || 0);
+    const missingStaffDraftCount = Number(row.missing_staff_draft_count || 0);
+    const classifiedDraftCount = regularDraftCount + freelanceDraftCount + missingStaffDraftCount;
+    const unclassifiedDraftCount = Math.max(0, storedDraftCount - classifiedDraftCount);
+    const warnings = [];
+    if (freelanceDraftCount > 0) {
+        warnings.push({
+            code: 'PAYROLL_FREELANCE_DRAFTS_EXCLUDED_FROM_ACTIVE_STAFF',
+            count: freelanceDraftCount,
+            message: `${freelanceDraftCount} чернеток зарплати фрилансерів збережено окремо від активного списку працівників`
+        });
+    }
+    if (missingStaffDraftCount > 0) {
+        warnings.push({
+            code: 'PAYROLL_STORED_DRAFT_STAFF_MISSING',
+            count: missingStaffDraftCount,
+            message: `${missingStaffDraftCount} чернеток зарплати не мають пов'язаної картки працівника`
+        });
+    }
+    if (unclassifiedDraftCount > 0) {
+        warnings.push({
+            code: 'PAYROLL_STORED_DRAFT_UNCLASSIFIED',
+            count: unclassifiedDraftCount,
+            message: `${unclassifiedDraftCount} чернеток зарплати не вдалося класифікувати`
+        });
+    }
     return {
         month,
         payroll_count: Number(row.payroll_count || 0),
@@ -362,8 +425,20 @@ async function loadPayrollReconciliation(month, db = pool) {
         missing_finance_count: missingFinanceCount,
         orphan_salary_count: orphanSalaryCount,
         source_warning_count: sourceWarningCount,
+        stored_report_count: storedReportCount,
+        stored_draft_count: storedDraftCount,
+        regular_draft_count: regularDraftCount,
+        freelance_draft_count: freelanceDraftCount,
+        missing_staff_draft_count: missingStaffDraftCount,
+        classified_draft_count: classifiedDraftCount,
+        unclassified_draft_count: unclassifiedDraftCount,
+        warnings,
         variance,
-        status: variance === 0 && missingFinanceCount === 0 && orphanSalaryCount === 0 && sourceWarningCount === 0
+        status: variance === 0
+            && missingFinanceCount === 0
+            && orphanSalaryCount === 0
+            && sourceWarningCount === 0
+            && warnings.length === 0
             ? 'ok'
             : 'attention'
     };

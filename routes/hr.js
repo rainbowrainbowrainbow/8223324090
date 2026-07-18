@@ -13,7 +13,13 @@ const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr, reconcileScheduledAnimatorLines } = require('../services/booking');
 const { broadcastLineEvent } = require('../services/websocket');
 const costumeInventory = require('../services/costumeInventory');
-const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
+const {
+    requireAction,
+    requireRole,
+    canUseAction,
+    userHasAnyRole,
+    ROLE_LEVEL
+} = require('../middleware/auth');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 const {
@@ -213,7 +219,12 @@ const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager',
 const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
 const PAYROLL_CONTROL_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
 const requireHrManage = requireAction('manage_staff');
-const requirePayrollControl = requireRole(...PAYROLL_CONTROL_ROLES);
+const requirePayrollControl = (req, res, next) => {
+    if (!req.user || !userHasAnyRole(req.user, PAYROLL_CONTROL_ROLES)) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+};
 // Operational caps keep Cartesian bulk work bounded while preserving the existing 500-row API ceiling.
 const HR_SHIFT_BULK_MAX_ENTRIES = 500;
 const HR_SHIFT_BULK_MAX_STAFF = 500;
@@ -227,7 +238,7 @@ router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) 
 const log = createLogger('HR');
 
 function canViewPayrollDetails(user = {}) {
-    return PAYROLL_CONTROL_ROLES.includes(String(user.role || '').trim());
+    return userHasAnyRole(user, PAYROLL_CONTROL_ROLES);
 }
 
 function redactPayrollAuditValue(value) {
@@ -6974,7 +6985,7 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 // ==========================================
 
 // GET /api/hr/salary — full salary calculation
-router.get('/salary', async (req, res) => {
+router.get('/salary', requirePayrollControl, async (req, res) => {
     try {
         const calculation = await loadPayrollCalculation(req.query.month, pool, {
             from: req.query.from,
@@ -7393,7 +7404,7 @@ router.get('/shifts-summary', async (req, res) => {
     }
 });
 
-router.get('/salary/reconciliation', async (req, res) => {
+router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => {
     try {
         const month = requirePayrollMonth(req.query.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });

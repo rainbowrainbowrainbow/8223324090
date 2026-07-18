@@ -10,6 +10,7 @@ const {
 } = require('../services/hrPayrollPeriod');
 const {
     OVERTIME_MULTIPLIER,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED,
     assertPayrollRowsCommitReady,
@@ -266,6 +267,9 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     assert.equal(transparency.additionalRate, 200);
     assert.equal(transparency.additionalMultiplier, 1);
     assert.equal(transparency.additionalAmount, 1700);
+    assert.equal(transparency.additionalRoles[0].status, 'ready');
+    assert.equal(transparency.additionalRoles[0].blockerCode, null);
+    assert.equal(transparency.additionalRoles[0].blockerMessage, null);
     assert.equal(transparency.additionalRoles[0].attendanceRef, 44);
     assert.equal(transparency.additionalRoles[0].segmentRef, 502);
     assert.equal(
@@ -457,6 +461,51 @@ test('additional pay resolver rejects staff or scheme fallback and blocks payrol
                 && error.statusCode === 409
         );
     }
+});
+
+test('paid additional minutes cannot be represented as a silent rounded zero', () => {
+    const result = calculateProfessionPay(
+        staff({ roleType: 'wardrobe', hourlyRate: 100 }),
+        { schemeType: 'hourly', config: {}, isFallback: true },
+        metrics({
+            physicalMinutes: 1,
+            totalMinutes: 1,
+            allocatedMinutes: 1,
+            hoursWorked: 1 / 60,
+            professionAllocations: [
+                { professionKey: 'wardrobe', minutes: 1, allocationSources: ['clock_interval'] }
+            ],
+            additionalProfessionAllocations: [
+                simultaneousAdditionalAllocation({ minutes: 1, plannedMinutes: 1, rate: 0.01 })
+            ]
+        }),
+        rateMap({ wardrobe: 100, hallkeeper: 999 })
+    );
+    const transparency = buildPayrollTransparencyMetrics({
+        physicalMinutes: 1,
+        baseProfessionAllocations: [{ professionKey: 'wardrobe', minutes: 1 }],
+        additionalProfessionAllocations: [
+            simultaneousAdditionalAllocation({ minutes: 1, plannedMinutes: 1, rate: 0.01 })
+        ]
+    }, result);
+
+    assert.equal(result.additionalAmount, 0);
+    assert.equal(result.additionalLines.length, 0);
+    assert.equal(result.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE);
+    assert.equal(transparency.additionalRoles[0].status, 'blocked');
+    assert.equal(
+        transparency.additionalRoles[0].blockerCode,
+        PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE
+    );
+    assert.match(transparency.additionalRoles[0].blockerMessage, /нульовою/);
+    assert.throws(
+        () => assertPayrollRowsGenerationReady([{
+            staffId: 7,
+            payrollBlockingIssues: result.blockingIssues
+        }]),
+        error => error.code === 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED'
+            && error.statusCode === 409
+    );
 });
 
 test('hourly payroll consumes attendance minutes after the segment break without paying an additional role', () => {
@@ -1406,6 +1455,46 @@ test('payroll reconciliation remains in attention while allocation warnings exis
     assert.equal(result.status, 'attention');
 });
 
+test('payroll reconciliation accounts for stored freelance drafts without mixing them into active staff', async () => {
+    const result = await loadPayrollReconciliation('2026-05', {
+        async query(sql) {
+            assert.match(sql, /stored_report_coverage/);
+            assert.match(sql, /COALESCE\(s\.is_freelance, false\)/);
+            return { rows: [{
+                payroll_count: 0,
+                payroll_total: 0,
+                finance_salary_count: 0,
+                finance_salary_total: 0,
+                finance_reversal_count: 0,
+                finance_reversal_total: 0,
+                missing_finance_count: 0,
+                orphan_salary_count: 0,
+                source_warning_count: 0,
+                stored_report_count: 64,
+                stored_draft_count: 64,
+                regular_draft_count: 54,
+                freelance_draft_count: 10,
+                missing_staff_draft_count: 0
+            }] };
+        }
+    });
+
+    assert.equal(result.stored_report_count, 64);
+    assert.equal(result.stored_draft_count, 64);
+    assert.equal(result.regular_draft_count, 54);
+    assert.equal(result.freelance_draft_count, 10);
+    assert.equal(result.classified_draft_count, 64);
+    assert.equal(result.unclassified_draft_count, 0);
+    assert.equal(result.status, 'attention');
+    assert.deepEqual(result.warnings.map(warning => ({
+        code: warning.code,
+        count: warning.count
+    })), [{
+        code: 'PAYROLL_FREELANCE_DRAFTS_EXCLUDED_FROM_ACTIVE_STAFF',
+        count: 10
+    }]);
+});
+
 test('payroll routes use the shared allocation service and export one employee row with breakdown', () => {
     const root = path.join(__dirname, '..');
     const hrRoute = fs.readFileSync(path.join(root, 'routes', 'hr.js'), 'utf8');
@@ -1419,7 +1508,8 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(hrRoute, /loadPayrollProfileContext\(staffIds, \{ from: period\.from, to: period\.to \}, db\)/);
     assert.match(hrRoute, /calculateProfessionPay\(staff, scheme, metrics, professionRateMap, payrollProfileContext\)/);
     assert.match(hrRoute, /applyHrPayrollSnapshot\(calculatedRow, row\)/);
-    assert.match(hrRoute, /router\.get\('\/salary'[\s\S]*loadPayrollCalculation\(req\.query\.month, pool/);
+    assert.match(hrRoute, /router\.get\('\/salary', requirePayrollControl[\s\S]*loadPayrollCalculation\(req\.query\.month, pool/);
+    assert.match(hrRoute, /router\.get\('\/salary\/reconciliation', requirePayrollControl/);
     assert.match(hrRoute, /router\.post\('\/salary\/commit'[\s\S]*const calculation = await loadPayrollCalculation\(month, client\)/);
     assert.match(hrRoute, /assertPayrollRowsCommitReady\(calculation\.data\)/);
     assert.match(hrRoute, /PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED|err\.code \|\| null/);
@@ -1436,10 +1526,14 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(payrollRoute, /'physical_hours', 'base_role_hours', 'additional_role_hours'/);
     assert.match(payrollRoute, /'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount'/);
     assert.match(payrollRoute, /'payroll_blocking_codes', 'payroll_blocking_details'/);
+    assert.match(payrollRoute, /'additional_line_status', 'blocker_code', 'blocker_message'/);
     assert.match(payrollRoute, /router\.get\('\/export-xlsx'/);
     assert.match(payrollRoute, /workbook\.addWorksheet\('Additional lines'\)/);
-    assert.match(payrollRoute, /blocker_code: blocker\?\.code/);
+    assert.match(payrollRoute, /function payrollAdditionalLineRows/);
+    assert.match(payrollRoute, /blocker_code: role\.blockerCode/);
     assert.match(payrollService, /payroll_additional_line_generated/);
+    assert.match(payrollService, /payroll_generation_blocked/);
+    assert.match(payrollService, /PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE/);
     assert.match(hrRoute, /compensation_snapshot_corrected/);
     assert.match(hrRoute, /payrollDetailsRedacted: true/);
     assert.match(hrRoute, /normalized\.endsWith\('amount'\)/);
@@ -1449,14 +1543,34 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.doesNotMatch(payrollService, /JOIN\s+hr_shift_segments/i);
     assert.match(hrPage, /segment\.allocation_source/);
     assert.match(hrPage, /segment\.amount/);
+    assert.match(hrPage, /freelance_draft_count/);
+    assert.match(hrPage, /salaryAdditionalRoleBlocker/);
+    assert.match(hrPage, /blocker\.code/);
     assert.match(hrPage, /Оплачувані години професій можуть перевищувати фізичні години/);
     assert.match(financePage, /renderPayrollProfessionBreakdown/);
     assert.match(financePage, /\/api\/payroll\/export\?month=/);
     assert.match(financePage, /\/api\/payroll\/export-xlsx\?month=/);
     assert.match(financePage, /renderPayrollAdditionalBreakdown/);
+    assert.match(financePage, /payrollAdditionalRoleBlocker/);
+    assert.match(financePage, /blocker\.code/);
     assert.match(financePage, /row\.payrollBlockingIssues/);
     assert.match(financePage, /role="alert"/);
     assert.match(staffPage, /Hybrid, percent та manual payroll залишаються заблокованими/);
+});
+
+test('freelance draft audit helper is explicit, aggregate-only, and read-only', () => {
+    const script = fs.readFileSync(
+        path.join(__dirname, '..', 'scripts', 'audit-payroll-freelance-drafts.js'),
+        'utf8'
+    );
+
+    assert.match(script, /READ_ONLY_PAYROLL_FREELANCE_DRAFT_AUDIT/);
+    assert.match(script, /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
+    assert.match(script, /ROLLBACK/);
+    assert.match(script, /freelance_drafts/);
+    assert.match(script, /missing_staff_drafts/);
+    assert.doesNotMatch(script, /s\.name|hourly_rate|net_amount|gross_amount|staff_name/);
+    assert.doesNotMatch(script, /\b(?:INSERT|UPDATE|DELETE)\b/i);
 });
 
 test('payroll profile resolver keeps profile query budget batched by staff and profile ids', () => {
@@ -1473,3 +1587,5 @@ test('payroll profile resolver keeps profile query budget batched by staff and p
     assert.doesNotMatch(contextLoader, /for\s*\([^)]*staffId[^)]*\)[\s\S]*db\.query/);
     assert.doesNotMatch(contextLoader, /for\s*\([^)]*profileId[^)]*\)[\s\S]*db\.query/);
 });
+
+require('./payroll-reporting-routes.contract');

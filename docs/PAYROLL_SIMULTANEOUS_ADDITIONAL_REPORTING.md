@@ -64,11 +64,18 @@ Legacy CSV columns keep their original names and order. The following stable fie
 - `additional_profession`;
 - `additional_rate`;
 - `additional_multiplier`;
-- `additional_amount`.
+- `additional_amount`;
+- `payroll_blocking_codes`;
+- `payroll_blocking_details`;
+- `additional_line_status`;
+- `blocker_code`;
+- `blocker_message`.
 
 The Excel export contains a compatibility summary sheet and a separate `Additional lines` sheet with the
-full traceability fields. New export consumers should prefer these explicit fields and must not derive
-physical hours by summing profession hours.
+full traceability fields. A blocked role is exported even when no calculated additional line exists:
+`additional_amount` remains `0` for compatibility, while `additional_line_status=blocked` and the blocker
+code/message make the unresolved amount explicit. New export consumers should prefer these explicit fields
+and must not derive physical hours by summing profession hours.
 
 ## Audit events
 
@@ -81,10 +88,12 @@ The audit stream uses explicit action names:
 | `compensation_snapshot_created` | Attendance receives its compensation snapshot |
 | `compensation_snapshot_corrected` | A manual attendance correction changes the snapshot |
 | `payroll_additional_line_generated` | Payroll generates a simultaneous additional line |
+| `payroll_generation_blocked` | Payroll generation is rejected because a compensation issue remains |
 
 Audit payloads include stable record references and policy metadata. Rate, multiplier, formula, and amount
 fields are redacted from HR history responses when the current user does not have the existing payroll
-access. No new permission or route boundary is introduced by this contract.
+access. HR salary and salary-reconciliation routes use an exact payroll-control role check; legacy role
+expansion must not grant these responses to manager, HR, or security roles.
 
 ## Downstream schedule consumers
 
@@ -104,7 +113,22 @@ attendance interval, worked day, or physical-hour contribution.
 ## Warning and legacy behavior
 
 - Missing or invalid compensation snapshot data blocks payroll commit and requires manual review.
+- Paid additional minutes that round to a non-positive amount block generation with
+  `PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE`; they are never presented as a valid zero payment.
 - Legacy `additionalProfessionKeys` and existing additional-role rows remain unpaid.
 - Old attendance records without a compensation snapshot use base-only behavior.
 - Existing report and export columns remain available during the compatibility period.
+- Stored freelance drafts stay outside active-staff salary rows. Reconciliation reports their count with
+  `PAYROLL_FREELANCE_DRAFTS_EXCLUDED_FROM_ACTIVE_STAFF`; no historical draft is deleted or regenerated.
 - `CHANGELOG.md` is updated only as part of the actual release.
+
+## Read-only stored-draft audit
+
+Operators can classify stored drafts without exposing names, rates, or amounts:
+
+```powershell
+$env:PAYROLL_FREELANCE_DRAFT_AUDIT_CONFIRM='READ_ONLY_PAYROLL_FREELANCE_DRAFT_AUDIT'
+node scripts/audit-payroll-freelance-drafts.js 2026-05
+```
+
+The helper starts a `REPEATABLE READ READ ONLY` transaction, returns aggregate counts only, and rolls back.

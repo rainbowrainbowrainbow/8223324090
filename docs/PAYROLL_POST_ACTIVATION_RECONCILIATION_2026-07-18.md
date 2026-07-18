@@ -113,3 +113,19 @@ post-activation simultaneous-pay reconciliation:
 3. Узгодити поведінку HR salary view для 10 freelance May drafts: показувати їх у
    reconciliation view або явно винести в окремий агрегований warning. Не
    перегенеровувати й не видаляти reports у межах цієї задачі.
+
+## Follow-up: freelance draft reporting
+
+The follow-up read-only audit classified all 64 stored May drafts:
+
+| Classification | Count |
+| --- | ---: |
+| Regular staff drafts | 54 |
+| Freelance drafts | 10 |
+| Missing staff card | 0 |
+| Unclassified drafts | 0 |
+
+The reporting contract now keeps the 10 freelance drafts outside active-staff salary rows and exposes them
+through the aggregate reconciliation warning
+`PAYROLL_FREELANCE_DRAFTS_EXCLUDED_FROM_ACTIVE_STAFF`. No historical draft was deleted, regenerated, or
+mixed into active-staff payroll.

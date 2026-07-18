@@ -12,6 +12,8 @@ const EXPLICIT_ADDITIONAL_RATE_SOURCES = new Set(['staff_profession_rates.hourly
 const PAYROLL_ROLE_HOURS_EXPLANATION = 'Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE = 'Формула подвійної оплати для цієї схеми не налаштована';
+const PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE';
+const PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE = 'Додаткова оплата не може бути нульовою для оплачуваних хвилин';
 
 const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
@@ -1532,6 +1534,23 @@ function buildSimultaneousAdditionalPay(metrics = {}) {
         const hours = minutes / 60;
         const amount = roundMoney(hours * resolved.rate * resolved.multiplier);
         const formula = `${minutes} / 60 * ${resolved.rate} * ${resolved.multiplier}`;
+        if (amount <= 0) {
+            blockingIssues.push(payrollIssue(
+                PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE,
+                PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE,
+                {
+                    date: allocation.date || null,
+                    professionKey: resolved.professionKey,
+                    minutes,
+                    paidRoleMinutes: minutes,
+                    attendanceRef: allocation.attendanceRef ?? null,
+                    segmentRef: allocation.segmentRef ?? null,
+                    roleRef: allocation.roleRef ?? null
+                },
+                'error'
+            ));
+            continue;
+        }
         const common = {
             professionKey: resolved.professionKey,
             minutes,
@@ -1845,6 +1864,21 @@ function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
             formula: lineItem.formula || null,
             status: 'ready'
         });
+    }
+    const blockingIssues = Array.isArray(professionPay.blockingIssues)
+        ? professionPay.blockingIssues
+        : (Array.isArray(professionPay.reconciliation?.blockingIssues)
+            ? professionPay.reconciliation.blockingIssues
+            : []);
+    for (const role of roleDetails) {
+        const blocker = blockingIssues.find(issue => (
+            (!issue.professionKey || normalizeProfessionKey(issue.professionKey) === role.professionKey)
+            && (!issue.date || normalizeDateValue(issue.date) === normalizeDateValue(role.workDate))
+        )) || null;
+        const unresolved = role.status === 'blocked' || role.amount === null || role.amount === undefined;
+        role.status = blocker || unresolved ? 'blocked' : 'ready';
+        role.blockerCode = blocker?.code || (unresolved ? 'PAYROLL_SIMULTANEOUS_ADDITIONAL_LINE_UNRESOLVED' : null);
+        role.blockerMessage = blocker?.message || (unresolved ? 'Додаткова оплата не розрахована; перевірте compensation snapshot' : null);
     }
     roleDetails.sort((left, right) => (
         String(left.workDate || '').localeCompare(String(right.workDate || ''))
@@ -2824,7 +2858,6 @@ function assertPayrollRowsGenerationReady(rows = []) {
     const blockingIssues = [];
     for (const row of rows || []) {
         for (const issue of payrollCommitBlockingIssues(row)) {
-            if (issue.code !== PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED) continue;
             blockingIssues.push({
                 staffId: row.staff_id ?? row.staffId ?? null,
                 staffName: row.staff_name ?? row.name ?? null,
@@ -2833,17 +2866,71 @@ function assertPayrollRowsGenerationReady(rows = []) {
         }
     }
     if (!blockingIssues.length) return;
-    const err = new Error(PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE);
+    const unsupportedOnly = blockingIssues.every(
+        issue => issue.code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+    );
+    const err = new Error(unsupportedOnly
+        ? PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE
+        : 'Payroll generation blocked: compensation snapshot requires correction');
     err.status = 409;
     err.statusCode = 409;
-    err.code = PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED;
+    err.code = unsupportedOnly
+        ? PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+        : 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED';
     err.details = { blockingIssues };
     throw err;
 }
 
+async function auditBlockedPayrollGeneration(month, error, user) {
+    const issues = Array.isArray(error?.details?.blockingIssues)
+        ? error.details.blockingIssues
+        : [];
+    const grouped = new Map();
+    for (const issue of issues) {
+        const staffId = Number(issue.staffId ?? issue.staff_id);
+        const key = Number.isInteger(staffId) && staffId > 0 ? staffId : null;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push({
+            code: issue.code || error.code || 'PAYROLL_GENERATION_BLOCKED',
+            message: issue.message || error.message || 'Payroll generation blocked',
+            professionKey: issue.professionKey || issue.profession_key || null,
+            date: issue.date || null,
+            attendanceRef: issue.attendanceRef ?? issue.attendance_ref ?? null,
+            segmentRef: issue.segmentRef ?? issue.segment_ref ?? null,
+            roleRef: issue.roleRef ?? issue.role_ref ?? null
+        });
+    }
+    if (!grouped.size) grouped.set(null, [{
+        code: error.code || 'PAYROLL_GENERATION_BLOCKED',
+        message: error.message || 'Payroll generation blocked'
+    }]);
+    for (const [staffId, staffIssues] of grouped) {
+        await pool.query(
+            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+             VALUES ('payroll_generation_blocked', $1, $2, $3::jsonb, NULL)`,
+            [
+                staffId,
+                user?.username || null,
+                JSON.stringify({
+                    eventVersion: 1,
+                    month,
+                    blockerCode: error.code || null,
+                    issues: staffIssues
+                })
+            ]
+        );
+    }
+}
+
 async function generatePayrollReports(month, user) {
     const report = await getSalaryReport(month);
-    assertPayrollRowsGenerationReady(report.staff);
+    try {
+        assertPayrollRowsGenerationReady(report.staff);
+    } catch (error) {
+        await auditBlockedPayrollGeneration(report.month, error, user)
+            .catch(auditError => log.error('blocked payroll generation audit failed', auditError));
+        throw error;
+    }
     const client = await pool.connect();
     const generated = [];
     const skipped = [];
@@ -3041,6 +3128,8 @@ module.exports = {
     PAYROLL_ROLE_HOURS_EXPLANATION,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE,
     assertPayrollRowsCommitReady,
     assertPayrollRowsGenerationReady,
     buildPayrollTransparencyMetrics,

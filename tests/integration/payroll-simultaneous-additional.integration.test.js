@@ -677,6 +677,27 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                 generation.data.code,
                 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
             );
+            const blockedAudit = await pool.query(
+                `SELECT details
+                 FROM hr_audit_log
+                 WHERE staff_id = $1
+                   AND action = 'payroll_generation_blocked'
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1`,
+                [staffId]
+            );
+            assert.equal(blockedAudit.rowCount, 1);
+            const blockedAuditDetails = jsonValue(blockedAudit.rows[0].details);
+            assert.equal(blockedAuditDetails.eventVersion, 1);
+            assert.equal(
+                blockedAuditDetails.blockerCode,
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+            assert.equal(
+                blockedAuditDetails.issues[0].code,
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+            assert.equal(blockedAuditDetails.issues[0].professionKey, additionalProfessionKey);
 
             const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
             assert.equal(financeCommit.status, 409, JSON.stringify(financeCommit.data));

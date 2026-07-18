@@ -291,6 +291,13 @@ const HR_PEOPLE_NAV_DETAILS = Object.freeze({
     reserve: Object.freeze({ subtitle: 'Кадровий резерв', icon: 'reserve', tone: 'people' }),
     dismissed: Object.freeze({ subtitle: 'Архів профілів', icon: 'archive', tone: 'people' })
 });
+const HR_PAYROLL_VIEW_ROLES = new Set([
+    'creator',
+    'director',
+    'vice_director',
+    'senior_manager',
+    'admin'
+]);
 
 const HR_NAV_GROUPS = [
     {
@@ -323,10 +330,10 @@ const HR_NAV_GROUPS = [
         id: 'payroll',
         label: 'ЗП та KPI',
         items: [
-            { id: 'salary', label: 'Зарплата' },
-            { id: 'profiles', label: 'Профілі' },
-            { id: 'zrs', label: 'ЗРС' },
-            { id: 'kpi', label: 'KPI' }
+            { id: 'salary', label: 'Зарплата', visible: () => canViewPayrollWorkspace() },
+            { id: 'profiles', label: 'Профілі', visible: () => canViewPayrollWorkspace() },
+            { id: 'zrs', label: 'ЗРС', visible: () => canViewPayrollWorkspace() },
+            { id: 'kpi', label: 'KPI', visible: () => canViewPayrollWorkspace() }
         ]
     },
     {
@@ -418,6 +425,10 @@ function getHrCurrentUser() {
     } catch {
         return null;
     }
+}
+
+function canViewPayrollWorkspace(user = getHrCurrentUser()) {
+    return HR_PAYROLL_VIEW_ROLES.has(String(user?.role || '').trim());
 }
 
 function getHrTeamBucketAccess() {
@@ -2807,6 +2818,9 @@ function resolveHrTabTarget(rawTarget) {
     }
     const mapped = HR_TAB_ALIASES[requested] || { tab: requested };
     const target = mapped.tab || 'today';
+    if (isHrPayrollWorkspaceTab(target) && !canViewPayrollWorkspace()) {
+        return { tab: 'today', alias: requested !== 'today' };
+    }
     if (target === 'accounts' && !canManageAccountSecurity()) {
         return { tab: 'today', alias: requested !== 'today' };
     }
@@ -15661,6 +15675,7 @@ function renderSalaryPeriodControls(data = {}) {
         } else {
         const variance = Number(reconciliation.variance || 0);
         const statusClass = reconciliation.status === 'ok' ? 'green' : 'yellow';
+        const reconciliationWarnings = Array.isArray(reconciliation.warnings) ? reconciliation.warnings : [];
         reconciliationEl.innerHTML = `
             <div class="hr-summary">
                 <div class="hr-summary-card"><div class="value">${fmtMoney(Number(reconciliation.payroll_total || 0))}</div><div class="label">Активна зарплата</div></div>
@@ -15668,7 +15683,12 @@ function renderSalaryPeriodControls(data = {}) {
                 <div class="hr-summary-card"><div class="value">${fmtMoney(Number(reconciliation.finance_reversal_total || 0))}</div><div class="label">Сторно</div></div>
                 <div class="hr-summary-card ${statusClass}"><div class="value">${fmtMoney(variance)}</div><div class="label">Різниця</div></div>
                 <div class="hr-summary-card"><div class="value">${Number(reconciliation.orphan_salary_count || 0) + Number(reconciliation.missing_finance_count || 0)}</div><div class="label">Хвости</div></div>
+                <div class="hr-summary-card"><div class="value">${Number(reconciliation.stored_draft_count || 0)}</div><div class="label">Збережені чернетки</div></div>
+                <div class="hr-summary-card ${Number(reconciliation.freelance_draft_count || 0) > 0 ? 'yellow' : ''}"><div class="value">${Number(reconciliation.freelance_draft_count || 0)}</div><div class="label">Чернетки фрилансерів окремо</div></div>
             </div>
+            ${reconciliationWarnings.length ? `<div class="hr-payroll-additional-warning" role="alert">
+                ${reconciliationWarnings.map(warning => `<div><code>${escapeHtml(warning.code || 'PAYROLL_RECONCILIATION_WARNING')}</code> — ${escapeHtml(warning.message || '')}</div>`).join('')}
+            </div>` : ''}
         `;
         }
     }
@@ -15688,6 +15708,20 @@ function salaryTransparency(row = {}) {
     };
 }
 
+function salaryAdditionalRoleBlocker(role = {}, blockers = []) {
+    if (role.blockerCode || role.blocker_code) {
+        return {
+            code: role.blockerCode || role.blocker_code,
+            message: role.blockerMessage || role.blocker_message || role.blockerCode || role.blocker_code
+        };
+    }
+    return blockers.find(issue => (
+        (!issue.professionKey && !issue.profession_key
+            || (issue.professionKey || issue.profession_key) === (role.professionKey || role.profession_key))
+        && (!issue.date || issue.date === (role.workDate || role.work_date))
+    )) || null;
+}
+
 function renderSalaryAdditionalRoleDetails(row = {}) {
     const transparency = salaryTransparency(row);
     const roles = Array.isArray(transparency.additionalRoles)
@@ -15698,24 +15732,36 @@ function renderSalaryAdditionalRoleDetails(row = {}) {
         return '<div class="hr-payroll-additional-empty">Додаткових оплачуваних професій немає.</div>';
     }
     const lines = roles.map(role => {
+        const blocker = salaryAdditionalRoleBlocker(role, blockers);
+        const blocked = role.status === 'blocked'
+            || role.amount === null
+            || role.amount === undefined
+            || Boolean(blocker);
         const references = [
             role.attendanceRef ? `attendance #${role.attendanceRef}` : '',
             role.segmentRef ? `segment #${role.segmentRef}` : '',
             role.roleRef ? `role #${role.roleRef}` : ''
         ].filter(Boolean).join(' · ');
-        const amount = role.amount === null || role.amount === undefined ? 'Потрібна перевірка' : `+${fmtMoney(Number(role.amount || 0))}`;
-        return `<div class="hr-payroll-additional-role ${role.status === 'blocked' ? 'is-warning' : ''}">
+        const amount = blocked ? 'Не розраховано' : `+${fmtMoney(Number(role.amount || 0))}`;
+        const rateLabel = role.rate === null || role.rate === undefined
+            ? 'ставку не визначено'
+            : formatStaffRate(Number(role.rate), 'hour');
+        const multiplierLabel = role.multiplier === null || role.multiplier === undefined
+            ? 'multiplier не визначено'
+            : `multiplier ${Number(role.multiplier).toLocaleString('uk-UA')}`;
+        return `<div class="hr-payroll-additional-role ${blocked ? 'is-warning' : ''}">
             <div>
                 <strong>${escapeHtml(professionTitle(role.professionKey) || role.professionKey || '—')}</strong>
-                <span>${Number(role.hours || 0).toLocaleString('uk-UA')} год · ${formatStaffRate(Number(role.rate || 0), 'hour')} · multiplier ${Number(role.multiplier || 0).toLocaleString('uk-UA')}</span>
+                <span>${Number(role.hours || 0).toLocaleString('uk-UA')} год · ${escapeHtml(rateLabel)} · ${escapeHtml(multiplierLabel)}</span>
             </div>
             <b>${escapeHtml(amount)}</b>
+            ${blocker ? `<div><code>${escapeHtml(blocker.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(blocker.message || '')}</div>` : ''}
             <small>${escapeHtml(references || role.policyVersion || 'Немає snapshot reference')}</small>
         </div>`;
     });
     if (blockers.length) {
         lines.push(`<div class="hr-payroll-additional-warning" role="alert">
-            ${blockers.map(issue => escapeHtml(issue.message || issue.code || 'Compensation snapshot потребує перевірки')).join('<br>')}
+            ${blockers.map(issue => `<code>${escapeHtml(issue.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(issue.message || 'Compensation snapshot потребує перевірки')}`).join('<br>')}
         </div>`);
     }
     return lines.join('');

@@ -1172,6 +1172,16 @@ function renderSalaryPreviewPanel() {
         net: payload.netAmount || payload.estimatedSalary || 0
     };
     const lines = payload.lines || [];
+    const previewTransparency = payrollTransparency(payload);
+    const previewAdditionalRoles = Array.isArray(previewTransparency.additionalRoles)
+        ? previewTransparency.additionalRoles
+        : [];
+    const previewBlockers = Array.isArray(payload.payrollBlockingIssues)
+        ? payload.payrollBlockingIssues
+        : (Array.isArray(payload.payroll_blocking_issues) ? payload.payroll_blocking_issues : []);
+    const additionalBlocked = previewBlockers.length > 0 || previewAdditionalRoles.some(role => (
+        role.status === 'blocked' || role.amount === null || role.amount === undefined
+    ));
     panel.innerHTML = `
         <div class="salary-panel-title">
             <h4>Preview / Payslip</h4>
@@ -1183,12 +1193,16 @@ function renderSalaryPreviewPanel() {
         </div>
         <div class="salary-preview-card">
             <div class="salary-preview-row"><span>База</span><b>${formatMoney(summary.base || 0)}</b></div>
-            <div class="salary-preview-row"><span>Одночасна додаткова професія</span><b class="salary-plus">+ ${formatMoney(summary.additional || 0)}</b></div>
+            <div class="salary-preview-row"><span>Одночасна додаткова професія</span>${additionalBlocked
+                ? '<b class="salary-additional-warning">Не розраховано</b>'
+                : `<b class="salary-plus">+ ${formatMoney(summary.additional || 0)}</b>`}</div>
             <div class="salary-preview-row"><span>Бонуси / %</span><b class="salary-plus">+ ${formatMoney((summary.bonuses || 0) + (summary.percent || 0) + (summary.manual || 0))}</b></div>
             <div class="salary-preview-row"><span>Утримання</span><b class="salary-minus">- ${formatMoney(summary.deductions || 0)}</b></div>
             <div class="salary-preview-row"><span>Аванси</span><b class="salary-minus">- ${formatMoney(summary.advances || 0)}</b></div>
             <div class="salary-preview-total"><span>До виплати</span><b>${formatMoney(summary.net || 0)}</b></div>
         </div>
+        ${renderPayrollTimeBreakdown(payload)}
+        <div class="salary-lines">${renderPayrollAdditionalBreakdown(payload)}</div>
         <div class="salary-lines">
             ${lines.length ? lines.map(item => `
                 <div class="salary-line-item">
@@ -1325,6 +1339,20 @@ function renderPayrollTimeBreakdown(row = {}) {
     </div>`;
 }
 
+function payrollAdditionalRoleBlocker(role = {}, blockers = []) {
+    if (role.blockerCode || role.blocker_code) {
+        return {
+            code: role.blockerCode || role.blocker_code,
+            message: role.blockerMessage || role.blocker_message || role.blockerCode || role.blocker_code
+        };
+    }
+    return blockers.find(issue => (
+        (!issue.professionKey && !issue.profession_key
+            || (issue.professionKey || issue.profession_key) === (role.professionKey || role.profession_key))
+        && (!issue.date || issue.date === (role.workDate || role.work_date))
+    )) || null;
+}
+
 function renderPayrollAdditionalBreakdown(row = {}) {
     const transparency = payrollTransparency(row);
     const roles = Array.isArray(transparency.additionalRoles) ? transparency.additionalRoles : [];
@@ -1333,27 +1361,39 @@ function renderPayrollAdditionalBreakdown(row = {}) {
         : (Array.isArray(row.payroll_blocking_issues) ? row.payroll_blocking_issues : []);
     if (!roles.length && !blockers.length) return '<span class="salary-muted">Немає</span>';
     const lines = roles.map(role => {
+        const blocker = payrollAdditionalRoleBlocker(role, blockers);
+        const blocked = role.status === 'blocked'
+            || role.amount === null
+            || role.amount === undefined
+            || Boolean(blocker);
         const trace = [
             role.attendanceRef ? `attendance #${role.attendanceRef}` : '',
             role.segmentRef ? `segment #${role.segmentRef}` : '',
             role.roleRef ? `role #${role.roleRef}` : ''
         ].filter(Boolean).join(' · ');
-        const status = role.status === 'blocked'
+        const status = blocked
             ? '<span class="salary-additional-warning">Потрібна перевірка</span>'
             : '';
-        const amount = role.status === 'blocked'
+        const amount = blocked
             ? '<strong class="salary-additional-warning">Не розраховано</strong>'
             : `<strong>+ ${formatMoney(role.amount || 0)}</strong>`;
+        const rateLabel = role.rate === null || role.rate === undefined
+            ? 'ставку не визначено'
+            : formatMoney(role.rate);
+        const multiplierLabel = role.multiplier === null || role.multiplier === undefined
+            ? 'multiplier не визначено'
+            : salaryNumber(role.multiplier).toLocaleString('uk-UA');
         return `<div class="salary-additional-line">
             <div><b>${escapeHtml(role.professionKey || '—')}</b>${status}</div>
-            <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${formatMoney(role.rate || 0)} × ${salaryNumber(role.multiplier || 0).toLocaleString('uk-UA')}</div>
+            <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${escapeHtml(rateLabel)} × ${escapeHtml(multiplierLabel)}</div>
             ${amount}
+            ${blocker ? `<div class="salary-additional-warning"><code>${escapeHtml(blocker.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(blocker.message || '')}</div>` : ''}
             <small>${escapeHtml(trace || role.policyVersion || 'Немає snapshot reference')}</small>
         </div>`;
     });
     if (blockers.length) {
         lines.push(`<div class="salary-additional-warning" role="alert">
-            ${blockers.map(issue => escapeHtml(issue.message || issue.code || 'Payroll потребує перевірки')).join('<br>')}
+            ${blockers.map(issue => `<code>${escapeHtml(issue.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(issue.message || 'Payroll потребує перевірки')}`).join('<br>')}
         </div>`);
     }
     return lines.join('');

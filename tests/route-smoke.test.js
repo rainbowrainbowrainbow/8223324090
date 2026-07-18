@@ -6281,6 +6281,29 @@ describe('route-level API safety smoke', () => {
         assert.equal(deniedMutation.data.error, 'Insufficient permissions');
     });
 
+    it('keeps HR salary and reconciliation unavailable to HR viewers without payroll control', async () => {
+        for (const role of ['manager', 'hr', 'security']) {
+            const headers = withAuth({}, role);
+            const salary = await request(
+                'GET',
+                '/api/hr/salary?month=2026-05',
+                undefined,
+                headers
+            );
+            assert.equal(salary.status, 403, `${role}: ${JSON.stringify(salary.data)}`);
+            assert.equal(salary.data.error, 'Insufficient permissions');
+
+            const reconciliation = await request(
+                'GET',
+                '/api/hr/salary/reconciliation?month=2026-05',
+                undefined,
+                headers
+            );
+            assert.equal(reconciliation.status, 403, `${role}: ${JSON.stringify(reconciliation.data)}`);
+            assert.equal(reconciliation.data.error, 'Insufficient permissions');
+        }
+    });
+
     it('persists HR company structure as editable org chart nodes', async () => {
         const loaded = await request('GET', '/api/hr/company-structure', undefined, withAuth());
         assert.equal(loaded.status, 200, JSON.stringify(loaded.data));

@@ -284,7 +284,7 @@ test('system automations create and mutate operational rows inside one business 
 
     assert.match(hr, /DEFAULT_BUSINESS_CONTEXT/);
     assert.match(hr, /COALESCE\(tr\.business_context, 'event_genix'\) = \$2/);
-    assert.match(hr, /INSERT INTO hr_time_records \(business_context/);
+    assert.match(hr, /recordAttendanceStatus\(client, \{[\s\S]*businessContext: DEFAULT_BUSINESS_CONTEXT/);
 
     assert.match(telegram, /INSERT INTO event_reviews \(business_context/);
     assert.match(telegram, /INSERT INTO team_pulse \(business_context, date, score\)/);

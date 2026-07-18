@@ -300,7 +300,7 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     });
 });
 
-test('per-shift, monthly and hybrid schemes fail closed for simultaneous additional pay without an approved formula', () => {
+test('per-shift and monthly preserve base pay and add snapshot hourly pay while unsupported schemes fail closed', () => {
     const exactMetrics = metrics({
         physicalMinutes: 540,
         totalMinutes: 540,
@@ -330,32 +330,53 @@ test('per-shift, monthly and hybrid schemes fail closed for simultaneous additio
         exactMetrics,
         rateMap({ hallkeeper: 999 })
     );
+    const percent = calculateProfessionPay(
+        staff({ roleType: 'wardrobe', rateUnit: 'hour', hourlyRate: 100 }),
+        { schemeType: 'percent', config: { percentRate: 10 }, isFallback: false },
+        exactMetrics,
+        rateMap({ hallkeeper: 999 })
+    );
+    const manual = calculateProfessionPay(
+        staff({ roleType: 'wardrobe', rateUnit: 'hour', hourlyRate: 100 }),
+        { schemeType: 'manual', config: {}, isFallback: false },
+        exactMetrics,
+        rateMap({ hallkeeper: 999 })
+    );
 
     assert.equal(perShift.baseAmount, 900);
-    assert.equal(perShift.additionalAmount, 0);
-    assert.equal(perShift.additionalLines.length, 0);
-    assert.equal(perShift.totalAmount, 900);
-    assert.equal(perShift.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
-    assert.equal(perShift.blockingIssues[0].schemeType, 'per_shift');
-    assert.equal(perShift.blockingIssues[0].professionKey, 'hallkeeper');
-    assert.equal(perShift.blockingIssues[0].paidRoleMinutes, 510);
-    assert.equal(perShift.blockingIssues[0].paidRoleHours, 8.5);
-    assert.equal(perShift.blockingIssues[0].message, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE);
+    assert.equal(perShift.additionalAmount, 1700);
+    assert.equal(perShift.additionalLines.length, 1);
+    assert.equal(perShift.totalAmount, 2600);
+    assert.deepEqual(perShift.blockingIssues, []);
+    assert.equal(perShift.additionalLines[0].rate, 200);
+    assert.equal(perShift.additionalLines[0].rateSource, 'staff_profession_rates.hourly_rate');
+    assert.equal(perShift.additionalLines[0].formula, '510 / 60 * 200 * 1');
     assert.equal(monthly.baseAmount, 30000);
-    assert.equal(monthly.additionalAmount, 0);
-    assert.equal(monthly.additionalLines.length, 0);
-    assert.equal(monthly.totalAmount, 30000);
-    assert.equal(monthly.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
-    assert.equal(monthly.blockingIssues[0].schemeType, 'monthly_fixed');
-    assert.equal(hybrid.applies, false);
-    assert.equal(hybrid.professionRateSummary.length, 0);
-    assert.equal(hybrid.additionalAmount, 0);
-    assert.equal(hybrid.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
-    assert.equal(hybrid.blockingIssues[0].schemeType, 'hybrid');
-    assert.equal(hybrid.reconciliation.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
-    assert.ok(hybrid.reconciliation.warnings.some(
-        issue => issue.code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
-    ));
+    assert.equal(monthly.additionalAmount, 1700);
+    assert.equal(monthly.additionalLines.length, 1);
+    assert.equal(monthly.totalAmount, 31700);
+    assert.deepEqual(monthly.blockingIssues, []);
+    assert.equal(monthly.additionalLines[0].rate, 200);
+    assert.equal(monthly.additionalLines[0].rateSource, 'staff_profession_rates.hourly_rate');
+    for (const [schemeType, blocked] of [
+        ['hybrid', hybrid],
+        ['percent', percent],
+        ['manual', manual]
+    ]) {
+        assert.equal(blocked.applies, false);
+        assert.equal(blocked.professionRateSummary.length, 0);
+        assert.equal(blocked.additionalAmount, 0);
+        assert.equal(blocked.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
+        assert.equal(blocked.blockingIssues[0].schemeType, schemeType);
+        assert.equal(blocked.blockingIssues[0].message, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE);
+        assert.equal(
+            blocked.reconciliation.blockingIssues[0].code,
+            PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+        );
+        assert.ok(blocked.reconciliation.warnings.some(
+            issue => issue.code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+        ));
+    }
     assert.throws(
         () => assertPayrollRowsGenerationReady([{
             staffId: 7,
@@ -374,7 +395,7 @@ test('per-shift, monthly and hybrid schemes fail closed for simultaneous additio
         () => assertPayrollRowsCommitReady([{
             staffId: 7,
             name: 'Unsupported scheme QA',
-            payrollBlockingIssues: perShift.blockingIssues
+            payrollBlockingIssues: hybrid.blockingIssues
         }]),
         error => error.code === 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED'
             && error.statusCode === 409
@@ -416,22 +437,26 @@ test('additional pay resolver rejects staff or scheme fallback and blocks payrol
     assert.equal(resolution.ok, false);
     assert.deepEqual(resolution.issue.invalidFields, ['rateSource']);
 
-    const result = calculateProfessionPay(
-        staff(),
-        { schemeType: 'hourly', config: {}, isFallback: true },
-        metrics({ additionalProfessionAllocations: [invalid] }),
-        rateMap({ reception: 100, manager: 200, hallkeeper: 999 })
-    );
-    assert.equal(result.additionalAmount, 0);
-    assert.equal(result.blockingIssues[0].code, 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SNAPSHOT_INVALID');
-    assert.throws(
-        () => assertPayrollRowsCommitReady([{
-            staffId: 7,
-            payrollBlockingIssues: result.blockingIssues
-        }]),
-        error => error.code === 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED'
-            && error.statusCode === 409
-    );
+    for (const schemeType of ['hourly', 'per_shift', 'monthly_fixed']) {
+        const result = calculateProfessionPay(
+            staff({
+                rateUnit: schemeType === 'per_shift' ? 'day' : (schemeType === 'monthly_fixed' ? 'month' : 'hour')
+            }),
+            { schemeType, config: {}, isFallback: true },
+            metrics({ additionalProfessionAllocations: [invalid] }),
+            rateMap({ reception: 100, manager: 200, hallkeeper: 999 })
+        );
+        assert.equal(result.additionalAmount, 0);
+        assert.equal(result.blockingIssues[0].code, 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SNAPSHOT_INVALID');
+        assert.throws(
+            () => assertPayrollRowsCommitReady([{
+                staffId: 7,
+                payrollBlockingIssues: result.blockingIssues
+            }]),
+            error => error.code === 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED'
+                && error.statusCode === 409
+        );
+    }
 });
 
 test('hourly payroll consumes attendance minutes after the segment break without paying an additional role', () => {
@@ -1431,7 +1456,7 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(financePage, /renderPayrollAdditionalBreakdown/);
     assert.match(financePage, /row\.payrollBlockingIssues/);
     assert.match(financePage, /role="alert"/);
-    assert.match(staffPage, /Для per shift, monthly fixed або hybrid payroll буде заблоковано/);
+    assert.match(staffPage, /Hybrid, percent та manual payroll залишаються заблокованими/);
 });
 
 test('payroll profile resolver keeps profile query budget batched by staff and profile ids', () => {

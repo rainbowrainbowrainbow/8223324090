@@ -6,7 +6,8 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const {
     recordAttendanceClockIn,
-    recordAttendanceClockOut
+    recordAttendanceClockOut,
+    recordAttendanceStatus
 } = require('../../services/hrAttendance');
 
 const enabled = process.env.RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION === 'true';
@@ -159,6 +160,67 @@ describe('attendance compensation snapshot on isolated PostgreSQL', { skip: !ena
             repeatedClockOut.record.compensation_snapshot,
             snapshot,
             'closed attendance must not be recalculated from the edited schedule'
+        );
+    });
+
+    test('terminal base-only attendance is finalized atomically and cannot overwrite worked time', async () => {
+        const suffix = `${process.pid}-${Date.now()}`;
+        const staffResult = await client.query(
+            `INSERT INTO staff (name, department, position, role_type, is_active)
+             VALUES ($1, 'admin', 'Disposable status fixture', 'wardrobe', true)
+             RETURNING id`,
+            [`Fictional Attendance Status ${suffix}`]
+        );
+        const staffId = Number(staffResult.rows[0].id);
+        const statusDate = '2026-07-23';
+        await client.query(
+            `INSERT INTO hr_shifts (
+                staff_id, shift_date, planned_start, planned_end,
+                break_minutes, shift_type, profession_key, created_by
+             )
+             VALUES ($1, $2::date, '11:00', '20:00', 0, 'regular', 'wardrobe', 'isolated_test')`,
+            [staffId, statusDate]
+        );
+
+        const statusResult = await recordAttendanceStatus(client, {
+            staffId,
+            recordDate: statusDate,
+            status: 'no_show',
+            notes: 'isolated scheduler verification',
+            now: '2026-07-23T12:00:00.000Z',
+            source: 'isolated_no_show',
+            performedBy: 'isolated_test'
+        });
+        assert.equal(statusResult.record.status, 'no_show');
+        assert.equal(statusResult.compensationSnapshot.state, 'final');
+        assert.equal(statusResult.compensationSnapshot.totals.physicalMinutes, 0);
+        assert.equal(statusResult.compensationSnapshot.totals.baseMinutes, 0);
+        assert.equal(statusResult.compensationSnapshot.totals.simultaneousAdditionalMinutes, 0);
+
+        const persisted = await client.query(
+            `SELECT compensation_snapshot
+             FROM hr_time_records
+             WHERE staff_id = $1 AND record_date = $2::date`,
+            [staffId, statusDate]
+        );
+        assert.equal(persisted.rows[0].compensation_snapshot.state, 'final');
+        assert.equal(persisted.rows[0].compensation_snapshot.legacyBaseOnly, false);
+
+        await client.query(
+            `UPDATE hr_time_records
+             SET clock_in = '2026-07-23T08:00:00.000Z',
+                 clock_out = '2026-07-23T17:00:00.000Z',
+                 total_worked_minutes = 540
+             WHERE staff_id = $1 AND record_date = $2::date`,
+            [staffId, statusDate]
+        );
+        await assert.rejects(
+            recordAttendanceStatus(client, {
+                staffId,
+                recordDate: statusDate,
+                status: 'vacation'
+            }),
+            error => error.code === 'ATTENDANCE_STATUS_CONFLICT' && error.statusCode === 409
         );
     });
 });

@@ -219,7 +219,7 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
     assertInOrder(routeBlock(source, 'post', '/mark-absent'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
-        /INSERT INTO hr_time_records/,
+        /recordAttendanceStatus\(client/,
         /auditLog\('mark_absent'[\s\S]*req\.ip, client\)/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/hr/mark-absent');
@@ -255,6 +255,26 @@ test('HR auto-close finalizes attendance through the canonical compensation snap
     );
 });
 
+test('leave approval and no-show use the canonical terminal-status snapshot writer', () => {
+    const routeSource = read('routes', 'hr.js');
+    const schedulerSource = read('services', 'hr.js');
+
+    assertInOrder(routeBlock(routeSource, 'put', '/leave-requests/:id/review'), [
+        /await client\.query\('BEGIN'\)/,
+        /await lockAttendanceWriteTargets\(/,
+        /recordAttendanceStatus\(client/,
+        /auditLog\('leave_request_review'[\s\S]*req\.ip, client\)/,
+        /await client\.query\('COMMIT'\)/
+    ], 'PUT /api/hr/leave-requests/:id/review');
+    assertInOrder(schedulerSource, [
+        /await client\.query\('BEGIN'\)/,
+        /await lockAttendanceWriteTarget\(client/,
+        /recordAttendanceStatus\(client/,
+        /VALUES \('no_show'/,
+        /await client\.query\('COMMIT'\)/
+    ], 'services/hr.js no-show');
+});
+
 test('backup restore takes the exclusive attendance gate before maintenance mutations', () => {
     const source = read('services', 'backupRecovery.js');
     assert.match(source, /require\('\.\/attendanceWriteLock'\)/);
@@ -278,7 +298,7 @@ test('approved leave and HR scheduler writers share the transaction-scoped day l
     assertInOrder(leaveReview, [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTargets\(\s*client,/,
-        /INSERT INTO hr_time_records/,
+        /recordAttendanceStatus\(client/,
         /auditLog\('leave_request_review'[\s\S]*req\.ip, client\)/,
         /await client\.query\('COMMIT'\)/
     ], 'PUT /api/hr/leave-requests/:id/review');
@@ -295,8 +315,20 @@ test('approved leave and HR scheduler writers share the transaction-scoped day l
     assertInOrder(namedFunctionBlock(serviceSource, 'checkHrNoShow'), [
         /await client\.query\('BEGIN'\)/,
         /await lockAttendanceWriteTarget\(client,/,
-        /INSERT INTO hr_time_records/,
+        /recordAttendanceStatus\(client/,
         /INSERT INTO hr_audit_log/,
         /await client\.query\('COMMIT'\)/
     ], 'checkHrNoShow');
+});
+
+test('operational attendance writers do not bypass the canonical snapshot service', () => {
+    const routeSource = read('routes', 'hr.js');
+    const schedulerSource = read('services', 'hr.js');
+    const hermesSource = read('services', 'hermesAttendanceImport.js');
+
+    assert.doesNotMatch(routeSource, /INSERT INTO hr_time_records/);
+    assert.doesNotMatch(schedulerSource, /INSERT INTO hr_time_records/);
+    assert.doesNotMatch(hermesSource, /INSERT INTO hr_time_records/);
+    assert.match(hermesSource, /const writeClockIn = options\.recordAttendanceClockIn \|\| recordAttendanceClockIn/);
+    assert.match(hermesSource, /writeClockIn\(db,/);
 });

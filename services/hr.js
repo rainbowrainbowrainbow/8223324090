@@ -11,7 +11,7 @@ const { getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { lockAttendanceWriteTarget } = require('./attendanceWriteLock');
-const { recordAttendanceClockOut } = require('./hrAttendance');
+const { recordAttendanceClockOut, recordAttendanceStatus } = require('./hrAttendance');
 
 const log = createLogger('HR');
 
@@ -251,20 +251,14 @@ async function checkHrNoShow() {
                     continue;
                 }
 
-                const upserted = await client.query(
-                    `INSERT INTO hr_time_records (business_context, staff_id, record_date, status)
-                     VALUES ($1, $2, $3, 'no_show')
-                     ON CONFLICT (staff_id, record_date) DO UPDATE SET status = 'no_show', updated_at = NOW()
-                     WHERE hr_time_records.clock_in IS NULL
-                       AND hr_time_records.status = 'absent'
-                       AND COALESCE(hr_time_records.business_context, 'event_genix') = $1
-                     RETURNING id`,
-                    [DEFAULT_BUSINESS_CONTEXT, row.staff_id, todayStr]
-                );
-                if (!upserted.rows[0]) {
-                    await client.query('COMMIT');
-                    continue;
-                }
+                await recordAttendanceStatus(client, {
+                    staffId: row.staff_id,
+                    recordDate: todayStr,
+                    status: 'no_show',
+                    businessContext: DEFAULT_BUSINESS_CONTEXT,
+                    performedBy: 'system',
+                    source: 'hr_no_show_scheduler'
+                });
 
                 await client.query(
                     `INSERT INTO hr_audit_log (action, staff_id, performed_by, details)

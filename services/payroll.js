@@ -1685,7 +1685,9 @@ function buildUnsupportedSimultaneousAdditionalSchemeIssues(metrics = {}, scheme
 }
 
 function applySimultaneousAdditionalPayPolicy(result, metrics = {}, schemeType = 'hourly') {
-    if (schemeType === 'hourly') return attachSimultaneousAdditionalPay(result, metrics);
+    if (['hourly', 'per_shift', 'monthly_fixed'].includes(schemeType)) {
+        return attachSimultaneousAdditionalPay(result, metrics);
+    }
     const unsupportedIssues = buildUnsupportedSimultaneousAdditionalSchemeIssues(metrics, schemeType);
     const blockingIssues = compactAllocationIssues([
         ...(metrics.payrollBlockingIssues || []),

@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const {
     calculateAttendanceClockIn,
     HR_ATTENDANCE_PLAN_SOURCES,
-    recordAttendanceClockIn
+    recordAttendanceClockIn,
+    recordAttendanceStatus
 } = require('../services/hrAttendance');
 
 function createClockInDb(options = {}) {
@@ -246,4 +247,88 @@ test('missing shift and profession-card hours records an explicit unscheduled ar
     assert.equal(result.plan.source, 'unscheduled');
     assert.equal(result.planSource, 'unscheduled');
     assert.equal(audits[0].plan_source, 'unscheduled');
+});
+
+test('terminal attendance status creates a finalized zero-minute compensation snapshot', async () => {
+    const calls = [];
+    const audits = [];
+    const db = {
+        async query(sql, params = []) {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            calls.push({ text, params });
+            if (text.startsWith('SELECT * FROM hr_time_records')) return { rows: [] };
+            if (text.includes('FROM hr_shifts hs')) return { rows: [] };
+            if (/^SELECT s\.id, s\.role_type, COALESCE\(s\.is_active, true\) AS is_active/.test(text)) {
+                return { rows: [{ id: 7, role_type: 'wardrobe', is_active: true }] };
+            }
+            if (text.includes('FROM staff_shift_preferences')) {
+                return { rows: [{ start_time: '11:00:00', end_time: '20:00:00', is_active: true }] };
+            }
+            if (text.startsWith('INSERT INTO hr_time_records')) {
+                return { rows: [{
+                    id: 902,
+                    business_context: params[0],
+                    staff_id: params[1],
+                    record_date: params[2],
+                    status: params[3],
+                    notes: params[4],
+                    planned_start: params[5],
+                    planned_end: params[6],
+                    compensation_snapshot: JSON.parse(params[7])
+                }] };
+            }
+            if (text.startsWith('INSERT INTO hr_audit_log')) {
+                audits.push(JSON.parse(params[2]));
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${text}`);
+        }
+    };
+
+    const result = await recordAttendanceStatus(db, {
+        staffId: 7,
+        recordDate: '2026-07-17',
+        status: 'no_show',
+        notes: 'scheduler',
+        now: '2026-07-17T12:00:00.000Z',
+        source: 'unit_test',
+        performedBy: 'system'
+    });
+
+    assert.equal(result.record.status, 'no_show');
+    assert.equal(result.compensationSnapshot.state, 'final');
+    assert.equal(result.compensationSnapshot.totals.physicalMinutes, 0);
+    assert.equal(result.compensationSnapshot.totals.baseMinutes, 0);
+    assert.equal(result.compensationSnapshot.totals.simultaneousAdditionalMinutes, 0);
+    assert.equal(result.compensationSnapshot.compensationAllocations.length, 1);
+    assert.equal(result.compensationSnapshot.compensationAllocations[0].actualMinutes, 0);
+    assert.equal(audits[0].trigger, 'attendance_status');
+    assert.equal(audits[0].attendanceStatus, 'no_show');
+    assert.ok(calls.some(call => /compensation_snapshot/.test(call.text)));
+});
+
+test('terminal attendance status cannot overwrite worked time', async () => {
+    const db = {
+        async query(sql) {
+            if (String(sql).includes('SELECT * FROM hr_time_records')) {
+                return { rows: [{
+                    id: 903,
+                    staff_id: 7,
+                    record_date: '2026-07-17',
+                    clock_in: '2026-07-17T08:00:00.000Z',
+                    status: 'present'
+                }] };
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+        }
+    };
+
+    await assert.rejects(
+        recordAttendanceStatus(db, {
+            staffId: 7,
+            recordDate: '2026-07-17',
+            status: 'vacation'
+        }),
+        error => error.code === 'ATTENDANCE_STATUS_CONFLICT' && error.statusCode === 409
+    );
 });

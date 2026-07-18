@@ -830,8 +830,10 @@ async function recordAttendanceClockIn(db, input = {}) {
                 clock_in = $1, planned_start = $2, planned_end = $3,
                 late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
                 business_context = COALESCE(business_context, $8),
-                compensation_snapshot = $9::jsonb, updated_at = NOW()
-             WHERE id = $10 RETURNING *`,
+                compensation_snapshot = $9::jsonb,
+                notes = COALESCE($10, notes),
+                updated_at = NOW()
+             WHERE id = $11 RETURNING *`,
             [
                 clockIn,
                 fields.plannedStart,
@@ -842,6 +844,7 @@ async function recordAttendanceClockIn(db, input = {}) {
                 input.userAgent || input.user_agent || null,
                 businessContext,
                 JSON.stringify(compensationSnapshot),
+                input.notes ?? null,
                 existing.id
             ]
         );
@@ -849,8 +852,8 @@ async function recordAttendanceClockIn(db, input = {}) {
         writeResult = await db.query(
             `INSERT INTO hr_time_records
                 (business_context, staff_id, record_date, clock_in, planned_start, planned_end,
-                 late_minutes, status, ip_address, user_agent, compensation_snapshot)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+                 late_minutes, status, ip_address, user_agent, compensation_snapshot, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
              RETURNING *`,
             [
                 businessContext,
@@ -863,7 +866,8 @@ async function recordAttendanceClockIn(db, input = {}) {
                 fields.status,
                 input.ip || null,
                 input.userAgent || input.user_agent || null,
-                JSON.stringify(compensationSnapshot)
+                JSON.stringify(compensationSnapshot),
+                input.notes ?? null
             ]
         );
     }
@@ -1410,6 +1414,162 @@ function attendanceMutationError(code, message, statusCode) {
     return error;
 }
 
+const TERMINAL_ATTENDANCE_STATUSES = new Set([
+    'absent',
+    'no_show',
+    'sick',
+    'vacation',
+    'day_off'
+]);
+
+function zeroAttendancePhysicalAllocation(plan = {}) {
+    return {
+        actualMinutes: 0,
+        overtimeMinutes: 0,
+        segmentAllocations: (Array.isArray(plan.segments) ? plan.segments : []).map((segment, segmentIndex) => ({
+            segmentId: segment.id ?? null,
+            segmentIndex,
+            professionKey: segment.professionKey || null,
+            plannedMinutes: normalizeNonNegativeMinutes(segment.plannedMinutes),
+            actualMinutes: 0
+        }))
+    };
+}
+
+async function recordAttendanceStatus(db, input = {}) {
+    if (!db || typeof db.query !== 'function') {
+        throw new TypeError('recordAttendanceStatus requires a database client');
+    }
+    const staffId = Number(input.staffId ?? input.staff_id);
+    const recordDate = normalizeAttendancePlanDate(input.recordDate ?? input.record_date ?? input.date);
+    const status = String(input.status || '').trim();
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        throw new TypeError('recordAttendanceStatus requires a valid staffId');
+    }
+    if (!recordDate) {
+        throw new TypeError('recordAttendanceStatus requires a valid recordDate');
+    }
+    if (!TERMINAL_ATTENDANCE_STATUSES.has(status)) {
+        throw new TypeError('recordAttendanceStatus requires a supported terminal status');
+    }
+
+    const existingResult = await db.query(
+        'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+        [staffId, recordDate]
+    );
+    const existing = existingResult.rows?.[0] || null;
+    if (existing && (
+        existing.clock_in
+        || existing.clock_out
+        || normalizeNonNegativeMinutes(existing.total_worked_minutes) > 0
+    )) {
+        throw attendanceMutationError(
+            'ATTENDANCE_STATUS_CONFLICT',
+            'Attendance status cannot replace an existing worked-time record',
+            409
+        );
+    }
+
+    const plan = await resolveAttendancePlan(db, staffId, recordDate);
+    const capturedAt = input.now === undefined ? new Date() : new Date(input.now);
+    if (Number.isNaN(capturedAt.getTime())) {
+        throw new TypeError('recordAttendanceStatus requires a valid server time');
+    }
+    const plannedSnapshot = await buildAttendanceCompensationPlanSnapshot(db, {
+        staffId,
+        recordDate,
+        plan,
+        capturedAt
+    });
+    const compensationSnapshot = finalizeAttendanceCompensationSnapshot(
+        plannedSnapshot,
+        zeroAttendancePhysicalAllocation(plannedSnapshot.plan),
+        { finalizedAt: capturedAt }
+    );
+    const businessContext = normalizeBusinessContext(
+        input.businessContext ?? input.business_context
+    );
+    const writeResult = existing
+        ? await db.query(
+            `UPDATE hr_time_records SET
+                status = $1,
+                notes = COALESCE($2, notes),
+                business_context = COALESCE(business_context, $3),
+                planned_start = $4,
+                planned_end = $5,
+                compensation_snapshot = $6::jsonb,
+                updated_at = NOW()
+             WHERE id = $7
+             RETURNING *`,
+            [
+                status,
+                input.notes ?? null,
+                businessContext,
+                plan.plannedStart || null,
+                plan.plannedEnd || null,
+                JSON.stringify(compensationSnapshot),
+                existing.id
+            ]
+        )
+        : await db.query(
+            `INSERT INTO hr_time_records (
+                business_context, staff_id, record_date, status, notes,
+                planned_start, planned_end, compensation_snapshot
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+             RETURNING *`,
+            [
+                businessContext,
+                staffId,
+                recordDate,
+                status,
+                input.notes ?? null,
+                plan.plannedStart || null,
+                plan.plannedEnd || null,
+                JSON.stringify(compensationSnapshot)
+            ]
+        );
+    const record = writeResult.rows?.[0] || null;
+    const source = String(input.source || 'attendance_status').trim() || 'attendance_status';
+    const performedBy = input.performedBy || input.performed_by || 'system';
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('compensation_snapshot_created', $1, $2, $3, $4)`,
+        [
+            staffId,
+            performedBy,
+            JSON.stringify({
+                eventVersion: 1,
+                recordId: record?.id ?? null,
+                recordDate,
+                source,
+                trigger: 'attendance_status',
+                attendanceStatus: status,
+                snapshotState: compensationSnapshot.state,
+                snapshotSchemaVersion: compensationSnapshot.schemaVersion,
+                planSource: compensationSnapshot.planSource,
+                compensationSnapshot
+            }),
+            input.ip || null
+        ]
+    );
+
+    return {
+        record: record ? decorateAttendanceRecord(
+            {
+                ...record,
+                compensation_snapshot: record.compensation_snapshot || compensationSnapshot,
+                plan_source: plan.source
+            },
+            attendancePlanForDecoration(plan)
+        ) : null,
+        plan,
+        planSource: plan.source,
+        compensationSnapshot,
+        auditWritten: true
+    };
+}
+
 async function recordAttendanceClockOut(db, input = {}) {
     if (!db || typeof db.query !== 'function') {
         throw new TypeError('recordAttendanceClockOut requires a database client');
@@ -1654,6 +1814,7 @@ module.exports = {
     plannedShiftWorkedMinutes,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
+    recordAttendanceStatus,
     resolveAttendancePlan,
     summarizeHrTodayItems,
     timeToMinutes

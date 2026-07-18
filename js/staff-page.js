@@ -4791,7 +4791,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                 </div>
                 <div class="sch-paid-role-preview" data-paid-role-preview>${escapeHtml(schedulePaidRolePreview(scope, paidRole, segment))}</div>
                 <div class="sch-paid-role-preview sch-paid-role-policy-note">
-                    Окрема оплата розраховується лише для погодинної payroll-схеми. Для per shift, monthly fixed або hybrid payroll буде заблоковано до погодження формули.
+                    Окрема оплата розраховується для hourly, per shift і monthly fixed. Hybrid, percent та manual payroll залишаються заблокованими до погодження окремої формули.
                 </div>
                 ${paidRateError}
             </fieldset>

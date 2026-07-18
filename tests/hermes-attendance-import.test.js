@@ -255,8 +255,23 @@ function createReadyImportRow(overrides = {}) {
 
 function createApplyDb(importRow = createReadyImportRow(), options = {}) {
     const calls = [];
-    return {
+    const db = {
         calls,
+        async recordAttendanceClockIn(_db, input) {
+            calls.push({ sql: 'recordAttendanceClockIn', params: [input] });
+            const row = options.insertedRows?.[0] || {
+                id: 8801,
+                clock_in: new Date('2026-07-15T06:08:00Z'),
+                status: 'late',
+                late_minutes: 8,
+                compensation_snapshot: { state: 'planned' }
+            };
+            return {
+                record: row,
+                alreadyClockedIn: false,
+                auditWritten: true
+            };
+        },
         async query(sql, params = []) {
             calls.push({ sql, params });
             if (/SELECT \*[\s\S]*FROM hermes_attendance_imports/.test(sql)) return { rows: [importRow] };
@@ -283,6 +298,9 @@ function createApplyDb(importRow = createReadyImportRow(), options = {}) {
             }
             if (/FROM hr_time_records/.test(sql)) return { rows: options.timeRows || [] };
             if (/FROM staff_checkins/.test(sql)) return { rows: options.checkinRows || [] };
+            if (/AT TIME ZONE 'Europe\/Kyiv'\) AS clock_in/.test(sql)) {
+                return { rows: [{ clock_in: new Date('2026-07-15T06:08:00Z') }] };
+            }
             if (/INSERT INTO hr_time_records/.test(sql)) {
                 return { rows: options.insertedRows || [{ id: 8801, clock_in: new Date('2026-07-15T06:08:00Z') }] };
             }
@@ -297,6 +315,7 @@ function createApplyDb(importRow = createReadyImportRow(), options = {}) {
             throw new Error(`Unexpected apply SQL: ${sql}`);
         }
     };
+    return db;
 }
 
 describe('Hermes arrival-sheet preview contract', () => {
@@ -538,7 +557,8 @@ describe('Hermes arrival-sheet apply contract', () => {
             actor: {
                 user: { username: 'hermes.attendance' },
                 ip: '127.0.0.1'
-            }
+            },
+            recordAttendanceClockIn: db.recordAttendanceClockIn
         });
 
         assert.equal(result.response.attendanceWrites, 1);
@@ -556,20 +576,24 @@ describe('Hermes arrival-sheet apply contract', () => {
             status: 'late'
         }]);
 
-        const attendanceInsert = db.calls.find(call => /INSERT INTO hr_time_records/.test(call.sql));
-        assert.ok(attendanceInsert);
-        assert.match(attendanceInsert.sql, /AT TIME ZONE 'Europe\/Kyiv'/);
-        assert.match(attendanceInsert.sql, /ON CONFLICT \(staff_id, record_date\) DO NOTHING/);
-        assert.deepEqual(attendanceInsert.params.slice(0, 8), [
-            'event_genix',
-            101,
-            '2026-07-15',
-            '09:08',
-            '09:00',
-            '18:00',
-            8,
-            'late'
-        ]);
+        const arrivalInstant = db.calls.find(call => /AT TIME ZONE 'Europe\/Kyiv'\) AS clock_in/.test(call.sql));
+        assert.ok(arrivalInstant);
+        assert.deepEqual(arrivalInstant.params, ['2026-07-15', '09:08']);
+        const attendanceWrite = db.calls.find(call => call.sql === 'recordAttendanceClockIn');
+        assert.ok(attendanceWrite);
+        assert.deepEqual({
+            businessContext: attendanceWrite.params[0].businessContext,
+            staffId: attendanceWrite.params[0].staffId,
+            recordDate: attendanceWrite.params[0].recordDate,
+            method: attendanceWrite.params[0].method,
+            source: attendanceWrite.params[0].source
+        }, {
+            businessContext: 'event_genix',
+            staffId: 101,
+            recordDate: '2026-07-15',
+            method: 'import',
+            source: 'hermes_attendance_import'
+        });
 
         const maintenanceGateIndex = db.calls.findIndex(call => (
             /pg_advisory_xact_lock_shared/.test(call.sql)
@@ -584,7 +608,7 @@ describe('Hermes arrival-sheet apply contract', () => {
         const scheduleRecheckIndex = db.calls.findIndex(call => /FROM staff_schedule/.test(call.sql));
         const timeRecordRecheckIndex = db.calls.findIndex(call => /FROM hr_time_records/.test(call.sql));
         const checkinRecheckIndex = db.calls.findIndex(call => /FROM staff_checkins/.test(call.sql));
-        const attendanceInsertIndex = db.calls.indexOf(attendanceInsert);
+        const attendanceInsertIndex = db.calls.indexOf(attendanceWrite);
         assert.ok(lockIndex >= 0, 'Hermes apply must acquire the shared attendance lock');
         assert.ok(maintenanceGateIndex >= 0, 'Hermes apply must acquire the shared maintenance gate');
         assert.ok(maintenanceGateIndex < lockIndex, 'shared maintenance gate must precede the day lock');
@@ -614,8 +638,8 @@ describe('Hermes arrival-sheet apply contract', () => {
         const sealedApplyResult = JSON.parse(sealUpdate.params[2]);
         assert.equal(sealedApplyResult.documentDate, '2026-07-15');
         assert.equal(sealedApplyResult.applied[0].attendanceRecordId, 8801);
-        assert.equal(attendanceInsert.params[2], sealedApplyResult.documentDate);
-        assert.equal(attendanceInsert.params[2], auditDetails.documentDate);
+        assert.equal(attendanceWrite.params[0].recordDate, sealedApplyResult.documentDate);
+        assert.equal(attendanceWrite.params[0].recordDate, auditDetails.documentDate);
 
         const forbiddenMutations = db.calls.filter(call => {
             return /\b(?:INSERT INTO|UPDATE|DELETE FROM)\s+(?:staff_schedule|staff_checkins|hr_shifts|staff)\b/i.test(call.sql);
@@ -660,7 +684,11 @@ describe('Hermes arrival-sheet apply contract', () => {
         const result = await applyHermesAttendanceImport(db, {
             previewId: PREVIEW_ID,
             selectedRowIds: [READY_ROW_ID]
-        }, { businessContext: 'event_genix', actorUserId: 42 });
+        }, {
+            businessContext: 'event_genix',
+            actorUserId: 42,
+            recordAttendanceClockIn: db.recordAttendanceClockIn
+        });
 
         assert.equal(result.response.attendanceWrites, 0);
         assert.equal(result.response.scheduleWrites, 0);
@@ -674,11 +702,15 @@ describe('Hermes arrival-sheet apply contract', () => {
             applyHermesAttendanceImport(db, {
                 previewId: PREVIEW_ID,
                 selectedRowIds: [READY_ROW_ID]
-            }, { businessContext: 'event_genix', actorUserId: 42 }),
+            }, {
+                businessContext: 'event_genix',
+                actorUserId: 42,
+                recordAttendanceClockIn: db.recordAttendanceClockIn
+            }),
             error => error.code === 'HERMES_ATTENDANCE_IMPORT_APPLY_CONFLICT'
                 && error.statusCode === 500
         );
-        assert.equal(db.calls.some(call => /INSERT INTO hr_time_records/.test(call.sql)), true);
+        assert.equal(db.calls.some(call => call.sql === 'recordAttendanceClockIn'), true);
     });
 });
 

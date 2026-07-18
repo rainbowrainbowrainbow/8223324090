@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 const { lockAttendanceWriteTargets } = require('./attendanceWriteLock');
+const { recordAttendanceClockIn } = require('./hrAttendance');
 const { toPostgresDateOnly } = require('./postgresDateOnly');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
@@ -878,6 +879,7 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
         );
     }
     const documentDate = toPostgresDateOnly(importRow.document_date);
+    const writeClockIn = options.recordAttendanceClockIn || recordAttendanceClockIn;
 
     await lockAttendanceWriteTargets(db, readyRows.map(row => ({
         staffId: row.writePlan.staffId,
@@ -918,45 +920,23 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
             continue;
         }
         const plan = buildAttendancePlan({ arrivalTime: row.writePlan.arrivalTime }, schedule);
-        const inserted = await db.query(
-            `INSERT INTO hr_time_records (
-                 business_context,
-                 staff_id,
-                 record_date,
-                 clock_in,
-                 planned_start,
-                 planned_end,
-                 late_minutes,
-                 status,
-                 notes
-             )
-             VALUES (
-                 $1,
-                 $2,
-                 $3::date,
-                 (($3::date + $4::time) AT TIME ZONE 'Europe/Kyiv'),
-                 $5::time,
-                 $6::time,
-                 $7,
-                 $8,
-                 $9
-             )
-             ON CONFLICT (staff_id, record_date) DO NOTHING
-             RETURNING id, clock_in`,
-            [
-                businessContext,
-                staffId,
-                documentDate,
-                row.writePlan.arrivalTime,
-                plan.plannedStart,
-                plan.plannedEnd,
-                plan.lateMinutes,
-                plan.attendanceStatus,
-                `Hermes arrival-sheet import ${importRow.public_id} / ${row.sourceRowId}`
-            ]
+        const arrivalResult = await db.query(
+            `SELECT (($1::date + $2::time) AT TIME ZONE 'Europe/Kyiv') AS clock_in`,
+            [documentDate, row.writePlan.arrivalTime]
         );
-        const attendanceRecord = inserted.rows[0];
-        if (!attendanceRecord) {
+        const clockInResult = await writeClockIn(db, {
+            businessContext,
+            staffId,
+            recordDate: documentDate,
+            now: arrivalResult.rows?.[0]?.clock_in,
+            notes: `Hermes arrival-sheet import ${importRow.public_id} / ${row.sourceRowId}`,
+            method: 'import',
+            source: 'hermes_attendance_import',
+            performedBy: actorLabel(options),
+            ip: options.actor?.ip || null
+        });
+        const attendanceRecord = clockInResult.record;
+        if (!attendanceRecord || clockInResult.alreadyClockedIn) {
             skipped.push(skippedPreviewRow(
                 row,
                 'duplicate_attendance',
@@ -971,8 +951,8 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
             name: currentStaff.display_name || currentStaff.name,
             arrivalTime: row.writePlan.arrivalTime,
             attendanceRecordId: Number(attendanceRecord.id),
-            status: plan.attendanceStatus,
-            lateMinutes: plan.lateMinutes
+            status: attendanceRecord.status || plan.attendanceStatus,
+            lateMinutes: Number(attendanceRecord.late_minutes ?? attendanceRecord.lateMinutes ?? plan.lateMinutes)
         };
         applied.push(appliedRow);
         currentState.timeRecords.set(staffId, { id: attendanceRecord.id, staff_id: staffId });
@@ -992,8 +972,17 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
                     documentDate,
                     arrivalTime: row.writePlan.arrivalTime,
                     attendanceRecordId: Number(attendanceRecord.id),
-                    status: plan.attendanceStatus,
-                    lateMinutes: plan.lateMinutes,
+                    status: attendanceRecord.status || plan.attendanceStatus,
+                    lateMinutes: Number(
+                        attendanceRecord.late_minutes
+                        ?? attendanceRecord.lateMinutes
+                        ?? plan.lateMinutes
+                    ),
+                    compensationSnapshotState: (
+                        attendanceRecord.compensation_snapshot?.state
+                        || attendanceRecord.compensationSnapshot?.state
+                        || null
+                    ),
                     scheduleWrites: 0
                 }),
                 options.actor?.ip || null

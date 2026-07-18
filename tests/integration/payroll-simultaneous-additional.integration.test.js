@@ -488,7 +488,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         assert.equal(activePaidReports.rows[0].count, 0);
     });
 
-    test('hourly stays payable while per-shift, monthly-fixed, and hybrid fail closed across previews and generation', async () => {
+    test('per-shift and monthly-fixed preserve base pay through generation, commit, and reversal while unsupported schemes fail closed', async () => {
         await pool.query(
             `UPDATE hr_time_records
              SET compensation_snapshot = jsonb_set(compensation_snapshot, '{manualReview}', 'false'::jsonb, false)
@@ -519,10 +519,139 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         };
 
         for (const scenario of [
-            { schemeType: 'per_shift', config: { perShiftRate: 900 } },
-            { schemeType: 'monthly_fixed', config: { monthlyAmount: 30000 } },
-            { schemeType: 'hybrid', config: { hourlyRate: 100, perShiftRate: 900 } }
+            { schemeType: 'per_shift', config: { perShiftRate: 900 }, baseAmount: 900, totalAmount: 2600 },
+            { schemeType: 'monthly_fixed', config: { monthlyAmount: 30000 }, baseAmount: 30000, totalAmount: 31700 }
         ]) {
+            await pool.query(
+                'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
+                [MONTH, staffId]
+            );
+            await pool.query(
+                `DELETE FROM finance_transactions
+                 WHERE staff_id = $1
+                   AND payment_method IN ('salary', 'salary_reversal')
+                   AND date::date >= $2::date
+                   AND date::date < ($2::date + INTERVAL '1 month')`,
+                [staffId, `${MONTH}-01`]
+            );
+            await activateScheme(scenario.schemeType, scenario.config);
+
+            const preview = await authRequest(
+                'GET',
+                `/api/payroll/preview?staffId=${staffId}&month=${MONTH}`
+            );
+            assert.equal(preview.status, 200, JSON.stringify(preview.data));
+            assert.equal(preview.data.preview.physicalHours, 9);
+            assert.equal(preview.data.preview.baseAmount, scenario.baseAmount);
+            assert.equal(preview.data.preview.additionalAmount, 1700);
+            assert.equal(preview.data.preview.netAmount, scenario.totalAmount);
+            assert.equal(preview.data.preview.additionalRoleHours, 8.5);
+            assert.equal(
+                preview.data.preview.payrollBlockingIssues.some(
+                    issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+                ),
+                false
+            );
+            const previewLine = preview.data.preview.lines.find(
+                line => line.lineType === 'simultaneous_additional'
+            );
+            assert.ok(previewLine);
+            assert.equal(previewLine.rate, 200);
+            assert.equal(previewLine.rateSource, 'staff_profession_rates.hourly_rate');
+            assert.equal(previewLine.amount, 1700);
+            assert.equal(previewLine.formula, '510 / 60 * 200 * 1');
+
+            const hrSalary = await authRequest('GET', `/api/hr/salary?month=${MONTH}`);
+            assert.equal(hrSalary.status, 200, JSON.stringify(hrSalary.data));
+            const salaryRow = hrSalary.data.data.find(row => Number(row.staff_id) === staffId);
+            assert.ok(salaryRow, 'fixture HR salary row is present');
+            assert.equal(salaryRow.additional_pay, 1700);
+            assert.equal(salaryRow.additional_role_hours, 8.5);
+            assert.equal(salaryRow.physical_hours, 9);
+            assert.deepEqual(salaryRow.payroll_blocking_issues, []);
+
+            const firstGeneration = await authRequest(
+                'POST',
+                `/api/payroll/generate?month=${MONTH}`,
+                { month: MONTH }
+            );
+            assert.equal(firstGeneration.status, 200, JSON.stringify(firstGeneration.data));
+            const firstReport = firstGeneration.data.reports.find(row => Number(row.staff_id) === staffId);
+            assert.ok(firstReport);
+            assert.equal(Number(firstReport.net_amount), scenario.totalAmount);
+            const breakdown = jsonValue(firstReport.breakdown_json);
+            assert.equal(breakdown.metrics.physicalMinutes, 540);
+            assert.equal(breakdown.summary.base, scenario.baseAmount);
+            assert.equal(breakdown.summary.additional, 1700);
+            assert.equal(breakdown.summary.gross, scenario.totalAmount);
+            assert.equal(
+                breakdown.lines.find(line => line.lineType === 'simultaneous_additional').rateSource,
+                'staff_profession_rates.hourly_rate'
+            );
+
+            const regeneration = await authRequest(
+                'POST',
+                `/api/payroll/generate?month=${MONTH}`,
+                { month: MONTH }
+            );
+            assert.equal(regeneration.status, 200, JSON.stringify(regeneration.data));
+            const regeneratedReport = regeneration.data.reports.find(row => Number(row.staff_id) === staffId);
+            assert.equal(Number(regeneratedReport.id), Number(firstReport.id));
+            assert.equal(Number(regeneratedReport.net_amount), scenario.totalAmount);
+
+            const approval = await authRequest(
+                'PATCH',
+                `/api/payroll/report/${regeneratedReport.id}`,
+                { status: 'approved' }
+            );
+            assert.equal(approval.status, 200, JSON.stringify(approval.data));
+
+            const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
+            assert.equal(financeCommit.status, 200, JSON.stringify(financeCommit.data));
+            const committed = financeCommit.data.transactions.find(row => Number(row.staffId) === staffId);
+            assert.equal(Number(committed.amount), scenario.totalAmount);
+
+            const reversal = await authRequest('POST', '/api/hr/salary/reverse', {
+                month: MONTH,
+                reason: `${scenario.schemeType} isolated verification`
+            });
+            assert.equal(reversal.status, 200, JSON.stringify(reversal.data));
+            const reversed = reversal.data.reversed.find(row => Number(row.staffId) === staffId);
+            assert.equal(Number(reversed.amount), scenario.totalAmount);
+            const reversedFinance = await pool.query(
+                `SELECT type, amount, payment_method
+                 FROM finance_transactions
+                 WHERE id = $1`,
+                [reversed.reversalTransactionId]
+            );
+            assert.deepEqual({
+                type: reversedFinance.rows[0].type,
+                amount: Number(reversedFinance.rows[0].amount),
+                paymentMethod: reversedFinance.rows[0].payment_method
+            }, {
+                type: 'income',
+                amount: scenario.totalAmount,
+                paymentMethod: 'salary_reversal'
+            });
+        }
+
+        for (const scenario of [
+            { schemeType: 'hybrid', config: { hourlyRate: 100, perShiftRate: 900 } },
+            { schemeType: 'percent', config: { percentRate: 10 } },
+            { schemeType: 'manual', config: {} }
+        ]) {
+            await pool.query(
+                'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
+                [MONTH, staffId]
+            );
+            await pool.query(
+                `DELETE FROM finance_transactions
+                 WHERE staff_id = $1
+                   AND payment_method IN ('salary', 'salary_reversal')
+                   AND date::date >= $2::date
+                   AND date::date < ($2::date + INTERVAL '1 month')`,
+                [staffId, `${MONTH}-01`]
+            );
             await activateScheme(scenario.schemeType, scenario.config);
 
             const preview = await authRequest(
@@ -537,23 +666,6 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             );
             assert.ok(previewIssue, JSON.stringify(preview.data.preview.payrollBlockingIssues));
             assert.equal(previewIssue.schemeType, scenario.schemeType);
-            assert.equal(previewIssue.professionKey, additionalProfessionKey);
-            assert.equal(previewIssue.paidRoleMinutes, 510);
-            assert.equal(
-                previewIssue.message,
-                'Формула подвійної оплати для цієї схеми не налаштована'
-            );
-
-            const hrSalary = await authRequest('GET', `/api/hr/salary?month=${MONTH}`);
-            assert.equal(hrSalary.status, 200, JSON.stringify(hrSalary.data));
-            const salaryRow = hrSalary.data.data.find(row => Number(row.staff_id) === staffId);
-            assert.ok(salaryRow, 'fixture HR salary row is present');
-            assert.equal(salaryRow.additional_pay, 0);
-            assert.equal(salaryRow.additional_role_hours, 8.5);
-            assert.equal(
-                salaryRow.payroll_blocking_issues[0].code,
-                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
-            );
 
             const generation = await authRequest(
                 'POST',
@@ -565,10 +677,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                 generation.data.code,
                 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
             );
-            assert.equal(
-                generation.data.details.blockingIssues[0].schemeType,
-                scenario.schemeType
-            );
+
             const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
             assert.equal(financeCommit.status, 409, JSON.stringify(financeCommit.data));
             assert.equal(financeCommit.data.code, 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED');

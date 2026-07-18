@@ -39,6 +39,7 @@ const {
     parseAttendanceCompensationSnapshot,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
+    recordAttendanceStatus,
     summarizeHrTodayItems,
     timeToMinutes
 } = require('../services/hrAttendance');
@@ -5815,20 +5816,26 @@ router.post('/mark-absent', requireHrManage, async (req, res) => {
         const today = todayKyiv();
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
-        const result = await client.query(
-            `INSERT INTO hr_time_records (staff_id, record_date, status, notes)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (staff_id, record_date) DO UPDATE SET status = $3, notes = $4, updated_at = NOW()
-             RETURNING *`,
-            [staffId, today, status, notes]
-        );
+        const result = await recordAttendanceStatus(client, {
+            staffId,
+            recordDate: today,
+            status,
+            notes,
+            businessContext: businessContextFromRequest(req),
+            performedBy: req.user?.username,
+            source: 'hr_mark_absent',
+            ip: req.ip
+        });
 
         await auditLog('mark_absent', staffId, req.user?.username, { status, notes }, req.ip, client);
         await client.query('COMMIT');
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: result.record });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/mark-absent error', err);
+        if (err?.code === 'ATTENDANCE_STATUS_CONFLICT') {
+            return res.status(err.statusCode || 409).json({ success: false, code: err.code, error: err.message });
+        }
         if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -6510,12 +6517,16 @@ router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
             );
 
             for (const dateStr of attendanceDates) {
-                await client.query(
-                    `INSERT INTO hr_time_records (staff_id, record_date, status, notes)
-                     VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (staff_id, record_date) DO UPDATE SET status = $3, notes = $4`,
-                    [lr.staff_id, dateStr, lr.type === 'vacation' ? 'vacation' : lr.type === 'sick' ? 'sick' : 'day_off', `Заявка #${lr.id}`]
-                );
+                await recordAttendanceStatus(client, {
+                    staffId: lr.staff_id,
+                    recordDate: dateStr,
+                    status: lr.type === 'vacation' ? 'vacation' : lr.type === 'sick' ? 'sick' : 'day_off',
+                    notes: `Заявка #${lr.id}`,
+                    businessContext: businessContextFromRequest(req),
+                    performedBy: req.user?.username,
+                    source: 'leave_request_approval',
+                    ip: req.ip
+                });
             }
         }
         await auditLog('leave_request_review', lr.staff_id, req.user?.username, { status, comment }, req.ip, client);
@@ -6524,6 +6535,9 @@ router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/leave-requests/:id/review error', err);
+        if (err?.code === 'ATTENDANCE_STATUS_CONFLICT') {
+            return res.status(err.statusCode || 409).json({ success: false, code: err.code, error: err.message });
+        }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();

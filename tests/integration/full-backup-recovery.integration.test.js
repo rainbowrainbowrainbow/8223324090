@@ -732,6 +732,30 @@ test(
                 independentInventory.sequences
             );
             assert.equal(artifact.manifest.sequenceCount, independentInventory.sequences.length);
+            const admissionTables = new Map(
+                parsedArtifact.payload.tables
+                    .filter(table => table.name.startsWith('admission_ticket_'))
+                    .map(table => [table.name, table])
+            );
+            assert.equal(
+                admissionTables.get('admission_ticket_types')?.rowCount,
+                6,
+                'structured backup must contain the six seeded admission ticket types'
+            );
+            assert.equal(
+                admissionTables.get('admission_ticket_tariff_versions')?.rowCount,
+                24,
+                'structured backup must contain the complete seeded tariff matrix'
+            );
+            assert.ok(
+                Number(admissionTables.get('admission_ticket_tariff_audit')?.rowCount || 0) >= 24,
+                'structured backup must contain admission tariff audit history'
+            );
+            assert.equal(
+                parsedArtifact.payload.tables.some(table => table.name === 'schema_migrations'),
+                false,
+                'schema_migrations must remain excluded from structured backup'
+            );
 
             targetServer = await startTargetServer(testDb, targetName);
             targetPool = createPool(testDb, targetName);

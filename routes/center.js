@@ -20,6 +20,16 @@ const { createLogger } = require('../utils/logger');
 const { requireMinRole, authenticateToken } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const {
+    businessContextFromRequest,
+    requireBusinessContext
+} = require('../services/businessContext');
+const {
+    AdmissionTicketError,
+    appendAdmissionTicketTariffVersion,
+    listAdmissionTicketCatalog
+} = require('../services/admissionTickets');
+const { logAdminAction } = require('../services/adminAudit');
+const {
     parseAvailabilityWindows
 } = require('../services/booking');
 
@@ -61,6 +71,23 @@ function scopedBookingParams(user, params = [], alias = 'b') {
     const queryParams = [...params];
     const visibility = getVisibleBookingScope(user, queryParams, alias);
     return { params: queryParams, sql: visibility.sql, condition: visibility.condition };
+}
+
+function sendAdmissionTicketError(res, error, operation) {
+    if (error instanceof AdmissionTicketError) {
+        return res.status(error.status).json({
+            success: false,
+            error: error.message,
+            code: error.code,
+            details: error.details || undefined
+        });
+    }
+    log.error(`${operation} error`, error);
+    return res.status(500).json({
+        success: false,
+        error: 'Помилка сервера',
+        code: 'ADMISSION_TICKET_INTERNAL_ERROR'
+    });
 }
 
 function timeToMinutes(value) {
@@ -379,7 +406,59 @@ router.get('/workers', async (req, res) => {
 });
 
 // ==========================================
-// PRICE RULES CRUD
+// ADMISSION TICKETS (versioned, context-scoped)
+// ==========================================
+
+// GET /api/center/tickets — ticket catalog and read-only tariff history (manager+)
+router.get('/tickets', async (req, res) => {
+    try {
+        const businessContext = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, businessContext)) return;
+        const catalog = await listAdmissionTicketCatalog(pool, {
+            businessContext,
+            pricingDate: req.query.pricingDate || req.query.pricing_date
+        });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, ...catalog });
+    } catch (error) {
+        sendAdmissionTicketError(res, error, 'GET /center/tickets');
+    }
+});
+
+// POST /api/center/tickets/:code/tariffs — append tariff revision (senior_manager+)
+router.post('/tickets/:code/tariffs', requireMinRole('senior_manager'), async (req, res) => {
+    try {
+        const businessContext = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, businessContext)) return;
+        const result = await appendAdmissionTicketTariffVersion(pool, {
+            businessContext,
+            code: req.params.code,
+            actor: req.user?.username,
+            input: req.body || {}
+        });
+        await logAdminAction('admission_ticket_tariff_revision_created', 'admission_tickets', {
+            username: req.user?.username,
+            target: `${businessContext}:${req.params.code}`,
+            details: {
+                businessContext,
+                ticketTypeCode: req.params.code,
+                previousTariff: result.previousTariff,
+                tariff: result.tariff,
+                effectiveFrom: result.tariff.effectiveFrom,
+                changeNote: result.tariff.changeNote
+            },
+            ip: req.ip,
+            requestId: req.headers['x-request-id']
+        });
+        res.set('Cache-Control', 'no-store');
+        res.status(201).json({ success: true, ...result });
+    } catch (error) {
+        sendAdmissionTicketError(res, error, 'POST /center/tickets/:code/tariffs');
+    }
+});
+
+// ==========================================
+// LEGACY PRICE RULES CRUD
 // ==========================================
 
 // GET /api/center/prices — all price rules

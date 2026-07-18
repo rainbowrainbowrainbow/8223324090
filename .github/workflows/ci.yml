@@ -143,6 +143,12 @@ jobs:
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:payroll-profiles:isolated
 
+      - name: Run admission ticket catalog and concurrency integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:admission-tickets:isolated
+
       - name: Install Chromium for full-stack onboarding smoke
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
 

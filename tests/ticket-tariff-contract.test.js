@@ -167,12 +167,16 @@ test('ticket access follows manager, senior_manager, and booking edit contracts'
     assert.equal(canQuoteTickets({ role: 'animator' }, booking), false);
 });
 
-test('migration 300 is free after the merged room-resource foundation', () => {
+test('migration 300 owns the ticket catalog after the merged room-resource foundation', () => {
     const migrationNumbers = fs.readdirSync(path.join(ROOT, 'db', 'migrations'))
         .map(file => Number.parseInt(/^([0-9]+)_/.exec(file)?.[1] || '', 10))
         .filter(Number.isInteger);
-    assert.equal(Math.max(...migrationNumbers), 299);
-    assert.equal(migrationNumbers.includes(TICKET_MIGRATION_NUMBER), false);
+    assert.equal(Math.max(...migrationNumbers), 300);
+    assert.equal(migrationNumbers.includes(TICKET_MIGRATION_NUMBER), true);
+    assert.equal(
+        fs.existsSync(path.join(ROOT, 'db', 'migrations', '300_admission_ticket_catalog.sql')),
+        true
+    );
 
     const roomMigration = fs.readFileSync(
         path.join(ROOT, 'db', 'migrations', '296_room_resource_id_schema.sql'),

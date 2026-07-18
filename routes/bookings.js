@@ -53,8 +53,14 @@ const {
 } = require('../services/timelineContext');
 const {
     DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest,
+    requireBusinessContext,
     normalizeBusinessContext
 } = require('../services/businessContext');
+const {
+    AdmissionTicketError,
+    resolveAdmissionTicketQuote
+} = require('../services/admissionTickets');
 const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
@@ -86,6 +92,30 @@ const log = createLogger('Bookings');
 
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
+
+function ticketBusinessContextFromAuthenticatedRequest(req) {
+    return businessContextFromRequest({
+        query: req?.query || {},
+        headers: req?.headers || {}
+    });
+}
+
+function sendAdmissionTicketQuoteError(res, error) {
+    if (error instanceof AdmissionTicketError) {
+        return res.status(error.status).json({
+            success: false,
+            error: error.message,
+            code: error.code,
+            details: error.details || undefined
+        });
+    }
+    log.error('POST /bookings/ticket-quote error', error);
+    return res.status(500).json({
+        success: false,
+        error: 'Помилка розрахунку квитків',
+        code: 'ADMISSION_TICKET_QUOTE_INTERNAL_ERROR'
+    });
+}
 
 function applyBookingStatusForCreate(booking, fallback = 'confirmed') {
     const status = normalizeBookingStatus(booking?.status, fallback);
@@ -2186,6 +2216,62 @@ async function updateAtomicLinkedBookingFields(client, id, patch, businessContex
     );
     return result.rows[0] || null;
 }
+
+// POST /api/bookings/ticket-quote — canonical server-side ticket preview.
+// Business context is resolved from the authenticated request query/header and
+// never from the pricing payload.
+router.post('/ticket-quote', requireAction('edit_booking'), async (req, res) => {
+    try {
+        const businessContext = ticketBusinessContextFromAuthenticatedRequest(req);
+        if (!requireBusinessContext(req, res, businessContext)) return;
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const bookingId = String(body.bookingId || body.booking_id || '').trim();
+        let existingBooking = null;
+
+        if (bookingId) {
+            const result = await pool.query(
+                `SELECT id, business_context, date, room_resource_id, banquet_guests,
+                        banquet_adults, kids_count, extra_data, status, created_by,
+                        hosts, second_animator
+                 FROM bookings
+                 WHERE id = $1
+                   AND business_context = $2
+                 LIMIT 1`,
+                [bookingId, businessContext]
+            );
+            existingBooking = result.rows[0] || null;
+            if (!existingBooking) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Бронювання не знайдено',
+                    code: 'TICKET_BOOKING_NOT_FOUND'
+                });
+            }
+            if (!canEditBooking(req.user, existingBooking)) {
+                return res.status(403).json(bookingAccessDeniedPayload('edit'));
+            }
+        }
+
+        const quoteInput = { ...body };
+        delete quoteInput.bookingId;
+        delete quoteInput.booking_id;
+        delete quoteInput.businessContext;
+        delete quoteInput.business_context;
+
+        const quote = await resolveAdmissionTicketQuote({
+            queryable: pool,
+            businessContext,
+            input: quoteInput,
+            existingBooking,
+            newBanquetFlow: !existingBooking
+        });
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.json({ success: true, quote });
+    } catch (error) {
+        sendAdmissionTicketQuoteError(res, error);
+    }
+});
 
 // v33.3: GET /api/bookings/occupancy — Line occupancy stats
 router.get('/occupancy', async (req, res) => {

@@ -1477,6 +1477,77 @@ async function apiGetBookingById(id, options = {}) {
     }
 }
 
+const admissionTicketQuoteRequests = new Map();
+
+async function apiQuoteAdmissionTickets(payload = {}, options = {}) {
+    const sequenceKey = String(options.sequenceKey || 'booking-ticket-quote');
+    const previous = admissionTicketQuoteRequests.get(sequenceKey);
+    if (previous?.controller) previous.controller.abort();
+
+    const controller = new AbortController();
+    const sequence = Number(previous?.sequence || 0) + 1;
+    admissionTicketQuoteRequests.set(sequenceKey, { sequence, controller });
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        admissionTicketQuoteRequests.delete(sequenceKey);
+        return apiOfflineFailure(
+            null,
+            'Розрахунок квитків недоступний офлайн. Відновіть з’єднання із сервером.'
+        );
+    }
+
+    try {
+        const url = timelineApiUrl(`${API_BASE}/bookings/ticket-quote`, options);
+        const requestOptions = {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {}),
+            cache: 'no-store',
+            signal: controller.signal
+        };
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(url, requestOptions)
+            : await fetch(url, requestOptions);
+        const current = admissionTicketQuoteRequests.get(sequenceKey);
+        if (!current || current.sequence !== sequence) {
+            return { success: false, stale: true, aborted: true };
+        }
+        if (!response || handleAuthError(response)) return apiAuthFailure(response);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.success === false) {
+            return apiFailureFromBody(body, response, 'Не вдалося розрахувати квитки');
+        }
+        return body;
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            return { success: false, stale: true, aborted: true };
+        }
+        return apiOfflineFailure(
+            error,
+            'Розрахунок квитків недоступний без зв’язку із сервером.'
+        );
+    } finally {
+        const current = admissionTicketQuoteRequests.get(sequenceKey);
+        if (current?.sequence === sequence) admissionTicketQuoteRequests.delete(sequenceKey);
+    }
+}
+
+async function apiGetAdmissionTicketCatalog(options = {}) {
+    const dateQuery = options.pricingDate
+        ? `?pricingDate=${encodeURIComponent(String(options.pricingDate))}`
+        : '';
+    const url = timelineApiUrl(`${API_BASE}/center/tickets${dateQuery}`, options);
+    return apiCall('GET', url, null, { fallback: { success: false, ticketTypes: [] } });
+}
+
+async function apiCreateAdmissionTicketTariffRevision(code, payload = {}, options = {}) {
+    const url = timelineApiUrl(
+        `${API_BASE}/center/tickets/${encodeURIComponent(String(code || ''))}/tariffs`,
+        options
+    );
+    return apiCall('POST', url, payload, { fallback: { success: false } });
+}
+
 async function apiCreateBooking(booking, options = {}) {
     try {
         const payload = timelineApiPayload(booking);

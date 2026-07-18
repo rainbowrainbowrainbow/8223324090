@@ -16,7 +16,8 @@ const {
     timeToMinutes,
     validateDate,
     validateTime,
-    validateBanquetCreationContext
+    validateBanquetCreationContext,
+    validateBookingWithinWorkingHours
 } = require('./booking');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canEditBooking } = require('./bookingVisibility');
@@ -1891,6 +1892,19 @@ function assertCreateMemberBookingPayload(booking, role) {
     }
 }
 
+function assertBookingWithinWorkingHoursForBanquetWrite(booking, { existingRow = null } = {}) {
+    const validation = validateBookingWithinWorkingHours(booking, {
+        existingBooking: existingRow,
+        allowUnchangedLegacy: Boolean(existingRow)
+    });
+    if (validation.valid) return;
+    throw new BanquetGroupError(validation.error || 'Booking is outside working hours', {
+        status: 400,
+        code: validation.code || 'BOOKING_OUTSIDE_WORKING_HOURS',
+        details: validation.details || null
+    });
+}
+
 async function assertActivitySlotAvailable(db, booking, businessContext, { groupId = null, sourceBookingId = null } = {}) {
     await lockBookingConflictResources(db, [booking], businessContext);
     const lineConflict = await checkServerConflicts(db, booking.date, booking.lineId, booking.time, booking.duration || 0, null, businessContext);
@@ -3677,6 +3691,7 @@ async function updateBanquetBookingSet({
                 allowInactiveResourceId: existingRoomResourceId || null
             });
             assertCreateActivityPayload(booking);
+            assertBookingWithinWorkingHoursForBanquetWrite(booking, { existingRow });
             applyBookingSetPinataNormalization(booking);
             let ticketResolution = null;
             if (entry.isPackageOwner) {
@@ -4375,6 +4390,7 @@ async function createMemberBookingFromSourceBooking({
         });
         await canonicalizeBanquetBookingRoom(client, rootMember, context);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
+        assertBookingWithinWorkingHoursForBanquetWrite(rootMember);
         if (normalizedRole !== 'kitchen' && bookingHasTicketPayload(rootMember)) {
             throw new BanquetGroupError('Only a kitchen package owner can receive ticket data', {
                 status: 422,
@@ -4594,6 +4610,7 @@ async function createActivityBookingFromSourceBooking({
         rootActivity.extraData.banquetGroup.source = 'kitchen_first_activity_bridge';
         await canonicalizeBanquetBookingRoom(client, rootActivity, context);
         assertCreateActivityPayload(rootActivity);
+        assertBookingWithinWorkingHoursForBanquetWrite(rootActivity);
         await assertActivitySlotAvailable(client, rootActivity, context, {
             groupId: cleanGroupId,
             sourceBookingId: cleanSourceId
@@ -4609,6 +4626,7 @@ async function createActivityBookingFromSourceBooking({
                 source: 'kitchen_first_activity_bridge'
             };
             assertCreateActivityPayload(child);
+            assertBookingWithinWorkingHoursForBanquetWrite(child);
             const childConflict = await checkServerConflicts(client, child.date, child.lineId, child.time, child.duration || 0, null, context);
             if (childConflict.overlap) {
                 throw new BanquetGroupError('Linked activity line slot is busy', {
@@ -4783,6 +4801,7 @@ async function createMemberBookingInBanquetGroup({
         });
         await canonicalizeBanquetBookingRoom(client, rootMember, businessContext);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
+        assertBookingWithinWorkingHoursForBanquetWrite(rootMember);
         if (normalizedRole !== 'kitchen' && bookingHasTicketPayload(rootMember)) {
             throw new BanquetGroupError('Only a kitchen package owner can receive ticket data', {
                 status: 422,
@@ -4961,6 +4980,7 @@ async function createActivityBookingInBanquetGroup({
         });
         await canonicalizeBanquetBookingRoom(client, rootActivity, businessContext);
         assertCreateActivityPayload(rootActivity);
+        assertBookingWithinWorkingHoursForBanquetWrite(rootActivity);
         await assertActivitySlotAvailable(client, rootActivity, businessContext, {
             groupId: cleanGroupId,
             sourceBookingId: cleanSourceId
@@ -4971,6 +4991,7 @@ async function createActivityBookingInBanquetGroup({
         for (const item of Array.isArray(linkedBookings) ? linkedBookings : []) {
             const child = normalizeLinkedActivityBooking(item, { ...rootActivity, id: activityRow.id }, { businessContext, user });
             assertCreateActivityPayload(child);
+            assertBookingWithinWorkingHoursForBanquetWrite(child);
             const childConflict = await checkServerConflicts(client, child.date, child.lineId, child.time, child.duration || 0, null, businessContext);
             if (childConflict.overlap) {
                 throw new BanquetGroupError('Linked activity line slot is busy', {

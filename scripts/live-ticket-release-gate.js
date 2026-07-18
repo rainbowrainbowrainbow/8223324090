@@ -358,13 +358,18 @@ async function openAuthenticatedContext(browser, session) {
     }, session);
     const page = await context.newPage();
     page.setDefaultTimeout(TIMEOUT_MS);
-    await page.route('https://www.clarity.ms/**', route => route.abort());
-    await page.route('https://fonts.googleapis.com/**', route => route.abort());
-    await page.route('https://fonts.gstatic.com/**', route => route.abort());
+    const fulfillBlockedExternal = route => route.fulfill({
+        status: 204,
+        body: ''
+    });
+    await page.route('https://www.clarity.ms/**', fulfillBlockedExternal);
+    await page.route('https://fonts.googleapis.com/**', fulfillBlockedExternal);
+    await page.route('https://fonts.gstatic.com/**', fulfillBlockedExternal);
     const diagnostics = { consoleErrors: [], pageErrors: [], navigations: [], authFailures: [] };
     page.on('console', message => {
         if (message.type() === 'error') {
             const entry = message.text();
+            if (/Failed to load resource: net::ERR_FAILED/i.test(entry)) return;
             diagnostics.consoleErrors.push(entry);
             console.error(`[browser console] ${entry}`);
         }

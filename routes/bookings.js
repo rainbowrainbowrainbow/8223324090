@@ -19,7 +19,8 @@ const {
     isRoomConflictBlockingRoom,
     findRoomConflictAmongCandidates,
     BANQUET_SERVICE_LINE_ID,
-    validateBanquetCreationContext
+    validateBanquetCreationContext,
+    validateBookingWithinWorkingHours
 } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
@@ -1480,6 +1481,28 @@ function requireBookingRoom(payload) {
     const room = String(payload?.room || '').trim();
     if (payload) payload.room = room;
     return room ? null : 'Оберіть кімнату';
+}
+
+function bookingWorkingHoursErrorPayload(validation) {
+    return {
+        success: false,
+        error: validation?.error || 'Booking is outside working hours',
+        code: validation?.code || 'BOOKING_OUTSIDE_WORKING_HOURS',
+        details: validation?.details || undefined
+    };
+}
+
+function sendBookingWorkingHoursError(res, validation) {
+    return res.status(400).json(bookingWorkingHoursErrorPayload(validation));
+}
+
+function validateBookingWorkingHoursForWrite(booking, options = {}) {
+    return validateBookingWithinWorkingHours(booking, options);
+}
+
+function rejectBookingOutsideWorkingHours(res, booking, options = {}) {
+    const validation = validateBookingWorkingHoursForWrite(booking, options);
+    return validation.valid ? false : sendBookingWorkingHoursError(res, validation);
 }
 
 function normalizeTimelineView(value) {
@@ -3223,6 +3246,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
         }
     }
+    b.duration = dur;
+    if (rejectBookingOutsideWorkingHours(res, b)) return;
     if (rejectClientTicketSnapshotPayload(res, b)) return;
     if (
         String(b.linkedTo || b.linked_to || '').trim()
@@ -3848,10 +3873,12 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
         if (duration <= 0 || duration > 1440) {
             return res.status(400).json({ success: false, error: 'Тривалість заняття має бути від 1 до 1440 хвилин' });
         }
+        candidate.duration = duration;
         const [hh, mm] = candidate.time.split(':').map(Number);
         if (hh * 60 + mm + duration > 1440) {
             return res.status(400).json({ success: false, error: 'Заняття не може переходити через опівніч' });
         }
+        if (rejectBookingOutsideWorkingHours(res, candidate)) return;
         const bookingDateTime = new Date(`${candidate.date}T${candidate.time}:00`);
         if (bookingDateTime < new Date()) {
             return res.status(400).json({ success: false, error: 'Неможливо створити заняття в минулому.' });
@@ -4099,6 +4126,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (mainRoomError) { return res.status(400).json({ error: mainRoomError }); }
         const mainCapacityError = await validateBookingTimelineResourceCapacity(pool, main, businessContext);
         if (mainCapacityError) { return res.status(409).json({ success: false, error: mainCapacityError.error, resource: mainCapacityError.resource }); }
+        const mainDuration = parseInt(main.duration, 10) || 0;
+        if (mainDuration < 0 || mainDuration > 1440) {
+            return res.status(400).json({ success: false, error: 'Duration must be between 0 and 1440 minutes' });
+        }
+        main.duration = mainDuration;
+        if (rejectBookingOutsideWorkingHours(res, main)) return;
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         const mainPastValidationError = bookingPastValidationError(main);
@@ -4109,6 +4142,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
         if (Array.isArray(linked)) {
             for (const lb of linked) {
+                if (!lb.date) lb.date = main.date;
+                if (!lb.time) lb.time = main.time;
+                if (lb.duration === undefined) lb.duration = main.duration;
+                const linkedDuration = parseInt(lb.duration, 10) || 0;
+                if (linkedDuration < 0 || linkedDuration > 1440) {
+                    return res.status(400).json({ success: false, error: 'Linked booking duration must be between 0 and 1440 minutes' });
+                }
+                lb.duration = linkedDuration;
+                if (rejectBookingOutsideWorkingHours(res, lb)) return;
                 if (!String(lb.room || '').trim()) lb.room = main.room;
                 if (!String(lb.roomResourceId || lb.room_resource_id || '').trim()) {
                     lb.roomResourceId = main.roomResourceId || main.room_resource_id || null;
@@ -4142,6 +4184,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             if (duration <= 0 || duration > 1440) {
                 return res.status(400).json({ success: false, error: 'Activity duration must be between 1 and 1440 minutes' });
             }
+            activity.duration = duration;
+            if (rejectBookingOutsideWorkingHours(res, activity)) return;
             await hydrateBookingRoomFromTimelineResource(pool, activity, businessContext);
             const activityRoomResourceError = await validateBookingRoomResourceForWrite(pool, activity, businessContext);
             if (activityRoomResourceError) return res.status(activityRoomResourceError.status).json(activityRoomResourceError.body);
@@ -5041,6 +5085,14 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             await client.query('ROLLBACK');
             return res.status(400).json({ error: mainValidationError });
         }
+        const mainWorkingHoursValidation = validateBookingWorkingHoursForWrite(mainCandidate, {
+            existingBooking: oldMain,
+            allowUnchangedLegacy: true
+        });
+        if (!mainWorkingHoursValidation.valid) {
+            await client.query('ROLLBACK');
+            return sendBookingWorkingHoursError(res, mainWorkingHoursValidation);
+        }
         if (hasMainPatch) {
             const roomResourceError = await validateBookingRoomResourceForWrite(client, mainCandidate, businessContext, {
                 allowInactiveResourceId: oldMain.room_resource_id || null
@@ -5063,6 +5115,17 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             if (validationError) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: validationError, conflictBookingId: row.id });
+            }
+            const workingHoursValidation = validateBookingWorkingHoursForWrite(candidate, {
+                existingBooking: row,
+                allowUnchangedLegacy: true
+            });
+            if (!workingHoursValidation.valid) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    ...bookingWorkingHoursErrorPayload(workingHoursValidation),
+                    conflictBookingId: row.id
+                });
             }
             if (Object.keys(patch).length > 0) {
                 const roomResourceError = await validateBookingRoomResourceForWrite(client, candidate, businessContext, {
@@ -5554,6 +5617,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (roomError) { return res.status(400).json({ error: roomError }); }
     const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
     if (capacityError) { return res.status(409).json({ success: false, error: capacityError.error, resource: capacityError.resource }); }
+    const workingHoursDuration = parseInt(b.duration, 10) || 0;
+    if (workingHoursDuration < 0 || workingHoursDuration > 1440) {
+        return res.status(400).json({ error: 'Duration must be between 0 and 1440 minutes' });
+    }
+    b.duration = workingHoursDuration;
+    if (rejectBookingOutsideWorkingHours(res, b, { existingBooking: old, allowUnchangedLegacy: true })) return;
 
     const client = await pool.connect();
     try {

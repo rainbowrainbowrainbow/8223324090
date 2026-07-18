@@ -857,6 +857,40 @@ async function withApp(dbOptions, fn) {
         timeToMinutes: value => {
             const [h, m] = String(value).split(':').map(Number);
             return h * 60 + m;
+        },
+        minutesToTime: value => {
+            const minutes = Number(value) || 0;
+            return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        },
+        validateBookingWithinWorkingHours: (booking = {}, options = {}) => {
+            const date = String(booking.date || '').slice(0, 10);
+            const time = String(booking.time || '').slice(0, 5);
+            const duration = Number(booking.duration || 0);
+            const existing = options.existingBooking || null;
+            if (
+                options.allowUnchangedLegacy
+                && existing
+                && String(existing.date || '').slice(0, 10) === date
+                && String(existing.time || '').slice(0, 5) === time
+                && Number(existing.duration || 0) === duration
+            ) {
+                return { valid: true };
+            }
+            const [year, month, day] = date.split('-').map(Number);
+            const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+            const start = weekend ? 600 : 720;
+            const end = 1200;
+            const [hours, minutes] = time.split(':').map(Number);
+            const startMinutes = (hours * 60) + minutes;
+            if (startMinutes < start || startMinutes > end || startMinutes + duration > end) {
+                return {
+                    valid: false,
+                    code: 'BOOKING_OUTSIDE_WORKING_HOURS',
+                    error: `Booking must be within working hours ${weekend ? '10:00' : '12:00'}-20:00`,
+                    details: { date, time, duration }
+                };
+            }
+            return { valid: true };
         }
     });
     installMock('../services/timelineResources', {
@@ -1254,6 +1288,130 @@ test('POST /api/bookings persists edited bookingTime 12:30 while keeping guest a
         assert.equal(state.rows[0].notes, 'Operator note survives time edit');
         assert.equal(state.banquetGroups.length, 1);
         assert.equal(state.banquetGroups[0].guest_arrival_time, '11:45');
+    });
+});
+
+test('POST /api/bookings rejects weekday booking before opening hours', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            date: '2099-02-13',
+            time: '11:45',
+            duration: 15
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.length, 0);
+    });
+});
+
+test('POST /api/bookings accepts the last valid weekday slot', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            date: '2099-02-13',
+            time: '19:30',
+            duration: 30,
+            lineId: 'line-main',
+            lineName: 'Anna'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(state.rows[0].time, '19:30');
+        assert.equal(state.rows[0].duration, 30);
+    });
+});
+
+test('POST /api/bookings/full rejects linked booking ending after closing hours', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-14',
+                time: '19:00',
+                duration: 30
+            },
+            linked: [{
+                date: '2099-02-14',
+                time: '19:45',
+                lineId: 'line-second',
+                room: 'Room A',
+                programId: 'paper-show',
+                programCode: 'PAPER',
+                label: 'Paper(30)',
+                programName: 'Paper Show',
+                category: 'show',
+                duration: 30,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.length, 0);
+    });
+});
+
+test('PUT /api/bookings/:id allows unchanged legacy out-of-hours booking metadata edit', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.customers.push({
+            id: 701,
+            business_context: 'event_genix',
+            name: 'Legacy Customer',
+            phone: '+380000000701'
+        });
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-LEGACY',
+            date: '2099-02-13',
+            time: '10:00',
+            duration: 60,
+            line_id: 'line-main',
+            room: 'Room A',
+            category: 'animation',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Legacy booking',
+            program_name: 'Legacy booking',
+            extra_data: null
+        }));
+
+        const res = await updateBooking(baseUrl, 'BK-2099-LEGACY', {
+            notes: 'metadata-only legacy edit',
+            room: 'Room A'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').time, '10:00');
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').notes, 'metadata-only legacy edit');
+    });
+});
+
+test('PUT /api/bookings/:id blocks changed legacy out-of-hours time', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-LEGACY',
+            date: '2099-02-13',
+            time: '10:00',
+            duration: 60,
+            line_id: 'line-main',
+            room: 'Room A',
+            category: 'animation',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Legacy booking',
+            program_name: 'Legacy booking',
+            extra_data: null
+        }));
+
+        const res = await updateBooking(baseUrl, 'BK-2099-LEGACY', {
+            time: '10:15',
+            room: 'Room A'
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').time, '10:00');
     });
 });
 
@@ -2718,7 +2876,7 @@ test('POST /api/bookings/full still rejects banquet activity when an unrelated r
         const res = await createFullBooking(baseUrl, {
             main: {
                 date: '2099-02-13',
-                time: '10:00',
+                time: '12:00',
                 lineId: 'banquet-service',
                 lineName: 'Banquet service',
                 room: 'Prep Room',
@@ -2795,7 +2953,7 @@ test('POST /api/bookings/full still rejects banquet activity on a busy animator 
         const res = await createFullBooking(baseUrl, {
             main: {
                 date: '2099-02-13',
-                time: '10:00',
+                time: '12:00',
                 lineId: 'banquet-service',
                 lineName: 'Banquet service',
                 room: 'Prep Room',

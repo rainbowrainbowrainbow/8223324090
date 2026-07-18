@@ -5665,6 +5665,160 @@ function getBookingPackageTotals(program) {
     };
 }
 
+const BANQUET_PREORDER_MENU_MINIMUMS = Object.freeze({
+    room: { label: 'Кімнатка', amount: 4000 },
+    table: { label: 'Столик', amount: 2500 }
+});
+const BANQUET_PREORDER_RECOMMENDED_DEPOSIT = 2000;
+
+function bookingPreorderMoney(value, fallback = 0) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const normalized = typeof value === 'string'
+        ? value.replace(/\s+/g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+        : value;
+    const amount = Number(normalized);
+    if (!Number.isFinite(amount) || amount < 0) return fallback;
+    return Math.round(amount * 100) / 100;
+}
+
+function normalizeBookingPreorderPlaceType(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return null;
+    if (['room', 'private_room', 'banquet_room', 'themed_room', 'кімнатка', 'кімната', 'кімнатна бронь'].includes(raw)) return 'room';
+    if (['table', 'reserved_table', 'hall_table', 'столик', 'стіл', 'диван'].includes(raw)) return 'table';
+    if (/стол|стіл|столик|диван|table|sofa|couch|reserved[_ -]?table/.test(raw)) return 'table';
+    if (/кімнат|кімната|кімнатка|room|hall|зал/.test(raw)) return 'room';
+    return null;
+}
+
+function resolveBookingPreorderPlaceType(input = {}) {
+    const explicit = normalizeBookingPreorderPlaceType(
+        input.placeType
+        || input.banquetPlaceType
+        || input.banquet_place_type
+    );
+    if (explicit) return explicit;
+    const roomIdentity = [
+        input.roomResourceId,
+        input.room_resource_id,
+        input.room,
+        input.roomLabel,
+        input.room_label
+    ].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+    return normalizeBookingPreorderPlaceType(roomIdentity);
+}
+
+function bookingPreorderFormatMoney(value) {
+    return formatPrice(bookingPreorderMoney(value, 0));
+}
+
+function bookingPreorderDepositAmount(deposit = null) {
+    if (!deposit || typeof deposit !== 'object' || !deposit.provided) return null;
+    return deposit.expectedAmount === null || deposit.expectedAmount === undefined
+        ? null
+        : bookingPreorderMoney(deposit.expectedAmount, null);
+}
+
+function bookingPreorderStatusFromFormData(formData = {}) {
+    if (!formData.kitchenEnabled) return { applies: false, warnings: [] };
+    const placeType = resolveBookingPreorderPlaceType({
+        room: formData.room,
+        roomResourceId: formData.roomResourceId,
+        placeType: formData.banquetPlaceType
+    });
+    const rule = placeType ? BANQUET_PREORDER_MENU_MINIMUMS[placeType] : null;
+    const currentMenuSubtotal = bookingPreorderMoney(formData.positionsSubtotal || 0);
+    const currentDepositAmount = bookingPreorderDepositAmount(formData.deposit);
+    const warnings = [];
+    let menuStatus = 'place_type_unknown';
+    let missingMenuAmount = null;
+    if (rule) {
+        missingMenuAmount = bookingPreorderMoney(Math.max(0, rule.amount - currentMenuSubtotal));
+        menuStatus = missingMenuAmount > 0 ? 'below_minimum' : 'sufficient';
+        if (missingMenuAmount > 0) {
+            warnings.push({
+                code: 'banquet_menu_minimum_below',
+                message: `Меню нижче мінімуму для ${rule.label.toLowerCase()}: потрібно ${bookingPreorderFormatMoney(rule.amount)}, зараз ${bookingPreorderFormatMoney(currentMenuSubtotal)}, бракує ${bookingPreorderFormatMoney(missingMenuAmount)}. Збереження не блокується.`
+            });
+        }
+    } else {
+        warnings.push({
+            code: 'banquet_place_type_unknown',
+            message: 'Не визначено тип місця для банкету: кімнатка чи столик. Перевірте мінімальне передзамовлення вручну.'
+        });
+    }
+
+    let depositStatus = 'missing';
+    let missingDepositAmount = BANQUET_PREORDER_RECOMMENDED_DEPOSIT;
+    if (currentDepositAmount !== null) {
+        missingDepositAmount = bookingPreorderMoney(Math.max(0, BANQUET_PREORDER_RECOMMENDED_DEPOSIT - currentDepositAmount));
+        depositStatus = missingDepositAmount > 0 ? 'below_recommended' : 'sufficient';
+    }
+    if (depositStatus === 'missing') {
+        warnings.push({
+            code: 'banquet_deposit_missing',
+            message: `Завдаток не вказано. Рекомендований завдаток — ${bookingPreorderFormatMoney(BANQUET_PREORDER_RECOMMENDED_DEPOSIT)}. Збереження не блокується.`
+        });
+    } else if (depositStatus === 'below_recommended') {
+        warnings.push({
+            code: 'banquet_deposit_below_recommended',
+            message: `Завдаток нижче рекомендації: потрібно ${bookingPreorderFormatMoney(BANQUET_PREORDER_RECOMMENDED_DEPOSIT)}, зараз ${bookingPreorderFormatMoney(currentDepositAmount)}, бракує ${bookingPreorderFormatMoney(missingDepositAmount)}. Збереження не блокується.`
+        });
+    }
+
+    return {
+        applies: true,
+        placeType,
+        placeLabel: rule?.label || null,
+        requiredMenuMinimum: rule?.amount ?? null,
+        currentMenuSubtotal,
+        missingMenuAmount,
+        menuStatus,
+        recommendedDepositAmount: BANQUET_PREORDER_RECOMMENDED_DEPOSIT,
+        currentDepositAmount,
+        missingDepositAmount,
+        depositStatus,
+        warnings
+    };
+}
+
+function renderBookingPreorderSummaryWarning(status = null) {
+    const warnings = Array.isArray(status?.warnings) ? status.warnings.filter(Boolean) : [];
+    if (!warnings.length) return '';
+    return `
+        <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning">
+            <strong>Передзамовлення / завдаток</strong>
+            <ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
+
+async function confirmBookingPreorderWarningsBeforeSubmit(formData = {}) {
+    const status = bookingPreorderStatusFromFormData(formData);
+    formData.banquetPreorderStatus = status;
+    const warnings = Array.isArray(status.warnings) ? status.warnings.filter(Boolean) : [];
+    if (!warnings.length) return true;
+    const bookingStatus = document.querySelector('input[name="bookingStatus"]:checked')?.value || 'confirmed';
+    if (bookingStatus !== 'confirmed') return true;
+    const text = [
+        'Є попередження по передзамовленню або завдатку:',
+        ...warnings.map(warning => `• ${warning.message || warning.code || warning}`),
+        '',
+        'Зберегти підтверджене бронювання з цими попередженнями?'
+    ].join('\n');
+    const confirmed = typeof customConfirm === 'function'
+        ? await customConfirm(text, 'Передзамовлення / завдаток')
+        : true;
+    if (!confirmed) return false;
+    formData.preorderWarningAcknowledgement = {
+        confirmed: true,
+        confirmedAt: new Date().toISOString(),
+        source: 'booking_form_submit',
+        warningCodes: warnings.map(warning => warning.code || 'banquet_preorder_warning')
+    };
+    return true;
+}
+
 const BOOKING_SUBMIT_INCOMPLETE_TEXT = 'Показати що заповнити';
 const BOOKING_SUBMIT_SAVING_TEXT = 'Збереження...';
 const BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT = 'Зберегти з серверною перевіркою';
@@ -5951,6 +6105,14 @@ function renderBookingPackageSummary() {
     const customCakeDecorationWarning = kitchenEnabled
         ? bookingMenuCustomCakeDecorationZeroPriceWarning(totals.menuPositions || [])
         : '';
+    const banquetPreorderStatus = bookingPreorderStatusFromFormData({
+        kitchenEnabled,
+        room: roomLabel || roomValue,
+        roomResourceId: document.getElementById('roomSelect')?.selectedOptions?.[0]?.dataset?.resourceId || '',
+        positionsSubtotal: menuSubtotal,
+        deposit
+    });
+    const banquetPreorderWarning = renderBookingPreorderSummaryWarning(banquetPreorderStatus);
     const validationWarningClass = validation.boundaryWarnings?.length
         ? 'booking-summary-note--danger'
         : 'booking-summary-note--warning';
@@ -5983,6 +6145,7 @@ function renderBookingPackageSummary() {
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
         ${customCakeDecorationWarning ? `<div class="booking-summary-note booking-summary-note--warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
+        ${banquetPreorderWarning}
         ${totals.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(totals.warnings[0].message || totals.warnings[0].code)}</div>` : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note ${validationWarningClass}">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
@@ -6343,6 +6506,7 @@ function initBookingPackageWorkspace() {
                 if (typeof handleBookingTimeControlChange === 'function') handleBookingTimeControlChange(el.value);
                 return;
             }
+            if (typeof renderBookingTimeOptions === 'function') renderBookingTimeOptions();
             refreshAnimatorSelectsForCurrentSlot().catch(() => {});
             setSelectedActivityScheduleIssues({});
             clearSelectedActivityPreflightState();
@@ -8967,11 +9131,51 @@ function bookingTimeControlIsSelect(control) {
     return String(control?.tagName || '').toLowerCase() === 'select';
 }
 
+function selectedActivityDurationForTimeSlots(program, customDuration = 0) {
+    const duration = Number(program?.duration || 0) || 0;
+    if (duration > 0) return duration;
+    if (program?.isCustom && customDuration > 0) return customDuration;
+    if (program?.isCustom) return 30;
+    return 0;
+}
+
+function selectedActivitiesTotalDuration() {
+    const programs = typeof getSelectedActivityPrograms === 'function' ? getSelectedActivityPrograms() : [];
+    const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
+    const normalizedCustomDuration = Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 0;
+    return programs.reduce((total, program) => (
+        total + selectedActivityDurationForTimeSlots(program, normalizedCustomDuration)
+    ), 0);
+}
+
+function bookingTimeSlotDurationMinutes() {
+    const programs = typeof getSelectedActivityPrograms === 'function' ? getSelectedActivityPrograms() : [];
+    if (bookingMultiActivityEnabled() && programs.length > 1) {
+        return selectedActivitiesTotalDuration();
+    }
+    const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
+    const program = selectedProgramId ? findBookingProductById(selectedProgramId) : null;
+    const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
+    if (program?.isCustom) return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 30;
+    const programDuration = Number(program?.duration || 0) || 0;
+    if (programDuration > 0) return programDuration;
+    return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 0;
+}
+
 function bookingTimeSlotModel(currentValue = document.getElementById('bookingTime')?.value || '') {
     const api = bookingActivityScheduleApi();
     const currentTime = api.normalizeSelectedActivityScheduleTime(currentValue);
-    const scheduleOptions = selectedActivityScheduleOptions({ stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES });
-    const workday = api.resolveSelectedActivityScheduleWorkday(scheduleOptions);
+    const workday = api.resolveSelectedActivityScheduleWorkday(
+        selectedActivityScheduleOptions({ stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES })
+    );
+    const duration = bookingTimeSlotDurationMinutes();
+    const latestStartMinutes = duration > 0
+        ? Math.max(workday.startMinutes, workday.endMinutes - duration)
+        : workday.endMinutes;
+    const scheduleOptions = selectedActivityScheduleOptions({
+        stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES,
+        latestStartMinutes
+    });
     const slotValues = api.buildSelectedActivityScheduleTimeOptions(scheduleOptions);
     const currentIsSlot = !currentTime || slotValues.includes(currentTime);
     const options = slotValues.map(value => ({ value, label: value, offGrid: false }));
@@ -9082,6 +9286,13 @@ function syncBookingTimeControlValue(value, options = {}) {
     return time;
 }
 
+function syncBookingTimeControlToHydratedActivityStart(value) {
+    const time = syncBookingTimeControlValue(value, { syncTimeline: false });
+    const control = document.getElementById('bookingTime');
+    if (time && control?.dataset) delete control.dataset.previousTime;
+    return time;
+}
+
 let _bookingTimePreflightTimer = null;
 const BOOKING_TIME_PREFLIGHT_DEBOUNCE_MS = 350;
 
@@ -9131,6 +9342,30 @@ function nextBookingTimeChangeToken() {
 function isLatestBookingTimeChangeToken(token) {
     const cleanToken = Number(token || 0) || 0;
     return !cleanToken || cleanToken === (Number(BookingDrawerState.bookingTimeChangeToken || 0) || 0);
+}
+
+function nextSelectedActivityScheduleValidationToken() {
+    BookingDrawerState.selectedActivityScheduleValidationToken = (
+        Number(BookingDrawerState.selectedActivityScheduleValidationToken || 0) || 0
+    ) + 1;
+    return BookingDrawerState.selectedActivityScheduleValidationToken;
+}
+
+function isLatestSelectedActivityScheduleValidationToken(token) {
+    const cleanToken = Number(token || 0) || 0;
+    return !cleanToken || cleanToken === (Number(BookingDrawerState.selectedActivityScheduleValidationToken || 0) || 0);
+}
+
+function nextAnimatorOptionsRefreshToken() {
+    BookingDrawerState.animatorOptionsRefreshToken = (
+        Number(BookingDrawerState.animatorOptionsRefreshToken || 0) || 0
+    ) + 1;
+    return BookingDrawerState.animatorOptionsRefreshToken;
+}
+
+function isLatestAnimatorOptionsRefreshToken(token) {
+    const cleanToken = Number(token || 0) || 0;
+    return !cleanToken || cleanToken === (Number(BookingDrawerState.animatorOptionsRefreshToken || 0) || 0);
 }
 
 function bookingTimeOffGridHintText() {
@@ -9210,6 +9445,179 @@ function bookingTimeConflictBookingLabel(booking = {}) {
     return scheduleBookingLabel(booking) || booking.programName || booking.programCode || booking.id || 'бронювання';
 }
 
+function bookingTimePreflightExtraData(booking = {}) {
+    const extra = booking.extraData || booking.extra_data || {};
+    if (!extra || typeof extra !== 'string') return extra && typeof extra === 'object' ? extra : {};
+    try {
+        return JSON.parse(extra) || {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function addBookingTimeGroupId(target, value) {
+    const text = String(value || '').trim();
+    if (text) target.add(text);
+}
+
+function bookingTimePreflightGroupIds(booking = {}) {
+    const ids = new Set();
+    const extra = bookingTimePreflightExtraData(booking);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const workspaceGroup = workspace.banquetGroup || workspace.banquet_group || {};
+    addBookingTimeGroupId(ids, booking.banquetGroupId || booking.banquet_group_id || booking.groupId || booking.group_id);
+    addBookingTimeGroupId(ids, banquetGroup.groupId || banquetGroup.group_id || banquetGroup.id);
+    addBookingTimeGroupId(ids, workspace.banquetGroupId || workspace.banquet_group_id);
+    addBookingTimeGroupId(ids, workspaceGroup.groupId || workspaceGroup.group_id || workspaceGroup.id);
+    return ids;
+}
+
+function bookingTimePreflightNormalizedRole(value) {
+    const role = String(value || '').trim().toLowerCase();
+    if (['activity', 'kitchen', 'service', 'manual', 'primary'].includes(role)) return role;
+    return '';
+}
+
+function bookingTimePreflightHasOperationalPackage(extra = {}) {
+    const pkg = extra.bookingPackage || extra.booking_package || {};
+    const positions = pkg.menuPositions || pkg.menu_positions || [];
+    const serviceEvents = pkg.serviceEvents || pkg.service_events || [];
+    return (Array.isArray(positions) && positions.length > 0)
+        || (Array.isArray(serviceEvents) && serviceEvents.length > 0);
+}
+
+function bookingTimePreflightRole(booking = {}, explicitRole = '') {
+    const extra = bookingTimePreflightExtraData(booking);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const role = bookingTimePreflightNormalizedRole(
+        explicitRole
+        || booking.banquetGroupRole
+        || booking.banquet_group_role
+        || booking.role
+        || booking.bookingRole
+        || booking.booking_role
+        || booking.bookingType
+        || booking.booking_type
+        || banquetGroup.role
+        || banquetGroup.roleIntent
+        || banquetGroup.role_intent
+        || workspace.banquetRole
+        || workspace.banquet_role
+    );
+    if (role) return role;
+
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const scenario = String(workspace.scenario || booking.scenario || '').trim().toLowerCase();
+    const lineId = String(booking.lineId || booking.line_id || '').trim();
+    if (programCode === 'KITCHEN' || scenario === 'kitchen_only' || category === 'kitchen') return 'kitchen';
+    if (lineId === ROOM_FIRST_BANQUET_SERVICE_LINE_ID) return 'service';
+    if (category === 'banquet' && bookingTimePreflightHasOperationalPackage(extra)) return 'service';
+    if (['animation', 'activity', 'custom', 'quest', 'show', 'masterclass', 'workshop'].includes(category)) return 'activity';
+    return 'generic';
+}
+
+function bookingTimePreflightRoleIsActivity(role) {
+    return role === 'activity';
+}
+
+function bookingTimePreflightRoleIsOperational(role, booking = {}) {
+    if (['kitchen', 'service', 'manual'].includes(role)) return true;
+    if (role !== 'primary') return false;
+    const extra = bookingTimePreflightExtraData(booking);
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const lineId = String(booking.lineId || booking.line_id || '').trim();
+    return programCode === 'KITCHEN'
+        || category === 'kitchen'
+        || category === 'banquet'
+        || lineId === ROOM_FIRST_BANQUET_SERVICE_LINE_ID
+        || bookingTimePreflightHasOperationalPackage(extra);
+}
+
+function bookingTimePreflightUsableBanquetContext(context = null) {
+    if (!context || typeof context !== 'object') return null;
+    return (context.groupId || context.group_id || context.sourceBookingId || context.source_booking_id)
+        ? context
+        : null;
+}
+
+function bookingTimeCandidateBanquetContext(formData = {}, roleFallback = '') {
+    const selectedContext = typeof selectedBookingBanquetGroupContext === 'function'
+        ? selectedBookingBanquetGroupContext()
+        : null;
+    const explicitContext = BookingDrawerState.explicitBanquetContext || {};
+    const roomContext = BookingDrawerState.roomSelectionBanquetContext || {};
+    const context = bookingTimePreflightUsableBanquetContext(selectedContext)
+        || bookingTimePreflightUsableBanquetContext(explicitContext)
+        || bookingTimePreflightUsableBanquetContext(roomContext)
+        || {};
+    const role = bookingTimePreflightNormalizedRole(
+        formData.banquetGroupRole
+        || formData.banquet_group_role
+        || formData.bookingRole
+        || formData.booking_role
+        || formData.bookingType
+        || formData.booking_type
+        || BookingDrawerState.activeBanquetRoleIntent
+        || context.roleIntent
+        || context.role_intent
+        || context.banquetGroupRole
+        || roleFallback
+    );
+    return {
+        banquetGroupId: formData.banquetGroupId
+            || formData.banquet_group_id
+            || context.groupId
+            || context.group_id
+            || BookingDrawerState.selectedBanquetGroupId
+            || explicitContext.groupId
+            || roomContext.groupId
+            || null,
+        banquetGroupRole: role || roleFallback || null,
+        banquetGroupPrimaryBookingId: formData.banquetGroupPrimaryBookingId
+            || formData.banquet_group_primary_booking_id
+            || context.primaryBookingId
+            || context.primary_booking_id
+            || context.sourceBookingId
+            || context.source_booking_id
+            || explicitContext.primaryBookingId
+            || roomContext.sourceBookingId
+            || null,
+        sourceBookingId: formData.sourceBookingId
+            || formData.source_booking_id
+            || context.sourceBookingId
+            || context.source_booking_id
+            || explicitContext.sourceBookingId
+            || roomContext.sourceBookingId
+            || null
+    };
+}
+
+function bookingTimeRoomConflictAllowedByBanquetPolicy(candidate = {}, conflict = {}) {
+    const candidateGroupIds = bookingTimePreflightGroupIds(candidate);
+    if (!candidateGroupIds.size) return false;
+    const conflictGroupIds = bookingTimePreflightGroupIds(conflict);
+    const sameGroup = [...conflictGroupIds].some(id => candidateGroupIds.has(id));
+    if (!sameGroup) return false;
+
+    const candidateRole = bookingTimePreflightRole(candidate);
+    const conflictRole = bookingTimePreflightRole(conflict);
+    const candidateActivity = bookingTimePreflightRoleIsActivity(candidateRole);
+    const conflictActivity = bookingTimePreflightRoleIsActivity(conflictRole);
+    const candidateOperational = bookingTimePreflightRoleIsOperational(candidateRole, candidate);
+    const conflictOperational = bookingTimePreflightRoleIsOperational(conflictRole, conflict);
+    return (candidateActivity && conflictOperational) || (candidateOperational && conflictActivity);
+}
+
+function bookingTimeRoomConflictMatches(candidate = {}, booking = {}) {
+    return normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(candidate.room)
+        && selectedActivityScheduleOverlaps(candidate, booking)
+        && !bookingTimeRoomConflictAllowedByBanquetPolicy(candidate, booking);
+}
+
 function firstBookingTimeConflict(existingBookings = [], predicate, candidate = {}) {
     return (existingBookings || []).find(booking => predicate(booking) && selectedActivityScheduleOverlaps(candidate, booking)) || null;
 }
@@ -9217,12 +9625,17 @@ function firstBookingTimeConflict(existingBookings = [], predicate, candidate = 
 function bookingTimeSingleSlotPreflightIssues(formData = {}, existingBookings = []) {
     const issues = [];
     if (!formData.time || !(Number(formData.duration || 0) > 0)) return issues;
+    const banquetContext = bookingTimeCandidateBanquetContext(formData, formData.hasEvent ? 'activity' : 'kitchen');
     const candidate = {
         id: 'booking-time-draft',
         time: formData.time,
         duration: Number(formData.duration || 0) || 0,
         lineId: formData.lineId,
-        room: String(formData.room || '').trim()
+        room: String(formData.room || '').trim(),
+        programId: formData.programId || formData.program_id || null,
+        programCode: formData.programCode || formData.program_code || null,
+        category: formData.category || formData.category_id || null,
+        ...banquetContext
     };
     if (formData.hasEvent && formData.lineId && String(formData.lineId) !== ROOM_FIRST_BANQUET_SERVICE_LINE_ID) {
         const lineConflict = firstBookingTimeConflict(existingBookings, booking =>
@@ -9250,8 +9663,7 @@ function bookingTimeSingleSlotPreflightIssues(formData = {}, existingBookings = 
     }
 
     if (candidate.room && isOperationalBookingRoomValue(candidate.room)) {
-        const roomConflict = firstBookingTimeConflict(existingBookings, booking =>
-            normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(candidate.room), candidate);
+        const roomConflict = existingBookings.find(booking => bookingTimeRoomConflictMatches(candidate, booking)) || null;
         if (roomConflict) {
             issues.push(bookingTimePreflightIssue(
                 'booking_time_room_conflict',
@@ -9276,8 +9688,10 @@ async function validateBookingTimeChangePreflight(token = BookingDrawerState.boo
             const result = await validateSelectedActivitySchedule(formData, {
                 render: true,
                 force: true,
-                excludeId
+                excludeId,
+                bookingTimeChangeToken: token
             });
+            if (result?.stale) return null;
             if (!isLatestBookingTimeChangeToken(token)) return null;
             issues = (result.issues || []).map(issue => bookingTimePreflightIssue(
                 issue.key || `activity_time_${issue.programId || 'conflict'}`,
@@ -9483,6 +9897,10 @@ function refreshBookingTimeDependentsAfterChange(timeValue, options = {}) {
     const previousTime = normalizeSelectedActivityScheduleTime(options.previousTime || control?.dataset?.previousTime || control?.dataset?.currentTime || '');
     const time = syncBookingTimeControlValue(timeValue, { syncTimeline: true });
     if (!time) return '';
+    if (!options.force && previousTime && time === previousTime) {
+        if (control?.dataset) delete control.dataset.previousTime;
+        return time;
+    }
     if (control?.dataset) delete control.dataset.previousTime;
     const token = nextBookingTimeChangeToken();
     setBookingTimeContextIssue('', { updateSubmit: false });
@@ -9493,7 +9911,7 @@ function refreshBookingTimeDependentsAfterChange(timeValue, options = {}) {
     if (window.BookingForm) BookingForm._dirty = true;
     renderSelectedProgramSummary();
     renderBookingPackageSummary();
-    refreshAnimatorSelectsForCurrentSlot().catch(error => {
+    refreshAnimatorSelectsForCurrentSlot({ bookingTimeChangeToken: token }).catch(error => {
         console.warn('[Booking] Failed to refresh animator selects after time change', error);
     });
     const selectedRoom = String(document.getElementById('roomSelect')?.value || '').trim();
@@ -9713,6 +10131,7 @@ function setSelectedActivityPrograms(ids = [], options = {}) {
     clearSelectedActivityPreflightState();
     const hidden = document.getElementById('selectedProgram');
     if (hidden) hidden.value = unique[0] || '';
+    if (typeof renderBookingTimeOptions === 'function') renderBookingTimeOptions();
     updateSelectedProgramCards();
     if (options.renderSummary !== false) renderSelectedProgramSummary();
     if (options.renderPackage !== false) renderBookingPackageSummary();
@@ -9879,11 +10298,13 @@ function setSelectedActivitySecondAnimator(programId, value) {
     scheduleSelectedActivityConflictRefresh();
 }
 
-async function populateSelectedActivitySecondAnimatorSelects() {
+async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
+    const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
     const programs = getSelectedActivityPrograms().filter(selectedActivityRequiresSecondAnimator);
     const rowsByProgramId = new Map(getSelectedActivityScheduleRows(getSelectedActivityPrograms())
         .map(row => [String(row.programId), row]));
     for (const program of programs) {
+        if (!isCurrent()) return;
         const programId = String(program.id || '');
         const select = document.getElementById(selectedActivitySecondAnimatorSelectId(programId));
         if (!select) continue;
@@ -9900,9 +10321,11 @@ async function populateSelectedActivitySecondAnimatorSelects() {
             select.appendChild(option);
         }
         await populateAnimatorSelectById(select.id, 'Оберіть другого ведучого', {
+            ...options,
             time: row?.time || '',
             duration: row?.duration || 0
         });
+        if (!isCurrent()) return;
         if (selectedName && select.value !== selectedName) {
             const option = document.createElement('option');
             option.value = selectedName;
@@ -10390,16 +10813,20 @@ async function getAnimatorLinesForBookingDate(options = {}) {
 async function populateAnimatorSelectById(selectId, placeholder, options = {}) {
     const select = document.getElementById(selectId);
     if (!select) return;
+    const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
     const lines = await getAnimatorLinesForBookingDate();
+    if (!isCurrent()) return;
     const currentLineId = document.getElementById('bookingLine')?.value;
     const currentValue = select.value;
     const candidates = await buildAnimatorLineCandidates(lines, currentLineId);
+    if (!isCurrent()) return;
     const filteredCandidates = await filterAnimatorLineCandidatesForOpenSlot(candidates, {
         selectedName: currentValue,
         selectId,
         time: options.time,
         duration: options.duration
     });
+    if (!isCurrent()) return;
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
@@ -10494,29 +10921,47 @@ function selectedSecondAnimatorLineCandidate(secondAnimator) {
         : null;
 }
 
-async function refreshAnimatorSelectsForCurrentSlot() {
+async function refreshAnimatorSelectsForCurrentSlot(options = {}) {
+    const token = options.token || nextAnimatorOptionsRefreshToken();
+    const bookingTimeChangeToken = Number(options.bookingTimeChangeToken || 0) || 0;
+    const isCurrent = () => isLatestAnimatorOptionsRefreshToken(token)
+        && isLatestBookingTimeChangeToken(bookingTimeChangeToken);
+    const refreshOptions = {
+        ...options,
+        isCurrent
+    };
     const primarySection = document.getElementById('bookingPrimaryAnimatorSection');
     const primarySectionVisible = primarySection && !primarySection.classList.contains('hidden');
     const secondSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
     const extraHostVisible = !!document.getElementById('extraHostToggle')?.checked;
-    if (primarySectionVisible) await populatePrimaryAnimatorSelect();
-    if (secondSectionVisible) await populateSecondAnimatorSelect();
-    if (extraHostVisible) await populateExtraHostAnimatorSelect();
-    if (typeof populateSelectedActivitySecondAnimatorSelects === 'function') {
-        await populateSelectedActivitySecondAnimatorSelects();
+    if (primarySectionVisible) {
+        await populatePrimaryAnimatorSelect(refreshOptions);
+        if (!isCurrent()) return null;
     }
+    if (secondSectionVisible) {
+        await populateSecondAnimatorSelect(refreshOptions);
+        if (!isCurrent()) return null;
+    }
+    if (extraHostVisible) {
+        await populateExtraHostAnimatorSelect(refreshOptions);
+        if (!isCurrent()) return null;
+    }
+    if (typeof populateSelectedActivitySecondAnimatorSelects === 'function') {
+        await populateSelectedActivitySecondAnimatorSelects(refreshOptions);
+    }
+    return isCurrent();
 }
 
-async function populateSecondAnimatorSelect() {
-    await populateAnimatorSelectById('secondAnimatorSelect', 'Оберіть другого аніматора');
+async function populateSecondAnimatorSelect(options = {}) {
+    await populateAnimatorSelectById('secondAnimatorSelect', 'Оберіть другого аніматора', options);
 }
 
-async function populateExtraHostAnimatorSelect() {
-    await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
+async function populateExtraHostAnimatorSelect(options = {}) {
+    await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора', options);
 }
 
-async function populatePrimaryAnimatorSelect() {
-    await populateAnimatorSelectById('bookingPrimaryAnimatorSelect', 'Оберіть аніматора');
+async function populatePrimaryAnimatorSelect(options = {}) {
+    await populateAnimatorSelectById('bookingPrimaryAnimatorSelect', 'Оберіть аніматора', options);
 }
 
 // v7.9.3: Resolve secondAnimator name when line was renamed
@@ -10843,6 +11288,51 @@ function selectedActivityScheduleOverlaps(first = {}, second = {}) {
 }
 
 function normalizeScheduleBooking(booking = {}) {
+    const extra = bookingTimePreflightExtraData(booking);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const workspaceGroup = workspace.banquetGroup || workspace.banquet_group || {};
+    const banquetGroupId = booking.banquetGroupId
+        || booking.banquet_group_id
+        || booking.groupId
+        || booking.group_id
+        || banquetGroup.groupId
+        || banquetGroup.group_id
+        || banquetGroup.id
+        || workspace.banquetGroupId
+        || workspace.banquet_group_id
+        || workspaceGroup.groupId
+        || workspaceGroup.group_id
+        || workspaceGroup.id
+        || null;
+    const banquetGroupRole = booking.banquetGroupRole
+        || booking.banquet_group_role
+        || booking.role
+        || booking.bookingRole
+        || booking.booking_role
+        || booking.bookingType
+        || booking.booking_type
+        || banquetGroup.role
+        || banquetGroup.roleIntent
+        || banquetGroup.role_intent
+        || workspace.banquetRole
+        || workspace.banquet_role
+        || null;
+    const sourceBookingId = booking.sourceBookingId
+        || booking.source_booking_id
+        || banquetGroup.sourceBookingId
+        || banquetGroup.source_booking_id
+        || workspace.sourceBookingId
+        || workspace.source_booking_id
+        || null;
+    const banquetGroupPrimaryBookingId = booking.banquetGroupPrimaryBookingId
+        || booking.banquet_group_primary_booking_id
+        || booking.primaryBookingId
+        || booking.primary_booking_id
+        || banquetGroup.primaryBookingId
+        || banquetGroup.primary_booking_id
+        || sourceBookingId
+        || null;
     return {
         id: booking.id || booking.bookingId || booking.booking_id || null,
         status: booking.status || '',
@@ -10854,8 +11344,15 @@ function normalizeScheduleBooking(booking = {}) {
         programId: booking.programId || booking.program_id || null,
         programCode: booking.programCode || booking.program_code || null,
         programName: booking.programName || booking.program_name || null,
+        category: booking.category || booking.category_id || null,
         label: booking.label || null,
-        linkedTo: booking.linkedTo || booking.linked_to || null
+        linkedTo: booking.linkedTo || booking.linked_to || null,
+        sourceBookingId,
+        banquetGroupId,
+        banquetGroupRole,
+        banquetGroupPrimaryBookingId,
+        bookingRole: booking.bookingRole || booking.booking_role || booking.bookingType || booking.booking_type || null,
+        extraData: extra
     };
 }
 
@@ -10884,6 +11381,15 @@ function existingScheduleBookingsForValidation(bookings = [], excludeId = null) 
 }
 
 async function validateSelectedActivitySchedule(formData = {}, options = {}) {
+    const validationToken = nextSelectedActivityScheduleValidationToken();
+    const bookingTimeChangeToken = Number(options.bookingTimeChangeToken || 0) || 0;
+    const generationGuard = options.generationGuard !== false;
+    const isCurrentValidation = () => !generationGuard
+        || (
+            isLatestSelectedActivityScheduleValidationToken(validationToken)
+            && isLatestBookingTimeChangeToken(bookingTimeChangeToken)
+        );
+    const staleResult = () => ({ valid: false, stale: true, issues: [] });
     const programs = Array.isArray(formData.activityPrograms)
         ? formData.activityPrograms.filter(Boolean)
         : getSelectedActivityPrograms();
@@ -10899,9 +11405,11 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
     const room = String(formData.room || document.getElementById('roomSelect')?.value || '').trim();
     const date = normalizeBookingDateKey(AppState.selectedDate);
     const allBookings = await getBookingsForDate(AppState.selectedDate, { force: options.force !== false });
+    if (!isCurrentValidation()) return staleResult();
     clearSelectedActivityPreflightState();
     const existingBookings = existingScheduleBookingsForValidation(allBookings, options.excludeId || null);
     const workday = selectedActivityScheduleWorkday();
+    const banquetContext = bookingTimeCandidateBanquetContext(formData, 'activity');
 
     rows.forEach(row => {
         if (!row.time) {
@@ -10952,7 +11460,9 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
             room,
             programId: row.programId,
             programCode: row.program?.code || null,
-            programName: row.program?.name || null
+            programName: row.program?.name || null,
+            category: row.program?.category || null,
+            ...banquetContext
         };
         const lineConflict = existingBookings.find(booking =>
             normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(candidate.lineId)
@@ -10983,10 +11493,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         }
 
         const roomConflict = room && isOperationalBookingRoomValue(room)
-            ? existingBookings.find(booking =>
-                normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(room)
-                && selectedActivityScheduleOverlaps(candidate, booking)
-            )
+            ? existingBookings.find(booking => bookingTimeRoomConflictMatches(candidate, booking))
             : null;
         if (roomConflict) {
             addSelectedActivityScheduleIssue(issueMap, row.programId, `Кімната зайнята: ${scheduleBookingLabel(roomConflict)} о ${roomConflict.time}.`, {
@@ -11007,6 +11514,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         }
     });
 
+    if (!isCurrentValidation()) return staleResult();
     setSelectedActivityScheduleIssues(issueMap);
     if (options.render !== false) renderSelectedProgramSummary();
     const issues = Object.entries(issueMap).flatMap(([programId, value]) =>
@@ -11038,7 +11546,7 @@ async function validateSelectedActivityScheduleBeforeSubmit(formData = {}, exclu
     }
     let result;
     try {
-        result = await validateSelectedActivitySchedule(formData, { excludeId, render: true, force: true });
+        result = await validateSelectedActivitySchedule(formData, { excludeId, render: true, force: true, generationGuard: false });
     } catch (err) {
         console.warn('[Booking] Selected activity schedule validation unavailable before submit', err);
         setSelectedActivityPreflightUnavailable(err);
@@ -11265,6 +11773,13 @@ function buildBookingObject(formData, program) {
     };
     if (Array.isArray(formData.bookingPackageWarnings) && formData.bookingPackageWarnings.length) {
         obj.extraData.bookingPackage.warnings = formData.bookingPackageWarnings;
+    }
+    const banquetPreorderStatus = formData.banquetPreorderStatus || bookingPreorderStatusFromFormData(formData);
+    if (banquetPreorderStatus?.applies) {
+        obj.extraData.bookingPackage.banquetPreorderStatus = banquetPreorderStatus;
+    }
+    if (formData.preorderWarningAcknowledgement) {
+        obj.extraData.bookingPackage.preorderWarningAcknowledgement = formData.preorderWarningAcknowledgement;
     }
     obj.extraData.bookingWorkspace = buildBookingWorkspaceExtraData(formData);
     if (isMultiActivityBooking) {
@@ -12317,6 +12832,12 @@ async function handleBookingSubmit(e) {
 
         const activityScheduleValid = await validateSelectedActivityScheduleBeforeSubmit(formData, excludeId);
         if (!activityScheduleValid) { unlockSubmitBtn(); return; }
+    }
+    const preorderWarningsAccepted = await confirmBookingPreorderWarningsBeforeSubmit(formData);
+    if (!preorderWarningsAccepted) {
+        showNotification('Збереження скасовано. Перевірте меню або завдаток.', 'warning');
+        unlockSubmitBtn();
+        return;
     }
 
     try {
@@ -15170,6 +15691,16 @@ function hydrateBanquetEditActivityState(context = null) {
     BookingDrawerState.selectedActivityScheduleIssues = {};
     BookingDrawerState.selectedActivityPinataFields = pinataFields;
     BookingDrawerState.selectedActivitySecondAnimatorFields = secondAnimatorFields;
+    const firstActivityStartTime = rows.reduce((earliest, { booking, isPrimary }) => {
+        if (isPrimary) return earliest;
+        const time = normalizeSelectedActivityScheduleTime(booking?.time || '');
+        if (!time) return earliest;
+        if (!earliest) return time;
+        return timeToMinutes(time) < timeToMinutes(earliest) ? time : earliest;
+    }, '');
+    if (!context.primaryIsActivity && firstActivityStartTime) {
+        syncBookingTimeControlToHydratedActivityStart(firstActivityStartTime);
+    }
     setSelectedActivityPrograms(programIds, { renderSummary: true, renderPackage: true, markDirty: false });
     const resolvedProgramIds = new Set(getSelectedActivityPrograms().map(item => String(item.id)));
     context.unresolvedActivityProgramIds = programIds.filter(programId => !resolvedProgramIds.has(programId));

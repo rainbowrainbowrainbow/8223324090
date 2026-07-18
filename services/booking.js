@@ -84,6 +84,118 @@ function minutesToTime(minutes) {
     return `${h}:${m}`;
 }
 
+const BOOKING_WORKING_HOURS = Object.freeze({
+    weekday: Object.freeze({ start: '12:00', end: '20:00' }),
+    weekend: Object.freeze({ start: '10:00', end: '20:00' })
+});
+
+function bookingDateIsWeekend(dateStr) {
+    if (!validateDate(dateStr)) return false;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+function bookingWorkingHoursForDate(dateStr) {
+    const isWeekend = bookingDateIsWeekend(dateStr);
+    const hours = isWeekend ? BOOKING_WORKING_HOURS.weekend : BOOKING_WORKING_HOURS.weekday;
+    return {
+        ...hours,
+        isWeekend,
+        startMinutes: timeToMinutes(hours.start),
+        endMinutes: timeToMinutes(hours.end)
+    };
+}
+
+function bookingTimeShapeUnchanged(candidate = {}, existing = null) {
+    if (!existing) return false;
+    return String(candidate.date || '') === String(existing.date || '').slice(0, 10)
+        && String(candidate.time || '').slice(0, 5) === String(existing.time || '').slice(0, 5)
+        && Number(candidate.duration || 0) === Number(existing.duration || 0);
+}
+
+function validateBookingWithinWorkingHours(booking = {}, options = {}) {
+    const date = String(booking.date || '').slice(0, 10);
+    const time = String(booking.time || '').slice(0, 5);
+    const duration = Number(booking.duration || 0);
+    const existingBooking = options.existingBooking || options.existing || null;
+    const allowUnchangedLegacy = options.allowUnchangedLegacy === true;
+
+    if (allowUnchangedLegacy && bookingTimeShapeUnchanged({ date, time, duration }, existingBooking)) {
+        return {
+            valid: true,
+            legacyUnchanged: true,
+            code: null,
+            error: null,
+            details: null
+        };
+    }
+
+    if (!validateDate(date)) {
+        return {
+            valid: false,
+            code: 'BOOKING_WORKING_HOURS_INVALID_DATE',
+            error: 'Invalid booking date for working-hours validation',
+            details: { date }
+        };
+    }
+    if (!validateTime(time)) {
+        return {
+            valid: false,
+            code: 'BOOKING_WORKING_HOURS_INVALID_TIME',
+            error: 'Invalid booking time for working-hours validation',
+            details: { date, time }
+        };
+    }
+    if (!Number.isFinite(duration) || duration < 0 || duration > 1440) {
+        return {
+            valid: false,
+            code: 'BOOKING_WORKING_HOURS_INVALID_DURATION',
+            error: 'Invalid booking duration for working-hours validation',
+            details: { date, time, duration }
+        };
+    }
+
+    const hours = bookingWorkingHoursForDate(date);
+    const startMinutes = timeToMinutes(time);
+    const endMinutes = startMinutes + duration;
+    if (startMinutes < hours.startMinutes || startMinutes > hours.endMinutes || endMinutes > hours.endMinutes) {
+        return {
+            valid: false,
+            code: 'BOOKING_OUTSIDE_WORKING_HOURS',
+            error: `Booking must be within working hours ${hours.start}-${hours.end}`,
+            details: {
+                date,
+                time,
+                duration,
+                endTime: minutesToTime(Math.min(endMinutes, 1439)),
+                workingHours: {
+                    start: hours.start,
+                    end: hours.end,
+                    isWeekend: hours.isWeekend
+                }
+            }
+        };
+    }
+
+    return {
+        valid: true,
+        legacyUnchanged: false,
+        code: null,
+        error: null,
+        details: {
+            date,
+            time,
+            duration,
+            workingHours: {
+                start: hours.start,
+                end: hours.end,
+                isWeekend: hours.isWeekend
+            }
+        }
+    };
+}
+
 const MIN_PAUSE = 15;
 const VALID_BOOKING_STATUSES = Object.freeze(['confirmed', 'preliminary', 'cancelled']);
 const BOOKING_CONFLICT_LOCK_NAMESPACE = 'booking_conflict_v1';
@@ -1116,6 +1228,7 @@ function getKyivTimeStr() {
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     normalizeBanquetCreationContext, validateBanquetCreationContext,
+    BOOKING_WORKING_HOURS, bookingDateIsWeekend, bookingWorkingHoursForDate, validateBookingWithinWorkingHours,
     timeToMinutes, minutesToTime, MIN_PAUSE, VALID_BOOKING_STATUSES,
     parseAvailabilityWindows, isBookingWithinAvailabilityWindows, isMinuteWithinAvailabilityWindows, availabilityWindowsLabel,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,

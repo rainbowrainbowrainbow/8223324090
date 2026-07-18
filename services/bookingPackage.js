@@ -5,6 +5,7 @@ const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
     weekday: 'banquet_entry_weekday_child',
     weekend: 'banquet_entry_weekend_child'
 });
+const { buildBanquetPreorderStatus } = require('./banquetPreorderRules');
 const BANQUET_ENTRY_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_ENTRY_PRICE_RULE_CODES));
 const BANQUET_ENTRY_SOURCE = 'banquet_entry_price_rules';
 const LEGACY_ENTRY_WARNING_CODES = new Set([
@@ -654,6 +655,17 @@ function buildBookingPackage(booking = {}, options = {}) {
         serviceEvents,
         source: 'booking_workspace'
     };
+    const banquetPreorderStatus = buildBanquetPreorderStatus({
+        booking,
+        bookingPackage: result,
+        deposit: booking.banquetDeposit || booking.banquet_deposit || booking.deposit || null
+    });
+    if (banquetPreorderStatus.applies) {
+        result.banquetPreorderStatus = banquetPreorderStatus;
+    }
+    if (previousPackage.preorderWarningAcknowledgement || previousPackage.preorder_warning_acknowledgement) {
+        result.preorderWarningAcknowledgement = previousPackage.preorderWarningAcknowledgement || previousPackage.preorder_warning_acknowledgement;
+    }
     if (hasTicketSnapshot) {
         result.ticketLines = ticketLines;
         result.ticketSubtotal = ticketSubtotal;

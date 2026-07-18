@@ -24,6 +24,9 @@ const {
     bookingPackageAudit
 } = require('../services/bookingPackage');
 const {
+    buildBanquetPreorderStatus
+} = require('../services/banquetPreorderRules');
+const {
     normalizePriceDate,
     mapProductPriceFields,
     applyEffectiveBookingPrice
@@ -37,7 +40,8 @@ const {
     resolvePdfFonts
 } = require('../services/banquetSummaryPdf');
 const {
-    banquetSummaryModeContract
+    banquetSummaryModeContract,
+    buildBanquetSummary
 } = require('../services/banquetSummary');
 const BookingActivitySchedule = require('../js/booking-activity-schedule');
 
@@ -725,7 +729,10 @@ function createMultiActivityScheduleHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
     const start = bookingJs.indexOf('function bookingMultiActivityEnabled');
     const end = bookingJs.indexOf('function buildMaysternyaClosedSlotBooking', start);
+    const banquetEditStart = bookingJs.indexOf('function banquetEditBookingValue');
+    const banquetEditEnd = bookingJs.indexOf('function bookingEditConflictExcludeIds', banquetEditStart);
     assert.ok(start >= 0 && end > start, 'multi-activity schedule helper slice exists');
+    assert.ok(banquetEditStart >= 0 && banquetEditEnd > banquetEditStart, 'banquet edit activity hydration helper slice exists');
 
     const programs = options.programs || multiActivitySchedulePrograms();
     const fieldValues = options.fieldValues || {};
@@ -742,8 +749,29 @@ function createMultiActivityScheduleHarness(options = {}) {
         bookingTimeStepForward: createHarnessElement({ tagName: 'BUTTON' }),
         bookingTimeHint: createHarnessElement({ tagName: 'SMALL', value: '', textContent: '', dataset: {} }),
         selectedProgram: createHarnessElement({ tagName: 'SELECT', value: programs[0]?.id || '' }),
+        customDuration: createHarnessElement({ value: String(options.customDuration || '') }),
         bookingLine: createHarnessElement({ tagName: 'SELECT', value: options.lineId || 'line-main' }),
         roomSelect: createHarnessElement({ tagName: 'SELECT', value: options.room || 'Room A' }),
+        bookingPrimaryAnimatorSection: createHarnessElement({
+            classList: {
+                contains: className => className === 'hidden' && options.primaryAnimatorVisible === false,
+                toggle: () => {},
+                add: () => {},
+                remove: () => {}
+            }
+        }),
+        bookingPrimaryAnimatorSelect: createHarnessSelect(options.primaryAnimator || ''),
+        secondAnimatorSection: createHarnessElement({
+            classList: {
+                contains: className => className === 'hidden' && options.secondAnimatorSectionVisible !== true,
+                toggle: () => {},
+                add: () => {},
+                remove: () => {}
+            }
+        }),
+        secondAnimatorSelect: createHarnessSelect(options.secondAnimator || ''),
+        extraHostToggle: createHarnessElement({ checked: Boolean(options.extraHostVisible) }),
+        extraHostAnimatorSelect: createHarnessSelect(options.extraHostAnimator || ''),
         customerName: createHarnessElement({ value: fieldValues.customerName || '' }),
         bookingGroupName: createHarnessElement({ value: fieldValues.bookingGroupName || '' }),
         bookingGuestArrivalTime: createHarnessElement({ type: 'time', value: fieldValues.bookingGuestArrivalTime || '' }),
@@ -783,6 +811,11 @@ function createMultiActivityScheduleHarness(options = {}) {
             selectedActivityScheduleIssues: {},
             selectedActivityPinataFields: {},
             selectedActivitySecondAnimatorFields: { ...(options.secondAnimatorFields || {}) },
+            selectedBanquetGroupId: options.selectedBanquetGroupId || '',
+            explicitBanquetContext: options.explicitBanquetContext || null,
+            roomSelectionBanquetContext: options.roomSelectionBanquetContext || null,
+            activeBanquetIntent: options.activeBanquetIntent || null,
+            activeBanquetRoleIntent: options.activeBanquetRoleIntent || null,
             selectedActivityPreflight: {
                 status: 'idle',
                 message: '',
@@ -796,6 +829,10 @@ function createMultiActivityScheduleHarness(options = {}) {
         isMaysternyaBookingContext: () => false,
         isEducationTimelineBookingMode: () => false,
         isPinataProgram: program => String(program?.category || '').toLowerCase() === 'pinata',
+        useSelectedActivityPinataSubflow: () => true,
+        resetPinataModeFields: () => {},
+        syncPinataModeFields: () => {},
+        _loadPinataStockBadge: () => {},
         isClientPinataFillerChoice: value => String(value || '') === 'client_filler',
         isClientPinataFillerNumber: value => String(value || '') === 'client_filler',
         getClientPinataDefaultPrice: () => 300,
@@ -817,6 +854,10 @@ function createMultiActivityScheduleHarness(options = {}) {
         toBookingMoney: value => Math.round(Number(value || 0) * 100) / 100,
         isOperationalBookingRoomValue: value => Boolean(String(value || '').trim()),
         getBookingsForDate: options.getBookingsForDate || (async () => []),
+        getLinesForDate: options.getLinesForDate || (async () => []),
+        apiGetLines: options.apiGetLines || (async () => []),
+        isRoomFirstTimelineView: options.isRoomFirstTimelineView || (() => false),
+        checkConflicts: options.checkConflicts || (async () => ({ overlap: false })),
         getBookingFormData: () => ({
             hasEvent: true,
             activityPrograms: programs,
@@ -893,10 +934,12 @@ function createMultiActivityScheduleHarness(options = {}) {
         current: () => ({ apiValue: 'event_genix' })
     };
     vm.createContext(context);
-    vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
-    context.refreshAnimatorSelectsForCurrentSlot = async () => {
-        dependencyCalls.animatorRefreshes += 1;
-    };
+    vm.runInContext(`${bookingJs.slice(start, end)}\n${bookingJs.slice(banquetEditStart, banquetEditEnd)}`, context, { filename: 'js/booking.js' });
+    if (!options.useRealAnimatorRefresh) {
+        context.refreshAnimatorSelectsForCurrentSlot = async () => {
+            dependencyCalls.animatorRefreshes += 1;
+        };
+    }
     context.getBookingFormData = () => ({
         hasEvent: true,
         activityPrograms: programs,
@@ -991,7 +1034,7 @@ function createBookingActivityPromoHarness(products = []) {
 
 function createBookingDrawerSummaryHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
-    const start = bookingJs.indexOf('function bookingSummaryActivityName');
+    const start = bookingJs.indexOf('const BANQUET_PREORDER_MENU_MINIMUMS');
     const end = bookingJs.indexOf("if (typeof window !== 'undefined' && window.BookingPackageRenderer)", start);
     assert.ok(start >= 0 && end > start, 'booking drawer summary helper slice exists');
     const selectedProgramValue = options.selectedProgramValue ?? 'pinata';
@@ -1523,6 +1566,39 @@ test('booking activity schedule helper limits selectable starts to 15-minute wor
     assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('20:00', exactEndBoundary), false);
 });
 
+test('booking time select is duration-aware and does not offer closing time for nonzero activity', () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [{ id: 'solo-30', code: 'SOLO', label: 'Solo(30)', name: 'Solo', category: 'animation', duration: 30, price: 1000, hosts: 1 }],
+        baseTime: '19:30'
+    });
+
+    const model = context.bookingTimeSlotModel('19:30');
+    const slots = model.options.filter(option => !option.offGrid).map(option => option.value);
+
+    assert.equal(slots.includes('19:30'), true);
+    assert.equal(slots.includes('19:45'), false);
+    assert.equal(slots.includes('20:00'), false);
+});
+
+test('booking time select updates latest slot when custom duration changes', () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [{ id: 'custom', code: 'Інше', label: 'Інше', name: 'Custom', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }],
+        baseTime: '18:00',
+        customDuration: 30
+    });
+    const duration = context.__fields.get('customDuration');
+
+    let slots = context.bookingTimeSlotModel('18:00').options.filter(option => !option.offGrid).map(option => option.value);
+    assert.equal(slots.at(-1), '19:30');
+
+    duration.value = '60';
+    context.renderBookingTimeOptions('18:00');
+    slots = Array.from(context.__fields.get('bookingTime').children).map(option => option.value);
+
+    assert.equal(slots.at(-1), '19:00');
+    assert.equal(slots.includes('19:30'), false);
+});
+
 test('booking multi-activity default schedule is persisted into banquetActivities payload', () => {
     const context = createMultiActivityScheduleHarness();
 
@@ -1588,6 +1664,153 @@ test('booking time change keeps bookingTime as the edited start source and prese
     assert.equal(context.__calls.roomAvailability[0].selectedRoom, 'Room A');
     assert.equal(context.BookingDrawerState.bookingTimePreflight.status, 'checking');
     assert.equal(context.__timers.length, 1);
+});
+
+test('booking banquet edit hydrates bookingTime from first real activity without shifting kitchen primary', () => {
+    const programs = multiActivitySchedulePrograms().slice(0, 2);
+    const context = createMultiActivityScheduleHarness({
+        programs,
+        baseTime: '15:00',
+        lineId: 'banquet-service',
+        room: 'Kitchen room'
+    });
+    const primaryBooking = {
+        id: 'BK-KITCHEN',
+        time: '15:00',
+        duration: 60,
+        lineId: 'banquet-service',
+        room: 'Kitchen room',
+        category: 'kitchen',
+        banquetGroupId: 'BG-KITCHEN-FIRST'
+    };
+    const banquetContext = {
+        groupId: 'BG-KITCHEN-FIRST',
+        primaryIsActivity: false,
+        primaryBooking,
+        activities: [
+            {
+                id: 'BK-SHOW',
+                programId: 'show-40',
+                time: '16:45',
+                duration: 40,
+                lineId: 'line-show',
+                room: 'Kitchen room',
+                banquetGroupId: 'BG-KITCHEN-FIRST',
+                banquetGroupRole: 'activity'
+            },
+            {
+                id: 'BK-ANIM',
+                programId: 'anim-30',
+                time: '16:00',
+                duration: 30,
+                lineId: 'line-anim',
+                room: 'Kitchen room',
+                banquetGroupId: 'BG-KITCHEN-FIRST',
+                banquetGroupRole: 'activity'
+            }
+        ]
+    };
+
+    context.hydrateBanquetEditActivityState(banquetContext);
+
+    assert.equal(context.__fields.get('bookingTime').value, '16:00');
+    assert.equal(context.__fields.get('bookingTime').dataset.currentTime, '16:00');
+    assert.equal(context.window.BookingForm._dirty, false);
+    assert.equal(primaryBooking.time, '15:00');
+    assert.deepEqual({ ...context.BookingDrawerState.selectedActivityScheduleTimes }, {
+        'show-40': '16:45',
+        'anim-30': '16:00'
+    });
+
+    context.handleBookingTimeControlChange('16:15');
+
+    assert.equal(primaryBooking.time, '15:00');
+    assert.deepEqual({ ...context.BookingDrawerState.selectedActivityScheduleTimes }, {
+        'show-40': '17:00',
+        'anim-30': '16:15'
+    });
+});
+
+test('booking time duplicate input and change events are idempotent', async () => {
+    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:45' } });
+
+    const first = context.handleBookingTimeControlChange('12:30');
+    const second = context.handleBookingTimeControlChange('12:30');
+    await Promise.resolve();
+
+    assert.equal(first, '12:30');
+    assert.equal(second, '12:30');
+    assert.deepEqual({ ...context.BookingDrawerState.selectedActivityScheduleTimes }, {
+        'anim-30': '12:30',
+        'show-40': '13:15',
+        'photo-20': '14:00'
+    });
+    assert.equal(context.__calls.animatorRefreshes, 1);
+    assert.equal(context.__calls.roomAvailability.length, 1);
+    assert.equal(context.__timers.length, 1);
+});
+
+test('booking selected activity validation ignores stale reversed API responses', async () => {
+    const pending = [];
+    const context = createMultiActivityScheduleHarness({
+        getBookingsForDate: async () => new Promise(resolve => pending.push(resolve))
+    });
+    const formData = {
+        hasEvent: true,
+        activityPrograms: context.__programs,
+        lineId: 'line-main',
+        room: 'Room A'
+    };
+
+    const stalePromise = context.validateSelectedActivitySchedule(formData, { render: true, force: true });
+    const latestPromise = context.validateSelectedActivitySchedule(formData, { render: true, force: true });
+
+    pending[1]([{
+        id: 'BK-LATEST-CONFLICT',
+        date: '2099-02-13',
+        time: '12:35',
+        duration: 15,
+        lineId: 'line-main',
+        room: 'Room A',
+        programId: 'busy-latest',
+        label: 'Latest busy slot',
+        status: 'confirmed'
+    }]);
+    const latest = await latestPromise;
+
+    assert.equal(latest.valid, false);
+    assert.equal(context.BookingDrawerState.selectedActivityScheduleIssues['show-40'].conflictBookingId, 'BK-LATEST-CONFLICT');
+
+    pending[0]([]);
+    const stale = await stalePromise;
+
+    assert.equal(stale.stale, true);
+    assert.equal(context.BookingDrawerState.selectedActivityScheduleIssues['show-40'].conflictBookingId, 'BK-LATEST-CONFLICT');
+});
+
+test('booking animator options ignore stale reversed availability responses', async () => {
+    const pending = [];
+    const context = createMultiActivityScheduleHarness({
+        programs: [multiActivitySchedulePrograms()[0]],
+        useRealAnimatorRefresh: true,
+        getLinesForDate: async () => new Promise(resolve => pending.push(resolve))
+    });
+    const select = context.__fields.get('bookingPrimaryAnimatorSelect');
+
+    const stalePromise = context.refreshAnimatorSelectsForCurrentSlot();
+    const latestPromise = context.refreshAnimatorSelectsForCurrentSlot();
+
+    pending[1]([{ id: 'line-new', name: 'New Host' }]);
+    await latestPromise;
+
+    assert.equal(select.children.some(option => option.value === 'New Host'), true);
+
+    pending[0]([{ id: 'line-old', name: 'Old Host' }]);
+    const stale = await stalePromise;
+
+    assert.equal(stale, null);
+    assert.equal(select.children.some(option => option.value === 'New Host'), true);
+    assert.equal(select.children.some(option => option.value === 'Old Host'), false);
 });
 
 test('booking time preflight reports a concrete second animator conflict', async () => {
@@ -1683,6 +1906,70 @@ test('booking time preflight reports a concrete room conflict', async () => {
     assert.equal(context.bookingTimeValidationIssues()[0].key, 'booking_time_room_conflict');
 });
 
+test('booking time preflight allows same-banquet activity over kitchen room slot', async () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [multiActivitySchedulePrograms()[0]],
+        selectedBanquetGroupId: 'BG-ROOM-1',
+        activeBanquetIntent: 'add_to_existing',
+        activeBanquetRoleIntent: 'activity',
+        getBookingsForDate: async () => [{
+            id: 'BK-KITCHEN-SAME-GROUP',
+            date: '2099-02-13',
+            time: '12:15',
+            duration: 30,
+            lineId: 'banquet-service',
+            room: 'Room A',
+            programCode: 'KITCHEN',
+            programName: 'Kitchen',
+            category: 'kitchen',
+            label: 'Kitchen slot',
+            status: 'confirmed',
+            banquetGroupId: 'BG-ROOM-1',
+            banquetGroupRole: 'kitchen'
+        }]
+    });
+    context.__fields.get('bookingTime').value = '12:30';
+    context.BookingDrawerState.bookingTimeChangeToken = 17;
+
+    const result = await context.validateBookingTimeChangePreflight(17);
+
+    assert.equal(result.valid, true);
+    assert.equal(context.BookingDrawerState.bookingTimePreflight.status, 'free');
+    assert.equal(context.bookingTimeValidationIssues().length, 0);
+});
+
+test('booking time preflight still blocks same-room overlap from another banquet group', async () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [multiActivitySchedulePrograms()[0]],
+        selectedBanquetGroupId: 'BG-ROOM-1',
+        activeBanquetIntent: 'add_to_existing',
+        activeBanquetRoleIntent: 'activity',
+        getBookingsForDate: async () => [{
+            id: 'BK-KITCHEN-OTHER-GROUP',
+            date: '2099-02-13',
+            time: '12:15',
+            duration: 30,
+            lineId: 'banquet-service',
+            room: 'Room A',
+            programCode: 'KITCHEN',
+            programName: 'Kitchen',
+            category: 'kitchen',
+            label: 'Other banquet kitchen',
+            status: 'confirmed',
+            banquetGroupId: 'BG-ROOM-2',
+            banquetGroupRole: 'kitchen'
+        }]
+    });
+    context.__fields.get('bookingTime').value = '12:30';
+    context.BookingDrawerState.bookingTimeChangeToken = 18;
+
+    const result = await context.validateBookingTimeChangePreflight(18);
+
+    assert.equal(result.valid, false);
+    assert.equal(context.bookingTimeValidationIssues()[0].key, 'booking_time_room_conflict');
+    assert.match(context.BookingDrawerState.bookingTimePreflight.message, /Other banquet kitchen/);
+});
+
 test('booking multi-activity second host payload belongs to its activity row', () => {
     const programs = [
         { id: 'anim-30', code: 'AN', label: 'Anim(30)', name: 'Animation', category: 'animation', duration: 30, price: 1500, hosts: 1 },
@@ -1757,6 +2044,77 @@ test('booking selected activity schedule conflict blocks submit preflight', asyn
     assert.deepEqual(context.__revealed, ['BK-CONFLICT']);
     assert.equal(context.__notifications.length, 1);
     assert.equal(context.__notifications[0].type, 'error');
+});
+
+test('booking selected activity preflight allows same-banquet activity over kitchen room slot', async () => {
+    const context = createMultiActivityScheduleHarness({
+        selectedBanquetGroupId: 'BG-MULTI-1',
+        activeBanquetIntent: 'add_to_existing',
+        activeBanquetRoleIntent: 'activity',
+        getBookingsForDate: async () => [{
+            id: 'BK-MULTI-KITCHEN',
+            date: '2099-02-13',
+            time: '12:35',
+            duration: 15,
+            lineId: 'banquet-service',
+            room: 'Room A',
+            programCode: 'KITCHEN',
+            programName: 'Kitchen',
+            category: 'kitchen',
+            label: 'Kitchen slot',
+            status: 'confirmed',
+            banquetGroupId: 'BG-MULTI-1',
+            banquetGroupRole: 'kitchen'
+        }]
+    });
+
+    const result = await context.validateSelectedActivityScheduleBeforeSubmit({
+        hasEvent: true,
+        activityPrograms: context.__programs,
+        lineId: 'line-main',
+        room: 'Room A'
+    }, null);
+
+    assert.equal(result, true);
+    assert.deepEqual(Object.keys(context.BookingDrawerState.selectedActivityScheduleIssues), []);
+    assert.deepEqual(context.__notifications, []);
+    assert.deepEqual(context.__revealed, []);
+});
+
+test('booking selected activity preflight still blocks same-banquet activity over activity room slot', async () => {
+    const context = createMultiActivityScheduleHarness({
+        selectedBanquetGroupId: 'BG-MULTI-1',
+        activeBanquetIntent: 'add_to_existing',
+        activeBanquetRoleIntent: 'activity',
+        getBookingsForDate: async () => [{
+            id: 'BK-MULTI-ACTIVITY',
+            date: '2099-02-13',
+            time: '12:35',
+            duration: 15,
+            lineId: 'line-other',
+            room: 'Room A',
+            programId: 'busy-quest',
+            programCode: 'QUEST',
+            programName: 'Quest',
+            category: 'quest',
+            label: 'Quest activity',
+            status: 'confirmed',
+            banquetGroupId: 'BG-MULTI-1',
+            banquetGroupRole: 'activity'
+        }]
+    });
+
+    const result = await context.validateSelectedActivityScheduleBeforeSubmit({
+        hasEvent: true,
+        activityPrograms: context.__programs,
+        lineId: 'line-main',
+        room: 'Room A'
+    }, null);
+
+    assert.equal(result, false);
+    assert.equal(context.BookingDrawerState.selectedActivityScheduleIssues['show-40'].conflictBookingId, 'BK-MULTI-ACTIVITY');
+    assert.deepEqual(context.__revealed, ['BK-MULTI-ACTIVITY']);
+    assert.equal(context.__notifications.at(-1).type, 'error');
 });
 
 test('booking selected activity preflight failure requires explicit repeat before backend submit', async () => {
@@ -2668,6 +3026,129 @@ test('booking package persists top-level bookingPackage menu positions from crea
     assert.equal(booking.extraData.bookingPackage.serviceEvents[0].time, '15:30');
     assert.match(booking.banquetMenu, /Піца - 2 порції × 250 грн/);
     assert.match(booking.banquetMenu, /Індивідуальне оформлення - 1 додаток × 200 грн/);
+});
+
+test('banquet preorder rules use room minimum, menu subtotal, and deposit independently from tickets', () => {
+    const booking = applyBookingPackage({
+        date: '2026-07-25',
+        category: 'kitchen',
+        room: 'Жовта кімната',
+        roomResourceId: 'room-yellow',
+        programBasePrice: 0,
+        banquetGuests: 10,
+        deposit: { expectedAmount: 1000 },
+        extraData: {
+            bookingPackage: {
+                schemaVersion: 3,
+                menuPositions: [
+                    { productId: 'menu_pizza', title: 'Піца', quantity: 3, unitPrice: 1000, subtotal: 3000 }
+                ],
+                ticketLines: [{
+                    ticketTypeId: 1,
+                    ticketTypeCode: 'regular_child',
+                    ticketTypeName: 'Regular child',
+                    audience: 'child',
+                    quantity: 10,
+                    unitPriceUah: 350,
+                    subtotalUah: 3500,
+                    tariffVersionId: 10,
+                    admissionContext: 'reserved_table_room',
+                    dayType: 'weekend'
+                }],
+                ticketSubtotal: 3500
+            }
+        }
+    });
+
+    const status = booking.extraData.bookingPackage.banquetPreorderStatus;
+    assert.equal(status.placeType, 'room');
+    assert.equal(status.requiredMenuMinimum, 4000);
+    assert.equal(status.currentMenuSubtotal, 3000);
+    assert.equal(status.missingMenuAmount, 1000);
+    assert.equal(status.menuStatus, 'below_minimum');
+    assert.equal(status.currentDepositAmount, 1000);
+    assert.equal(status.depositStatus, 'below_recommended');
+    assert.equal(booking.extraData.bookingPackage.entrySubtotal, 3500);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 6500);
+    assert.ok(status.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
+    assert.ok(status.warnings.some(warning => warning.code === 'banquet_deposit_below_recommended'));
+});
+
+test('banquet preorder rules use table minimum and mark sufficient menu/deposit cleanly', () => {
+    const status = buildBanquetPreorderStatus({
+        booking: {
+            category: 'kitchen',
+            room: 'Диван 3',
+            banquetGuests: 6,
+            deposit: { expectedAmount: 2000 }
+        },
+        bookingPackage: {
+            positionsSubtotal: 2500,
+            entrySubtotal: 9999,
+            finalTotal: 12499,
+            menuPositions: [
+                { title: 'Меню', quantity: 1, unitPrice: 2500, subtotal: 2500 }
+            ]
+        }
+    });
+
+    assert.equal(status.placeType, 'table');
+    assert.equal(status.requiredMenuMinimum, 2500);
+    assert.equal(status.menuStatus, 'sufficient');
+    assert.equal(status.depositStatus, 'sufficient');
+    assert.deepEqual(status.warnings, []);
+});
+
+test('banquet summary exposes preorder warnings without mixing ticket totals into menu minimum', () => {
+    const summary = buildBanquetSummary({
+        mainBooking: {
+            id: 'BK-PREORDER-1',
+            business_context: 'event_genix',
+            date: '2026-07-25',
+            time: '12:00',
+            category: 'kitchen',
+            room: 'Жовта кімната',
+            banquet_guests: 10,
+            banquet_tables: 1,
+            price: 6500,
+            extra_data: {
+                bookingPackage: {
+                    schemaVersion: 3,
+                    programBasePrice: 0,
+                    positionsSubtotal: 3000,
+                    entrySubtotal: 3500,
+                    ticketSubtotal: 3500,
+                    finalTotal: 6500,
+                    menuPositions: [
+                        { title: 'Піца', quantity: 3, unitPrice: 1000, subtotal: 3000 }
+                    ],
+                    ticketLines: [{
+                        ticketTypeId: 1,
+                        ticketTypeCode: 'regular_child',
+                        ticketTypeName: 'Regular child',
+                        audience: 'child',
+                        quantity: 10,
+                        unitPriceUah: 350,
+                        subtotalUah: 3500,
+                        tariffVersionId: 10
+                    }]
+                }
+            }
+        },
+        canonicalDepositProjection: {
+            deposit: { expectedAmount: 0 },
+            display: { amount: 0 }
+        },
+        businessContext: 'event_genix',
+        mode: 'staff'
+    });
+
+    assert.equal(summary.banquetPreorderStatus.requiredMenuMinimum, 4000);
+    assert.equal(summary.banquetPreorderStatus.currentMenuSubtotal, 3000);
+    assert.equal(summary.banquetPreorderStatus.missingMenuAmount, 1000);
+    assert.ok(summary.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
+    assert.ok(summary.warnings.some(warning => warning.code === 'banquet_deposit_below_recommended'));
+    assert.equal(summary.totals.entrySubtotal, 3500);
 });
 
 test('booking package calculates banquet entry from center price rules by weekday and weekend', async () => {

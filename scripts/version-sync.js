@@ -199,11 +199,28 @@ function syncCssImportVersions(file, version) {
     }
 }
 
-function collectVersionedAssetFiles(dir = ROOT, files = []) {
-    const skipDirs = new Set(['.git', 'node_modules']);
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+const GENERATED_ASSET_SCAN_DIRS = new Set(['.git', 'node_modules', 'output', 'test-results', 'tmp']);
+
+function shouldSkipVersionedAssetDir(entryName) {
+    return GENERATED_ASSET_SCAN_DIRS.has(entryName);
+}
+
+function collectVersionedAssetFiles(dir = ROOT, files = [], root = ROOT) {
+    let entries;
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+        if (err && (err.code === 'EACCES' || err.code === 'EPERM' || err.code === 'ENOENT')) {
+            return files;
+        }
+        throw err;
+    }
+
+    for (const entry of entries) {
         if (entry.isDirectory()) {
-            if (!skipDirs.has(entry.name)) collectVersionedAssetFiles(path.join(dir, entry.name), files);
+            if (!shouldSkipVersionedAssetDir(entry.name)) {
+                collectVersionedAssetFiles(path.join(dir, entry.name), files, root);
+            }
             continue;
         }
 
@@ -212,7 +229,7 @@ function collectVersionedAssetFiles(dir = ROOT, files = []) {
         if (ext !== '.html' && ext !== '.js') continue;
 
         const fullPath = path.join(dir, entry.name);
-        const rel = path.relative(ROOT, fullPath).replace(/\\/g, '/');
+        const rel = path.relative(root, fullPath).replace(/\\/g, '/');
         if (rel === 'scripts/version-sync.js') continue;
         files.push(rel);
     }
@@ -443,63 +460,74 @@ function syncServiceWorker(version) {
     if (FIX) write(file, sw);
 }
 
-let pkg = readJson('package.json');
-let version = pkg.version;
+function main() {
+    let pkg = readJson('package.json');
+    let version = pkg.version;
 
-try {
-    let pkgChanged = false;
-    if (BUMP_TYPE) {
-        version = bumpVersion(version, BUMP_TYPE);
-        pkg.version = version;
-        pkgChanged = true;
-        console.log(`${CYAN}Bumped${RESET} package.json -> ${BOLD}v${version}${RESET}\n`);
+    try {
+        let pkgChanged = false;
+        if (BUMP_TYPE) {
+            version = bumpVersion(version, BUMP_TYPE);
+            pkg.version = version;
+            pkgChanged = true;
+            console.log(`${CYAN}Bumped${RESET} package.json -> ${BOLD}v${version}${RESET}\n`);
+        }
+        if (LABEL_ARG !== null) {
+            pkg.eventGenix = pkg.eventGenix || {};
+            pkg.eventGenix.releaseLabel = normalizeLabel(LABEL_ARG);
+            pkgChanged = true;
+            console.log(`${CYAN}Release label${RESET} package.json -> ${BOLD}${pkg.eventGenix.releaseLabel}${RESET}\n`);
+        }
+        if (pkgChanged) writeJson('package.json', pkg);
+    } catch (err) {
+        console.error(`${RED}${err.message}${RESET}`);
+        process.exit(1);
     }
-    if (LABEL_ARG !== null) {
-        pkg.eventGenix = pkg.eventGenix || {};
-        pkg.eventGenix.releaseLabel = normalizeLabel(LABEL_ARG);
-        pkgChanged = true;
-        console.log(`${CYAN}Release label${RESET} package.json -> ${BOLD}${pkg.eventGenix.releaseLabel}${RESET}\n`);
+
+    const releaseLabel = getReleaseLabel(pkg);
+    if (!releaseLabel) {
+        report('package.json', 'eventGenix.releaseLabel', 'missing', 'non-empty release label', false);
+    } else {
+        ok('package.json', 'eventGenix.releaseLabel');
     }
-    if (pkgChanged) writeJson('package.json', pkg);
-} catch (err) {
-    console.error(`${RED}${err.message}${RESET}`);
-    process.exit(1);
+
+    console.log(`${BOLD}Version sync: v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}${RESET} (source: package.json)\n`);
+
+    syncPackageLock(version);
+    syncAssetVersions('index.html', version);
+    syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
+    syncFirstScreenLabels('dashboard.html', version, releaseLabel);
+    syncServiceWorker(version);
+    syncCssImportVersions('css/assistant-rail.css', version);
+    syncCssImportVersions('css/pages.css', version);
+    syncCssImportVersions('css/pages-shell.css', version);
+    syncCssImportVersions('css/sidebar-aurora.css', version);
+
+    for (const file of collectVersionedAssetFiles()) {
+        if (file !== 'index.html') syncAssetVersions(file, version);
+    }
+    checkMarkdownChangelog(version, releaseLabel);
+    checkApiVersionContract();
+
+    console.log('');
+    if (issues === 0) {
+        console.log(`${GREEN}${BOLD}All version references are in sync!${RESET}`);
+    } else if (FIX && fixed === issues) {
+        console.log(`${GREEN}${BOLD}Fixed ${fixed} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js${RESET} to verify.`);
+    } else if (FIX) {
+        console.log(`${RED}${BOLD}Fixed ${fixed} issue(s), ${issues - fixed} issue(s) require manual updates.${RESET}`);
+        process.exit(1);
+    } else {
+        console.log(`${RED}${BOLD}Found ${issues} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js --fix${RESET} for fixable issues.`);
+        process.exit(1);
+    }
 }
 
-const releaseLabel = getReleaseLabel(pkg);
-if (!releaseLabel) {
-    report('package.json', 'eventGenix.releaseLabel', 'missing', 'non-empty release label', false);
-} else {
-    ok('package.json', 'eventGenix.releaseLabel');
+if (require.main === module) {
+    main();
 }
 
-console.log(`${BOLD}Version sync: v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}${RESET} (source: package.json)\n`);
-
-syncPackageLock(version);
-syncAssetVersions('index.html', version);
-syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
-syncFirstScreenLabels('dashboard.html', version, releaseLabel);
-syncServiceWorker(version);
-syncCssImportVersions('css/assistant-rail.css', version);
-syncCssImportVersions('css/pages.css', version);
-syncCssImportVersions('css/pages-shell.css', version);
-syncCssImportVersions('css/sidebar-aurora.css', version);
-
-for (const file of collectVersionedAssetFiles()) {
-    if (file !== 'index.html') syncAssetVersions(file, version);
-}
-checkMarkdownChangelog(version, releaseLabel);
-checkApiVersionContract();
-
-console.log('');
-if (issues === 0) {
-    console.log(`${GREEN}${BOLD}All version references are in sync!${RESET}`);
-} else if (FIX && fixed === issues) {
-    console.log(`${GREEN}${BOLD}Fixed ${fixed} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js${RESET} to verify.`);
-} else if (FIX) {
-    console.log(`${RED}${BOLD}Fixed ${fixed} issue(s), ${issues - fixed} issue(s) require manual updates.${RESET}`);
-    process.exit(1);
-} else {
-    console.log(`${RED}${BOLD}Found ${issues} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js --fix${RESET} for fixable issues.`);
-    process.exit(1);
-}
+module.exports = {
+    collectVersionedAssetFiles,
+    shouldSkipVersionedAssetDir
+};

@@ -81,6 +81,10 @@ test('live runner covers the guarded simultaneous-pay contract and always uses s
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_URL/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_RUN_ID/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_USER/);
+    assert.match(script, /LIVE_MULTI_SEGMENT_QA_SCHEME/);
+    assert.match(script, /hourly: \{ rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 \}/);
+    assert.match(script, /per_shift: \{ rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 \}/);
+    assert.match(script, /monthly_fixed: \{ rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 \}/);
     assert.match(script, /Disposable QA Multi Segment \$\{RUN_ID\}/);
     assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}\/role-assignments/);
     assert.match(script, /admission_status: 'approved'/);
@@ -92,7 +96,6 @@ test('live runner covers the guarded simultaneous-pay contract and always uses s
     assert.match(script, /Cleanup report:/);
     assert.doesNotMatch(script, /\/api\/staff\/schedule\/copy-week/);
     assert.doesNotMatch(script, /HR_SHIFT_PLAN_STALE/);
-    assert.doesNotMatch(script, /rate_unit: 'day'/);
     assert.doesNotMatch(script, /\/api\/payroll\/(generate|report)/);
     assert.doesNotMatch(script, /\/api\/bookings/);
     assert.doesNotMatch(script, /\/api\/finance/);

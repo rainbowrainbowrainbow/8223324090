@@ -22,6 +22,12 @@ const REQUEST_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_TIMEOUT_MS') || 300
 const CLEANUP_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_CLEANUP_TIMEOUT_MS') || 60000);
 const OVERALL_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_OVERALL_TIMEOUT_MS') || 240000);
 const BUSINESS_CONTEXT = env('LIVE_MULTI_SEGMENT_QA_BUSINESS_CONTEXT') || 'event_genix';
+const PAYROLL_SCHEME = env('LIVE_MULTI_SEGMENT_QA_SCHEME') || 'hourly';
+const PAYROLL_SCHEMES = Object.freeze({
+    hourly: { rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 },
+    per_shift: { rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 },
+    monthly_fixed: { rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 }
+});
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg)) || env('LIVE_MULTI_SEGMENT_QA_URL');
 const RUN_ID = normalizeLiveQaRunId(env('LIVE_MULTI_SEGMENT_QA_RUN_ID'));
 const SOURCE_MONDAY = env('LIVE_MULTI_SEGMENT_QA_SOURCE_MONDAY') || defaultFutureMonday();
@@ -83,6 +89,9 @@ function assertConfigured() {
         throw new Error(`set LIVE_MULTI_SEGMENT_QA_CONFIRM=${LIVE_MULTI_SEGMENT_QA_CONFIRMATION}`);
     }
     if (!RUN_ID) throw new Error('set a unique LIVE_MULTI_SEGMENT_QA_RUN_ID (8-64 letters, digits, _ or -)');
+    if (!PAYROLL_SCHEMES[PAYROLL_SCHEME]) {
+        throw new Error('LIVE_MULTI_SEGMENT_QA_SCHEME must be hourly, per_shift, or monthly_fixed');
+    }
     const hasToken = Boolean(env('LIVE_MULTI_SEGMENT_QA_TOKEN'));
     const hasLogin = Boolean(env('LIVE_MULTI_SEGMENT_QA_USER') && env('LIVE_MULTI_SEGMENT_QA_PASS'));
     if (!hasToken && !hasLogin) {
@@ -341,15 +350,16 @@ async function run() {
 
         const staff = await createDisposableStaff(base, session.token);
         staffId = Number(staff.id);
+        const payrollScheme = PAYROLL_SCHEMES[PAYROLL_SCHEME];
         await api(base, `/api/hr/staff/${staffId}`, {
             method: 'PUT', token: session.token,
             body: {
                 role_type: PRIMARY_PROFESSION,
                 secondary_professions: [ADDITIONAL_PROFESSION],
-                hourly_rate: 100,
-                rate_unit: 'hour',
+                hourly_rate: payrollScheme.baseRate,
+                rate_unit: payrollScheme.rateUnit,
                 profession_rates: [
-                    { profession_key: PRIMARY_PROFESSION, hourly_rate: 100 },
+                    { profession_key: PRIMARY_PROFESSION, hourly_rate: payrollScheme.baseRate },
                     { profession_key: ADDITIONAL_PROFESSION, hourly_rate: 200 }
                 ],
                 notes: MARKER
@@ -366,7 +376,7 @@ async function run() {
                         status: 'active',
                         admission_status: 'approved',
                         internship_status: 'none',
-                        hourly_rate: 100,
+                        hourly_rate: payrollScheme.baseRate,
                         notes: MARKER
                     },
                     {
@@ -453,26 +463,33 @@ async function run() {
         results.push('attendance');
 
         const month = SOURCE_MONDAY.slice(0, 7);
-        const hourlyPreview = await api(base, `/api/payroll/preview?staffId=${staffId}&month=${month}`, { token: session.token });
-        const hourly = hourlyPreview.body?.preview;
-        assert.equal(Number(hourly?.daysWorked), 1, 'hourly payroll counts one day worked');
-        assert.equal(Number(hourly?.physicalMinutes), 540, 'payroll preview keeps nine physical hours');
-        const hourlyRows = (hourly?.professionRateSummary || []);
-        const baseRows = hourlyRows.filter(row => row.kind === 'base');
-        const additionalRows = hourlyRows.filter(row => row.kind === 'simultaneous_additional');
-        assert.deepEqual(baseRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
-            [PRIMARY_PROFESSION, 540, 100, 900]
-        ], 'hourly payroll pays nine base-role hours at the wardrobe rate');
+        const payrollPreview = await api(base, `/api/payroll/preview?staffId=${staffId}&month=${month}`, { token: session.token });
+        const preview = payrollPreview.body?.preview;
+        assert.equal(Number(preview?.daysWorked), 1, `${PAYROLL_SCHEME} payroll counts one day worked`);
+        assert.equal(Number(preview?.physicalMinutes), 540, 'payroll preview keeps nine physical hours');
+        const previewRows = (preview?.professionRateSummary || []);
+        const baseRows = previewRows.filter(row => row.kind === 'base');
+        const additionalRows = previewRows.filter(row => row.kind === 'simultaneous_additional');
+        assert.equal(baseRows.length, 1, `${PAYROLL_SCHEME} payroll has one base line`);
+        assert.equal(baseRows[0].profession_key, PRIMARY_PROFESSION, 'base line keeps the primary profession');
+        assert.equal(Number(baseRows[0].rate), payrollScheme.baseRate, 'base line keeps the explicit primary scheme rate');
         assert.deepEqual(additionalRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
             [ADDITIONAL_PROFESSION, 510, 200, 1700]
-        ], 'hourly payroll pays 8.5 simultaneous hall-attendant hours at its profession rate');
-        assert.equal(Number(hourly?.baseAmount), 900, 'base role amount is not duplicated');
-        assert.equal(Number(hourly?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
-        assert.equal(Number(hourly?.netAmount), 2600, 'preview totals the two role amounts without changing physical hours');
-        assert.equal(Number(hourly?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
-        assert.equal(Number(hourly?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
-        assert.equal(Number(hourly?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
-        results.push('payroll_preview');
+        ], `${PAYROLL_SCHEME} payroll pays 8.5 simultaneous hall-attendant hours at its profession rate`);
+        assert.equal(Number(preview?.baseAmount), payrollScheme.baseAmount, 'base role amount is not duplicated');
+        assert.equal(Number(preview?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
+        assert.equal(Number(preview?.netAmount), payrollScheme.totalAmount, 'preview totals base and additional pay without changing physical hours');
+        assert.equal(Number(preview?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
+        assert.equal(Number(preview?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
+        assert.equal(Number(preview?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
+        assert.equal(
+            (preview?.payrollBlockingIssues || []).some(
+                issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            ),
+            false,
+            `${PAYROLL_SCHEME} preview is supported`
+        );
+        results.push(`payroll_preview_${PAYROLL_SCHEME}`);
 
         const reportHours = await api(base, `/api/staff/schedule/hours?from=${SOURCE_MONDAY}&to=${SOURCE_MONDAY}`, { token: session.token });
         const reportRow = reportHours.body?.data?.[String(staffId)] || reportHours.body?.data?.[staffId];

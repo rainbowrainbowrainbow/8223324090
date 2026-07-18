@@ -23,12 +23,13 @@ function futureMonday() {
     return addDays(seed, (8 - date.getUTCDay()) % 7);
 }
 
-function runLiveQaScript() {
-    const runId = `isolated_runner_${process.pid}_${Date.now()}`;
+function runLiveQaScript(scheme) {
+    const runId = `isolated_${scheme}_${process.pid}_${Date.now()}`;
     const env = {
         ...process.env,
         LIVE_MULTI_SEGMENT_QA_CONFIRM: 'I_CONFIRM_LIVE_MULTI_SEGMENT_QA',
         LIVE_MULTI_SEGMENT_QA_RUN_ID: runId,
+        LIVE_MULTI_SEGMENT_QA_SCHEME: scheme,
         LIVE_MULTI_SEGMENT_QA_USER: process.env.TEST_USER,
         LIVE_MULTI_SEGMENT_QA_PASS: process.env.TEST_PASS,
         LIVE_MULTI_SEGMENT_QA_SOURCE_MONDAY: futureMonday(),
@@ -55,11 +56,14 @@ function runLiveQaScript() {
 test('full live multi-segment runner passes and confirms cleanup on isolated PostgreSQL', { skip: !enabled, timeout: 180000 }, async () => {
     assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true');
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
-    const result = await runLiveQaScript();
-    assert.equal(result.code, 0, `runner failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-    assert.match(result.stdout, /Live multi-segment QA assertions passed:/);
-    assert.match(result.stdout, /Cleanup report:/);
-    assert.match(result.stdout, /"confirmedClean":true/);
-    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(process.env.TEST_PASS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.doesNotMatch(result.stdout + result.stderr, /Bearer\s+[A-Za-z0-9._-]+/i);
+    for (const scheme of ['hourly', 'per_shift', 'monthly_fixed']) {
+        const result = await runLiveQaScript(scheme);
+        assert.equal(result.code, 0, `${scheme} runner failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+        assert.match(result.stdout, /Live multi-segment QA assertions passed:/);
+        assert.match(result.stdout, new RegExp(`payroll_preview_${scheme}`));
+        assert.match(result.stdout, /Cleanup report:/);
+        assert.match(result.stdout, /"confirmedClean":true/);
+        assert.doesNotMatch(result.stdout + result.stderr, new RegExp(process.env.TEST_PASS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+        assert.doesNotMatch(result.stdout + result.stderr, /Bearer\s+[A-Za-z0-9._-]+/i);
+    }
 });

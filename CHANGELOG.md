@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.66 - Simultaneous Pay QA Cleanup Reliability
+
+### HR / Live QA / Reliability / (18.07.2026) [codex]
+- **Cleanup без конкурентних запитів на одному DB client** — перевірка disposable fixture читає пов’язані таблиці послідовно, як вимагає transaction-scoped PostgreSQL client.
+- **Прибрано `pg` deprecation warning** — exact QA cleanup більше не залежить від поведінки, яку буде видалено в `pg@9`.
+- **Додано regression guard** — тест не дозволить повернути `Promise.all` у транзакційний fixture-status helper.
+
+---
+
 ## v0.79.65 - Payroll Staff Discovery Reliability
 
 ### Payroll / Reliability / (18.07.2026) [codex]

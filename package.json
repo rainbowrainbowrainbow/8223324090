@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.65",
+  "version": "0.79.66",
   "eventGenix": {
-    "releaseLabel": "Payroll Staff Discovery Reliability"
+    "releaseLabel": "Simultaneous Pay QA Cleanup Reliability"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.76 - Payroll Integrity Final Regression
+
+### Release / Versioning / (18.07.2026) [codex]
+- **Фінальна звірка payroll integrity** — release gate закріплює canonical сценарій `540` фізичних хвилин, `540` основних оплачуваних хвилин і `510` хвилин оплачуваної одночасної ролі без подвоєння фізичного часу.
+- **Fail-closed контракти залишаються видимими** — missing rate, missing compensation snapshot і unsupported simultaneous formula блокують generation/commit замість тихого `0 грн`.
+- **Off-roster draft reports доступні для reconciliation** — freelance/inactive/archived/terminated/missing HR card drafts показуються окремо від active payroll roster без ПІБ, ставок або сум.
+- **Release hygiene** — version/cache markers оновлено до `v0.79.76` для безпечного deploy smoke після CI.
+
+---
+
 ## v0.79.75 - Payroll Reporting Transparency
 
 ### HR / Зарплата / Звіти / (18.07.2026) [codex]

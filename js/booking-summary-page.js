@@ -405,6 +405,12 @@
     }
 
     function summaryOrderQuantityLabel(row = {}) {
+        if (row?.type === 'ticket') {
+            const quantity = summaryMenuQuantityNumber(row.quantity);
+            return quantity
+                ? `${quantity} ${row.meta?.audience === 'adult' ? 'дорослих' : 'дітей'}`
+                : formatValue(row.quantity);
+        }
         if (row?.type === 'entry') return summaryEntryQuantityLabel(row);
         if (['program', 'activity', 'service_event'].includes(row?.type)) return '—';
         return summaryMenuQuantityLabel(row);
@@ -487,7 +493,7 @@
                 warnings: false,
                 responsible: true
             }),
-            orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+            orderRowTypes: Object.freeze(['program', 'activity', 'ticket', 'entry', 'menu']),
             scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
             commentTypes: Object.freeze([]),
             showPrices: true,
@@ -527,7 +533,7 @@
                 warnings: true,
                 responsible: true
             }),
-            orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+            orderRowTypes: Object.freeze(['program', 'activity', 'ticket', 'entry', 'menu']),
             scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
             commentTypes: Object.freeze(['activity', 'kitchen', 'internal']),
             showPrices: true,
@@ -718,7 +724,7 @@
     }
 
     function summaryOrderServingLabel(row = {}) {
-        if (['program', 'activity', 'entry'].includes(row?.type)) return '—';
+        if (['program', 'activity', 'ticket', 'entry'].includes(row?.type)) return '—';
         return formatValue(summaryServingTime(row));
     }
 
@@ -874,9 +880,9 @@
                 </thead>
                 <tbody>
                     ${rows.map((row, index) => {
-                        const isEntry = row?.type === 'entry';
-                        const entryAmount = isEntry ? summaryEntryUnitAmountLabel(row, currency) : null;
-                        const comment = isEntry
+                        const isPricedAdmission = row?.type === 'entry' || row?.type === 'ticket';
+                        const entryAmount = isPricedAdmission ? summaryEntryUnitAmountLabel(row, currency) : null;
+                        const comment = isPricedAdmission
                             ? [entryAmount, row.comment].filter(Boolean).join(' · ')
                             : orderRowComment(row);
                         return `

@@ -2471,6 +2471,10 @@ function getSmartBookingValidationState() {
             addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
         });
     }
+    const ticketIssue = window.BookingTickets?.validationIssue?.();
+    if (ticketIssue) {
+        addBookingValidationIssue(state, ticketIssue.key, ticketIssue.message, ticketIssue.fields);
+    }
 
     const boundaryWarnings = bookingBoundaryWarningsForFormData(formData);
     boundaryWarnings.forEach(warning => {
@@ -2570,7 +2574,14 @@ function applyBookingValidationInvalidFields(validation) {
         'pinataFillerSelect',
         'pinataFillerNumber',
         'secondAnimatorSelect',
-        'extraHostAnimatorSelect'
+        'extraHostAnimatorSelect',
+        'banquetGuests',
+        'banquetAdults',
+        'ticketBirthdayChildQuantity',
+        'ticketUnder3ChildQuantity',
+        'ticketDiscountedChildQuantity',
+        'ticketAdultGameQuantity',
+        'bookingTicketsConvert'
     ];
     const invalid = new Set(validation?.invalidFields || []);
     fieldIds.forEach(id => {
@@ -2680,6 +2691,7 @@ function syncBookingWorkspaceMode(options = {}) {
         banquetFields.classList.toggle('hidden', !kitchenEnabled);
         banquetFields.hidden = !kitchenEnabled;
     }
+    window.BookingTickets?.setActive(kitchenEnabled);
     if (leadSection) {
         leadSection.classList.add('hidden');
         leadSection.open = false;
@@ -5393,6 +5405,7 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.catalogEditing = null;
     BookingPackageState.catalogInsight = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
+    window.BookingTickets?.reset();
     ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingDepositExpectedAmount', 'bookingDepositDueDate', 'bookingDepositManagerNote'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -5619,7 +5632,16 @@ function getBookingPackageTotals(program) {
         : getProgramBasePrice(program);
     const positions = getBookingMenuPositions();
     const positionsSubtotal = bookingMenuPositionsSubtotal(positions);
-    const entryEstimate = getBookingEntryChargeEstimate(positions);
+    const serverTicketSubtotal = isBookingKitchenEnabled() && window.BookingTickets
+        ? toBookingMoney(window.BookingTickets.getSubtotal())
+        : null;
+    const entryEstimate = serverTicketSubtotal === null
+        ? getBookingEntryChargeEstimate(positions)
+        : {
+            entryCharge: null,
+            entrySubtotal: serverTicketSubtotal,
+            warnings: []
+        };
     return {
         programBasePrice,
         positionsSubtotal,
@@ -5897,7 +5919,7 @@ function renderBookingPackageSummary() {
         ? `${program.code || program.shortLabel || 'ПРО'} · ${program.duration ? `${program.duration} хв` : 'без тривалості'}`
         : (roomFirst ? (menuCount ? `${menuCount} позицій меню / тортів` : 'додайте їжу або торт') : (hasEvent ? 'не вибрано' : 'вимкнено'));
     const programRowLabel = roomFirst ? 'Кухня / меню' : 'Програма';
-    const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Вхід', subtotal: entrySubtotal } : null);
+    const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Квитки', subtotal: entrySubtotal } : null);
     const shouldShowValidationChecklist = !validation.canSubmit || BookingDrawerState.validationAttempted;
     const preflightWarning = renderSelectedActivityPreflightWarning();
     const customCakeDecorationWarning = kitchenEnabled
@@ -5926,7 +5948,7 @@ function renderBookingPackageSummary() {
         ${programSubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>${escapeHtml(activityPrograms.length > 1 ? 'Активності' : 'Програма / активність')}</span><strong>${escapeHtml(formatPrice(programSubtotal))}</strong></div>` : ''}
         ${menuRows}
         ${kitchenEnabled && (menuSubtotal > 0 || menuCount > 0) ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Меню</span><strong>${escapeHtml(formatPrice(menuSubtotal))}</strong></div>` : ''}
-        ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Вхід</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
+        ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Квитки</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
         ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Завдаток</span><strong>${escapeHtml(formatPrice(depositAmount))}</strong></div>` : ''}
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
@@ -6009,6 +6031,7 @@ function hydrateBookingPackageWorkspace(booking) {
     const tables = document.getElementById('banquetTables');
     if (tables) tables.value = booking?.banquetTables || '';
     setBookingDepositFormData(booking);
+    window.BookingTickets?.hydrate(booking);
     renderBookingPackageSummary();
 }
 
@@ -10028,6 +10051,9 @@ function getBookingFormData() {
     const scenario = getBookingWorkspaceScenario({ hasEvent, positions: menuPositions, hasKitchen: kitchenEnabled });
     const commentType = bookingCommentTypeForFormData({ hasEvent, kitchenEnabled, scenario });
     const bookingComment = document.getElementById('bookingNotes')?.value || '';
+    const ticketData = kitchenEnabled && window.BookingTickets
+        ? window.BookingTickets.collect()
+        : {};
     const baseFormData = {
         hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
         programId, room: effectiveRoom, roomResourceId: roomIdentity.roomResourceId, roomResourceType: roomIdentity.roomResourceType,
@@ -10051,7 +10077,10 @@ function getBookingFormData() {
         childrenCountSource,
         kidsCount: childrenCountSource.value || null,
         kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null,
-        deposit: kitchenEnabled ? getBookingDepositFormData() : null
+        deposit: kitchenEnabled ? getBookingDepositFormData() : null,
+        ticketQuantities: ticketData.ticketQuantities,
+        ticketQuote: ticketData.ticketQuote,
+        convertLegacyTickets: ticketData.convertLegacy === true
     };
     baseFormData.educationLesson = getEducationLessonDetails(baseFormData);
 
@@ -10589,6 +10618,11 @@ function buildBookingObject(formData, program) {
         }
         : null;
     obj.banquetDeposit = obj.deposit;
+    if (Array.isArray(formData.ticketQuantities)) {
+        obj.ticketQuantities = formData.ticketQuantities;
+        obj.ticketQuote = formData.ticketQuote || null;
+        obj.convertLegacy = formData.convertLegacyTickets === true;
+    }
 
     if (!obj.extraData) obj.extraData = {};
     obj.extraData.bookingPackage = {
@@ -11710,6 +11744,11 @@ async function handleBookingSubmit(e) {
                 )
                 : await apiUpdateBooking(booking.id, booking);
             if (!updateResult || updateResult.success === false) {
+                if (window.BookingTickets?.handleSaveConflict?.(updateResult || {})) {
+                    showNotification('Тариф квитків змінився. Перевірте нову суму та підтвердьте її.', 'warning');
+                    unlockSubmitBtn();
+                    return;
+                }
                 if (updateResult?.code === 'BANQUET_BOOKING_SET_VERSION_CONFLICT') {
                     await handleBanquetBookingSetConflict(updateResult, banquetEditContext);
                     unlockSubmitBtn();
@@ -11888,6 +11927,11 @@ async function handleBookingSubmit(e) {
 
             if (createResult && createResult.success === false) {
                 if (createResult.conflictBookingId) revealHiddenBooking(createResult.conflictBookingId);
+                if (window.BookingTickets?.handleSaveConflict?.(createResult)) {
+                    showNotification('Тариф квитків змінився. Перевірте нову суму та підтвердьте її.', 'warning');
+                    unlockSubmitBtn();
+                    return;
+                }
                 showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 unlockSubmitBtn(); return;
             }
@@ -14961,6 +15005,11 @@ async function showRecurringModal(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
+    const recurringPackage = getBookingPackageFromBooking(booking);
+    if (Array.isArray(recurringPackage?.ticketLines || recurringPackage?.ticket_lines)) {
+        showNotification('Повторювані бронювання з квитковим snapshot недоступні. Створіть окрему бронь і отримайте quote для її дати.', 'error');
+        return;
+    }
 
     document.getElementById('recurringBookingId').value = bookingId;
 

@@ -120,6 +120,21 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const b = req.body;
+        const recurringExtra = b.extraData || b.extra_data || {};
+        const recurringPackage = recurringExtra?.bookingPackage || recurringExtra?.booking_package || b.bookingPackage || b.booking_package || {};
+        if (
+            b.ticketQuantities
+            || b.ticket_quantities
+            || b.ticketQuote
+            || b.ticket_quote
+            || Array.isArray(recurringPackage.ticketLines || recurringPackage.ticket_lines)
+        ) {
+            return res.status(422).json({
+                success: false,
+                code: 'TICKET_RECURRING_UNSUPPORTED',
+                error: 'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately'
+            });
+        }
 
         // Validate required fields
         if (!b.pattern || !VALID_PATTERNS.includes(b.pattern)) {

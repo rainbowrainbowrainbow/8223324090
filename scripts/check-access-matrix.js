@@ -425,7 +425,7 @@ for (const item of sidebar.NAV_ITEMS.filter(i => i.href)) {
         continue;
     }
 
-    const page = normalizeHref(item.href);
+    const page = normalizeHref(item.pageAccess || item.href);
     if (!page || sidebarPageExceptions.has(page)) continue;
 
     if (modalPageAccessPaths.has(page)) continue;

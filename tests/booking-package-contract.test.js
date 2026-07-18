@@ -19,6 +19,7 @@ const {
     formatMenuQuantityWithServingUnit,
     formatMenuPositionQuantity,
     buildLegacyBanquetMenu,
+    buildBookingPackage,
     applyBookingPackage,
     bookingPackageAudit
 } = require('../services/bookingPackage');
@@ -1557,7 +1558,7 @@ test('booking package normalizes banquet service events without schema changes',
         null
     ]);
 
-    assert.equal(BOOKING_PACKAGE_SCHEMA_VERSION, 2);
+    assert.equal(BOOKING_PACKAGE_SCHEMA_VERSION, 3);
     assert.equal(events.length, 3);
     assert.equal(events[0].type, 'cake');
     assert.equal(events[0].time, '17:45');
@@ -2855,7 +2856,7 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.equal(client.warnings.length, 0);
     assert.equal(client.config.showFinance, true);
     assert.equal(client.config.showTerms, true);
-    assert.deepEqual(client.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+    assert.deepEqual(client.modeContract.orderRowTypes, ['program', 'activity', 'ticket', 'entry', 'menu']);
     assert.deepEqual(client.orderRowViews.map(row => row.type), ['program', 'entry', 'menu']);
     assert.deepEqual(client.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
     const clientProgramPdfRow = client.orderTableRows.find(row => String(row[0]).includes('Паперове шоу'));
@@ -4827,6 +4828,120 @@ test('banquet menu regression keeps one table header and separates activities', 
     assert.match(activitySection?.textContent || '', /#BK-SCREENSHOT-CANDY\s*·\s*Марвел/);
     assert.match(activitySection?.textContent || '', /Активність/);
     assert.match(activitySection?.textContent || '', /4\s*070\s*₴/);
+});
+
+test('booking package v3 persists canonical ticket snapshot and derives entry compatibility subtotal', () => {
+    const quote = {
+        admissionContext: 'reserved_table_room',
+        dayType: 'weekday',
+        pricingDate: '2026-07-18',
+        pricedAt: '2026-07-18T10:00:00.000Z',
+        ticketSubtotal: 320,
+        ticketLines: [{
+            ticketTypeId: 1,
+            ticketTypeCode: 'regular_child',
+            ticketTypeName: 'Звичайний дитячий',
+            audience: 'child',
+            quantity: 1,
+            unitPriceUah: 310,
+            subtotalUah: 310,
+            tariffVersionId: 101,
+            effectiveFrom: '2026-07-14',
+            admissionContext: 'reserved_table_room',
+            dayType: 'weekday',
+            currency: 'UAH'
+        }, {
+            ticketTypeId: 5,
+            ticketTypeCode: 'adult_companion',
+            ticketTypeName: 'Дорослий супроводжуючий',
+            audience: 'adult',
+            quantity: 1,
+            unitPriceUah: 10,
+            subtotalUah: 10,
+            tariffVersionId: 105,
+            effectiveFrom: '2026-07-14',
+            admissionContext: 'reserved_table_room',
+            dayType: 'weekday',
+            currency: 'UAH'
+        }]
+    };
+    const pkg = buildBookingPackage({
+        date: '2026-07-18',
+        programBasePrice: 1000,
+        menuPositions: [{ title: 'Піца', quantity: 1, unitPrice: 500 }],
+        ticketQuote: quote
+    });
+    assert.equal(pkg.schemaVersion, 3);
+    assert.equal(pkg.entryCharge, null);
+    assert.equal(pkg.ticketSubtotal, 320);
+    assert.equal(pkg.entrySubtotal, 320);
+    assert.equal(pkg.finalTotal, 1820);
+    assert.equal(pkg.ticketLines.length, 2);
+    assert.equal(pkg.ticketPricingContext, 'reserved_table_room');
+});
+
+test('booking package v3 supports explicit zero-ticket snapshot and blocks manual Вхід rows', () => {
+    const empty = buildBookingPackage({
+        date: '2026-07-18',
+        programBasePrice: 0,
+        menuPositions: [],
+        ticketQuote: {
+            legacy: false,
+            ticketLines: [],
+            ticketSubtotal: 0,
+            admissionContext: 'standard',
+            dayType: 'weekend',
+            pricingDate: '2026-07-18',
+            pricedAt: '2026-07-18T10:00:00.000Z'
+        }
+    });
+    assert.equal(empty.schemaVersion, 3);
+    assert.deepEqual(empty.ticketLines, []);
+    assert.equal(empty.ticketSubtotal, 0);
+    assert.throws(
+        () => buildBookingPackage({
+            date: '2026-07-18',
+            menuPositions: [{ title: 'Вхід', quantity: 1, unitPrice: 1 }],
+            ticketQuote: {
+                legacy: false,
+                ticketLines: [],
+                ticketSubtotal: 0,
+                admissionContext: 'standard',
+                dayType: 'weekend',
+                pricingDate: '2026-07-18'
+            }
+        }),
+        error => error.code === 'TICKET_MANUAL_ENTRY_CONFLICT'
+    );
+});
+
+test('booking package audit records ticket lines, subtotal, and explicit conversion reason', () => {
+    const line = {
+        ticketTypeId: 1,
+        ticketTypeCode: 'regular_child',
+        ticketTypeName: 'Звичайний дитячий',
+        audience: 'child',
+        quantity: 1,
+        unitPriceUah: 350,
+        subtotalUah: 350,
+        tariffVersionId: 101,
+        effectiveFrom: '2026-07-14',
+        admissionContext: 'standard',
+        dayType: 'weekday',
+        currency: 'UAH'
+    };
+    const audit = bookingPackageAudit(
+        { date: '2026-07-18', extra_data: { bookingPackage: { schemaVersion: 2, entryCharge: { subtotal: 300 } } } },
+        {
+            date: '2026-07-18',
+            convertLegacy: true,
+            extraData: { bookingPackage: { schemaVersion: 3, ticketLines: [line], ticketSubtotal: 350 } }
+        }
+    );
+    assert.equal(audit.ticketAudit.changed, true);
+    assert.equal(audit.ticketAudit.reason, 'explicit_conversion');
+    assert.equal(audit.ticketAudit.newTicketSubtotal, 350);
+    assert.equal(audit.ticketAudit.newTicketLines[0].ticketTypeCode, 'regular_child');
 });
 
 test('booking modal renders the attached pinata once and ignores cancelled or foreign activities', () => {

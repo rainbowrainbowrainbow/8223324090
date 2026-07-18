@@ -13,6 +13,7 @@ const {
     listAdmissionTicketCatalog,
     normalizeManualTicketQuantities,
     readAdmissionTicketSnapshot,
+    resolveAndApplyAdmissionTicketQuote,
     resolveAdmissionTicketQuote,
     validateTariffMutation
 } = require('../services/admissionTickets');
@@ -73,7 +74,9 @@ function tariffRows(context, day, options = {}) {
                 allocation_strategy: TYPE_META[code].allocation,
                 requirement_text: null,
                 is_active: options.inactiveCode === code ? false : true,
-                tariff_version_id: code === options.missingTariffCode ? null : 100 + TYPE_META[code].id,
+                tariff_version_id: code === options.missingTariffCode
+                    ? null
+                    : 100 + TYPE_META[code].id + Number(options.versionOffset || 0),
                 admission_context: context,
                 day_type: day,
                 availability: amount === null ? 'unavailable' : 'available',
@@ -442,6 +445,62 @@ test('v3 dual-reader preserves stored ticket prices and extracts only manual qua
     assert.equal(snapshot.kind, 'v3');
     assert.equal(snapshot.ticketSubtotal, 20);
     assert.equal(snapshot.manualQuantities.birthday_child, 2);
+});
+
+test('save resolver replaces tampered client prices with the canonical server quote', async () => {
+    const preview = await resolveAdmissionTicketQuote({
+        queryable: quoteQueryable(),
+        businessContext: 'event_genix',
+        input: payloadForType('regular_child', 'standard', 'weekday'),
+        newBanquetFlow: true
+    });
+    const booking = {
+        ...payloadForType('regular_child', 'standard', 'weekday'),
+        ticketQuote: {
+            ...preview,
+            ticketSubtotal: 999999,
+            ticketLines: preview.ticketLines.map(line => ({
+                ...line,
+                unitPriceUah: 999999,
+                subtotalUah: 999999
+            }))
+        }
+    };
+    const result = await resolveAndApplyAdmissionTicketQuote({
+        queryable: quoteQueryable(),
+        businessContext: 'event_genix',
+        booking,
+        newBanquetFlow: true
+    });
+    assert.equal(result.applied, true);
+    assert.equal(booking.ticketQuote.ticketSubtotal, 350);
+    assert.equal(booking.ticketQuote.ticketLines[0].unitPriceUah, 350);
+});
+
+test('save resolver returns TICKET_PRICE_CHANGED with a fresh quote and version diff', async () => {
+    const preview = await resolveAdmissionTicketQuote({
+        queryable: quoteQueryable(),
+        businessContext: 'event_genix',
+        input: payloadForType('regular_child', 'standard', 'weekday'),
+        newBanquetFlow: true
+    });
+    await assert.rejects(
+        resolveAndApplyAdmissionTicketQuote({
+            queryable: quoteQueryable({ versionOffset: 10 }),
+            businessContext: 'event_genix',
+            booking: {
+                ...payloadForType('regular_child', 'standard', 'weekday'),
+                ticketQuote: preview
+            },
+            newBanquetFlow: true
+        }),
+        error => (
+            error.code === 'TICKET_PRICE_CHANGED'
+            && error.status === 409
+            && error.details?.quote?.ticketLines?.[0]?.tariffVersionId === 111
+            && error.details?.diff?.[0]?.ticketTypeCode === 'regular_child'
+        )
+    );
 });
 
 test('catalog groups context-scoped history and selects latest effective tariff for pricingDate', async () => {

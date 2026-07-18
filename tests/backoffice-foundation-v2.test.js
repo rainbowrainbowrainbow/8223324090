@@ -130,7 +130,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(centerHtml, /id="tabOperations"/);
         assert.match(centerHtml, /id="operationsCenter"/);
         assert.match(centerHtml, /center:tab-change/);
-        assert.match(centerHtml, /\['operations', 'finance', 'analytics', 'reports'\]/);
+        assert.match(centerHtml, /\['operations', 'finance', 'analytics', 'reports', 'tickets'\]/);
 
         assert.match(centerPage, /apiCenterOperationsToday/);
         assert.match(centerPage, /\/center\/operations\/today/);

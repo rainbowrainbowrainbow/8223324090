@@ -168,6 +168,12 @@ function formatQuantity(value) {
 }
 
 function rowQuantityLabel(row = {}) {
+    if (row.type === 'ticket') {
+        const quantity = nullableNumber(row.quantity);
+        return quantity === null
+            ? '—'
+            : `${formatQuantity(quantity)} ${row.meta?.audience === 'adult' ? 'дорослих' : 'дітей'}`;
+    }
     if (row.type === 'entry') {
         const quantity = nullableNumber(row.quantity);
         return quantity === null ? '—' : `${formatQuantity(quantity)} дітей`;
@@ -192,7 +198,7 @@ function rowDurationLabel(row = {}) {
 }
 
 function rowServingTime(row = {}) {
-    if (row.type === 'program' || row.type === 'activity' || row.type === 'entry') return '—';
+    if (row.type === 'program' || row.type === 'activity' || row.type === 'ticket' || row.type === 'entry') return '—';
     return cleanText(row.meta?.servingTime || row.meta?.time || row.servingTime || row.serving_time, '—');
 }
 
@@ -202,7 +208,7 @@ function rowCommentForMode(row = {}, mode) {
         if (type === 'service_event') {
             return row.meta?.time ? cleanText(`Час ${row.meta.time}`) : '';
         }
-        return ['program', 'activity', 'entry', 'menu'].includes(type)
+        return ['program', 'activity', 'ticket', 'entry', 'menu'].includes(type)
             ? cleanText(row.comment)
             : '';
     }
@@ -694,7 +700,7 @@ function drawParagraphList(doc, items = []) {
 }
 
 function rowAmount(row = {}, currency) {
-    if (row.type === 'entry' && nullableNumber(row.unitPrice) !== null && nullableNumber(row.quantity) !== null) {
+    if (['ticket', 'entry'].includes(row.type) && nullableNumber(row.unitPrice) !== null && nullableNumber(row.quantity) !== null) {
         return `${formatQuantity(row.quantity)} × ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}`;
     }
     return formatMoney(row.subtotal, currency);

@@ -834,6 +834,58 @@
                             <input type="number" id="banquetTables" min="0" placeholder="0">
                         </div>
                     </div>
+                    <section id="bookingTicketsSection" class="booking-tickets" aria-labelledby="bookingTicketsTitle">
+                        <div class="booking-section-heading booking-section-heading--compact">
+                            <div>
+                                <strong id="bookingTicketsTitle">Квитки</strong>
+                                <small>Ціну й залишкові кількості визначає сервер. Оператор вводить лише спеціальні квитки.</small>
+                            </div>
+                        </div>
+                        <div id="bookingTicketsLegacyBanner" class="booking-ticket-banner hidden" role="status">
+                            <strong>Legacy-сума входу збережена без переоцінки.</strong>
+                            <span id="bookingTicketsLegacyAmount"></span>
+                            <button type="button" id="bookingTicketsConvert">Розрахувати перехід на нові квитки</button>
+                        </div>
+                        <div class="booking-ticket-groups">
+                            <fieldset class="booking-ticket-group">
+                                <legend>Дитячі квитки</legend>
+                                <label class="booking-ticket-control booking-ticket-control--readonly">
+                                    <span>Звичайні діти</span>
+                                    <output id="ticketRegularChildQuantity">0</output>
+                                </label>
+                                <label class="booking-ticket-control">
+                                    <span>Іменинники <small>за наявності свідоцтва про народження</small></span>
+                                    <input type="number" id="ticketBirthdayChildQuantity" min="0" step="1" value="0" inputmode="numeric">
+                                </label>
+                                <label class="booking-ticket-control">
+                                    <span>До 3 років <small>свідоцтво про народження; у вихідні недоступно</small></span>
+                                    <input type="number" id="ticketUnder3ChildQuantity" min="0" step="1" value="0" inputmode="numeric">
+                                </label>
+                                <label class="booking-ticket-control">
+                                    <span>Зі знижкою <small>багатодітні, УБД, інвалідність, сироти або ВПО</small></span>
+                                    <input type="number" id="ticketDiscountedChildQuantity" min="0" step="1" value="0" inputmode="numeric">
+                                </label>
+                            </fieldset>
+                            <fieldset class="booking-ticket-group">
+                                <legend>Дорослі квитки</legend>
+                                <label class="booking-ticket-control booking-ticket-control--readonly">
+                                    <span>Дорослі-супроводжуючі</span>
+                                    <output id="ticketAdultCompanionQuantity">0</output>
+                                </label>
+                                <label class="booking-ticket-control">
+                                    <span>Дорослі ігрові <small>доступ до батутів</small></span>
+                                    <input type="number" id="ticketAdultGameQuantity" min="0" step="1" value="0" inputmode="numeric">
+                                </label>
+                            </fieldset>
+                        </div>
+                        <div id="bookingTicketQuoteState" class="booking-ticket-quote-state" role="status" aria-live="polite">
+                            Вкажіть кількість дітей і дорослих.
+                        </div>
+                        <div id="bookingTicketQuoteMeta" class="booking-ticket-quote-meta"></div>
+                        <div id="bookingTicketQuoteLines" class="booking-ticket-lines"></div>
+                        <div id="bookingTicketQuoteTotal" class="booking-ticket-total"></div>
+                        <div id="bookingTicketStickyError" class="booking-ticket-sticky-error hidden" role="alert"></div>
+                    </section>
                     <div id="bookingDepositSection" class="booking-deposit-section">
                         <div class="booking-section-heading booking-section-heading--compact">
                             <div>
@@ -2648,6 +2700,7 @@
     <script src="js/booking-banquet-selector.js?v=0.79.67"></script>
     <script src="js/booking-save-path.js?v=0.79.67"></script>
     <script src="js/booking-package-renderer.js?v=0.79.67"></script>
+    <script src="js/booking-tickets.js?v=0.79.67"></script>
     <script src="js/booking-banquet-detail.js?v=0.79.67"></script>
     <script src="js/booking-activity-schedule.js?v=0.79.67"></script>
     <script src="js/booking.js?v=0.79.67"></script>

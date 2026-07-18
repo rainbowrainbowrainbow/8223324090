@@ -1299,6 +1299,7 @@
                     <button type="button" class="center-tab-btn" data-tab="finance" role="tab" aria-selected="false">Фінанси</button>
                     <button type="button" class="center-tab-btn" data-tab="reports" role="tab" aria-selected="false">Звіти</button>
                     <button type="button" class="center-tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналітика</button>
+                    <button type="button" class="center-tab-btn" data-tab="tickets" role="tab" aria-selected="false">Квитки</button>
                 </div>
 
                 <!-- Tab: Reception / Managers operations center -->
@@ -1319,6 +1320,49 @@
                 <!-- Tab: Analytics (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabAnalytics" role="tabpanel" aria-label="Аналітика">
                     <iframe src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
+                </div>
+                <div class="center-tab-panel hidden" id="tabTickets" role="tabpanel" aria-label="Квитки">
+                    <div class="ticket-catalog-toolbar">
+                        <div>
+                            <h2>Каталог квитків</h2>
+                            <p>Поточні версійовані тарифи. Попередні ревізії зберігаються в історії та не переоцінюють бронювання.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary" id="ticketCatalogRefresh">Оновити</button>
+                    </div>
+                    <div id="ticketCatalogState" class="center-state">
+                        <strong>Завантаження тарифів…</strong>
+                    </div>
+                    <div id="ticketCatalogMatrix"></div>
+                    <dialog id="ticketTariffDialog" class="ticket-tariff-dialog">
+                        <form method="dialog" id="ticketTariffForm" class="ticket-tariff-form">
+                            <h3 id="ticketTariffDialogTitle">Нова ревізія тарифу</h3>
+                            <p id="ticketTariffDialogMeta" class="ticket-requirement"></p>
+                            <input type="hidden" id="ticketTariffCode">
+                            <input type="hidden" id="ticketTariffContext">
+                            <input type="hidden" id="ticketTariffDay">
+                            <input type="hidden" id="ticketTariffExpectedRevision">
+                            <label>Доступність
+                                <select id="ticketTariffAvailability">
+                                    <option value="available">Доступний</option>
+                                    <option value="unavailable">Недоступний</option>
+                                </select>
+                            </label>
+                            <label>Сума, грн
+                                <input type="number" id="ticketTariffAmount" min="0" step="0.01" inputmode="decimal">
+                            </label>
+                            <label>Діє з
+                                <input type="date" id="ticketTariffEffectiveFrom" required>
+                            </label>
+                            <label>Причина зміни
+                                <textarea id="ticketTariffChangeNote" rows="3" maxlength="1000"></textarea>
+                            </label>
+                            <div id="ticketTariffError" class="ticket-inline-error hidden" role="alert"></div>
+                            <div class="ticket-dialog-actions">
+                                <button type="button" class="btn btn-secondary" id="ticketTariffCancel">Скасувати</button>
+                                <button type="submit" class="btn btn-primary" id="ticketTariffSave">Зберегти ревізію</button>
+                            </div>
+                        </form>
+                    </dialog>
                 </div>
 
                 <!-- Block 1: KPI Dashboard -->
@@ -1659,16 +1703,18 @@
             const financePanel = document.getElementById('tabFinance');
             const reportsPanel = document.getElementById('tabReports');
             const analyticsPanel = document.getElementById('tabAnalytics');
+            const ticketsPanel = document.getElementById('tabTickets');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
             if (operationsPanel) operationsPanel.classList.toggle('hidden', tab !== 'operations');
             if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
             if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
+            if (ticketsPanel) ticketsPanel.classList.toggle('hidden', tab !== 'tickets');
             window.dispatchEvent(new CustomEvent('center:tab-change', { detail: { tab } }));
         }
 
-        if (urlTab && ['operations', 'finance', 'analytics', 'reports'].includes(urlTab)) {
+        if (urlTab && ['operations', 'finance', 'analytics', 'reports', 'tickets'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();

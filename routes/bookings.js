@@ -39,6 +39,7 @@ const {
     loadBanquetGroupById,
     reconcileBanquetGroupForBooking,
     createBanquetGroupInTransaction,
+    lockAndResolveGroupTicketOwner,
     persistDerivedBookingSetMetadata,
     validateSingleBookingActivitySetUpdate
 } = require('../services/banquetGroups');
@@ -59,6 +60,8 @@ const {
 } = require('../services/businessContext');
 const {
     AdmissionTicketError,
+    readAdmissionTicketSnapshot,
+    resolveAndApplyAdmissionTicketQuote,
     resolveAdmissionTicketQuote
 } = require('../services/admissionTickets');
 const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
@@ -742,10 +745,30 @@ function mergeExistingExtraDataForBookingUpdate(payload = {}, oldRow = {}) {
     const previousExtra = getBookingExtraDataObject({ extraData: oldRow.extra_data });
     const incomingExtra = parsePayloadExtraData(payload) || {};
     if (!Object.keys(previousExtra).length && !Object.keys(incomingExtra).length) return;
-    payload.extraData = {
+    const mergedExtra = {
         ...cloneJson(previousExtra),
         ...cloneJson(incomingExtra)
     };
+    const previousPackage = previousExtra.bookingPackage || previousExtra.booking_package || null;
+    const incomingPackage = incomingExtra.bookingPackage || incomingExtra.booking_package || null;
+    const previousEntryCharge = previousPackage?.entryCharge || previousPackage?.entry_charge || null;
+    const hasTicketIntent = Object.prototype.hasOwnProperty.call(payload, 'ticketQuantities')
+        || Object.prototype.hasOwnProperty.call(payload, 'ticket_quantities')
+        || payload.convertLegacy === true
+        || payload.convert_legacy === true;
+    if (previousEntryCharge && incomingPackage && !hasTicketIntent) {
+        mergedExtra.bookingPackage = {
+            ...cloneJson(incomingPackage),
+            schemaVersion: previousPackage.schemaVersion ?? previousPackage.schema_version ?? 2,
+            entryCharge: cloneJson(previousEntryCharge),
+            entrySubtotal: previousPackage.entrySubtotal
+                ?? previousPackage.entry_subtotal
+                ?? previousEntryCharge.subtotal
+                ?? 0
+        };
+        delete mergedExtra.booking_package;
+    }
+    payload.extraData = mergedExtra;
 }
 
 function banquetGroupPayloads(payload = {}) {
@@ -3028,6 +3051,20 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
+        if (b.linkedTo && (b.ticketQuantities || b.ticket_quantities || b.ticketQuote || b.ticket_quote)) {
+            await client.query('ROLLBACK');
+            return res.status(422).json({
+                success: false,
+                code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+                error: 'Ticket snapshot can be saved only on the canonical package owner booking'
+            });
+        }
+        await resolveAndApplyAdmissionTicketQuote({
+            queryable: client,
+            businessContext,
+            booking: b,
+            newBanquetFlow: true
+        });
         await applyEffectiveBookingPrice(client, b, { businessContext });
         await applyBookingPackageEntryCharge(client, b, { businessContext });
         await snapshotBanquetTermsForBooking(client, b);
@@ -3556,6 +3593,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',
+            details: err.details || undefined,
             missingBookingIds: err.missingBookingIds || undefined
         });
     } finally {
@@ -3570,6 +3608,20 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
     const businessContext = timelineContextFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
+    if (
+        main.ticketQuantities
+        || main.ticket_quantities
+        || main.ticketQuote
+        || main.ticket_quote
+        || main.bookingPackage?.ticketLines
+        || main.booking_package?.ticket_lines
+    ) {
+        return res.status(422).json({
+            success: false,
+            code: 'TICKET_RECURRING_UNSUPPORTED',
+            error: 'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately'
+        });
+    }
     main.businessContext = businessContext;
 
     if (!main.date || !main.time || !main.lineId) {
@@ -3826,6 +3878,20 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 error: 'Banquet group activity bookings must be created through /api/banquets/:groupId/activity-booking'
             });
         }
+        if ([...linked, ...banquetActivities].some(item => (
+            item?.ticketQuantities
+            || item?.ticket_quantities
+            || item?.ticketQuote
+            || item?.ticket_quote
+            || item?.bookingPackage?.ticketLines
+            || item?.booking_package?.ticket_lines
+        ))) {
+            return res.status(422).json({
+                success: false,
+                code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+                error: 'Only the canonical package owner may contain ticket data'
+            });
+        }
         main.businessContext = businessContext;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
@@ -3907,6 +3973,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await client.query('BEGIN');
         const activitySecondAnimatorLines = new Map();
 
+        await resolveAndApplyAdmissionTicketQuote({
+            queryable: client,
+            businessContext,
+            booking: main,
+            newBanquetFlow: true
+        });
         await applyEffectiveBookingPrice(client, main, { businessContext });
         await applyBookingPackageEntryCharge(client, main, { businessContext });
         for (const activity of banquetActivities) {
@@ -4457,6 +4529,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',
+            details: err.details || undefined,
             missingBookingIds: err.missingBookingIds || undefined
         });
     } finally {
@@ -4632,6 +4705,19 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         if (oldMain.linked_to) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: 'Atomic linked update must target the main booking' });
+        }
+        const existingTicketSnapshot = readAdmissionTicketSnapshot(oldMain);
+        const ticketPricingIdentityChanged = Object.prototype.hasOwnProperty.call(mainPatch, 'date')
+            || Object.prototype.hasOwnProperty.call(mainPatch, 'room')
+            || Object.prototype.hasOwnProperty.call(mainPatch, 'roomResourceId')
+            || Object.prototype.hasOwnProperty.call(mainPatch, 'room_resource_id');
+        if (existingTicketSnapshot?.kind === 'v3' && ticketPricingIdentityChanged) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                error: 'Ticketed booking date or room must be changed through full edit with a new ticket quote'
+            });
         }
 
         const linkedResult = await client.query(
@@ -5192,6 +5278,13 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             return res.status(404).json({ error: 'Бронювання не знайдено' });
         }
         mergeExistingExtraDataForBookingUpdate(b, oldBooking);
+        await resolveAndApplyAdmissionTicketQuote({
+            queryable: client,
+            businessContext,
+            booking: b,
+            existingBooking: oldBooking,
+            newBanquetFlow: false
+        });
         await lockBookingConflictResources(client, [oldBooking, b], businessContext);
         if (!b.linkedTo) {
             // v19.13: Skip conflict checks if date/time/line/duration unchanged
@@ -5417,6 +5510,24 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         const savedBooking = mapBookingRow(updateResult.rows[0]);
+        if (readAdmissionTicketSnapshot(updateResult.rows[0])?.kind === 'v3') {
+            const ticketMembership = await client.query(
+                `SELECT group_id
+                 FROM banquet_group_bookings
+                 WHERE booking_id = $1
+                   AND business_context = $2
+                 LIMIT 1`,
+                [id, businessContext]
+            );
+            if (ticketMembership.rows[0]?.group_id) {
+                await lockAndResolveGroupTicketOwner(client, {
+                    groupId: ticketMembership.rows[0].group_id,
+                    businessContext,
+                    preferredBookingId: id,
+                    actor: req.user?.username
+                });
+            }
+        }
         const managerDepositResult = await syncManagerDepositForBooking(client, b, updateResult.rows[0], businessContext, req.user);
 
         // v8.7: Sync linked bookings when secondAnimator changes
@@ -5593,7 +5704,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         res.status(err.statusCode || 500).json({
             success: false,
             error: err.publicMessage || 'Failed to update booking',
-            code: err.code || 'internal_error'
+            code: err.code || 'internal_error',
+            details: err.details || undefined
         });
     } finally {
         client.release();

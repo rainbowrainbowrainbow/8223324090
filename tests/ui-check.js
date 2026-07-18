@@ -5840,7 +5840,7 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && !bookingBanquetDetailCode.includes("<strong>${escapeHtml(BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Подія')}</strong>")
     && bookingPackageRendererCode.includes('Час видачі не вказано')
     && htmlContains('index.html', 'Страви й торти додаються з каталогу')
-    && htmlContains('services/bookingPackage.js', 'BOOKING_PACKAGE_SCHEMA_VERSION = 2')
+    && htmlContains('services/bookingPackage.js', 'BOOKING_PACKAGE_SCHEMA_VERSION = 3')
     && htmlContains('services/bookingPackage.js', 'normalizeServiceEvents')
     && htmlContains('services/banquetSummary.js', 'serving_time_missing')
     && htmlContains('services/banquetSummary.js', 'serviceEvents: serviceEventRows')

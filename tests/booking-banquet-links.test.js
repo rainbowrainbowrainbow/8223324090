@@ -3260,7 +3260,7 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         assert.equal(staffRes.status, 200, JSON.stringify(staffData));
         assert.equal(staffData.mode, 'staff');
         assert.equal(staffData.modeContract.sections.warnings, true);
-        assert.deepEqual(staffData.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+        assert.deepEqual(staffData.modeContract.orderRowTypes, ['program', 'activity', 'ticket', 'entry', 'menu']);
         assert.ok(staffData.modeContract.commentTypes.includes('internal'));
     }, {
         banquetGroups: [{

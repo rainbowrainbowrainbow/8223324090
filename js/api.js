@@ -1407,6 +1407,8 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
             return {
                 success: false,
                 error: formatApiErrorPayload(errBody, 'API error'),
+                code: errBody.code || null,
+                details: errBody.details || null,
                 requestId: errBody.requestId || errBody.request_id || null,
                 status: response.status
             };
@@ -1536,13 +1538,13 @@ async function apiGetAdmissionTicketCatalog(options = {}) {
     const dateQuery = options.pricingDate
         ? `?pricingDate=${encodeURIComponent(String(options.pricingDate))}`
         : '';
-    const url = timelineApiUrl(`${API_BASE}/center/tickets${dateQuery}`, options);
+    const url = timelineApiUrl(`/center/tickets${dateQuery}`, options);
     return apiCall('GET', url, null, { fallback: { success: false, ticketTypes: [] } });
 }
 
 async function apiCreateAdmissionTicketTariffRevision(code, payload = {}, options = {}) {
     const url = timelineApiUrl(
-        `${API_BASE}/center/tickets/${encodeURIComponent(String(code || ''))}/tariffs`,
+        `/center/tickets/${encodeURIComponent(String(code || ''))}/tariffs`,
         options
     );
     return apiCall('POST', url, payload, { fallback: { success: false } });

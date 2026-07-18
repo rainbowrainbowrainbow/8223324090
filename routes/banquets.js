@@ -27,6 +27,7 @@ const {
     updateBanquetBookingSet,
     updateBanquetGuestArrival
 } = require('../services/banquetGroups');
+const { AdmissionTicketError } = require('../services/admissionTickets');
 const {
     getDepositProjectionForBooking,
     getDepositProjectionForGroup,
@@ -122,6 +123,14 @@ function sendReadResult(req, res, snapshot) {
 }
 
 function sendWriteError(res, err) {
+    if (err instanceof AdmissionTicketError) {
+        return res.status(err.status || err.statusCode || 422).json({
+            success: false,
+            error: err.publicMessage || err.message,
+            code: err.code,
+            details: err.details || undefined
+        });
+    }
     if (err instanceof BanquetGroupError) {
         return res.status(err.status || 400).json({
             success: false,

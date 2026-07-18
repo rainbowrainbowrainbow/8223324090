@@ -88,6 +88,7 @@ const Sidebar = (() => {
         ['/kleshnya', 'AI'],
         ['/guardian-ops', 'Ops'],
         ['/center', 'Центр'],
+        ['/center?tab=tickets', 'Квитки'],
         ['/warehouse', 'Склад'],
         ['/game', 'Гра'],
         ['/demo', 'Demo'],
@@ -187,6 +188,7 @@ const Sidebar = (() => {
         { href: '/kleshnya',     icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
         { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',  access: 'guardian_ops',   group: 'system' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',       group: 'system' },
+        { href: '/center?tab=tickets', icon: '🎟️', label: 'Квитки', access: 'center', group: 'system', pageAccess: '/center' },
         { href: '/timeline-settings', icon: '📅', label: 'Налаштування таймлайну', access: 'settings', group: 'system' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',         access: 'warehouse',      group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',           access: 'all',            group: 'system' },
@@ -541,6 +543,19 @@ const Sidebar = (() => {
             if (hasNonHashItem) return false;
             const firstHash = NAV_ITEMS.find(n => !n.type && n.href?.startsWith(itemBase + '#'));
             return firstHash?.href === item.href;
+        }
+        if (!itemSearch && currentPath === itemBase) {
+            const currentSearch = new URLSearchParams(window.location.search || '');
+            const hasMatchingSearchVariant = NAV_ITEMS.some((candidate) => {
+                const candidateHref = String(candidate?.href || '').split('#')[0];
+                const candidateSearchIndex = candidateHref.indexOf('?');
+                if (candidateSearchIndex < 0) return false;
+                const candidateBase = candidateHref.slice(0, candidateSearchIndex) || '/';
+                if (candidateBase !== itemBase) return false;
+                const expected = new URLSearchParams(candidateHref.slice(candidateSearchIndex + 1));
+                return [...expected.entries()].every(([key, value]) => currentSearch.get(key) === value);
+            });
+            if (hasMatchingSearchVariant) return false;
         }
         return currentPath === itemBase && !currentHash;
     }

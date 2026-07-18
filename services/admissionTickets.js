@@ -62,8 +62,10 @@ class AdmissionTicketError extends Error {
         super(message);
         this.name = 'AdmissionTicketError';
         this.status = status;
+        this.statusCode = status;
         this.code = code;
         this.details = details;
+        this.publicMessage = message;
     }
 }
 
@@ -789,6 +791,87 @@ function manualQuantitiesFromSnapshot(snapshot) {
     ]));
 }
 
+function ticketVersionMap(quote = {}) {
+    return new Map((Array.isArray(quote?.ticketLines) ? quote.ticketLines : [])
+        .map(line => [
+            cleanText(line?.ticketTypeCode || line?.ticket_type_code, 64),
+            Number(line?.tariffVersionId || line?.tariff_version_id)
+        ])
+        .filter(([code, versionId]) => code && Number.isInteger(versionId) && versionId > 0));
+}
+
+function ticketQuoteVersionDiff(previousQuote = {}, currentQuote = {}) {
+    const previous = ticketVersionMap(previousQuote);
+    const current = ticketVersionMap(currentQuote);
+    const codes = new Set([...previous.keys(), ...current.keys()]);
+    return [...codes]
+        .map(code => ({
+            ticketTypeCode: code,
+            previousTariffVersionId: previous.get(code) || null,
+            currentTariffVersionId: current.get(code) || null
+        }))
+        .filter(item => item.previousTariffVersionId !== item.currentTariffVersionId);
+}
+
+function bookingTicketResolverInput(booking = {}) {
+    return {
+        date: booking.date,
+        roomResourceId: booking.roomResourceId ?? booking.room_resource_id,
+        banquetGuests: booking.banquetGuests ?? booking.banquet_guests,
+        banquetAdults: booking.banquetAdults ?? booking.banquet_adults,
+        kidsCount: booking.kidsCount ?? booking.kids_count,
+        ticketQuantities: booking.ticketQuantities ?? booking.ticket_quantities,
+        convertLegacy: booking.convertLegacy === true || booking.convert_legacy === true
+    };
+}
+
+async function resolveAndApplyAdmissionTicketQuote({
+    queryable,
+    businessContext,
+    booking = {},
+    existingBooking = null,
+    newBanquetFlow = false,
+    now = new Date()
+} = {}) {
+    const existingSnapshot = existingBooking
+        ? readAdmissionTicketSnapshot(existingBooking)
+        : null;
+    const explicitQuantities = hasOwn(booking, 'ticketQuantities')
+        || hasOwn(booking, 'ticket_quantities');
+    const shouldResolve = explicitQuantities || existingSnapshot?.kind === 'v3';
+    if (!shouldResolve) return { applied: false, quote: null };
+
+    const input = bookingTicketResolverInput(booking);
+    if (!explicitQuantities) delete input.ticketQuantities;
+    const quote = await resolveAdmissionTicketQuote({
+        queryable,
+        businessContext,
+        input,
+        existingBooking,
+        newBanquetFlow,
+        now
+    });
+    const clientQuote = booking.ticketQuote || booking.ticket_quote || null;
+    if (!clientQuote || typeof clientQuote !== 'object' || Array.isArray(clientQuote)) {
+        throw new AdmissionTicketError('A current server ticket quote is required before saving', {
+            status: 409,
+            code: 'TICKET_QUOTE_REQUIRED',
+            details: { quote }
+        });
+    }
+    const diff = ticketQuoteVersionDiff(clientQuote, quote);
+    if (diff.length) {
+        throw new AdmissionTicketError('Ticket prices changed after preview', {
+            status: 409,
+            code: 'TICKET_PRICE_CHANGED',
+            details: { quote, diff }
+        });
+    }
+    booking.ticketQuote = quote;
+    delete booking.ticket_quote;
+    return { applied: true, quote };
+}
+
 async function resolveAdmissionTicketQuote({
     queryable,
     businessContext,
@@ -942,6 +1025,9 @@ module.exports = {
     mapTicketTypeRow,
     normalizeManualTicketQuantities,
     readAdmissionTicketSnapshot,
+    ticketQuoteVersionDiff,
+    bookingTicketResolverInput,
+    resolveAndApplyAdmissionTicketQuote,
     resolveAdmissionTicketQuote,
     resolveServerAdmissionContext,
     validateTariffMutation

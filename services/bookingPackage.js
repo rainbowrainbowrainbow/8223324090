@@ -1,4 +1,4 @@
-const BOOKING_PACKAGE_SCHEMA_VERSION = 2;
+const BOOKING_PACKAGE_SCHEMA_VERSION = 3;
 const SERVICE_EVENT_TYPES = new Set(['food_service', 'cake', 'drinks', 'room_setup', 'custom']);
 const SERVICE_EVENT_STATUSES = new Set(['planned', 'done', 'skipped']);
 const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
@@ -419,6 +419,68 @@ function extractIncomingPositions(booking = {}) {
         || [];
 }
 
+function normalizeTicketLine(raw = {}) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const ticketTypeCode = cleanText(raw.ticketTypeCode || raw.ticket_type_code, 64);
+    const quantity = Number(raw.quantity);
+    const unitPriceUah = Number(raw.unitPriceUah ?? raw.unit_price_uah);
+    const subtotalUah = Number(raw.subtotalUah ?? raw.subtotal_uah);
+    const ticketTypeId = Number(raw.ticketTypeId || raw.ticket_type_id);
+    const tariffVersionId = Number(raw.tariffVersionId || raw.tariff_version_id);
+    if (
+        !ticketTypeCode
+        || !Number.isInteger(quantity)
+        || quantity < 0
+        || !Number.isFinite(unitPriceUah)
+        || unitPriceUah < 0
+        || !Number.isFinite(subtotalUah)
+        || subtotalUah < 0
+        || !Number.isInteger(ticketTypeId)
+        || ticketTypeId <= 0
+        || !Number.isInteger(tariffVersionId)
+        || tariffVersionId <= 0
+    ) return null;
+    return {
+        ticketTypeId,
+        ticketTypeCode,
+        ticketTypeName: cleanText(raw.ticketTypeName || raw.ticket_type_name, 160) || ticketTypeCode,
+        audience: cleanText(raw.audience, 16),
+        quantity,
+        unitPriceUah: toMoney(unitPriceUah),
+        subtotalUah: toMoney(subtotalUah),
+        tariffVersionId,
+        effectiveFrom: normalizeDateOnly(raw.effectiveFrom || raw.effective_from),
+        admissionContext: cleanText(raw.admissionContext || raw.admission_context, 32),
+        dayType: cleanText(raw.dayType || raw.day_type, 16),
+        currency: cleanText(raw.currency, 8) || 'UAH'
+    };
+}
+
+function normalizeTicketLines(value) {
+    return (Array.isArray(value) ? value : [])
+        .map(normalizeTicketLine)
+        .filter(Boolean);
+}
+
+function ticketQuoteFromBooking(booking = {}, options = {}) {
+    const extra = booking.extraData || booking.extra_data || {};
+    const topLevelPackage = booking.bookingPackage || booking.booking_package || {};
+    return options.ticketQuote
+        || booking.ticketQuote
+        || booking.ticket_quote
+        || topLevelPackage.ticketQuote
+        || topLevelPackage.ticket_quote
+        || extra.ticketQuote
+        || extra.ticket_quote
+        || null;
+}
+
+function hasExplicitTicketPackageInput(booking = {}, options = {}) {
+    return Boolean(ticketQuoteFromBooking(booking, options))
+        || Object.prototype.hasOwnProperty.call(booking, 'ticketQuantities')
+        || Object.prototype.hasOwnProperty.call(booking, 'ticket_quantities');
+}
+
 function extractIncomingServiceEvents(booking = {}) {
     const topLevelPackage = booking.bookingPackage || booking.booking_package || {};
     const extra = booking.extraData || booking.extra_data || {};
@@ -456,30 +518,102 @@ function buildBookingPackage(booking = {}, options = {}) {
         booking.programBasePrice ?? booking.program_base_price ?? previousPackage.programBasePrice,
         fallbackBase
     );
-    const entryResult = Object.prototype.hasOwnProperty.call(options, 'priceRules')
-        ? buildBanquetEntryCharge(booking, {
-            ...options,
-            positions
-        })
-        : {
-            entryCharge: null,
-            entrySubtotal: 0,
-            warnings: []
-        };
-    const entrySubtotal = entryResult.entryCharge ? toMoney(entryResult.entrySubtotal) : 0;
+    const ticketQuote = ticketQuoteFromBooking(booking, options);
+    const quotedRawTicketLines = ticketQuote?.ticketLines || ticketQuote?.ticket_lines;
+    const hasQuotedTicketSnapshot = Boolean(
+        ticketQuote
+        && ticketQuote.legacy !== true
+        && Array.isArray(quotedRawTicketLines)
+    );
+    const quotedTicketLines = normalizeTicketLines(ticketQuote?.ticketLines || ticketQuote?.ticket_lines);
+    const previousTicketLines = normalizeTicketLines(
+        previousPackage.ticketLines || previousPackage.ticket_lines
+    );
+    const hasPreviousTicketSnapshot = Number(previousPackage.schemaVersion || previousPackage.schema_version || 0) >= 3
+        && Array.isArray(previousPackage.ticketLines || previousPackage.ticket_lines);
+    const hasTicketSnapshot = hasQuotedTicketSnapshot || hasPreviousTicketSnapshot;
+    const ticketLines = hasQuotedTicketSnapshot ? quotedTicketLines : previousTicketLines;
+    if (hasTicketSnapshot && positions.some(isManualEntryMenuPosition)) {
+        const error = new Error('Manual menu position "Вхід" cannot be combined with ticketLines');
+        error.code = 'TICKET_MANUAL_ENTRY_CONFLICT';
+        error.statusCode = 422;
+        throw error;
+    }
+    const previousEntryCharge = previousPackage.entryCharge || previousPackage.entry_charge || null;
+    const previousEntrySubtotal = toMoney(
+        previousPackage.entrySubtotal
+        ?? previousPackage.entry_subtotal
+        ?? previousEntryCharge?.subtotal
+        ?? 0
+    );
+    const entryResult = hasTicketSnapshot
+        ? { entryCharge: null, entrySubtotal: 0, warnings: [] }
+        : (
+            previousEntryCharge && options.forceLegacyEntryReprice !== true
+                ? {
+                    entryCharge: previousEntryCharge,
+                    entrySubtotal: previousEntrySubtotal,
+                    warnings: []
+                }
+                : (
+                    Object.prototype.hasOwnProperty.call(options, 'priceRules')
+                        ? buildBanquetEntryCharge(booking, {
+                            ...options,
+                            positions
+                        })
+                        : {
+                            entryCharge: null,
+                            entrySubtotal: 0,
+                            warnings: []
+                        }
+                )
+        );
+    const ticketSubtotal = hasTicketSnapshot
+        ? toMoney(
+            ticketQuote?.ticketSubtotal
+            ?? ticketQuote?.ticket_subtotal
+            ?? ticketLines.reduce((sum, line) => sum + line.subtotalUah, 0)
+        )
+        : 0;
+    const entrySubtotal = hasTicketSnapshot
+        ? ticketSubtotal
+        : (entryResult.entryCharge ? toMoney(entryResult.entrySubtotal) : 0);
     const finalTotal = toMoney(programBasePrice + positionsSubtotal + entrySubtotal);
     const warnings = bookingPackageWarnings(previousPackage.warnings, entryResult.warnings);
     const result = {
-        schemaVersion: BOOKING_PACKAGE_SCHEMA_VERSION,
+        schemaVersion: hasTicketSnapshot
+            ? BOOKING_PACKAGE_SCHEMA_VERSION
+            : Math.min(Number(previousPackage.schemaVersion || previousPackage.schema_version || 2), 2),
         programBasePrice,
         positionsSubtotal,
-        entryCharge: entryResult.entryCharge || null,
+        entryCharge: hasTicketSnapshot ? null : (entryResult.entryCharge || null),
         entrySubtotal,
         finalTotal,
         menuPositions: positions,
         serviceEvents,
         source: 'booking_workspace'
     };
+    if (hasTicketSnapshot) {
+        result.ticketLines = ticketLines;
+        result.ticketSubtotal = ticketSubtotal;
+        result.ticketPricingContext = cleanText(
+            ticketQuote?.admissionContext
+            || ticketQuote?.admission_context
+            || ticketLines[0]?.admissionContext,
+            32
+        );
+        result.ticketDayType = cleanText(
+            ticketQuote?.dayType || ticketQuote?.day_type || ticketLines[0]?.dayType,
+            16
+        );
+        result.ticketPricingDate = normalizeDateOnly(
+            ticketQuote?.pricingDate || ticketQuote?.pricing_date || booking.date
+        );
+        result.ticketPricedAt = cleanText(
+            ticketQuote?.pricedAt || ticketQuote?.priced_at,
+            80
+        );
+    }
     if (warnings.length) result.warnings = warnings;
     return result;
 }
@@ -510,6 +644,9 @@ async function loadBanquetEntryPriceRules(queryable) {
 
 async function applyBookingPackageEntryCharge(queryable, booking = {}, options = {}) {
     if (!hasBookingPackageInput(booking)) return booking;
+    if (hasExplicitTicketPackageInput(booking, options)) {
+        return applyBookingPackage(booking, options);
+    }
     const priceRules = Array.isArray(options.priceRules)
         ? options.priceRules
         : await loadBanquetEntryPriceRules(queryable);
@@ -525,9 +662,38 @@ function bookingPackageAudit(oldRow, nextBooking) {
     const nextPackage = nextBooking?.extraData?.bookingPackage || null;
     const oldCustomerId = oldRow?.customer_id || null;
     const nextCustomerId = nextBooking?.customerId || nextBooking?.customer_id || oldCustomerId || null;
+    const oldTicketLines = normalizeTicketLines(oldPackage?.ticketLines || oldPackage?.ticket_lines);
+    const nextTicketLines = normalizeTicketLines(nextPackage?.ticketLines || nextPackage?.ticket_lines);
+    const oldTicketSubtotal = oldPackage?.ticketSubtotal
+        ?? oldPackage?.ticket_subtotal
+        ?? (oldTicketLines.length ? oldTicketLines.reduce((sum, line) => sum + line.subtotalUah, 0) : null);
+    const nextTicketSubtotal = nextPackage?.ticketSubtotal
+        ?? nextPackage?.ticket_subtotal
+        ?? (nextTicketLines.length ? nextTicketLines.reduce((sum, line) => sum + line.subtotalUah, 0) : null);
+    const ticketChanged = JSON.stringify(oldTicketLines) !== JSON.stringify(nextTicketLines)
+        || toMoney(oldTicketSubtotal || 0) !== toMoney(nextTicketSubtotal || 0);
+    let ticketReason = null;
+    if (ticketChanged) {
+        const oldDate = normalizeDateOnly(oldRow?.date);
+        const nextDate = normalizeDateOnly(nextBooking?.date);
+        const oldContext = oldPackage?.ticketPricingContext || oldPackage?.ticket_pricing_context || null;
+        const nextContext = nextPackage?.ticketPricingContext || nextPackage?.ticket_pricing_context || null;
+        if (nextBooking?.convertLegacy === true || nextBooking?.convert_legacy === true) ticketReason = 'explicit_conversion';
+        else if (oldDate && nextDate && oldDate !== nextDate) ticketReason = 'date';
+        else if (oldContext !== nextContext) ticketReason = 'context';
+        else ticketReason = 'quantities';
+    }
     return {
         customerChanged: String(oldCustomerId || '') !== String(nextCustomerId || ''),
         packageChanged: JSON.stringify(oldPackage || null) !== JSON.stringify(nextPackage || null),
+        ticketAudit: {
+            changed: ticketChanged,
+            reason: ticketReason,
+            oldTicketLines,
+            newTicketLines: nextTicketLines,
+            oldTicketSubtotal: oldTicketSubtotal === null ? null : toMoney(oldTicketSubtotal),
+            newTicketSubtotal: nextTicketSubtotal === null ? null : toMoney(nextTicketSubtotal)
+        },
         from: {
             customerId: oldCustomerId,
             bookingPackage: oldPackage,
@@ -561,6 +727,9 @@ module.exports = {
     formatMenuPositionQuantity,
     normalizeServiceEvent,
     normalizeServiceEvents,
+    normalizeTicketLine,
+    normalizeTicketLines,
+    hasExplicitTicketPackageInput,
     buildLegacyBanquetMenu,
     buildBookingPackage,
     applyBookingPackage,

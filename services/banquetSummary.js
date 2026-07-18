@@ -36,7 +36,7 @@ const BANQUET_SUMMARY_MODE_CONTRACTS = Object.freeze({
             warnings: false,
             responsible: true
         }),
-        orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+        orderRowTypes: Object.freeze(['program', 'activity', 'ticket', 'entry', 'menu']),
         scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
         commentTypes: Object.freeze([]),
         responsibleDetail: 'manager',
@@ -84,7 +84,7 @@ const BANQUET_SUMMARY_MODE_CONTRACTS = Object.freeze({
             warnings: true,
             responsible: true
         }),
-        orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+        orderRowTypes: Object.freeze(['program', 'activity', 'ticket', 'entry', 'menu']),
         scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
         commentTypes: Object.freeze(['activity', 'kitchen', 'internal']),
         responsibleDetail: 'full',
@@ -160,11 +160,16 @@ function orderRowDurationLabel(row = {}) {
 }
 
 function orderRowServingLabel(row = {}) {
-    if (['program', 'activity', 'entry'].includes(row?.type)) return '—';
+    if (['program', 'activity', 'ticket', 'entry'].includes(row?.type)) return '—';
     return cleanText(row.meta?.servingTime || row.meta?.time || row.servingTime || row.serving_time, 40) || '—';
 }
 
 function orderRowQuantityLabel(row = {}) {
+    if (row?.type === 'ticket') {
+        const quantityValue = nullableNumber(row.quantity);
+        if (quantityValue === null) return cleanText(row.quantity, 40) || '—';
+        return `${formatQuantityNumber(quantityValue)} ${row.meta?.audience === 'adult' ? 'дорослих' : 'дітей'}`;
+    }
     if (row?.type === 'entry') {
         const quantityValue = nullableNumber(row.quantity);
         return quantityValue === null ? (cleanText(row.quantity, 40) || '—') : `${formatQuantityNumber(quantityValue)} дітей`;
@@ -181,7 +186,7 @@ function orderRowClientComment(row = {}) {
     if (type === 'service_event') {
         return row.meta?.time ? cleanText(`Час ${row.meta.time}`) : null;
     }
-    return ['program', 'activity', 'entry', 'menu'].includes(type)
+    return ['program', 'activity', 'ticket', 'entry', 'menu'].includes(type)
         ? cleanText(row.comment, 500)
         : null;
 }
@@ -996,6 +1001,48 @@ function buildEntryChargeRow(bookingPackage = {}, warnings = []) {
     };
 }
 
+function buildTicketRows(bookingPackage = {}, warnings = []) {
+    const rawLines = bookingPackage.ticketLines || bookingPackage.ticket_lines || [];
+    if (!Array.isArray(rawLines)) return [];
+    return rawLines.map((line, index) => {
+        const code = cleanText(valueOf(line, 'ticketTypeCode', 'ticket_type_code'), 120);
+        const title = cleanText(valueOf(line, 'ticketTypeName', 'ticket_type_name'), 160) || code;
+        const rowQuantity = quantity(valueOf(line, 'quantity'), null);
+        const unitPrice = money(valueOf(line, 'unitPriceUah', 'unit_price_uah'));
+        const subtotal = money(valueOf(line, 'subtotalUah', 'subtotal_uah'));
+        if (!code || !title || rowQuantity === null || unitPrice === null || subtotal === null) {
+            if (Array.isArray(warnings)) {
+                warnings.push({
+                    code: 'ticket_snapshot_line_invalid',
+                    message: `Некоректний рядок ticketLines #${index + 1}; рядок не включено в підсумок.`
+                });
+            }
+            return null;
+        }
+        return {
+            id: `ticket:${code}`,
+            type: 'ticket',
+            source: 'booking_package_ticket_snapshot',
+            bookingId: null,
+            title,
+            quantity: rowQuantity,
+            unitPrice,
+            subtotal,
+            comment: null,
+            meta: {
+                ticketTypeId: valueOf(line, 'ticketTypeId', 'ticket_type_id') || null,
+                ticketTypeCode: code,
+                audience: cleanText(valueOf(line, 'audience'), 20),
+                tariffVersionId: valueOf(line, 'tariffVersionId', 'tariff_version_id') || null,
+                effectiveFrom: cleanText(valueOf(line, 'effectiveFrom', 'effective_from'), 20),
+                admissionContext: cleanText(valueOf(line, 'admissionContext', 'admission_context'), 40),
+                dayType: cleanText(valueOf(line, 'dayType', 'day_type'), 20),
+                currency: cleanText(valueOf(line, 'currency'), 10) || 'UAH'
+            }
+        };
+    }).filter(Boolean);
+}
+
 function pushPackageWarnings(warnings, bookingPackage = {}) {
     const packageWarnings = Array.isArray(bookingPackage.warnings) ? bookingPackage.warnings : [];
     for (const warning of packageWarnings) {
@@ -1555,7 +1602,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const rawMenuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
     const menuRows = applyKitchenCommentToMenuRows(rawMenuRows, kitchenBooking);
     const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
-    const entryRow = buildEntryChargeRow(bookingPackage, warnings);
+    const ticketRows = buildTicketRows(bookingPackage, warnings);
+    const entryRow = ticketRows.length ? null : buildEntryChargeRow(bookingPackage, warnings);
     pushPackageWarnings(warnings, bookingPackage);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
@@ -1573,7 +1621,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
     const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
-    const entrySubtotal = money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal')) ?? money(entryRow?.subtotal);
+    const entrySubtotal = money(valueOf(bookingPackage, 'ticketSubtotal', 'ticket_subtotal'))
+        ?? money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal'))
+        ?? (ticketRows.length ? sumKnown(ticketRows) : money(entryRow?.subtotal));
     const explicitProgramBasePrice = money(valueOf(primaryPackage, 'programBasePrice', 'program_base_price'));
     const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null
         ? money(Math.max(0, bookingPrice - (menuSubtotal || 0) - (entrySubtotal || 0)))
@@ -1584,7 +1634,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         : null;
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
     const activitySubtotal = sumKnown(activityRows);
-    const orderRows = [programRow, ...activityRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
+    const orderRows = [programRow, ...activityRows, ...ticketRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
     const summaryComments = buildSummaryComments({
         primaryBooking,
         kitchenBooking,
@@ -1744,5 +1794,6 @@ module.exports = {
     banquetSummaryModeRowTypes,
     banquetSummaryModeAllowsComment,
     buildBanquetOrderRowViewModels,
+    buildTicketRows,
     buildBanquetSummary
 };

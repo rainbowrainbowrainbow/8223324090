@@ -102,8 +102,10 @@ function bookingPackageHasBanquetData(row = {}) {
     if (!bookingPackage || typeof bookingPackage !== 'object') return false;
     const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
     const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
+    const ticketLines = packageArray(bookingPackage, 'ticketLines', 'ticket_lines');
     return (Array.isArray(positions) && positions.length > 0)
-        || (Array.isArray(serviceEvents) && serviceEvents.length > 0);
+        || (Array.isArray(serviceEvents) && serviceEvents.length > 0)
+        || (Array.isArray(ticketLines) && ticketLines.length > 0);
 }
 
 function isKitchenCandidate(row = {}) {

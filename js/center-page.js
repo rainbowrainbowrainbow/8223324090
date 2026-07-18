@@ -20,6 +20,10 @@ let catalogFilter = 'all';
 let pricePositionsData = [];
 let operationsData = null;
 let operationsLoading = false;
+let admissionTicketCatalog = null;
+let admissionTicketCatalogLoading = false;
+let admissionTicketTariffSaving = false;
+let canEditAdmissionTicketTariffs = false;
 const centerSectionState = new Map();
 
 const BANQUET_TERMS_PRICE_RULES = Object.freeze([
@@ -2996,6 +3000,9 @@ async function initAuth() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
+    canEditAdmissionTicketTariffs = typeof hasMinRole === 'function'
+        ? hasMinRole('senior_manager')
+        : ['creator', 'director', 'vice_director', 'senior_manager'].includes(user.role);
 
     // Set username
     const userEl = document.getElementById('currentUser');
@@ -3012,6 +3019,268 @@ async function initAuth() {
     });
 
     return true;
+}
+
+const ADMISSION_TARIFF_COLUMNS = Object.freeze([
+    { context: 'standard', dayType: 'weekday', label: 'Стандарт · будні' },
+    { context: 'standard', dayType: 'weekend', label: 'Стандарт · вихідні' },
+    { context: 'reserved_table_room', dayType: 'weekday', label: 'Бронювання · будні' },
+    { context: 'reserved_table_room', dayType: 'weekend', label: 'Бронювання · вихідні' }
+]);
+
+function admissionTicketTariffFor(type, context, dayType) {
+    return (Array.isArray(type?.currentTariffs) ? type.currentTariffs : []).find(tariff => (
+        tariff.admissionContext === context && tariff.dayType === dayType
+    )) || null;
+}
+
+function admissionTicketDateLabel(value) {
+    if (!value) return '—';
+    const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+    return Number.isNaN(date.getTime())
+        ? escapeHtml(String(value))
+        : date.toLocaleDateString('uk-UA');
+}
+
+function admissionTicketTodayDateOnly() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function admissionTicketMoneyLabel(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount)
+        ? `${amount.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} грн`
+        : '—';
+}
+
+function renderAdmissionTicketTariffCell(type, column) {
+    const tariff = admissionTicketTariffFor(type, column.context, column.dayType);
+    const unavailable = tariff?.availability === 'unavailable';
+    const price = tariff
+        ? (unavailable ? 'Недоступний' : admissionTicketMoneyLabel(tariff.amountUah))
+        : 'Немає конфігурації';
+    const action = canEditAdmissionTicketTariffs
+        ? `<button type="button" class="btn btn-secondary ticket-tariff-edit"
+                data-ticket-code="${escapeHtml(type.code)}"
+                data-admission-context="${escapeHtml(column.context)}"
+                data-day-type="${escapeHtml(column.dayType)}">
+                Нова ревізія
+           </button>`
+        : '';
+    return `
+        <td>
+            <div class="ticket-tariff-cell">
+                <strong class="${unavailable ? 'ticket-tariff-unavailable' : ''}">${escapeHtml(price)}</strong>
+                <small>Діє з ${admissionTicketDateLabel(tariff?.effectiveFrom)}</small>
+                <small>Ревізія ${tariff?.revision ?? '—'}</small>
+                ${action}
+            </div>
+        </td>`;
+}
+
+function renderAdmissionTicketHistory(type) {
+    const history = Array.isArray(type?.tariffHistory) ? type.tariffHistory : [];
+    if (!history.length) return '';
+    return `
+        <details class="ticket-history">
+            <summary>Історія тарифів (${history.length})</summary>
+            <ul>
+                ${history.map(item => `
+                    <li>
+                        ${escapeHtml(item.admissionContext)} · ${escapeHtml(item.dayType)} ·
+                        ${item.availability === 'unavailable' ? 'недоступний' : escapeHtml(admissionTicketMoneyLabel(item.amountUah))} ·
+                        з ${admissionTicketDateLabel(item.effectiveFrom)} · rev ${escapeHtml(String(item.revision))}
+                        ${item.changeNote ? ` — ${escapeHtml(item.changeNote)}` : ''}
+                    </li>`).join('')}
+            </ul>
+        </details>`;
+}
+
+function renderAdmissionTicketCatalog() {
+    const container = document.getElementById('ticketCatalogMatrix');
+    const state = document.getElementById('ticketCatalogState');
+    if (!container || !state) return;
+    const types = Array.isArray(admissionTicketCatalog?.ticketTypes)
+        ? admissionTicketCatalog.ticketTypes
+        : [];
+    state.classList.add('hidden');
+    if (!types.length) {
+        container.innerHTML = centerStateHtml(
+            'Каталог порожній',
+            'Для поточного business context не знайдено типів квитків.'
+        );
+        return;
+    }
+    container.innerHTML = `
+        <div class="ticket-matrix-wrap">
+            <table class="ticket-matrix">
+                <thead>
+                    <tr>
+                        <th>Тип квитка</th>
+                        ${ADMISSION_TARIFF_COLUMNS.map(column => `<th>${escapeHtml(column.label)}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${types.map(type => `
+                        <tr>
+                            <td>
+                                <div class="ticket-type-meta">
+                                    <strong>${escapeHtml(type.name)}</strong>
+                                    <code>${escapeHtml(type.code)}</code>
+                                    <span class="ticket-system-chip">
+                                        ${type.audience === 'adult' ? 'Дорослий' : 'Дитячий'} ·
+                                        ${type.allocationStrategy === 'remainder' ? 'автоматичний залишок' : 'ручна кількість'}
+                                    </span>
+                                    ${type.requirementText ? `<span class="ticket-requirement">${escapeHtml(type.requirementText)}</span>` : ''}
+                                    ${renderAdmissionTicketHistory(type)}
+                                </div>
+                            </td>
+                            ${ADMISSION_TARIFF_COLUMNS.map(column => renderAdmissionTicketTariffCell(type, column)).join('')}
+                        </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+async function loadAdmissionTicketCatalog({ force = false } = {}) {
+    if (admissionTicketCatalogLoading) return;
+    if (admissionTicketCatalog && !force) {
+        renderAdmissionTicketCatalog();
+        return;
+    }
+    const state = document.getElementById('ticketCatalogState');
+    const container = document.getElementById('ticketCatalogMatrix');
+    if (state) {
+        state.classList.remove('hidden', 'is-error');
+        state.innerHTML = '<strong>Завантаження тарифів…</strong><small>Читаємо актуальні ревізії для поточного business context.</small>';
+    }
+    if (container) container.innerHTML = '';
+    admissionTicketCatalogLoading = true;
+    try {
+        const result = await apiGetAdmissionTicketCatalog();
+        if (!result?.success) {
+            throw new Error(result?.error || 'Не вдалося завантажити каталог квитків');
+        }
+        admissionTicketCatalog = result;
+        renderAdmissionTicketCatalog();
+    } catch (error) {
+        if (state) {
+            state.classList.remove('hidden');
+            state.classList.add('is-error');
+            state.innerHTML = centerStateHtml(
+                'Помилка завантаження тарифів',
+                error?.message || 'Повторіть спробу.',
+                'error'
+            );
+        }
+    } finally {
+        admissionTicketCatalogLoading = false;
+    }
+}
+
+function openAdmissionTicketTariffDialog({ code, context, dayType, errorMessage = '' } = {}) {
+    if (!canEditAdmissionTicketTariffs) return;
+    const type = admissionTicketCatalog?.ticketTypes?.find(item => item.code === code);
+    const tariff = admissionTicketTariffFor(type, context, dayType);
+    const dialog = document.getElementById('ticketTariffDialog');
+    if (!type || !dialog) return;
+    document.getElementById('ticketTariffDialogTitle').textContent = `Нова ревізія: ${type.name}`;
+    document.getElementById('ticketTariffDialogMeta').textContent = `${context} · ${dayType} · поточна rev ${tariff?.revision ?? 0}`;
+    document.getElementById('ticketTariffCode').value = code;
+    document.getElementById('ticketTariffContext').value = context;
+    document.getElementById('ticketTariffDay').value = dayType;
+    document.getElementById('ticketTariffExpectedRevision').value = String(tariff?.revision ?? 0);
+    document.getElementById('ticketTariffAvailability').value = tariff?.availability || 'available';
+    document.getElementById('ticketTariffAmount').value = tariff?.amountUah ?? '';
+    document.getElementById('ticketTariffAmount').disabled = tariff?.availability === 'unavailable';
+    document.getElementById('ticketTariffEffectiveFrom').value = admissionTicketTodayDateOnly();
+    document.getElementById('ticketTariffChangeNote').value = '';
+    const error = document.getElementById('ticketTariffError');
+    error.textContent = errorMessage;
+    error.classList.toggle('hidden', !errorMessage);
+    dialog.showModal();
+}
+
+async function saveAdmissionTicketTariffRevision(event) {
+    event.preventDefault();
+    if (!canEditAdmissionTicketTariffs || admissionTicketTariffSaving) return;
+    const code = document.getElementById('ticketTariffCode').value;
+    const admissionContext = document.getElementById('ticketTariffContext').value;
+    const dayType = document.getElementById('ticketTariffDay').value;
+    const availability = document.getElementById('ticketTariffAvailability').value;
+    const saveButton = document.getElementById('ticketTariffSave');
+    const error = document.getElementById('ticketTariffError');
+    error.classList.add('hidden');
+    admissionTicketTariffSaving = true;
+    saveButton.disabled = true;
+    saveButton.textContent = 'Збереження…';
+    const result = await apiCreateAdmissionTicketTariffRevision(code, {
+        admissionContext,
+        dayType,
+        availability,
+        amountUah: availability === 'available'
+            ? Number(document.getElementById('ticketTariffAmount').value)
+            : null,
+        effectiveFrom: document.getElementById('ticketTariffEffectiveFrom').value,
+        expectedRevision: Number(document.getElementById('ticketTariffExpectedRevision').value),
+        changeNote: document.getElementById('ticketTariffChangeNote').value.trim() || null
+    });
+    admissionTicketTariffSaving = false;
+    saveButton.disabled = false;
+    saveButton.textContent = 'Зберегти ревізію';
+    if (result?.success) {
+        document.getElementById('ticketTariffDialog').close();
+        admissionTicketCatalog = null;
+        await loadAdmissionTicketCatalog({ force: true });
+        return;
+    }
+    if (result?.status === 409) {
+        document.getElementById('ticketTariffDialog').close();
+        admissionTicketCatalog = null;
+        await loadAdmissionTicketCatalog({ force: true });
+        openAdmissionTicketTariffDialog({
+            code,
+            context: admissionContext,
+            dayType,
+            errorMessage: 'Тариф уже змінив інший керівник. Показано актуальну ревізію — перевірте значення і повторіть зміну.'
+        });
+        return;
+    }
+    error.textContent = result?.error || 'Не вдалося зберегти тариф';
+    error.classList.remove('hidden');
+}
+
+function bindAdmissionTicketCatalogUi() {
+    const matrix = document.getElementById('ticketCatalogMatrix');
+    if (!matrix || matrix.dataset.bound === 'true') return;
+    matrix.dataset.bound = 'true';
+    matrix.addEventListener('click', event => {
+        const button = event.target.closest('.ticket-tariff-edit');
+        if (!button) return;
+        openAdmissionTicketTariffDialog({
+            code: button.dataset.ticketCode,
+            context: button.dataset.admissionContext,
+            dayType: button.dataset.dayType
+        });
+    });
+    document.getElementById('ticketCatalogRefresh')?.addEventListener('click', () => {
+        admissionTicketCatalog = null;
+        void loadAdmissionTicketCatalog({ force: true });
+    });
+    document.getElementById('ticketTariffCancel')?.addEventListener('click', () => {
+        if (!admissionTicketTariffSaving) document.getElementById('ticketTariffDialog')?.close();
+    });
+    document.getElementById('ticketTariffAvailability')?.addEventListener('change', event => {
+        const amount = document.getElementById('ticketTariffAmount');
+        const unavailable = event.target.value === 'unavailable';
+        amount.disabled = unavailable;
+        if (unavailable) amount.value = '';
+    });
+    document.getElementById('ticketTariffForm')?.addEventListener('submit', saveAdmissionTicketTariffRevision);
 }
 
 // ==========================================
@@ -3039,6 +3308,10 @@ async function initCenterPage() {
         return;
     }
 
+    bindAdmissionTicketCatalogUi();
+    if (new URLSearchParams(window.location.search).get('tab') === 'tickets') {
+        void loadAdmissionTicketCatalog();
+    }
     setInitialLoadingStates();
 
     enhanceCenterSectionHeaders();
@@ -3062,6 +3335,10 @@ async function initCenterPage() {
     // Profile handler
     if (typeof initProfileHandler === 'function') initProfileHandler();
 }
+
+window.addEventListener('center:tab-change', event => {
+    if (event.detail?.tab === 'tickets') void loadAdmissionTicketCatalog();
+});
 
 // ==========================================
 // COLLAPSIBLE SECTIONS

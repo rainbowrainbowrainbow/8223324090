@@ -599,6 +599,133 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
         assert.equal(converted.body.quote.ticketSubtotal, 3740);
     });
 
+    test('legacy update preserves entryCharge until explicit v3 conversion and stale save is rejected', async () => {
+        const before = await pool.query(
+            `SELECT extra_data->'bookingPackage'->'entryCharge' AS entry_charge
+             FROM bookings
+             WHERE id = $1`,
+            [legacyBookingId]
+        );
+        const unrelated = await apiRequest(
+            'PUT',
+            `/api/bookings/${encodeURIComponent(legacyBookingId)}?businessContext=event_genix`,
+            {
+                token: receptionToken,
+                body: {
+                    notes: 'Legacy preservation integration check',
+                    kidsCount: 12
+                }
+            }
+        );
+        assert.equal(unrelated.status, 200, JSON.stringify(unrelated.body));
+        const preserved = await pool.query(
+            `SELECT extra_data->'bookingPackage'->'entryCharge' AS entry_charge
+             FROM bookings
+             WHERE id = $1`,
+            [legacyBookingId]
+        );
+        assert.deepEqual(preserved.rows[0].entry_charge, before.rows[0].entry_charge);
+
+        const conversionQuote = await apiRequest(
+            'POST',
+            '/api/bookings/ticket-quote?businessContext=event_genix',
+            {
+                token: receptionToken,
+                body: {
+                    bookingId: legacyBookingId,
+                    convertLegacy: true,
+                    ticketQuantities: []
+                }
+            }
+        );
+        assert.equal(conversionQuote.status, 200, JSON.stringify(conversionQuote.body));
+        const converted = await apiRequest(
+            'PUT',
+            `/api/bookings/${encodeURIComponent(legacyBookingId)}?businessContext=event_genix`,
+            {
+                token: receptionToken,
+                body: {
+                    kidsCount: 12,
+                    banquetGuests: 12,
+                    banquetAdults: 2,
+                    ticketQuantities: [],
+                    ticketQuote: conversionQuote.body.quote,
+                    convertLegacy: true
+                }
+            }
+        );
+        assert.equal(converted.status, 200, JSON.stringify(converted.body));
+        const stored = await pool.query(
+            `SELECT price::numeric::text AS price,
+                    extra_data->'bookingPackage' AS package
+             FROM bookings
+             WHERE id = $1`,
+            [legacyBookingId]
+        );
+        assert.equal(stored.rows[0].package.schemaVersion, 3);
+        assert.equal(stored.rows[0].package.entryCharge, null);
+        assert.equal(stored.rows[0].package.ticketSubtotal, 3740);
+        assert.equal(stored.rows[0].package.ticketLines.length, 2);
+        assert.equal(stored.rows[0].price, '3740');
+        const groupOwner = await pool.query(
+            `SELECT meta->>'ticketBookingId' AS ticket_booking_id,
+                    meta->>'packageOwnerBookingId' AS package_owner_booking_id
+             FROM banquet_groups
+             WHERE id = $1`,
+            [legacyGroupId]
+        );
+        assert.equal(groupOwner.rows[0].ticket_booking_id, legacyBookingId);
+        assert.equal(groupOwner.rows[0].package_owner_booking_id, legacyBookingId);
+
+        const preview = await apiRequest(
+            'POST',
+            '/api/bookings/ticket-quote?businessContext=event_genix',
+            {
+                token: receptionToken,
+                body: {
+                    bookingId: legacyBookingId,
+                    ticketQuantities: []
+                }
+            }
+        );
+        assert.equal(preview.status, 200, JSON.stringify(preview.body));
+        const tariffChange = await apiRequest(
+            'POST',
+            '/api/center/tickets/regular_child/tariffs?businessContext=event_genix',
+            {
+                token: seniorManagerToken,
+                body: {
+                    admissionContext: 'reserved_table_room',
+                    dayType: 'weekday',
+                    availability: 'available',
+                    amountUah: 311,
+                    effectiveFrom: '2026-07-14',
+                    expectedRevision: 1,
+                    changeNote: 'Stale booking save integration check'
+                }
+            }
+        );
+        assert.equal(tariffChange.status, 201, JSON.stringify(tariffChange.body));
+        const staleSave = await apiRequest(
+            'PUT',
+            `/api/bookings/${encodeURIComponent(legacyBookingId)}?businessContext=event_genix`,
+            {
+                token: receptionToken,
+                body: {
+                    kidsCount: 12,
+                    banquetGuests: 12,
+                    banquetAdults: 2,
+                    ticketQuantities: [],
+                    ticketQuote: preview.body.quote
+                }
+            }
+        );
+        assert.equal(staleSave.status, 409, JSON.stringify(staleSave.body));
+        assert.equal(staleSave.body.code, 'TICKET_PRICE_CHANGED');
+        assert.equal(staleSave.body.details.quote.ticketSubtotal, 3752);
+        assert.equal(staleSave.body.details.diff[0].ticketTypeCode, 'regular_child');
+    });
+
     test('stale expectedRevision returns 409 with current tariff and audit stores old/new actor note', async () => {
         const stale = await apiRequest(
             'POST',

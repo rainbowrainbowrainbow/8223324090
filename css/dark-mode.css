@@ -698,26 +698,26 @@ body.dark-mode .form-group select:focus {
 }
 
 body.dark-mode .booking-time-select {
-    background: rgba(15,23,42,0.88);
-    border-color: rgba(148,163,184,0.28);
-    color: #E2E8F0;
+    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    border-color: color-mix(in srgb, var(--text-secondary) 28%, transparent);
+    color: var(--text-secondary);
 }
 
 body.dark-mode .booking-time-step {
-    background: rgba(16,185,129,0.12);
-    border-color: rgba(94,234,212,0.26);
-    color: #CCFBF1;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light) 26%, transparent);
+    color: var(--primary-light);
 }
 
 body.dark-mode .booking-time-step:hover:not(:disabled),
 body.dark-mode .booking-time-step:focus-visible {
-    background: rgba(16,185,129,0.2);
-    border-color: rgba(94,234,212,0.44);
-    color: #F8FAFC;
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light) 44%, transparent);
+    color: var(--text-primary);
 }
 
 body.dark-mode .booking-time-hint {
-    color: #94A3B8;
+    color: var(--text-muted);
 }
 
 body.dark-mode .form-group select {

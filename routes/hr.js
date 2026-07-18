@@ -1596,27 +1596,39 @@ async function loadLiveQaStaff(db, staffId, runId, options = {}) {
 
 async function loadLiveQaFixtureStatus(db, staffId, runId) {
     const staff = await loadLiveQaStaff(db, staffId, runId);
-    const [shiftResult, scheduleResult, attendanceResult, checkinResult, shiftPreferenceResult, lineResult] = await Promise.all([
-        db.query('SELECT id, shift_date::text AS date FROM hr_shifts WHERE staff_id = $1 ORDER BY shift_date, id', [staff.id]),
-        db.query('SELECT id, date::text AS date FROM staff_schedule WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
-        db.query('SELECT id, record_date::text AS date FROM hr_time_records WHERE staff_id = $1 ORDER BY record_date, id', [staff.id]),
-        db.query('SELECT id, date::text AS date FROM staff_checkins WHERE staff_id = $1 ORDER BY date, id', [staff.id]),
-        db.query(
-            `SELECT id, profession_key, day_type
-             FROM staff_shift_preferences
-             WHERE staff_id = $1
-             ORDER BY profession_key, day_type, id`,
-            [staff.id]
-        ),
-        db.query(
-            `SELECT id, date::text AS date
-             FROM lines_by_date
-             WHERE line_id = $1::text
-               AND from_sheet IS TRUE
-             ORDER BY date, id`,
-            [staff.id]
-        )
-    ]);
+    // This helper can receive a transaction-scoped pg Client during cleanup.
+    // Keep its reads sequential because pg does not support concurrent queries on one Client.
+    const shiftResult = await db.query(
+        'SELECT id, shift_date::text AS date FROM hr_shifts WHERE staff_id = $1 ORDER BY shift_date, id',
+        [staff.id]
+    );
+    const scheduleResult = await db.query(
+        'SELECT id, date::text AS date FROM staff_schedule WHERE staff_id = $1 ORDER BY date, id',
+        [staff.id]
+    );
+    const attendanceResult = await db.query(
+        'SELECT id, record_date::text AS date FROM hr_time_records WHERE staff_id = $1 ORDER BY record_date, id',
+        [staff.id]
+    );
+    const checkinResult = await db.query(
+        'SELECT id, date::text AS date FROM staff_checkins WHERE staff_id = $1 ORDER BY date, id',
+        [staff.id]
+    );
+    const shiftPreferenceResult = await db.query(
+        `SELECT id, profession_key, day_type
+         FROM staff_shift_preferences
+         WHERE staff_id = $1
+         ORDER BY profession_key, day_type, id`,
+        [staff.id]
+    );
+    const lineResult = await db.query(
+        `SELECT id, date::text AS date
+         FROM lines_by_date
+         WHERE line_id = $1::text
+           AND from_sheet IS TRUE
+         ORDER BY date, id`,
+        [staff.id]
+    );
     const rows = {
         shifts: shiftResult.rows,
         schedule: scheduleResult.rows,

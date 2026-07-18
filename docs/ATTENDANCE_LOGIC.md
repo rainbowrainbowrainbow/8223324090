@@ -133,6 +133,48 @@ Post-release backlog:
 - The live QA cleanup helper deletes marker-bound fixture attendance, check-ins, shifts, schedules, and `staff_shift_preferences`, then archives the disposable staff row. Cleanup remains scoped to a staff row that passes the disposable QA name and exact `runId` guard.
 - Base CSV escaping and stable-column tests exist; extend route-level CSV coverage only if the export contract changes.
 
+## Production QA v0.79.75 — true profession-card fallback
+
+This owner-facing QA note closes the true `profession_card` fallback smoke that was run with disposable
+fixtures only. It documents the state that was verified at the time of the run; production later advanced
+to `v0.79.76`, so this evidence must not be confused with the current production tip.
+
+Production evidence:
+
+- Verified release: `v0.79.75` / `Payroll Reporting Transparency`.
+- Commit: `201ef640059e4106b16333ed8b5a49de5fb43ebf`.
+- Branch: `codex/performance-hardening`.
+- GitHub CI: success for run `29646032917`.
+- Railway deployment/status context: success for the same commit.
+- This QA was performed on `v0.79.75`, not on the older `v0.79.74` release.
+
+Disposable fixture runs:
+
+- `prefqa_mrqekg53`
+- `prefqa_mrqemduz`
+- `prefqa_alloc_mrqeq121`
+
+Verified results:
+
+- HR Today returned plan source `profession_card`.
+- HR warning code was `PROFESSION_CARD_FALLBACK`.
+- Daily report, monthly HR report, `/api/staff/attendance`, and CSV used the same attendance facts and
+  plan-source interpretation for the tested date.
+- Payroll attendance overtime remained `0`.
+- Allocation overtime stayed technical allocation data and did not become reportable attendance overtime.
+
+Cleanup evidence after the disposable runs:
+
+| Fixture data | Remaining rows |
+| --- | ---: |
+| Active disposable staff | 0 |
+| Attendance rows | 0 |
+| Check-in rows | 0 |
+| `staff_shift_preferences` rows | 0 |
+
+The first attempted run produced a false negative from the QA script assertion/encoding path. Cleanup was
+confirmed afterwards, and the failure was classified as a test-script issue rather than a product bug.
+
 ## Known limitations
 
 - Historical attendance and payroll records are not recalculated automatically.

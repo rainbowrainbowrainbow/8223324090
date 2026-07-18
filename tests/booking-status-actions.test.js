@@ -95,6 +95,21 @@ function makeDb(rows, banquetMemberships = []) {
             state.tx.push(sql);
             return { rows: [], rowCount: 0 };
         }
+        if (/FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(sql)) {
+            const [bookingId, businessContext] = params;
+            const row = state.banquetMemberships.find(item => (
+                item.booking_id === bookingId
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            ));
+            return {
+                rows: row ? [{
+                    ...row,
+                    primary_booking_id: 'BK-STATUS-ROOT',
+                    group_status: 'active'
+                }] : [],
+                rowCount: row ? 1 : 0
+            };
+        }
         if (/SELECT \* FROM bookings WHERE id = \$1[\s\S]*FOR UPDATE$/i.test(sql)) {
             const businessContext = params.length > 1 ? params[1] : null;
             const row = state.rows.find(item =>
@@ -164,6 +179,16 @@ async function requestPreliminary(baseUrl, id, body = {}) {
     return { status: res.status, data };
 }
 
+async function requestConfirm(baseUrl, id, body = {}) {
+    const res = await fetch(`${baseUrl}/api/bookings/${encodeURIComponent(id)}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-role': 'manager' },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, data };
+}
+
 async function withApp(rows, banquetMemberships, fn) {
     clearModules();
     const { pool, state } = makeDb(rows, banquetMemberships);
@@ -202,7 +227,7 @@ async function withApp(rows, banquetMemberships, fn) {
     }
 }
 
-test('mark preliminary scopes to root booking and technical linked children, not banquet members', async () => {
+test('active banquet root status must be changed through atomic booking-set', async () => {
     await withApp([
         bookingRow({ id: 'BK-STATUS-ROOT', status: 'confirmed' }),
         bookingRow({ id: 'BK-STATUS-TECH', linked_to: 'BK-STATUS-ROOT', status: 'confirmed', label: 'Technical child' }),
@@ -217,26 +242,22 @@ test('mark preliminary scopes to root booking and technical linked children, not
     ], async ({ baseUrl, state, sideEffects }) => {
         const res = await requestPreliminary(baseUrl, 'BK-STATUS-ROOT', { source: 'booking_panel' });
 
-        assert.equal(res.status, 200, JSON.stringify(res.data));
-        assert.equal(res.data.cascade.markedPreliminaryCount, 2);
-        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ROOT').status, 'preliminary');
-        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-TECH').status, 'preliminary');
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ROOT').status, 'confirmed');
+        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-TECH').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-STATUS-KITCHEN').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ACTIVITY').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-STATUS-CANCELLED').status, 'cancelled');
-        assert.deepEqual(
-            sideEffects.broadcasts.map(args => args[1]?.id).sort(),
-            ['BK-STATUS-ROOT', 'BK-STATUS-TECH']
-        );
-        assert.equal(sideEffects.events[0][0], 'booking.status_changed');
-        assert.equal(sideEffects.events[0][1].booking_id, 'BK-STATUS-ROOT');
-        assert.equal(state.histories[0].action, 'booking_marked_preliminary');
-        assert.ok(state.queries.every(query => !/banquet_group_bookings/i.test(query.sql)), 'status action must not load banquet memberships');
-        assert.ok(state.queries.every(query => !/group_name/i.test(query.sql)), 'bookings.group_name must not drive status logic');
+        assert.equal(sideEffects.broadcasts.length, 0);
+        assert.equal(sideEffects.events.length, 0);
+        assert.equal(state.histories.length, 0);
+        assert.ok(state.queries.some(query => /banquet_group_bookings/i.test(query.sql)));
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
     });
 });
 
-test('activity banquet member can be marked preliminary independently', async () => {
+test('active banquet activity status also requires atomic booking-set', async () => {
     await withApp([
         bookingRow({ id: 'BK-STATUS-ROOT', status: 'confirmed' }),
         bookingRow({ id: 'BK-STATUS-KITCHEN', status: 'confirmed', label: 'Kitchen member', category: 'kitchen' }),
@@ -248,12 +269,37 @@ test('activity banquet member can be marked preliminary independently', async ()
     ], async ({ baseUrl, state, sideEffects }) => {
         const res = await requestPreliminary(baseUrl, 'BK-STATUS-ACTIVITY', { source: 'booking_panel' });
 
-        assert.equal(res.status, 200, JSON.stringify(res.data));
-        assert.equal(res.data.cascade.markedPreliminaryCount, 1);
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
         assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ROOT').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-STATUS-KITCHEN').status, 'confirmed');
-        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ACTIVITY').status, 'preliminary');
-        assert.deepEqual(sideEffects.broadcasts.map(args => args[1]?.id), ['BK-STATUS-ACTIVITY']);
+        assert.equal(state.rows.find(row => row.id === 'BK-STATUS-ACTIVITY').status, 'confirmed');
+        assert.equal(sideEffects.broadcasts.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    });
+});
+
+test('active banquet preliminary booking cannot be confirmed outside atomic booking-set', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-STATUS-ROOT',
+            status: 'preliminary',
+            confirmed_at: null,
+            confirmed_by: null
+        })
+    ], [
+        membership({ booking_id: 'BK-STATUS-ROOT', role: 'primary' })
+    ], async ({ baseUrl, state, sideEffects }) => {
+        const res = await requestConfirm(baseUrl, 'BK-STATUS-ROOT', {
+            source: 'booking_panel'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(state.rows[0].status, 'preliminary');
+        assert.equal(state.histories.length, 0);
+        assert.equal(sideEffects.broadcasts.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
     });
 });
 

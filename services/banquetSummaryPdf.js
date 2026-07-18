@@ -742,6 +742,16 @@ function fallbackFinanceRows(summary = {}) {
     const bookingPrice = nullableNumber(totals.bookingPrice);
     addFinanceRow(rows, 'total', 'Загальна сума', orderTotal ?? bookingPrice, currency, { hideZero: false, role: 'total' });
     const depositAmount = deposit.amount === undefined || deposit.amount === null ? null : nullableNumber(deposit.amount);
+    addFinanceRow(rows, 'deposit', 'Завдаток', depositAmount ?? 0, currency, { hideZero: false });
+    const total = orderTotal ?? bookingPrice;
+    addFinanceRow(
+        rows,
+        'amount_due',
+        'Залишок після завдатку',
+        total === null ? null : Math.max(0, total - (depositAmount ?? 0)),
+        currency,
+        { hideZero: false, role: 'due' }
+    );
     return rows;
 }
 
@@ -758,12 +768,12 @@ function financeRowsForSummary(summary = {}) {
         .filter(row => row.label && row.amount !== null);
     const totalRow = normalized.find(row => row.key === 'total') || normalized.find(row => row.role === 'total');
     if (totalRow) {
-        return [{
+        return normalized.map(row => row === totalRow ? {
             ...totalRow,
             key: 'total',
             label: 'Загальна сума',
             role: 'total'
-        }];
+        } : row);
     }
     return fallbackFinanceRows(summary);
 }

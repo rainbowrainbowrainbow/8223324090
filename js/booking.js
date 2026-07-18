@@ -2617,9 +2617,9 @@ function focusFirstBookingInvalidField(validation) {
     const fields = Array.isArray(validation?.invalidFields) ? validation.invalidFields : [];
     const target = fields.map(bookingValidationFieldTarget).find(Boolean);
     if (!target) return;
-    const focusable = target.matches?.('input, select, textarea, button, [tabindex]:not([tabindex="-1"])')
+    const focusable = target.matches?.('input, select, textarea, button, [tabindex]')
         ? target
-        : target.querySelector?.('input:not([type="hidden"]), select, textarea, button, [tabindex]:not([tabindex="-1"])');
+        : target.querySelector?.('input:not([type="hidden"]), select, textarea, button, [tabindex]');
     target.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     focusable?.focus?.({ preventScroll: true });
 }
@@ -5910,6 +5910,22 @@ function renderBookingPackageSummary() {
     const deposit = kitchenEnabled ? getBookingDepositFormData() : null;
     const depositAmount = deposit?.provided ? (deposit.expectedAmount ?? 0) : null;
     const finalTotal = toBookingMoney(programSubtotal + menuSubtotal + entrySubtotal);
+    const ticketComparison = kitchenEnabled
+        ? window.BookingTickets?.getComparison?.()
+        : null;
+    const previousFinalTotal = ticketComparison
+        ? toBookingMoney(
+            finalTotal
+            - Number(ticketComparison.currentSubtotal || 0)
+            + Number(ticketComparison.previousSubtotal || 0)
+        )
+        : null;
+    const totalDeltaLabel = ticketComparison
+        ? `${Number(ticketComparison.delta) > 0 ? '+' : ''}${formatPrice(ticketComparison.delta)}`
+        : '';
+    const remainingAfterDeposit = deposit?.provided
+        ? toBookingMoney(Math.max(0, finalTotal - Number(depositAmount || 0)))
+        : null;
     const menuCount = Array.isArray(totals.menuPositions) ? totals.menuPositions.length : 0;
     const activityPrograms = hasEvent && Array.isArray(totals.activityPrograms) ? totals.activityPrograms : [];
     const activityRows = hasEvent ? renderBookingSummaryActivityRows(activityPrograms) : '';
@@ -5950,6 +5966,9 @@ function renderBookingPackageSummary() {
         ${kitchenEnabled && (menuSubtotal > 0 || menuCount > 0) ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Меню</span><strong>${escapeHtml(formatPrice(menuSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Квитки</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
         ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Завдаток</span><strong>${escapeHtml(formatPrice(depositAmount))}</strong></div>` : ''}
+        ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Залишок після завдатку</span><strong>${escapeHtml(formatPrice(remainingAfterDeposit))}</strong></div>` : ''}
+        ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Попередня загальна сума</span><strong>${escapeHtml(formatPrice(previousFinalTotal))}</strong></div>` : ''}
+        ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Зміна загальної суми</span><strong>${escapeHtml(totalDeltaLabel)}</strong></div>` : ''}
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
@@ -6013,7 +6032,7 @@ function getBookingWorkspaceFromBooking(booking) {
         || null;
 }
 
-function hydrateBookingPackageWorkspace(booking) {
+function hydrateBookingPackageWorkspace(booking, options = {}) {
     const bookingPackage = getBookingPackageFromBooking(booking);
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
     setBookingServiceEvents(bookingPackage?.serviceEvents || [], { render: false });
@@ -6027,11 +6046,23 @@ function hydrateBookingPackageWorkspace(booking) {
     const guests = document.getElementById('banquetGuests');
     if (guests) guests.value = bookingKitchenChildrenCountFromBooking(booking);
     const adults = document.getElementById('banquetAdults');
-    if (adults) adults.value = booking?.banquetAdults || '';
+    const banquetAdults = booking?.banquetAdults ?? booking?.banquet_adults;
+    const ticketPackage = booking?.bookingPackage
+        || booking?.booking_package
+        || booking?.extraData?.bookingPackage
+        || booking?.extra_data?.bookingPackage
+        || {};
+    const ticketLines = ticketPackage.ticketLines ?? ticketPackage.ticket_lines;
+    const hasV3TicketSnapshot = Number(ticketPackage.schemaVersion ?? ticketPackage.schema_version) >= 3
+        && Array.isArray(ticketLines);
+    if (adults) adults.value = banquetAdults ?? (hasV3TicketSnapshot ? 0 : '');
     const tables = document.getElementById('banquetTables');
     if (tables) tables.value = booking?.banquetTables || '';
     setBookingDepositFormData(booking);
-    window.BookingTickets?.hydrate(booking);
+    const ticketBooking = options.ticketBooking || booking;
+    window.BookingTickets?.hydrate(ticketBooking, {
+        bookingId: options.ticketOwnerBookingId || options.packageOwnerBookingId || ticketBooking?.id || booking?.id || null
+    });
     renderBookingPackageSummary();
 }
 
@@ -10621,7 +10652,7 @@ function buildBookingObject(formData, program) {
     if (Array.isArray(formData.ticketQuantities)) {
         obj.ticketQuantities = formData.ticketQuantities;
         obj.ticketQuote = formData.ticketQuote || null;
-        obj.convertLegacy = formData.convertLegacyTickets === true;
+        if (formData.convertLegacyTickets === true) obj.convertLegacy = true;
     }
 
     if (!obj.extraData) obj.extraData = {};
@@ -13078,7 +13109,7 @@ function bookingDetailPerChildActivityEntryMismatchWarnings(snapshot, anchorBook
     const activityMembers = members.filter(member => !primaryIds.has(String(member.bookingId || member.booking?.id || ''))
         && member.role === 'activity'
         && !member.isKitchenCandidate);
-    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members);
+    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members, snapshot);
     const packageData = packageBooking ? getBookingPackageFromBooking(packageBooking) : null;
     const entryCharge = bookingPackageEntryChargeFromPackage(packageData);
     const entryQuantity = bookingDetailActivityPositiveNumber(entryCharge?.quantity, packageData?.entryCharge?.quantity, packageData?.entry_charge?.quantity);
@@ -13135,9 +13166,114 @@ function bookingDetailHasServiceOverview(booking = {}) {
     return (bookingPackage?.serviceEvents || []).length > 0;
 }
 
+function bookingHasV3TicketPackageSnapshot(booking = {}) {
+    const bookingPackage = getBookingPackageFromBooking(booking) || {};
+    const ticketLines = bookingPackage.ticketLines ?? bookingPackage.ticket_lines;
+    return Number(bookingPackage.schemaVersion ?? bookingPackage.schema_version) >= 3
+        && Array.isArray(ticketLines);
+}
+
+function banquetSnapshotPackageOwnerResolution(snapshot = {}, fallbackBooking = null) {
+    const activeMembers = (Array.isArray(snapshot?.members) ? snapshot.members : [])
+        .map(member => ({
+            member,
+            booking: member?.booking || member,
+            bookingId: String(
+                member?.bookingId
+                || member?.booking_id
+                || bookingDetailId(member?.booking || member)
+                || ''
+            ).trim()
+        }))
+        .filter(item => item.bookingId)
+        .filter(item => String(item.booking?.status || 'confirmed').trim().toLowerCase() !== 'cancelled');
+    const memberById = new Map(activeMembers.map(item => [item.bookingId, item]));
+    const ticketSnapshotMembers = activeMembers.filter(item => bookingHasV3TicketPackageSnapshot(item.booking));
+    if (ticketSnapshotMembers.length > 1) {
+        return {
+            valid: false,
+            code: 'BANQUET_TICKET_SNAPSHOT_CONFLICT',
+            bookingIds: ticketSnapshotMembers.map(item => item.bookingId)
+        };
+    }
+    const materialPackageMembers = activeMembers.filter(item => {
+        const bookingPackage = getBookingPackageFromBooking(item.booking) || {};
+        const positions = bookingPackage.menuPositions ?? bookingPackage.menu_positions;
+        const serviceEvents = bookingPackage.serviceEvents ?? bookingPackage.service_events;
+        const legacyEntryCharge = bookingPackage.entryCharge ?? bookingPackage.entry_charge;
+        return (Array.isArray(positions) && positions.length > 0)
+            || (Array.isArray(serviceEvents) && serviceEvents.length > 0)
+            || Boolean(legacyEntryCharge && typeof legacyEntryCharge === 'object' && !Array.isArray(legacyEntryCharge))
+            || bookingHasV3TicketPackageSnapshot(item.booking)
+            || Boolean(String(item.booking?.banquetMenu || item.booking?.banquet_menu || '').trim());
+    });
+    if (materialPackageMembers.length > 1) {
+        return {
+            valid: false,
+            code: 'BANQUET_PACKAGE_OWNER_CONFLICT',
+            bookingIds: materialPackageMembers.map(item => item.bookingId)
+        };
+    }
+
+    const meta = snapshot?.group?.meta && typeof snapshot.group.meta === 'object'
+        ? snapshot.group.meta
+        : {};
+    const explicitTicketBookingId = String(meta.ticketBookingId || meta.ticket_booking_id || '').trim();
+    const explicitPackageOwnerBookingId = String(meta.packageOwnerBookingId || meta.package_owner_booking_id || '').trim();
+    const primaryBooking = banquetSnapshotPrimaryBooking(snapshot, fallbackBooking) || fallbackBooking || null;
+    const primaryBookingId = bookingDetailId(primaryBooking);
+    const actualTicketOwner = ticketSnapshotMembers[0] || null;
+    if (explicitTicketBookingId && !actualTicketOwner) {
+        return {
+            valid: false,
+            code: 'TICKET_PACKAGE_OWNER_METADATA_INVALID',
+            bookingIds: [explicitTicketBookingId]
+        };
+    }
+    const actualPackageOwner = materialPackageMembers[0] || null;
+    const explicitPackageOwner = memberById.get(explicitPackageOwnerBookingId) || null;
+    const primaryOwner = memberById.get(primaryBookingId)
+        || (primaryBookingId && primaryBooking ? {
+            member: null,
+            booking: primaryBooking,
+            bookingId: primaryBookingId
+        } : null);
+    const packageOwner = actualPackageOwner
+        || explicitPackageOwner
+        || primaryOwner;
+    if (!packageOwner?.bookingId || !packageOwner.booking) {
+        return {
+            valid: false,
+            code: 'BANQUET_PACKAGE_OWNER_MISSING',
+            bookingIds: []
+        };
+    }
+
+    return {
+        valid: true,
+        packageOwnerBookingId: packageOwner.bookingId,
+        packageOwnerBooking: packageOwner.booking,
+        ticketOwnerBookingId: actualTicketOwner?.bookingId || null,
+        ticketOwnerBooking: actualTicketOwner?.booking || null,
+        source: actualPackageOwner
+            ? (actualTicketOwner ? 'ticket_snapshot' : 'material_package')
+            : explicitPackageOwner
+                ? 'meta_package_owner'
+                : 'primary_fallback'
+    };
+}
+
+function bookingDetailHasTicketOverview(booking = {}) {
+    return bookingHasV3TicketPackageSnapshot(booking);
+}
+
 function bookingDetailCanOwnBanquetPackage(booking = {}) {
     return bookingDetailIsRoot(booking)
-        && (bookingDetailHasMenuOverview(booking) || bookingDetailHasServiceOverview(booking));
+        && (
+            bookingDetailHasMenuOverview(booking)
+            || bookingDetailHasServiceOverview(booking)
+            || bookingDetailHasTicketOverview(booking)
+        );
 }
 
 function bookingDetailIsPrimaryBanquetMember(booking = {}, banquetSnapshot = null) {
@@ -13158,14 +13294,97 @@ function bookingDetailIsBanquetArrivalMode(booking = {}, banquetSnapshot = null,
     return Boolean(String(fullBanquetDetailHtml || '').trim() && bookingDetailCanOwnBanquetPackage(booking));
 }
 
-function banquetPackageBookingFromMembers(anchorBooking = {}, primaryMembers = [], kitchenMembers = [], members = []) {
+function bookingDetailPackageWithTicketOwner(packageBooking = null, ticketBooking = null) {
+    if (!ticketBooking) return packageBooking;
+    if (!packageBooking || bookingDetailId(packageBooking) === bookingDetailId(ticketBooking)) return ticketBooking;
+    const packageData = getBookingPackageFromBooking(packageBooking) || {};
+    const ticketPackage = getBookingPackageFromBooking(ticketBooking) || {};
+    if (!bookingDetailHasTicketOverview(ticketBooking)) return packageBooking;
+    const combinedPackage = { ...packageData };
+    [
+        ['schemaVersion', 'schema_version'],
+        ['ticketQuoteContractVersion', 'ticket_quote_contract_version'],
+        ['ticketQuoteFingerprint', 'ticket_quote_fingerprint'],
+        ['ticketBusinessContext', 'ticket_business_context'],
+        ['ticketLines', 'ticket_lines'],
+        ['ticketSubtotal', 'ticket_subtotal'],
+        ['ticketPricingContext', 'ticket_pricing_context'],
+        ['ticketDayType', 'ticket_day_type'],
+        ['ticketPricingDate', 'ticket_pricing_date'],
+        ['ticketPricedAt', 'ticket_priced_at']
+    ].forEach(([camelKey, snakeKey]) => {
+        if (ticketPackage[camelKey] !== undefined) combinedPackage[camelKey] = ticketPackage[camelKey];
+        else if (ticketPackage[snakeKey] !== undefined) combinedPackage[camelKey] = ticketPackage[snakeKey];
+    });
+    const moneyValue = value => {
+        const amount = Number(value);
+        return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
+    };
+    const menuPositions = Array.isArray(packageData.menuPositions)
+        ? packageData.menuPositions
+        : (Array.isArray(packageData.menu_positions) ? packageData.menu_positions : []);
+    const positionsSubtotal = packageData.positionsSubtotal ?? packageData.positions_subtotal;
+    const normalizedPositionsSubtotal = positionsSubtotal === undefined || positionsSubtotal === null
+        ? moneyValue(menuPositions.reduce((total, position) => (
+            total + moneyValue(position?.subtotal ?? position?.subtotal_uah)
+        ), 0))
+        : moneyValue(positionsSubtotal);
+    const ticketLines = Array.isArray(ticketPackage.ticketLines)
+        ? ticketPackage.ticketLines
+        : (Array.isArray(ticketPackage.ticket_lines) ? ticketPackage.ticket_lines : []);
+    const ticketSubtotal = ticketPackage.ticketSubtotal ?? ticketPackage.ticket_subtotal;
+    const normalizedTicketSubtotal = ticketSubtotal === undefined || ticketSubtotal === null
+        ? moneyValue(ticketLines.reduce((total, line) => (
+            total + moneyValue(line?.subtotalUah ?? line?.subtotal_uah)
+        ), 0))
+        : moneyValue(ticketSubtotal);
+    const programBasePrice = moneyValue(packageData.programBasePrice ?? packageData.program_base_price);
+    combinedPackage.positionsSubtotal = normalizedPositionsSubtotal;
+    combinedPackage.entryCharge = null;
+    combinedPackage.entrySubtotal = normalizedTicketSubtotal;
+    combinedPackage.ticketSubtotal = normalizedTicketSubtotal;
+    combinedPackage.finalTotal = moneyValue(
+        programBasePrice + normalizedPositionsSubtotal + normalizedTicketSubtotal
+    );
+    return {
+        ...packageBooking,
+        bookingPackage: combinedPackage,
+        extraData: {
+            ...bookingDetailExtraDataObject(packageBooking),
+            bookingPackage: combinedPackage
+        }
+    };
+}
+
+function banquetPackageBookingFromMembers(anchorBooking = {}, primaryMembers = [], kitchenMembers = [], members = [], snapshot = null) {
     const candidates = [
         ...primaryMembers.map(member => member.booking || member),
         ...kitchenMembers.map(member => member.booking || member),
         ...members.map(member => member.booking || member),
         anchorBooking
     ];
-    return candidates.find(booking => booking && bookingDetailCanOwnBanquetPackage(booking)) || null;
+    const packageOwnerResolution = snapshot
+        ? banquetSnapshotPackageOwnerResolution(snapshot, anchorBooking)
+        : null;
+    const resolvedOwner = packageOwnerResolution?.valid
+        ? packageOwnerResolution.packageOwnerBooking
+        : null;
+    const ticketOwner = packageOwnerResolution?.valid
+        ? packageOwnerResolution.ticketOwnerBooking
+        : candidates.find(booking => booking && bookingDetailHasTicketOverview(booking)) || null;
+    const menuOrServiceBooking = candidates.find(booking => booking && (
+        bookingDetailHasMenuOverview(booking)
+        || bookingDetailHasServiceOverview(booking)
+    )) || null;
+    const packageBooking = (
+        resolvedOwner
+        && (bookingDetailHasMenuOverview(resolvedOwner) || bookingDetailHasServiceOverview(resolvedOwner))
+            ? resolvedOwner
+            : menuOrServiceBooking
+    ) || resolvedOwner || ticketOwner
+        || candidates.find(booking => booking && bookingDetailCanOwnBanquetPackage(booking))
+        || null;
+    return bookingDetailPackageWithTicketOwner(packageBooking, ticketOwner);
 }
 
 function bookingDetailHeaderPackageBooking(booking = {}, banquetSnapshot = null) {
@@ -13174,7 +13393,7 @@ function bookingDetailHeaderPackageBooking(booking = {}, banquetSnapshot = null)
     const primaryIds = new Set(primaryMembers.map(member => String(member.bookingId || member.booking?.id || '')).filter(Boolean));
     const kitchenMembers = members.filter(member => !primaryIds.has(String(member.bookingId || member.booking?.id || ''))
         && (member.role === 'kitchen' || member.isKitchenCandidate));
-    return banquetPackageBookingFromMembers(booking, primaryMembers, kitchenMembers, members);
+    return banquetPackageBookingFromMembers(booking, primaryMembers, kitchenMembers, members, banquetSnapshot);
 }
 
 function bookingDetailHeaderIsBanquetScheduleMode(booking = {}, banquetSnapshot = null, fullBanquetDetailHtml = '') {
@@ -14038,6 +14257,106 @@ function buildBanquetEditActivityBookings(baseBooking, formData = {}, context = 
     })).filter(Boolean);
 }
 
+function buildBanquetPackageOwnerPatch(baseBooking = {}, formData = {}, context = BookingDrawerState.banquetEditContext) {
+    const ownerPackage = getBookingPackageFromBooking(context?.packageOwnerBooking || {}) || {};
+    const storedProgramBasePrice = toBookingMoney(
+        ownerPackage.programBasePrice
+        ?? ownerPackage.program_base_price
+        ?? 0
+    );
+    const generatedExtraData = bookingExtraDataObjectFromBooking(baseBooking);
+    const generatedPackage = generatedExtraData.bookingPackage
+        || generatedExtraData.booking_package
+        || {};
+    const positionsSubtotal = toBookingMoney(
+        generatedPackage.positionsSubtotal
+        ?? generatedPackage.positions_subtotal
+        ?? formData.positionsSubtotal
+        ?? 0
+    );
+    const ticketSubtotal = toBookingMoney(
+        generatedPackage.entrySubtotal
+        ?? generatedPackage.entry_subtotal
+        ?? formData.entrySubtotal
+        ?? 0
+    );
+    const packageOwnerPatch = {
+        date: baseBooking.date || context?.primaryBooking?.date || null,
+        room: baseBooking.room || context?.primaryBooking?.room || null,
+        roomResourceId: baseBooking.roomResourceId
+            ?? baseBooking.room_resource_id
+            ?? context?.primaryBooking?.roomResourceId
+            ?? context?.primaryBooking?.room_resource_id
+            ?? null,
+        customerId: baseBooking.customerId
+            ?? baseBooking.customer_id
+            ?? context?.primaryBooking?.customerId
+            ?? context?.primaryBooking?.customer_id
+            ?? null,
+        programBasePrice: storedProgramBasePrice,
+        menuPositions: Array.isArray(baseBooking.menuPositions) ? baseBooking.menuPositions : (formData.menuPositions || []),
+        serviceEvents: Array.isArray(baseBooking.serviceEvents) ? baseBooking.serviceEvents : (formData.serviceEvents || []),
+        banquetGuests: baseBooking.banquetGuests ?? null,
+        banquetAdults: baseBooking.banquetAdults ?? null,
+        banquetTables: baseBooking.banquetTables ?? null,
+        banquetMenu: baseBooking.banquetMenu ?? null,
+        kidsCount: baseBooking.kidsCount ?? baseBooking.banquetGuests ?? null,
+        extraData: {
+            bookingPackage: {
+                ...generatedPackage,
+                programBasePrice: storedProgramBasePrice,
+                positionsSubtotal,
+                entrySubtotal: ticketSubtotal,
+                finalTotal: toBookingMoney(storedProgramBasePrice + positionsSubtotal + ticketSubtotal)
+            }
+        }
+    };
+    if (Array.isArray(baseBooking.ticketQuantities)) {
+        packageOwnerPatch.ticketQuantities = baseBooking.ticketQuantities;
+        packageOwnerPatch.ticketQuote = baseBooking.ticketQuote || null;
+    }
+    if (baseBooking.convertLegacy === true) packageOwnerPatch.convertLegacy = true;
+    return packageOwnerPatch;
+}
+
+function buildBanquetPrimaryPatchWithoutPackageOwnerData(primaryPatch = {}, context = BookingDrawerState.banquetEditContext) {
+    const patch = { ...primaryPatch };
+    const primaryExtraData = bookingExtraDataObjectFromBooking(context?.primaryBooking || {});
+    const generatedExtraData = bookingExtraDataObjectFromBooking(primaryPatch);
+    const extraData = { ...generatedExtraData };
+    const primaryBookingPackage = primaryExtraData.bookingPackage
+        || primaryExtraData.booking_package
+        || context?.primaryBooking?.bookingPackage
+        || context?.primaryBooking?.booking_package;
+    const primaryBookingWorkspace = primaryExtraData.bookingWorkspace || primaryExtraData.booking_workspace;
+
+    delete extraData.bookingPackage;
+    delete extraData.booking_package;
+    delete extraData.bookingWorkspace;
+    delete extraData.booking_workspace;
+    if (primaryBookingPackage) extraData.bookingPackage = primaryBookingPackage;
+    if (primaryBookingWorkspace) extraData.bookingWorkspace = primaryBookingWorkspace;
+    patch.extraData = extraData;
+    patch.price = toBookingMoney(
+        primaryPatch.programBasePrice
+        ?? context?.primaryBooking?.price
+        ?? 0
+    );
+    [
+        'programBasePrice',
+        'menuPositions',
+        'serviceEvents',
+        'ticketQuantities',
+        'ticketQuote',
+        'convertLegacy',
+        'banquetGuests',
+        'banquetAdults',
+        'banquetTables',
+        'banquetMenu'
+    ].forEach(field => delete patch[field]);
+    return patch;
+}
+
 function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = BookingDrawerState.banquetEditContext) {
     const programs = Array.isArray(formData.activityPrograms)
         ? formData.activityPrograms.filter(Boolean)
@@ -14050,9 +14369,17 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
         adjustedPrimary.duration = Number(primaryFields.duration || scheduleRows[0].duration || adjustedPrimary.duration);
         adjustedPrimary.lineId = primaryFields.lineId || adjustedPrimary.lineId;
     }
-    const primaryPatch = buildBanquetEditPrimaryPatch(adjustedPrimary, context);
-    const depositHydration = BookingDrawerState.depositHydration || {};
+    let primaryPatch = buildBanquetEditPrimaryPatch(adjustedPrimary, context);
     const primaryBookingId = String(context?.primaryBookingId || '').trim();
+    const packageOwnerBookingId = String(context?.packageOwnerBookingId || primaryBookingId).trim();
+    const packageOwnerIsPrimary = !packageOwnerBookingId || packageOwnerBookingId === primaryBookingId;
+    const packageOwnerPatch = packageOwnerIsPrimary
+        ? null
+        : buildBanquetPackageOwnerPatch(baseBooking, formData, context);
+    if (!packageOwnerIsPrimary) {
+        primaryPatch = buildBanquetPrimaryPatchWithoutPackageOwnerData(primaryPatch, context);
+    }
+    const depositHydration = BookingDrawerState.depositHydration || {};
     const depositHydrationMatches = String(depositHydration.bookingId || '') === primaryBookingId;
     const depositCanMutate = depositHydration.status === 'loaded' && depositHydrationMatches;
     const depositWasLoaded = depositHydration.status === 'loaded'
@@ -14079,6 +14406,10 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
     return {
         primaryBookingId: context?.primaryBookingId,
         primaryPatch,
+        ...(!packageOwnerIsPrimary ? {
+            packageOwnerBookingId,
+            packageOwnerPatch
+        } : {}),
         activities: buildBanquetEditActivityBookings(adjustedPrimary, formData, context),
         expectedGroupUpdatedAt: context?.expectedGroupUpdatedAt
     };
@@ -14109,6 +14440,8 @@ function createBanquetEditContext(snapshot = {}, anchorBookingId = '') {
     const groupId = String(banquetGroupIdFromSnapshot(snapshot) || '').trim();
     const expectedGroupUpdatedAt = banquetEditSnapshotUpdatedAt(snapshot);
     if (!groupId || !primaryBookingId || !expectedGroupUpdatedAt) return null;
+    const packageOwner = banquetSnapshotPackageOwnerResolution(snapshot, primaryBooking);
+    if (!packageOwner.valid) return null;
     const activities = Array.isArray(snapshot?.bookings?.activities)
         ? snapshot.bookings.activities.filter(Boolean)
         : [];
@@ -14140,6 +14473,11 @@ function createBanquetEditContext(snapshot = {}, anchorBookingId = '') {
         anchorBookingId: String(anchorBookingId || primaryBookingId),
         primaryIsActivity,
         primaryBooking,
+        packageOwnerBookingId: packageOwner.packageOwnerBookingId,
+        packageOwnerBooking: packageOwner.packageOwnerBooking,
+        ticketOwnerBookingId: packageOwner.ticketOwnerBookingId,
+        ticketOwnerBooking: packageOwner.ticketOwnerBooking,
+        packageOwnerSource: packageOwner.source,
         activities,
         allBookingIds: [...allBookingIds],
         snapshot
@@ -14388,7 +14726,15 @@ async function editBooking(bookingId) {
     if (banquetEditContext) hydrateBanquetEditActivityState(banquetEditContext);
 
     await hydrateBookingCustomerSelection(booking, { renderSummary: false });
-    hydrateBookingPackageWorkspace(booking);
+    const packageOwnerBooking = banquetEditContext?.packageOwnerBooking || booking;
+    const ticketOwnerBooking = banquetEditContext?.ticketOwnerBooking || packageOwnerBooking;
+    hydrateBookingPackageWorkspace(packageOwnerBooking, {
+        packageOwnerBookingId: banquetEditContext?.packageOwnerBookingId || booking.id,
+        ticketOwnerBookingId: banquetEditContext?.ticketOwnerBookingId
+            || banquetEditContext?.packageOwnerBookingId
+            || booking.id,
+        ticketBooking: ticketOwnerBooking
+    });
     await hydrateBookingDepositFromServer(booking.id);
 
     // Статус

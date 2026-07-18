@@ -1249,6 +1249,18 @@ function normalizeBanquetArrivalProjection(candidate = null, fallbackBooking = {
     return arrival;
 }
 
+function bookingHasTicketSnapshot(booking = {}) {
+    const bookingPackage = bookingPackageOf(booking);
+    if (!bookingPackage || typeof bookingPackage !== 'object' || Array.isArray(bookingPackage)) return false;
+    const ticketLines = bookingPackage.ticketLines || bookingPackage.ticket_lines;
+    return Number(bookingPackage.schemaVersion || bookingPackage.schema_version || 0) >= 3
+        || Array.isArray(ticketLines)
+        || Object.prototype.hasOwnProperty.call(bookingPackage, 'ticketSubtotal')
+        || Object.prototype.hasOwnProperty.call(bookingPackage, 'ticket_subtotal')
+        || Object.prototype.hasOwnProperty.call(bookingPackage, 'ticketPricingContext')
+        || Object.prototype.hasOwnProperty.call(bookingPackage, 'ticket_pricing_context');
+}
+
 function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, fallbackLinkedBookings = []) {
     if (!resolvedGroup || typeof resolvedGroup !== 'object') {
         return {
@@ -1260,6 +1272,8 @@ function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, 
             banquetArrival: null,
             primaryBooking: fallbackMainBooking,
             kitchenBooking: fallbackMainBooking,
+            ticketBooking: bookingHasTicketSnapshot(fallbackMainBooking) ? fallbackMainBooking : null,
+            ticketSnapshotCount: bookingHasTicketSnapshot(fallbackMainBooking) ? 1 : 0,
             activityBookings: (Array.isArray(fallbackLinkedBookings) ? fallbackLinkedBookings : []).filter(isRootBooking),
             serviceBookings: [],
             manualBookings: []
@@ -1267,15 +1281,62 @@ function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, 
     }
 
     const members = Array.isArray(resolvedGroup.members) ? resolvedGroup.members : [];
-    const primaryMember = members.find(member => member.isPrimary)
-        || members.find(member => bookingIdOf(member.booking) === bookingIdOf(resolvedGroup.bookings?.primary))
+    const activeMembers = members.filter(member => isActiveBooking(member.booking));
+    const primaryMember = activeMembers.find(member => member.isPrimary)
+        || activeMembers.find(member => bookingIdOf(member.booking) === bookingIdOf(resolvedGroup.bookings?.primary))
         || null;
-    const kitchenMember = members.find(member => member.role === 'kitchen' || member.isKitchenCandidate)
+    const kitchenMember = activeMembers.find(member => member.role === 'kitchen')
+        || activeMembers.find(member => member.isKitchenCandidate)
         || null;
     const primaryBooking = primaryMember?.booking || resolvedGroup.bookings?.primary || fallbackMainBooking;
     const kitchenBooking = kitchenMember?.booking
         || (Array.isArray(resolvedGroup.bookings?.kitchen) ? resolvedGroup.bookings.kitchen[0] : null)
         || primaryBooking;
+    const warnings = Array.isArray(resolvedGroup.warnings) ? [...resolvedGroup.warnings] : [];
+    const groupMeta = resolvedGroup.group?.meta && typeof resolvedGroup.group.meta === 'object'
+        ? resolvedGroup.group.meta
+        : {};
+    const fallbackTicketCandidates = [primaryBooking, kitchenBooking]
+        .filter(Boolean)
+        .filter((booking, index, bookings) => (
+            bookings.findIndex(candidate => bookingIdOf(candidate) === bookingIdOf(booking)) === index
+        ))
+        .map(booking => ({ booking }));
+    const ticketCandidateMembers = activeMembers.length ? activeMembers : fallbackTicketCandidates;
+    const ticketMembers = ticketCandidateMembers.filter(member => bookingHasTicketSnapshot(member.booking));
+    const explicitTicketOwnerId = cleanText(
+        valueOf(groupMeta, 'ticketBookingId', 'ticket_booking_id'),
+        100
+    );
+    const explicitPackageOwnerId = cleanText(
+        valueOf(groupMeta, 'packageOwnerBookingId', 'package_owner_booking_id'),
+        100
+    );
+    const explicitTicketMember = ticketCandidateMembers.find(member => (
+        [explicitTicketOwnerId, explicitPackageOwnerId]
+            .filter(Boolean)
+            .includes(bookingIdOf(member.booking))
+        && bookingHasTicketSnapshot(member.booking)
+    )) || null;
+    let ticketMember = explicitTicketMember;
+    if (!ticketMember && ticketMembers.length === 1) ticketMember = ticketMembers[0];
+    if (ticketMembers.length > 1) {
+        warnings.push({
+            code: 'banquet_ticket_snapshot_conflict',
+            message: 'У банкетній групі знайдено кілька пакетів квитків. Перевірте власника пакета перед друком.'
+        });
+    }
+    if ((explicitTicketOwnerId || explicitPackageOwnerId) && !explicitTicketMember) {
+        const message = ticketMembers.length === 1
+            ? 'Збережений власник квитків не відповідає активному пакету; використано єдиний доступний snapshot.'
+            : ticketMembers.length > 1
+                ? 'Збережений власник квитків не відповідає активним пакетам; snapshot не вибрано через конфлікт.'
+                : 'Збережений власник квитків не має активного квиткового snapshot.';
+        warnings.push({
+            code: 'banquet_ticket_owner_invalid',
+            message
+        });
+    }
     const activityBookings = members
         .filter(member => member.role === 'activity')
         .map(member => member.booking)
@@ -1302,11 +1363,13 @@ function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, 
         source: resolvedGroup.source || (resolvedGroup.groupId ? 'banquet_group' : 'legacy_booking_banquet_links'),
         group: resolvedGroup.group || null,
         groupId: resolvedGroup.groupId || resolvedGroup.group?.id || null,
-        warnings: Array.isArray(resolvedGroup.warnings) ? resolvedGroup.warnings : [],
+        warnings,
         arrival,
         banquetArrival: arrival,
         primaryBooking,
         kitchenBooking,
+        ticketBooking: ticketMember?.booking || null,
+        ticketSnapshotCount: ticketMembers.length,
         activityBookings,
         serviceBookings,
         manualBookings
@@ -1456,10 +1519,12 @@ function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activ
     add('total', 'Загальна сума', normalizedOrderTotal ?? normalizedBookingPrice, { hideZero: false, role: 'total' });
     const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? 0 : (money(deposit.amount) ?? 0);
     add('deposit', 'Завдаток', depositAmount, { hideZero: false, role: 'line' });
+    const amountDue = subtractMoney(normalizedOrderTotal ?? normalizedBookingPrice, depositAmount);
+    add('amount_due', 'Залишок після завдатку', amountDue, { hideZero: false, role: 'due' });
 
     return {
         currency,
-        amountDue: subtractMoney(normalizedOrderTotal, depositAmount),
+        amountDue,
         rows
     };
 }
@@ -1588,6 +1653,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     }
     const primaryBooking = groupState.primaryBooking || mainBooking;
     const kitchenBooking = groupState.kitchenBooking || primaryBooking;
+    const ticketBooking = groupState.ticketBooking || null;
     const context = normalizeBusinessContext(
         businessContext
         || valueOf(primaryBooking, 'businessContext', 'business_context')
@@ -1596,15 +1662,20 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     );
     const primaryPackage = bookingPackageOf(primaryBooking) || {};
     const kitchenPackage = bookingPackageOf(kitchenBooking) || {};
+    const ticketPackage = ticketBooking ? (bookingPackageOf(ticketBooking) || {}) : {};
+    const hasTicketSnapshot = Boolean(ticketBooking && bookingHasTicketSnapshot(ticketBooking));
     const samePrimaryAndKitchen = sameBooking(primaryBooking, kitchenBooking);
     const bookingPackage = kitchenPackage || {};
     const menuPositions = normalizeMenuPositions(bookingPackage.menuPositions || bookingPackage.menu_positions || []);
     const rawMenuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
     const menuRows = applyKitchenCommentToMenuRows(rawMenuRows, kitchenBooking);
     const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
-    const ticketRows = buildTicketRows(bookingPackage, warnings);
-    const entryRow = ticketRows.length ? null : buildEntryChargeRow(bookingPackage, warnings);
+    const ticketRows = hasTicketSnapshot ? buildTicketRows(ticketPackage, warnings) : [];
+    const entryRow = hasTicketSnapshot ? null : buildEntryChargeRow(bookingPackage, warnings);
     pushPackageWarnings(warnings, bookingPackage);
+    if (hasTicketSnapshot && ticketPackage !== bookingPackage) {
+        pushPackageWarnings(warnings, ticketPackage);
+    }
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
             code: 'legacy_banquet_menu_used',
@@ -1621,8 +1692,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
     const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
-    const entrySubtotal = money(valueOf(bookingPackage, 'ticketSubtotal', 'ticket_subtotal'))
-        ?? money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal'))
+    const entrySubtotal = (hasTicketSnapshot
+        ? money(valueOf(ticketPackage, 'ticketSubtotal', 'ticket_subtotal'))
+        : money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal')))
         ?? (ticketRows.length ? sumKnown(ticketRows) : money(entryRow?.subtotal));
     const explicitProgramBasePrice = money(valueOf(primaryPackage, 'programBasePrice', 'program_base_price'));
     const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null

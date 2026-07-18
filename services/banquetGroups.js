@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { pool: defaultPool, generateBookingNumber } = require('../db');
 const {
     checkRoomConflict,
@@ -20,14 +21,23 @@ const {
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canEditBooking } = require('./bookingVisibility');
 const { insertHistory } = require('./historyLog');
-const { applyBookingPackage, applyBookingPackageEntryCharge } = require('./bookingPackage');
-const { resolveAndApplyAdmissionTicketQuote } = require('./admissionTickets');
+const { applyBookingPackageEntryCharge } = require('./bookingPackage');
+const {
+    hasTicketQuoteInput,
+    hasTicketSnapshotFields,
+    readAdmissionTicketSnapshot,
+    resolveAndApplyAdmissionTicketQuote
+} = require('./admissionTickets');
 const { normalizePinataFields } = require('./pinataMode');
 const { applyEffectiveBookingPrice } = require('./productPricing');
 const { upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 const { normalizeCustomerSource } = require('./customerSource');
 const { canonicalizeBookingRoomResource } = require('./timelineResources');
+const {
+    createBookingFinanceInTransaction,
+    syncBookingFinanceInTransaction
+} = require('./bookingFinanceSync');
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
 const WRITABLE_MEMBER_ROLES = new Set(['kitchen', 'activity', 'service', 'manual']);
@@ -161,27 +171,290 @@ function menuPositionCount(row = {}) {
 }
 
 function bookingPackageHasBanquetData(row = {}) {
-    const bookingPackage = bookingPackageFromRow(row);
-    if (!bookingPackage || typeof bookingPackage !== 'object') return false;
-    const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
-    const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
-    const ticketLines = packageArray(bookingPackage, 'ticketLines', 'ticket_lines');
-    return hasNonEmptyArray(positions)
-        || hasNonEmptyArray(serviceEvents)
-        || hasNonEmptyArray(ticketLines);
-}
-
-function bookingTicketLines(row = {}) {
-    const bookingPackage = bookingPackageFromRow(row);
-    const lines = packageArray(bookingPackage, 'ticketLines', 'ticket_lines');
-    return Array.isArray(lines) ? lines : [];
+    const extra = parseExtraData(row);
+    const packageCandidates = [
+        row.bookingPackage,
+        row.booking_package,
+        extra.bookingPackage,
+        extra.booking_package
+    ]
+        .map(parseAliasJson)
+        .filter(value => value && typeof value === 'object' && !Array.isArray(value));
+    const hasMaterialPackage = packageCandidates.some(bookingPackage => {
+        const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
+        const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
+        const ticketLines = packageArray(bookingPackage, 'ticketLines', 'ticket_lines');
+        const entryCharge = bookingPackage.entryCharge ?? bookingPackage.entry_charge;
+        return hasNonEmptyArray(positions)
+            || hasNonEmptyArray(serviceEvents)
+            || hasNonEmptyArray(ticketLines)
+            || Boolean(entryCharge && typeof entryCharge === 'object' && !Array.isArray(entryCharge));
+    });
+    return hasMaterialPackage
+        || bookingHasTicketSnapshot(row)
+        || Boolean(String(row.banquet_menu || row.banquetMenu || '').trim());
 }
 
 function bookingHasTicketSnapshot(row = {}) {
-    const bookingPackage = bookingPackageFromRow(row);
-    const lines = bookingPackage?.ticketLines || bookingPackage?.ticket_lines;
-    return Number(bookingPackage?.schemaVersion || bookingPackage?.schema_version || 0) >= 3
-        && Array.isArray(lines);
+    return hasTicketSnapshotFields(row);
+}
+
+function bookingHasAdmissionCharge(row = {}) {
+    return Boolean(readAdmissionTicketSnapshot(row));
+}
+
+function bookingHasTicketPayload(row = {}) {
+    return Boolean(
+        row?.ticketQuantities
+        || row?.ticket_quantities
+        || hasTicketQuoteInput(row)
+        || bookingHasTicketSnapshot(row)
+    );
+}
+
+const BANQUET_BOOKING_ALIAS_PAIRS = Object.freeze([
+    ['bookingId', 'booking_id', 'text'],
+    ['sourceBookingId', 'source_booking_id', 'text'],
+    ['roomResourceId', 'room_resource_id', 'text'],
+    ['customerId', 'customer_id', 'count'],
+    ['banquetGuests', 'banquet_guests', 'count'],
+    ['banquetAdults', 'banquet_adults', 'count'],
+    ['banquetTables', 'banquet_tables', 'count'],
+    ['banquetMenu', 'banquet_menu', 'text'],
+    ['kidsCount', 'kids_count', 'count'],
+    ['ticketQuantities', 'ticket_quantities', 'json'],
+    ['ticketQuote', 'ticket_quote', 'json'],
+    ['convertLegacy', 'convert_legacy', 'boolean'],
+    ['bookingPackage', 'booking_package', 'json'],
+    ['extraData', 'extra_data', 'json']
+]);
+
+function parseAliasJson(value) {
+    if (typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return value;
+    }
+}
+
+function normalizeBanquetAliasValue(value, kind) {
+    if (kind === 'count') {
+        if (value === undefined || value === null || value === '') return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : String(value);
+    }
+    if (kind === 'boolean') {
+        if (value === true || String(value).toLowerCase() === 'true') return true;
+        if (value === false || String(value).toLowerCase() === 'false') return false;
+        return value;
+    }
+    if (kind === 'text') {
+        return value === undefined || value === null ? null : String(value).trim();
+    }
+    return parseAliasJson(value);
+}
+
+function assertBanquetBookingAliasConsistency(booking = {}, path = 'booking') {
+    if (!booking || typeof booking !== 'object' || Array.isArray(booking)) return;
+    for (const [camel, snake, kind] of BANQUET_BOOKING_ALIAS_PAIRS) {
+        const hasCamel = Object.prototype.hasOwnProperty.call(booking, camel);
+        const hasSnake = Object.prototype.hasOwnProperty.call(booking, snake);
+        if (hasCamel && hasSnake) {
+            const camelValue = normalizeBanquetAliasValue(booking[camel], kind);
+            const snakeValue = normalizeBanquetAliasValue(booking[snake], kind);
+            if (!isDeepStrictEqual(camelValue, snakeValue)) {
+                throw new BanquetGroupError('Conflicting booking field aliases', {
+                    status: 422,
+                    code: 'BOOKING_FIELD_ALIAS_CONFLICT',
+                    details: {
+                        path,
+                        fields: [`${path}.${camel}`, `${path}.${snake}`]
+                    }
+                });
+            }
+        } else if (!hasCamel && hasSnake) {
+            booking[camel] = booking[snake];
+        }
+    }
+
+    const extra = normalizeBanquetAliasValue(
+        booking.extraData ?? booking.extra_data,
+        'json'
+    );
+    if (extra && typeof extra === 'object' && !Array.isArray(extra)) {
+        assertBanquetBookingAliasConsistency(extra, `${path}.extraData`);
+    }
+}
+
+function assertActivityHasNoPackagePayload(activityBooking = {}, linkedBookings = []) {
+    assertBanquetBookingAliasConsistency(activityBooking, 'activityBooking');
+    for (let index = 0; index < (Array.isArray(linkedBookings) ? linkedBookings.length : 0); index += 1) {
+        assertBanquetBookingAliasConsistency(linkedBookings[index], `linkedBookings[${index}]`);
+    }
+    const candidates = [
+        { kind: 'activity', booking: activityBooking },
+        ...(Array.isArray(linkedBookings)
+            ? linkedBookings.map(booking => ({ kind: 'linked_activity', booking }))
+            : [])
+    ];
+    const invalid = candidates.find(({ booking }) => (
+        bookingHasTicketPayload(booking)
+        || bookingPackageHasBanquetData(booking)
+    ));
+    if (!invalid) return;
+    throw new BanquetGroupError('Activity bookings cannot own banquet package or ticket data', {
+        status: 422,
+        code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+        details: { bookingKind: invalid.kind }
+    });
+}
+
+function resolveBookingSetPackageOwner({
+    group,
+    membershipRows = [],
+    memberRowsById = new Map(),
+    primaryBookingId,
+    suppliedOwnerBookingId,
+    user
+} = {}) {
+    const cleanPrimaryBookingId = cleanId(primaryBookingId);
+    const membershipByBookingId = new Map(
+        membershipRows
+            .map(membership => [cleanId(membership.booking_id), membership])
+            .filter(([bookingId]) => bookingId)
+    );
+    const activeRootMembers = new Map();
+    for (const [bookingId, membership] of membershipByBookingId) {
+        const row = memberRowsById.get(bookingId);
+        if (!row || !isActiveBookingRow(row) || !isRootBooking(row)) continue;
+        activeRootMembers.set(bookingId, { bookingId, membership, row });
+    }
+
+    const ticketOwners = [...activeRootMembers.values()]
+        .filter(item => bookingHasTicketSnapshot(item.row));
+    if (ticketOwners.length > 1) {
+        throw new BanquetGroupError('Multiple ticket snapshots found in banquet group', {
+            status: 409,
+            code: 'BANQUET_TICKET_SNAPSHOT_CONFLICT',
+            details: {
+                groupId: cleanId(group?.id),
+                bookingIds: ticketOwners.map(item => item.bookingId)
+            }
+        });
+    }
+    const meta = normalizeMeta(group?.meta);
+    const metaTicketBookingId = cleanId(meta.ticketBookingId);
+    if (!ticketOwners.length && metaTicketBookingId) {
+        throw new BanquetGroupError('Ticket owner metadata has no matching ticket snapshot', {
+            status: 409,
+            code: 'TICKET_PACKAGE_OWNER_METADATA_INVALID',
+            details: {
+                groupId: cleanId(group?.id),
+                field: 'ticketBookingId',
+                bookingId: metaTicketBookingId
+            }
+        });
+    }
+
+    const packageOwners = [...activeRootMembers.values()]
+        .filter(item => bookingPackageHasBanquetData(item.row));
+    if (packageOwners.length > 1) {
+        throw new BanquetGroupError('Multiple package owners found in banquet group', {
+            status: 409,
+            code: 'BANQUET_PACKAGE_OWNER_CONFLICT',
+            details: {
+                groupId: cleanId(group?.id),
+                bookingIds: packageOwners.map(item => item.bookingId),
+                ticketBookingIds: ticketOwners.map(item => item.bookingId)
+            }
+        });
+    }
+
+    let canonicalOwner = packageOwners[0] || null;
+    if (!canonicalOwner) {
+        for (const [metaField, rawBookingId] of [
+            ['ticketBookingId', meta.ticketBookingId],
+            ['packageOwnerBookingId', meta.packageOwnerBookingId]
+        ]) {
+            const metaBookingId = cleanId(rawBookingId);
+            if (!metaBookingId) continue;
+            canonicalOwner = activeRootMembers.get(metaBookingId) || null;
+            if (!canonicalOwner) {
+                throw new BanquetGroupError('Banquet package owner metadata is inconsistent', {
+                    status: 409,
+                    code: 'TICKET_PACKAGE_OWNER_METADATA_INVALID',
+                    details: {
+                        groupId: cleanId(group?.id),
+                        field: metaField,
+                        bookingId: metaBookingId
+                    }
+                });
+            }
+            break;
+        }
+    }
+    canonicalOwner = canonicalOwner || activeRootMembers.get(cleanPrimaryBookingId) || null;
+    if (!canonicalOwner) {
+        throw new BanquetGroupError('Primary booking membership is missing or inactive', {
+            status: 409,
+            code: 'PRIMARY_BOOKING_MEMBERSHIP_INVALID',
+            details: {
+                groupId: cleanId(group?.id),
+                bookingId: cleanPrimaryBookingId
+            }
+        });
+    }
+
+    const suppliedOwnerId = cleanId(suppliedOwnerBookingId);
+    if (suppliedOwnerId && !membershipByBookingId.has(suppliedOwnerId)) {
+        throw new BanquetGroupError('packageOwnerBookingId does not belong to this banquet group', {
+            status: 409,
+            code: 'TICKET_PACKAGE_OWNER_NOT_IN_GROUP',
+            details: {
+                groupId: cleanId(group?.id),
+                packageOwnerBookingId: suppliedOwnerId
+            }
+        });
+    }
+    if (suppliedOwnerId && suppliedOwnerId !== canonicalOwner.bookingId) {
+        throw new BanquetGroupError('packageOwnerBookingId does not match the canonical package owner', {
+            status: 409,
+            code: 'TICKET_PACKAGE_OWNER_MISMATCH',
+            details: {
+                groupId: cleanId(group?.id),
+                packageOwnerBookingId: suppliedOwnerId,
+                canonicalPackageOwnerBookingId: canonicalOwner.bookingId
+            }
+        });
+    }
+
+    if (canonicalOwner.bookingId !== cleanPrimaryBookingId) {
+        assertEditableBooking(user, canonicalOwner.row);
+        assertRootBooking(canonicalOwner.row, 'TICKET_PACKAGE_OWNER_MUST_BE_ROOT');
+        assertActiveBooking(canonicalOwner.row);
+        const role = String(canonicalOwner.membership?.role || '').trim().toLowerCase();
+        if (
+            role === 'activity'
+            || (
+                role !== 'kitchen'
+                && !bookingPackageHasBanquetData(canonicalOwner.row)
+                && !bookingHasTicketSnapshot(canonicalOwner.row)
+            )
+        ) {
+            throw new BanquetGroupError('Non-primary package owner must be a kitchen or package member', {
+                status: 409,
+                code: 'TICKET_PACKAGE_OWNER_INVALID',
+                details: {
+                    groupId: cleanId(group?.id),
+                    bookingId: canonicalOwner.bookingId,
+                    role: role || null
+                }
+            });
+        }
+    }
+
+    return canonicalOwner;
 }
 
 async function lockAndResolveGroupTicketOwner(db, {
@@ -192,36 +465,27 @@ async function lockAndResolveGroupTicketOwner(db, {
 } = {}) {
     const cleanGroupId = cleanId(groupId);
     const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
-    const groupResult = await db.query(
-        `SELECT *
-         FROM banquet_groups
-         WHERE id = $1
-           AND business_context = $2
-         FOR UPDATE`,
-        [cleanGroupId, context]
-    );
-    const group = groupResult.rows[0];
+    const group = await getGroupByIdForUpdate(db, cleanGroupId, context);
     if (!group) {
         throw new BanquetGroupError('Banquet group not found', {
             status: 404,
             code: 'BANQUET_GROUP_NOT_FOUND'
         });
     }
-    const memberResult = await db.query(
-        `SELECT booking.id, booking.extra_data, membership.role
-         FROM banquet_group_bookings membership
-         JOIN bookings booking
-           ON booking.id = membership.booking_id
-          AND booking.business_context = membership.business_context
-         WHERE membership.group_id = $1
-           AND membership.business_context = $2
-           AND COALESCE(booking.status, 'confirmed') <> 'cancelled'
-         ORDER BY CASE membership.role WHEN 'kitchen' THEN 0 WHEN 'primary' THEN 1 ELSE 2 END,
-                  membership.sort_order,
-                  membership.id`,
-        [cleanGroupId, context]
+    const memberships = await getMembershipRows(db, cleanGroupId, context);
+    const bookings = await getBookingsByIds(
+        db,
+        memberships.map(row => row.booking_id),
+        context
     );
-    const ticketOwners = memberResult.rows.filter(bookingHasTicketSnapshot);
+    const bookingById = new Map(bookings.map(row => [cleanId(row.id), row]));
+    const members = memberships
+        .map(membership => {
+            const booking = bookingById.get(cleanId(membership.booking_id));
+            return booking ? { ...booking, role: membership.role } : null;
+        })
+        .filter(row => row && isActiveBookingRow(row) && isRootBooking(row));
+    const ticketOwners = members.filter(bookingHasTicketSnapshot);
     if (ticketOwners.length > 1) {
         throw new BanquetGroupError('Multiple ticket snapshots found in banquet group', {
             status: 409,
@@ -232,33 +496,72 @@ async function lockAndResolveGroupTicketOwner(db, {
             }
         });
     }
+    const packageOwners = members.filter(bookingPackageHasBanquetData);
+    if (packageOwners.length > 1) {
+        throw new BanquetGroupError('Multiple package owners found in banquet group', {
+            status: 409,
+            code: 'BANQUET_PACKAGE_OWNER_CONFLICT',
+            details: {
+                groupId: cleanGroupId,
+                bookingIds: packageOwners.map(row => cleanId(row.id)),
+                ticketBookingIds: ticketOwners.map(row => cleanId(row.id))
+            }
+        });
+    }
+    const activityPackageOwner = packageOwners.find(row => (
+        String(row.role || '').trim().toLowerCase() === 'activity'
+        && cleanId(row.id) !== cleanId(group.primary_booking_id)
+    ));
+    if (activityPackageOwner) {
+        throw new BanquetGroupError('Activity member cannot own the banquet package', {
+            status: 409,
+            code: 'TICKET_PACKAGE_OWNER_INVALID',
+            details: {
+                groupId: cleanGroupId,
+                bookingId: cleanId(activityPackageOwner.id),
+                role: 'activity'
+            }
+        });
+    }
+
     const preferred = cleanId(preferredBookingId);
-    const ownerId = cleanId(ticketOwners[0]?.id)
-        || (memberResult.rows.some(row => cleanId(row.id) === preferred) ? preferred : null)
-        || cleanId(group.primary_booking_id);
-    const meta = group.meta && typeof group.meta === 'object' && !Array.isArray(group.meta)
-        ? group.meta
-        : {};
-    await db.query(
-        `UPDATE banquet_groups
-         SET meta = $3::jsonb,
-             updated_at = NOW(),
-             updated_by = COALESCE($4, updated_by)
-         WHERE id = $1
-           AND business_context = $2`,
-        [
-            cleanGroupId,
-            context,
-            JSON.stringify({
-                ...meta,
-                ticketBookingId: ownerId,
-                packageOwnerBookingId: ownerId
-            }),
-            actor
-        ]
-    );
+    const ticketOwnerId = cleanId(ticketOwners[0]?.id);
+    const meta = normalizeMeta(group.meta);
+    const activeRootMemberIds = new Set(members.map(row => cleanId(row.id)).filter(Boolean));
+    const metadataOwnerId = cleanId(meta.packageOwnerBookingId);
+    const packageOwnerId = cleanId(packageOwners[0]?.id)
+        || (metadataOwnerId && activeRootMemberIds.has(metadataOwnerId) ? metadataOwnerId : null)
+        || (preferred && activeRootMemberIds.has(preferred) ? preferred : null)
+        || (activeRootMemberIds.has(cleanId(group.primary_booking_id)) ? cleanId(group.primary_booking_id) : null);
+    const hasTicketOwnerMeta = Object.prototype.hasOwnProperty.call(meta, 'ticketBookingId');
+    const hasPackageOwnerMeta = Object.prototype.hasOwnProperty.call(meta, 'packageOwnerBookingId');
+    const ownerMetaChanged = !hasTicketOwnerMeta
+        || !hasPackageOwnerMeta
+        || cleanId(meta.ticketBookingId) !== ticketOwnerId
+        || cleanId(meta.packageOwnerBookingId) !== packageOwnerId;
+    if (ownerMetaChanged) {
+        await db.query(
+            `UPDATE banquet_groups
+             SET meta = $3::jsonb,
+                 updated_at = NOW(),
+                 updated_by = COALESCE($4, updated_by)
+             WHERE id = $1
+               AND business_context = $2`,
+            [
+                cleanGroupId,
+                context,
+                JSON.stringify({
+                    ...meta,
+                    ticketBookingId: ticketOwnerId,
+                    packageOwnerBookingId: packageOwnerId
+                }),
+                actor
+            ]
+        );
+    }
     return {
-        ownerBookingId: ownerId,
+        ownerBookingId: packageOwnerId,
+        ticketBookingId: ticketOwnerId,
         ticketSnapshotCount: ticketOwners.length
     };
 }
@@ -1021,6 +1324,18 @@ async function reconcileBanquetGroupForBooking({
         let primary = null;
         let createdGroup = false;
         const membershipByBookingId = new Map(memberships.map(row => [cleanId(row.booking_id), row]));
+        const ticketedCandidatesToAttach = candidates
+            .filter(bookingHasTicketSnapshot)
+            .filter(candidate => !membershipByBookingId.has(cleanId(candidate.id)))
+            .map(candidate => cleanId(candidate.id))
+            .filter(Boolean);
+        if (ticketedCandidatesToAttach.length) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'ticket_reprice_required', {
+                candidateBookingIds,
+                ticketedBookingIds: ticketedCandidatesToAttach
+            });
+        }
 
         if (groupIds.length === 1) {
             group = await getGroupByIdForUpdate(client, groupIds[0], context);
@@ -1075,7 +1390,9 @@ async function reconcileBanquetGroupForBooking({
                         autoGrouped: true,
                         rule: 'business_context_date_room_customer_anchor',
                         anchorBookingId: cleanBookingId,
-                        candidateBookingIds
+                        candidateBookingIds,
+                        ticketBookingId: bookingHasTicketSnapshot(primary) ? cleanId(primary.id) : null,
+                        packageOwnerBookingId: cleanId(primary.id)
                     }),
                     actorUserId(user),
                     actorName(user),
@@ -1122,6 +1439,12 @@ async function reconcileBanquetGroupForBooking({
         }
 
         if (createdGroup || attachedBookingIds.length) {
+            await lockAndResolveGroupTicketOwner(client, {
+                groupId,
+                businessContext: context,
+                preferredBookingId: cleanId(group.meta?.packageOwnerBookingId) || primaryBookingId,
+                actor: actorName(user)
+            });
             await client.query(
                 `UPDATE banquet_groups
                     SET updated_at = NOW(), updated_by = $3
@@ -1789,9 +2112,68 @@ function bookingSetExtraData(existingRow = {}, patch = {}) {
     const input = patch.extraData ?? patch.extra_data;
     const incoming = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
     const merged = { ...existing, ...incoming };
+    const directPackage = patch.bookingPackage ?? patch.booking_package;
+    if (directPackage && typeof directPackage === 'object' && !Array.isArray(directPackage)) {
+        merged.bookingPackage = directPackage;
+        delete merged.booking_package;
+    }
     delete merged.multiActivity;
     delete merged.multi_activity;
     return merged;
+}
+
+function mergeBookingSetPatches(basePatch = {}, packageOwnerPatch = {}) {
+    const base = basePatch && typeof basePatch === 'object' && !Array.isArray(basePatch)
+        ? basePatch
+        : {};
+    const owner = packageOwnerPatch && typeof packageOwnerPatch === 'object' && !Array.isArray(packageOwnerPatch)
+        ? packageOwnerPatch
+        : {};
+    const baseExtra = base.extraData ?? base.extra_data;
+    const ownerExtra = owner.extraData ?? owner.extra_data;
+    const merged = { ...base, ...owner };
+    if (
+        (baseExtra && typeof baseExtra === 'object' && !Array.isArray(baseExtra))
+        || (ownerExtra && typeof ownerExtra === 'object' && !Array.isArray(ownerExtra))
+    ) {
+        merged.extraData = {
+            ...(baseExtra && typeof baseExtra === 'object' && !Array.isArray(baseExtra) ? baseExtra : {}),
+            ...(ownerExtra && typeof ownerExtra === 'object' && !Array.isArray(ownerExtra) ? ownerExtra : {})
+        };
+        delete merged.extra_data;
+    }
+    return merged;
+}
+
+function bookingSetPatchHasMenuInput(patch = {}) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return false;
+    const extra = patch.extraData ?? patch.extra_data;
+    const topLevelPackage = patch.bookingPackage ?? patch.booking_package;
+    const nestedPackage = extra && typeof extra === 'object' && !Array.isArray(extra)
+        ? (extra.bookingPackage ?? extra.booking_package)
+        : null;
+    return Object.prototype.hasOwnProperty.call(patch, 'banquetMenu')
+        || Object.prototype.hasOwnProperty.call(patch, 'banquet_menu')
+        || Object.prototype.hasOwnProperty.call(patch, 'menuPositions')
+        || Object.prototype.hasOwnProperty.call(patch, 'menu_positions')
+        || Boolean(
+            topLevelPackage
+            && typeof topLevelPackage === 'object'
+            && !Array.isArray(topLevelPackage)
+            && (
+                Object.prototype.hasOwnProperty.call(topLevelPackage, 'menuPositions')
+                || Object.prototype.hasOwnProperty.call(topLevelPackage, 'menu_positions')
+            )
+        )
+        || Boolean(
+            nestedPackage
+            && typeof nestedPackage === 'object'
+            && !Array.isArray(nestedPackage)
+            && (
+                Object.prototype.hasOwnProperty.call(nestedPackage, 'menuPositions')
+                || Object.prototype.hasOwnProperty.call(nestedPackage, 'menu_positions')
+            )
+        );
 }
 
 function normalizeBookingSetRoot(existingRow, patch, {
@@ -1799,7 +2181,8 @@ function normalizeBookingSetRoot(existingRow, patch, {
     group,
     businessContext,
     user,
-    role
+    role,
+    preserveBanquetFields = false
 } = {}) {
     const existing = existingRow ? mapBookingRow(existingRow) : {};
     const input = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
@@ -1814,6 +2197,8 @@ function normalizeBookingSetRoot(existingRow, patch, {
         businessContext,
         user
     });
+    delete booking.bookingPackage;
+    delete booking.booking_package;
     booking.id = cleanId(existingRow?.id || input.bookingId || input.booking_id);
     booking.createdBy = normalizeActivityText(existingRow?.created_by || merged.createdBy || actorName(user), 100);
     booking.status = normalizeBookingStatus(merged.status, existingRow?.status || primaryBooking?.status || 'confirmed');
@@ -1826,16 +2211,17 @@ function normalizeBookingSetRoot(existingRow, patch, {
     booking.groupName = role === 'primary'
         ? normalizeActivityText(merged.groupName || merged.group_name || group?.group_name, 200)
         : null;
-    booking.banquetGuests = role === 'primary'
+    const keepsBanquetFields = role === 'primary' || preserveBanquetFields;
+    booking.banquetGuests = keepsBanquetFields
         ? normalizeActivityInteger(merged.banquetGuests ?? merged.banquet_guests, null)
         : null;
-    booking.banquetAdults = role === 'primary'
+    booking.banquetAdults = keepsBanquetFields
         ? normalizeActivityInteger(merged.banquetAdults ?? merged.banquet_adults, null)
         : null;
-    booking.banquetTables = role === 'primary'
+    booking.banquetTables = keepsBanquetFields
         ? normalizeActivityInteger(merged.banquetTables ?? merged.banquet_tables, null)
         : null;
-    booking.banquetMenu = role === 'primary'
+    booking.banquetMenu = keepsBanquetFields
         ? normalizeActivityText(merged.banquetMenu || merged.banquet_menu, 4000)
         : null;
     booking.extraData.banquetGroup = {
@@ -2098,11 +2484,12 @@ async function cascadeBookingSetTechnicalChildren(db, rootBookingId, booking, bu
 }
 
 async function cancelBookingSetActivity(db, groupId, primaryBookingId, bookingId, businessContext, user) {
-    await db.query(
+    const cancelledResult = await db.query(
         `UPDATE bookings
             SET status='cancelled', updated_at=NOW()
           WHERE (id=$1 OR linked_to=$1)
-            AND ${bookingContextSql('', '$2')}`,
+            AND ${bookingContextSql('', '$2')}
+          RETURNING *`,
         [bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     await db.query(
@@ -2118,6 +2505,9 @@ async function cancelBookingSetActivity(db, groupId, primaryBookingId, bookingId
         primary_booking_id: primaryBookingId,
         booking_id: bookingId
     });
+    return cancelledResult.rows.find(row => cleanId(row.id) === cleanId(bookingId))
+        || cancelledResult.rows[0]
+        || null;
 }
 
 async function persistDerivedBookingSetMetadata(
@@ -2616,6 +3006,12 @@ function buildSnapshot({
     });
     if (!roleBuckets.primary) warnings.push({ code: 'primary_booking_missing', message: 'Primary banquet booking could not be determined.' });
     if (!roleBuckets.kitchen.length) warnings.push({ code: 'kitchen_booking_missing', message: 'No kitchen/menu booking was detected for this banquet.' });
+    if (roleBuckets.kitchen.length > 1) {
+        warnings.push({
+            code: 'multiple_kitchen_bookings',
+            message: 'Multiple kitchen/menu booking candidates were detected; verify the canonical package owner before printing or editing.'
+        });
+    }
     const memberStatuses = [...new Set(members.map(member => bookingStatusForContract(member.booking)).filter(Boolean))].sort();
     if (memberStatuses.length > 1) {
         warnings.push({
@@ -2763,13 +3159,41 @@ async function createBanquetGroupInTransaction({
     assertActiveBooking(primaryBooking);
 
     const scope = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const validatedMembers = [];
+    for (const member of Array.isArray(members) ? members : []) {
+        const bookingId = cleanId(member?.bookingId || member?.booking_id || member?.id);
+        if (!bookingId || bookingId === cleanPrimaryId) continue;
+        const role = normalizeWritableRole(member?.role);
+        if (!role || role === 'primary') {
+            throw new BanquetGroupError('Invalid banquet member role', {
+                status: 400,
+                code: 'INVALID_MEMBER_ROLE'
+            });
+        }
+        const memberRow = await getScopedBookingForUpdate(db, bookingId, scope);
+        if (!memberRow) {
+            throw new BanquetGroupError('Banquet member booking not found', {
+                status: 409,
+                code: 'BANQUET_BOOKING_MEMBER_MISSING',
+                details: { bookingId }
+            });
+        }
+        assertRootBooking(memberRow, 'BANQUET_BOOKING_MEMBER_MUST_BE_ROOT');
+        assertActiveBooking(memberRow);
+        if (bookingPackageHasBanquetData(memberRow)) {
+            throw new BanquetGroupError('Only the primary booking may own package data during group creation', {
+                status: 422,
+                code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+                details: { bookingId, role }
+            });
+        }
+        validatedMembers.push({ bookingId, role });
+    }
     const id = generateBanquetGroupId();
     const normalizedSource = normalizeShortText(source, 64) || 'booking_create';
     const normalizedMeta = normalizeMeta(meta);
-    if (bookingHasTicketSnapshot(primaryBooking)) {
-        normalizedMeta.ticketBookingId = cleanPrimaryId;
-        normalizedMeta.packageOwnerBookingId = cleanPrimaryId;
-    }
+    normalizedMeta.ticketBookingId = bookingHasTicketSnapshot(primaryBooking) ? cleanPrimaryId : null;
+    normalizedMeta.packageOwnerBookingId = cleanPrimaryId;
     const groupResult = await db.query(
         `INSERT INTO banquet_groups
             (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, guest_arrival_time, group_name, status, source, meta,
@@ -2800,13 +3224,8 @@ async function createBanquetGroupInTransaction({
         [id, scope, cleanPrimaryId, actorUserId(user), actorName(user)]
     );
     const memberResults = [];
-    for (const member of Array.isArray(members) ? members : []) {
-        const bookingId = cleanId(member?.bookingId || member?.booking_id || member?.id);
-        if (!bookingId || bookingId === cleanPrimaryId) continue;
-        const role = normalizeWritableRole(member?.role);
-        if (!role || role === 'primary') {
-            throw new BanquetGroupError('Invalid banquet member role', { status: 400, code: 'INVALID_MEMBER_ROLE' });
-        }
+    for (const member of validatedMembers) {
+        const { bookingId, role } = member;
         const inserted = await db.query(
             `INSERT INTO banquet_group_bookings
                 (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
@@ -2860,6 +3279,13 @@ async function createBanquetGroup({
 
         const existing = await getMembershipForBooking(client, cleanPrimaryId, businessContext);
         if (existing) throw duplicateMembershipError(existing);
+        if (bookingHasAdmissionCharge(primary)) {
+            throw new BanquetGroupError('Ticketed bookings cannot change admission context through manual group creation', {
+                status: 409,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                details: { bookingId: cleanPrimaryId }
+            });
+        }
 
         const created = await createBanquetGroupInTransaction({
             db: client,
@@ -2989,6 +3415,8 @@ async function updateBanquetBookingSet({
     groupId,
     primaryBookingId,
     primaryPatch = {},
+    packageOwnerBookingId = null,
+    packageOwnerPatch = {},
     activities = [],
     expectedGroupUpdatedAt,
     businessContext = DEFAULT_TIMELINE_CONTEXT,
@@ -3006,11 +3434,22 @@ async function updateBanquetBookingSet({
     if (!primaryPatch || typeof primaryPatch !== 'object' || Array.isArray(primaryPatch)) {
         throw new BanquetGroupError('primaryPatch must be an object', { status: 400, code: 'PRIMARY_PATCH_INVALID' });
     }
+    if (!packageOwnerPatch || typeof packageOwnerPatch !== 'object' || Array.isArray(packageOwnerPatch)) {
+        throw new BanquetGroupError('packageOwnerPatch must be an object', {
+            status: 400,
+            code: 'PACKAGE_OWNER_PATCH_INVALID'
+        });
+    }
     if (!Array.isArray(activities) || activities.length > 50) {
         throw new BanquetGroupError('activities must be an array with at most 50 items', {
             status: 400,
             code: 'BANQUET_ACTIVITY_SET_INVALID'
         });
+    }
+    assertBanquetBookingAliasConsistency(primaryPatch, 'primaryPatch');
+    assertBanquetBookingAliasConsistency(packageOwnerPatch, 'packageOwnerPatch');
+    for (let index = 0; index < activities.length; index += 1) {
+        assertBanquetBookingAliasConsistency(activities[index], `activities[${index}]`);
     }
     if (!expectedUpdatedAt) {
         throw new BanquetGroupError('expectedGroupUpdatedAt is required', {
@@ -3055,11 +3494,38 @@ async function updateBanquetBookingSet({
         assertActiveBooking(primaryRow);
 
         const membershipRows = await getMembershipRowsForUpdate(client, cleanGroupId, context);
+        const memberRowsById = new Map([[cleanPrimaryBookingId, primaryRow]]);
+        const membershipBookingIds = [...new Set(
+            membershipRows.map(row => cleanId(row.booking_id)).filter(Boolean)
+        )].sort();
+        for (const bookingId of membershipBookingIds) {
+            if (memberRowsById.has(bookingId)) continue;
+            const row = await getScopedBookingForUpdate(client, bookingId, context);
+            if (!row) {
+                throw new BanquetGroupError('Banquet booking member not found', {
+                    status: 409,
+                    code: 'BANQUET_BOOKING_MEMBER_MISSING',
+                    details: { groupId: cleanGroupId, bookingId }
+                });
+            }
+            memberRowsById.set(bookingId, row);
+        }
+        const packageOwner = resolveBookingSetPackageOwner({
+            group,
+            membershipRows,
+            memberRowsById,
+            primaryBookingId: cleanPrimaryBookingId,
+            suppliedOwnerBookingId: packageOwnerBookingId,
+            user
+        });
+        const canonicalPackageOwnerBookingId = packageOwner.bookingId;
+        const primaryOwnsPackage = canonicalPackageOwnerBookingId === cleanPrimaryBookingId;
+
         const activityMembershipRows = membershipRows.filter(row => row.role === 'activity');
         const existingActivityIds = activityMembershipRows.map(row => cleanId(row.booking_id)).filter(Boolean);
         const existingActivityRows = new Map();
         for (const bookingId of [...existingActivityIds].sort()) {
-            const row = await getScopedBookingForUpdate(client, bookingId, context);
+            const row = memberRowsById.get(bookingId);
             if (!row) {
                 throw new BanquetGroupError('Activity booking member not found', {
                     status: 409,
@@ -3092,6 +3558,9 @@ async function updateBanquetBookingSet({
         const customerPrimaryRow = resolvedCustomerId
             ? { ...primaryRow, customer_id: resolvedCustomerId }
             : primaryRow;
+        const effectivePrimaryPatch = primaryOwnsPackage
+            ? mergeBookingSetPatches(resolvedPrimaryPatch, packageOwnerPatch)
+            : resolvedPrimaryPatch;
 
         const seenDesiredIds = new Set();
         const desiredInputs = activities.map((item, index) => {
@@ -3123,7 +3592,7 @@ async function updateBanquetBookingSet({
             return { bookingId, patch: item };
         });
 
-        const primaryBooking = normalizeBookingSetRoot(primaryRow, resolvedPrimaryPatch, {
+        const primaryBooking = normalizeBookingSetRoot(primaryRow, effectivePrimaryPatch, {
             primaryBooking: customerPrimaryRow,
             group: customerGroup,
             businessContext: context,
@@ -3140,6 +3609,25 @@ async function updateBanquetBookingSet({
                 role: 'activity'
             })
         }));
+        const packageOwnerBooking = primaryOwnsPackage
+            ? primaryBooking
+            : normalizeBookingSetRoot(packageOwner.row, {
+                ...packageOwnerPatch,
+                date: primaryBooking.date,
+                room: primaryBooking.room,
+                roomResourceId: primaryBooking.roomResourceId || null,
+                room_resource_id: primaryBooking.roomResourceId || null,
+                customerId: primaryBooking.customerId ?? null,
+                customer_id: primaryBooking.customerId ?? null
+            }, {
+                primaryBooking: customerPrimaryRow,
+                group: customerGroup,
+                businessContext: context,
+                user,
+                role: packageOwner.membership?.role || 'kitchen',
+                preserveBanquetFields: true
+            });
+        const packageOwnerMenuChanged = bookingSetPatchHasMenuInput(packageOwnerPatch);
 
         assertBookingSetTechnicalChildrenStable(primaryRow, primaryBooking, technicalRows);
         for (const desired of desiredActivities) {
@@ -3149,44 +3637,80 @@ async function updateBanquetBookingSet({
                 technicalRows
             );
         }
+        if (!primaryOwnsPackage) {
+            assertBookingSetTechnicalChildrenStable(packageOwner.row, packageOwnerBooking, technicalRows);
+        }
 
-        const normalizedBookings = [primaryBooking, ...desiredActivities.map(item => item.booking)];
-        for (const booking of normalizedBookings) {
-            const existingRoomResourceId = booking.id === primaryRow.id
-                ? primaryRow.room_resource_id
-                : existingActivityRows.get(String(booking.id))?.room_resource_id;
+        const normalizedEntries = [
+            {
+                booking: primaryBooking,
+                existingRow: primaryRow,
+                kind: 'primary',
+                isPackageOwner: primaryOwnsPackage
+            },
+            ...desiredActivities.map(item => ({
+                booking: item.booking,
+                existingRow: existingActivityRows.get(String(item.bookingId)) || null,
+                kind: 'activity',
+                isPackageOwner: false
+            }))
+        ];
+        if (!primaryOwnsPackage) {
+            normalizedEntries.push({
+                booking: packageOwnerBooking,
+                existingRow: packageOwner.row,
+                kind: 'package_owner',
+                isPackageOwner: true
+            });
+        }
+        const normalizedBookings = normalizedEntries.map(item => item.booking);
+        for (const entry of normalizedEntries) {
+            const { booking, existingRow } = entry;
+            if (entry.kind === 'package_owner') {
+                booking.date = primaryBooking.date;
+                booking.room = primaryBooking.room;
+                booking.roomResourceId = primaryBooking.roomResourceId || null;
+                booking.customerId = primaryBooking.customerId ?? null;
+            }
+            const existingRoomResourceId = existingRow?.room_resource_id || null;
             await canonicalizeBanquetBookingRoom(client, booking, context, {
                 allowInactiveResourceId: existingRoomResourceId || null
             });
             assertCreateActivityPayload(booking);
             applyBookingSetPinataNormalization(booking);
-            applyBookingPackage(booking);
-            if (booking.id === primaryRow.id) {
-                await resolveAndApplyAdmissionTicketQuote({
+            let ticketResolution = null;
+            if (entry.isPackageOwner) {
+                ticketResolution = await resolveAndApplyAdmissionTicketQuote({
                     queryable: client,
                     businessContext: context,
                     booking,
-                    existingBooking: primaryRow,
+                    existingBooking: existingRow,
                     newBanquetFlow: false
                 });
-            } else if (
-                booking.ticketQuantities
-                || booking.ticket_quantities
-                || booking.ticketQuote
-                || booking.ticket_quote
-                || bookingTicketLines(booking).length
-            ) {
-                throw new BanquetGroupError('Activity member cannot own ticket snapshot', {
+            } else if (bookingHasTicketPayload(booking)) {
+                throw new BanquetGroupError('Only the canonical package owner can persist ticket data', {
                     status: 422,
                     code: 'TICKET_PACKAGE_OWNER_REQUIRED'
+                });
+            } else if (entry.kind === 'primary') {
+                ticketResolution = await resolveAndApplyAdmissionTicketQuote({
+                    queryable: client,
+                    businessContext: context,
+                    booking,
+                    existingBooking: existingRow,
+                    newBanquetFlow: false
                 });
             }
             await applyEffectiveBookingPrice(client, booking, { businessContext: context });
             await applyBookingPackageEntryCharge(client, booking, {
                 businessContext: context,
-                sourceBooking: primaryRow,
-                primaryBooking: primaryRow
+                sourceBooking: existingRow,
+                primaryBooking: primaryRow,
+                preserveNoTicketPackage: Boolean(ticketResolution?.preserveNoTicketPackage)
             });
+            if (entry.kind === 'package_owner' && !packageOwnerMenuChanged) {
+                booking.banquetMenu = existingRow?.banquet_menu ?? null;
+            }
         }
 
         assertBookingSetPairwiseConflicts(normalizedBookings);
@@ -3225,7 +3749,7 @@ async function updateBanquetBookingSet({
 
         const removedActivityIds = existingActivityIds.filter(bookingId => !seenDesiredIds.has(bookingId));
         for (const bookingId of removedActivityIds) {
-            await cancelBookingSetActivity(
+            const cancelledActivityRow = await cancelBookingSetActivity(
                 client,
                 cleanGroupId,
                 cleanPrimaryBookingId,
@@ -3233,6 +3757,14 @@ async function updateBanquetBookingSet({
                 context,
                 user
             );
+            if (cancelledActivityRow) {
+                await syncBookingFinanceInTransaction(client, cancelledActivityRow, {
+                    businessContext: context,
+                    createdBy: actorName(user),
+                    optional: false,
+                    label: 'Cancelled banquet activity finance synchronization'
+                });
+            }
         }
 
         const savedActivityRows = [];
@@ -3303,6 +3835,67 @@ async function updateBanquetBookingSet({
             savedActivityRows.push(created);
         }
 
+        let updatedPackageOwnerRow = primaryOwnsPackage ? updatedPrimaryRow : null;
+        if (!primaryOwnsPackage) {
+            updatedPackageOwnerRow = await updateBookingSetRoot(
+                client,
+                canonicalPackageOwnerBookingId,
+                packageOwnerBooking,
+                context
+            );
+            if (!updatedPackageOwnerRow) {
+                throw new BanquetGroupError('Canonical package owner booking not found', {
+                    status: 409,
+                    code: 'TICKET_PACKAGE_OWNER_MISSING',
+                    details: { bookingId: canonicalPackageOwnerBookingId }
+                });
+            }
+            await cascadeBookingSetTechnicalChildren(
+                client,
+                canonicalPackageOwnerBookingId,
+                packageOwnerBooking,
+                context
+            );
+            await logBanquetHistory(client, context, 'banquet_booking_set_package_owner_updated', user, {
+                group_id: cleanGroupId,
+                primary_booking_id: cleanPrimaryBookingId,
+                booking_id: canonicalPackageOwnerBookingId,
+                previous: mapBookingRow(packageOwner.row),
+                updated: mapBookingRow(updatedPackageOwnerRow)
+            });
+        }
+        const financeRowsById = new Map(
+            [updatedPrimaryRow, updatedPackageOwnerRow, ...savedActivityRows]
+                .filter(Boolean)
+                .map(row => [cleanId(row.id), row])
+                .filter(([bookingId]) => bookingId)
+        );
+        for (const row of financeRowsById.values()) {
+            await syncBookingFinanceInTransaction(client, row, {
+                businessContext: context,
+                createdBy: actorName(user),
+                optional: false,
+                label: 'Atomic banquet booking finance synchronization'
+            });
+        }
+
+        const resolvedOwnerState = await lockAndResolveGroupTicketOwner(client, {
+            groupId: cleanGroupId,
+            businessContext: context,
+            preferredBookingId: canonicalPackageOwnerBookingId,
+            actor: actorName(user)
+        });
+        if (cleanId(resolvedOwnerState.ownerBookingId) !== canonicalPackageOwnerBookingId) {
+            throw new BanquetGroupError('Canonical package owner changed during booking-set update', {
+                status: 409,
+                code: 'TICKET_PACKAGE_OWNER_CONFLICT',
+                details: {
+                    requestedPackageOwnerBookingId: canonicalPackageOwnerBookingId,
+                    currentPackageOwnerBookingId: resolvedOwnerState.ownerBookingId || null
+                }
+            });
+        }
+
         const updatedGroupResult = await client.query(
             `UPDATE banquet_groups SET
                 customer_id=$3,
@@ -3339,18 +3932,12 @@ async function updateBanquetBookingSet({
             user
         );
 
-        if (bookingHasTicketSnapshot(updatedPrimaryRow)) {
-            await lockAndResolveGroupTicketOwner(client, {
-                groupId: cleanGroupId,
-                businessContext: context,
-                preferredBookingId: cleanPrimaryBookingId,
-                actor: actorName(user)
-            });
-        }
         const derived = await persistDerivedBookingSetMetadata(client, updatedGroup, context);
         await logBanquetHistory(client, context, 'banquet_booking_set_updated', user, {
             group_id: cleanGroupId,
             primary_booking_id: cleanPrimaryBookingId,
+            package_owner_booking_id: canonicalPackageOwnerBookingId,
+            ticket_booking_id: resolvedOwnerState.ticketBookingId || null,
             activity_booking_ids: savedActivityRows.map(row => row.id),
             cancelled_activity_booking_ids: removedActivityIds,
             activity_ids: derived.activityIds,
@@ -3374,8 +3961,13 @@ async function updateBanquetBookingSet({
         });
         return {
             success: true,
-            group: mapGroupRow(updatedGroup),
+            group: snapshot?.group || mapGroupRow(updatedGroup),
             primaryBooking: snapshot?.bookings?.primary || mapBookingRow(updatedPrimaryRow),
+            packageOwnerBookingId: canonicalPackageOwnerBookingId,
+            packageOwnerBooking: snapshot?.members
+                ?.find(member => cleanId(member.bookingId) === canonicalPackageOwnerBookingId)
+                ?.booking
+                || mapBookingRow(updatedPackageOwnerRow),
             activityBookings: snapshot?.bookings?.activities || savedActivityRows.map(mapBookingRow),
             cancelledActivityBookingIds: removedActivityIds,
             banquetGroup: snapshot,
@@ -3440,6 +4032,43 @@ async function validateSingleBookingActivitySetUpdate({
     };
 }
 
+async function lockSourceBookingBanquetContext(db, bookingId, businessContext) {
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const observedGroup = await findGroupForBooking(db, bookingId, context);
+    let group = observedGroup.group
+        ? await getGroupByIdForUpdate(db, observedGroup.group.id, context)
+        : await getGroupByPrimaryBookingForUpdate(db, bookingId, context);
+
+    if (observedGroup.group && !group) {
+        throw new BanquetGroupError('Banquet group changed while the source booking was being locked', {
+            status: 409,
+            code: 'BANQUET_GROUP_VERSION_CONFLICT',
+            details: { bookingId: cleanId(bookingId) }
+        });
+    }
+
+    const source = await getScopedBookingForUpdate(db, bookingId, context);
+    const membership = await getMembershipForBooking(db, bookingId, context);
+    const lockedGroupId = cleanId(group?.id);
+    const membershipGroupId = cleanId(membership?.group_id);
+
+    if (
+        (observedGroup.group && !membershipGroupId)
+        || (membershipGroupId && membershipGroupId !== lockedGroupId)
+    ) {
+        throw new BanquetGroupError('Banquet membership changed while the source booking was being locked', {
+            status: 409,
+            code: 'BANQUET_GROUP_VERSION_CONFLICT',
+            details: {
+                bookingId: cleanId(bookingId),
+                currentGroupId: membershipGroupId || null
+            }
+        });
+    }
+
+    return { source, group, membership };
+}
+
 async function attachBookingToBanquetGroup({
     db = defaultPool,
     groupId,
@@ -3489,6 +4118,13 @@ async function attachBookingToBanquetGroup({
 
         const existing = await getMembershipForBooking(client, cleanBookingId, businessContext);
         if (existing) throw duplicateMembershipError(existing, cleanGroupId);
+        if (bookingHasAdmissionCharge(target)) {
+            throw new BanquetGroupError('Ticketed bookings must be repriced in the full booking editor before group attachment', {
+                status: 409,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                details: { bookingId: cleanBookingId, groupId: cleanGroupId }
+            });
+        }
 
         const order = Number.isInteger(Number(sortOrder)) ? Number(sortOrder) : 100;
         const membershipResult = await client.query(
@@ -3514,6 +4150,12 @@ async function attachBookingToBanquetGroup({
             label || group.group_name || target.group_name || target.label || target.program_name,
             user
         );
+        await lockAndResolveGroupTicketOwner(client, {
+            groupId: cleanGroupId,
+            businessContext,
+            preferredBookingId: cleanId(group.meta?.packageOwnerBookingId) || primaryBookingId,
+            actor: actorName(user)
+        });
         await logBanquetHistory(client, businessContext, 'banquet_group_booking_attached', user, {
             group_id: cleanGroupId,
             primary_booking_id: primaryBookingId,
@@ -3573,6 +4215,13 @@ async function detachBookingFromBanquetGroup({
         const target = await getScopedBookingForUpdate(client, cleanBookingId, businessContext);
         if (primary) assertEditableBooking(user, primary);
         if (target) assertEditableBooking(user, target);
+        if (target && bookingHasAdmissionCharge(target)) {
+            throw new BanquetGroupError('Ticketed bookings must be repriced in the full booking editor before group detachment', {
+                status: 409,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                details: { bookingId: cleanBookingId, groupId: cleanGroupId }
+            });
+        }
 
         await client.query(
             `DELETE FROM banquet_group_bookings
@@ -3584,6 +4233,12 @@ async function detachBookingFromBanquetGroup({
         const deletedLink = primaryBookingId
             ? await deleteCompatibilityLink(client, businessContext, primaryBookingId, cleanBookingId)
             : null;
+        await lockAndResolveGroupTicketOwner(client, {
+            groupId: cleanGroupId,
+            businessContext,
+            preferredBookingId: cleanId(group.meta?.packageOwnerBookingId) || primaryBookingId,
+            actor: actorName(user)
+        });
         await logBanquetHistory(client, businessContext, 'banquet_group_booking_detached', user, {
             group_id: cleanGroupId,
             primary_booking_id: primaryBookingId,
@@ -3630,11 +4285,13 @@ async function createMemberBookingFromSourceBooking({
     if (!inputBooking || typeof inputBooking !== 'object') {
         throw new BanquetGroupError('member booking payload is required', { status: 400, code: 'MEMBER_BOOKING_REQUIRED' });
     }
+    assertBanquetBookingAliasConsistency(inputBooking, 'memberBooking');
 
     const client = await db.connect();
     try {
         await client.query('BEGIN');
-        const source = await getScopedBookingForUpdate(client, cleanSourceId, context);
+        const lockedContext = await lockSourceBookingBanquetContext(client, cleanSourceId, context);
+        const source = lockedContext.source;
         if (!source) {
             throw new BanquetGroupError('Source booking not found', { status: 404, code: 'SOURCE_BOOKING_NOT_FOUND' });
         }
@@ -3648,11 +4305,17 @@ async function createMemberBookingFromSourceBooking({
             group: { customer_id: sourceFields.customerId, id: null }
         });
 
-        let group = null;
+        let group = lockedContext.group;
         let createdGroup = false;
-        const existingMembership = await getMembershipForBooking(client, cleanSourceId, context);
+        const existingMembership = lockedContext.membership;
+        if (!existingMembership && bookingHasAdmissionCharge(source)) {
+            throw new BanquetGroupError('Ticketed source bookings cannot change admission context during group creation', {
+                status: 409,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                details: { bookingId: cleanSourceId }
+            });
+        }
         if (existingMembership) {
-            group = await getGroupByIdForUpdate(client, existingMembership.group_id, context);
             if (!group) {
                 throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
             }
@@ -3660,7 +4323,6 @@ async function createMemberBookingFromSourceBooking({
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
         } else {
-            group = await getGroupByPrimaryBookingForUpdate(client, cleanSourceId, context);
             if (group && String(group.status || 'active').toLowerCase() !== 'active') {
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
@@ -3713,19 +4375,12 @@ async function createMemberBookingFromSourceBooking({
         });
         await canonicalizeBanquetBookingRoom(client, rootMember, context);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
-        if (normalizedRole !== 'kitchen' && (
-            rootMember.ticketQuantities
-            || rootMember.ticket_quantities
-            || rootMember.ticketQuote
-            || rootMember.ticket_quote
-            || bookingTicketLines(rootMember).length
-        )) {
+        if (normalizedRole !== 'kitchen' && bookingHasTicketPayload(rootMember)) {
             throw new BanquetGroupError('Only a kitchen package owner can receive ticket data', {
                 status: 422,
                 code: 'TICKET_PACKAGE_OWNER_REQUIRED'
             });
         }
-        applyBookingPackage(rootMember);
         await resolveAndApplyAdmissionTicketQuote({
             queryable: client,
             businessContext: context,
@@ -3786,7 +4441,7 @@ async function createMemberBookingFromSourceBooking({
             created_group: createdGroup
         });
 
-        if (bookingHasTicketSnapshot(memberRow)) {
+        if (bookingPackageHasBanquetData(memberRow)) {
             await lockAndResolveGroupTicketOwner(client, {
                 groupId: cleanGroupId,
                 businessContext: context,
@@ -3794,6 +4449,12 @@ async function createMemberBookingFromSourceBooking({
                 actor: actorName(user)
             });
         }
+        await createBookingFinanceInTransaction(client, memberRow, {
+            businessContext: context,
+            createdBy: actorName(user),
+            optional: false,
+            label: 'Banquet member finance creation'
+        });
         const snapshot = await loadBanquetGroupById({ db: client, groupId: cleanGroupId, businessContext: context });
         await client.query('COMMIT');
 
@@ -3843,11 +4504,13 @@ async function createActivityBookingFromSourceBooking({
     if (!inputBooking || typeof inputBooking !== 'object') {
         throw new BanquetGroupError('activity booking payload is required', { status: 400, code: 'ACTIVITY_BOOKING_REQUIRED' });
     }
+    assertActivityHasNoPackagePayload(inputBooking, linkedBookings);
 
     const client = await db.connect();
     try {
         await client.query('BEGIN');
-        const source = await getScopedBookingForUpdate(client, cleanSourceId, context);
+        const lockedContext = await lockSourceBookingBanquetContext(client, cleanSourceId, context);
+        const source = lockedContext.source;
         if (!source) {
             throw new BanquetGroupError('Source booking not found', { status: 404, code: 'SOURCE_BOOKING_NOT_FOUND' });
         }
@@ -3861,11 +4524,17 @@ async function createActivityBookingFromSourceBooking({
             group: { customer_id: sourceFields.customerId, id: null }
         });
 
-        let group = null;
+        let group = lockedContext.group;
         let createdGroup = false;
-        const existingMembership = await getMembershipForBooking(client, cleanSourceId, context);
+        const existingMembership = lockedContext.membership;
+        if (!existingMembership && bookingHasAdmissionCharge(source)) {
+            throw new BanquetGroupError('Ticketed source bookings cannot change admission context during group creation', {
+                status: 409,
+                code: 'TICKET_FULL_EDIT_REQUIRED',
+                details: { bookingId: cleanSourceId }
+            });
+        }
         if (existingMembership) {
-            group = await getGroupByIdForUpdate(client, existingMembership.group_id, context);
             if (!group) {
                 throw new BanquetGroupError('Banquet group not found', { status: 404, code: 'BANQUET_GROUP_NOT_FOUND' });
             }
@@ -3873,7 +4542,6 @@ async function createActivityBookingFromSourceBooking({
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
         } else {
-            group = await getGroupByPrimaryBookingForUpdate(client, cleanSourceId, context);
             if (group && String(group.status || 'active').toLowerCase() !== 'active') {
                 throw new BanquetGroupError('Banquet group is not active', { status: 409, code: 'BANQUET_GROUP_INACTIVE' });
             }
@@ -3996,6 +4664,12 @@ async function createActivityBookingFromSourceBooking({
             created_group: createdGroup
         });
 
+        await createBookingFinanceInTransaction(client, activityRow, {
+            businessContext: context,
+            createdBy: actorName(user),
+            optional: false,
+            label: 'Banquet activity finance creation'
+        });
         const snapshot = await loadBanquetGroupById({ db: client, groupId: cleanGroupId, businessContext: context });
         await client.query('COMMIT');
 
@@ -4053,6 +4727,7 @@ async function createMemberBookingInBanquetGroup({
     if (!inputBooking || typeof inputBooking !== 'object') {
         throw new BanquetGroupError('member booking payload is required', { status: 400, code: 'MEMBER_BOOKING_REQUIRED' });
     }
+    assertBanquetBookingAliasConsistency(inputBooking, 'memberBooking');
 
     const client = await db.connect();
     try {
@@ -4108,19 +4783,12 @@ async function createMemberBookingInBanquetGroup({
         });
         await canonicalizeBanquetBookingRoom(client, rootMember, businessContext);
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
-        if (normalizedRole !== 'kitchen' && (
-            rootMember.ticketQuantities
-            || rootMember.ticket_quantities
-            || rootMember.ticketQuote
-            || rootMember.ticket_quote
-            || bookingTicketLines(rootMember).length
-        )) {
+        if (normalizedRole !== 'kitchen' && bookingHasTicketPayload(rootMember)) {
             throw new BanquetGroupError('Only a kitchen package owner can receive ticket data', {
                 status: 422,
                 code: 'TICKET_PACKAGE_OWNER_REQUIRED'
             });
         }
-        applyBookingPackage(rootMember);
         await resolveAndApplyAdmissionTicketQuote({
             queryable: client,
             businessContext,
@@ -4180,7 +4848,7 @@ async function createMemberBookingInBanquetGroup({
             compatibility_link_id: link?.id || null
         });
 
-        if (bookingHasTicketSnapshot(memberRow)) {
+        if (bookingPackageHasBanquetData(memberRow)) {
             await lockAndResolveGroupTicketOwner(client, {
                 groupId: cleanGroupId,
                 businessContext,
@@ -4188,6 +4856,12 @@ async function createMemberBookingInBanquetGroup({
                 actor: actorName(user)
             });
         }
+        await createBookingFinanceInTransaction(client, memberRow, {
+            businessContext,
+            createdBy: actorName(user),
+            optional: false,
+            label: 'Banquet member finance creation'
+        });
         const snapshot = await loadBanquetGroupById({ db: client, groupId: cleanGroupId, businessContext });
         await client.query('COMMIT');
 
@@ -4237,6 +4911,7 @@ async function createActivityBookingInBanquetGroup({
     if (!activityBooking || typeof activityBooking !== 'object') {
         throw new BanquetGroupError('activity booking payload is required', { status: 400, code: 'ACTIVITY_BOOKING_REQUIRED' });
     }
+    assertActivityHasNoPackagePayload(activityBooking, linkedBookings);
 
     const client = await db.connect();
     try {
@@ -4350,6 +5025,12 @@ async function createActivityBookingInBanquetGroup({
             compatibility_link_id: link?.id || null
         });
 
+        await createBookingFinanceInTransaction(client, activityRow, {
+            businessContext,
+            createdBy: actorName(user),
+            optional: false,
+            label: 'Banquet activity finance creation'
+        });
         const snapshot = await loadBanquetGroupById({ db: client, groupId: cleanGroupId, businessContext });
         await client.query('COMMIT');
 
@@ -4388,6 +5069,7 @@ module.exports = {
     BanquetGroupError,
     BANQUET_GROUP_SOURCE,
     attachBookingToBanquetGroup,
+    assertBanquetBookingAliasConsistency,
     auditBanquetGuestArrival,
     buildBanquetGuestArrivalAudit,
     createActivityBookingFromSourceBooking,

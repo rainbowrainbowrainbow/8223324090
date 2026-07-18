@@ -448,7 +448,7 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
         .filter(child => String(child?.status || '').trim().toLowerCase() !== 'cancelled')
         .map(child => ({ ...child, parentId: member.bookingId })));
     const technicalMembers = members.filter(member => !visibleActivityIds.has(String(banquetDetailMemberBookingId(member))));
-    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members);
+    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members, snapshot);
     const visibleSnapshot = snapshot ? { ...snapshot, members } : snapshot;
     const warnings = buildBanquetDetailWarnings(visibleSnapshot, anchorBooking)
         .filter(message => hasGroup || isLegacy || message !== banquetWarningText({ code: 'kitchen_booking_missing' }));

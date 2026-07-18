@@ -7,6 +7,11 @@ const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
 });
 const BANQUET_ENTRY_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_ENTRY_PRICE_RULE_CODES));
 const BANQUET_ENTRY_SOURCE = 'banquet_entry_price_rules';
+const LEGACY_ENTRY_WARNING_CODES = new Set([
+    'entry_quantity_missing',
+    'entry_date_missing',
+    'entry_price_rule_missing'
+]);
 const BANQUET_ENTRY_TITLE = 'Вхід';
 
 function cleanText(value, max = 240) {
@@ -202,8 +207,7 @@ function menuPositionsSubtotal(positions) {
     return toMoney((positions || []).reduce((sum, item) => sum + toMoney(item.subtotal), 0));
 }
 
-function extraDataObjectOf(booking = {}) {
-    const raw = booking.extraData ?? booking.extra_data;
+function parseExtraDataObject(raw) {
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
     if (typeof raw === 'string' && raw.trim()) {
         try {
@@ -214,6 +218,17 @@ function extraDataObjectOf(booking = {}) {
         }
     }
     return {};
+}
+
+function extraDataObjectOf(booking = {}) {
+    return parseExtraDataObject(booking.extraData ?? booking.extra_data);
+}
+
+function extraDataCandidatesOf(booking = {}) {
+    return [
+        ['extraData', parseExtraDataObject(booking.extraData)],
+        ['extra_data', parseExtraDataObject(booking.extra_data)]
+    ];
 }
 
 function hasBanquetEntrySurface(booking = {}) {
@@ -462,16 +477,33 @@ function normalizeTicketLines(value) {
         .filter(Boolean);
 }
 
+function nestedTicketQuotePath(booking = {}) {
+    const packages = [
+        ['bookingPackage', booking.bookingPackage],
+        ['booking_package', booking.booking_package]
+    ];
+    for (const [extraPath, extra] of extraDataCandidatesOf(booking)) {
+        packages.push(
+            [`${extraPath}.bookingPackage`, extra.bookingPackage],
+            [`${extraPath}.booking_package`, extra.booking_package]
+        );
+    }
+    for (const [path, bookingPackage] of packages) {
+        if (!bookingPackage || typeof bookingPackage !== 'object' || Array.isArray(bookingPackage)) continue;
+        if (Object.prototype.hasOwnProperty.call(bookingPackage, 'ticketQuote')) return `${path}.ticketQuote`;
+        if (Object.prototype.hasOwnProperty.call(bookingPackage, 'ticket_quote')) return `${path}.ticket_quote`;
+    }
+    for (const [extraPath, extra] of extraDataCandidatesOf(booking)) {
+        if (Object.prototype.hasOwnProperty.call(extra, 'ticketQuote')) return `${extraPath}.ticketQuote`;
+        if (Object.prototype.hasOwnProperty.call(extra, 'ticket_quote')) return `${extraPath}.ticket_quote`;
+    }
+    return null;
+}
+
 function ticketQuoteFromBooking(booking = {}, options = {}) {
-    const extra = booking.extraData || booking.extra_data || {};
-    const topLevelPackage = booking.bookingPackage || booking.booking_package || {};
     return options.ticketQuote
         || booking.ticketQuote
         || booking.ticket_quote
-        || topLevelPackage.ticketQuote
-        || topLevelPackage.ticket_quote
-        || extra.ticketQuote
-        || extra.ticket_quote
         || null;
 }
 
@@ -496,7 +528,8 @@ function extractIncomingServiceEvents(booking = {}) {
 
 function hasBookingPackageInput(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
-    return Object.prototype.hasOwnProperty.call(booking, 'menuPositions')
+    return hasExplicitTicketPackageInput(booking)
+        || Object.prototype.hasOwnProperty.call(booking, 'menuPositions')
         || Object.prototype.hasOwnProperty.call(booking, 'menu_positions')
         || Object.prototype.hasOwnProperty.call(booking, 'serviceEvents')
         || Object.prototype.hasOwnProperty.call(booking, 'service_events')
@@ -513,9 +546,39 @@ function buildBookingPackage(booking = {}, options = {}) {
     const positions = normalizeMenuPositions(extractIncomingPositions(booking));
     const serviceEvents = normalizeServiceEvents(extractIncomingServiceEvents(booking));
     const positionsSubtotal = menuPositionsSubtotal(positions);
-    const fallbackBase = toMoney((booking.price || 0) - positionsSubtotal);
+    const previousSchemaVersion = Number(
+        previousPackage.schemaVersion || previousPackage.schema_version || 0
+    );
+    const previousEntryCharge = previousPackage.entryCharge || previousPackage.entry_charge || null;
+    const previousEntrySubtotal = toMoney(
+        previousPackage.entrySubtotal
+        ?? previousPackage.entry_subtotal
+        ?? previousEntryCharge?.subtotal
+        ?? 0
+    );
+    const previousTicketLines = normalizeTicketLines(
+        previousPackage.ticketLines || previousPackage.ticket_lines
+    );
+    const hasPreviousTicketSnapshot = previousSchemaVersion >= 3
+        && Array.isArray(previousPackage.ticketLines || previousPackage.ticket_lines);
+    const previousTicketSubtotal = hasPreviousTicketSnapshot
+        ? toMoney(
+            previousPackage.ticketSubtotal
+            ?? previousPackage.ticket_subtotal
+            ?? previousTicketLines.reduce((sum, line) => sum + line.subtotalUah, 0)
+        )
+        : 0;
+    const previousAdmissionSubtotal = hasPreviousTicketSnapshot
+        ? previousTicketSubtotal
+        : previousEntrySubtotal;
+    const fallbackBase = toMoney(
+        (booking.price || 0) - positionsSubtotal - previousAdmissionSubtotal
+    );
     const programBasePrice = toMoney(
-        booking.programBasePrice ?? booking.program_base_price ?? previousPackage.programBasePrice,
+        booking.programBasePrice
+        ?? booking.program_base_price
+        ?? previousPackage.programBasePrice
+        ?? previousPackage.program_base_price,
         fallbackBase
     );
     const ticketQuote = ticketQuoteFromBooking(booking, options);
@@ -526,26 +589,19 @@ function buildBookingPackage(booking = {}, options = {}) {
         && Array.isArray(quotedRawTicketLines)
     );
     const quotedTicketLines = normalizeTicketLines(ticketQuote?.ticketLines || ticketQuote?.ticket_lines);
-    const previousTicketLines = normalizeTicketLines(
-        previousPackage.ticketLines || previousPackage.ticket_lines
-    );
-    const hasPreviousTicketSnapshot = Number(previousPackage.schemaVersion || previousPackage.schema_version || 0) >= 3
-        && Array.isArray(previousPackage.ticketLines || previousPackage.ticket_lines);
     const hasTicketSnapshot = hasQuotedTicketSnapshot || hasPreviousTicketSnapshot;
     const ticketLines = hasQuotedTicketSnapshot ? quotedTicketLines : previousTicketLines;
     if (hasTicketSnapshot && positions.some(isManualEntryMenuPosition)) {
         const error = new Error('Manual menu position "Вхід" cannot be combined with ticketLines');
         error.code = 'TICKET_MANUAL_ENTRY_CONFLICT';
         error.statusCode = 422;
+        error.publicMessage = 'Позицію меню «Вхід» не можна додавати разом із квитками. Видаліть ручну позицію «Вхід» і повторіть збереження.';
+        error.details = {
+            field: 'menuPositions',
+            conflictWith: 'ticketLines'
+        };
         throw error;
     }
-    const previousEntryCharge = previousPackage.entryCharge || previousPackage.entry_charge || null;
-    const previousEntrySubtotal = toMoney(
-        previousPackage.entrySubtotal
-        ?? previousPackage.entry_subtotal
-        ?? previousEntryCharge?.subtotal
-        ?? 0
-    );
     const entryResult = hasTicketSnapshot
         ? { entryCharge: null, entrySubtotal: 0, warnings: [] }
         : (
@@ -579,7 +635,12 @@ function buildBookingPackage(booking = {}, options = {}) {
         ? ticketSubtotal
         : (entryResult.entryCharge ? toMoney(entryResult.entrySubtotal) : 0);
     const finalTotal = toMoney(programBasePrice + positionsSubtotal + entrySubtotal);
-    const warnings = bookingPackageWarnings(previousPackage.warnings, entryResult.warnings);
+    const previousWarnings = hasTicketSnapshot
+        ? (Array.isArray(previousPackage.warnings)
+            ? previousPackage.warnings.filter(warning => !LEGACY_ENTRY_WARNING_CODES.has(warning?.code))
+            : [])
+        : previousPackage.warnings;
+    const warnings = bookingPackageWarnings(previousWarnings, entryResult.warnings);
     const result = {
         schemaVersion: hasTicketSnapshot
             ? BOOKING_PACKAGE_SCHEMA_VERSION
@@ -596,21 +657,55 @@ function buildBookingPackage(booking = {}, options = {}) {
     if (hasTicketSnapshot) {
         result.ticketLines = ticketLines;
         result.ticketSubtotal = ticketSubtotal;
+        result.ticketQuoteContractVersion = Number(
+            ticketQuote?.quoteContractVersion
+            ?? ticketQuote?.quote_contract_version
+            ?? previousPackage.ticketQuoteContractVersion
+            ?? previousPackage.ticket_quote_contract_version
+            ?? 0
+        ) || null;
+        result.ticketQuoteFingerprint = cleanText(
+            ticketQuote?.quoteFingerprint
+            || ticketQuote?.quote_fingerprint
+            || previousPackage.ticketQuoteFingerprint
+            || previousPackage.ticket_quote_fingerprint,
+            120
+        );
+        result.ticketBusinessContext = cleanText(
+            ticketQuote?.businessContext
+            || ticketQuote?.business_context
+            || previousPackage.ticketBusinessContext
+            || previousPackage.ticket_business_context,
+            64
+        );
         result.ticketPricingContext = cleanText(
             ticketQuote?.admissionContext
             || ticketQuote?.admission_context
+            || previousPackage.ticketPricingContext
+            || previousPackage.ticket_pricing_context
             || ticketLines[0]?.admissionContext,
             32
         );
         result.ticketDayType = cleanText(
-            ticketQuote?.dayType || ticketQuote?.day_type || ticketLines[0]?.dayType,
+            ticketQuote?.dayType
+            || ticketQuote?.day_type
+            || previousPackage.ticketDayType
+            || previousPackage.ticket_day_type
+            || ticketLines[0]?.dayType,
             16
         );
         result.ticketPricingDate = normalizeDateOnly(
-            ticketQuote?.pricingDate || ticketQuote?.pricing_date || booking.date
+            ticketQuote?.pricingDate
+            || ticketQuote?.pricing_date
+            || previousPackage.ticketPricingDate
+            || previousPackage.ticket_pricing_date
+            || booking.date
         );
         result.ticketPricedAt = cleanText(
-            ticketQuote?.pricedAt || ticketQuote?.priced_at,
+            ticketQuote?.pricedAt
+            || ticketQuote?.priced_at
+            || previousPackage.ticketPricedAt
+            || previousPackage.ticket_priced_at,
             80
         );
     }
@@ -619,6 +714,14 @@ function buildBookingPackage(booking = {}, options = {}) {
 }
 
 function applyBookingPackage(booking = {}, options = {}) {
+    const forbiddenTicketQuotePath = nestedTicketQuotePath(booking);
+    if (forbiddenTicketQuotePath) {
+        const error = new Error('Ticket quotes must be supplied only through the canonical top-level server quote flow');
+        error.code = 'TICKET_SNAPSHOT_INPUT_FORBIDDEN';
+        error.statusCode = 422;
+        error.details = { field: forbiddenTicketQuotePath };
+        throw error;
+    }
     if (!hasBookingPackageInput(booking)) return booking;
     const extra = booking.extraData && typeof booking.extraData === 'object' ? { ...booking.extraData } : {};
     const bookingPackage = buildBookingPackage({ ...booking, extraData: extra }, options);
@@ -645,6 +748,9 @@ async function loadBanquetEntryPriceRules(queryable) {
 async function applyBookingPackageEntryCharge(queryable, booking = {}, options = {}) {
     if (!hasBookingPackageInput(booking)) return booking;
     if (hasExplicitTicketPackageInput(booking, options)) {
+        return applyBookingPackage(booking, options);
+    }
+    if (options.preserveNoTicketPackage === true) {
         return applyBookingPackage(booking, options);
     }
     const priceRules = Array.isArray(options.priceRules)

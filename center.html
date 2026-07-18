@@ -1333,7 +1333,7 @@
                         <strong>Завантаження тарифів…</strong>
                     </div>
                     <div id="ticketCatalogMatrix"></div>
-                    <dialog id="ticketTariffDialog" class="ticket-tariff-dialog">
+                    <dialog id="ticketTariffDialog" class="ticket-tariff-dialog" aria-labelledby="ticketTariffDialogTitle" aria-describedby="ticketTariffDialogMeta">
                         <form method="dialog" id="ticketTariffForm" class="ticket-tariff-form">
                             <h3 id="ticketTariffDialogTitle">Нова ревізія тарифу</h3>
                             <p id="ticketTariffDialogMeta" class="ticket-requirement"></p>
@@ -1348,7 +1348,7 @@
                                 </select>
                             </label>
                             <label>Сума, грн
-                                <input type="number" id="ticketTariffAmount" min="0" step="0.01" inputmode="decimal">
+                                <input type="number" id="ticketTariffAmount" min="0" max="2147483647" step="1" inputmode="numeric" aria-describedby="ticketTariffError" required>
                             </label>
                             <label>Діє з
                                 <input type="date" id="ticketTariffEffectiveFrom" required>

@@ -226,11 +226,11 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.deposit.paymentMethod, 'cash');
     assert.equal(summary.deposit.paymentStatus, 'partial');
     assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
-    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit']);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit', 'amount_due']);
     assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 4400);
     assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 1000);
     assert.equal(summary.finance.amountDue, 3400);
-    assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 3400);
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
@@ -289,11 +289,11 @@ test('banquet summary builds compact finance rows without duplicate booking or z
         }
     });
 
-    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit']);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit', 'amount_due']);
     assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 1500);
     assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
     assert.equal(summary.finance.amountDue, 1500);
-    assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 1500);
     assert.equal(summary.finance.rows.some(row => row.key === 'program'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'booking'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'entry'), false);

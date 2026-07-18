@@ -4832,6 +4832,9 @@ test('banquet menu regression keeps one table header and separates activities', 
 
 test('booking package v3 persists canonical ticket snapshot and derives entry compatibility subtotal', () => {
     const quote = {
+        quoteContractVersion: 1,
+        quoteFingerprint: `v1:${'a'.repeat(64)}`,
+        businessContext: 'event_genix',
         admissionContext: 'reserved_table_room',
         dayType: 'weekday',
         pricingDate: '2026-07-18',
@@ -4877,7 +4880,205 @@ test('booking package v3 persists canonical ticket snapshot and derives entry co
     assert.equal(pkg.entrySubtotal, 320);
     assert.equal(pkg.finalTotal, 1820);
     assert.equal(pkg.ticketLines.length, 2);
+    assert.equal(pkg.ticketQuoteContractVersion, 1);
+    assert.equal(pkg.ticketQuoteFingerprint, `v1:${'a'.repeat(64)}`);
+    assert.equal(pkg.ticketBusinessContext, 'event_genix');
     assert.equal(pkg.ticketPricingContext, 'reserved_table_room');
+});
+
+test('applyBookingPackage persists a canonical ticket-only quote as a v3 package', () => {
+    const booking = {
+        date: '2026-07-17',
+        price: 0,
+        ticketQuote: {
+            legacy: false,
+            admissionContext: 'standard',
+            dayType: 'weekday',
+            pricingDate: '2026-07-17',
+            pricedAt: '2026-07-17T10:00:00.000Z',
+            ticketSubtotal: 350,
+            ticketLines: [{
+                ticketTypeId: 1,
+                ticketTypeCode: 'regular_child',
+                ticketTypeName: 'Regular child',
+                audience: 'child',
+                quantity: 1,
+                unitPriceUah: 350,
+                subtotalUah: 350,
+                tariffVersionId: 101,
+                effectiveFrom: '2026-07-14',
+                admissionContext: 'standard',
+                dayType: 'weekday',
+                currency: 'UAH'
+            }]
+        }
+    };
+
+    const result = applyBookingPackage(booking);
+
+    assert.equal(result, booking);
+    assert.equal(booking.extraData.bookingPackage.schemaVersion, 3);
+    assert.equal(booking.extraData.bookingPackage.programBasePrice, 0);
+    assert.equal(booking.extraData.bookingPackage.positionsSubtotal, 0);
+    assert.equal(booking.extraData.bookingPackage.entryCharge, null);
+    assert.equal(booking.extraData.bookingPackage.entrySubtotal, 350);
+    assert.equal(booking.extraData.bookingPackage.ticketSubtotal, 350);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 350);
+    assert.equal(booking.extraData.bookingPackage.ticketLines.length, 1);
+    assert.equal(booking.extraData.bookingPackage.ticketLines[0].ticketTypeCode, 'regular_child');
+    assert.equal(booking.price, 350);
+});
+
+test('legacy entry conversion replaces the old admission subtotal without double counting it', () => {
+    const ticketQuote = {
+        legacy: false,
+        admissionContext: 'reserved_table_room',
+        dayType: 'weekday',
+        pricingDate: '2026-07-17',
+        pricedAt: '2026-07-17T10:00:00.000Z',
+        ticketSubtotal: 3740,
+        ticketLines: [{
+            ticketTypeId: 1,
+            ticketTypeCode: 'regular_child',
+            ticketTypeName: 'Regular child',
+            audience: 'child',
+            quantity: 1,
+            unitPriceUah: 3740,
+            subtotalUah: 3740,
+            tariffVersionId: 101,
+            effectiveFrom: '2026-07-14',
+            admissionContext: 'reserved_table_room',
+            dayType: 'weekday',
+            currency: 'UAH'
+        }]
+    };
+    const cases = [
+        { price: 3600, expectedBase: 0, expectedTotal: 3740 },
+        { price: 4600, expectedBase: 1000, expectedTotal: 4740 }
+    ];
+
+    for (const fixture of cases) {
+        const booking = {
+            date: '2026-07-17',
+            price: fixture.price,
+            extraData: {
+                bookingPackage: {
+                    schemaVersion: 2,
+                    entryCharge: {
+                        quantity: 12,
+                        unitPrice: 300,
+                        subtotal: 3600,
+                        ruleCode: 'banquet_entry_weekday_child'
+                    },
+                    entrySubtotal: 3600,
+                    warnings: [
+                        { code: 'entry_quantity_missing', message: 'Stale legacy warning' },
+                        { code: 'custom_warning', message: 'Keep this warning' }
+                    ]
+                }
+            },
+            ticketQuote
+        };
+
+        applyBookingPackage(booking);
+
+        assert.equal(booking.extraData.bookingPackage.programBasePrice, fixture.expectedBase);
+        assert.equal(booking.extraData.bookingPackage.ticketSubtotal, 3740);
+        assert.equal(booking.extraData.bookingPackage.finalTotal, fixture.expectedTotal);
+        assert.equal(booking.price, fixture.expectedTotal);
+        assert.deepEqual(
+            booking.extraData.bookingPackage.warnings.map(warning => warning.code),
+            ['custom_warning']
+        );
+    }
+});
+
+test('historical no-ticket package stays at zero during an unrelated update', async () => {
+    let tariffQueries = 0;
+    const booking = {
+        date: '2026-07-17',
+        price: 0,
+        banquetGuests: 2,
+        banquetAdults: 1,
+        extraData: {
+            bookingPackage: {
+                schemaVersion: 2,
+                programBasePrice: 0,
+                entryCharge: null,
+                entrySubtotal: 0,
+                finalTotal: 0,
+                menuPositions: [],
+                serviceEvents: []
+            }
+        }
+    };
+
+    await applyBookingPackageEntryCharge({
+        async query() {
+            tariffQueries += 1;
+            return {
+                rows: [{ code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 310 }]
+            };
+        }
+    }, booking, { preserveNoTicketPackage: true });
+
+    assert.equal(tariffQueries, 0);
+    assert.equal(booking.extraData.bookingPackage.schemaVersion, 2);
+    assert.equal(booking.extraData.bookingPackage.entryCharge, null);
+    assert.equal(booking.extraData.bookingPackage.entrySubtotal, 0);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 0);
+    assert.equal(booking.price, 0);
+});
+
+test('applyBookingPackage rejects ticket quotes hidden in package or extra-data aliases', () => {
+    const candidates = [{
+        bookingPackage: {
+            ticketQuote: { ticketLines: [], ticketSubtotal: 1 }
+        }
+    }, {
+        extraData: {},
+        extra_data: JSON.stringify({
+            booking_package: {
+                ticket_quote: { ticket_lines: [], ticket_subtotal: 1 }
+            }
+        })
+    }];
+    for (const booking of candidates) {
+        assert.throws(
+            () => applyBookingPackage(booking),
+            error => (
+                error.code === 'TICKET_SNAPSHOT_INPUT_FORBIDDEN'
+                && error.statusCode === 422
+                && Boolean(error.details?.field)
+            )
+        );
+    }
+});
+
+test('booking update calculates package only after locked legacy data and canonical ticket quote are resolved', () => {
+    const source = read('routes', 'bookings.js');
+    const updateStart = source.indexOf("router.put('/:id'");
+    const updateEnd = source.indexOf("router.patch('/:id/payment'", updateStart);
+    assert.notEqual(updateStart, -1);
+    assert.notEqual(updateEnd, -1);
+    const updateRoute = source.slice(updateStart, updateEnd);
+    const mergeIndex = updateRoute.indexOf('mergeExistingExtraDataForBookingUpdate(b, oldBooking)');
+    const quoteIndex = updateRoute.indexOf('await resolveAndApplyAdmissionTicketQuote({');
+    const packageIndex = updateRoute.indexOf('await applyBookingPackageEntryCharge(client, b');
+
+    assert.ok(mergeIndex >= 0);
+    assert.ok(quoteIndex > mergeIndex);
+    assert.ok(packageIndex > quoteIndex);
+    assert.match(updateRoute, /const ticketResolution = await resolveAndApplyAdmissionTicketQuote\(\{/);
+    assert.match(
+        updateRoute,
+        /preserveNoTicketPackage:\s*ticketResolution\.preserveNoTicketPackage === true/
+    );
+    assert.equal(
+        updateRoute.slice(0, quoteIndex).includes('applyBookingPackage(b)'),
+        false,
+        'an unvalidated client quote must not overwrite the legacy package base before canonical resolution'
+    );
 });
 
 test('booking package v3 supports explicit zero-ticket snapshot and blocks manual Вхід rows', () => {
@@ -4911,7 +5112,13 @@ test('booking package v3 supports explicit zero-ticket snapshot and blocks manua
                 pricingDate: '2026-07-18'
             }
         }),
-        error => error.code === 'TICKET_MANUAL_ENTRY_CONFLICT'
+        error => (
+            error.code === 'TICKET_MANUAL_ENTRY_CONFLICT'
+            && error.statusCode === 422
+            && /«Вхід»/.test(error.publicMessage)
+            && error.details?.field === 'menuPositions'
+            && error.details?.conflictWith === 'ticketLines'
+        )
     );
 });
 
@@ -5361,4 +5568,199 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.doesNotMatch(bookingBanquetDetailJs, /Кухня \/ меню не прив/);
     assert.doesNotMatch(bookingBanquetDetailJs, /Технічні linked_to children/);
     assert.doesNotMatch(bookingBanquetDetailJs, /<strong>\$\{escapeHtml\(BOOKING_SERVICE_EVENT_TYPES\[event\.type\] \|\| 'Подія'\)\}<\/strong>/);
+});
+
+test('booking UI resolves the material package owner ahead of stale metadata and fails closed on split owners', () => {
+    const context = createBanquetModalDetailHarness();
+    const primary = {
+        id: 'BK-PRIMARY',
+        status: 'confirmed',
+        bookingPackage: {
+            schemaVersion: 2,
+            menuPositions: [],
+            serviceEvents: []
+        }
+    };
+    const kitchen = {
+        id: 'BK-KITCHEN',
+        status: 'confirmed',
+        bookingPackage: {
+            schemaVersion: 2,
+            menuPositions: [{ productId: 'pizza', quantity: 1, unitPrice: 250, subtotal: 250 }],
+            serviceEvents: []
+        }
+    };
+    const baseSnapshot = {
+        group: {
+            id: 'BQ-OWNER',
+            primaryBookingId: primary.id,
+            meta: {
+                packageOwnerBookingId: primary.id
+            }
+        },
+        members: [
+            { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary },
+            { bookingId: kitchen.id, role: 'kitchen', booking: kitchen }
+        ]
+    };
+
+    const resolution = context.banquetSnapshotPackageOwnerResolution(baseSnapshot, primary);
+    assert.equal(resolution.valid, true);
+    assert.equal(resolution.packageOwnerBookingId, kitchen.id);
+    assert.equal(resolution.source, 'material_package');
+
+    const legacyEntryOwner = {
+        id: 'BK-LEGACY-ENTRY',
+        status: 'confirmed',
+        bookingPackage: {
+            schemaVersion: 2,
+            menuPositions: [],
+            serviceEvents: [],
+            entryCharge: {
+                quantity: 2,
+                unitPrice: 310,
+                subtotal: 620
+            }
+        }
+    };
+    const legacyResolution = context.banquetSnapshotPackageOwnerResolution({
+        ...baseSnapshot,
+        members: [
+            baseSnapshot.members[0],
+            { bookingId: legacyEntryOwner.id, role: 'kitchen', booking: legacyEntryOwner }
+        ]
+    }, primary);
+    assert.equal(legacyResolution.valid, true);
+    assert.equal(legacyResolution.packageOwnerBookingId, legacyEntryOwner.id);
+
+    const staleTicketMeta = context.banquetSnapshotPackageOwnerResolution({
+        ...baseSnapshot,
+        group: {
+            ...baseSnapshot.group,
+            meta: {
+                packageOwnerBookingId: kitchen.id,
+                ticketBookingId: primary.id
+            }
+        }
+    }, primary);
+    assert.equal(staleTicketMeta.valid, false);
+    assert.equal(staleTicketMeta.code, 'TICKET_PACKAGE_OWNER_METADATA_INVALID');
+
+    const ticketOwner = {
+        id: 'BK-TICKETS',
+        status: 'confirmed',
+        bookingPackage: {
+            schemaVersion: 3,
+            menuPositions: [],
+            serviceEvents: [],
+            ticketLines: [],
+            ticketSubtotal: 0
+        }
+    };
+    const splitOwners = context.banquetSnapshotPackageOwnerResolution({
+        ...baseSnapshot,
+        members: [
+            ...baseSnapshot.members,
+            { bookingId: ticketOwner.id, role: 'manual', booking: ticketOwner }
+        ]
+    }, primary);
+    assert.equal(splitOwners.valid, false);
+    assert.equal(splitOwners.code, 'BANQUET_PACKAGE_OWNER_CONFLICT');
+});
+
+test('booking detail combines menu and canonical ticket-only owner once with a component-safe total', () => {
+    const context = createBanquetModalDetailHarness();
+    const primary = {
+        id: 'BK-PRIMARY',
+        date: '2026-07-18',
+        time: '12:00',
+        duration: 60,
+        room: 'Room A',
+        label: 'Birthday',
+        programId: 'program-1',
+        price: 1000,
+        status: 'confirmed'
+    };
+    const menuOwner = {
+        id: 'BK-MENU',
+        date: primary.date,
+        time: primary.time,
+        duration: 60,
+        room: primary.room,
+        label: 'Kitchen',
+        status: 'confirmed',
+        banquetGuests: 2,
+        bookingPackage: {
+            schemaVersion: 2,
+            programBasePrice: 0,
+            positionsSubtotal: 250,
+            menuPositions: [{
+                productId: 'pizza',
+                title: 'Pizza',
+                quantity: 1,
+                unitPrice: 250,
+                subtotal: 250,
+                kitchenType: 'menu'
+            }],
+            serviceEvents: [],
+            entryCharge: {
+                quantity: 2,
+                unitPrice: 300,
+                subtotal: 600
+            },
+            entrySubtotal: 600,
+            finalTotal: 850
+        }
+    };
+    const ticketOwner = {
+        id: 'BK-TICKETS',
+        date: primary.date,
+        time: primary.time,
+        duration: 60,
+        room: primary.room,
+        label: 'Tickets',
+        status: 'confirmed',
+        bookingPackage: {
+            schemaVersion: 3,
+            programBasePrice: 0,
+            menuPositions: [],
+            serviceEvents: [],
+            ticketLines: [{
+                ticketTypeCode: 'regular_child',
+                ticketTypeName: 'Regular child',
+                audience: 'child',
+                quantity: 2,
+                unitPriceUah: 400,
+                subtotalUah: 800
+            }],
+            ticketSubtotal: 800,
+            finalTotal: 800
+        }
+    };
+    const snapshot = {
+        source: 'banquet_group',
+        groupId: 'BQ-OWNER',
+        group: {
+            id: 'BQ-OWNER',
+            primaryBookingId: primary.id,
+            meta: {
+                ticketBookingId: ticketOwner.id,
+                packageOwnerBookingId: ticketOwner.id
+            }
+        },
+        members: [
+            { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary },
+            { bookingId: menuOwner.id, role: 'kitchen', isKitchenCandidate: true, booking: menuOwner },
+            { bookingId: ticketOwner.id, role: 'manual', booking: ticketOwner }
+        ]
+    };
+
+    const document = new JSDOM(`<main>${context.renderFullBanquetDetail(primary, [], snapshot)}</main>`).window.document;
+    assert.equal(document.querySelectorAll('.booking-detail-package-table-row--ticket').length, 1);
+    assert.match(document.querySelector('.booking-detail-package-table-row--ticket').textContent, /Regular child/);
+    assert.match(document.querySelector('.booking-banquet-section--menu').textContent, /Pizza/);
+    assert.equal(
+        document.querySelector('.booking-detail-package-money--total').textContent.replace(/\D/g, ''),
+        '1050'
+    );
 });

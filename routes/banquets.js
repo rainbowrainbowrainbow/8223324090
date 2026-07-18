@@ -1,5 +1,6 @@
 'use strict';
 
+const { isDeepStrictEqual } = require('node:util');
 const router = require('express').Router();
 const { authenticateToken, requireAction } = require('../middleware/auth');
 const { validateDate, validateId, validateBanquetCreationContext } = require('../services/booking');
@@ -44,6 +45,56 @@ function parsePositiveInteger(value) {
     if (!/^\d+$/.test(text)) return null;
     const number = Number(text);
     return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function bookingSetPackageOwnerAliases(req, res) {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? req.body
+        : {};
+    const hasCamelId = Object.prototype.hasOwnProperty.call(body, 'packageOwnerBookingId');
+    const hasSnakeId = Object.prototype.hasOwnProperty.call(body, 'package_owner_booking_id');
+    if (
+        hasCamelId
+        && hasSnakeId
+        && String(body.packageOwnerBookingId ?? '').trim() !== String(body.package_owner_booking_id ?? '').trim()
+    ) {
+        res.status(400).json({
+            success: false,
+            error: 'Conflicting package owner booking ID aliases',
+            code: 'PACKAGE_OWNER_ALIAS_CONFLICT',
+            details: {
+                fields: ['packageOwnerBookingId', 'package_owner_booking_id']
+            }
+        });
+        return null;
+    }
+
+    const hasCamelPatch = Object.prototype.hasOwnProperty.call(body, 'packageOwnerPatch');
+    const hasSnakePatch = Object.prototype.hasOwnProperty.call(body, 'package_owner_patch');
+    if (
+        hasCamelPatch
+        && hasSnakePatch
+        && !isDeepStrictEqual(body.packageOwnerPatch, body.package_owner_patch)
+    ) {
+        res.status(400).json({
+            success: false,
+            error: 'Conflicting package owner patch aliases',
+            code: 'PACKAGE_OWNER_ALIAS_CONFLICT',
+            details: {
+                fields: ['packageOwnerPatch', 'package_owner_patch']
+            }
+        });
+        return null;
+    }
+
+    return {
+        packageOwnerBookingId: hasCamelId
+            ? body.packageOwnerBookingId
+            : body.package_owner_booking_id,
+        packageOwnerPatch: hasCamelPatch
+            ? body.packageOwnerPatch
+            : (hasSnakePatch ? body.package_owner_patch : {})
+    };
 }
 
 function sanitizeSnapshotForUser(snapshot, user) {
@@ -141,6 +192,21 @@ function sendWriteError(res, err) {
                 ? err.details.currentArrival
                 : undefined,
             currentUpdatedAt: err.details?.currentUpdatedAt || undefined,
+            details: err.details || undefined
+        });
+    }
+    const controlledStatus = Number(err?.statusCode);
+    if (
+        Number.isInteger(controlledStatus)
+        && controlledStatus >= 400
+        && controlledStatus < 500
+        && typeof err?.publicMessage === 'string'
+        && err.publicMessage.trim()
+    ) {
+        return res.status(controlledStatus).json({
+            success: false,
+            error: err.publicMessage,
+            code: err.code || 'validation_error',
             details: err.details || undefined
         });
     }
@@ -285,10 +351,14 @@ router.put('/:groupId/booking-set', requireAction('edit_booking'), async (req, r
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const packageOwnerAliases = bookingSetPackageOwnerAliases(req, res);
+        if (!packageOwnerAliases) return;
         const result = await updateBanquetBookingSet({
             groupId,
             primaryBookingId: req.body?.primaryBookingId || req.body?.primary_booking_id,
             primaryPatch: req.body?.primaryPatch || req.body?.primary_patch || {},
+            packageOwnerBookingId: packageOwnerAliases.packageOwnerBookingId,
+            packageOwnerPatch: packageOwnerAliases.packageOwnerPatch,
             activities: req.body?.activities,
             expectedGroupUpdatedAt: req.body?.expectedGroupUpdatedAt || req.body?.expected_group_updated_at,
             businessContext,

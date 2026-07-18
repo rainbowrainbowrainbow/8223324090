@@ -3270,6 +3270,14 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
         bookingJs.indexOf('async function refreshBanquetEditContextAfterSave'),
         bookingJs.indexOf('function hydrateBanquetEditActivityState')
     );
+    const packageOwnerResolutionBlock = bookingJs.slice(
+        bookingJs.indexOf('function banquetSnapshotPackageOwnerResolution'),
+        bookingJs.indexOf('function createBanquetEditContext')
+    );
+    const bookingSetPayloadBlock = bookingJs.slice(
+        bookingJs.indexOf('function buildBanquetPackageOwnerPatch'),
+        bookingJs.indexOf('function banquetEditBookingProgramId')
+    );
     const conflictRefreshBlock = bookingJs.slice(
         bookingJs.indexOf('function scheduleSelectedActivityConflictRefresh'),
         bookingJs.indexOf('async function validateSelectedActivityScheduleBeforeSubmit')
@@ -3277,7 +3285,31 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
 
     assert.match(editBlock, /apiGetBanquetByBooking\(anchorBooking\.id\)/);
     assert.match(editBlock, /banquetEditContext\?\.primaryBooking \|\| anchorBooking/);
+    assert.match(editBlock, /banquetEditContext\?\.packageOwnerBooking \|\| booking/);
+    assert.match(editBlock, /ticketOwnerBookingId:\s*banquetEditContext\?\.ticketOwnerBookingId/);
     assert.doesNotMatch(editBlock, /multiActivity\?\.activityIds|multi_activity\?\.activityIds/);
+    assert.match(packageOwnerResolutionBlock, /ticketSnapshotMembers\.length > 1/);
+    assert.match(packageOwnerResolutionBlock, /materialPackageMembers\.length > 1/);
+    assert.match(packageOwnerResolutionBlock, /actualPackageOwner[\s\S]*explicitPackageOwner[\s\S]*primaryOwner/);
+    assert.match(packageOwnerResolutionBlock, /explicitTicketBookingId && !actualTicketOwner/);
+    assert.match(bookingJs, /packageOwnerBookingId:\s*packageOwner\.packageOwnerBookingId/);
+    assert.match(bookingSetPayloadBlock, /packageOwnerBookingId/);
+    assert.match(bookingSetPayloadBlock, /packageOwnerPatch/);
+    assert.match(bookingSetPayloadBlock, /buildBanquetPrimaryPatchWithoutPackageOwnerData/);
+    assert.match(bookingSetPayloadBlock, /delete patch\[field\]/);
+    assert.match(bookingSetPayloadBlock, /primaryBookingPackage/);
+    assert.match(bookingSetPayloadBlock, /storedProgramBasePrice/);
+    assert.match(bookingSetPayloadBlock, /date:\s*baseBooking\.date \|\| context\?\.primaryBooking\?\.date/);
+    assert.match(bookingSetPayloadBlock, /room:\s*baseBooking\.room \|\| context\?\.primaryBooking\?\.room/);
+    assert.match(bookingSetPayloadBlock, /roomResourceId:\s*baseBooking\.roomResourceId/);
+    assert.match(bookingSetPayloadBlock, /customerId:\s*baseBooking\.customerId/);
+    assert.doesNotMatch(
+        bookingSetPayloadBlock.slice(
+            bookingSetPayloadBlock.indexOf('function buildBanquetPackageOwnerPatch'),
+            bookingSetPayloadBlock.indexOf('function buildBanquetPrimaryPatchWithoutPackageOwnerData')
+        ),
+        /\btime:\s*baseBooking|\blineId:\s*baseBooking/
+    );
     assert.match(hydrationBlock, /context\.activities/);
     assert.match(hydrationBlock, /existingActivityBookingId/);
     assert.match(hydrationBlock, /selectedActivityScheduleTimes/);

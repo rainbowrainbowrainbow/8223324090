@@ -3028,10 +3028,30 @@ const ADMISSION_TARIFF_COLUMNS = Object.freeze([
     { context: 'reserved_table_room', dayType: 'weekend', label: 'Бронювання · вихідні' }
 ]);
 
+function admissionTicketLocalizedMessage(value, fallback) {
+    const message = String(value || '').trim();
+    return /[А-Яа-яІіЇїЄєҐґ]/u.test(message) ? message : fallback;
+}
+
 function admissionTicketTariffFor(type, context, dayType) {
     return (Array.isArray(type?.currentTariffs) ? type.currentTariffs : []).find(tariff => (
         tariff.admissionContext === context && tariff.dayType === dayType
     )) || null;
+}
+
+function admissionTicketLatestTariffFor(type, context, dayType) {
+    const history = Array.isArray(type?.tariffHistory) ? type.tariffHistory : [];
+    const matching = history.filter(tariff => (
+        tariff.admissionContext === context && tariff.dayType === dayType
+    ));
+    if (matching.length) {
+        return matching.reduce((latest, tariff) => (
+            Number(tariff.revision || 0) > Number(latest.revision || 0) ? tariff : latest
+        ));
+    }
+    return (Array.isArray(type?.headTariffs) ? type.headTariffs : []).find(tariff => (
+        tariff.admissionContext === context && tariff.dayType === dayType
+    )) || admissionTicketTariffFor(type, context, dayType);
 }
 
 function admissionTicketDateLabel(value) {
@@ -3043,11 +3063,14 @@ function admissionTicketDateLabel(value) {
 }
 
 function admissionTicketTodayDateOnly() {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
 }
 
 function admissionTicketMoneyLabel(value) {
@@ -3163,7 +3186,10 @@ async function loadAdmissionTicketCatalog({ force = false } = {}) {
     try {
         const result = await apiGetAdmissionTicketCatalog();
         if (!result?.success) {
-            throw new Error(result?.error || 'Не вдалося завантажити каталог квитків');
+            throw new Error(admissionTicketLocalizedMessage(
+                result?.error,
+                'Не вдалося завантажити каталог квитків.'
+            ));
         }
         admissionTicketCatalog = result;
         renderAdmissionTicketCatalog();
@@ -3182,21 +3208,37 @@ async function loadAdmissionTicketCatalog({ force = false } = {}) {
     }
 }
 
+function syncAdmissionTicketTariffAmountInput(availability) {
+    const amount = document.getElementById('ticketTariffAmount');
+    if (!amount) return;
+    const unavailable = availability === 'unavailable';
+    amount.disabled = unavailable;
+    amount.required = !unavailable;
+    amount.setAttribute('aria-required', unavailable ? 'false' : 'true');
+    if (unavailable) {
+        amount.value = '';
+        amount.setAttribute('aria-invalid', 'false');
+    }
+}
+
 function openAdmissionTicketTariffDialog({ code, context, dayType, errorMessage = '' } = {}) {
     if (!canEditAdmissionTicketTariffs) return;
     const type = admissionTicketCatalog?.ticketTypes?.find(item => item.code === code);
     const tariff = admissionTicketTariffFor(type, context, dayType);
+    const latestTariff = admissionTicketLatestTariffFor(type, context, dayType);
     const dialog = document.getElementById('ticketTariffDialog');
     if (!type || !dialog) return;
     document.getElementById('ticketTariffDialogTitle').textContent = `Нова ревізія: ${type.name}`;
-    document.getElementById('ticketTariffDialogMeta').textContent = `${context} · ${dayType} · поточна rev ${tariff?.revision ?? 0}`;
+    document.getElementById('ticketTariffDialogMeta').textContent = `${context} · ${dayType} · поточна rev ${tariff?.revision ?? 0} · остання rev ${latestTariff?.revision ?? 0}`;
     document.getElementById('ticketTariffCode').value = code;
     document.getElementById('ticketTariffContext').value = context;
     document.getElementById('ticketTariffDay').value = dayType;
-    document.getElementById('ticketTariffExpectedRevision').value = String(tariff?.revision ?? 0);
+    document.getElementById('ticketTariffExpectedRevision').value = String(latestTariff?.revision ?? 0);
     document.getElementById('ticketTariffAvailability').value = tariff?.availability || 'available';
-    document.getElementById('ticketTariffAmount').value = tariff?.amountUah ?? '';
-    document.getElementById('ticketTariffAmount').disabled = tariff?.availability === 'unavailable';
+    const amountInput = document.getElementById('ticketTariffAmount');
+    amountInput.value = tariff?.amountUah ?? '';
+    amountInput.setAttribute('aria-invalid', 'false');
+    syncAdmissionTicketTariffAmountInput(tariff?.availability || 'available');
     document.getElementById('ticketTariffEffectiveFrom').value = admissionTicketTodayDateOnly();
     document.getElementById('ticketTariffChangeNote').value = '';
     const error = document.getElementById('ticketTariffError');
@@ -3214,7 +3256,26 @@ async function saveAdmissionTicketTariffRevision(event) {
     const availability = document.getElementById('ticketTariffAvailability').value;
     const saveButton = document.getElementById('ticketTariffSave');
     const error = document.getElementById('ticketTariffError');
+    const amountInput = document.getElementById('ticketTariffAmount');
+    const amountRaw = String(amountInput?.value || '').trim();
+    const amountUah = Number(amountRaw);
     error.classList.add('hidden');
+    amountInput?.setAttribute('aria-invalid', 'false');
+    if (
+        availability === 'available'
+        && (
+            !amountRaw
+            || !Number.isSafeInteger(amountUah)
+            || amountUah < 0
+            || amountUah > 2147483647
+        )
+    ) {
+        error.textContent = 'Вкажіть суму цілими гривнями від 0 до 2 147 483 647.';
+        error.classList.remove('hidden');
+        amountInput?.setAttribute('aria-invalid', 'true');
+        amountInput?.focus();
+        return;
+    }
     admissionTicketTariffSaving = true;
     saveButton.disabled = true;
     saveButton.textContent = 'Збереження…';
@@ -3223,7 +3284,7 @@ async function saveAdmissionTicketTariffRevision(event) {
         dayType,
         availability,
         amountUah: availability === 'available'
-            ? Number(document.getElementById('ticketTariffAmount').value)
+            ? amountUah
             : null,
         effectiveFrom: document.getElementById('ticketTariffEffectiveFrom').value,
         expectedRevision: Number(document.getElementById('ticketTariffExpectedRevision').value),
@@ -3250,7 +3311,10 @@ async function saveAdmissionTicketTariffRevision(event) {
         });
         return;
     }
-    error.textContent = result?.error || 'Не вдалося зберегти тариф';
+    error.textContent = admissionTicketLocalizedMessage(
+        result?.error,
+        'Не вдалося зберегти тариф. Перевірте дані та повторіть спробу.'
+    );
     error.classList.remove('hidden');
 }
 
@@ -3275,10 +3339,7 @@ function bindAdmissionTicketCatalogUi() {
         if (!admissionTicketTariffSaving) document.getElementById('ticketTariffDialog')?.close();
     });
     document.getElementById('ticketTariffAvailability')?.addEventListener('change', event => {
-        const amount = document.getElementById('ticketTariffAmount');
-        const unavailable = event.target.value === 'unavailable';
-        amount.disabled = unavailable;
-        if (unavailable) amount.value = '';
+        syncAdmissionTicketTariffAmountInput(event.target.value);
     });
     document.getElementById('ticketTariffForm')?.addEventListener('submit', saveAdmissionTicketTariffRevision);
 }

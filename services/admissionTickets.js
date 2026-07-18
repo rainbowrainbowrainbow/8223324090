@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const {
     ADMISSION_CONTEXTS,
     ROOM_TAKEAWAY_RESOURCE_ID,
@@ -10,6 +11,8 @@ const {
 const { normalizeBusinessContext } = require('./businessContext');
 
 const CURRENCY = 'UAH';
+const QUOTE_CONTRACT_VERSION = 1;
+const MAX_POSTGRES_INTEGER = 2147483647;
 const TICKET_AVAILABILITY = Object.freeze({
     AVAILABLE: 'available',
     UNAVAILABLE: 'unavailable'
@@ -109,7 +112,7 @@ function requireDateOnly(value, field = 'date') {
 }
 
 function requireNonNegativeInteger(value, field) {
-    if (!Number.isInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0) {
         throw new AdmissionTicketError(`${field} must be a non-negative integer`, {
             status: 422,
             code: 'TICKET_QUANTITY_INVALID',
@@ -247,9 +250,22 @@ function mapTariffVersionRow(row = {}) {
     };
 }
 
+function dateOnlyInTimeZone(value = new Date(), timeZone = 'Europe/Kyiv') {
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(date.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
 async function listAdmissionTicketCatalog(queryable, {
     businessContext,
-    pricingDate = new Date().toISOString().slice(0, 10)
+    pricingDate = dateOnlyInTimeZone()
 } = {}) {
     const context = normalizeBusinessContext(businessContext);
     const date = requireDateOnly(pricingDate, 'pricingDate');
@@ -299,6 +315,7 @@ async function listAdmissionTicketCatalog(queryable, {
             byId.set(typeId, {
                 ...mapTicketTypeRow(row),
                 currentTariffs: [],
+                headTariffs: [],
                 tariffHistory: []
             });
         }
@@ -318,6 +335,15 @@ async function listAdmissionTicketCatalog(queryable, {
         });
         const type = byId.get(typeId);
         type.tariffHistory.push(version);
+        const headIndex = type.headTariffs.findIndex(item => (
+            item.admissionContext === version.admissionContext
+            && item.dayType === version.dayType
+        ));
+        if (headIndex === -1) {
+            type.headTariffs.push(version);
+        } else if (version.revision > type.headTariffs[headIndex].revision) {
+            type.headTariffs[headIndex] = version;
+        }
         if (
             version.effectiveFrom <= date
             && !type.currentTariffs.some(item => (
@@ -377,9 +403,13 @@ function validateTariffMutation(input = {}) {
         : Number(rawAmount);
     if (
         availability === TICKET_AVAILABILITY.AVAILABLE
-        && (!Number.isFinite(amountUah) || amountUah < 0)
+        && (
+            !Number.isSafeInteger(amountUah)
+            || amountUah < 0
+            || amountUah > MAX_POSTGRES_INTEGER
+        )
     ) {
-        throw new AdmissionTicketError('Available tariff requires amountUah >= 0', {
+        throw new AdmissionTicketError('Available tariff requires a whole UAH amount within PostgreSQL INTEGER range', {
             status: 422,
             code: 'TICKET_AMOUNT_INVALID'
         });
@@ -394,7 +424,7 @@ function validateTariffMutation(input = {}) {
         admissionContext,
         dayType,
         availability,
-        amountUah: amountUah === null ? null : money(amountUah),
+        amountUah,
         effectiveFrom,
         expectedRevision,
         changeNote: cleanText(input.changeNote || input.change_note, 1000) || null
@@ -542,22 +572,93 @@ async function appendAdmissionTicketTariffVersion(db, {
     }
 }
 
-function bookingPackageFromBooking(booking = {}) {
-    const rawExtra = booking.extra_data ?? booking.extraData;
-    let extra = rawExtra;
-    if (typeof extra === 'string') {
+function parseBookingObject(value) {
+    let parsed = value;
+    if (typeof parsed === 'string') {
         try {
-            extra = JSON.parse(extra);
+            parsed = JSON.parse(parsed);
         } catch {
-            extra = {};
+            parsed = {};
         }
     }
-    extra = extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {};
-    return booking.bookingPackage
-        || booking.booking_package
-        || extra.bookingPackage
-        || extra.booking_package
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+}
+
+function bookingExtraDataCandidates(booking = {}) {
+    return [
+        ['extraData', parseBookingObject(booking.extraData)],
+        ['extra_data', parseBookingObject(booking.extra_data)]
+    ];
+}
+
+function bookingExtraDataFromBooking(booking = {}) {
+    const candidates = bookingExtraDataCandidates(booking);
+    return candidates.find(([, extra]) => Object.keys(extra).length)?.[1] || {};
+}
+
+function bookingPackageCandidates(booking = {}) {
+    const candidates = [
+        ['bookingPackage', booking.bookingPackage],
+        ['booking_package', booking.booking_package]
+    ];
+    for (const [extraPath, extra] of bookingExtraDataCandidates(booking)) {
+        candidates.push(
+            [`${extraPath}.bookingPackage`, extra.bookingPackage],
+            [`${extraPath}.booking_package`, extra.booking_package]
+        );
+    }
+    return candidates
+        .filter(([, bookingPackage]) => (
+            bookingPackage
+            && typeof bookingPackage === 'object'
+            && !Array.isArray(bookingPackage)
+        ))
+        .map(([path, bookingPackage]) => ({ path, bookingPackage }));
+}
+
+function bookingPackageHasTicketSnapshotFields(bookingPackage = {}) {
+    return Number(bookingPackage.schemaVersion || bookingPackage.schema_version || 0) >= 3
+        || Array.isArray(bookingPackage.ticketLines || bookingPackage.ticket_lines)
+        || hasOwn(bookingPackage, 'ticketSubtotal')
+        || hasOwn(bookingPackage, 'ticket_subtotal')
+        || hasOwn(bookingPackage, 'ticketPricingContext')
+        || hasOwn(bookingPackage, 'ticket_pricing_context')
+        || hasOwn(bookingPackage, 'ticketDayType')
+        || hasOwn(bookingPackage, 'ticket_day_type')
+        || hasOwn(bookingPackage, 'ticketPricingDate')
+        || hasOwn(bookingPackage, 'ticket_pricing_date')
+        || hasOwn(bookingPackage, 'ticketPricedAt')
+        || hasOwn(bookingPackage, 'ticket_priced_at');
+}
+
+function bookingPackageFromBooking(booking = {}) {
+    const candidates = bookingPackageCandidates(booking);
+    return candidates.find(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage))?.bookingPackage
+        || candidates[0]?.bookingPackage
         || {};
+}
+
+function hasTicketSnapshotFields(booking = {}) {
+    return bookingPackageCandidates(booking)
+        .some(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage));
+}
+
+function hasTicketQuoteInput(booking = {}) {
+    return hasOwn(booking, 'ticketQuote')
+        || hasOwn(booking, 'ticket_quote')
+        || Boolean(nestedTicketQuotePath(booking));
+}
+
+function nestedTicketQuotePath(booking = {}) {
+    for (const { path, bookingPackage } of bookingPackageCandidates(booking)) {
+        if (hasOwn(bookingPackage, 'ticketQuote')) return `${path}.ticketQuote`;
+        if (hasOwn(bookingPackage, 'ticket_quote')) return `${path}.ticket_quote`;
+    }
+    for (const [path, extra] of bookingExtraDataCandidates(booking)) {
+        if (hasOwn(extra, 'ticketQuote')) return `${path}.ticketQuote`;
+        if (hasOwn(extra, 'ticket_quote')) return `${path}.ticket_quote`;
+    }
+    return null;
 }
 
 function readAdmissionTicketSnapshot(booking = {}) {
@@ -729,8 +830,30 @@ async function loadQuoteTariffs(queryable, {
     businessContext,
     admissionContext,
     dayType,
-    pricingDate
+    pricingDate,
+    lockTariffTypes = false
 } = {}) {
+    const context = normalizeBusinessContext(businessContext);
+    if (lockTariffTypes) {
+        const lockResult = await queryable.query(
+            `SELECT id, code
+               FROM admission_ticket_types
+              WHERE business_context = $1
+                AND code = ANY($2::text[])
+              ORDER BY code
+              FOR SHARE`,
+            [context, TICKET_TYPE_CODES]
+        );
+        const lockedCodes = new Set((lockResult.rows || []).map(row => row.code));
+        const missingLockedTypes = TICKET_TYPE_CODES.filter(code => !lockedCodes.has(code));
+        if (missingLockedTypes.length) {
+            throw new AdmissionTicketError('Ticket type configuration is incomplete', {
+                status: 503,
+                code: 'TICKET_TARIFF_MISSING',
+                details: { missingTypes: missingLockedTypes }
+            });
+        }
+    }
     const result = await queryable.query(
         `SELECT
              ticket_type.id AS ticket_type_id,
@@ -762,7 +885,7 @@ async function loadQuoteTariffs(queryable, {
            AND ticket_type.code = ANY($5::text[])
          ORDER BY ticket_type.sort_order, ticket_type.code`,
         [
-            normalizeBusinessContext(businessContext),
+            context,
             admissionContext,
             dayType,
             pricingDate,
@@ -813,16 +936,365 @@ function ticketQuoteVersionDiff(previousQuote = {}, currentQuote = {}) {
         .filter(item => item.previousTariffVersionId !== item.currentTariffVersionId);
 }
 
-function bookingTicketResolverInput(booking = {}) {
+function quoteLines(quote = {}) {
+    const lines = quote.ticketLines ?? quote.ticket_lines;
+    return Array.isArray(lines) ? lines : [];
+}
+
+function quoteLineMap(quote = {}) {
+    return new Map(quoteLines(quote)
+        .map(line => [cleanText(line?.ticketTypeCode || line?.ticket_type_code, 64), line])
+        .filter(([code]) => TICKET_TYPE_CODES.includes(code)));
+}
+
+function comparableQuoteInteger(value) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
+
+function comparableQuoteMoney(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? money(number) : null;
+}
+
+function quoteNormalizedQuantities(quote = {}, linesByCode = quoteLineMap(quote)) {
+    const raw = quote.normalizedQuantities ?? quote.normalized_quantities;
+    const normalized = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    return Object.fromEntries(TICKET_TYPE_CODES.map(code => {
+        const line = linesByCode.get(code);
+        const lineQuantity = comparableQuoteInteger(line?.quantity);
+        const normalizedQuantity = comparableQuoteInteger(normalized[code]);
+        return [code, lineQuantity ?? normalizedQuantity ?? 0];
+    }));
+}
+
+function ticketQuoteFingerprintPayload(quote = {}) {
+    const linesByCode = quoteLineMap(quote);
+    const quantities = quoteNormalizedQuantities(quote, linesByCode);
     return {
-        date: booking.date,
-        roomResourceId: booking.roomResourceId ?? booking.room_resource_id,
-        banquetGuests: booking.banquetGuests ?? booking.banquet_guests,
-        banquetAdults: booking.banquetAdults ?? booking.banquet_adults,
-        kidsCount: booking.kidsCount ?? booking.kids_count,
-        ticketQuantities: booking.ticketQuantities ?? booking.ticket_quantities,
-        convertLegacy: booking.convertLegacy === true || booking.convert_legacy === true
+        quoteContractVersion: QUOTE_CONTRACT_VERSION,
+        businessContext: cleanText(quote.businessContext ?? quote.business_context, 64) || null,
+        admissionContext: cleanText(quote.admissionContext ?? quote.admission_context, 32) || null,
+        dayType: cleanText(quote.dayType ?? quote.day_type, 16) || null,
+        pricingDate: toDateOnly(quote.pricingDate ?? quote.pricing_date),
+        currency: cleanText(quote.currency, 8) || CURRENCY,
+        ticketSubtotal: comparableQuoteMoney(quote.ticketSubtotal ?? quote.ticket_subtotal),
+        ticketLineCount: quoteLines(quote).length,
+        lines: Object.fromEntries(TICKET_TYPE_CODES.map(code => {
+            const line = linesByCode.get(code);
+            return [code, {
+                quantity: quantities[code],
+                tariffVersionId: comparableQuoteInteger(line?.tariffVersionId ?? line?.tariff_version_id),
+                unitPriceUah: comparableQuoteMoney(line?.unitPriceUah ?? line?.unit_price_uah),
+                subtotalUah: comparableQuoteMoney(line?.subtotalUah ?? line?.subtotal_uah)
+            }];
+        }))
     };
+}
+
+function ticketQuoteFingerprint(quote = {}) {
+    const payload = JSON.stringify(ticketQuoteFingerprintPayload(quote));
+    return `v${QUOTE_CONTRACT_VERSION}:${crypto.createHash('sha256').update(payload).digest('hex')}`;
+}
+
+function ticketQuoteDiff(previousQuote = {}, currentQuote = {}) {
+    const previous = ticketQuoteFingerprintPayload(previousQuote);
+    const current = ticketQuoteFingerprintPayload(currentQuote);
+    const diff = [];
+    for (const field of ['businessContext', 'admissionContext', 'dayType', 'pricingDate', 'currency', 'ticketSubtotal', 'ticketLineCount']) {
+        if (field === 'businessContext' && previous[field] === null) continue;
+        if (previous[field] === current[field]) continue;
+        diff.push({
+            field,
+            previousValue: previous[field],
+            currentValue: current[field]
+        });
+    }
+    for (const code of TICKET_TYPE_CODES) {
+        const oldLine = previous.lines[code];
+        const newLine = current.lines[code];
+        if (
+            oldLine.quantity === newLine.quantity
+            && oldLine.tariffVersionId === newLine.tariffVersionId
+            && oldLine.unitPriceUah === newLine.unitPriceUah
+            && oldLine.subtotalUah === newLine.subtotalUah
+        ) continue;
+        diff.push({
+            ticketTypeCode: code,
+            previousQuantity: oldLine.quantity,
+            currentQuantity: newLine.quantity,
+            previousTariffVersionId: oldLine.tariffVersionId,
+            currentTariffVersionId: newLine.tariffVersionId,
+            previousUnitPriceUah: oldLine.unitPriceUah,
+            currentUnitPriceUah: newLine.unitPriceUah,
+            previousSubtotalUah: oldLine.subtotalUah,
+            currentSubtotalUah: newLine.subtotalUah
+        });
+    }
+    return diff;
+}
+
+function ticketQuoteInputsChanged(diff = []) {
+    return diff.some(item => (
+        ['businessContext', 'admissionContext', 'dayType', 'pricingDate', 'currency', 'ticketLineCount']
+            .includes(item.field)
+        || (
+            item.ticketTypeCode
+            && item.previousQuantity !== item.currentQuantity
+        )
+    ));
+}
+
+function ticketSnapshotQuoteCandidate(booking, bookingPackage) {
+    const ticketLines = bookingPackage.ticketLines ?? bookingPackage.ticket_lines;
+    if (!Array.isArray(ticketLines)) return null;
+    return {
+        businessContext: booking.businessContext ?? booking.business_context ?? null,
+        admissionContext: bookingPackage.ticketPricingContext
+            ?? bookingPackage.ticket_pricing_context
+            ?? ticketLines[0]?.admissionContext
+            ?? ticketLines[0]?.admission_context,
+        dayType: bookingPackage.ticketDayType
+            ?? bookingPackage.ticket_day_type
+            ?? ticketLines[0]?.dayType
+            ?? ticketLines[0]?.day_type,
+        pricingDate: bookingPackage.ticketPricingDate
+            ?? bookingPackage.ticket_pricing_date
+            ?? booking.date,
+        currency: ticketLines[0]?.currency || CURRENCY,
+        ticketLines,
+        ticketSubtotal: bookingPackage.ticketSubtotal
+            ?? bookingPackage.ticket_subtotal
+            ?? ticketLines.reduce((sum, line) => (
+                sum + Number(line?.subtotalUah ?? line?.subtotal_uah ?? 0)
+            ), 0)
+    };
+}
+
+function ticketQuoteFromStoredSnapshot(booking = {}) {
+    const candidate = bookingPackageCandidates(booking)
+        .find(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage));
+    if (!candidate) return null;
+    const quote = ticketSnapshotQuoteCandidate(booking, candidate.bookingPackage);
+    if (!quote) return null;
+    quote.legacy = false;
+    quote.quoteContractVersion = QUOTE_CONTRACT_VERSION;
+    quote.pricedAt = candidate.bookingPackage.ticketPricedAt
+        ?? candidate.bookingPackage.ticket_priced_at
+        ?? null;
+    quote.normalizedQuantities = quoteNormalizedQuantities(quote);
+    quote.quoteFingerprint = ticketQuoteFingerprint(quote);
+    return quote;
+}
+
+function validateStoredAdmissionTicketSnapshot(booking = {}) {
+    const candidate = bookingPackageCandidates(booking)
+        .find(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage));
+    if (!candidate) return null;
+    const { path, bookingPackage } = candidate;
+    const fail = (reason, details = {}) => {
+        throw new AdmissionTicketError('Stored admission ticket snapshot is invalid', {
+            status: 409,
+            code: 'TICKET_SNAPSHOT_INVALID',
+            details: { path, reason, ...details }
+        });
+    };
+    const schemaVersion = Number(bookingPackage.schemaVersion ?? bookingPackage.schema_version);
+    const ticketLines = bookingPackage.ticketLines ?? bookingPackage.ticket_lines;
+    if (!Number.isInteger(schemaVersion) || schemaVersion < 3) {
+        fail('schema_version');
+    }
+    if (!Array.isArray(ticketLines)) {
+        fail('ticket_lines');
+    }
+
+    const seenCodes = new Set();
+    let calculatedSubtotal = 0;
+    for (let index = 0; index < ticketLines.length; index += 1) {
+        const line = ticketLines[index];
+        if (!line || typeof line !== 'object' || Array.isArray(line)) {
+            fail('ticket_line_shape', { lineIndex: index });
+        }
+        const code = cleanText(line.ticketTypeCode ?? line.ticket_type_code, 64);
+        if (!TICKET_TYPE_CODES.includes(code)) {
+            fail('ticket_type_code', { lineIndex: index, ticketTypeCode: code || null });
+        }
+        if (seenCodes.has(code)) {
+            fail('duplicate_ticket_type', { lineIndex: index, ticketTypeCode: code });
+        }
+        seenCodes.add(code);
+
+        const quantity = Number(line.quantity);
+        const unitPriceUah = Number(line.unitPriceUah ?? line.unit_price_uah);
+        const subtotalUah = Number(line.subtotalUah ?? line.subtotal_uah);
+        const tariffVersionId = Number(line.tariffVersionId ?? line.tariff_version_id);
+        if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+            fail('quantity', { lineIndex: index, ticketTypeCode: code });
+        }
+        if (
+            !Number.isSafeInteger(unitPriceUah)
+            || unitPriceUah < 0
+            || unitPriceUah > MAX_POSTGRES_INTEGER
+        ) {
+            fail('unit_price', { lineIndex: index, ticketTypeCode: code });
+        }
+        if (
+            !Number.isSafeInteger(subtotalUah)
+            || subtotalUah < 0
+            || subtotalUah > MAX_POSTGRES_INTEGER
+            || quantity * unitPriceUah !== subtotalUah
+        ) {
+            fail('line_subtotal', { lineIndex: index, ticketTypeCode: code });
+        }
+        if (!Number.isSafeInteger(tariffVersionId) || tariffVersionId <= 0) {
+            fail('tariff_version', { lineIndex: index, ticketTypeCode: code });
+        }
+        calculatedSubtotal += subtotalUah;
+        if (!Number.isSafeInteger(calculatedSubtotal) || calculatedSubtotal > MAX_POSTGRES_INTEGER) {
+            fail('ticket_subtotal_range');
+        }
+    }
+
+    const storedSubtotal = Number(
+        bookingPackage.ticketSubtotal
+        ?? bookingPackage.ticket_subtotal
+        ?? 0
+    );
+    if (
+        !Number.isSafeInteger(storedSubtotal)
+        || storedSubtotal < 0
+        || storedSubtotal > MAX_POSTGRES_INTEGER
+        || storedSubtotal !== calculatedSubtotal
+    ) {
+        fail('ticket_subtotal', {
+            storedSubtotal,
+            calculatedSubtotal
+        });
+    }
+
+    const storedFingerprint = cleanText(
+        bookingPackage.ticketQuoteFingerprint
+        ?? bookingPackage.ticket_quote_fingerprint,
+        120
+    );
+    if (storedFingerprint) {
+        const quote = ticketSnapshotQuoteCandidate(booking, bookingPackage);
+        if (!quote || ticketQuoteFingerprint(quote) !== storedFingerprint) {
+            fail('quote_fingerprint');
+        }
+    }
+    return {
+        path,
+        schemaVersion,
+        ticketLineCount: ticketLines.length,
+        ticketSubtotal: storedSubtotal
+    };
+}
+
+function ticketSnapshotMismatchPath(booking = {}, existingBooking = null) {
+    const incoming = bookingPackageCandidates(booking)
+        .filter(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage));
+    if (!incoming.length) return null;
+    const existingSignatures = new Set(
+        bookingPackageCandidates(existingBooking || {})
+            .filter(({ bookingPackage }) => bookingPackageHasTicketSnapshotFields(bookingPackage))
+            .map(({ bookingPackage }) => ticketSnapshotQuoteCandidate(existingBooking || {}, bookingPackage))
+            .filter(Boolean)
+            .map(quote => JSON.stringify(ticketQuoteFingerprintPayload({
+                ...quote,
+                businessContext: null
+            })))
+    );
+    for (const { path, bookingPackage } of incoming) {
+        const quote = ticketSnapshotQuoteCandidate(booking, bookingPackage);
+        if (!quote) return path;
+        const signature = JSON.stringify(ticketQuoteFingerprintPayload({
+            ...quote,
+            businessContext: null
+        }));
+        if (!existingSignatures.has(signature)) return path;
+    }
+    return null;
+}
+
+function bookingTicketResolverInput(booking = {}) {
+    const input = {};
+    const copyAlias = (target, camel, snake) => {
+        if (hasOwn(booking, camel)) input[target] = booking[camel];
+        else if (hasOwn(booking, snake)) input[target] = booking[snake];
+    };
+    copyAlias('date', 'date', 'date');
+    copyAlias('roomResourceId', 'roomResourceId', 'room_resource_id');
+    copyAlias('banquetGuests', 'banquetGuests', 'banquet_guests');
+    copyAlias('banquetAdults', 'banquetAdults', 'banquet_adults');
+    copyAlias('kidsCount', 'kidsCount', 'kids_count');
+    copyAlias('ticketQuantities', 'ticketQuantities', 'ticket_quantities');
+    if (hasOwn(booking, 'convertLegacy') || hasOwn(booking, 'convert_legacy')) {
+        input.convertLegacy = booking.convertLegacy === true || booking.convert_legacy === true;
+    }
+    return input;
+}
+
+function bookingTicketPricingInputsChanged(booking = {}, existingBooking = {}) {
+    const comparisons = [
+        {
+            camel: 'date',
+            snake: 'date',
+            current: booking.date,
+            previous: existingBooking.date,
+            normalize: value => toDateOnly(value)
+        },
+        {
+            camel: 'roomResourceId',
+            snake: 'room_resource_id',
+            current: booking.roomResourceId ?? booking.room_resource_id,
+            previous: existingBooking.room_resource_id ?? existingBooking.roomResourceId,
+            normalize: value => cleanText(value, 100) || null
+        },
+        {
+            camel: 'banquetGuests',
+            snake: 'banquet_guests',
+            current: booking.banquetGuests ?? booking.banquet_guests,
+            previous: existingBooking.banquet_guests
+                ?? existingBooking.banquetGuests
+                ?? existingBooking.kids_count
+                ?? existingBooking.kidsCount,
+            normalize: value => comparableQuoteInteger(value)
+        },
+        {
+            camel: 'banquetAdults',
+            snake: 'banquet_adults',
+            current: booking.banquetAdults ?? booking.banquet_adults,
+            previous: existingBooking.banquet_adults ?? existingBooking.banquetAdults ?? 0,
+            normalize: value => comparableQuoteInteger(value)
+        },
+        {
+            camel: 'kidsCount',
+            snake: 'kids_count',
+            current: booking.kidsCount ?? booking.kids_count,
+            previous: existingBooking.kids_count
+                ?? existingBooking.kidsCount
+                ?? existingBooking.banquet_guests
+                ?? existingBooking.banquetGuests,
+            normalize: value => comparableQuoteInteger(value)
+        }
+    ];
+    return comparisons.some(item => {
+        if (!hasOwn(booking, item.camel) && !hasOwn(booking, item.snake)) return false;
+        return item.normalize(item.current) !== item.normalize(item.previous);
+    });
+}
+
+function applyNormalizedTicketCounts(booking = {}, quote = {}) {
+    const quantities = quoteNormalizedQuantities(quote);
+    const normalizedChildren = quantities.regular_child
+        + quantities.under_3_child
+        + quantities.discounted_child
+        + quantities.birthday_child;
+    const normalizedAdults = quantities.adult_companion + quantities.adult_game;
+    booking.banquetGuests = normalizedChildren;
+    booking.kidsCount = normalizedChildren;
+    booking.banquetAdults = normalizedAdults;
 }
 
 async function resolveAndApplyAdmissionTicketQuote({
@@ -833,25 +1305,88 @@ async function resolveAndApplyAdmissionTicketQuote({
     newBanquetFlow = false,
     now = new Date()
 } = {}) {
+    const forbiddenNestedQuotePath = nestedTicketQuotePath(booking);
+    if (forbiddenNestedQuotePath) {
+        throw new AdmissionTicketError('Ticket quotes must use the canonical top-level ticketQuote field', {
+            status: 422,
+            code: 'TICKET_SNAPSHOT_INPUT_FORBIDDEN',
+            details: { field: forbiddenNestedQuotePath }
+        });
+    }
+    const mismatchedSnapshotPath = ticketSnapshotMismatchPath(booking, existingBooking);
+    if (mismatchedSnapshotPath) {
+        throw new AdmissionTicketError('Persisted ticket snapshots cannot be supplied or changed by the client', {
+            status: 422,
+            code: 'TICKET_SNAPSHOT_INPUT_FORBIDDEN',
+            details: { field: mismatchedSnapshotPath }
+        });
+    }
     const existingSnapshot = existingBooking
         ? readAdmissionTicketSnapshot(existingBooking)
         : null;
     const explicitQuantities = hasOwn(booking, 'ticketQuantities')
         || hasOwn(booking, 'ticket_quantities');
+    const explicitConversion = booking.convertLegacy === true
+        || booking.convert_legacy === true;
+    if (
+        existingSnapshot?.kind !== 'v3'
+        && (hasTicketSnapshotFields(booking) || hasTicketQuoteInput(booking))
+        && !explicitQuantities
+    ) {
+        throw new AdmissionTicketError('Persisted ticket snapshots cannot be supplied by the client', {
+            status: 422,
+            code: 'TICKET_SNAPSHOT_INPUT_FORBIDDEN'
+        });
+    }
+    if (existingSnapshot?.kind === 'legacy' && explicitQuantities && !explicitConversion) {
+        throw new AdmissionTicketError('Legacy ticket conversion requires explicit confirmation', {
+            status: 409,
+            code: 'TICKET_LEGACY_CONVERSION_CONFIRMATION_REQUIRED'
+        });
+    }
+    if (existingSnapshot?.kind === 'legacy' && explicitConversion && !explicitQuantities) {
+        throw new AdmissionTicketError('Legacy ticket conversion requires explicit ticket quantities', {
+            status: 422,
+            code: 'TICKET_QUANTITIES_REQUIRED'
+        });
+    }
     const shouldResolve = explicitQuantities || existingSnapshot?.kind === 'v3';
-    if (!shouldResolve) return { applied: false, quote: null };
+    if (!shouldResolve) {
+        return {
+            applied: false,
+            quote: null,
+            preserveNoTicketPackage: Boolean(existingBooking && !existingSnapshot)
+        };
+    }
 
     const input = bookingTicketResolverInput(booking);
     if (!explicitQuantities) delete input.ticketQuantities;
+    const clientQuote = booking.ticketQuote || booking.ticket_quote || null;
+    if (
+        existingSnapshot?.kind === 'v3'
+        && !explicitQuantities
+        && (!clientQuote || typeof clientQuote !== 'object' || Array.isArray(clientQuote))
+        && !bookingTicketPricingInputsChanged(booking, existingBooking || {})
+    ) {
+        validateStoredAdmissionTicketSnapshot(existingBooking || {});
+        const preservedQuote = ticketQuoteFromStoredSnapshot(existingBooking || {});
+        if (!preservedQuote) {
+            return { applied: false, quote: null, preserved: true };
+        }
+        booking.ticketQuote = preservedQuote;
+        delete booking.ticket_quote;
+        applyNormalizedTicketCounts(booking, preservedQuote);
+        return { applied: true, quote: preservedQuote, preserved: true };
+    }
     const quote = await resolveAdmissionTicketQuote({
         queryable,
         businessContext,
         input,
         existingBooking,
         newBanquetFlow,
-        now
+        now,
+        lockTariffTypes: true
     });
-    const clientQuote = booking.ticketQuote || booking.ticket_quote || null;
     if (!clientQuote || typeof clientQuote !== 'object' || Array.isArray(clientQuote)) {
         throw new AdmissionTicketError('A current server ticket quote is required before saving', {
             status: 409,
@@ -859,16 +1394,23 @@ async function resolveAndApplyAdmissionTicketQuote({
             details: { quote }
         });
     }
-    const diff = ticketQuoteVersionDiff(clientQuote, quote);
+    const diff = ticketQuoteDiff(clientQuote, quote);
     if (diff.length) {
-        throw new AdmissionTicketError('Ticket prices changed after preview', {
+        const quoteInputsChanged = ticketQuoteInputsChanged(diff);
+        throw new AdmissionTicketError(
+            quoteInputsChanged
+                ? 'Ticket quantities or pricing context changed after preview'
+                : 'Ticket prices changed after preview',
+            {
             status: 409,
-            code: 'TICKET_PRICE_CHANGED',
+            code: quoteInputsChanged ? 'TICKET_QUOTE_CHANGED' : 'TICKET_PRICE_CHANGED',
             details: { quote, diff }
-        });
+            }
+        );
     }
     booking.ticketQuote = quote;
     delete booking.ticket_quote;
+    applyNormalizedTicketCounts(booking, quote);
     return { applied: true, quote };
 }
 
@@ -878,7 +1420,8 @@ async function resolveAdmissionTicketQuote({
     input = {},
     existingBooking = null,
     newBanquetFlow = false,
-    now = new Date()
+    now = new Date(),
+    lockTariffTypes = false
 } = {}) {
     if (!queryable || typeof queryable.query !== 'function') {
         throw new TypeError('resolveAdmissionTicketQuote requires a queryable');
@@ -888,11 +1431,24 @@ async function resolveAdmissionTicketQuote({
     const snapshot = existingBooking ? readAdmissionTicketSnapshot(existingBooking) : null;
     const explicitQuantities = hasOwn(input, 'ticketQuantities')
         || hasOwn(input, 'ticket_quantities');
+    const explicitConversion = input.convertLegacy === true
+        || input.convert_legacy === true;
+    if (snapshot?.kind === 'legacy' && explicitQuantities && !explicitConversion) {
+        throw new AdmissionTicketError('Legacy ticket conversion requires explicit confirmation', {
+            status: 409,
+            code: 'TICKET_LEGACY_CONVERSION_CONFIRMATION_REQUIRED'
+        });
+    }
+    if (snapshot?.kind === 'legacy' && explicitConversion && !explicitQuantities) {
+        throw new AdmissionTicketError('Legacy ticket conversion requires explicit ticket quantities', {
+            status: 422,
+            code: 'TICKET_QUANTITIES_REQUIRED'
+        });
+    }
     if (
         snapshot?.kind === 'legacy'
         && !explicitQuantities
-        && input.convertLegacy !== true
-        && input.convert_legacy !== true
+        && !explicitConversion
     ) {
         return {
             legacy: true,
@@ -908,18 +1464,33 @@ async function resolveAdmissionTicketQuote({
         input.date ?? existingBooking?.date,
         'date'
     );
-    const banquetGuests = input.banquetGuests
-        ?? input.banquet_guests
-        ?? existingBooking?.banquet_guests;
-    const banquetAdults = input.banquetAdults
-        ?? input.banquet_adults
-        ?? existingBooking?.banquet_adults;
-    const kidsCount = input.kidsCount
-        ?? input.kids_count
-        ?? existingBooking?.kids_count;
+    const hasExplicitBanquetGuests = hasOwn(input, 'banquetGuests')
+        || hasOwn(input, 'banquet_guests');
+    const hasExplicitBanquetAdults = hasOwn(input, 'banquetAdults')
+        || hasOwn(input, 'banquet_adults');
+    const hasExplicitKidsCount = hasOwn(input, 'kidsCount')
+        || hasOwn(input, 'kids_count');
+    const banquetGuests = (hasExplicitBanquetGuests
+        ? (input.banquetGuests ?? input.banquet_guests)
+        : undefined)
+        ?? existingBooking?.banquet_guests
+        ?? existingBooking?.banquetGuests
+        ?? existingBooking?.kids_count
+        ?? existingBooking?.kidsCount;
+    const banquetAdults = (hasExplicitBanquetAdults
+        ? (input.banquetAdults ?? input.banquet_adults)
+        : undefined)
+        ?? existingBooking?.banquet_adults
+        ?? existingBooking?.banquetAdults
+        ?? (existingBooking ? 0 : undefined);
+    const kidsCount = hasExplicitKidsCount
+        ? (input.kidsCount ?? input.kids_count)
+        : undefined;
     const guests = requireNonNegativeInteger(Number(banquetGuests), 'banquetGuests');
     const adults = requireNonNegativeInteger(Number(banquetAdults), 'banquetAdults');
     if (
+        hasExplicitKidsCount
+        &&
         kidsCount !== null
         && kidsCount !== undefined
         && cleanText(kidsCount, 32) !== ''
@@ -954,7 +1525,8 @@ async function resolveAdmissionTicketQuote({
         businessContext: context,
         admissionContext,
         dayType,
-        pricingDate
+        pricingDate,
+        lockTariffTypes
     });
 
     const ticketLines = [];
@@ -982,7 +1554,21 @@ async function resolveAdmissionTicketQuote({
             continue;
         }
         if (quantity <= 0) continue;
-        const unitPriceUah = money(row.amount_uah);
+        const unitPriceUah = Number(row.amount_uah);
+        const subtotalUah = quantity * unitPriceUah;
+        if (
+            !Number.isSafeInteger(unitPriceUah)
+            || unitPriceUah < 0
+            || unitPriceUah > MAX_POSTGRES_INTEGER
+            || !Number.isSafeInteger(subtotalUah)
+            || subtotalUah > MAX_POSTGRES_INTEGER
+        ) {
+            throw new AdmissionTicketError('Ticket amount is outside the supported whole-UAH range', {
+                status: 503,
+                code: 'TICKET_AMOUNT_INVALID',
+                details: { ticketTypeCode: code }
+            });
+        }
         ticketLines.push({
             ticketTypeId: Number(row.ticket_type_id),
             ticketTypeCode: code,
@@ -990,7 +1576,7 @@ async function resolveAdmissionTicketQuote({
             audience: row.audience,
             quantity,
             unitPriceUah,
-            subtotalUah: money(quantity * unitPriceUah),
+            subtotalUah,
             tariffVersionId: Number(row.tariff_version_id),
             effectiveFrom: toDateOnly(row.effective_from),
             admissionContext,
@@ -998,10 +1584,19 @@ async function resolveAdmissionTicketQuote({
             currency: CURRENCY
         });
     }
-    return {
+    const ticketSubtotal = ticketLines.reduce((sum, line) => sum + line.subtotalUah, 0);
+    if (!Number.isSafeInteger(ticketSubtotal) || ticketSubtotal > MAX_POSTGRES_INTEGER) {
+        throw new AdmissionTicketError('Ticket subtotal is outside the supported PostgreSQL INTEGER range', {
+            status: 422,
+            code: 'TICKET_TOTAL_OUT_OF_RANGE'
+        });
+    }
+    const quote = {
         legacy: false,
+        quoteContractVersion: QUOTE_CONTRACT_VERSION,
+        businessContext: context,
         ticketLines,
-        ticketSubtotal: money(ticketLines.reduce((sum, line) => sum + line.subtotalUah, 0)),
+        ticketSubtotal,
         admissionContext,
         dayType,
         pricingDate,
@@ -1009,6 +1604,8 @@ async function resolveAdmissionTicketQuote({
         currency: CURRENCY,
         normalizedQuantities: quantities
     };
+    quote.quoteFingerprint = ticketQuoteFingerprint(quote);
+    return quote;
 }
 
 module.exports = {
@@ -1016,22 +1613,32 @@ module.exports = {
     CURRENCY,
     FORBIDDEN_QUOTE_FIELDS,
     MANUAL_TICKET_TYPE_CODES,
+    MAX_POSTGRES_INTEGER,
+    QUOTE_CONTRACT_VERSION,
     REMAINDER_TICKET_TYPE_CODES,
     TICKET_AVAILABILITY,
     TICKET_TYPE_CODES,
     appendAdmissionTicketTariffVersion,
     assertNoTrustedPricingFields,
     deriveTicketQuantities,
+    dateOnlyInTimeZone,
+    hasTicketSnapshotFields,
+    hasTicketQuoteInput,
+    nestedTicketQuotePath,
     listAdmissionTicketCatalog,
     loadQuoteTariffs,
     mapTariffVersionRow,
     mapTicketTypeRow,
     normalizeManualTicketQuantities,
     readAdmissionTicketSnapshot,
+    ticketQuoteDiff,
+    ticketQuoteFingerprint,
+    ticketQuoteFingerprintPayload,
     ticketQuoteVersionDiff,
     bookingTicketResolverInput,
     resolveAndApplyAdmissionTicketQuote,
     resolveAdmissionTicketQuote,
     resolveServerAdmissionContext,
+    validateStoredAdmissionTicketSnapshot,
     validateTariffMutation
 };

@@ -33,6 +33,11 @@ const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
+const {
+    hasTicketQuoteInput,
+    hasTicketSnapshotFields,
+    readAdmissionTicketSnapshot
+} = require('../services/admissionTickets');
 
 const log = createLogger('RecurringAPI');
 
@@ -69,6 +74,25 @@ function normalizeRecurringPinataFields(body) {
 
 // Valid patterns for recurrence
 const VALID_PATTERNS = ['weekly', 'biweekly', 'monthly', 'custom', 'weekdays', 'weekends'];
+
+function hasRecurringTicketPayload(booking = {}) {
+    if (!booking || typeof booking !== 'object') return false;
+    return Object.prototype.hasOwnProperty.call(booking, 'ticketQuantities')
+        || Object.prototype.hasOwnProperty.call(booking, 'ticket_quantities')
+        || hasTicketQuoteInput(booking)
+        || hasTicketSnapshotFields(booking)
+        || Boolean(readAdmissionTicketSnapshot(booking));
+}
+
+function rejectRecurringTicketPayload(res, booking = {}) {
+    if (!hasRecurringTicketPayload(booking)) return false;
+    res.status(422).json({
+        success: false,
+        code: 'TICKET_RECURRING_UNSUPPORTED',
+        error: 'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately'
+    });
+    return true;
+}
 
 // --- Template CRUD ---
 
@@ -120,21 +144,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const b = req.body;
-        const recurringExtra = b.extraData || b.extra_data || {};
-        const recurringPackage = recurringExtra?.bookingPackage || recurringExtra?.booking_package || b.bookingPackage || b.booking_package || {};
-        if (
-            b.ticketQuantities
-            || b.ticket_quantities
-            || b.ticketQuote
-            || b.ticket_quote
-            || Array.isArray(recurringPackage.ticketLines || recurringPackage.ticket_lines)
-        ) {
-            return res.status(422).json({
-                success: false,
-                code: 'TICKET_RECURRING_UNSUPPORTED',
-                error: 'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately'
-            });
-        }
+        if (rejectRecurringTicketPayload(res, b)) return;
 
         // Validate required fields
         if (!b.pattern || !VALID_PATTERNS.includes(b.pattern)) {
@@ -278,6 +288,7 @@ router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
+        if (rejectRecurringTicketPayload(res, b)) return;
 
         // Verify template exists
         const existing = await pool.query('SELECT * FROM recurring_templates WHERE id = $1', [id]);
@@ -522,7 +533,12 @@ router.post('/:id/generate', async (req, res) => {
         res.json({ success: true, ...result });
     } catch (err) {
         log.error('Manual generate error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            details: err.details || undefined
+        });
     }
 });
 
@@ -536,7 +552,12 @@ router.post('/generate-all', async (req, res) => {
         res.json({ success: true, ...result });
     } catch (err) {
         log.error('Generate all error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            details: err.details || undefined
+        });
     }
 });
 

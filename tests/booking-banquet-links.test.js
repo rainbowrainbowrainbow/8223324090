@@ -4,6 +4,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 
+test('banquet write errors expose controlled package validation failures without converting them to 500', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'banquets.js'), 'utf8');
+    const start = source.indexOf('function sendWriteError');
+    const end = source.indexOf('function requireBanquetCreationContract', start);
+    assert.ok(start >= 0 && end > start);
+    const helper = source.slice(start, end);
+
+    assert.match(helper, /Number\(err\?\.statusCode\)/);
+    assert.match(helper, /controlledStatus >= 400/);
+    assert.match(helper, /controlledStatus < 500/);
+    assert.match(helper, /typeof err\?\.publicMessage === 'string'/);
+    assert.match(helper, /error:\s*err\.publicMessage/);
+    assert.match(helper, /code:\s*err\.code \|\| 'validation_error'/);
+});
+
 test('banquet guest arrival migration adds a nullable HH:mm field outside db startup schema', () => {
     const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '284_banquet_guest_arrival.sql'), 'utf8');
     const dbStartup = fs.readFileSync(path.join(__dirname, '..', 'db', 'index.js'), 'utf8');
@@ -48,6 +63,37 @@ test('booking create reconciliation failure logging is structured and PII-free',
     assert.doesNotMatch(callSite, /err\??\.message|error:\s*err\.message/);
 });
 
+test('ticket-capable banquet writes resolve the canonical quote before building package v3', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'banquetGroups.js'), 'utf8');
+    const functionNames = [
+        'updateBanquetBookingSet',
+        'createMemberBookingFromSourceBooking',
+        'createMemberBookingInBanquetGroup'
+    ];
+    for (const [index, functionName] of functionNames.entries()) {
+        const start = source.indexOf(`async function ${functionName}(`);
+        const nextFunctionName = functionNames[index + 1];
+        const nextKnownFunction = nextFunctionName
+            ? source.indexOf(`async function ${nextFunctionName}(`, start + 1)
+            : -1;
+        const genericEnd = source.indexOf('\nasync function ', start + 1);
+        const end = nextKnownFunction > start
+            ? Math.min(nextKnownFunction, genericEnd > start ? genericEnd : nextKnownFunction)
+            : genericEnd;
+        assert.ok(start >= 0 && end > start, `${functionName} should be extractable`);
+        const body = source.slice(start, end);
+        const quoteIndex = body.indexOf('resolveAndApplyAdmissionTicketQuote({');
+        const packageIndex = body.indexOf('applyBookingPackageEntryCharge(');
+        assert.ok(quoteIndex >= 0, `${functionName} should resolve admission tickets`);
+        assert.ok(packageIndex > quoteIndex, `${functionName} should build package only after canonical quote`);
+        assert.doesNotMatch(
+            body.slice(0, quoteIndex),
+            /\bapplyBookingPackage\(/,
+            `${functionName} must not materialize an untrusted ticketQuote before the resolver`
+        );
+    }
+});
+
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
     require.cache[id] = { id, filename: id, loaded: true, exports };
@@ -61,6 +107,7 @@ function clearModules() {
         '../services/banquetGroups',
         '../services/banquetDeposits',
         '../services/banquetSummary',
+        '../services/admissionTickets',
         '../services/productPricing',
         '../services/telegram',
         '../services/bookingAutomation',
@@ -127,6 +174,52 @@ function bookingRow(overrides = {}) {
         confirmation_note: null,
         confirmation_source: null,
         ...overrides
+    };
+}
+
+function admissionTicketPackageV3({
+    ticketTypeCode = 'regular_child',
+    ticketTypeName = 'Regular child',
+    quantity = 1,
+    unitPriceUah = 350,
+    menuPositions = []
+} = {}) {
+    const ticketSubtotal = quantity * unitPriceUah;
+    const positionsSubtotal = menuPositions.reduce(
+        (sum, item) => sum + Number(item.subtotal ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))),
+        0
+    );
+    return {
+        schemaVersion: 3,
+        programBasePrice: 0,
+        positionsSubtotal,
+        entryCharge: null,
+        entrySubtotal: ticketSubtotal,
+        ticketSubtotal,
+        finalTotal: positionsSubtotal + ticketSubtotal,
+        menuPositions,
+        serviceEvents: [],
+        ticketQuoteContractVersion: 1,
+        ticketQuoteFingerprint: 'v1:test-booking-set-owner',
+        ticketBusinessContext: 'event_genix',
+        ticketPricingContext: 'reserved_table_room',
+        ticketDayType: 'weekday',
+        ticketPricingDate: '2099-06-01',
+        ticketPricedAt: '2099-01-01T00:00:00.000Z',
+        ticketLines: [{
+            ticketTypeId: 1,
+            ticketTypeCode,
+            ticketTypeName,
+            audience: 'child',
+            quantity,
+            unitPriceUah,
+            subtotalUah: ticketSubtotal,
+            tariffVersionId: 101,
+            effectiveFrom: '2099-01-01',
+            admissionContext: 'reserved_table_room',
+            dayType: 'weekday',
+            currency: 'UAH'
+        }]
     };
 }
 
@@ -232,6 +325,7 @@ function makeDb(rows, links = [], options = {}) {
         customers: (Array.isArray(options.customers) ? options.customers : []).map(row => ({ ...row })),
         customerChildren: (Array.isArray(options.customerChildren) ? options.customerChildren : []).map(row => ({ ...row })),
         histories: [],
+        ticketQuoteResolutions: [],
         tx: [],
         queries: [],
         nextLinkId: links.length + 1,
@@ -407,6 +501,43 @@ function makeDb(rows, links = [], options = {}) {
                 )
             };
         }
+        if (/SELECT \*\s+FROM banquet_groups\s+WHERE id = \$1\s+AND business_context = \$2\s+FOR UPDATE/i.test(sql)) {
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+            );
+            return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+        }
+        if (/SELECT booking\.id, booking\.extra_data, membership\.role\s+FROM banquet_group_bookings membership\s+JOIN bookings booking/i.test(sql)) {
+            const [groupId, businessContext] = params;
+            const rows = state.banquetMemberships
+                .filter(item =>
+                    item.group_id === groupId
+                    && normalizeContext(item.business_context) === normalizeContext(businessContext)
+                )
+                .map(item => {
+                    const booking = state.rows.find(row =>
+                        row.id === item.booking_id
+                        && normalizeContext(row.business_context) === normalizeContext(businessContext)
+                        && String(row.status || 'confirmed').toLowerCase() !== 'cancelled'
+                    );
+                    return booking ? {
+                        id: booking.id,
+                        extra_data: booking.extra_data,
+                        role: item.role,
+                        sort_order: item.sort_order,
+                        membership_id: item.id
+                    } : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => {
+                    const roleRank = role => ({ kitchen: 0, primary: 1 }[role] ?? 2);
+                    return roleRank(a.role) - roleRank(b.role)
+                        || Number(a.sort_order || 0) - Number(b.sort_order || 0)
+                        || Number(a.membership_id || 0) - Number(b.membership_id || 0);
+                });
+            return { rows, rowCount: rows.length };
+        }
         if (/FROM banquet_groups bg LEFT JOIN LATERAL/i.test(sql)) {
             const [businessContext, date, customerId] = params;
             const groups = state.banquetGroups
@@ -552,8 +683,20 @@ function makeDb(rows, links = [], options = {}) {
         if (/SELECT \*\s+FROM \(\s+SELECT l\.\*, 0 AS match_priority/i.test(sql)) {
             return { rows: [], rowCount: 0 };
         }
+        if (/^(?:SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT) booking_finance_optional_step$/i.test(sql)) {
+            return { rows: [], rowCount: 0 };
+        }
         if (/pg_advisory_xact_lock/i.test(sql)) {
             return { rows: [{ pg_advisory_xact_lock: true }], rowCount: 1 };
+        }
+        if (/^SELECT id\s+FROM finance_transactions/i.test(sql)) {
+            return { rows: [{ id: 9001 }], rowCount: 1 };
+        }
+        if (/^UPDATE finance_transactions/i.test(sql)) {
+            return { rows: [{ id: params[4] || 9001 }], rowCount: 1 };
+        }
+        if (/^DELETE FROM finance_transactions/i.test(sql)) {
+            return { rows: [{ id: params[0] || 9001 }], rowCount: 1 };
         }
         if (/SELECT b\.\*\s+FROM bookings b\s+WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(sql)) {
             const ids = new Set((params[0] || []).map(String));
@@ -759,6 +902,17 @@ function makeDb(rows, links = [], options = {}) {
             const group = state.banquetGroups.find(item => item.id === params[0]);
             if (group) group.updated_by = params[2];
             return { rows: [], rowCount: group ? 1 : 0 };
+        }
+        if (/UPDATE banquet_groups\s+SET meta = \$3::jsonb,\s+updated_at = NOW\(\),\s+updated_by = COALESCE\(\$4, updated_by\)/i.test(sql)) {
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+            );
+            if (!group) return { rows: [], rowCount: 0 };
+            group.meta = typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2];
+            group.updated_by = params[3] || group.updated_by;
+            group.updated_at = new Date('2099-01-01T00:02:30Z').toISOString();
+            return { rows: [], rowCount: 1 };
         }
         if (/UPDATE banquet_groups\s+SET status = 'cancelled', updated_at = NOW\(\), updated_by = \$3/i.test(sql)) {
             const group = state.banquetGroups.find(item =>
@@ -1057,7 +1211,8 @@ async function withApp(rows, links, fn, options = {}) {
             req.user = { id: 7, username: 'banquet-test', role: 'creator' };
             next();
         },
-        requireAction: () => (_req, _res, next) => next()
+        requireAction: () => (_req, _res, next) => next(),
+        userHasAnyRole: (user, roles) => roles.includes(user?.role)
     });
     installMock('../services/bookingVisibility', {
         bookingAccessDeniedPayload: () => ({ success: false, error: 'denied' }),
@@ -1070,6 +1225,47 @@ async function withApp(rows, links, fn, options = {}) {
     installMock('../services/websocket', { broadcastBookingEvent: () => null });
     installMock('../services/eventBus', { publish: () => null });
     installMock('../routes/dashboard', { triggerAlertBroadcast: () => null });
+    if (options.mockAdmissionTicketResolver) {
+        const actualAdmissionTickets = require('../services/admissionTickets');
+        installMock('../services/admissionTickets', {
+            ...actualAdmissionTickets,
+            resolveAndApplyAdmissionTicketQuote: async ({ booking, existingBooking, businessContext }) => {
+                const snapshot = actualAdmissionTickets.readAdmissionTicketSnapshot(existingBooking || {});
+                state.ticketQuoteResolutions.push({
+                    bookingId: booking?.id || null,
+                    existingBookingId: existingBooking?.id || null,
+                    snapshotKind: snapshot?.kind || null
+                });
+                if (snapshot?.kind !== 'v3') {
+                    return {
+                        applied: false,
+                        quote: null,
+                        preserveNoTicketPackage: Boolean(existingBooking && !snapshot)
+                    };
+                }
+                const rawExtra = existingBooking?.extra_data ?? existingBooking?.extraData;
+                const extra = typeof rawExtra === 'string'
+                    ? JSON.parse(rawExtra || '{}')
+                    : (rawExtra || {});
+                const bookingPackage = extra.bookingPackage || extra.booking_package || {};
+                const quote = {
+                    quoteContractVersion: bookingPackage.ticketQuoteContractVersion || 1,
+                    quoteFingerprint: bookingPackage.ticketQuoteFingerprint || 'v1:test-booking-set-owner',
+                    businessContext: bookingPackage.ticketBusinessContext || businessContext,
+                    admissionContext: bookingPackage.ticketPricingContext || 'reserved_table_room',
+                    dayType: bookingPackage.ticketDayType || 'weekday',
+                    pricingDate: booking.date || bookingPackage.ticketPricingDate || existingBooking.date,
+                    pricedAt: bookingPackage.ticketPricedAt || '2099-01-01T00:00:00.000Z',
+                    currency: 'UAH',
+                    ticketLines: snapshot.ticketLines,
+                    ticketSubtotal: snapshot.ticketSubtotal,
+                    lineCount: snapshot.ticketLines.length
+                };
+                booking.ticketQuote = quote;
+                return { applied: true, quote, preserved: true };
+            }
+        });
+    }
     if (options.mockProductPricing) {
         installMock('../services/productPricing', {
             applyEffectiveBookingPrice: async (_db, booking) => {
@@ -1820,6 +2016,82 @@ test('GET banquet read endpoint does not infer arrival from primary booking time
     });
 });
 
+test('GET banquet read model warns when multiple kitchen candidates exist', async () => {
+    const groupId = 'BQ-MULTIPLE-KITCHEN';
+    await withApp([
+        bookingRow({
+            id: 'BK-MULTIPLE-KITCHEN-PRIMARY',
+            customer_id: 101,
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-MULTIPLE-KITCHEN-A',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            customer_id: 101,
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-MULTIPLE-KITCHEN-B',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            customer_id: 101,
+            room: 'Room A'
+        })
+    ], [], async ({ baseUrl }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/${groupId}?businessContext=event_genix`
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 200, JSON.stringify(data));
+        assert.equal(data.bookings.kitchen.length, 2);
+        assert.equal(
+            data.warnings.some(warning => warning.code === 'multiple_kitchen_bookings'),
+            true
+        );
+    }, {
+        banquetGroups: [{
+            id: groupId,
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-MULTIPLE-KITCHEN-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            guest_arrival_time: '12:00',
+            group_name: 'Multiple kitchen',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: groupId,
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTIPLE-KITCHEN-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: groupId,
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTIPLE-KITCHEN-A',
+            role: 'kitchen',
+            sort_order: 30
+        }, {
+            id: 3,
+            group_id: groupId,
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTIPLE-KITCHEN-B',
+            role: 'kitchen',
+            sort_order: 31
+        }]
+    });
+});
+
 test('PATCH banquet arrival changes only group arrival and returns fresh projection', async () => {
     const primary = bookingRow({ id: 'BK-ARRIVAL-ROOT', time: '13:00', room: 'Room A' });
     await withApp([primary], [], async ({ baseUrl, state }) => {
@@ -1947,7 +2219,7 @@ test('POST banquet source member-booking creates group from activity-first booki
             room: 'Room A',
             source: 'banquet_group',
             groupSource: 'activity_first_kitchen_bridge',
-            updatedAt: '2099-01-01T00:00:00.000Z'
+            updatedAt: '2099-01-01T00:02:30.000Z'
         });
 
         const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-ACTIVITY-FIRST');
@@ -1957,6 +2229,8 @@ test('POST banquet source member-booking creates group from activity-first booki
         assert.equal(group.room, 'Room A');
         assert.equal(group.guest_arrival_time, '12:30');
         assert.equal(group.status, 'active');
+        assert.equal(group.meta.ticketBookingId, null);
+        assert.equal(group.meta.packageOwnerBookingId, 'BK-2099-9999');
 
         assert.ok(state.banquetMemberships.some(row =>
             row.group_id === group.id &&
@@ -2416,6 +2690,55 @@ test('POST banquet source activity-booking rolls back group and activity when me
     });
 });
 
+test('POST banquet source activity-booking rejects package payloads on the root or linked activity before a transaction', async () => {
+    const ticketPackage = {
+        schemaVersion: 3,
+        ticketLines: [],
+        ticketSubtotal: 0
+    };
+    for (const payload of [
+        sourceActivityPayload({
+            booking: {
+                extraData: {
+                    bookingPackage: ticketPackage
+                }
+            }
+        }),
+        sourceActivityPayload({
+            linkedBookings: [{
+                date: '2099-06-01',
+                time: '13:15',
+                lineId: 'line-activity-linked',
+                room: 'Room A',
+                programId: 'program-mafia',
+                programCode: 'MAFIA',
+                label: 'Linked Mafia',
+                programName: 'Linked Mafia',
+                category: 'animation',
+                duration: 60,
+                price: 0,
+                hosts: 1,
+                extraData: {
+                    bookingPackage: ticketPackage
+                }
+            }]
+        })
+    ]) {
+        await withApp([
+            kitchenFirstSourceBooking()
+        ], [], async ({ baseUrl, state }) => {
+            const { res, data } = await postSourceActivityBooking(baseUrl, payload);
+
+            assert.equal(res.status, 422, JSON.stringify(data));
+            assert.equal(data.code, 'TICKET_PACKAGE_OWNER_REQUIRED');
+            assert.deepEqual(state.tx, []);
+            assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+            assert.equal(state.banquetGroups.length, 0);
+            assert.equal(state.banquetMemberships.length, 0);
+        });
+    }
+});
+
 test('POST banquet member-booking creates kitchen booking, membership, and compatibility link atomically', async () => {
     await withApp([
         bookingRow({
@@ -2729,6 +3052,89 @@ test('POST banquet activity-booking rejects customer mismatch before creating bo
             sort_order: 10
         }]
     });
+});
+
+test('POST banquet group activity-booking rejects package payloads on the root or linked activity before a transaction', async () => {
+    const group = {
+        id: 'BQ-ACTIVITY-PACKAGE-GUARD',
+        business_context: 'event_genix',
+        primary_booking_id: 'BK-ACTIVITY-PACKAGE-ROOT',
+        customer_id: 101,
+        date: '2099-06-01',
+        room: 'Room A',
+        group_name: 'Activity package guard',
+        status: 'active',
+        source: 'test',
+        meta: {}
+    };
+    const ticketPackage = {
+        schemaVersion: 3,
+        ticketLines: [],
+        ticketSubtotal: 0
+    };
+    const baseBooking = {
+        date: '2099-06-01',
+        time: '13:15',
+        lineId: 'line-activity-new',
+        room: 'Room A',
+        programId: 'program-mafia',
+        programCode: 'MAFIA',
+        label: 'Mafia',
+        programName: 'Mafia',
+        category: 'animation',
+        duration: 60,
+        price: 3000,
+        hosts: 1
+    };
+    for (const body of [{
+        sourceBookingId: group.primary_booking_id,
+        booking: {
+            ...baseBooking,
+            extraData: { bookingPackage: ticketPackage }
+        }
+    }, {
+        sourceBookingId: group.primary_booking_id,
+        booking: baseBooking,
+        linkedBookings: [{
+            ...baseBooking,
+            lineId: 'line-activity-linked',
+            price: 0,
+            extraData: { bookingPackage: ticketPackage }
+        }]
+    }]) {
+        await withApp([
+            bookingRow({
+                id: group.primary_booking_id,
+                customer_id: 101,
+                room: 'Room A'
+            })
+        ], [], async ({ baseUrl, state }) => {
+            const response = await fetch(
+                `${baseUrl}/api/banquets/${group.id}/activity-booking?businessContext=event_genix`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                }
+            );
+            const data = await response.json();
+
+            assert.equal(response.status, 422, JSON.stringify(data));
+            assert.equal(data.code, 'TICKET_PACKAGE_OWNER_REQUIRED');
+            assert.deepEqual(state.tx, []);
+            assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        }, {
+            banquetGroups: [group],
+            banquetMemberships: [{
+                id: 1,
+                group_id: group.id,
+                business_context: 'event_genix',
+                booking_id: group.primary_booking_id,
+                role: 'primary',
+                sort_order: 10
+            }]
+        });
+    }
 });
 
 test('POST banquet member-booking allows kitchen over same-banquet activity room slot', async () => {
@@ -3090,6 +3496,51 @@ test('POST full rejects banquet group payloads before legacy-only link creation'
     });
 });
 
+test('POST full rejects material package data on activity or linked non-owner bookings before a transaction', async () => {
+    const packagePayload = {
+        extraData: {
+            bookingPackage: {
+                schemaVersion: 2,
+                menuPositions: [{
+                    id: 'pizza',
+                    title: 'Pizza',
+                    quantity: 1,
+                    unitPrice: 500,
+                    subtotal: 500
+                }]
+            }
+        }
+    };
+    for (const extraBody of [{
+        banquetActivities: [packagePayload]
+    }, {
+        linked: [packagePayload]
+    }]) {
+        await withApp([], [], async ({ baseUrl, state }) => {
+            const response = await fetch(
+                `${baseUrl}/api/bookings/full?businessContext=event_genix`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        main: {
+                            date: '2099-06-01',
+                            time: '12:00',
+                            lineId: 'line-main'
+                        },
+                        ...extraBody
+                    })
+                }
+            );
+            const data = await response.json();
+
+            assert.equal(response.status, 422, JSON.stringify(data));
+            assert.equal(data.code, 'TICKET_PACKAGE_OWNER_REQUIRED');
+            assert.deepEqual(state.tx, []);
+        });
+    }
+});
+
 test('POST booking rejects explicit add-to-existing banquet intent on generic endpoint', async () => {
     await withApp([], [], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings`, {
@@ -3238,9 +3689,10 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         assert.equal(data.event.time, '12:00');
         assert.notEqual(data.event.time, data.arrival.time);
         assert.equal(data.event.room, data.arrival.room);
-        assert.deepEqual(data.finance.rows.map(row => row.key), ['total', 'deposit']);
+        assert.deepEqual(data.finance.rows.map(row => row.key), ['total', 'deposit', 'amount_due']);
         assert.equal(data.finance.rows.find(row => row.key === 'total')?.amount, 1700);
         assert.equal(data.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
+        assert.equal(data.finance.rows.find(row => row.key === 'amount_due')?.amount, 1700);
         assert.deepEqual(data.schedule.map(item => `${item.time} ${item.title}`), [
             '11:45 Прихід гостей',
             '12:00 Banquet root',
@@ -3476,6 +3928,396 @@ test('GET banquet summary PDF returns clean application/pdf response', async () 
             role: 'primary',
             sort_order: 10
         }]
+    });
+});
+
+test('banquet summary keeps kitchen menu and canonical ticket owner separate and counts tickets once', () => {
+    const { buildBanquetSummary } = require('../services/banquetSummary');
+    const ticketPackage = (code, title, amount) => ({
+        schemaVersion: 3,
+        programBasePrice: 0,
+        positionsSubtotal: 0,
+        entryCharge: null,
+        entrySubtotal: amount,
+        ticketSubtotal: amount,
+        finalTotal: amount,
+        ticketPricingContext: 'reserved_table_room',
+        ticketDayType: 'weekday',
+        ticketPricingDate: '2099-06-01',
+        ticketLines: [{
+            ticketTypeId: code === 'regular_child' ? 1 : 4,
+            ticketTypeCode: code,
+            ticketTypeName: title,
+            audience: 'child',
+            quantity: 1,
+            unitPriceUah: amount,
+            subtotalUah: amount,
+            tariffVersionId: code === 'regular_child' ? 101 : 104,
+            effectiveFrom: '2099-01-01',
+            admissionContext: 'reserved_table_room',
+            dayType: 'weekday',
+            currency: 'UAH'
+        }]
+    });
+    const primary = bookingRow({
+        id: 'BK-TICKET-SUMMARY-PRIMARY',
+        price: 1000,
+        extra_data: {
+            bookingPackage: {
+                programBasePrice: 1000,
+                positionsSubtotal: 0,
+                entrySubtotal: 0,
+                finalTotal: 1000,
+                menuPositions: []
+            }
+        }
+    });
+    const kitchen = bookingRow({
+        id: 'BK-TICKET-SUMMARY-KITCHEN',
+        program_id: null,
+        program_code: 'KITCHEN',
+        category: 'kitchen',
+        label: 'Kitchen order',
+        program_name: 'Kitchen order',
+        price: 500,
+        extra_data: {
+            bookingWorkspace: {
+                scenario: 'kitchen_only',
+                hasEvent: false
+            },
+            bookingPackage: {
+                programBasePrice: 0,
+                positionsSubtotal: 500,
+                entrySubtotal: 0,
+                finalTotal: 500,
+                menuPositions: [{
+                    id: 'pizza',
+                    title: 'Pizza',
+                    quantity: 2,
+                    unitPrice: 250,
+                    subtotal: 500
+                }]
+            }
+        }
+    });
+    const ticketOwner = bookingRow({
+        id: 'BK-TICKET-SUMMARY-OWNER',
+        price: 350,
+        extra_data: {
+            bookingPackage: ticketPackage('regular_child', 'Regular child', 350)
+        }
+    });
+    const conflictingTicketMember = bookingRow({
+        id: 'BK-TICKET-SUMMARY-CONFLICT',
+        price: 10,
+        extra_data: {
+            bookingPackage: ticketPackage('birthday_child', 'Birthday child', 10)
+        }
+    });
+
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: primary,
+        canonicalDepositProjection: {
+            success: true,
+            status: 'manager_recorded',
+            deposit: {
+                id: 77,
+                amount: 500,
+                sourceKind: 'manager_recorded'
+            }
+        },
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-TICKET-SUMMARY',
+            group: {
+                id: 'BQ-TICKET-SUMMARY',
+                primaryBookingId: primary.id,
+                status: 'active',
+                meta: {
+                    ticketBookingId: ticketOwner.id,
+                    packageOwnerBookingId: ticketOwner.id
+                }
+            },
+            members: [
+                { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary, technicalChildren: [] },
+                { bookingId: kitchen.id, role: 'kitchen', isKitchenCandidate: true, booking: kitchen, technicalChildren: [] },
+                { bookingId: ticketOwner.id, role: 'manual', booking: ticketOwner, technicalChildren: [] },
+                { bookingId: conflictingTicketMember.id, role: 'manual', booking: conflictingTicketMember, technicalChildren: [] }
+            ]
+        }
+    });
+
+    const menuRows = summary.orderRows.filter(row => row.type === 'menu');
+    const ticketRows = summary.orderRows.filter(row => row.type === 'ticket');
+    assert.deepEqual(menuRows.map(row => row.title), ['Pizza']);
+    assert.deepEqual(ticketRows.map(row => row.title), ['Regular child']);
+    assert.equal(ticketRows.reduce((sum, row) => sum + row.subtotal, 0), 350);
+    assert.equal(summary.orderRows.some(row => row.title === 'Birthday child'), false);
+    assert.equal(summary.totals.programBasePrice, 1000);
+    assert.equal(summary.totals.menuSubtotal, 500);
+    assert.equal(summary.totals.entrySubtotal, 350);
+    assert.equal(summary.totals.orderTotal, 1850);
+    assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 1850);
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 500);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 1350);
+    assert.equal(summary.finance.amountDue, 1350);
+    assert.equal(
+        summary.warnings.some(warning => warning.code === 'banquet_ticket_snapshot_conflict'),
+        true
+    );
+
+    const unresolvedConflict = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: primary,
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-TICKET-SUMMARY',
+            group: {
+                id: 'BQ-TICKET-SUMMARY',
+                primaryBookingId: primary.id,
+                status: 'active',
+                meta: {}
+            },
+            members: [
+                { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary, technicalChildren: [] },
+                { bookingId: kitchen.id, role: 'kitchen', isKitchenCandidate: true, booking: kitchen, technicalChildren: [] },
+                { bookingId: ticketOwner.id, role: 'manual', booking: ticketOwner, technicalChildren: [] },
+                { bookingId: conflictingTicketMember.id, role: 'manual', booking: conflictingTicketMember, technicalChildren: [] }
+            ]
+        }
+    });
+    assert.deepEqual(
+        unresolvedConflict.orderRows.filter(row => row.type === 'ticket'),
+        []
+    );
+    assert.equal(unresolvedConflict.totals.entrySubtotal, 0);
+    assert.equal(unresolvedConflict.totals.orderTotal, 1500);
+    assert.equal(
+        unresolvedConflict.warnings.some(warning => warning.code === 'banquet_ticket_snapshot_conflict'),
+        true
+    );
+});
+
+test('banquet membership attach resolves and persists the canonical package owner', async () => {
+    const primary = bookingRow({
+        id: 'BK-OWNER-GUARD-PRIMARY',
+        customer_id: 101
+    });
+    const target = bookingRow({
+        id: 'BK-OWNER-GUARD-TARGET',
+        customer_id: 101
+    });
+    await withApp([primary, target], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-OWNER-GUARD/bookings?businessContext=event_genix`,
+            {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: target.id,
+                    role: 'manual'
+                })
+            }
+        );
+        const payload = await response.json();
+
+        assert.equal(response.status, 200, JSON.stringify(payload));
+        assert.equal(payload.success, true);
+        assert.deepEqual(
+            state.banquetMemberships.map(item => item.booking_id).sort(),
+            [primary.id, target.id].sort()
+        );
+        assert.deepEqual(
+            state.banquetGroups.find(item => item.id === 'BQ-OWNER-GUARD')?.meta,
+            {
+                operationalNote: 'preserve-me',
+                ticketBookingId: null,
+                packageOwnerBookingId: primary.id
+            }
+        );
+        assert.equal(
+            state.queries.some(item => /SELECT bgb\.\*[\s\S]*FROM banquet_group_bookings bgb/i.test(item.sql)),
+            true
+        );
+        assert.equal(
+            state.queries.some(item => /SELECT b\.\*[\s\S]*FROM bookings b[\s\S]*b\.id = ANY/i.test(item.sql)),
+            true
+        );
+    }, {
+        banquetGroups: [{
+            id: 'BQ-OWNER-GUARD',
+            business_context: 'event_genix',
+            primary_booking_id: primary.id,
+            customer_id: 101,
+            date: primary.date,
+            room: primary.room,
+            group_name: 'Owner guard group',
+            status: 'active',
+            source: 'test',
+            meta: { operationalNote: 'preserve-me' }
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-OWNER-GUARD',
+            business_context: 'event_genix',
+            booking_id: primary.id,
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('banquet membership attach rejects a material package as an activity owner and rolls back membership', async () => {
+    const primary = bookingRow({
+        id: 'BK-ACTIVITY-OWNER-PRIMARY',
+        customer_id: 101
+    });
+    const target = bookingRow({
+        id: 'BK-ACTIVITY-OWNER-TARGET',
+        customer_id: 101,
+        extra_data: JSON.stringify({
+            bookingPackage: {
+                schemaVersion: 2,
+                menuPositions: [{
+                    id: 'pizza',
+                    title: 'Pizza',
+                    quantity: 1,
+                    unitPrice: 500,
+                    subtotal: 500
+                }]
+            }
+        })
+    });
+    await withApp([primary, target], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-ACTIVITY-OWNER/bookings?businessContext=event_genix`,
+            {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: target.id,
+                    role: 'activity'
+                })
+            }
+        );
+        const payload = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(payload));
+        assert.equal(payload.code, 'TICKET_PACKAGE_OWNER_INVALID');
+        assert.deepEqual(
+            state.banquetMemberships.map(item => item.booking_id),
+            [primary.id]
+        );
+        assert.equal(state.tx.at(-1), 'ROLLBACK');
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ACTIVITY-OWNER',
+            business_context: 'event_genix',
+            primary_booking_id: primary.id,
+            customer_id: 101,
+            date: primary.date,
+            room: primary.room,
+            group_name: 'Activity owner guard',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ACTIVITY-OWNER',
+            business_context: 'event_genix',
+            booking_id: primary.id,
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('banquet membership mutations require full repricing for ticket snapshot owners', async () => {
+    const ticketExtraData = JSON.stringify({
+        bookingPackage: {
+            schemaVersion: 3,
+            ticketLines: [],
+            ticketSubtotal: 0
+        }
+    });
+    const primary = bookingRow({ id: 'BK-TICKET-MEMBER-PRIMARY' });
+    const ticketedTarget = bookingRow({
+        id: 'BK-TICKET-MEMBER-TARGET',
+        extra_data: ticketExtraData
+    });
+    const group = {
+        id: 'BQ-TICKET-MEMBER',
+        business_context: 'event_genix',
+        primary_booking_id: primary.id,
+        customer_id: null,
+        date: primary.date,
+        room: primary.room,
+        group_name: 'Ticket membership guard',
+        status: 'active',
+        source: 'test',
+        meta: {}
+    };
+    const primaryMembership = {
+        id: 1,
+        group_id: group.id,
+        business_context: 'event_genix',
+        booking_id: primary.id,
+        role: 'primary',
+        sort_order: 10
+    };
+
+    await withApp([primary, ticketedTarget], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/${group.id}/bookings?businessContext=event_genix`,
+            {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: ticketedTarget.id,
+                    role: 'manual'
+                })
+            }
+        );
+        const payload = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(payload));
+        assert.equal(payload.code, 'TICKET_FULL_EDIT_REQUIRED');
+        assert.deepEqual(state.banquetMemberships.map(item => item.booking_id), [primary.id]);
+        assert.equal(state.tx.at(-1), 'ROLLBACK');
+    }, {
+        banquetGroups: [group],
+        banquetMemberships: [primaryMembership]
+    });
+
+    await withApp([primary, ticketedTarget], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/${group.id}/bookings/${ticketedTarget.id}?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const payload = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(payload));
+        assert.equal(payload.code, 'TICKET_FULL_EDIT_REQUIRED');
+        assert.deepEqual(
+            state.banquetMemberships.map(item => item.booking_id).sort(),
+            [primary.id, ticketedTarget.id].sort()
+        );
+        assert.equal(state.tx.at(-1), 'ROLLBACK');
+    }, {
+        banquetGroups: [group],
+        banquetMemberships: [
+            primaryMembership,
+            {
+                id: 2,
+                group_id: group.id,
+                business_context: 'event_genix',
+                booking_id: ticketedTarget.id,
+                role: 'manual',
+                sort_order: 100
+            }
+        ]
     });
 });
 
@@ -3718,7 +4560,7 @@ test('banquet summary shows zero deposit without using paid_amount as deposit', 
     assert.equal(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'), false);
 });
 
-test('DELETE booking detaches cancelled banquet activity from group while keeping primary root', async () => {
+test('DELETE booking rejects an active banquet activity and rolls back the entire group state', async () => {
     await withApp([
         bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000 }),
         bookingRow({ id: 'BK-ACTIVE', time: '13:00', label: 'Foam show', program_name: 'Foam show', category: 'activity', room: 'Room A', price: 700 }),
@@ -3751,29 +4593,20 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
     }], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings/BK-ACTIVE?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
-        assert.equal(res.status, 200, JSON.stringify(data));
-        assert.equal(data.success, true);
-        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'cancelled');
-        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'cancelled');
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.details.groupId, 'BQ-ROOT');
+        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'confirmed');
+        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'confirmed');
-        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id).sort(), ['BK-KITCHEN', 'BK-ROOT']);
-        assert.equal(state.links.length, 1);
-        assert.deepEqual([state.links[0].booking_a_id, state.links[0].booking_b_id].sort(), ['BK-KITCHEN', 'BK-ROOT']);
-        assert.equal(state.banquetGroups[0].updated_by, 'banquet-test');
-        assert.ok(state.histories.some(item => item.action === 'banquet_group_booking_detached'));
-
-        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
-        timelineBookingAbsent(roomRows, 'BK-ACTIVE');
-        timelineBookingAbsent(roomRows, 'BK-ACTIVE-CHILD');
-        const kitchen = timelineBooking(roomRows, 'BK-KITCHEN');
-        assertTimelineProjection(kitchen, {
-            timelineView: 'rooms',
-            resourceType: 'room',
-            resourceId: 'room-a',
-            displaySurface: 'service_marker',
-            hiddenReason: null
-        });
+        assert.deepEqual(
+            state.banquetMemberships.map(row => row.booking_id).sort(),
+            ['BK-ACTIVE', 'BK-KITCHEN', 'BK-ROOT']
+        );
+        assert.equal(state.links.length, 2);
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -3812,7 +4645,7 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
     });
 });
 
-test('DELETE booking removes cancelled kitchen marker while keeping source banquet activity consistent', async () => {
+test('DELETE booking rejects the active canonical kitchen package owner and rolls back', async () => {
     await withApp([
         activityFirstSourceBooking(),
         bookingRow({
@@ -3839,35 +4672,18 @@ test('DELETE booking removes cancelled kitchen marker while keeping source banqu
     }], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings/BK-KITCHEN?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
-        assert.equal(res.status, 200, JSON.stringify(data));
-        assert.equal(data.success, true);
-        assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'cancelled');
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.details.groupId, 'BQ-ACTIVITY-FIRST');
+        assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVITY-FIRST').status, 'confirmed');
-        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id), ['BK-ACTIVITY-FIRST']);
-        assert.equal(state.links.length, 0);
-        assertNoDuplicateBanquetReadModel(state, 'BQ-ACTIVITY-FIRST', ['BK-ACTIVITY-FIRST']);
-
-        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
-        timelineBookingAbsent(roomRows, 'BK-KITCHEN');
-        const roomActivity = timelineBooking(roomRows, 'BK-ACTIVITY-FIRST');
-        assertTimelineProjection(roomActivity, {
-            timelineView: 'rooms',
-            resourceType: 'room',
-            resourceId: 'room-a',
-            displaySurface: 'booking_block',
-            hiddenReason: null
-        });
-
-        const animatorRows = await getTimelineBookings(baseUrl, '2099-06-01', 'animators');
-        timelineBookingAbsent(animatorRows, 'BK-KITCHEN');
-        const animatorActivity = timelineBooking(animatorRows, 'BK-ACTIVITY-FIRST');
-        assertTimelineProjection(animatorActivity, {
-            timelineView: 'animators',
-            resourceType: 'animator',
-            resourceId: 'line-rock',
-            displaySurface: 'booking_block',
-            hiddenReason: null
-        });
+        assert.deepEqual(
+            state.banquetMemberships.map(row => row.booking_id),
+            ['BK-ACTIVITY-FIRST', 'BK-KITCHEN']
+        );
+        assert.equal(state.links.length, 1);
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
     }, {
         banquetGroups: [{
             id: 'BQ-ACTIVITY-FIRST',
@@ -3879,7 +4695,10 @@ test('DELETE booking removes cancelled kitchen marker while keeping source banqu
             group_name: 'Paper neon show',
             status: 'active',
             source: 'test',
-            meta: {}
+            meta: {
+                ticketBookingId: null,
+                packageOwnerBookingId: 'BK-KITCHEN'
+            }
         }],
         banquetMemberships: [{
             id: 1,
@@ -3899,22 +4718,25 @@ test('DELETE booking removes cancelled kitchen marker while keeping source banqu
     });
 });
 
-test('DELETE sole primary booking cancels the now-empty banquet group in the same transaction', async () => {
+test('DELETE soft and permanent both reject the sole active primary booking without mutations', async () => {
     await withApp([
         bookingRow({ id: 'BK-ROOT', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet' })
     ], [], async ({ baseUrl, state }) => {
-        const res = await fetch(`${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`, { method: 'DELETE' });
-        const data = await res.json();
-
-        assert.equal(res.status, 200, JSON.stringify(data));
-        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'cancelled');
-        assert.equal(state.banquetGroups[0].status, 'cancelled');
-        assert.equal(state.banquetGroups[0].updated_by, 'banquet-test');
-        assert.ok(state.histories.some(item =>
-            item.action === 'banquet_group_cancelled_on_primary_delete'
-            && item.data.group_id === 'BQ-ROOT'
-        ));
-        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        for (const permanent of [false, true]) {
+            const suffix = permanent ? '&permanent=true' : '';
+            const res = await fetch(
+                `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix${suffix}`,
+                { method: 'DELETE' }
+            );
+            const data = await res.json();
+            assert.equal(res.status, 409, JSON.stringify(data));
+            assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+            assert.equal(data.details.groupId, 'BQ-ROOT');
+        }
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK']);
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT', customer_id: null,
@@ -3922,6 +4744,1310 @@ test('DELETE sole primary booking cancels the now-empty banquet group in the sam
         }],
         banquetMemberships: [{
             id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set atomically updates a non-primary canonical package owner without copying tickets to primary', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const ownerPackage = admissionTicketPackageV3({
+        menuPositions: [{
+            id: 'pizza',
+            title: 'Pizza',
+            quantity: 2,
+            unitPrice: 250,
+            subtotal: 500
+        }]
+    });
+    await withApp([
+        bookingRow({
+            id: 'BK-OWNER-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            program_code: 'BUBBLE',
+            label: 'Bubble show',
+            program_name: 'Bubble show',
+            category: 'show',
+            duration: 30,
+            price: 2400,
+            customer_id: 101,
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-OWNER-KITCHEN',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            duration: 90,
+            price: ownerPackage.finalTotal,
+            customer_id: 999,
+            room: 'Room A',
+            notes: 'Owner note before atomic update',
+            kids_count: 1,
+            banquet_guests: 1,
+            banquet_adults: 2,
+            banquet_tables: 3,
+            banquet_menu: 'Existing kitchen menu',
+            extra_data: JSON.stringify({ bookingPackage: ownerPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-PACKAGE-OWNER/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-OWNER-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {
+                        date: '2099-06-02',
+                        room: 'Room B',
+                        notes: 'Primary note updated separately'
+                    },
+                    package_owner_booking_id: 'BK-OWNER-KITCHEN',
+                    package_owner_patch: { notes: 'Owner note updated atomically' },
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 200, JSON.stringify(data));
+        assert.equal(data.packageOwnerBookingId, 'BK-OWNER-KITCHEN');
+        assert.equal(data.packageOwnerBooking.id, 'BK-OWNER-KITCHEN');
+        const primary = state.rows.find(row => row.id === 'BK-OWNER-PRIMARY');
+        const owner = state.rows.find(row => row.id === 'BK-OWNER-KITCHEN');
+        const primaryExtra = typeof primary.extra_data === 'string'
+            ? JSON.parse(primary.extra_data)
+            : (primary.extra_data || {});
+        const ownerExtra = typeof owner.extra_data === 'string'
+            ? JSON.parse(owner.extra_data)
+            : owner.extra_data;
+        assert.equal(primary.notes, 'Primary note updated separately');
+        assert.equal(owner.notes, 'Owner note updated atomically');
+        assert.equal(primary.date, '2099-06-02');
+        assert.equal(owner.date, '2099-06-02');
+        assert.equal(state.banquetGroups[0].date, '2099-06-02');
+        assert.equal(primary.room, 'Room B');
+        assert.equal(owner.room, 'Room B');
+        assert.equal(state.banquetGroups[0].room, 'Room B');
+        assert.equal(owner.room_resource_id, primary.room_resource_id);
+        assert.equal(state.banquetGroups[0].room_resource_id, primary.room_resource_id);
+        assert.equal(owner.customer_id, 101);
+        assert.equal(state.banquetGroups[0].customer_id, 101);
+        assert.equal(Number(primaryExtra.bookingPackage?.schemaVersion || 0) >= 3, false);
+        assert.equal(ownerExtra.bookingPackage.schemaVersion, 3);
+        assert.deepEqual(ownerExtra.bookingPackage.ticketLines, ownerPackage.ticketLines);
+        assert.equal(ownerExtra.bookingPackage.ticketPricingDate, '2099-06-02');
+        assert.equal(ownerExtra.bookingPackage.ticketPricingContext, 'reserved_table_room');
+        assert.deepEqual(
+            ownerExtra.bookingPackage.menuPositions.map(item => ({
+                id: item.id,
+                title: item.title,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal
+            })),
+            ownerPackage.menuPositions
+        );
+        assert.equal(owner.banquet_guests, 1);
+        assert.equal(owner.kids_count, 1);
+        assert.equal(owner.banquet_adults, 2);
+        assert.equal(owner.banquet_tables, 3);
+        assert.equal(owner.banquet_menu, 'Existing kitchen menu');
+        assert.deepEqual(state.banquetGroups[0].meta, {
+            ticketBookingId: 'BK-OWNER-KITCHEN',
+            packageOwnerBookingId: 'BK-OWNER-KITCHEN'
+        });
+        assert.deepEqual(
+            state.ticketQuoteResolutions.filter(item => item.snapshotKind === 'v3'),
+            [{
+                bookingId: 'BK-OWNER-KITCHEN',
+                existingBookingId: 'BK-OWNER-KITCHEN',
+                snapshotKind: 'v3'
+            }]
+        );
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        mockAdmissionTicketResolver: true,
+        mockProductPricing: true,
+        nextGroupUpdatedAt: '2099-01-01T00:10:00.000Z',
+        banquetGroups: [{
+            id: 'BQ-PACKAGE-OWNER',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-OWNER-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Package owner banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-OWNER-PRIMARY',
+                packageOwnerBookingId: 'BK-OWNER-PRIMARY'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-PACKAGE-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-OWNER-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-PACKAGE-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-OWNER-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set resolves a legacy entry-only kitchen package ahead of stale primary metadata', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const legacyPackage = {
+        schemaVersion: 2,
+        programBasePrice: 0,
+        positionsSubtotal: 0,
+        entryCharge: {
+            title: 'Entry',
+            quantity: 1,
+            unitPrice: 310,
+            subtotal: 310,
+            ruleCode: 'banquet_entry_weekday_child'
+        },
+        entrySubtotal: 310,
+        finalTotal: 310,
+        menuPositions: [],
+        serviceEvents: []
+    };
+    await withApp([
+        bookingRow({
+            id: 'BK-LEGACY-OWNER-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101
+        }),
+        bookingRow({
+            id: 'BK-LEGACY-OWNER-KITCHEN',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: 310,
+            customer_id: 101,
+            banquet_guests: 1,
+            extra_data: JSON.stringify({ bookingPackage: legacyPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-LEGACY-OWNER/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-LEGACY-OWNER-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: { notes: 'Primary note' },
+                    packageOwnerBookingId: 'BK-LEGACY-OWNER-KITCHEN',
+                    packageOwnerPatch: { notes: 'Kitchen note' },
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+        const primary = state.rows.find(row => row.id === 'BK-LEGACY-OWNER-PRIMARY');
+        const owner = state.rows.find(row => row.id === 'BK-LEGACY-OWNER-KITCHEN');
+        const primaryExtra = typeof primary.extra_data === 'string'
+            ? JSON.parse(primary.extra_data)
+            : (primary.extra_data || {});
+        const ownerExtra = typeof owner.extra_data === 'string'
+            ? JSON.parse(owner.extra_data)
+            : owner.extra_data;
+
+        assert.equal(response.status, 200, JSON.stringify(data));
+        assert.equal(data.packageOwnerBookingId, 'BK-LEGACY-OWNER-KITCHEN');
+        assert.equal(primaryExtra.bookingPackage, undefined);
+        assert.deepEqual(ownerExtra.bookingPackage.entryCharge, legacyPackage.entryCharge);
+        assert.equal(ownerExtra.bookingPackage.schemaVersion, 2);
+        assert.equal(owner.price, 310);
+        assert.deepEqual(state.banquetGroups[0].meta, {
+            ticketBookingId: null,
+            packageOwnerBookingId: 'BK-LEGACY-OWNER-KITCHEN'
+        });
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        mockAdmissionTicketResolver: true,
+        mockProductPricing: true,
+        nextGroupUpdatedAt: '2099-01-01T00:10:00.000Z',
+        banquetGroups: [{
+            id: 'BQ-LEGACY-OWNER',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-LEGACY-OWNER-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Legacy package owner banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: null,
+                packageOwnerBookingId: 'BK-LEGACY-OWNER-PRIMARY'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-LEGACY-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-LEGACY-OWNER-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-LEGACY-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-LEGACY-OWNER-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects stale active ticket owner metadata without a ticket snapshot', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-STALE-TICKET-META',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: 0,
+            customer_id: 101
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-STALE-TICKET-META/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-STALE-TICKET-META',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: { notes: 'must not persist' },
+                    packageOwnerPatch: {},
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'TICKET_PACKAGE_OWNER_METADATA_INVALID');
+        assert.equal(data.details.field, 'ticketBookingId');
+        assert.equal(data.details.bookingId, 'BK-STALE-TICKET-META');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-STALE-TICKET-META',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-STALE-TICKET-META',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Stale ticket metadata banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-STALE-TICKET-META',
+                packageOwnerBookingId: 'BK-STALE-TICKET-META'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-STALE-TICKET-META',
+            business_context: 'event_genix',
+            booking_id: 'BK-STALE-TICKET-META',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects a supplied package owner that differs from the actual ticket snapshot owner', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const ownerPackage = admissionTicketPackageV3();
+    await withApp([
+        bookingRow({
+            id: 'BK-OWNER-MISMATCH-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101
+        }),
+        bookingRow({
+            id: 'BK-OWNER-MISMATCH-KITCHEN',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: ownerPackage.finalTotal,
+            customer_id: 101,
+            extra_data: JSON.stringify({ bookingPackage: ownerPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-OWNER-MISMATCH/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-OWNER-MISMATCH-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {},
+                    packageOwnerBookingId: 'BK-OWNER-MISMATCH-PRIMARY',
+                    packageOwnerPatch: {},
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'TICKET_PACKAGE_OWNER_MISMATCH');
+        assert.equal(data.details.canonicalPackageOwnerBookingId, 'BK-OWNER-MISMATCH-KITCHEN');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockAdmissionTicketResolver: true,
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-OWNER-MISMATCH',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-OWNER-MISMATCH-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Owner mismatch banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-OWNER-MISMATCH-KITCHEN',
+                packageOwnerBookingId: 'BK-OWNER-MISMATCH-KITCHEN'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-OWNER-MISMATCH',
+            business_context: 'event_genix',
+            booking_id: 'BK-OWNER-MISMATCH-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-OWNER-MISMATCH',
+            business_context: 'event_genix',
+            booking_id: 'BK-OWNER-MISMATCH-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set fails closed when active root members contain multiple ticket snapshots', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-MULTI-SNAPSHOT-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 350,
+            customer_id: 101,
+            extra_data: JSON.stringify({ bookingPackage: admissionTicketPackageV3() })
+        }),
+        bookingRow({
+            id: 'BK-MULTI-SNAPSHOT-KITCHEN',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: 10,
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: admissionTicketPackageV3({
+                    ticketTypeCode: 'birthday_child',
+                    ticketTypeName: 'Birthday child',
+                    unitPriceUah: 10
+                })
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-MULTI-SNAPSHOT/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-MULTI-SNAPSHOT-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {},
+                    packageOwnerPatch: {},
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_TICKET_SNAPSHOT_CONFLICT');
+        assert.deepEqual(
+            data.details.bookingIds.sort(),
+            ['BK-MULTI-SNAPSHOT-KITCHEN', 'BK-MULTI-SNAPSHOT-PRIMARY']
+        );
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-MULTI-SNAPSHOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-MULTI-SNAPSHOT-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Multiple snapshots banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-MULTI-SNAPSHOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTI-SNAPSHOT-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-MULTI-SNAPSHOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTI-SNAPSHOT-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set fails closed when multiple active roots contain material packages', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-MULTI-PACKAGE-PRIMARY',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN-A',
+            category: 'kitchen',
+            duration: 90,
+            price: 310,
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    schemaVersion: 2,
+                    entryCharge: { quantity: 1, unitPrice: 310, subtotal: 310 },
+                    entrySubtotal: 310,
+                    finalTotal: 310,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            })
+        }),
+        bookingRow({
+            id: 'BK-MULTI-PACKAGE-KITCHEN',
+            line_id: 'banquet-service-2',
+            program_code: 'KITCHEN-B',
+            category: 'kitchen',
+            duration: 90,
+            price: 250,
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    schemaVersion: 2,
+                    entryCharge: null,
+                    menuPositions: [{
+                        id: 'pizza',
+                        title: 'Pizza',
+                        quantity: 1,
+                        unitPrice: 250,
+                        subtotal: 250
+                    }],
+                    serviceEvents: [],
+                    finalTotal: 250
+                }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-MULTI-PACKAGE/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-MULTI-PACKAGE-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {},
+                    packageOwnerPatch: {},
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_PACKAGE_OWNER_CONFLICT');
+        assert.deepEqual(
+            data.details.bookingIds.sort(),
+            ['BK-MULTI-PACKAGE-KITCHEN', 'BK-MULTI-PACKAGE-PRIMARY']
+        );
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-MULTI-PACKAGE',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-MULTI-PACKAGE-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Multiple package owners banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-MULTI-PACKAGE',
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTI-PACKAGE-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-MULTI-PACKAGE',
+            business_context: 'event_genix',
+            booking_id: 'BK-MULTI-PACKAGE-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects an activity membership as canonical package owner before duplicate normalization or writes', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const ownerPackage = admissionTicketPackageV3();
+    await withApp([
+        bookingRow({
+            id: 'BK-ACTIVITY-OWNER-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101
+        }),
+        bookingRow({
+            id: 'BK-ACTIVITY-OWNER',
+            time: '12:30',
+            line_id: 'line-pinata',
+            program_id: 'pinata',
+            program_code: 'PIN',
+            category: 'pinata',
+            duration: 15,
+            price: ownerPackage.finalTotal,
+            customer_id: 101,
+            extra_data: JSON.stringify({ bookingPackage: ownerPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-ACTIVITY-OWNER/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-ACTIVITY-OWNER-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {},
+                    packageOwnerBookingId: 'BK-ACTIVITY-OWNER',
+                    packageOwnerPatch: {},
+                    activities: [{
+                        bookingId: 'BK-ACTIVITY-OWNER',
+                        date: '2099-06-01',
+                        time: '12:30',
+                        lineId: 'line-pinata',
+                        room: 'Room A',
+                        programId: 'pinata',
+                        programCode: 'PIN',
+                        label: 'Pinata',
+                        programName: 'Pinata',
+                        category: 'pinata',
+                        duration: 15,
+                        price: ownerPackage.finalTotal
+                    }]
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'TICKET_PACKAGE_OWNER_INVALID');
+        assert.equal(data.details.bookingId, 'BK-ACTIVITY-OWNER');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.equal(
+            state.queries.some(item => (
+                /UPDATE bookings SET date=\$1/i.test(item.sql)
+                && item.params[33] === 'BK-ACTIVITY-OWNER'
+            )),
+            false
+        );
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ACTIVITY-OWNER',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ACTIVITY-OWNER-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Activity owner guard banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-ACTIVITY-OWNER',
+                packageOwnerBookingId: 'BK-ACTIVITY-OWNER'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ACTIVITY-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY-OWNER-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ACTIVITY-OWNER',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY-OWNER',
+            role: 'activity',
+            sort_order: 100
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects manual menu entry combined with the canonical owner ticket snapshot and rolls back', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    const ownerPackage = admissionTicketPackageV3();
+    await withApp([
+        bookingRow({
+            id: 'BK-MANUAL-ENTRY-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101
+        }),
+        bookingRow({
+            id: 'BK-MANUAL-ENTRY-OWNER',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: ownerPackage.finalTotal,
+            customer_id: 101,
+            extra_data: JSON.stringify({ bookingPackage: ownerPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-MANUAL-ENTRY/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-MANUAL-ENTRY-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: {},
+                    packageOwnerBookingId: 'BK-MANUAL-ENTRY-OWNER',
+                    packageOwnerPatch: {
+                        extraData: {
+                            bookingPackage: {
+                                menuPositions: [{
+                                    id: 'entry',
+                                    title: 'Вхід',
+                                    quantity: 1,
+                                    unitPrice: 350,
+                                    subtotal: 350
+                                }]
+                            }
+                        }
+                    },
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 422, JSON.stringify(data));
+        assert.equal(data.code, 'TICKET_MANUAL_ENTRY_CONFLICT');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        mockAdmissionTicketResolver: true,
+        mockProductPricing: true,
+        banquetGroups: [{
+            id: 'BQ-MANUAL-ENTRY',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-MANUAL-ENTRY-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Manual entry conflict banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-MANUAL-ENTRY-OWNER',
+                packageOwnerBookingId: 'BK-MANUAL-ENTRY-OWNER'
+            },
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-MANUAL-ENTRY',
+            business_context: 'event_genix',
+            booking_id: 'BK-MANUAL-ENTRY-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-MANUAL-ENTRY',
+            business_context: 'event_genix',
+            booking_id: 'BK-MANUAL-ENTRY-OWNER',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('PUT banquet booking-set preserves a schema v2 primary package with no entry charge on unrelated edits', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({
+            id: 'BK-SCHEMA2-PRIMARY',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: 1200,
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    schemaVersion: 2,
+                    programBasePrice: 1200,
+                    positionsSubtotal: 0,
+                    entryCharge: null,
+                    entrySubtotal: 0,
+                    finalTotal: 1200,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-SCHEMA2/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-SCHEMA2-PRIMARY',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: { notes: 'Unrelated note edit' },
+                    packageOwnerPatch: {},
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+        const row = state.rows.find(item => item.id === 'BK-SCHEMA2-PRIMARY');
+        const extra = typeof row.extra_data === 'string' ? JSON.parse(row.extra_data) : row.extra_data;
+
+        assert.equal(response.status, 200, JSON.stringify(data));
+        assert.equal(extra.bookingPackage.schemaVersion, 2);
+        assert.equal(extra.bookingPackage.entryCharge, null);
+        assert.equal(extra.bookingPackage.entrySubtotal, 0);
+        assert.equal(extra.bookingPackage.finalTotal, 1200);
+        assert.equal(row.price, 1200);
+        assert.equal(
+            state.queries.some(item => /FROM price_rules\s+WHERE code = ANY/i.test(item.sql)),
+            false
+        );
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    }, {
+        mockProductPricing: true,
+        nextGroupUpdatedAt: '2099-01-01T00:10:00.000Z',
+        banquetGroups: [{
+            id: 'BQ-SCHEMA2',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-SCHEMA2-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Schema v2 banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-SCHEMA2',
+            business_context: 'event_genix',
+            booking_id: 'BK-SCHEMA2-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set validates packageOwnerPatch before starting a transaction', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-INVALID-OWNER-PATCH',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            customer_id: 101
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-INVALID-OWNER-PATCH/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-INVALID-OWNER-PATCH',
+                    expectedGroupUpdatedAt: '2099-01-01T00:00:00.000Z',
+                    primaryPatch: {},
+                    packageOwnerPatch: [],
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 400, JSON.stringify(data));
+        assert.equal(data.code, 'PACKAGE_OWNER_PATCH_INVALID');
+        assert.deepEqual(state.tx, []);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-INVALID-OWNER-PATCH',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-INVALID-OWNER-PATCH',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Invalid patch banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-INVALID-OWNER-PATCH',
+            business_context: 'event_genix',
+            booking_id: 'BK-INVALID-OWNER-PATCH',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects conflicting package owner alias pairs before starting a transaction', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-OWNER-ALIAS-CONFLICT',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            customer_id: 101
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const endpoint = `${baseUrl}/api/banquets/BQ-OWNER-ALIAS-CONFLICT/booking-set?businessContext=event_genix`;
+        const request = body => fetch(endpoint, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                primaryBookingId: 'BK-OWNER-ALIAS-CONFLICT',
+                expectedGroupUpdatedAt: '2099-01-01T00:00:00.000Z',
+                primaryPatch: {},
+                activities: [],
+                ...body
+            })
+        });
+
+        const idResponse = await request({
+            packageOwnerBookingId: 'BK-OWNER-ALIAS-CONFLICT',
+            package_owner_booking_id: 'BK-SHADOW-OWNER',
+            packageOwnerPatch: {}
+        });
+        const idData = await idResponse.json();
+        assert.equal(idResponse.status, 400, JSON.stringify(idData));
+        assert.equal(idData.code, 'PACKAGE_OWNER_ALIAS_CONFLICT');
+        assert.deepEqual(idData.details.fields, [
+            'packageOwnerBookingId',
+            'package_owner_booking_id'
+        ]);
+
+        const patchResponse = await request({
+            packageOwnerBookingId: 'BK-OWNER-ALIAS-CONFLICT',
+            packageOwnerPatch: {},
+            package_owner_patch: { notes: 'shadow patch' }
+        });
+        const patchData = await patchResponse.json();
+        assert.equal(patchResponse.status, 400, JSON.stringify(patchData));
+        assert.equal(patchData.code, 'PACKAGE_OWNER_ALIAS_CONFLICT');
+        assert.deepEqual(patchData.details.fields, [
+            'packageOwnerPatch',
+            'package_owner_patch'
+        ]);
+        assert.deepEqual(state.tx, []);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-OWNER-ALIAS-CONFLICT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-OWNER-ALIAS-CONFLICT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Owner alias conflict banquet',
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-OWNER-ALIAS-CONFLICT',
+            business_context: 'event_genix',
+            booking_id: 'BK-OWNER-ALIAS-CONFLICT',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects conflicting aliases inside primary, owner, and activity patches before a transaction', async () => {
+    const groupId = 'BQ-NESTED-ALIAS-CONFLICT';
+    const primaryId = 'BK-NESTED-ALIAS-CONFLICT';
+    const requests = [{
+        primaryPatch: {
+            banquetGuests: 2,
+            banquet_guests: 3
+        },
+        packageOwnerPatch: {},
+        activities: []
+    }, {
+        primaryPatch: {},
+        packageOwnerPatch: {
+            extraData: {
+                bookingPackage: { menuPositions: [] },
+                booking_package: {
+                    menuPositions: [{
+                        id: 'shadow',
+                        quantity: 1,
+                        unitPrice: 1,
+                        subtotal: 1
+                    }]
+                }
+            }
+        },
+        activities: []
+    }, {
+        primaryPatch: {},
+        packageOwnerPatch: {},
+        activities: [{
+            roomResourceId: 'room-a',
+            room_resource_id: 'room-b'
+        }]
+    }];
+
+    for (const patch of requests) {
+        await withApp([
+            bookingRow({ id: primaryId })
+        ], [], async ({ baseUrl, state }) => {
+            const response = await fetch(
+                `${baseUrl}/api/banquets/${groupId}/booking-set?businessContext=event_genix`,
+                {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        primaryBookingId: primaryId,
+                        expectedGroupUpdatedAt: '2099-01-01T00:00:00.000Z',
+                        ...patch
+                    })
+                }
+            );
+            const data = await response.json();
+
+            assert.equal(response.status, 422, JSON.stringify(data));
+            assert.equal(data.code, 'BOOKING_FIELD_ALIAS_CONFLICT');
+            assert.ok(Array.isArray(data.details?.fields));
+            assert.deepEqual(state.tx, []);
+        }, {
+            banquetGroups: [{
+                id: groupId,
+                business_context: 'event_genix',
+                primary_booking_id: primaryId,
+                customer_id: null,
+                date: '2099-06-01',
+                room: 'Room A',
+                group_name: 'Alias conflict',
+                status: 'active',
+                source: 'test',
+                meta: {},
+                updated_at: '2099-01-01T00:00:00.000Z'
+            }],
+            banquetMemberships: [{
+                id: 1,
+                group_id: groupId,
+                business_context: 'event_genix',
+                booking_id: primaryId,
+                role: 'primary',
+                sort_order: 10
+            }]
+        });
+    }
+});
+
+test('generic booking PUT rejects every active banquet member under the membership lock', async () => {
+    const ticketPackage = admissionTicketPackageV3();
+    await withApp([
+        bookingRow({
+            id: 'BK-GENERIC-GUARD-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101
+        }),
+        bookingRow({
+            id: 'BK-GENERIC-GUARD-OWNER',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: ticketPackage.finalTotal,
+            customer_id: 101,
+            banquet_guests: 1,
+            kids_count: 1,
+            extra_data: JSON.stringify({ bookingPackage: ticketPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const before = JSON.stringify(state.rows);
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-GENERIC-GUARD-OWNER?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: '2099-06-02',
+                    room: 'Room B',
+                    customerId: 202,
+                    notes: 'Must use atomic banquet endpoint'
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.details.groupId, 'BQ-GENERIC-GUARD');
+        assert.equal(data.details.bookingId, 'BK-GENERIC-GUARD-OWNER');
+        assert.equal(JSON.stringify(state.rows), before);
+
+        const primaryResponse = await fetch(
+            `${baseUrl}/api/bookings/BK-GENERIC-GUARD-PRIMARY?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: 'Primary must also use booking-set' })
+            }
+        );
+        const primaryData = await primaryResponse.json();
+        assert.equal(primaryResponse.status, 409, JSON.stringify(primaryData));
+        assert.equal(primaryData.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(primaryData.details.bookingId, 'BK-GENERIC-GUARD-PRIMARY');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK']);
+        const membershipLockIndex = state.queries.findIndex(item => (
+            /FOR UPDATE OF bgb, bg/i.test(item.sql)
+            && item.params[0] === 'BK-GENERIC-GUARD-OWNER'
+        ));
+        const bookingLockIndex = state.queries.findIndex(item => (
+            /SELECT \* FROM bookings WHERE id = \$1/i.test(item.sql)
+            && /FOR UPDATE/i.test(item.sql)
+            && item.params[0] === 'BK-GENERIC-GUARD-OWNER'
+        ));
+        assert.ok(membershipLockIndex >= 0);
+        assert.ok(bookingLockIndex > membershipLockIndex);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-GENERIC-GUARD',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-GENERIC-GUARD-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Generic guard banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-GENERIC-GUARD-OWNER',
+                packageOwnerBookingId: 'BK-GENERIC-GUARD-OWNER'
+            },
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-GENERIC-GUARD',
+            business_context: 'event_genix',
+            booking_id: 'BK-GENERIC-GUARD-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-GENERIC-GUARD',
+            business_context: 'event_genix',
+            booking_id: 'BK-GENERIC-GUARD-OWNER',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('linked-atomic rejects grouped primary date and room changes when a kitchen member owns the ticket snapshot', async () => {
+    const ticketPackage = admissionTicketPackageV3();
+    await withApp([
+        bookingRow({
+            id: 'BK-LINKED-GUARD-PRIMARY',
+            line_id: 'line-bubble',
+            program_id: 'bubble',
+            duration: 30,
+            price: 2400,
+            customer_id: 101,
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-LINKED-GUARD-OWNER',
+            line_id: 'banquet-service',
+            program_code: 'KITCHEN',
+            category: 'kitchen',
+            duration: 90,
+            price: ticketPackage.finalTotal,
+            customer_id: 101,
+            room: 'Room A',
+            extra_data: JSON.stringify({ bookingPackage: ticketPackage })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const beforeRows = JSON.stringify(state.rows);
+        const beforeGroup = JSON.stringify(state.banquetGroups[0]);
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-LINKED-GUARD-PRIMARY/linked-atomic?businessContext=event_genix`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    main: {
+                        date: '2099-06-02',
+                        room: 'Room B'
+                    },
+                    linked: []
+                })
+            }
+        );
+        const data = await response.json();
+
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.details.groupId, 'BQ-LINKED-GUARD');
+        assert.equal(data.details.bookingId, 'BK-LINKED-GUARD-PRIMARY');
+        assert.equal(JSON.stringify(state.rows), beforeRows);
+        assert.equal(JSON.stringify(state.banquetGroups[0]), beforeGroup);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        const membershipLockIndex = state.queries.findIndex(item => (
+            /FOR UPDATE OF bgb, bg/i.test(item.sql)
+            && item.params[0] === 'BK-LINKED-GUARD-PRIMARY'
+        ));
+        const bookingLockIndex = state.queries.findIndex(item => (
+            /SELECT \* FROM bookings WHERE id = \$1/i.test(item.sql)
+            && /FOR UPDATE/i.test(item.sql)
+            && item.params[0] === 'BK-LINKED-GUARD-PRIMARY'
+        ));
+        assert.ok(membershipLockIndex >= 0);
+        assert.ok(bookingLockIndex > membershipLockIndex);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-LINKED-GUARD',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-LINKED-GUARD-PRIMARY',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Linked atomic guard banquet',
+            status: 'active',
+            source: 'test',
+            meta: {
+                ticketBookingId: 'BK-LINKED-GUARD-OWNER',
+                packageOwnerBookingId: 'BK-LINKED-GUARD-OWNER'
+            },
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-LINKED-GUARD',
+            business_context: 'event_genix',
+            booking_id: 'BK-LINKED-GUARD-PRIMARY',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-LINKED-GUARD',
+            business_context: 'event_genix',
+            booking_id: 'BK-LINKED-GUARD-OWNER',
+            role: 'kitchen',
+            sort_order: 30
         }]
     });
 });

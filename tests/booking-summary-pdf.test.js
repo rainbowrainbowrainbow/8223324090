@@ -116,6 +116,115 @@ function qualitySummary() {
     });
 }
 
+function ticketQualitySummary() {
+    return buildBanquetSummary({
+        businessContext: 'event_genix',
+        generatedBy: { username: 'manager', name: 'Менеджер' },
+        banquetTermsDefaults: standardTerms(),
+        customer: {
+            id: 202,
+            name: 'Тестовий клієнт',
+            phone: '+380000000000'
+        },
+        mainBooking: {
+            id: 'BK-PDF-TICKETS',
+            business_context: 'event_genix',
+            date: '2026-07-17',
+            time: '13:00',
+            room: 'Жовта кімната',
+            program_name: 'Святкова програма',
+            program_id: 'party',
+            program_code: 'PARTY',
+            category: 'activity',
+            duration: 60,
+            price: 2370,
+            kids_count: 1,
+            banquet_guests: 1,
+            banquet_adults: 2,
+            created_by: 'manager',
+            extra_data: {
+                banquetDeposit: {
+                    amount: 1000,
+                    paymentMethod: 'cash',
+                    paymentStatus: 'paid'
+                },
+                bookingPackage: {
+                    schemaVersion: 3,
+                    programBasePrice: 1500,
+                    positionsSubtotal: 500,
+                    entryCharge: null,
+                    entrySubtotal: 370,
+                    ticketSubtotal: 370,
+                    finalTotal: 2370,
+                    ticketPricingContext: 'reserved_table_room',
+                    ticketDayType: 'weekday',
+                    ticketPricingDate: '2026-07-17',
+                    ticketLines: [{
+                        ticketTypeId: 1,
+                        ticketTypeCode: 'regular_child',
+                        ticketTypeName: 'Звичайний дитячий',
+                        audience: 'child',
+                        quantity: 1,
+                        unitPriceUah: 350,
+                        subtotalUah: 350,
+                        tariffVersionId: 101,
+                        effectiveFrom: '2026-07-14',
+                        admissionContext: 'reserved_table_room',
+                        dayType: 'weekday',
+                        currency: 'UAH'
+                    }, {
+                        ticketTypeId: 5,
+                        ticketTypeCode: 'adult_companion',
+                        ticketTypeName: 'Дорослий супроводжуючий',
+                        audience: 'adult',
+                        quantity: 2,
+                        unitPriceUah: 10,
+                        subtotalUah: 20,
+                        tariffVersionId: 105,
+                        effectiveFrom: '2026-07-14',
+                        admissionContext: 'reserved_table_room',
+                        dayType: 'weekday',
+                        currency: 'UAH'
+                    }],
+                    menuPositions: [{
+                        productId: 'pizza',
+                        title: 'Піца',
+                        quantity: 2,
+                        servingUnit: 'порція',
+                        unitPrice: 250,
+                        subtotal: 500
+                    }],
+                    serviceEvents: []
+                }
+            }
+        },
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-PDF-TICKETS',
+            group: {
+                id: 'BQ-PDF-TICKETS',
+                primaryBookingId: 'BK-PDF-TICKETS',
+                date: '2026-07-17',
+                room: 'Жовта кімната',
+                guestArrivalTime: '13:00',
+                status: 'active',
+                meta: {
+                    ticketBookingId: 'BK-PDF-TICKETS',
+                    packageOwnerBookingId: 'BK-PDF-TICKETS'
+                }
+            },
+            arrival: {
+                bookingId: 'BK-PDF-TICKETS',
+                date: '2026-07-17',
+                time: '13:00',
+                room: 'Жовта кімната',
+                source: 'banquet_group'
+            },
+            members: []
+        }
+    });
+}
+
 function pdfPageCount(buffer) {
     const matches = buffer.toString('latin1').match(/\/Type\s*\/Page\b/g);
     return matches ? matches.length : 0;
@@ -222,6 +331,37 @@ test('banquet PDF layout fixture matrix keeps expected page counts and visible n
     }
 });
 
+test('client and staff PDF views preserve canonical ticket rows, total, deposit, and amount due', async () => {
+    const summary = ticketQualitySummary();
+    const clientView = buildBanquetSummaryPdfView(summary, 'client');
+    const staffView = buildBanquetSummaryPdfView(summary, 'staff');
+    const clientBuffer = await buildBanquetSummaryPdfBuffer(summary, { mode: 'client' });
+    const staffBuffer = await buildBanquetSummaryPdfBuffer(summary, { mode: 'staff' });
+
+    assert.deepEqual(
+        summary.orderRows.filter(row => row.type === 'ticket').map(row => row.title),
+        ['Звичайний дитячий', 'Дорослий супроводжуючий']
+    );
+    assert.equal(summary.totals.entrySubtotal, 370);
+    assert.equal(summary.totals.orderTotal, 2370);
+    assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 2370);
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 1000);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 1370);
+
+    assert.ok(clientView.orderTableRows.some(row => row[0].startsWith('Звичайний дитячий')));
+    assert.ok(clientView.orderTableRows.some(row => row[0].startsWith('Дорослий супроводжуючий')));
+    assert.ok(staffView.orderTableRows.some(row => row[1] === 'Звичайний дитячий'));
+    assert.ok(staffView.orderTableRows.some(row => row[1] === 'Дорослий супроводжуючий'));
+
+    for (const view of [clientView, staffView]) {
+        assert.equal(view.financeRows.find(row => row.key === 'total')?.amount, 2370);
+        assert.equal(view.financeRows.find(row => row.key === 'deposit')?.amount, 1000);
+        assert.equal(view.financeRows.find(row => row.key === 'amount_due')?.amount, 1370);
+    }
+    assert.equal(clientBuffer.subarray(0, 4).toString(), '%PDF');
+    assert.equal(staffBuffer.subarray(0, 4).toString(), '%PDF');
+});
+
 test('banquet PDF client view keeps header, comments, program duration, finance, terms, and schedule clean', () => {
     const summary = qualitySummary();
     const clientView = buildBanquetSummaryPdfView(summary, 'client');
@@ -272,9 +412,10 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.deepEqual(menuTableRow[0].split('\n'), ['Піца', 'Видача: 15:15', 'Примітка: Без цибулі']);
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);
 
-    assert.deepEqual(financeLabels, ['Загальна сума']);
+    assert.deepEqual(financeLabels, ['Загальна сума', 'Завдаток', 'Залишок після завдатку']);
     assert.equal(clientView.financeRows.find(row => row.key === 'total')?.amount, 2600);
-    assert.equal(clientView.financeRows.find(row => row.key === 'amount_due'), undefined);
+    assert.equal(clientView.financeRows.find(row => row.key === 'deposit')?.amount, 1000);
+    assert.equal(clientView.financeRows.find(row => row.key === 'amount_due')?.amount, 1600);
 
     assert.match(termsText, /Заборонено приносити їжу та напої\. Свій торт дозволено за 500 грн\. Cork Fee - 100 грн\./);
     assert.doesNotMatch(termsText, /Заборонено приносити їжу\/напої\/торт/);

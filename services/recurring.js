@@ -22,8 +22,34 @@ const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canonicalizeBookingRoomResource } = require('./timelineResources');
+const {
+    AdmissionTicketError,
+    hasTicketQuoteInput,
+    hasTicketSnapshotFields,
+    readAdmissionTicketSnapshot
+} = require('./admissionTickets');
 
 const log = createLogger('Recurring');
+
+function assertRecurringTemplateTicketSafe(template = {}) {
+    const hasManualQuantities = Object.prototype.hasOwnProperty.call(template, 'ticketQuantities')
+        || Object.prototype.hasOwnProperty.call(template, 'ticket_quantities');
+    if (
+        hasManualQuantities
+        || hasTicketQuoteInput(template)
+        || hasTicketSnapshotFields(template)
+        || readAdmissionTicketSnapshot(template)
+    ) {
+        throw new AdmissionTicketError(
+            'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately',
+            {
+                status: 422,
+                code: 'TICKET_RECURRING_UNSUPPORTED',
+                details: { templateId: template.id || null }
+            }
+        );
+    }
+}
 
 // --- Recurrence pattern matching ---
 
@@ -221,6 +247,7 @@ function lineConflictDetails(conflict, prefix = 'Line conflict') {
  * @returns {{ created: number, skipped: number, conflicts: Array }}
  */
 async function generateBookingsForTemplate(template, fromDate, toDate) {
+    assertRecurringTemplateTicketSafe(template);
     await canonicalizeBookingRoomResource(pool, DEFAULT_TIMELINE_CONTEXT, template, {
         required: true
     });
@@ -498,10 +525,32 @@ async function generateAllRecurringBookings(horizonDays) {
         throw err;
     }
 
-    const summary = { totalCreated: 0, totalSkipped: 0, templateResults: [] };
+    const summary = {
+        totalCreated: 0,
+        totalSkipped: 0,
+        totalBlockedTemplates: 0,
+        templateResults: []
+    };
 
     for (const template of templates.rows) {
-        const templateResult = await generateBookingsForTemplate(template, todayStr, endDateStr);
+        let templateResult;
+        try {
+            templateResult = await generateBookingsForTemplate(template, todayStr, endDateStr);
+        } catch (error) {
+            if (error?.code !== 'TICKET_RECURRING_UNSUPPORTED') throw error;
+            summary.totalBlockedTemplates += 1;
+            summary.templateResults.push({
+                templateId: template.id,
+                productName: template.product_name || template.product_label,
+                created: 0,
+                skipped: 0,
+                conflicts: [],
+                blocked: true,
+                errorCode: error.code,
+                error: error.publicMessage || error.message
+            });
+            continue;
+        }
         summary.totalCreated += templateResult.created;
         summary.totalSkipped += templateResult.skipped;
         summary.templateResults.push({
@@ -581,6 +630,7 @@ function mapSkipRow(row) {
 }
 
 module.exports = {
+    assertRecurringTemplateTicketSafe,
     shouldRunOnDate,
     isCorrectWeekInterval,
     matchesMonthlyRule,

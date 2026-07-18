@@ -39,11 +39,13 @@ const {
     loadBanquetGroupById,
     reconcileBanquetGroupForBooking,
     createBanquetGroupInTransaction,
+    bookingPackageHasBanquetData,
     lockAndResolveGroupTicketOwner,
     persistDerivedBookingSetMetadata,
     validateSingleBookingActivitySetUpdate
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
+const { syncBookingFinanceInTransaction } = require('../services/bookingFinanceSync');
 const { broadcastBookingEvent } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
@@ -60,6 +62,9 @@ const {
 } = require('../services/businessContext');
 const {
     AdmissionTicketError,
+    hasTicketQuoteInput,
+    hasTicketSnapshotFields,
+    nestedTicketQuotePath,
     readAdmissionTicketSnapshot,
     resolveAndApplyAdmissionTicketQuote,
     resolveAdmissionTicketQuote
@@ -958,7 +963,7 @@ async function insertSecondAnimatorLinkedBooking(client, { booking, businessCont
          ensuredLine.name, booking.pinataFiller, booking.pinataMode, booking.pinataNumber,
          booking.pinataFillerNumber, booking.clientPinataServicePrice,
          booking.clientPinataServiceNote, booking.costume || null, booking.room, booking.roomResourceId || booking.room_resource_id || null, booking.notes,
-         booking.createdBy, mainBookingId, status, booking.kidsCount || null, booking.groupName || null,
+         booking.createdBy, mainBookingId, status, nullableBookingCount(booking.kidsCount), booking.groupName || null,
          bookingExtraDataSqlValue(linkedBooking)]
     );
     return insert.rows[0] || { id: newLinkedId };
@@ -1920,6 +1925,122 @@ async function hydrateBookingRoomFromTimelineResource(queryable, payload, busine
     return payload;
 }
 
+function nullableBookingCount(value) {
+    return value === undefined || value === null || value === '' ? null : value;
+}
+
+function hasAdmissionTicketPayload(booking = {}) {
+    if (!booking || typeof booking !== 'object') return false;
+    return Object.prototype.hasOwnProperty.call(booking, 'ticketQuantities')
+        || Object.prototype.hasOwnProperty.call(booking, 'ticket_quantities')
+        || hasTicketQuoteInput(booking)
+        || hasTicketSnapshotFields(booking);
+}
+
+function bookingRequiresStrictFinanceSync(booking = {}) {
+    return Boolean(readAdmissionTicketSnapshot(booking));
+}
+
+const BOOKING_WRITE_ALIAS_PAIRS = Object.freeze([
+    ['banquetGuests', 'banquet_guests', 'count'],
+    ['banquetAdults', 'banquet_adults', 'count'],
+    ['banquetTables', 'banquet_tables', 'count'],
+    ['banquetMenu', 'banquet_menu', 'text'],
+    ['kidsCount', 'kids_count', 'count'],
+    ['ticketQuantities', 'ticket_quantities', 'json'],
+    ['ticketQuote', 'ticket_quote', 'json'],
+    ['convertLegacy', 'convert_legacy', 'boolean']
+]);
+
+function stableBookingAliasJson(value) {
+    if (Array.isArray(value)) return value.map(stableBookingAliasJson);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+        Object.keys(value)
+            .sort()
+            .map(key => [key, stableBookingAliasJson(value[key])])
+    );
+}
+
+function normalizedBookingAliasValue(value, kind) {
+    if (kind === 'count') {
+        if (value === undefined || value === null || value === '') return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : String(value);
+    }
+    if (kind === 'boolean') {
+        if (value === true || String(value).toLowerCase() === 'true') return true;
+        if (value === false || String(value).toLowerCase() === 'false') return false;
+        return value;
+    }
+    if (kind === 'text') return value === undefined || value === null ? null : String(value);
+    return JSON.stringify(stableBookingAliasJson(value));
+}
+
+function canonicalizeBookingWriteAliases(booking = {}) {
+    if (!booking || typeof booking !== 'object' || Array.isArray(booking)) return null;
+    for (const [camel, snake, kind] of BOOKING_WRITE_ALIAS_PAIRS) {
+        const hasCamel = Object.prototype.hasOwnProperty.call(booking, camel);
+        const hasSnake = Object.prototype.hasOwnProperty.call(booking, snake);
+        if (hasCamel && hasSnake) {
+            const camelValue = normalizedBookingAliasValue(booking[camel], kind);
+            const snakeValue = normalizedBookingAliasValue(booking[snake], kind);
+            if (camelValue !== snakeValue) return { camel, snake };
+        } else if (!hasCamel && hasSnake) {
+            booking[camel] = booking[snake];
+        }
+    }
+    return null;
+}
+
+function rejectBookingWriteAliasConflict(res, booking = {}) {
+    const conflict = canonicalizeBookingWriteAliases(booking);
+    if (!conflict) return false;
+    res.status(422).json({
+        success: false,
+        code: 'BOOKING_FIELD_ALIAS_CONFLICT',
+        error: `Conflicting values were supplied for ${conflict.camel} and ${conflict.snake}`,
+        details: conflict
+    });
+    return true;
+}
+
+function wouldPersistAdmissionTicketsOnLinkedBooking(booking = {}, existingBooking = {}) {
+    const linkedTo = String(
+        existingBooking.linked_to
+        || existingBooking.linkedTo
+        || booking.linkedTo
+        || booking.linked_to
+        || ''
+    ).trim();
+    if (!linkedTo) return false;
+    return hasAdmissionTicketPayload(booking)
+        || readAdmissionTicketSnapshot(existingBooking)?.kind === 'v3';
+}
+
+function sendTicketPackageOwnerRequired(res) {
+    return res.status(422).json({
+        success: false,
+        code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+        error: 'Ticket snapshot can be saved only on the canonical package owner booking'
+    });
+}
+
+function rejectClientTicketSnapshotPayload(res, booking = {}) {
+    if (!booking || typeof booking !== 'object') return false;
+    const nestedQuoteField = nestedTicketQuotePath(booking);
+    if (!nestedQuoteField && !hasTicketSnapshotFields(booking)) return false;
+    res.status(422).json({
+        success: false,
+        code: 'TICKET_SNAPSHOT_INPUT_FORBIDDEN',
+        error: 'Ticket snapshots are server-generated and cannot be supplied by the client',
+        details: {
+            field: nestedQuoteField || 'bookingPackage'
+        }
+    });
+    return true;
+}
+
 async function validateBookingRoomResourceForWrite(queryable, payload, businessContext, options = {}) {
     try {
         await canonicalizeBookingRoomResource(queryable, businessContext, payload, {
@@ -2248,8 +2369,20 @@ router.post('/ticket-quote', requireAction('edit_booking'), async (req, res) => 
         const businessContext = ticketBusinessContextFromAuthenticatedRequest(req);
         if (!requireBusinessContext(req, res, businessContext)) return;
         const body = req.body && typeof req.body === 'object' ? req.body : {};
+        if (rejectBookingWriteAliasConflict(res, body)) return;
+        if (rejectClientTicketSnapshotPayload(res, body)) return;
         const bookingId = String(body.bookingId || body.booking_id || '').trim();
+        const banquetGroupId = String(body.banquetGroupId || body.banquet_group_id || '').trim();
+        const sourceBookingId = String(body.sourceBookingId || body.source_booking_id || '').trim();
+        if (bookingId && banquetGroupId) {
+            return res.status(422).json({
+                success: false,
+                code: 'TICKET_QUOTE_CONTEXT_CONFLICT',
+                error: 'Use either bookingId or banquetGroupId/sourceBookingId for ticket pricing'
+            });
+        }
         let existingBooking = null;
+        let verifiedExistingBanquetGroup = false;
 
         if (bookingId) {
             const result = await pool.query(
@@ -2273,20 +2406,73 @@ router.post('/ticket-quote', requireAction('edit_booking'), async (req, res) => 
             if (!canEditBooking(req.user, existingBooking)) {
                 return res.status(403).json(bookingAccessDeniedPayload('edit'));
             }
+        } else if (banquetGroupId) {
+            if (!validateId(banquetGroupId) || !validateId(sourceBookingId)) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'TICKET_QUOTE_GROUP_CONTEXT_INVALID',
+                    error: 'Valid banquetGroupId and sourceBookingId are required'
+                });
+            }
+            const groupContextResult = await pool.query(
+                `SELECT source_booking.*
+                 FROM banquet_groups banquet_group
+                 JOIN banquet_group_bookings membership
+                   ON membership.group_id = banquet_group.id
+                  AND membership.business_context = banquet_group.business_context
+                 JOIN bookings source_booking
+                   ON source_booking.id = membership.booking_id
+                  AND source_booking.business_context = membership.business_context
+                 WHERE banquet_group.id = $1
+                   AND banquet_group.business_context = $2
+                   AND membership.booking_id = $3
+                   AND LOWER(COALESCE(NULLIF(BTRIM(banquet_group.status), ''), 'active')) = 'active'
+                   AND ${bookingActiveStatusSql('source_booking')}
+                 LIMIT 1`,
+                [banquetGroupId, businessContext, sourceBookingId]
+            );
+            const sourceBooking = groupContextResult.rows[0] || null;
+            if (!sourceBooking) {
+                return res.status(404).json({
+                    success: false,
+                    code: 'TICKET_QUOTE_GROUP_CONTEXT_NOT_FOUND',
+                    error: 'Active banquet group membership was not found'
+                });
+            }
+            if (!canEditBooking(req.user, sourceBooking)) {
+                return res.status(403).json(bookingAccessDeniedPayload('edit'));
+            }
+            verifiedExistingBanquetGroup = true;
         }
 
         const quoteInput = { ...body };
+        let newBanquetFlow = false;
+        if (!existingBooking) {
+            if (verifiedExistingBanquetGroup) {
+                newBanquetFlow = true;
+            } else {
+                const banquetContract = validateBookingBanquetCreationContract(res, body.banquetContext);
+                if (banquetContract.rejected) return;
+                newBanquetFlow = banquetContract.context?.mode === 'new';
+            }
+        }
         delete quoteInput.bookingId;
         delete quoteInput.booking_id;
         delete quoteInput.businessContext;
         delete quoteInput.business_context;
+        delete quoteInput.banquetContext;
+        delete quoteInput.banquet_context;
+        delete quoteInput.banquetGroupId;
+        delete quoteInput.banquet_group_id;
+        delete quoteInput.sourceBookingId;
+        delete quoteInput.source_booking_id;
 
         const quote = await resolveAdmissionTicketQuote({
             queryable: pool,
             businessContext,
             input: quoteInput,
             existingBooking,
-            newBanquetFlow: !existingBooking
+            newBanquetFlow
         });
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.set('Pragma', 'no-cache');
@@ -3008,6 +3194,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
     b.businessContext = businessContext;
+    if (rejectBookingWriteAliasConflict(res, b)) return;
     if (rejectExplicitBanquetAddToExistingGenericCreate(res, b)) return;
     const banquetContract = validateBookingBanquetCreationContract(res, b.banquetContext);
     if (banquetContract.rejected) return;
@@ -3036,7 +3223,17 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
         }
     }
-    applyBookingPackage(b);
+    if (rejectClientTicketSnapshotPayload(res, b)) return;
+    if (
+        String(b.linkedTo || b.linked_to || '').trim()
+        && hasAdmissionTicketPayload(b)
+    ) {
+        return res.status(422).json({
+            success: false,
+            code: 'TICKET_PACKAGE_OWNER_REQUIRED',
+            error: 'Ticket snapshot can be saved only on the canonical package owner booking'
+        });
+    }
     if (!b.linkedTo) {
         const pastValidationError = bookingPastValidationError(b);
         if (pastValidationError) return res.status(400).json({ success: false, error: pastValidationError });
@@ -3051,19 +3248,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
-        if (b.linkedTo && (b.ticketQuantities || b.ticket_quantities || b.ticketQuote || b.ticket_quote)) {
-            await client.query('ROLLBACK');
-            return res.status(422).json({
-                success: false,
-                code: 'TICKET_PACKAGE_OWNER_REQUIRED',
-                error: 'Ticket snapshot can be saved only on the canonical package owner booking'
-            });
-        }
         await resolveAndApplyAdmissionTicketQuote({
             queryable: client,
             businessContext,
             booking: b,
-            newBanquetFlow: true
+            newBanquetFlow: banquetContext?.mode === 'new'
         });
         await applyEffectiveBookingPrice(client, b, { businessContext });
         await applyBookingPackageEntryCharge(client, b, { businessContext });
@@ -3221,7 +3410,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, nullableBookingCount(b.kidsCount), b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user);
 
@@ -3237,7 +3426,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                  b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                  b.pinataFillerNumber, b.clientPinataServicePrice,
                  b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes,
-                 b.createdBy, b.id, b.status, b.kidsCount || null, b.groupName || null,
+                 b.createdBy, b.id, b.status, nullableBookingCount(b.kidsCount), b.groupName || null,
                  null]
             );
             if (linkedInsert.rows[0]) linkedInsertedRows.push(linkedInsert.rows[0]);
@@ -3274,16 +3463,31 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         await insertScopedHistory(client, 'create', b.createdBy || req.user?.username, b, businessContext);
 
-        // v19.10: Finance auto-record stays optional without poisoning the booking transaction.
-        if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
-            await runOptionalBookingTransactionStep(client, 'Finance auto-record', async () => {
-                await client.query(
-                    `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
-                             $2, $3, $4, $5, $6, $7)`,
-                    [businessContext, b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
-                );
-            });
+        // Canonical ticket totals and their non-certificate finance row commit atomically.
+        const createdBookingRow = insertResult.rows[0];
+        const strictTicketFinance = bookingRequiresStrictFinanceSync(createdBookingRow);
+        if (
+            parkSideEffectsAllowedForContext(businessContext)
+            && !b.linkedTo
+            && (strictTicketFinance || (b.price > 0 && b.status !== 'preliminary'))
+        ) {
+            if (strictTicketFinance) {
+                await syncBookingFinanceInTransaction(client, createdBookingRow, {
+                    businessContext,
+                    createdBy: b.createdBy || req.user?.username,
+                    optional: false,
+                    label: 'Admission ticket booking finance creation'
+                });
+            } else {
+                await runOptionalBookingTransactionStep(client, 'Finance auto-record', async () => {
+                    await client.query(
+                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                         VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
+                                 $2, $3, $4, $5, $6, $7)`,
+                        [businessContext, b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
+                    );
+                });
+            }
         }
 
         // v33.8.0 Integration 6: Certificate payment finance record
@@ -3608,14 +3812,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
     const businessContext = timelineContextFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
-    if (
-        main.ticketQuantities
-        || main.ticket_quantities
-        || main.ticketQuote
-        || main.ticket_quote
-        || main.bookingPackage?.ticketLines
-        || main.booking_package?.ticket_lines
-    ) {
+    if (hasAdmissionTicketPayload(main)) {
         return res.status(422).json({
             success: false,
             code: 'TICKET_RECURRING_UNSUPPORTED',
@@ -3757,7 +3954,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
                  RETURNING *`,
-                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.roomResourceId || null, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetAdults || null, candidate.banquetTables || null, candidate.banquetMenu || null]
+                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.roomResourceId || null, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, nullableBookingCount(candidate.kidsCount), candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, nullableBookingCount(candidate.banquetGuests), nullableBookingCount(candidate.banquetAdults), nullableBookingCount(candidate.banquetTables), candidate.banquetMenu || null]
             );
             if (insertResult.rows[0]) insertedRows.push(insertResult.rows[0]);
         }
@@ -3871,6 +4068,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!main || !main.date || !main.time || !main.lineId) {
             return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
         }
+        if (rejectBookingWriteAliasConflict(res, main)) return;
         if (hasAnyBanquetGroupPayload(main, linked, banquetActivities)) {
             return res.status(409).json({
                 success: false,
@@ -3878,20 +4076,19 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 error: 'Banquet group activity bookings must be created through /api/banquets/:groupId/activity-booking'
             });
         }
-        if ([...linked, ...banquetActivities].some(item => (
-            item?.ticketQuantities
-            || item?.ticket_quantities
-            || item?.ticketQuote
-            || item?.ticket_quote
-            || item?.bookingPackage?.ticketLines
-            || item?.booking_package?.ticket_lines
-        ))) {
+        if (
+            [...linked, ...banquetActivities].some(booking => (
+                hasAdmissionTicketPayload(booking)
+                || bookingPackageHasBanquetData(booking)
+            ))
+        ) {
             return res.status(422).json({
                 success: false,
                 code: 'TICKET_PACKAGE_OWNER_REQUIRED',
-                error: 'Only the canonical package owner may contain ticket data'
+                error: 'Only the canonical package owner may contain banquet package or ticket data'
             });
         }
+        if (rejectClientTicketSnapshotPayload(res, main)) return;
         main.businessContext = businessContext;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
@@ -3904,7 +4101,6 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (mainCapacityError) { return res.status(409).json({ success: false, error: mainCapacityError.error, resource: mainCapacityError.resource }); }
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
-        applyBookingPackage(main);
         const mainPastValidationError = bookingPastValidationError(main);
         if (mainPastValidationError) return res.status(400).json({ success: false, error: mainPastValidationError });
         normalizeBookingSecondAnimatorFields(main);
@@ -3977,7 +4173,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             queryable: client,
             businessContext,
             booking: main,
-            newBanquetFlow: true
+            newBanquetFlow: banquetContext?.mode === 'new'
         });
         await applyEffectiveBookingPrice(client, main, { businessContext });
         await applyBookingPackageEntryCharge(client, main, { businessContext });
@@ -4053,7 +4249,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     notes: main.notes,
                     createdBy: main.createdBy,
                     status: main.status,
-                    kidsCount: main.kidsCount || null,
+                    kidsCount: nullableBookingCount(main.kidsCount),
                     groupName: main.groupName || null,
                     extraData: {}
                 });
@@ -4180,7 +4376,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetAdults || null, main.banquetTables || null, main.banquetMenu || null]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, nullableBookingCount(main.kidsCount), main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, nullableBookingCount(main.banquetGuests), nullableBookingCount(main.banquetAdults), nullableBookingCount(main.banquetTables), main.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
 
@@ -4220,7 +4416,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
                      RETURNING *`,
-                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.roomResourceId || null, lb.notes, lb.createdBy, main.id, lb.status, lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.roomResourceId || null, lb.notes, lb.createdBy, main.id, lb.status, nullableBookingCount(lb.kidsCount), lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
@@ -4274,7 +4470,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
                  RETURNING *`,
-                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.roomResourceId || null, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetAdults || null, activity.banquetTables || null, activity.banquetMenu || null]
+                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.roomResourceId || null, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, nullableBookingCount(activity.kidsCount), activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, nullableBookingCount(activity.banquetGuests), nullableBookingCount(activity.banquetAdults), nullableBookingCount(activity.banquetTables), activity.banquetMenu || null]
             );
             if (activityInsert.rows[0]) {
                 activityRows.push(activityInsert.rows[0]);
@@ -4346,15 +4542,28 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
-            await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
-                await client.query(
-                    `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
-                             $2, $3, $4, $5, $6, $7)`,
-                    [businessContext, main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
-                );
-            });
+        const strictMainTicketFinance = bookingRequiresStrictFinanceSync(mainInsert.rows[0]);
+        if (
+            parkSideEffectsAllowedForContext(businessContext)
+            && (strictMainTicketFinance || (main.price > 0 && main.status !== 'preliminary'))
+        ) {
+            if (strictMainTicketFinance) {
+                await syncBookingFinanceInTransaction(client, mainInsert.rows[0], {
+                    businessContext,
+                    createdBy: main.createdBy || req.user?.username,
+                    optional: false,
+                    label: 'Admission ticket full-booking finance creation'
+                });
+            } else {
+                await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
+                    await client.query(
+                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                         VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
+                                 $2, $3, $4, $5, $6, $7)`,
+                        [businessContext, main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
+                    );
+                });
+            }
         }
         for (const activityRow of activityRows) {
             const activityPrice = Number(activityRow.price || 0);
@@ -4551,7 +4760,8 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
         await client.query('BEGIN');
 
-        const booking = await getScopedBookingById(client, id, businessContext);
+        const banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
+        const booking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!booking) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
@@ -4559,6 +4769,20 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         if (!canEditBooking(req.user, booking)) {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, booking);
+        }
+        const activeBanquetMembership = banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
+        if (activeBanquetMembership) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Active banquet bookings must be changed through the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: id
+                }
+            });
         }
 
         const action = permanent ? 'permanent_delete' : 'delete';
@@ -4693,6 +4917,7 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
     try {
         await client.query('BEGIN');
 
+        const banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
         const oldMain = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!oldMain) {
             await client.query('ROLLBACK');
@@ -4711,6 +4936,20 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             || Object.prototype.hasOwnProperty.call(mainPatch, 'room')
             || Object.prototype.hasOwnProperty.call(mainPatch, 'roomResourceId')
             || Object.prototype.hasOwnProperty.call(mainPatch, 'room_resource_id');
+        const activeBanquetMembership = banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
+        if (activeBanquetMembership && ticketPricingIdentityChanged) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Grouped booking date and room changes must use the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: id
+                }
+            });
+        }
         if (existingTicketSnapshot?.kind === 'v3' && ticketPricingIdentityChanged) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -4976,6 +5215,7 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        let banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
         const current = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!current) {
             await client.query('ROLLBACK');
@@ -4985,6 +5225,13 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, current);
         }
+        if (!banquetMembership && current.linked_to) {
+            banquetMembership = await getBanquetMembershipForDelete(
+                client,
+                current.linked_to,
+                businessContext
+            );
+        }
 
         if (current.status === 'confirmed') {
             await client.query('COMMIT');
@@ -4993,6 +5240,21 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
                 ok: true,
                 booking: mapBookingRow(current),
                 action: { type: 'booking_confirmed', source, idempotent: true, durableMutation: false }
+            });
+        }
+        if (
+            banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active'
+        ) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Grouped booking status must be changed through the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: current.linked_to || id
+                }
             });
         }
 
@@ -5034,6 +5296,14 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
             note,
             confirmedAt: confirmedRow.confirmed_at
         });
+        if (bookingRequiresStrictFinanceSync(confirmedRow)) {
+            await syncBookingFinanceInTransaction(client, confirmedRow, {
+                businessContext,
+                createdBy: actor.username,
+                optional: false,
+                label: 'Admission ticket confirmation finance synchronization'
+            });
+        }
 
         await client.query('COMMIT');
     } catch (err) {
@@ -5074,6 +5344,7 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
     try {
         await client.query('BEGIN');
 
+        let banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
         const current = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!current) {
             await client.query('ROLLBACK');
@@ -5095,6 +5366,13 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
                 await client.query('ROLLBACK');
                 return sendBookingDenied(req, res, rootBooking);
             }
+            if (!banquetMembership) {
+                banquetMembership = await getBanquetMembershipForDelete(
+                    client,
+                    rootBooking.id,
+                    businessContext
+                );
+            }
         }
 
         const currentStatus = normalizeBookingStatus(current.status, 'confirmed');
@@ -5107,6 +5385,23 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
                 success: false,
                 error: 'Cancelled bookings cannot be marked preliminary',
                 currentStatus: currentStatus === 'cancelled' ? currentStatus : rootStatus || null
+            });
+        }
+        const statusWouldChange = currentStatus !== 'preliminary' || rootStatus !== 'preliminary';
+        if (
+            statusWouldChange
+            && banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active'
+        ) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Grouped booking status must be changed through the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: rootBooking.id
+                }
             });
         }
 
@@ -5157,6 +5452,14 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
             previousStatus,
             changedAt: preliminaryRows[0]?.updated_at || preliminaryRow.updated_at
         });
+        if (bookingRequiresStrictFinanceSync(preliminaryRow)) {
+            await syncBookingFinanceInTransaction(client, preliminaryRow, {
+                businessContext,
+                createdBy: actor.username,
+                optional: false,
+                label: 'Admission ticket preliminary finance synchronization'
+            });
+        }
 
         await client.query('COMMIT');
     } catch (err) {
@@ -5187,6 +5490,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const businessContext = timelineContextFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+    if (rejectBookingWriteAliasConflict(res, b)) return;
 
     // v40: Merge missing fields from existing booking (before pool.connect to avoid leaks)
     const old = await getScopedBookingById(pool, id, businessContext);
@@ -5194,6 +5498,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     b.businessContext = businessContext;
     if (!canEditBooking(req.user, old)) {
         return sendBookingDenied(req, res, old);
+    }
+    if (rejectClientTicketSnapshotPayload(res, b)) return;
+    if (wouldPersistAdmissionTicketsOnLinkedBooking(b, old)) {
+        return sendTicketPackageOwnerRequired(res);
     }
     const activitySetGuard = await validateSingleBookingActivitySetUpdate({
         bookingId: id,
@@ -5226,6 +5534,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (b.pinataFiller === undefined) b.pinataFiller = old.pinata_filler;
     if (b.clientPinataServicePrice === undefined) b.clientPinataServicePrice = old.client_pinata_service_price;
     if (b.clientPinataServiceNote === undefined) b.clientPinataServiceNote = old.client_pinata_service_note;
+    if (b.kidsCount === undefined) b.kidsCount = old.kids_count;
     if (b.banquetGuests === undefined) b.banquetGuests = old.banquet_guests;
     if (b.banquetAdults === undefined) b.banquetAdults = old.banquet_adults;
     if (b.banquetTables === undefined) b.banquetTables = old.banquet_tables;
@@ -5267,18 +5576,36 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (pinataFields.error) {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
-        applyBookingPackage(b);
         normalizeBookingSecondAnimatorFields(b);
 
         await client.query('BEGIN');
 
+        const banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
         const oldBooking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!oldBooking) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Бронювання не знайдено' });
         }
+        const activeBanquetMembership = banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
+        if (activeBanquetMembership) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Grouped package and ticket bookings must be changed through the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: id
+                }
+            });
+        }
+        if (wouldPersistAdmissionTicketsOnLinkedBooking(b, oldBooking)) {
+            await client.query('ROLLBACK');
+            return sendTicketPackageOwnerRequired(res);
+        }
         mergeExistingExtraDataForBookingUpdate(b, oldBooking);
-        await resolveAndApplyAdmissionTicketQuote({
+        const ticketResolution = await resolveAndApplyAdmissionTicketQuote({
             queryable: client,
             businessContext,
             booking: b,
@@ -5421,7 +5748,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         b.customerId = updateCustomerId;
 
         await applyEffectiveBookingPrice(client, b, { businessContext });
-        await applyBookingPackageEntryCharge(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, {
+            businessContext,
+            preserveNoTicketPackage: ticketResolution.preserveNoTicketPackage === true
+        });
         await snapshotBanquetTermsForBooking(client, b);
         const updateExtraDataSql = bookingExtraDataSqlValue(b);
 
@@ -5459,10 +5789,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, updateExtraDataSql,
+                 nullableBookingCount(b.kidsCount), b.groupName || null, updateExtraDataSql,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
-                 b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext,
+                 nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null, businessContext,
                  b.roomResourceId || b.room_resource_id || null]
             );
         } else {
@@ -5481,9 +5811,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, updateExtraDataSql, id, updateCustomerId,
+                 nullableBookingCount(b.kidsCount), b.groupName || null, updateExtraDataSql, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
-                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext,
+                 b.pinataNumber, b.pinataFillerNumber, nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null, businessContext,
                  b.roomResourceId || b.room_resource_id || null]
             );
         }
@@ -5620,29 +5950,43 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             businessContext
         );
 
-        if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && newStatus !== 'preliminary') {
-            await runOptionalBookingTransactionStep(client, 'Finance auto-record sync (update)', async () => {
-                const finUpdate = await client.query(
-                    `UPDATE finance_transactions
-                     SET amount = $1,
-                         description = $2,
-                         date = $3,
-                         payment_method = $4
-                     WHERE booking_id = $5
-                       AND type = 'income'
-                       AND certificate_id IS NULL
-                       AND COALESCE(business_context, 'event_genix') = $6`,
-                    [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, businessContext]
-                );
-                if (finUpdate.rowCount === 0) {
-                    await client.query(
-                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                         VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
-                                 $2, $3, $4, $5, $6, $7)`,
-                        [businessContext, b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
+        const strictUpdatedTicketFinance = bookingRequiresStrictFinanceSync(updateResult.rows[0]);
+        if (
+            parkSideEffectsAllowedForContext(businessContext)
+            && !b.linkedTo
+            && (strictUpdatedTicketFinance || (b.price > 0 && newStatus !== 'preliminary'))
+        ) {
+            if (strictUpdatedTicketFinance) {
+                await syncBookingFinanceInTransaction(client, updateResult.rows[0], {
+                    businessContext,
+                    createdBy: req.user?.username,
+                    optional: false,
+                    label: 'Admission ticket booking finance synchronization'
+                });
+            } else {
+                await runOptionalBookingTransactionStep(client, 'Finance auto-record sync (update)', async () => {
+                    const finUpdate = await client.query(
+                        `UPDATE finance_transactions
+                         SET amount = $1,
+                             description = $2,
+                             date = $3,
+                             payment_method = $4
+                         WHERE booking_id = $5
+                           AND type = 'income'
+                           AND certificate_id IS NULL
+                           AND COALESCE(business_context, 'event_genix') = $6`,
+                        [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, businessContext]
                     );
-                }
-            });
+                    if (finUpdate.rowCount === 0) {
+                        await client.query(
+                            `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                             VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
+                                     $2, $3, $4, $5, $6, $7)`,
+                            [businessContext, b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
+                        );
+                    }
+                });
+            }
         }
 
         await commitBookingTransaction(client, 'booking update');
@@ -5714,6 +6058,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
 // v29.1.0: Checkbox MVP — update payment method
 router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const { payment_method, fiscal_required } = req.body;
@@ -5722,12 +6067,23 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
 
-        const booking = await getScopedBookingById(pool, id, businessContext);
+        await client.query('BEGIN');
+        let banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
+        const booking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!booking) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Booking not found' });
         }
         if (!canEditBooking(req.user, booking)) {
+            await client.query('ROLLBACK');
             return sendBookingDenied(req, res, booking);
+        }
+        if (!banquetMembership && booking.linked_to) {
+            banquetMembership = await getBanquetMembershipForDelete(
+                client,
+                booking.linked_to,
+                businessContext
+            );
         }
 
         const updates = ['updated_at = NOW()'];
@@ -5743,26 +6099,64 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
         }
 
         if (params.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: 'No fields to update' });
         }
 
         params.push(id);
         params.push(businessContext);
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE bookings SET ${updates.join(', ')}
              WHERE id = $${params.length - 1} AND ${bookingContextSql('', `$${params.length}`)}
-             RETURNING id, business_context, payment_method, fiscal_required`,
+             RETURNING *`,
             params
         );
 
         if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Booking not found' });
         }
 
+        const updatedBooking = result.rows[0];
+        const activeBanquetMembership = Boolean(
+            banquetMembership
+            && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active'
+        );
+        if (bookingRequiresStrictFinanceSync(updatedBooking) || activeBanquetMembership) {
+            await syncBookingFinanceInTransaction(client, updatedBooking, {
+                businessContext,
+                createdBy: req.user?.username,
+                optional: false,
+                label: 'Admission ticket payment-method finance synchronization'
+            });
+        }
+        if (activeBanquetMembership) {
+            await client.query(
+                `UPDATE banquet_groups
+                    SET updated_at = NOW(),
+                        updated_by = $3
+                  WHERE id = $1
+                    AND ${bookingContextSql('', '$2')}`,
+                [
+                    banquetMembership.group_id,
+                    businessContext,
+                    req.user?.username || null
+                ]
+            );
+        }
+        await client.query('COMMIT');
         res.json({ success: true, booking: mapBookingRow(result.rows[0]) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (payment patch)', rbErr));
         log.error('PATCH /bookings/:id/payment error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            details: err.details || undefined
+        });
+    } finally {
+        client.release();
     }
 });
 

@@ -286,8 +286,18 @@ async function run() {
             && response.status() === 403;
         if (response.status() >= 400 && !expectedAccessBoundary) diagnostics.apiFailures.push(item);
     });
+    const isExpectedShellNavigationAbort = (request, url) => {
+        if (request.method() !== 'GET') return false;
+        const errorText = request.failure()?.errorText || '';
+        if (errorText !== 'net::ERR_ABORTED') return false;
+        return url.origin === base && [
+            '/api/dashboard/alerts',
+            '/api/tasks/my-cabinet'
+        ].includes(url.pathname);
+    };
     page.on('requestfailed', request => {
         const url = new URL(request.url());
+        if (isExpectedShellNavigationAbort(request, url)) return;
         if (url.origin === base || url.pathname.startsWith('/api/')) {
             diagnostics.requestFailures.push(`${request.method()} ${url.pathname}: ${request.failure()?.errorText || 'failed'}`);
         }

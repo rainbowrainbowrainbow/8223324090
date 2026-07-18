@@ -4786,7 +4786,13 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                         ? `${escapeHtml(professionLabel(paidRole.professionKey))} · оплачувана`
                         : 'Оберіть професію, щоб увімкнути окрему оплату'}
                 </div>
+                <div class="sch-paid-role-preview sch-paid-role-limit-note">
+                    Ліміт v1: максимум одна оплачувана додаткова професія в одному фізичному блоці.
+                </div>
                 <div class="sch-paid-role-preview" data-paid-role-preview>${escapeHtml(schedulePaidRolePreview(scope, paidRole, segment))}</div>
+                <div class="sch-paid-role-preview sch-paid-role-policy-note">
+                    Окрема оплата розраховується лише для погодинної payroll-схеми. Для per shift, monthly fixed або hybrid payroll буде заблоковано до погодження формули.
+                </div>
                 ${paidRateError}
             </fieldset>
         </article>`;
@@ -4949,67 +4955,179 @@ function normalizeSchedulePaidRoleSegments(segments = []) {
     return { segments: normalized, errors };
 }
 
-function scheduleContainedOverlapCandidate(segments = []) {
+function buildScheduleOverlapConversionSegments(segments = [], candidate = null, breakTargetKey = '') {
+    if (!candidate) return { segments: [], breakTargets: [] };
+    const source = (Array.isArray(segments) ? segments : []).map(segment => ({
+        ...segment,
+        additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
+        additionalProfessionKeys: [...(segment.additionalProfessionKeys || [])]
+    }));
+    const pairIndexes = new Set([candidate.baseIndex, candidate.paidIndex]);
+    const pair = [...pairIndexes].map(index => ({
+        index,
+        segment: source[index],
+        bounds: scheduleSegmentAbsoluteBounds(source[index])
+    }));
+    if (pair.some(item => !item.segment || !item.bounds)) return { segments: [], breakTargets: [] };
+
+    const boundaries = [...new Set(pair.flatMap(item => [item.bounds.start, item.bounds.end]))]
+        .sort((left, right) => left - right);
+    const reusedIds = new Set();
+    const convertedPair = [];
+    boundaries.slice(0, -1).forEach((sliceStart, sliceIndex) => {
+        const sliceEnd = boundaries[sliceIndex + 1];
+        if (sliceEnd <= sliceStart) return;
+        const active = pair.filter(item =>
+            sliceStart >= item.bounds.start && sliceEnd <= item.bounds.end);
+        if (!active.length) return;
+        const bothActive = active.length === 2;
+        const mainItem = bothActive
+            ? pair.find(item => item.index === candidate.baseIndex)
+            : active[0];
+        const mainSource = mainItem.segment;
+        const roles = (mainSource.additionalRoles || [])
+            .filter(role => role.compensationMode !== 'paid_hourly'
+                && role.professionKey !== candidate.professionKey)
+            .map(role => ({ ...role, compensationMode: 'unpaid', payMultiplier: null }));
+        if (bothActive) {
+            roles.push({
+                professionKey: candidate.professionKey,
+                compensationMode: 'paid_hourly',
+                payMultiplier: 1,
+                policyVersion: null
+            });
+        }
+        const canReuseId = mainSource.id && !reusedIds.has(mainItem.index);
+        if (canReuseId) reusedIds.add(mainItem.index);
+        const conversionBreakKey = `${sliceStart}:${sliceEnd}:${mainItem.index}`;
+        convertedPair.push({
+            ...mainSource,
+            id: canReuseId ? mainSource.id : null,
+            clientKey: canReuseId ? mainSource.clientKey : scheduleSegmentClientKey(),
+            shiftStart: scheduleMinutesToTime(sliceStart),
+            shiftEnd: scheduleMinutesToTime(sliceEnd),
+            breakMinutes: conversionBreakKey === breakTargetKey
+                ? Number(candidate.breakMinutes || 0)
+                : 0,
+            additionalRoles: roles,
+            additionalProfessionKeys: [...new Set(roles.map(role => role.professionKey))],
+            conversionBreakKey
+        });
+    });
+
+    const breakTargets = convertedPair
+        .filter(segment => (
+            scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd)
+            > Number(candidate.breakMinutes || 0)
+        ))
+        .map(segment => ({
+            key: segment.conversionBreakKey,
+            label: `${segment.shiftStart}–${segment.shiftEnd} · ${professionLabel(segment.professionKey)}`
+        }));
+    const unaffected = source.filter((segment, index) => !pairIndexes.has(index));
+    const normalized = [...unaffected, ...convertedPair]
+        .sort((left, right) => {
+            const leftBounds = scheduleSegmentAbsoluteBounds(left);
+            const rightBounds = scheduleSegmentAbsoluteBounds(right);
+            return (leftBounds?.start ?? 0) - (rightBounds?.start ?? 0)
+                || (leftBounds?.end ?? 0) - (rightBounds?.end ?? 0);
+        })
+        .map(segment => {
+            const { conversionBreakKey, ...publicSegment } = segment;
+            return publicSegment;
+        });
+    return { segments: normalized, breakTargets };
+}
+
+function scheduleOverlapConversionAnalysis(segments = []) {
     const timeline = (Array.isArray(segments) ? segments : []).map((segment, index) => ({
         segment,
         index,
         bounds: scheduleSegmentAbsoluteBounds(segment)
     })).filter(item => item.bounds);
+    const pairs = [];
     for (let leftIndex = 0; leftIndex < timeline.length; leftIndex += 1) {
         for (let rightIndex = leftIndex + 1; rightIndex < timeline.length; rightIndex += 1) {
             const left = timeline[leftIndex];
             const right = timeline[rightIndex];
             const overlaps = left.bounds.start < right.bounds.end && right.bounds.start < left.bounds.end;
-            if (!overlaps || left.segment.professionKey === right.segment.professionKey) continue;
-            const leftContains = left.bounds.start <= right.bounds.start
-                && left.bounds.end >= right.bounds.end
-                && (left.bounds.start < right.bounds.start || left.bounds.end > right.bounds.end);
-            const rightContains = right.bounds.start <= left.bounds.start
-                && right.bounds.end >= left.bounds.end
-                && (right.bounds.start < left.bounds.start || right.bounds.end > left.bounds.end);
-            if (!leftContains && !rightContains) continue;
-            const outer = leftContains ? left : right;
-            const inner = leftContains ? right : left;
-            const outerHasPaidRole = (outer.segment.additionalRoles || [])
-                .some(role => role.compensationMode === 'paid_hourly');
-            if (outerHasPaidRole || (inner.segment.additionalRoles || []).length > 0) continue;
-            return {
-                outerIndex: outer.index,
-                innerIndex: inner.index,
-                professionKey: inner.segment.professionKey,
-                start: inner.segment.shiftStart,
-                end: inner.segment.shiftEnd
-            };
+            if (overlaps) pairs.push({ left, right });
         }
     }
-    return null;
+    if (!pairs.length) return { candidate: null, blocker: '' };
+    if (pairs.length !== 1) {
+        return {
+            candidate: null,
+            blocker: 'Автоматична конвертація недоступна: одночасно перетинаються понад два блоки. Нормалізуйте ланцюжок по одній парі без спільних перетинів.'
+        };
+    }
+    const { left, right } = pairs[0];
+    if (left.bounds.end > 24 * 60 || right.bounds.end > 24 * 60) {
+        return {
+            candidate: null,
+            blocker: 'Автоматична конвертація нічних блоків недоступна без погодженої day-offset моделі. Залиште один overnight-блок або розбийте план після впровадження explicit day offsets.'
+        };
+    }
+    if (left.segment.professionKey === right.segment.professionKey) {
+        return {
+            candidate: null,
+            blocker: 'Автоматична конвертація недоступна: блоки мають однакову основну професію, тому другий блок не можна перетворити на окрему оплачувану роль.'
+        };
+    }
+    const leftContains = left.bounds.start <= right.bounds.start
+        && left.bounds.end >= right.bounds.end;
+    const rightContains = right.bounds.start <= left.bounds.start
+        && right.bounds.end >= left.bounds.end;
+    const contained = leftContains || rightContains;
+    const base = contained
+        ? (leftContains ? left : right)
+        : (left.bounds.start < right.bounds.start ? left : right);
+    const paid = base === left ? right : left;
+    if ((base.segment.additionalRoles || [])
+        .some(role => role.compensationMode === 'paid_hourly')) {
+        return {
+            candidate: null,
+            blocker: 'Автоматична конвертація недоступна: фізичний блок уже має оплачувану додаткову професію. Ліміт v1 — максимум одна paid additional role на блок.'
+        };
+    }
+    if ((paid.segment.additionalRoles || []).length > 0) {
+        return {
+            candidate: null,
+            blocker: 'Автоматична конвертація недоступна: блок, який має стати оплачуваною роллю, уже містить додаткові ролі. Спочатку приберіть або окремо нормалізуйте їх.'
+        };
+    }
+    const candidate = {
+        kind: contained ? 'contained' : 'partial',
+        baseIndex: base.index,
+        paidIndex: paid.index,
+        professionKey: paid.segment.professionKey,
+        start: scheduleMinutesToTime(Math.max(left.bounds.start, right.bounds.start)),
+        end: scheduleMinutesToTime(Math.min(left.bounds.end, right.bounds.end)),
+        breakMinutes: Math.max(
+            Number(left.segment.breakMinutes || 0),
+            Number(right.segment.breakMinutes || 0)
+        )
+    };
+    const preview = buildScheduleOverlapConversionSegments(segments, candidate);
+    candidate.breakTargets = preview.breakTargets;
+    if (candidate.breakMinutes > 0 && !candidate.breakTargets.length) {
+        return {
+            candidate: null,
+            blocker: `Автоматична конвертація недоступна: перерву ${candidate.breakMinutes} хв неможливо помістити в жоден нормалізований сегмент.`
+        };
+    }
+    return { candidate, blocker: '' };
 }
 
-function convertContainedScheduleOverlap(scope, candidate) {
+function convertScheduleOverlap(scope, candidate, breakTargetKey = '') {
     const source = readSchedulePlanSegments(scope);
-    const outer = source[candidate?.outerIndex];
-    const inner = source[candidate?.innerIndex];
-    if (!outer || !inner) return null;
-    const rateInfo = schedulePaidRoleRate(scope, inner.professionKey);
-    if (!rateInfo.available || Number(outer.breakMinutes || 0) > 0) return null;
-    outer.additionalRoles = [
-        ...(outer.additionalRoles || []).filter(role => (
-            role.compensationMode !== 'paid_hourly'
-            && role.professionKey !== inner.professionKey
-        )),
-        {
-            professionKey: inner.professionKey,
-            compensationMode: 'paid_hourly',
-            payMultiplier: 1,
-            policyVersion: null,
-            intervalStart: inner.shiftStart,
-            intervalEnd: inner.shiftEnd
-        }
-    ];
-    outer.additionalProfessionKeys = [...new Set(outer.additionalRoles.map(role => role.professionKey))];
-    source.splice(candidate.innerIndex, 1);
-    const normalized = normalizeSchedulePaidRoleSegments(source);
-    return normalized.errors.length ? null : normalized.segments;
+    if (!candidate) return null;
+    const rateInfo = schedulePaidRoleRate(scope, candidate.professionKey);
+    if (!rateInfo.available) return null;
+    const converted = buildScheduleOverlapConversionSegments(source, candidate, breakTargetKey);
+    if (Number(candidate.breakMinutes || 0) > 0
+        && !converted.breakTargets.some(option => option.key === breakTargetKey)) return null;
+    return converted.segments.length ? converted.segments : null;
 }
 
 function schedulePlanMetrics(segments = []) {
@@ -5208,9 +5326,13 @@ function validateSchedulePlan(scope, options = {}) {
     const sourceMetrics = schedulePlanMetrics(sourceSegments);
     const overlapIndexes = scheduleOverlappingSegmentIndexes(sourceMetrics.timeline);
     let overlapCandidate = null;
+    let overlapConversionBlocker = '';
     if (overlapIndexes.length) {
         errors.push('Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок');
-        overlapCandidate = scheduleContainedOverlapCandidate(sourceSegments);
+        const overlapConversion = scheduleOverlapConversionAnalysis(sourceSegments);
+        overlapCandidate = overlapConversion.candidate;
+        overlapConversionBlocker = overlapConversion.blocker;
+        if (overlapConversionBlocker) errors.push(overlapConversionBlocker);
     }
     if (working && (!primaryProfessionKey || !segments.some(segment => segment.professionKey === primaryProfessionKey))) {
         errors.push('Основна роль дня має бути основною професією одного з блоків.');
@@ -5222,6 +5344,7 @@ function validateSchedulePlan(scope, options = {}) {
         fieldErrors,
         overlapIndexes,
         overlapCandidate,
+        overlapConversionBlocker,
         sourceSegments,
         segments,
         primaryProfessionKey,
@@ -5334,6 +5457,36 @@ function updateScheduleSaveValidation(scope, validation) {
     return message.id;
 }
 
+function bindScheduleOverlapConversionControls(scope, summary) {
+    const config = schedulePlanScopeConfig(scope);
+    const breakTarget = summary?.querySelector('[data-schedule-overlap-break-target]');
+    const convertButton = summary?.querySelector('[data-schedule-overlap-convert]');
+    if (!convertButton) return;
+    breakTarget?.addEventListener('change', () => {
+        const conversion = breakTarget.closest('.sch-overlap-conversion');
+        convertButton.disabled = conversion?.dataset.rateAvailable !== 'true' || !breakTarget.value;
+    });
+    convertButton.addEventListener('click', () => {
+        const validation = validateSchedulePlan(scope);
+        const breakTargetKey = breakTarget?.value || '';
+        const converted = convertScheduleOverlap(scope, validation.overlapCandidate, breakTargetKey);
+        if (!converted) {
+            updateSchedulePlanSummary(scope);
+            return;
+        }
+        const candidate = validation.overlapCandidate;
+        const primaryProfessionKey = validation.primaryProfessionKey || converted[0]?.professionKey || '';
+        renderSchedulePlanEditor(scope, converted, {
+            primaryProfessionKey,
+            activeIndex: Math.max(0, Math.min(candidate?.baseIndex || 0, converted.length - 1))
+        });
+        const list = document.getElementById(config.listId);
+        const paidCard = Array.from(list?.querySelectorAll('.sch-segment-card') || [])
+            .find(item => item.querySelector('[data-segment-field="paid-profession"]')?.value);
+        paidCard?.querySelector('[data-segment-field="paid-profession"]')?.focus();
+    });
+}
+
 function updateSchedulePlanSummary(scope) {
     const config = schedulePlanScopeConfig(scope);
     const summary = document.getElementById(config.summaryId);
@@ -5363,19 +5516,35 @@ function updateSchedulePlanSummary(scope) {
             ${validation.overlapCandidate ? (() => {
                 const candidate = validation.overlapCandidate;
                 const rateInfo = schedulePaidRoleRate(scope, candidate.professionKey);
-                const outer = validation.sourceSegments[candidate.outerIndex];
-                const blockedByBreak = Number(outer?.breakMinutes || 0) > 0;
-                const disabled = !rateInfo.available || blockedByBreak;
-                const reason = blockedByBreak
-                    ? 'Спочатку приберіть перерву з блоку, який буде поділено.'
-                    : (!rateInfo.available ? rateInfo.reason : '');
-                return `<div class="sch-overlap-conversion">
+                const needsBreakChoice = Number(candidate.breakMinutes || 0) > 0;
+                const disabled = !rateInfo.available || needsBreakChoice;
+                const reason = !rateInfo.available ? rateInfo.reason : '';
+                const breakChoiceId = `${scope}-overlap-break-target`;
+                const breakChoice = needsBreakChoice
+                    ? `<label for="${escapeHtml(breakChoiceId)}">Куди перенести перерву ${Number(candidate.breakMinutes)} хв</label>
+                        <select id="${escapeHtml(breakChoiceId)}" data-schedule-overlap-break-target>
+                            <option value="">Оберіть нормалізований сегмент</option>
+                            ${(candidate.breakTargets || []).map(option =>
+                                `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`).join('')}
+                        </select>
+                        <span>Перерва не буде розподілена автоматично: вибір застосовується лише після натискання кнопки конвертації.</span>`
+                    : '';
+                return `<div class="sch-overlap-conversion" data-rate-available="${rateInfo.available ? 'true' : 'false'}">
+                    ${breakChoice}
                     <button type="button" class="btn-page-secondary" data-schedule-overlap-convert ${disabled ? 'disabled' : ''}>
                         Перетворити на одночасні ролі
                     </button>
-                    ${reason ? `<span>${escapeHtml(reason)}</span>` : `<span>${escapeHtml(professionLabel(candidate.professionKey))}: ${escapeHtml(candidate.start)}–${escapeHtml(candidate.end)}</span>`}
+                    ${reason
+                        ? `<span>${escapeHtml(reason)}</span>`
+                        : `<span>${candidate.kind === 'partial' ? 'Частковий перетин' : 'Вкладений інтервал'} · ${escapeHtml(professionLabel(candidate.professionKey))}: ${escapeHtml(candidate.start)}–${escapeHtml(candidate.end)} · ліміт v1: одна paid additional role.</span>`}
                 </div>`;
-            })() : ''}`;
+            })() : (validation.overlapConversionBlocker
+                ? `<div class="sch-overlap-conversion is-blocked" data-schedule-overlap-blocker role="note">
+                    <strong>Автоматична конвертація недоступна</strong>
+                    <span>${escapeHtml(validation.overlapConversionBlocker)}</span>
+                </div>`
+                : '')}`;
+        bindScheduleOverlapConversionControls(scope, summary);
     }
     applySchedulePlanFieldErrors(scope, validation.fieldErrors);
     updateSchedulePaidRolePreviews(scope);
@@ -5491,25 +5660,6 @@ function bindSchedulePlanEditor(scope) {
         updateSchedulePlanSummary(scope);
     });
     editor.addEventListener('click', event => {
-        const convertButton = event.target.closest('[data-schedule-overlap-convert]');
-        if (convertButton) {
-            const validation = validateSchedulePlan(scope);
-            const converted = convertContainedScheduleOverlap(scope, validation.overlapCandidate);
-            if (!converted) {
-                updateSchedulePlanSummary(scope);
-                return;
-            }
-            const candidate = validation.overlapCandidate;
-            const primaryProfessionKey = validation.primaryProfessionKey || converted[0]?.professionKey || '';
-            rerender(converted, {
-                primaryProfessionKey,
-                activeIndex: Math.max(0, Math.min(candidate?.outerIndex || 0, converted.length - 1))
-            });
-            const paidCard = Array.from(list?.querySelectorAll('.sch-segment-card') || [])
-                .find(item => item.querySelector('[data-segment-field="paid-profession"]')?.value);
-            paidCard?.querySelector('[data-segment-field="paid-profession"]')?.focus();
-            return;
-        }
         const addButton = event.target.closest(`#${config.addButtonId}`);
         if (addButton) {
             const segments = readSchedulePlanSegments(scope);

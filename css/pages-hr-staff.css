@@ -5827,7 +5827,7 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
 
 .sch-overlap-conversion {
     display: grid;
-    gap: 5px;
+    gap: 7px;
 }
 
 .sch-overlap-conversion button {
@@ -5839,6 +5839,30 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     color: var(--gray-500);
     font-size: 11px;
     font-weight: 650;
+}
+
+.sch-overlap-conversion label {
+    color: var(--gray-700);
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.sch-overlap-conversion select {
+    width: min(100%, 420px);
+    min-height: 38px;
+}
+
+.sch-overlap-conversion.is-blocked {
+    padding: 9px 10px;
+    border: 1px solid rgba(239, 68, 68, 0.24);
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.sch-overlap-conversion.is-blocked strong {
+    color: #b91c1c;
+    font-size: 11px;
+    font-weight: 900;
 }
 
 .sch-shift-preferences {
@@ -7052,6 +7076,22 @@ body.dark-mode .sch-overlap-conversion span,
     color: #94a3b8;
 }
 
+body.dark-mode .sch-overlap-conversion label,
+[data-theme="dark"] .sch-overlap-conversion label {
+    color: #cbd5e1;
+}
+
+body.dark-mode .sch-overlap-conversion.is-blocked,
+[data-theme="dark"] .sch-overlap-conversion.is-blocked {
+    border-color: rgba(248, 113, 113, 0.32);
+    background: rgba(127, 29, 29, 0.18);
+}
+
+body.dark-mode .sch-overlap-conversion.is-blocked strong,
+[data-theme="dark"] .sch-overlap-conversion.is-blocked strong {
+    color: #fca5a5;
+}
+
 body.dark-mode .sch-role-pay-status.is-unpaid,
 body.dark-mode .sch-paid-role-status.is-empty,
 [data-theme="dark"] .sch-role-pay-status.is-unpaid,
@@ -7429,6 +7469,10 @@ body.dark-mode .hr-shift-multi-guard__segments span,
     .sch-overlap-conversion button {
         justify-self: stretch;
         white-space: normal;
+    }
+
+    .sch-overlap-conversion select {
+        width: 100%;
     }
 
     #schModalOverlay .sch-primary-actions,

@@ -79,6 +79,8 @@ token and unique run ID, uses payroll preview only, and fails unless transaction
 - Simultaneous additional roles share the main segment interval and never create another physical-time allocation.
 - An `unpaid` additional role remains informational and does not create a payroll line.
 - An explicitly assigned `paid_hourly` role creates a separate compensation allocation and payroll line from the immutable attendance snapshot. Its minutes are role-compensation minutes, not extra physical minutes.
+- Policy v1 allows at most one `paid_hourly` additional role per physical segment. The API rejects a larger set with `HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED`; the Staff editor exposes the same limit before save.
+- The Staff overlap converter supports one unambiguous pair, including partial overlap. When source blocks contain a break, conversion requires an explicit target segment; the converter never distributes or assigns that break without the user's selection and confirmation.
 - The same segment break, late arrival, and early leave reduce every role active in the affected interval. Overtime belongs to the base profession unless a later policy explicitly assigns additional-role overtime.
 - Payroll consumes the main-profession actual minutes produced by attendance. It must not subtract `break_minutes` a second time.
 - `shift_end < shift_start` means the segment ends on the next calendar day. `shift_end = shift_start` remains invalid and does not mean a 24-hour shift.
@@ -116,6 +118,7 @@ intervals into attendance, worked days, or physical hours.
 | Rule | API code | Staff/HR behavior |
 | --- | --- | --- |
 | Break is equal to or longer than its segment | `HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION` | Block save and keep the editor open |
+| More than one paid additional role on a physical segment | `HR_SHIFT_PAID_ROLE_LIMIT_EXCEEDED` | Block save; v1 supports one paid additional profession |
 | Multi-segment plan contains an overnight block | `HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT` | Block save; require one overnight block or a future explicit-offset model |
 
 The Staff editor uses the same codes and base messages as the shared domain service. Routes return the domain

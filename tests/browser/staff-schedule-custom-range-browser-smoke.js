@@ -3419,6 +3419,15 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         await targetCell().click();
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
     };
+    const discardTargetPlan = async () => {
+        await page.locator('#schCancelBtn').click();
+        const confirm = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        if (await confirm.isVisible().catch(() => false)) {
+            await confirm.locator('.confirm-ok').click();
+        }
+        await page.waitForFunction(() =>
+            !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+    };
 
     try {
         await openTargetPlan();
@@ -3466,7 +3475,49 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             /8 год 30 хв[\s\S]*Фізичний час[\s\S]*—[\s\S]*Оплачувані роль-години/,
             'overlapping blocks subtract the shared break once and keep invalid role-hours unavailable'
         );
-        assert.equal(await convertButton.isDisabled(), true, 'conversion stays explicit when the outer block has a break');
+        const breakTarget = page.locator('[data-schedule-overlap-break-target]');
+        assert.equal(await breakTarget.count(), 1, 'a break requires an explicit normalized-segment target');
+        assert.equal(await breakTarget.inputValue(), '', 'the converter never chooses a break target automatically');
+        assert.equal(await convertButton.isDisabled(), true, 'conversion stays disabled until the user chooses the break target');
+        await breakTarget.selectOption({ index: 1 });
+        assert.notEqual(await breakTarget.inputValue(), '', 'an explicit break target can be selected');
+        assert.equal(await convertButton.isEnabled(), true, 'an explicit break target unlocks conversion');
+        assert.equal(await convertButton.getAttribute('type'), 'button', 'the conversion action keeps native keyboard button semantics');
+        assert.equal(await convertButton.evaluate(button => button.tabIndex), 0, 'the conversion action remains in the keyboard tab order');
+        await convertButton.evaluate(button => button.click());
+        assert.equal(await cards.count(), 2, 'explicit conversion normalizes the contained overlap');
+        assert.deepEqual(
+            await cards.evaluateAll(items => items.map(card => [
+                card.querySelector('[data-segment-field="start"]')?.value,
+                card.querySelector('[data-segment-field="end"]')?.value
+            ])),
+            [['11:00', '11:30'], ['11:30', '20:00']],
+            'keyboard conversion replaces the overlapping boundaries with adjacent segments'
+        );
+        assert.deepEqual(
+            await cards.locator('[data-segment-field="break"]').evaluateAll(inputs =>
+                inputs.map(input => Number(input.value || 0))),
+            [0, 30],
+            'the selected normalized segment inherits the break exactly once'
+        );
+        assert.equal(
+            await cards.locator('[data-segment-field="break"]').evaluateAll(inputs =>
+                inputs.reduce((total, input) => total + Number(input.value || 0), 0)),
+            30,
+            'the converter does not distribute or duplicate the break'
+        );
+
+        await discardTargetPlan();
+        await openTargetPlan();
+        await page.locator('#schAddSegmentBtn').click();
+        await cards.nth(0).locator('[data-segment-field="profession"]').selectOption('animator');
+        await cards.nth(0).locator('[data-segment-field="start"]').fill('11:00');
+        await cards.nth(0).locator('[data-segment-field="end"]').fill('20:00');
+        await cards.nth(0).locator('[data-segment-field="break"]').fill('0');
+        await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('reception');
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('11:30');
+        await cards.nth(1).locator('[data-segment-field="end"]').fill('20:00');
+        await cards.nth(1).locator('[data-segment-field="break"]').fill('0');
         await cards.nth(0).locator('[data-segment-field="break"]').fill('0');
         await cards.nth(1).locator('[data-segment-field="break"]').fill('0');
         assert.equal(await convertButton.isEnabled(), true, 'contained overlap exposes an explicit safe conversion');
@@ -3570,6 +3621,46 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         assert.match(await page.locator('[data-schedule-save-validation]').innerText(), /немає явної погодинної ставки/);
 
         await cards.nth(1).locator('[data-segment-field="paid-profession"]').selectOption('');
+        await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('reception');
+        await cards.nth(0).locator('[data-segment-field="start"]').fill('09:00');
+        await cards.nth(0).locator('[data-segment-field="end"]').fill('15:00');
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('12:00');
+        await cards.nth(1).locator('[data-segment-field="end"]').fill('18:00');
+        assert.match(
+            await page.locator('#schPlanSummary').innerText(),
+            /Частковий перетин/,
+            'partial overlap exposes the explicit converter'
+        );
+        assert.equal(await convertButton.isEnabled(), true, 'partial overlap can be normalized without manual splitting');
+        await convertButton.evaluate(button => button.click());
+        assert.equal(await cards.count(), 3, 'partial overlap becomes before, simultaneous and after segments');
+        assert.deepEqual(
+            await cards.evaluateAll(items => items.map(card => [
+                card.querySelector('[data-segment-field="start"]')?.value,
+                card.querySelector('[data-segment-field="end"]')?.value
+            ])),
+            [['09:00', '12:00'], ['12:00', '15:00'], ['15:00', '18:00']]
+        );
+        assert.equal(
+            await cards.nth(1).locator('[data-segment-field="paid-profession"]').inputValue(),
+            'reception',
+            'the overlap slice carries the paid additional profession'
+        );
+        assert.equal(
+            await cards.nth(2).locator('[data-segment-field="profession"]').inputValue(),
+            'reception',
+            'the trailing non-overlap keeps its original main profession'
+        );
+        assert.equal(
+            await page.evaluate(() => document.activeElement?.matches('[data-segment-field="paid-profession"]')),
+            true,
+            'keyboard conversion moves focus to the created paid-role field'
+        );
+
+        await discardTargetPlan();
+        await openTargetPlan();
+        await cards.nth(1).locator('[data-segment-field="paid-profession"]').selectOption('');
+        await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('senior_manager');
         await cards.nth(0).locator('[data-segment-field="start"]').fill('09:00');
         await cards.nth(0).locator('[data-segment-field="end"]').fill('13:00');
         await cards.nth(1).locator('[data-segment-field="start"]').fill('12:00');
@@ -3596,6 +3687,11 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             await page.locator('[data-schedule-overlap-convert]').count(),
             0,
             'ambiguous three-block overlap is never converted silently'
+        );
+        assert.match(
+            await page.locator('[data-schedule-overlap-blocker]').innerText(),
+            /понад два блоки/,
+            'ambiguous chain overlap explains why automatic conversion is unavailable'
         );
         await page.locator('#schCancelBtn').click();
     } finally {

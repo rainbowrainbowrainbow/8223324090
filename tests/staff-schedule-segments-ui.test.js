@@ -56,8 +56,12 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /function scheduleOverlappingSegmentIndexes/);
     assert.match(page, /function applySchedulePlanOverlapState/);
     assert.match(page, /card\.setAttribute\('aria-invalid', 'true'\)/);
-    assert.match(page, /function scheduleContainedOverlapCandidate/);
+    assert.match(page, /function scheduleOverlapConversionAnalysis/);
+    assert.match(page, /function buildScheduleOverlapConversionSegments/);
+    assert.match(page, /function bindScheduleOverlapConversionControls/);
     assert.match(page, /data-schedule-overlap-convert/);
+    assert.match(page, /data-schedule-overlap-break-target/);
+    assert.match(page, /Ліміт v1: максимум одна оплачувана додаткова професія/);
     assert.match(page, /Перетворити на одночасні ролі/);
     assert.match(page, /function normalizeSchedulePaidRoleSegments/);
     assert.match(page, /Оплачуваний інтервал має повністю бути в межах основного фізичного блоку/);
@@ -73,7 +77,11 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /Фізичний час/);
     assert.match(page, /Оплачувані роль-години/);
     assert.match(page, /paidRoleMinutes/);
-    assert.match(page, /role\.professionKey !== inner\.professionKey/);
+    assert.match(page, /role\.professionKey !== candidate\.professionKey/);
+    assert.match(page, /candidate\.kind === 'partial'/);
+    assert.match(page, /Перерва не буде розподілена автоматично/);
+    assert.match(page, /Автоматична конвертація нічних блоків недоступна/);
+    assert.match(page, /понад два блоки/);
     assert.match(hrPage, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
 });
@@ -159,6 +167,7 @@ test('segment editor keeps dark and 320-390px layouts explicit', () => {
     assert.match(css, /\.sch-plan-summary\.has-error/);
     assert.match(css, /body\.dark-mode \.sch-segment-card/);
     assert.match(css, /@media \(max-width: 390px\)/);
+    assert.match(css, /\.sch-overlap-conversion select/);
     assert.match(css, /#schModalOverlay \.sch-modal--schedule/);
     assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\)/);
     assert.match(css, /\.sch-paid-role-grid/);

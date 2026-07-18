@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.62 - Simultaneous Pay UI Finalization
+
+### HR / Графік / UI / (18.07.2026) [codex]
+- **Перерва не віднімається двічі у фізичному summary** — overlapping-блоки спочатку об’єднуються у фізичний інтервал, після чого спільна перерва враховується один раз.
+- **Усі конфліктні блоки мають видимий і доступний стан** — картки отримують overlap-підсвічування, `aria-invalid`, зв’язок із поясненням та видиму причину блокування біля sticky Save.
+- **Exact conversion зберігає контракт ролей** — план 11:00–20:00 + 11:30–20:00 перетворюється на 9 фізичних годин і 17 год 30 хв оплачуваних роль-годин без duplicate profession та без втрати основної професії.
+- **Browser regression посилено** — перевіряються contained і chain overlap, перерва, missing-rate, reload, keyboard navigation, dark mode та ширини 320–390 px.
+
+---
+
 ## v0.79.61 - Simultaneous Pay Safety
 
 ### HR / Графік / Attendance / Payroll / (18.07.2026) [codex]

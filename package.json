@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.62",
+  "version": "0.79.63",
   "eventGenix": {
-    "releaseLabel": "Simultaneous Pay UI Finalization"
+    "releaseLabel": "Room Resource Ticket Contract"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

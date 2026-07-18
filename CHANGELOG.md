@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.75 - Payroll Reporting Transparency
+
+### HR / Зарплата / Звіти / (18.07.2026) [codex]
+- **Доплата або точний blocker** — HR і Finance показують physical/base/additional hours, професію, snapshot-ставку, multiplier, суму та стабільний код із поясненням; заблокована доплата більше не виглядає як валідні `0 грн`.
+- **CSV/XLSX звіряються з `breakdown_json`** — additional lines мають `status`, `blocker_code` і `blocker_message`, а payroll-level поля зберігають усі blocking codes/details.
+- **10 freelance draft-звітів за травень не загублені** — вони залишаються окремо від active staff і тепер відображаються агрегованим reconciliation warning без видалення, перегенерації чи зміни історії.
+- **Доступ до зарплати не розширено** — salary/reconciliation API використовують точний payroll role guard; HR, manager і security не отримують зарплатні ставки та суми.
+- **Fail-closed і аудит** — невалідна нульова simultaneous доплата блокує generation/commit, а blocked generation записує audit trace без створення некоректного payroll report.
+
+---
+
 ## v0.79.74 - Payroll Profiles
 
 ### HR / Зарплата / Профілі / (18.07.2026) [codex]

@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.65 - Payroll Staff Discovery Reliability
+
+### Payroll / Reliability / (18.07.2026) [codex]
+- **Payroll preview більше не звертається до неіснуючого поля** — вибір працівників за плановими змінами використовує канонічну схему `hr_shifts`, тому preview не переходить на спрощений fallback і не втрачає неактивних працівників із даними за період.
+- **Додано regression guard** — тест фіксує допустимі поля запиту та не дозволить повернути помилковий `hr_shifts.status`.
+
+---
+
 ## v0.79.64 - Simultaneous Pay Live QA Reliability
 
 ### HR / Attendance / Live QA / (18.07.2026) [codex]

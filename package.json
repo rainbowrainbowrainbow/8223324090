@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.79",
+  "version": "0.79.80",
   "eventGenix": {
-    "releaseLabel": "Transaction Ownership Hardening"
+    "releaseLabel": "Booking Time and Banquet Recovery"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -3,7 +3,11 @@
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { authRequest } = require('../helpers');
-const { LIVE_MULTI_SEGMENT_QA_CONFIRMATION } = require('../../services/liveMultiSegmentQa');
+const { pool } = require('../../db');
+const {
+    LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION
+} = require('../../services/liveMultiSegmentQa');
 
 const enabled = process.env.RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION === 'true';
 const runId = `isolated_${process.pid}_${Date.now()}`;
@@ -235,6 +239,48 @@ test('isolated live QA helper preserves 540 physical minutes and 510 paid simult
     assert.equal(before.data?.data?.counts?.shifts, 2);
     assert.equal(before.data?.data?.counts?.schedule, 2);
     assert.equal(before.data?.data?.counts?.attendance, 1);
+    assert.equal(before.data?.data?.financialProofVersion, LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION);
+    assert.equal(before.data?.data?.verificationComplete, true);
+    assert.equal(before.data?.data?.financiallyClean, true);
+
+    const finance = await pool.query(
+        `INSERT INTO finance_transactions (type, amount, description, date, payment_method, staff_id, created_by)
+         VALUES ('expense', 1, 'isolated synthetic live QA financial guard', $1, 'salary', $2, 'isolated_test')
+         RETURNING id`,
+        [date, staffId]
+    );
+    const financeId = Number(finance.rows[0].id);
+    await pool.query(
+        `INSERT INTO payroll_reports
+            (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status, breakdown_json, finance_transaction_id, created_by, updated_by)
+         VALUES ($1, $2, 1, 0, 0, 1, 'draft', '{}'::jsonb, $3, 'isolated_test', 'isolated_test')`,
+        [date.slice(0, 7), staffId, financeId]
+    );
+    await pool.query(
+        `INSERT INTO payroll_entries (staff_id, period_month, line_type, label, amount, created_by)
+         VALUES ($1, $2, 'base', 'isolated synthetic live QA financial guard', 1, 'isolated_test')`,
+        [staffId, date.slice(0, 7)]
+    );
+    const blockedCleanup = await authRequest('DELETE', `/api/hr/qa/multi-segment/${runId}`, {
+        staffId,
+        confirmation: LIVE_MULTI_SEGMENT_QA_CONFIRMATION
+    });
+    assert.equal(blockedCleanup.status, 409);
+    assert.equal(blockedCleanup.data?.code, 'LIVE_QA_FINANCIAL_SIDE_EFFECTS_DETECTED');
+    assert.equal(Number(blockedCleanup.data?.data?.financialCounts?.payrollReports), 1);
+    assert.equal(Number(blockedCleanup.data?.data?.financialCounts?.payrollEntries), 1);
+    assert.equal(Number(blockedCleanup.data?.data?.financialCounts?.financeTransactions), 1);
+
+    const afterBlocked = await authRequest('GET', `/api/hr/qa/multi-segment/${runId}?staffId=${staffId}`);
+    assert.equal(afterBlocked.status, 200);
+    assert.equal(afterBlocked.data?.data?.archived, false);
+    assert.equal(afterBlocked.data?.data?.counts?.shifts, 2);
+    assert.equal(afterBlocked.data?.data?.counts?.schedule, 2);
+    assert.equal(afterBlocked.data?.data?.counts?.attendance, 1);
+
+    await pool.query('DELETE FROM payroll_entries WHERE staff_id = $1 AND period_month = $2', [staffId, date.slice(0, 7)]);
+    await pool.query('DELETE FROM payroll_reports WHERE staff_id = $1 AND period_month = $2', [staffId, date.slice(0, 7)]);
+    await pool.query('DELETE FROM finance_transactions WHERE id = $1 AND staff_id = $2', [financeId, staffId]);
 
     await cleanupFixture();
     const afterStatus = await authRequest('GET', `/api/hr/qa/multi-segment/${runId}?staffId=${staffId}`);
@@ -248,4 +294,14 @@ test('isolated live QA helper preserves 540 physical minutes and 510 paid simult
         shiftPreferences: 0,
         timelineLines: 0
     });
+    assert.equal(afterStatus.data?.data?.financialProofVersion, LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION);
+    assert.equal(afterStatus.data?.data?.verificationComplete, true);
+    assert.equal(afterStatus.data?.data?.fixtureRowsClean, true);
+    assert.equal(afterStatus.data?.data?.financiallyClean, true);
+    assert.equal(afterStatus.data?.data?.configurationClean, true);
+    assert.equal(Number(afterStatus.data?.data?.financialCounts?.payrollReports), 0);
+    assert.equal(Number(afterStatus.data?.data?.financialCounts?.payrollEntries), 0);
+    assert.equal(Number(afterStatus.data?.data?.financialCounts?.salaryAdjustments), 0);
+    assert.equal(Number(afterStatus.data?.data?.financialCounts?.financeTransactions), 0);
+    assert.equal(Number(afterStatus.data?.data?.configurationCounts?.activePayrollSchemes), 0);
 });

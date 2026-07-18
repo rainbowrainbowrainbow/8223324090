@@ -305,6 +305,165 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     });
 });
 
+test('canonical simultaneous edge fixtures keep role allocations separate from physical time', () => {
+    const exactStaff = staff({ roleType: 'wardrobe', hourlyRate: 100 });
+    const scheme = { schemeType: 'hourly', config: {}, isFallback: true };
+    const scenarios = [
+        {
+            label: 'normal 11:00-20:00',
+            physicalMinutes: 540,
+            baseRoleMinutes: 540,
+            additionalRoleMinutes: 510,
+            overtimeMinutes: 0,
+            baseAmount: 900,
+            additionalAmount: 1700,
+            overtimeAmount: 0,
+            totalAmount: 2600
+        },
+        {
+            label: 'late 11:15',
+            physicalMinutes: 525,
+            baseRoleMinutes: 525,
+            additionalRoleMinutes: 510,
+            overtimeMinutes: 0,
+            baseAmount: 875,
+            additionalAmount: 1700,
+            overtimeAmount: 0,
+            totalAmount: 2575
+        },
+        {
+            label: 'early leave 19:30',
+            physicalMinutes: 510,
+            baseRoleMinutes: 510,
+            additionalRoleMinutes: 480,
+            overtimeMinutes: 0,
+            baseAmount: 850,
+            additionalAmount: 1600,
+            overtimeAmount: 0,
+            totalAmount: 2450
+        },
+        {
+            label: '30-minute break in simultaneous segment',
+            physicalMinutes: 510,
+            baseRoleMinutes: 510,
+            additionalRoleMinutes: 480,
+            overtimeMinutes: 0,
+            baseAmount: 850,
+            additionalAmount: 1600,
+            overtimeAmount: 0,
+            totalAmount: 2450
+        },
+        {
+            label: 'clock-out 21:00',
+            physicalMinutes: 600,
+            baseRoleMinutes: 540,
+            additionalRoleMinutes: 510,
+            overtimeMinutes: 60,
+            baseAmount: 900,
+            additionalAmount: 1700,
+            overtimeAmount: 150,
+            totalAmount: 2750
+        }
+    ];
+
+    for (const scenario of scenarios) {
+        const edgeMetrics = metrics({
+            physicalMinutes: scenario.physicalMinutes,
+            totalMinutes: scenario.physicalMinutes,
+            allocatedMinutes: scenario.baseRoleMinutes,
+            plannedMinutes: 540,
+            overtimeMinutes: scenario.overtimeMinutes,
+            hoursWorked: scenario.physicalMinutes / 60,
+            overtimeHours: scenario.overtimeMinutes / 60,
+            professionAllocations: [
+                {
+                    professionKey: 'wardrobe',
+                    minutes: scenario.baseRoleMinutes,
+                    allocationSources: ['clock_interval']
+                }
+            ],
+            baseProfessionAllocations: [
+                {
+                    professionKey: 'wardrobe',
+                    minutes: scenario.baseRoleMinutes,
+                    allocationSources: ['clock_interval']
+                }
+            ],
+            additionalProfessionAllocations: [simultaneousAdditionalAllocation({
+                minutes: scenario.additionalRoleMinutes,
+                plannedMinutes: scenario.additionalRoleMinutes,
+                rate: 200
+            })],
+            compensationMinutes: scenario.baseRoleMinutes + scenario.additionalRoleMinutes + scenario.overtimeMinutes,
+            roleMinutes: scenario.baseRoleMinutes + scenario.additionalRoleMinutes + scenario.overtimeMinutes,
+            overtimeAllocations: scenario.overtimeMinutes > 0 ? [{
+                professionKey: 'wardrobe',
+                minutes: scenario.overtimeMinutes,
+                allocationSources: ['overtime_primary_role']
+            }] : [],
+            primaryDays: [{ date: '2026-07-22', professionKey: 'wardrobe' }],
+            attendanceDays: [{
+                date: '2026-07-22',
+                attendanceRef: 44,
+                physicalMinutes: scenario.physicalMinutes,
+                baseProfessionMinutes: scenario.baseRoleMinutes,
+                additionalProfessionMinutes: scenario.additionalRoleMinutes,
+                actualMinutes: scenario.physicalMinutes,
+                overtimeMinutes: scenario.overtimeMinutes,
+                allocationSource: 'clock_interval',
+                primaryProfessionKey: 'wardrobe'
+            }]
+        });
+        const professionPay = calculateProfessionPay(
+            exactStaff,
+            scheme,
+            edgeMetrics,
+            rateMap({ wardrobe: 100, hallkeeper: 999 })
+        );
+        const calculation = calculatePayroll(
+            exactStaff,
+            scheme,
+            edgeMetrics,
+            {},
+            [],
+            professionPay
+        );
+        const transparency = buildPayrollTransparencyMetrics(edgeMetrics, professionPay);
+        const overtimeMinutes = professionPay.professionRateSummary
+            .filter(row => row.kind === 'overtime')
+            .reduce((sum, row) => sum + row.actual_minutes, 0);
+        const baseMinutes = professionPay.professionRateSummary
+            .filter(row => row.kind !== 'overtime' && row.profession_key === 'wardrobe')
+            .reduce((sum, row) => sum + row.actual_minutes, 0);
+
+        assert.equal(edgeMetrics.physicalMinutes, scenario.physicalMinutes, scenario.label);
+        assert.equal(transparency.physicalMinutes, scenario.physicalMinutes, scenario.label);
+        assert.equal(transparency.baseRoleMinutes, scenario.baseRoleMinutes, scenario.label);
+        assert.equal(transparency.additionalRoleMinutes, scenario.additionalRoleMinutes, scenario.label);
+        assert.equal(baseMinutes, scenario.baseRoleMinutes, scenario.label);
+        assert.equal(overtimeMinutes, scenario.overtimeMinutes, scenario.label);
+        assert.equal(professionPay.baseAmount, scenario.baseAmount, scenario.label);
+        assert.equal(professionPay.additionalAmount, scenario.additionalAmount, scenario.label);
+        assert.equal(professionPay.overtimeAmount, scenario.overtimeAmount, scenario.label);
+        assert.equal(professionPay.totalAmount, scenario.totalAmount, scenario.label);
+        assert.equal(calculation.summary.gross, scenario.totalAmount, scenario.label);
+        assert.equal(professionPay.additionalLines.length, 1, scenario.label);
+        assert.equal(professionPay.additionalLines[0].minutes, scenario.additionalRoleMinutes, scenario.label);
+        assert.equal(professionPay.additionalLines[0].rate, 200, scenario.label);
+        assert.equal(professionPay.additionalLines[0].rateSource, 'staff_profession_rates.hourly_rate', scenario.label);
+        assert.equal(professionPay.additionalLines[0].amount, scenario.additionalAmount, scenario.label);
+        assert.equal(professionPay.blockingIssues.length, 0, scenario.label);
+        assert.equal(transparency.additionalRoles[0].status, 'ready', scenario.label);
+
+        if (scenario.overtimeMinutes > 0) {
+            const overtimeLine = professionPay.professionRateSummary.find(row => row.kind === 'overtime');
+            assert.equal(OVERTIME_MULTIPLIER, 1.5, scenario.label);
+            assert.equal(overtimeLine.profession_key, 'wardrobe', scenario.label);
+            assert.equal(overtimeLine.rate, 150, scenario.label);
+            assert.equal(overtimeLine.amount, scenario.overtimeAmount, scenario.label);
+        }
+    }
+});
 test('per-shift and monthly preserve base pay and add snapshot hourly pay while unsupported schemes fail closed', () => {
     const exactMetrics = metrics({
         physicalMinutes: 540,

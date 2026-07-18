@@ -90,9 +90,9 @@ Notes:
 
 - GitHub Actions workflow: `.github/workflows/ci.yml`.
 - CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
-- CI installs with `npm ci`, runs `npm test`, and has a separate disposable PostgreSQL job for attendance locking and backup/recovery.
-- The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, static UI smoke, attendance advisory-lock concurrency, selective attendance recovery, and full structured database recovery.
-- CI does not run the general PostgreSQL-backed API or unrelated integration suites.
+- CI installs with `npm ci`, runs `npm test`, and has a separate disposable PostgreSQL job named `HR and payroll PostgreSQL integration` for attendance locking/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay, admission, and full-stack onboarding coverage.
+- The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, static UI smoke, attendance advisory-lock concurrency, attendance backup/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay integration, admission ticket integration, and full-stack onboarding smoke.
+- CI does not run the general PostgreSQL-backed API or unrelated integration suites; it does run the targeted HR/payroll PostgreSQL integration job, including `npm run test:integration:payroll-profiles:isolated`.
 - CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
 
 ## Standard Delivery Workflow

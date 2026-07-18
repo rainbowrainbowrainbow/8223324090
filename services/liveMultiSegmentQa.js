@@ -1,7 +1,8 @@
 'use strict';
 
 const LIVE_MULTI_SEGMENT_QA_CONFIRMATION = 'I_CONFIRM_LIVE_MULTI_SEGMENT_QA';
-const LIVE_MULTI_SEGMENT_QA_VERSION = 1;
+const LIVE_MULTI_SEGMENT_QA_VERSION = 2;
+const LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION = 1;
 const LIVE_MULTI_SEGMENT_QA_NAME_PATTERN = /\b(QA|Test|Smoke|Disposable)\b/i;
 const LIVE_MULTI_SEGMENT_QA_RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$/;
 
@@ -57,6 +58,7 @@ function normalizeLiveQaTime(value) {
 
 module.exports = {
     LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
     LIVE_MULTI_SEGMENT_QA_VERSION,
     assertLiveQaConfirmation,
     assertLiveQaStaff,

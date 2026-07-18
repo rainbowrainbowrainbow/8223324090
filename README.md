@@ -158,7 +158,7 @@ Notes:
 - `npm run test:unit` runs self-contained Node tests that do not need a live server.
 - `npm run test:ui` runs the jsdom static/UI smoke check for key pages, critical JS syntax, navigation exports, and shared page structure.
 - `npm run test:api` runs `tests/api.test.js` and expects a configured local app/database.
-- `npm run test:api:isolated`, `npm run test:integration:hr-disposable:isolated`, `npm run test:integration:live-multi-segment-qa:isolated`, and `npm run test:db:isolated` reset an explicitly confirmed disposable PostgreSQL database before and after each suite; see [docs/ISOLATED_POSTGRES_TESTING.md](docs/ISOLATED_POSTGRES_TESTING.md).
+- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-local-payroll-postgres-gate.ps1` starts a disposable local Docker PostgreSQL 16 and runs the canonical payroll PostgreSQL gate. `npm run test:api:isolated`, `npm run test:integration:payroll-profiles:isolated`, `npm run test:integration:hr-disposable:isolated`, `npm run test:integration:live-multi-segment-qa:isolated`, and `npm run test:db:isolated` reset an explicitly confirmed disposable PostgreSQL database before and after each suite; see [docs/ISOLATED_POSTGRES_TESTING.md](docs/ISOLATED_POSTGRES_TESTING.md).
 - `npm run qa:live:multi-segment -- https://<crm-host>` runs the opt-in disposable live acceptance flow documented in [docs/LIVE_MULTI_SEGMENT_QA.md](docs/LIVE_MULTI_SEGMENT_QA.md).
 - `npm run test:integration` runs the broader `tests/*.test.js` suite and also expects a configured local app/database.
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
@@ -190,8 +190,7 @@ The CI gate covers:
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`;
-- an isolated PostgreSQL job for attendance advisory-lock concurrency,
-  selective attendance backup round-trip, and full structured recovery.
+- an isolated PostgreSQL job named `HR and payroll PostgreSQL integration` for attendance advisory-lock concurrency, attendance backup/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay, admission ticket, and full-stack onboarding coverage.
 
 The route smoke layer is intentionally shallow: it checks public/protected/custom-secret/API-key boundaries and cheap route contracts such as version, landing, packages, task permissions, user role metadata, and chat-adjacent auth fallback. It does not exercise full PostgreSQL-backed route behavior.
 
@@ -199,9 +198,11 @@ The UI smoke is intentionally shallow: it checks key pages, critical script load
 
 CI does not run the general PostgreSQL-backed API/integration suites,
 production deploy verification, or live Railway health checks. Its dedicated
-PostgreSQL job is limited to attendance locking and backup/recovery. Use
-`npm run test:api`, `npm run test:integration`, and manual health checks against
-a configured app/database for other scopes.
+`HR and payroll PostgreSQL integration` job runs targeted disposable PostgreSQL
+coverage for HR/payroll/admission flows, including the payroll profiles and
+simultaneous-additional payroll suite. Use `npm run test:api`,
+`npm run test:integration`, and manual health checks against a configured
+app/database for other scopes.
 
 ## Version And Changelog Discipline
 

@@ -175,6 +175,7 @@ const {
 } = require('../services/staffScheduleMutations');
 const {
     LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
     LIVE_MULTI_SEGMENT_QA_VERSION,
     assertLiveQaConfirmation,
     assertLiveQaStaff,
@@ -1607,6 +1608,197 @@ async function loadLiveQaStaff(db, staffId, runId, options = {}) {
     return assertLiveQaStaff(result.rows[0], runId);
 }
 
+const LIVE_QA_FINANCIAL_COUNT_KEYS = [
+    'payrollReports',
+    'payrollEntries',
+    'salaryAdjustments',
+    'disciplineActions',
+    'financeTransactions',
+    'salaryTransactions',
+    'salaryReversalTransactions',
+    'payrollMutationAuditRows'
+];
+const LIVE_QA_ACTIVE_CONFIGURATION_COUNT_KEYS = [
+    'activePayrollSchemes',
+    'activePayrollProfileAssignments'
+];
+const LIVE_QA_PAYROLL_MUTATION_AUDIT_ACTIONS = [
+    'payroll_additional_line_generated',
+    'salary_adjustment',
+    'salary_adjustment_void'
+];
+
+function liveQaCountValue(result) {
+    const row = result?.rows?.[0] || {};
+    const value = row.count ?? row.c ?? row.total ?? 0;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+async function liveQaCountOrUnknown(db, key, sql, params, verificationErrors) {
+    try {
+        return liveQaCountValue(await db.query(sql, params));
+    } catch (err) {
+        verificationErrors.push({ key, code: String(err?.code || 'QUERY_FAILED') });
+        return null;
+    }
+}
+
+function liveQaCountsComplete(...countsObjects) {
+    return countsObjects.every(counts => Object.values(counts).every(value => Number.isFinite(Number(value))));
+}
+
+function liveQaAllZero(counts, keys) {
+    return keys.every(key => Number(counts?.[key]) === 0);
+}
+
+async function loadLiveQaFinancialProof(db, staffId) {
+    const verificationErrors = [];
+    const financialCounts = {
+        payrollReports: await liveQaCountOrUnknown(
+            db,
+            'payrollReports',
+            'SELECT COUNT(*)::int AS count FROM payroll_reports WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        ),
+        payrollEntries: await liveQaCountOrUnknown(
+            db,
+            'payrollEntries',
+            'SELECT COUNT(*)::int AS count FROM payroll_entries WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        ),
+        salaryAdjustments: await liveQaCountOrUnknown(
+            db,
+            'salaryAdjustments',
+            'SELECT COUNT(*)::int AS count FROM salary_adjustments WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        ),
+        disciplineActions: await liveQaCountOrUnknown(
+            db,
+            'disciplineActions',
+            'SELECT COUNT(*)::int AS count FROM discipline_actions_log WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        ),
+        financeTransactions: await liveQaCountOrUnknown(
+            db,
+            'financeTransactions',
+            `WITH fixture_finance_transactions AS (
+                SELECT id FROM finance_transactions WHERE staff_id = $1
+                UNION
+                SELECT finance_transaction_id AS id
+                FROM payroll_reports
+                WHERE staff_id = $1 AND finance_transaction_id IS NOT NULL
+                UNION
+                SELECT reversal_transaction_id AS id
+                FROM payroll_reports
+                WHERE staff_id = $1 AND reversal_transaction_id IS NOT NULL
+             )
+             SELECT COUNT(DISTINCT id)::int AS count
+             FROM fixture_finance_transactions
+             WHERE id IS NOT NULL`,
+            [staffId],
+            verificationErrors
+        ),
+        salaryTransactions: await liveQaCountOrUnknown(
+            db,
+            'salaryTransactions',
+            `SELECT COUNT(*)::int AS count
+             FROM finance_transactions
+             WHERE staff_id = $1 AND payment_method = 'salary'`,
+            [staffId],
+            verificationErrors
+        ),
+        salaryReversalTransactions: await liveQaCountOrUnknown(
+            db,
+            'salaryReversalTransactions',
+            `SELECT COUNT(*)::int AS count
+             FROM finance_transactions
+             WHERE staff_id = $1 AND payment_method = 'salary_reversal'`,
+            [staffId],
+            verificationErrors
+        ),
+        payrollMutationAuditRows: await liveQaCountOrUnknown(
+            db,
+            'payrollMutationAuditRows',
+            `SELECT COUNT(*)::int AS count
+             FROM hr_audit_log
+             WHERE staff_id = $1 AND action = ANY($2::text[])`,
+            [staffId, LIVE_QA_PAYROLL_MUTATION_AUDIT_ACTIONS],
+            verificationErrors
+        )
+    };
+    const configurationCounts = {
+        activePayrollSchemes: await liveQaCountOrUnknown(
+            db,
+            'activePayrollSchemes',
+            'SELECT COUNT(*)::int AS count FROM payroll_schemes WHERE staff_id = $1 AND is_active IS TRUE',
+            [staffId],
+            verificationErrors
+        ),
+        activePayrollProfileAssignments: await liveQaCountOrUnknown(
+            db,
+            'activePayrollProfileAssignments',
+            `SELECT COUNT(*)::int AS count
+             FROM staff_payroll_profile_assignments
+             WHERE staff_id = $1 AND effective_to IS NULL`,
+            [staffId],
+            verificationErrors
+        ),
+        retainedPayrollSchemes: await liveQaCountOrUnknown(
+            db,
+            'retainedPayrollSchemes',
+            'SELECT COUNT(*)::int AS count FROM payroll_schemes WHERE staff_id = $1 AND is_active IS NOT TRUE',
+            [staffId],
+            verificationErrors
+        ),
+        retainedRoleAssignments: await liveQaCountOrUnknown(
+            db,
+            'retainedRoleAssignments',
+            'SELECT COUNT(*)::int AS count FROM staff_role_assignments WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        ),
+        retainedProfessionRates: await liveQaCountOrUnknown(
+            db,
+            'retainedProfessionRates',
+            'SELECT COUNT(*)::int AS count FROM staff_profession_rates WHERE staff_id = $1',
+            [staffId],
+            verificationErrors
+        )
+    };
+    const verificationComplete = verificationErrors.length === 0
+        && liveQaCountsComplete(financialCounts, configurationCounts);
+    return {
+        financialCounts,
+        configurationCounts,
+        verificationErrors,
+        verificationComplete,
+        financiallyClean: verificationComplete && liveQaAllZero(financialCounts, LIVE_QA_FINANCIAL_COUNT_KEYS),
+        configurationClean: verificationComplete && liveQaAllZero(configurationCounts, LIVE_QA_ACTIVE_CONFIGURATION_COUNT_KEYS)
+    };
+}
+
+function assertLiveQaFinancialPreflight(status) {
+    if (!status?.verificationComplete) {
+        const error = new Error('live QA financial proof is incomplete; cleanup refused');
+        error.code = 'LIVE_QA_FINANCIAL_PROOF_INCOMPLETE';
+        error.status = 409;
+        error.details = status;
+        throw error;
+    }
+    if (!status.financiallyClean) {
+        const error = new Error('live QA financial side effects detected; cleanup refused');
+        error.code = 'LIVE_QA_FINANCIAL_SIDE_EFFECTS_DETECTED';
+        error.status = 409;
+        error.details = status;
+        throw error;
+    }
+}
+
 async function loadLiveQaFixtureStatus(db, staffId, runId) {
     const staff = await loadLiveQaStaff(db, staffId, runId);
     // This helper can receive a transaction-scoped pg Client during cleanup.
@@ -1642,6 +1834,7 @@ async function loadLiveQaFixtureStatus(db, staffId, runId) {
          ORDER BY date, id`,
         [staff.id]
     );
+    const proof = await loadLiveQaFinancialProof(db, staff.id);
     const rows = {
         shifts: shiftResult.rows,
         schedule: scheduleResult.rows,
@@ -1651,20 +1844,33 @@ async function loadLiveQaFixtureStatus(db, staffId, runId) {
         timelineLines: lineResult.rows
     };
     const counts = Object.fromEntries(Object.entries(rows).map(([key, value]) => [key, value.length]));
+    const fixtureRowsClean = Object.values(counts).every(count => count === 0);
+    const archived = staff.is_active === false;
     return {
         runId: normalizeLiveQaRunId(runId),
         staffId: Number(staff.id),
         active: staff.is_active !== false,
-        archived: staff.is_active === false,
+        archived,
         counts,
         fixtureIds: Object.fromEntries(Object.entries(rows).map(([key, value]) => [
             key,
             value.map(row => Number(row.id)).filter(Number.isInteger)
         ])),
-        confirmedClean: staff.is_active === false && Object.values(counts).every(count => count === 0)
+        financialCounts: proof.financialCounts,
+        configurationCounts: proof.configurationCounts,
+        financialProofVersion: LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
+        fixtureRowsClean,
+        financiallyClean: proof.financiallyClean,
+        configurationClean: proof.configurationClean,
+        verificationComplete: proof.verificationComplete,
+        ...(proof.verificationErrors.length ? { verificationErrors: proof.verificationErrors } : {}),
+        confirmedClean: archived
+            && fixtureRowsClean
+            && proof.financiallyClean
+            && proof.configurationClean
+            && proof.verificationComplete
     };
 }
-
 async function activeProfessionKeySet(db = pool) {
     const result = await db.query('SELECT key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active FROM hr_professions');
     return professionCatalogActiveKeySet(result.rows);
@@ -5553,7 +5759,9 @@ router.get('/qa/multi-segment/capabilities', requireRole('creator', 'director'),
         confirmationHeader: 'x-eventgenix-live-qa-confirmation',
         createsBookings: false,
         createsFinanceTransactions: false,
-        payrollMode: 'preview_only'
+        payrollMode: 'preview_only',
+        financialAutoCleanup: false,
+        financialProofVersion: LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION
     });
 });
 
@@ -5697,6 +5905,7 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
         await lockAttendanceWriteMaintenance(client);
         const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });
         const before = await loadLiveQaFixtureStatus(client, staff.id, runId);
+        assertLiveQaFinancialPreflight(before);
         affectedDates = [...new Set([
             ...(await client.query('SELECT shift_date::text AS date FROM hr_shifts WHERE staff_id = $1', [staff.id])).rows.map(row => row.date),
             ...(await client.query('SELECT date::text AS date FROM staff_schedule WHERE staff_id = $1', [staff.id])).rows.map(row => row.date)
@@ -5707,6 +5916,29 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
         await client.query('DELETE FROM hr_shifts WHERE staff_id = $1', [staff.id]);
         await client.query('DELETE FROM staff_schedule WHERE staff_id = $1', [staff.id]);
         await client.query('DELETE FROM staff_shift_preferences WHERE staff_id = $1', [staff.id]);
+        await client.query(
+            `UPDATE payroll_schemes
+             SET is_active = false,
+                 effective_to = CASE
+                    WHEN effective_from IS NOT NULL AND effective_from > CURRENT_DATE THEN effective_from
+                    ELSE COALESCE(effective_to, CURRENT_DATE)
+                 END,
+                 updated_by = $2,
+                 updated_at = NOW()
+             WHERE staff_id = $1 AND is_active IS TRUE`,
+            [staff.id, req.user?.username || null]
+        );
+        await client.query(
+            `UPDATE staff_payroll_profile_assignments
+             SET effective_to = CASE
+                    WHEN effective_from > CURRENT_DATE THEN effective_from
+                    ELSE CURRENT_DATE
+                 END,
+                 updated_by = $2,
+                 updated_at = NOW()
+             WHERE staff_id = $1 AND effective_to IS NULL`,
+            [staff.id, req.user?.username || null]
+        );
         await reconcileRosterDates(client, affectedDates);
         await client.query(
             `UPDATE staff
@@ -5722,10 +5954,20 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
         await auditLog('live_multi_segment_qa_cleanup', staff.id, req.user?.username, {
             run_id: runId,
             before_counts: before.counts,
+            before_financial_counts: before.financialCounts,
+            before_configuration_counts: before.configurationCounts,
             fixture_ids: before.fixtureIds,
             affected_dates: affectedDates,
             staff_archived: true
         }, req.ip, client);
+        const afterInTransaction = await loadLiveQaFixtureStatus(client, staff.id, runId);
+        if (!afterInTransaction.confirmedClean) {
+            const error = new Error('cleanup verification failed before commit; inspect returned fixture IDs');
+            error.code = 'LIVE_QA_CLEANUP_UNCONFIRMED';
+            error.status = 500;
+            error.details = afterInTransaction;
+            throw error;
+        }
         await client.query('COMMIT');
         broadcastRosterDates(affectedDates, req.user?.id);
         const after = await loadLiveQaFixtureStatus(pool, staff.id, runId);

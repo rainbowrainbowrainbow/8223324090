@@ -94,6 +94,56 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.throws(() => assertSafeIsolatedTestUrl('http://localhost'), /must include the isolated server port/);
     });
 
+    it('documents and guards the Windows disposable payroll PostgreSQL helper', () => {
+        const root = path.resolve(__dirname, '..');
+        const helper = fs.readFileSync(path.join(root, 'scripts', 'run-local-payroll-postgres-gate.ps1'), 'utf8');
+        const docs = fs.readFileSync(path.join(root, 'docs', 'ISOLATED_POSTGRES_TESTING.md'), 'utf8');
+        const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+        const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+        const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
+        const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+        assert.equal(
+            packageJson.scripts['test:integration:payroll-profiles:isolated'],
+            'node scripts/run-isolated-postgres-tests.js payroll'
+        );
+        assert.match(helper, /Invoke-CheckedProcess[\s\S]+check:runtime/);
+        assert.match(helper, /\$PostgresImage = 'postgres:16'/);
+        assert.match(helper, /'--publish',\s*'127\.0\.0\.1::5432'/);
+        assert.match(helper, /PostgreSQL port must be bound only to 127\.0\.0\.1/);
+        assert.match(helper, /\$testDatabaseUrl = "postgresql:\/\/\$\{DatabaseUser\}:\$databasePassword@127\.0\.0\.1:\$hostPort\/\$DatabaseName"/);
+        assert.match(helper, /TEST_DATABASE_RESET_CONFIRM = \$ResetConfirmation/);
+        assert.match(helper, /'--label', \$DisposableLabel/);
+        assert.match(helper, /'--label', \$PurposeLabel/);
+        assert.match(helper, /com\.eventgenix\.disposable/);
+        assert.match(helper, /local-payroll-postgres-gate/);
+        assert.match(helper, /'--tmpfs',\s*'\/var\/lib\/postgresql\/data:rw'/);
+        assert.doesNotMatch(helper, /'--volume'|\s-v\s/);
+        assert.match(helper, /Remove-SensitiveEnvironment[\s\S]+DATABASE_URL/);
+        assert.doesNotMatch(helper, /TEST_DATABASE_URL\s*=\s*\$env:DATABASE_URL/);
+        assert.doesNotMatch(helper, /DROP SCHEMA IF EXISTS public CASCADE/);
+        assert.match(helper, /npm run test:integration:payroll-profiles:isolated/);
+        assert.match(helper, /-Arguments @\('run', 'test:integration:payroll-profiles:isolated'\)/);
+        assert.match(helper, /finally\s*\{[\s\S]*Remove-CreatedContainer/);
+        assert.match(helper, /\{\{json \.Config\.Labels\}\}/);
+        assert.match(helper, /Get-DockerLabelValue[\s\S]+DockerPath rm --force --volumes/);
+
+        assert.match(docs, /run-local-payroll-postgres-gate\.ps1/);
+        assert.match(docs, /canonical payroll command: `npm run test:integration:payroll-profiles:isolated`/);
+        assert.match(docs, /DROP SCHEMA public CASCADE/);
+        assert.match(docs, /Manual Docker fallback/);
+        assert.match(docs, /Docker daemon unavailable/);
+        assert.match(docs, /does not install Docker, read production\/live secrets, print the password or connection URL, use `DATABASE_URL`/);
+        assert.match(readme, /run-local-payroll-postgres-gate\.ps1/);
+        assert.match(readme, /test:integration:payroll-profiles:isolated/);
+        assert.match(readme, /HR and payroll PostgreSQL integration/);
+        assert.match(readme, /payroll profiles and\s+simultaneous-additional payroll suite/);
+        assert.match(agents, /HR and payroll PostgreSQL integration/);
+        assert.match(agents, /payroll profile\/simultaneous-pay/);
+        assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
+        assert.match(workflow, /Run payroll profession and reversal integration/);
+        assert.match(workflow, /test:integration:payroll-profiles:isolated/);
+    });
     it('keeps the runner and HR suite wired for migration verification and fixture cleanup', () => {
         const root = path.resolve(__dirname, '..');
         const runner = fs.readFileSync(path.join(root, 'scripts', 'run-isolated-postgres-tests.js'), 'utf8');

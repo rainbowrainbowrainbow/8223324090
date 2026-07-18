@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
     LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
+    LIVE_MULTI_SEGMENT_QA_VERSION,
     assertLiveQaConfirmation,
     assertLiveQaStaff,
     liveQaMarker,
@@ -13,7 +15,11 @@ const {
     normalizeLiveQaTime
 } = require('../services/liveMultiSegmentQa');
 const {
+    assertUnsupportedPreview,
+    buildPayrollSchemeMatrixScenarios,
     normalizedSegments,
+    PAYROLL_SCHEMES,
+    sanitizeCleanupReport,
     schedulePayload
 } = require('../scripts/live-multi-segment-qa');
 
@@ -22,6 +28,8 @@ const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8'
 
 test('live multi-segment QA guard accepts only explicit marker-bound disposable staff', () => {
     assert.equal(LIVE_MULTI_SEGMENT_QA_CONFIRMATION, 'I_CONFIRM_LIVE_MULTI_SEGMENT_QA');
+    assert.equal(LIVE_MULTI_SEGMENT_QA_VERSION, 2);
+    assert.equal(LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION, 1);
     assert.equal(normalizeLiveQaRunId('qa_run-20260714'), 'qa_run-20260714');
     assert.equal(normalizeLiveQaRunId('short'), '');
     assert.equal(normalizeLiveQaRunId('../unsafe-run'), '');
@@ -59,13 +67,29 @@ test('live QA API helper is creator/director-only, marker guarded, atomic, and r
     assert.match(route, /compensation_snapshot_state/);
     assert.match(route, /live_multi_segment_qa_attendance_create/);
     assert.match(route, /live_multi_segment_qa_cleanup/);
-    assert.match(route, /await reconcileRosterDates\(client, affectedDates\)[\s\S]{0,1500}await client\.query\('COMMIT'\)/);
+    assert.match(route, /await reconcileRosterDates\(client, affectedDates\)[\s\S]*const afterInTransaction = await loadLiveQaFixtureStatus\(client, staff\.id, runId\)[\s\S]*await client\.query\('COMMIT'\)/);
     assert.match(route, /const after = await loadLiveQaFixtureStatus\(pool, staff\.id, runId\)/);
     assert.match(route, /FROM staff_shift_preferences[\s\S]{0,150}WHERE staff_id = \$1[\s\S]{0,150}ORDER BY profession_key, day_type, id/);
     assert.match(route, /shiftPreferences: shiftPreferenceResult\.rows/);
+    assert.match(route, /financialCounts: proof\.financialCounts/);
+    assert.match(route, /configurationCounts: proof\.configurationCounts/);
+    assert.match(route, /financialProofVersion: LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION/);
+    assert.match(route, /fixtureRowsClean/);
+    assert.match(route, /financiallyClean/);
+    assert.match(route, /configurationClean/);
+    assert.match(route, /verificationComplete/);
+    assert.match(route, /LIVE_QA_FINANCIAL_SIDE_EFFECTS_DETECTED/);
+    assert.match(route, /LIVE_QA_FINANCIAL_PROOF_INCOMPLETE/);
+    const cleanupStart = route.indexOf("router.delete('/qa/multi-segment/:runId'");
+    const cleanupEnd = route.indexOf("// POST /api/hr/clock-in", cleanupStart);
+    const cleanupBlock = cleanupStart >= 0 && cleanupEnd > cleanupStart ? route.slice(cleanupStart, cleanupEnd) : '';
     const staffGuardIndex = route.indexOf('const staff = await loadLiveQaStaff(client, staffId, runId, { forUpdate: true });');
+    const financialPreflightIndex = route.indexOf('assertLiveQaFinancialPreflight(before);');
+    const firstDeleteIndex = route.indexOf("DELETE FROM hr_time_records WHERE staff_id = $1");
     const preferenceDeleteIndex = route.indexOf("DELETE FROM staff_shift_preferences WHERE staff_id = $1");
     assert.ok(staffGuardIndex >= 0, 'cleanup keeps the marker-bound disposable staff guard');
+    assert.ok(financialPreflightIndex > staffGuardIndex, 'financial preflight happens after disposable staff guard');
+    assert.ok(firstDeleteIndex > financialPreflightIndex, 'financial preflight happens before the first cleanup delete');
     assert.ok(preferenceDeleteIndex > staffGuardIndex, 'preference cleanup happens only after disposable staff guard');
     assert.deepEqual(
         [...route.matchAll(/DELETE FROM staff_shift_preferences[^'`\n]*/g)].map(match => match[0]),
@@ -73,6 +97,11 @@ test('live QA API helper is creator/director-only, marker guarded, atomic, and r
     );
     assert.doesNotMatch(route, /DELETE FROM bookings[\s\S]{0,1000}live_multi_segment_qa_cleanup/);
     assert.doesNotMatch(route, /DELETE FROM finance_transactions[\s\S]{0,1000}live_multi_segment_qa_cleanup/);
+    assert.doesNotMatch(cleanupBlock, /DELETE FROM payroll_reports/i);
+    assert.doesNotMatch(cleanupBlock, /DELETE FROM salary_adjustments/i);
+    assert.doesNotMatch(cleanupBlock, /DELETE FROM discipline_actions_log/i);
+    assert.doesNotMatch(cleanupBlock, /UPDATE finance_transactions/i);
+    assert.doesNotMatch(cleanupBlock, /UPDATE payroll_reports/i);
 });
 
 test('live runner covers the guarded simultaneous-pay contract and always uses server cleanup', () => {
@@ -81,24 +110,104 @@ test('live runner covers the guarded simultaneous-pay contract and always uses s
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_URL/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_RUN_ID/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_USER/);
+    assert.match(script, /LIVE_MULTI_SEGMENT_QA_TOKEN is not accepted/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_SCHEME/);
-    assert.match(script, /hourly: \{ rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 \}/);
-    assert.match(script, /per_shift: \{ rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 \}/);
-    assert.match(script, /monthly_fixed: \{ rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 \}/);
+    assert.match(script, /LIVE_MULTI_SEGMENT_QA_MATRIX/);
+    assert.match(script, /MATRIX_SCHEME_ORDER = Object\.freeze\(\['hourly', 'per_shift', 'monthly_fixed', 'hybrid', 'percent', 'manual'\]\)/);
+    assert.match(script, /hourly: \{ supported: true, rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 \}/);
+    assert.match(script, /per_shift: \{ supported: true, rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 \}/);
+    assert.match(script, /monthly_fixed: \{ supported: true, rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 \}/);
+    assert.match(script, /hybrid: \{[\s\S]*supported: false/);
+    assert.match(script, /percent: \{[\s\S]*supported: false/);
+    assert.match(script, /manual: \{[\s\S]*supported: false/);
     assert.match(script, /Disposable QA Multi Segment \$\{RUN_ID\}/);
     assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}\/role-assignments/);
+    assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}\/payroll-scheme/);
     assert.match(script, /admission_status: 'approved'/);
     assert.match(script, /\/api\/staff\/attendance/);
     assert.match(script, /\/api\/payroll\/preview/);
     assert.match(script, /\/api\/staff\/schedule\/hours/);
     assert.match(script, /finally \{[\s\S]*cleanup\(base, session\.token, staffId\)/);
     assert.match(script, /independent read-only cleanup verification/);
+    assert.match(script, /financialProofVersion/);
+    assert.match(script, /financialAutoCleanup/);
+    assert.match(script, /MUTATION_ALLOWLIST/);
+    assert.match(script, /live QA runner blocked mutation/);
     assert.match(script, /Cleanup report:/);
+    assert.match(script, /sanitizeCleanupReport/);
+    assert.match(script, /PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED/);
+    assert.match(script, /runChildScenario/);
+    assert.match(script, /delete childEnv.LIVE_MULTI_SEGMENT_QA_TOKEN/);
     assert.doesNotMatch(script, /\/api\/staff\/schedule\/copy-week/);
     assert.doesNotMatch(script, /HR_SHIFT_PLAN_STALE/);
     assert.doesNotMatch(script, /\/api\/payroll\/(generate|report)/);
     assert.doesNotMatch(script, /\/api\/bookings/);
     assert.doesNotMatch(script, /\/api\/finance/);
+});
+
+test('live payroll scheme matrix plans six isolated scenario fixtures and redacts cleanup identifiers', () => {
+    assert.equal(PAYROLL_SCHEMES.hourly.supported, true);
+    assert.equal(PAYROLL_SCHEMES.per_shift.supported, true);
+    assert.equal(PAYROLL_SCHEMES.monthly_fixed.supported, true);
+    assert.equal(PAYROLL_SCHEMES.hybrid.supported, false);
+    assert.equal(PAYROLL_SCHEMES.percent.supported, false);
+    assert.equal(PAYROLL_SCHEMES.manual.supported, false);
+    const scenarios = buildPayrollSchemeMatrixScenarios('releaseqa20260718', '2099-06-01');
+    assert.deepEqual(scenarios.map(row => row.scheme), ['hourly', 'per_shift', 'monthly_fixed', 'hybrid', 'percent', 'manual']);
+    assert.deepEqual(scenarios.map(row => row.date), ['2099-06-01', '2099-06-08', '2099-06-15', '2099-06-22', '2099-06-29', '2099-07-06']);
+    assert.equal(new Set(scenarios.map(row => row.runId)).size, 6);
+    assert.deepEqual(scenarios.map(row => row.supported), [true, true, true, false, false, false]);
+    assert.ok(scenarios.every(row => row.runId.includes(row.scheme)));
+    const sanitized = sanitizeCleanupReport({
+        runId: 'releaseqa20260718_1_hourly',
+        staffId: 12345,
+        fixtureIds: { attendance: [99] },
+        archived: true,
+        confirmedClean: true,
+        after: { shifts: 0, schedule: 0, attendance: 0, checkins: 0 },
+        financialCounts: { payrollReports: 0, payrollEntries: 0, financeTransactions: 0 },
+        configurationCounts: { activePayrollSchemes: 0 },
+        financialProofVersion: 1
+    });
+    assert.equal(Object.hasOwn(sanitized, 'staffId'), false);
+    assert.equal(Object.hasOwn(sanitized, 'fixtureIds'), false);
+    assert.equal(sanitized.confirmedClean, true);
+    assert.equal(sanitized.financialCounts.payrollReports, 0);
+});
+
+test('unsupported payroll scheme live preview contract is blocked, not paid as 0', () => {
+    assert.doesNotThrow(() => assertUnsupportedPreview({
+        physicalMinutes: 540,
+        additionalAmount: 0,
+        payrollTransparency: {
+            physicalHours: 9,
+            baseRoleMinutes: 540,
+            additionalRoleMinutes: 510
+        },
+        additionalProfessionAllocations: [{ professionKey: 'cleaner', minutes: 510 }],
+        payrollBlockingIssues: [{
+            code: 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED',
+            professionKey: 'cleaner',
+            schemeType: 'hybrid',
+            minutes: 510,
+            message: 'Formula is not configured'
+        }],
+        professionRateSummary: [],
+        lines: [{ lineType: 'manual', amount: 900 }]
+    }, 'hybrid'));
+    assert.throws(() => assertUnsupportedPreview({
+        physicalMinutes: 540,
+        additionalAmount: 0,
+        payrollTransparency: {
+            physicalHours: 9,
+            baseRoleMinutes: 540,
+            additionalRoleMinutes: 510
+        },
+        additionalProfessionAllocations: [{ professionKey: 'cleaner', minutes: 510 }],
+        payrollBlockingIssues: [],
+        professionRateSummary: [],
+        lines: []
+    }, 'manual'), /unsupported scheme blocker/);
 });
 
 test('live runner models the screenshot case as nine physical hours plus an 8.5-hour paid role', () => {

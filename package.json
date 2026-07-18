@@ -95,7 +95,7 @@
     "test:browser:hr-onboarding:fullstack:isolated": "npm exec --yes --package=playwright -c \"node scripts/run-isolated-postgres-tests.js fullstack\"",
     "test:integration:live-multi-segment-qa:isolated": "node scripts/run-isolated-postgres-tests.js qa",
     "test:db:isolated": "node scripts/run-isolated-postgres-tests.js all",
-    "test:db-flow-contract": "node --test tests/isolated-postgres-test-flow.test.js",
+    "test:db-flow-contract": "node --test tests/isolated-postgres-test-flow.test.js tests/attendance-snapshot-writer-audit.test.js",
     "db:migrate": "node db/migrate.js",
     "version:sync": "node scripts/version-sync.js --fix",
     "version:bump": "node scripts/version-sync.js --fix --bump",

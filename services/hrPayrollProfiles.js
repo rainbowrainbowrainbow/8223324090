@@ -454,9 +454,10 @@ function mapAssignment(row) {
 
 async function withTransaction(options, fn) {
     const source = options?.db || pool;
-    const canConnect = typeof source.connect === 'function';
+    const reuseClient = options?.reuseClient === true;
+    const canConnect = !reuseClient && typeof source.connect === 'function';
     const client = canConnect ? await source.connect() : source;
-    const manageTransaction = options?.manageTransaction !== false;
+    const manageTransaction = !reuseClient && options?.manageTransaction !== false;
     try {
         if (manageTransaction) await client.query('BEGIN');
         const result = await fn(client);
@@ -2438,7 +2439,7 @@ async function applyPayrollProfileBulk(payload = {}, actor = null, options = {})
                     removeAssignmentIds: patch.removeAssignmentIds,
                     assignments: patch.assignments,
                     reason
-                }, actor, { db, manageTransaction: false });
+                }, actor, { db, manageTransaction: false, reuseClient: true });
                 applied.push({ staffId, assignments: result.assignments });
             }
         } else if (operation === 'percent_version') {
@@ -2446,7 +2447,7 @@ async function applyPayrollProfileBulk(payload = {}, actor = null, options = {})
             const result = await createPayrollProfileVersion(payload.profileId ?? payload.profile_id, {
                 ...draft,
                 changeReason: reason
-            }, actor, { db, manageTransaction: false });
+            }, actor, { db, manageTransaction: false, reuseClient: true });
             applied.push(result);
         } else if (operation === 'convert_legacy') {
             const rows = await loadLegacyConversionRows(db, payload);
@@ -2463,7 +2464,7 @@ async function applyPayrollProfileBulk(payload = {}, actor = null, options = {})
                     defaultRate: row.defaultRate,
                     effectiveFrom,
                     changeReason: reason
-                }, actor, { db, manageTransaction: false });
+                }, actor, { db, manageTransaction: false, reuseClient: true });
                 const patch = await buildAssignmentPatchForEffectiveFrom(db, row.staffId, row.professionKey, {
                     professionKey: row.professionKey,
                     profileId: created.id,
@@ -2476,7 +2477,7 @@ async function applyPayrollProfileBulk(payload = {}, actor = null, options = {})
                     removeAssignmentIds: patch.removeAssignmentIds,
                     assignments: patch.assignments,
                     reason
-                }, actor, { db, manageTransaction: false });
+                }, actor, { db, manageTransaction: false, reuseClient: true });
                 applied.push({ staffId: row.staffId, profile: created });
             }
         } else {

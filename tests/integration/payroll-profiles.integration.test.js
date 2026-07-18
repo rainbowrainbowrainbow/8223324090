@@ -11,10 +11,12 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const {
+    applyPayrollProfileBulk,
     archivePayrollProfile,
     createPayrollProfile,
     createPayrollProfileClone,
     createPayrollProfileVersion,
+    previewPayrollProfileBulk,
     saveStaffPayrollProfileAssignments,
     syncPayrollProfileFromBase
 } = require('../../services/hrPayrollProfiles');
@@ -458,6 +460,276 @@ describe('payroll profile migration 297 on isolated PostgreSQL', { skip: !enable
         );
     });
 
+    test('bulk preview/apply paths reuse the outer client and remain atomic', async () => {
+        const actor = { username: 'integration_test', ipAddress: '127.0.0.1' };
+
+        const assignProfile = await createPayrollProfile({
+            title: 'Bulk Assign Regression Profile',
+            professionKey: serviceProfessionKey,
+            version: {
+                rateUnit: 'hour',
+                defaultRate: 130,
+                effectiveFrom: '2301-01-01',
+                changeReason: 'Bulk assign regression base'
+            }
+        }, actor, { db: pool });
+
+        const assignPreview = await previewPayrollProfileBulk({
+            operation: 'assign_profile',
+            profileId: assignProfile.id,
+            professionKey: serviceProfessionKey,
+            staffIds: [ownerStaffId, otherStaffId],
+            assignmentKind: 'temporary',
+            effectiveFrom: '2301-01-01',
+            effectiveTo: '2301-01-31'
+        }, { db: pool });
+        assert.equal(assignPreview.requiresConfirmation, true);
+        assert.equal(assignPreview.preview.affectedStaffCount, 2);
+        assert.deepEqual(assignPreview.preview.items.map(item => item.staffId).sort((a, b) => a - b), [ownerStaffId, otherStaffId].sort((a, b) => a - b));
+        for (const item of assignPreview.preview.items) {
+            assert.equal(item.profileId, assignProfile.id);
+            assert.equal(item.professionKey, serviceProfessionKey);
+            assert.equal(item.assignmentKind, 'temporary');
+            assert.equal(item.effectiveFrom, '2301-01-01');
+            assert.equal(item.effectiveTo, '2301-01-31');
+        }
+
+        const previewWrites = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM staff_payroll_profile_assignments
+             WHERE staff_id = ANY($1::integer[])
+               AND profession_key = $2
+               AND profile_id = $3
+               AND effective_from = DATE '2301-01-01'`,
+            [[ownerStaffId, otherStaffId], serviceProfessionKey, assignProfile.id]
+        );
+        assert.equal(Number(previewWrites.rows[0].count), 0);
+
+        const assigned = await applyPayrollProfileBulk({
+            operation: 'assign_profile',
+            profileId: assignProfile.id,
+            professionKey: serviceProfessionKey,
+            staffIds: [ownerStaffId, otherStaffId],
+            assignmentKind: 'temporary',
+            effectiveFrom: '2301-01-01',
+            effectiveTo: '2301-01-31',
+            reason: 'Bulk assign regression',
+            confirmText: 'APPLY'
+        }, actor, { db: pool });
+        assert.equal(assigned.appliedCount, 2);
+
+        const assignmentRows = await pool.query(
+            `SELECT staff_id, profile_id, assignment_kind, effective_from::text AS effective_from, effective_to::text AS effective_to
+             FROM staff_payroll_profile_assignments
+             WHERE staff_id = ANY($1::integer[])
+               AND profession_key = $2
+               AND profile_id = $3
+               AND effective_from = DATE '2301-01-01'
+             ORDER BY staff_id`,
+            [[ownerStaffId, otherStaffId], serviceProfessionKey, assignProfile.id]
+        );
+        assert.equal(assignmentRows.rowCount, 2);
+        for (const row of assignmentRows.rows) {
+            assert.equal(Number(row.profile_id), assignProfile.id);
+            assert.equal(row.assignment_kind, 'temporary');
+            assert.equal(row.effective_from.slice(0, 10), '2301-01-01');
+            assert.equal(row.effective_to.slice(0, 10), '2301-01-31');
+        }
+
+        const overlaps = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM staff_payroll_profile_assignments first_assignment
+             JOIN staff_payroll_profile_assignments second_assignment
+               ON second_assignment.staff_id = first_assignment.staff_id
+              AND second_assignment.profession_key = first_assignment.profession_key
+              AND second_assignment.id > first_assignment.id
+             WHERE first_assignment.staff_id = ANY($1::integer[])
+               AND first_assignment.profession_key = $2
+               AND daterange(first_assignment.effective_from, COALESCE(first_assignment.effective_to, DATE '9999-12-31'), '[]')
+                   && daterange(second_assignment.effective_from, COALESCE(second_assignment.effective_to, DATE '9999-12-31'), '[]')`,
+            [[ownerStaffId, otherStaffId], serviceProfessionKey]
+        );
+        assert.equal(Number(overlaps.rows[0].count), 0);
+
+        const assignAudit = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM hr_audit_log
+             WHERE action = 'payroll_profile_bulk_apply'
+               AND details->>'operation' = 'assign_profile'
+               AND details->>'reason' = 'Bulk assign regression'`
+        );
+        assert.equal(Number(assignAudit.rows[0].count), 1);
+
+        const percentProfile = await createPayrollProfile({
+            title: 'Bulk Percent Regression Profile',
+            professionKey: serviceProfessionKey,
+            version: {
+                rateUnit: 'hour',
+                defaultRate: 111,
+                effectiveFrom: '2302-01-01',
+                changeReason: 'Bulk percent regression base',
+                dayRates: [{ isoWeekday: 6, rate: 177 }]
+            }
+        }, actor, { db: pool });
+
+        const percentPreview = await previewPayrollProfileBulk({
+            operation: 'percent_version',
+            profileId: percentProfile.id,
+            percentChange: 10,
+            effectiveFrom: '2302-02-01',
+            reason: 'Bulk percent regression'
+        }, { db: pool });
+        assert.equal(percentPreview.requiresConfirmation, true);
+        assert.equal(percentPreview.preview.draftVersion.defaultRate, 122.1);
+        assert.deepEqual(percentPreview.preview.draftVersion.dayRates.map(rate => [rate.isoWeekday, rate.rate]), [[6, 194.7]]);
+
+        const percent = await applyPayrollProfileBulk({
+            operation: 'percent_version',
+            profileId: percentProfile.id,
+            percentChange: 10,
+            effectiveFrom: '2302-02-01',
+            reason: 'Bulk percent regression',
+            confirmText: 'APPLY'
+        }, actor, { db: pool });
+        assert.equal(percent.appliedCount, 1);
+        assert.equal(percent.applied[0].version.defaultRate, 122.1);
+        assert.deepEqual(percent.applied[0].version.dayRates.map(rate => [rate.isoWeekday, rate.rate]), [[6, 194.7]]);
+
+        const percentVersions = await pool.query(
+            `SELECT version_number, default_rate::numeric AS default_rate, effective_from::text AS effective_from, effective_to::text AS effective_to
+             FROM payroll_profile_versions
+             WHERE profile_id = $1
+             ORDER BY version_number`,
+            [percentProfile.id]
+        );
+        assert.equal(percentVersions.rowCount, 2);
+        assert.equal(percentVersions.rows[0].effective_to.slice(0, 10), '2302-01-31');
+        assert.equal(percentVersions.rows[1].effective_from.slice(0, 10), '2302-02-01');
+        assert.equal(Number(percentVersions.rows[1].default_rate), 122.1);
+
+        const invalidStaff = await pool.query(
+            `INSERT INTO staff (name, department, position, hourly_rate, is_active)
+             VALUES ($1, 'qa', 'No payroll profession', 0, true)
+             RETURNING id`,
+            [`ZZZ Bulk Invalid ${Date.now()}`]
+        );
+        const invalidStaffId = Number(invalidStaff.rows[0].id);
+        try {
+            await pool.query(
+                `INSERT INTO staff_profession_rates (staff_id, profession_key, hourly_rate)
+                 VALUES ($1, $2, 180.00), ($3, $2, 190.00)
+                 ON CONFLICT (staff_id, profession_key)
+                 DO UPDATE SET hourly_rate = EXCLUDED.hourly_rate, updated_at = NOW()`,
+                [ownerStaffId, serviceProfessionKey, invalidStaffId]
+            );
+
+            await assert.rejects(
+                applyPayrollProfileBulk({
+                    operation: 'convert_legacy',
+                    professionKey: serviceProfessionKey,
+                    staffIds: [ownerStaffId, invalidStaffId],
+                    titlePrefix: 'Rollback Regression',
+                    effectiveFrom: '2304-01-01',
+                    reason: 'Bulk rollback regression',
+                    confirmText: 'APPLY'
+                }, actor, { db: pool }),
+                /staff member is not assigned to this profession/
+            );
+
+            const rollbackAssignments = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM staff_payroll_profile_assignments
+                 WHERE staff_id = $1
+                   AND profession_key = $2
+                   AND effective_from = DATE '2304-01-01'`,
+                [ownerStaffId, serviceProfessionKey]
+            );
+            assert.equal(Number(rollbackAssignments.rows[0].count), 0);
+
+            const rollbackProfiles = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM payroll_profiles
+                 WHERE profession_key = $1
+                   AND title LIKE 'Rollback Regression%'`,
+                [serviceProfessionKey]
+            );
+            assert.equal(Number(rollbackProfiles.rows[0].count), 0);
+
+            const rollbackAudit = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM hr_audit_log
+                 WHERE action = 'payroll_profile_bulk_apply'
+                   AND details->>'reason' = 'Bulk rollback regression'`
+            );
+            assert.equal(Number(rollbackAudit.rows[0].count), 0);
+        } finally {
+            await pool.query('DELETE FROM staff_profession_rates WHERE staff_id = $1', [invalidStaffId]).catch(() => {});
+            await pool.query('UPDATE hr_audit_log SET staff_id = NULL WHERE staff_id = $1', [invalidStaffId]).catch(() => {});
+            await pool.query('DELETE FROM staff WHERE id = $1', [invalidStaffId]).catch(() => {});
+        }
+
+        await pool.query(
+            `INSERT INTO staff_profession_rates (staff_id, profession_key, hourly_rate)
+             VALUES ($1, $2, 180.00), ($3, $2, 190.00)
+             ON CONFLICT (staff_id, profession_key)
+             DO UPDATE SET hourly_rate = EXCLUDED.hourly_rate, updated_at = NOW()`,
+            [ownerStaffId, serviceProfessionKey, otherStaffId]
+        );
+
+        const convertPreview = await previewPayrollProfileBulk({
+            operation: 'convert_legacy',
+            professionKey: serviceProfessionKey,
+            staffIds: [ownerStaffId, otherStaffId],
+            effectiveFrom: '2303-01-01'
+        }, { db: pool });
+        assert.equal(convertPreview.requiresConfirmation, true);
+        assert.equal(convertPreview.preview.affectedStaffCount, 2);
+        assert.deepEqual(convertPreview.preview.items.map(item => item.defaultRate).sort((a, b) => a - b), [180, 190]);
+
+        const converted = await applyPayrollProfileBulk({
+            operation: 'convert_legacy',
+            professionKey: serviceProfessionKey,
+            staffIds: [ownerStaffId, otherStaffId],
+            titlePrefix: 'Legacy Conversion Regression',
+            effectiveFrom: '2303-01-01',
+            reason: 'Bulk legacy conversion regression',
+            confirmText: 'APPLY'
+        }, actor, { db: pool });
+        assert.equal(converted.appliedCount, 2);
+
+        const convertedProfiles = await pool.query(
+            `SELECT id, owner_staff_id
+             FROM payroll_profiles
+             WHERE profession_key = $1
+               AND profile_kind = 'personal'
+               AND title LIKE 'Legacy Conversion Regression%'
+             ORDER BY owner_staff_id`,
+            [serviceProfessionKey]
+        );
+        assert.equal(convertedProfiles.rowCount, 2);
+
+        const convertedAssignments = await pool.query(
+            `SELECT staff_id, assignment_kind, profile_id, effective_from::text AS effective_from
+             FROM staff_payroll_profile_assignments
+             WHERE profession_key = $1
+               AND effective_from = DATE '2303-01-01'
+               AND staff_id = ANY($2::integer[])
+             ORDER BY staff_id`,
+            [serviceProfessionKey, [ownerStaffId, otherStaffId]]
+        );
+        assert.equal(convertedAssignments.rowCount, 2);
+        assert.ok(convertedAssignments.rows.every(row => row.assignment_kind === 'explicit'));
+        assert.ok(convertedAssignments.rows.every(row => row.effective_from.slice(0, 10) === '2303-01-01'));
+
+        const convertAudit = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM hr_audit_log
+             WHERE action = 'payroll_profile_bulk_apply'
+               AND details->>'operation' = 'convert_legacy'
+               AND details->>'reason' = 'Bulk legacy conversion regression'`
+        );
+        assert.equal(Number(convertAudit.rows[0].count), 1);
+    });
     test('allows only one active default profile for a profession', async () => {
         await expectPgError(
             pool.query(

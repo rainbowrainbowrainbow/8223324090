@@ -203,6 +203,7 @@ test('payroll profile simulator, diagnostics, forecast, and bulk operations reus
     assert.match(serviceCode, /legacy_fallback/);
     assert.match(serviceCode, /multiple_default_profiles/);
     assert.match(serviceCode, /requireBulkConfirmation/);
+    assert.ok((serviceCode.match(/reuseClient: true/g) || []).length >= 4);
     assert.match(serviceCode, /assertPayrollPeriodOpen\(monthFromDate\(effectiveFrom\), db\)/);
     assert.match(serviceCode, /payroll_profile_bulk_apply/);
 

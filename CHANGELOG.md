@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.78 - Payroll Bulk Apply Fix
+
+### HR / Зарплата / Bulk / (18.07.2026) [codex]
+- **Bulk apply більше не падає на вкладеній транзакції** — `assign_profile`, `percent_version` і `convert_legacy` повторно використовують уже відкритий PostgreSQL client без другого `connect()`.
+- **Атомарність bulk-змін закріплена тестом** — якщо один staff не проходить валідацію, не лишається часткового profile, assignment або audit-запису.
+- **Без зміни legacy-зарплат** — schema, ролі, існуючі ставки, payroll reports і finance rows не змінювались; release торкається тільки service path і regression coverage.
+- **Regression gate** — disposable PostgreSQL suite перевіряє preview/apply, temporary assignments, +10% version update, legacy conversion і audit для bulk payroll.
+
+---
+
 ## v0.79.77 - Admission Ticket Integrity Hardening
 
 ### Квитки / Банкетки / Фінанси / (18.07.2026) [codex]

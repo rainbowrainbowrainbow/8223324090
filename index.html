@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.79.77">
-    <link rel="stylesheet" href="css/auth.css?v=0.79.77">
-    <link rel="stylesheet" href="css/layout.css?v=0.79.77">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.77">
-    <link rel="stylesheet" href="css/timeline.css?v=0.79.77">
-    <link rel="stylesheet" href="css/panel.css?v=0.79.77">
-    <link rel="stylesheet" href="css/modals.css?v=0.79.77">
-    <link rel="stylesheet" href="css/controls.css?v=0.79.77">
-    <link rel="stylesheet" href="css/features.css?v=0.79.77">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.77">
-    <link rel="stylesheet" href="css/responsive.css?v=0.79.77">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.77">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.77">
+    <link rel="stylesheet" href="css/base.css?v=0.79.78">
+    <link rel="stylesheet" href="css/auth.css?v=0.79.78">
+    <link rel="stylesheet" href="css/layout.css?v=0.79.78">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.78">
+    <link rel="stylesheet" href="css/timeline.css?v=0.79.78">
+    <link rel="stylesheet" href="css/panel.css?v=0.79.78">
+    <link rel="stylesheet" href="css/modals.css?v=0.79.78">
+    <link rel="stylesheet" href="css/controls.css?v=0.79.78">
+    <link rel="stylesheet" href="css/features.css?v=0.79.78">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.78">
+    <link rel="stylesheet" href="css/responsive.css?v=0.79.78">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.78">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.78">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.79.77">✨ 0.79.77</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.79.78">✨ 0.79.78</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.79.77 — Admission Ticket Integrity Hardening</p>
+                <p class="tagline">AI First CRM v0.79.78 — Payroll Bulk Apply Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.77</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.78</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1804,6 +1804,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.79.78 — Payroll Bulk Apply Fix</h4>
+                    <ul>
+                        <li><b>Bulk apply без 500:</b> assign profile, percent version і legacy conversion більше не перепідключають уже активний PostgreSQL transaction client.</li>
+                        <li><b>Атомарність:</b> якщо один staff не проходить bulk-валідацію, система не лишає часткові призначення, профілі або audit-записи.</li>
+                        <li><b>Безпечний release:</b> legacy-ставки, зарплатні звіти, finance rows, ролі та схема БД не змінювались.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.79.77 — Admission Ticket Integrity Hardening</h4>
                     <ul>
                         <li><b>Безпечні тарифи й package v3:</b> лише цілі суми UAH, взаємне блокування ticket save/revision і fail-closed перевірка збереженого ticket snapshot.</li>
@@ -1820,7 +1828,7 @@
                         <li><b>Draft reports поза active roster:</b> freelance/inactive/archived/terminated/missing HR card drafts доступні в reconciliation окремо та без ПІБ, ставок або сум.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.75 — Payroll Reporting Transparency</h4>
                     <ul>
                         <li><b>Доплата без «тихого нуля»:</b> HR і Finance показують години, професію, ставку, multiplier, суму або точний blocker із поясненням.</li>
@@ -1829,14 +1837,14 @@
                         <li><b>Контроль доступу й аудит:</b> зарплатні поля лишилися за payroll-ролями, а заблокована generation отримала audit trace.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.74 — Payroll Profiles</h4>
                     <ul>
                         <li><b>Зарплатні профілі:</b> HR отримав базові й персональні профілі з версіями, денними override-ставками, призначеннями в картці персоналу та безпечним legacy fallback.</li>
                         <li><b>Єдиний розрахунок:</b> preview, commit, export, diagnostics і forecast використовують один payroll resolver, щоб не було подвійної базової ставки.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.73 — Attendance Snapshot and Additional Pay Reliability</h4>
                     <ul>
                         <li><b>Canonical attendance snapshots:</b> Hermes import, ручні статуси, відпустки та no-show більше не створюють нові attendance-записи поза snapshot flow.</li>
@@ -1844,7 +1852,7 @@
                         <li><b>Фінансова безпека:</b> hybrid, percent, manual і невалідна ставка залишають generation та commit заблокованими; старі записи не отримують ретроактивну доплату.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.72 — Simultaneous Pay Safety Guard</h4>
                     <ul>
                         <li><b>Без мовчазної нульової доплати:</b> одночасна оплачувана професія автоматично рахується лише для погодинної payroll-схеми.</li>
@@ -1852,7 +1860,7 @@
                         <li><b>Прозорі звіти:</b> blocker code і пояснення доступні у Finance та CSV/XLSX-експортах.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.71 — Ticket Finance Sync</h4>
                     <ul>
                         <li><b>Фінансовий запис ticketed booking</b> — підтверджена бронь знову створює та оновлює канонічний рядок доходу без PostgreSQL type-inference помилки.</li>
@@ -1867,14 +1875,14 @@
                         <li><b>Точні blocker-пояснення</b> — chain overlap, друга paid role та overnight не можуть пройти Save мовчки.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.69 — Admission Ticket Booking QA Fixes</h4>
                     <ul>
                         <li><b>Room change diff</b> — показує попередню суму, нову суму та різницю після зміни кімнати.</li>
                         <li><b>Weekend under-3</b> — blocker тепер має зрозуміле українське повідомлення.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.68 — Admission Ticket Booking Flow</h4>
                     <ul>
                         <li><b>Одна формула preview/save</b> — кількості залишку, контекст, тарифи й суми визначає сервер.</li>
@@ -1883,7 +1891,7 @@
                         <li><b>Єдині відображення</b> — drawer, деталі, банкетний лист, PDF і finance показують ті самі ticket lines.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.67 — Admission Ticket Pricing Foundation</h4>
                     <ul>
                         <li><b>Версійований каталог квитків</b> — шість системних типів і повна тарифна матриця від 14.07.2026.</li>
@@ -1892,21 +1900,21 @@
                         <li><b>Legacy збережено</b> — старі суми не переоцінюються, а ticket catalog входить у structured backup/recovery.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.66 — Simultaneous Pay QA Cleanup Reliability</h4>
                     <ul>
                         <li><b>QA cleanup став сумісним із transaction-scoped PostgreSQL client</b> — пов’язані fixture-таблиці читаються послідовно без конкурентних запитів на одному з’єднанні.</li>
                         <li><b>Прибрано deprecated DB-поведінку</b> — cleanup більше не створює попередження, яке стане помилкою після переходу на <code>pg@9</code>.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.65 — Payroll Staff Discovery Reliability</h4>
                     <ul>
                         <li><b>Payroll preview читає канонічну схему змін</b> — прибрано звернення до неіснуючого <code>hr_shifts.status</code>, через яке запит переходив на спрощений fallback.</li>
                         <li><b>Збережено повний склад payroll-періоду</b> — працівники зі змінами або табелем у вибраному місяці більше не губляться через fallback лише на активних працівників.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.64 — Simultaneous Pay Live QA Reliability</h4>
                     <ul>
                         <li><b>QA використовує canonical attendance flow</b> — compensation snapshot створюється і фіналізується тим самим clock-in/clock-out механізмом, що й реальний табель.</li>
@@ -1915,7 +1923,7 @@
                         <li><b>Cleanup підтверджується окремим читанням</b> — після QA не залишаються schedule, attendance, check-in або timeline rows.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.63 — Room Resource Ticket Contract</h4>
                     <ul>
                         <li><b>Стабільний room resource у списку бронювань</b> — API повертає збережений <code>room_resource_id</code> без відновлення кімнати з текстової назви.</li>
@@ -1924,7 +1932,7 @@
                         <li><b>Ticket migration отримала номер 300</b> — реалізація квитків може починатися поверх завершеної та перевіреної room-resource основи.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.62 — Simultaneous Pay UI Finalization</h4>
                     <ul>
                         <li><b>Перерва не віднімається двічі</b> — overlapping-блоки описують один фізичний інтервал, тому спільна перерва зменшує physical summary лише один раз.</li>
@@ -1933,7 +1941,7 @@
                         <li><b>Регресія охоплює складні сценарії</b> — browser smoke перевіряє contained/chain overlap, перерву, reload, missing-rate, keyboard, dark mode та вузькі екрани.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.61 — Simultaneous Pay Safety</h4>
                     <ul>
                         <li><b>Конфліктні часові блоки не можна зберегти</b> — обидва блоки підсвічуються, а дія «Перетворити на одночасні ролі» створює валідний план.</li>
@@ -1942,7 +1950,7 @@
                         <li><b>Payroll integrity перевіряється в CI</b> — browser і disposable PostgreSQL regressions покривають overlap, round-trip і preview → generate → reverse.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.60 — Simultaneous Profession Pay</h4>
                     <ul>
                         <li><b>Друга оплачувана професія без дублювання зміни</b> — HR задає окремий інтервал, явну ставку та multiplier в одному фізичному плані.</li>
@@ -1951,7 +1959,7 @@
                         <li><b>Legacy та фінансова історія захищені</b> — старі додаткові ролі залишаються unpaid, а approved/paid звіти не перераховуються.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.59 — Durable Room Identity</h4>
                     <ul>
                         <li><b>Нові бронювання кімнат мають durable ID</b> — create, edit, duplicate, full/linked booking, banquet activity/kitchen і recurring flows зберігають <code>room_resource_id</code>.</li>
@@ -1960,7 +1968,7 @@
                         <li><b>Backfill окремим кроком</b> — production apply не входить у цей реліз і потребує свіжого dry-run з точним safe-count.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.58 — Pinata Reconciliation QA</h4>
                     <ul>
                         <li><b>Піньята-first покрито для реальних кириличних залів</b> — регресії перевіряють exact-match для «Ніндзя» та негативний сценарій для «Ельза».</li>
@@ -1976,7 +1984,7 @@
                         <li><b>Бухгалтерські поля захищені</b> — paid amount, payment method, accounting status і verification не перезаписуються manager clear.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.56 — Deposit Hydration Safety</h4>
                     <ul>
                         <li><b>Помилка завантаження завдатку видима</b> — менеджер бачить failed hydration і може повторити завантаження canonical projection.</li>
@@ -1984,7 +1992,7 @@
                         <li><b>Бухгалтерські дані захищені</b> — manager clear не перезаписує paid amount, payment method, accounting status і verification.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.55 — Banquet Activity Details</h4>
                     <ul>
                         <li><b>Активності банкету в деталях</b> — програма, час, зал, роль і booking ID тепер показуються з чинного membership банкетної групи.</li>
@@ -2008,7 +2016,7 @@
                         <li><b>Каталог кімнат збережено</b> — активні кімнати й надалі беруться з <code>timeline_resources</code>.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.52 — Room Timeline Catalog</h4>
                     <ul>
                         <li><b>Єдиний каталог кімнат</b> — форма бронювання, таймлайн і «Вільні кімнати» у park-режимі тепер використовують <code>timeline_resources</code>.</li>
@@ -2017,7 +2025,7 @@
                         <li><b>Керування кімнатами в налаштуваннях</b> — додавання, перейменування, порядок, колір і деактивація працюють через каталог room resources.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.51 — Attendance Review Reliability</h4>
                     <ul>
                         <li><b>HR «Сьогодні» без перезавантаження</b> — check-in і Hermes одразу оновлюють рядок, метрики та стан кнопки.</li>
@@ -2096,7 +2104,7 @@
                         <li><b>Автоматичне формування без дублів</b> — розклад Europe/Kyiv зберігає один immutable PDF у CRM-черзі; принтер підключимо окремим етапом.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.41 — Staff Schedule XLSX Export</h4>
                     <ul>
                         <li><b>Справжній XLSX замість HTML-файлу</b> — Excel-експорт графіка тепер створює стандартний workbook.</li>
@@ -2104,14 +2112,14 @@
                         <li><b>Read-only формування</b> — експорт не змінює графік або БД та має перевірені обмеження payload.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.40 — Banquet Live QA Hardening</h4>
                     <ul>
                         <li><b>Створення на реальній лінії не падає</b> — виправлено несумісне порівняння типів дати в перевірці доступності аніматора.</li>
                         <li><b>Live browser QA стало надійним</b> — smoke відкриває drawer на фактичній лінії та перевіряє templates API на desktop і mobile.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.39 — Banquet Lifecycle Hardening</h4>
                     <ul>
                         <li><b>Чистий lifecycle банкету</b> — видалення останнього primary booking тепер скасовує порожню групу в тій самій транзакції.</li>
@@ -2119,14 +2127,14 @@
                         <li><b>Шаблони без помилкового 403</b> — запити використовують спільний auth-контракт CRM замість застарілого токена.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.38 — Banquet Repair Cleanup</h4>
                     <ul>
                         <li><b>Чистий cleanup тестових банкетів</b> — повністю скасовані allowlisted-групи тепер закриваються навіть коли їхня metadata вже узгоджена.</li>
                         <li><b>Фінальний аудит</b> — production-перевірка завершилась із 0 розбіжностей, missing та unexpected references.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.37 — Banquet Activity Repair</h4>
                     <ul>
                         <li><b>Історичні дані узгоджено</b> — 5 проблемних банкетних груп виправлено контрольованим repair-процесом із транзакцією та повторним аудитом.</li>
@@ -2134,7 +2142,7 @@
                         <li><b>Fail-closed захист</b> — неоднозначні lifecycle-випадки не змінюються автоматично, а repair приймає лише явний allowlist.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.36 — Banquet Activity Consistency</h4>
                     <ul>
                         <li><b>Атомарне редагування активностей</b> — Бульб, Піньята, memberships і metadata тепер зберігаються разом або повністю відкочуються.</li>
@@ -2143,7 +2151,7 @@
                         <li><b>Read-only аудит</b> — історичні розбіжності можна знайти за технічними ID без автоматичного виправлення даних.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.35 — Attendance та HR-звіти</h4>
                     <ul>
                         <li><b>Єдиний план дня</b> — явна HR-зміна має пріоритет, а типовий час основної професії працює як контрольований fallback.</li>
@@ -2152,7 +2160,7 @@
                         <li><b>Уніфіковані звіти</b> — денний, місячний, payroll і CSV показують однаковий план, факт, відхилення та попередження джерела.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.34 — HR акаунти та онбординг</h4>
                     <ul>
                         <li><b>Компактний центр акаунтів</b> — щільний список, фільтри, conflict drill-down і master-detail картка замінили довгі картки з небезпечними кнопками.</li>
@@ -2161,7 +2169,7 @@
                         <li><b>Захищені permission boundaries</b> — manage_accounts не розширено; system/guardian accounts, останній creator, immutable username та 401/403 semantics захищені на backend.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.33 — HR ставки та чеклісти</h4>
                     <ul>
                         <li><b>Люди та умови</b> — profession workspace показує джерело ставки й окремі weekday/weekend побажання та зберігає кожний рядок незалежно.</li>
@@ -2170,7 +2178,7 @@
                         <li><b>Єдиний progress</b> — profession workspace, onboarding і Training працюють із canonical checklist items та коректним HR-профілем працівника.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.32 — HR структура та професії</h4>
                     <ul>
                         <li><b>Безпечне завантаження структури</b> — loading, Retry і явне застосування шаблона більше не дозволяють defaults перезаписати збережені вузли.</li>
@@ -2179,7 +2187,7 @@
                         <li><b>Єдина картка професії</b> — каталог, deep links, Browser Back і переходи зі структури відкривають один profession workspace.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.31 — Безпечне відновлення бази даних</h4>
                     <ul>
                         <li><b>Повний структурований backup</b> — усі дозволені таблиці, включно зі <code>staff_checkins</code>, зберігаються з контрольними сумами, FK і sequences.</li>
@@ -2188,7 +2196,7 @@
                         <li><b>Реальний recovery proof</b> — повне й selective відновлення перевіряються в CI на окремій disposable PostgreSQL без production writes.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.30 — Надійність attendance і backup</h4>
                     <ul>
                         <li><b>Attendance без гонок</b> — advisory locks перевірені справжніми паралельними PostgreSQL-транзакціями.</li>
@@ -2196,7 +2204,7 @@
                         <li><b>Безпечніший restore</b> — plain та encrypted endpoint-и мають спільну строгішу валідацію й selective restore.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.29 — Hermes імпорт фактичних приходів</h4>
                     <ul>
                         <li><b>Безпечний preview фото листа приходів</b> — CRM звіряє працівників, графік і дублікати без operational writes.</li>
@@ -2222,7 +2230,7 @@
                         <li><b>Production hygiene</b> — disposable HR QA-записи прибрані контрольовано зі збереженням audit trail.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.26 — Надійний професійний онбординг</h4>
                     <ul>
                         <li><b>Керований headcount</b> — HR редагує ціль найму або повертає вакансію в ручний режим із безпечним перерахунком filled.</li>
@@ -2231,7 +2239,7 @@
                         <li><b>Чистий fresh DB startup</b> — migrations застосовуються з першого запуску без помилок leads.updated_at або procurement tables.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.25 — Точний пошук HR-команди</h4>
                     <ul>
                         <li><b>Результати лише з активної категорії</b> — пошук більше не змішує робітників, стажерів, чорний список, резерв і звільнених.</li>
@@ -2239,7 +2247,7 @@
                         <li><b>Чистіший інтерфейс</b> — прибрано зайві setup-фільтри й archive checkbox зі збереженням корисних індикаторів у картках.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.24 — Професійний онбординг</h4>
                     <ul>
                         <li><b>Окремий онбординг професій</b> — корпоративний процес, основна й додаткові професії мають незалежний прогрес і відповідальних.</li>
@@ -2247,7 +2255,7 @@
                         <li><b>Сумісність із графіком</b> — profession_key і secondary professions перевірені разом із multi-segment schedule та професійними чеклістами.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.23 — Читабельні назви відділів</h4>
                     <ul>
                         <li><b>Повні назви відділів</b> — «Технічний відділ» та «Адміністрація» більше не обрізаються на desktop і mobile.</li>
@@ -2255,7 +2263,7 @@
                         <li><b>Сильніший visual QA</b> — browser і live smoke перевіряють clipping та зберігають light/dark screenshots для всіх цільових ширин.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.22 — Стабільний вигляд графіка</h4>
                     <ul>
                         <li><b>Чиста sticky-колонка</b> — дати більше не просвічують крізь заголовок працівника під час горизонтального прокручування.</li>
@@ -2265,7 +2273,7 @@
                         <li><b>Перевірено на різних екранах</b> — visual QA охоплює відділи, світлу й темну теми, desktop, laptop і mobile.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.21 — Охайний графік персоналу</h4>
                     <ul>
                         <li><b>Рівна й чиста сітка</b> — дні мають однакову ширину, а статуси, сьогоднішній день, заміни та focus більше не створюють подвійних рамок.</li>
@@ -2274,7 +2282,7 @@
                         <li><b>Зручніше на всіх екранах</b> — покращено desktop/mobile controls, resize, dark mode, deep-link focus і видимість критичних health-попереджень.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.20 — Безпечний multi-segment графік</h4>
                     <ul>
                         <li><b>План захищено від сплющення</b> — старий single-shift клієнт не може непомітно замінити кілька часових блоків одним.</li>
@@ -2283,7 +2291,7 @@
                         <li><b>Безпечне паралельне редагування</b> — застаріла вкладка отримує 409 і не перезаписує новішу версію плану.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.19 — Hermes графік hotfix</h4>
                     <ul>
                         <li><b>Читання графіка відновлено</b> — Hermes API більше не повертає 500 через несумісність типів дати.</li>
@@ -2291,7 +2299,7 @@
                         <li><b>Безпечний apply</b> — аналогічний type mismatch закрито у stale-state перевірці до будь-якої мутації.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.18 — Безпечні multi-segment плани</h4>
                     <ul>
                         <li><b>Стабільні часові блоки</b> — незмінені сегменти зберігають ID, stale-вкладка отримує 409, а старий HR modal не може згорнути кілька блоків в один envelope.</li>
@@ -2300,7 +2308,7 @@
                         <li><b>Безпечний аудит</b> — HR GET не змінює дані, audit атомарний із mutation, старий single-shift сценарій збережено.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.17 — Hermes OCR графіка</h4>
                     <ul>
                         <li><b>Preview графіка з фото</b> — Hermes передає розпізнані рядки, а CRM точно зіставляє працівників і не змінює графік до підтвердження.</li>
@@ -2308,14 +2316,14 @@
                         <li><b>Мінімальний доступ Hermes</b> — інтеграція бачить лише дозволені поля працівників і графіка, а apply вимагає окремого дозволу та явного підтвердження.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.16 — Стабільний payroll preview</h4>
                     <ul>
                         <li><b>Payroll preview без падіння</b> — працівники без attendance у вибраному місяці тепер отримують коректний нульовий розрахунок замість HTTP 500.</li>
                         <li><b>Формули не змінені</b> — професійні ставки, overtime, day/month rate і захист від подвійної оплати працюють за попередніми правилами.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.15 — Кілька ролей і часових блоків у зміні</h4>
                     <ul>
                         <li><b>Кілька часових блоків</b> — в одній зміні можна поєднати різні години, професії, перерви та додаткові одночасні ролі.</li>
@@ -2324,13 +2332,13 @@
                         <li><b>Точний графік</b> — копіювання тижня, export, print і timeline використовують реальні блоки; старі single-shift зміни продовжують працювати.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.14 — Чисті зв’язки таймлайна</h4>
                     <ul>
                         <li><b>Чисті зв’язки таймлайна</b> — пунктирні лінії зв’язків тепер проходять за картками та не перекривають їхній текст і вміст.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.13 — Створення нового клієнта в бронюванні</h4>
                     <ul>
                         <li><b>Кнопка «Новий клієнт»</b> — у drawer бронювання знову можна відкрити й заповнити нову картку клієнта.</li>
@@ -2338,7 +2346,7 @@
                         <li><b>Зручний перехід</b> — пошуковий запит підставляється як ім’я, а фокус і ARIA-стани коректно перемикаються між формою та пошуком.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.12 — Гарантований час приходу гостей</h4>
                     <ul>
                         <li><b>Час приходу тепер обов’язковий</b> — кожен банкет має власне збережене значення у форматі HH:mm.</li>
@@ -2353,7 +2361,7 @@
                         <li><b>Захист одночасних змін збережено</b> — реальний stale update показує актуальний серверний час і не перезаписує зміни з іншої вкладки.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.10 — Незалежний час приходу гостей</h4>
                     <ul>
                         <li><b>Окремий arrival</b> — час приходу зберігається на банкеті й не пересуває активність, кухню або інші бронювання.</li>
@@ -2371,7 +2379,7 @@
                         <li><b>Регресійний захист</b> — додані behavioral-тести раннього render та auth-ready відновлення.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.8 — Стабільний тижневий таймлайн</h4>
                     <ul>
                         <li><b>Week mode</b> — тижневий таймлайн стабільно будує всі 7 днів без помилки <code>intent is not defined</code>.</li>
@@ -2379,21 +2387,21 @@
                         <li><b>Behavioral regression</b> — додані focused сценарії для week render та unavailable target.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.7 — Стабільний URL bootstrap таймлайну</h4>
                     <ul>
                         <li><b>Deep link «Свята»</b> — URL view зберігається через проміжні business-context scopes до фінальної ініціалізації таймлайну.</li>
                         <li><b>Behavioral regression</b> — перевіряються кілька послідовних змін storage scope та подальше user switching.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.6 — Надійний deep link таймлайну</h4>
                     <ul>
                         <li><b>Deep link «Свята»</b> — URL-параметр <code>timelineView=animators</code> стабільно переживає delayed bootstrap business context.</li>
                         <li><b>Live regression</b> — сценарій зафіксований behavioral тестом після production QA.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.5 — Захищений і стабільний таймлайн</h4>
                     <ul>
                         <li><b>WebSocket visibility</b> — події бронювань і графіка відправляються лише дозволеним користувачам відповідного контексту та дати.</li>
@@ -2403,14 +2411,14 @@
                         <li><b>Кімнати</b> — невідомі або неактивні кімнати показуються в quarantine та більше не потрапляють у «На виніс».</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.4 — Надійне збереження додаткових професій</h4>
                     <ul>
                         <li><b>Додаткові професії</b> — додавання або видалення професії надійно зберігається та одразу оновлює відкритий графік без F5.</li>
                         <li><b>Регресійний захист</b> — картка враховує всі вибрані професії, а не лише першу.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.3 — Multi-profession staff schedule</h4>
                     <ul>
                         <li><b>Кілька професій у графіку</b> — працівник показується в усіх відповідних секціях без дублювання загальних підсумків.</li>
@@ -2419,31 +2427,31 @@
                         <li><b>Надійність збереження</b> — повторне збереження працює в одній сесії, а regression checks захищають сценарій.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.2 — Безпечний запуск CRM без pre-auth запитів</h4>
                     <ul>
                         <li><b>Auth-gated запуск</b> — timeline та protected deep links більше не виконують API-запити до успішної перевірки сесії.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.1 — Безпечний Service Worker та відновлення сесії</h4>
                     <ul>
                         <li><b>Service Worker і приватність</b> — автоматична реєстрація після авторизації, безпечне offline-відновлення сесії та повне очищення private runtime cache під час logout.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.79.0 — Продуктивність: швидший старт CRM</h4>
                     <ul>
                         <li><b>Продуктивність: швидший старт CRM</b> — безпечне бронювання, посторінкові Leads/Tasks, lazy loading і менший offline shell.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.78.101 — HR write-QA: date normalization</h4>
                     <ul>
                         <li><b>Нормалізація дат</b> — live smoke однаково порівнює HTML date та PostgreSQL ISO datetime, зберігаючи сувору перевірку payload, persistence і restore.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.78.100 — HR-картка: безпечні дії та write-QA</h4>
                     <ul>
                         <li><b>Безпечні дії</b> — production confirmation, ізольовані dirty scopes та мінімальні save payloads.</li>
@@ -2451,14 +2459,14 @@
                         <li><b>Accessibility і write-QA</b> — 44×44 px targets, keyboard/live feedback та reversible QA matrix для #818.</li>
                     </ul>
                 </div>
-<div class="changelog-section">
+                <div class="changelog-section">
                     <h4>v0.78.99 — HR Команда: CI та write-QA</h4>
                     <ul>
                         <li><b>Browser CI gate</b> — Chromium smoke для картки працівника став обов’язковим у push і PR.</li>
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.77" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.78" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -2761,44 +2769,44 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.79.77"></script>
-    <script src="js/timeline-visibility.js?v=0.79.77"></script>
-    <script src="js/kitchen-menu-images.js?v=0.79.77"></script>
-    <script src="js/config.js?v=0.79.77"></script>
-    <script src="js/api.js?v=0.79.77"></script>
-    <script src="js/ui.js?v=0.79.77"></script>
-    <script src="js/auth.js?v=0.79.77"></script>
-    <script src="js/timeline-interaction-model.js?v=0.79.77"></script>
-    <script src="js/timeline-cache.js?v=0.79.77"></script>
-    <script src="js/timeline-resource-identity.js?v=0.79.77"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.77"></script>
-    <script src="js/event-cards.js?v=0.79.77"></script>
-    <script src="js/invite-config.js?v=0.79.77"></script>
-    <script src="js/invite-share.js?v=0.79.77"></script>
-    <script src="js/timeline.js?v=0.79.77"></script>
-    <script src="js/booking-drawer-state.js?v=0.79.77"></script>
-    <script src="js/booking-banquet-selector.js?v=0.79.77"></script>
-    <script src="js/booking-save-path.js?v=0.79.77"></script>
-    <script src="js/booking-package-renderer.js?v=0.79.77"></script>
-    <script src="js/booking-tickets.js?v=0.79.77"></script>
-    <script src="js/booking-banquet-detail.js?v=0.79.77"></script>
-    <script src="js/booking-activity-schedule.js?v=0.79.77"></script>
-    <script src="js/booking.js?v=0.79.77"></script>
-    <script src="js/settings.js?v=0.79.77"></script>
-    <script src="js/booking-form.js?v=0.79.77"></script>
-    <script src="js/booking-linked.js?v=0.79.77"></script>
-    <script src="js/settings-dashboard.js?v=0.79.77"></script>
-    <script src="js/settings-history.js?v=0.79.77"></script>
-    <script src="js/settings-afisha.js?v=0.79.77"></script>
-    <script src="js/settings-certificates.js?v=0.79.77"></script>
-    <script src="js/offline.js?v=0.79.77"></script>
-    <script src="js/crm-feature-registry.js?v=0.79.77"></script>
-    <script src="js/search.js?v=0.79.77"></script>
-    <script src="js/ws.js?v=0.79.77"></script>
-    <script src="js/app.js?v=0.79.77"></script>
-    <script src="js/kleshnya-widget.js?v=0.79.77"></script>
-    <script src="js/components/sidebar.js?v=0.79.77"></script>
+    <script src="js/timeline-context.js?v=0.79.78"></script>
+    <script src="js/timeline-visibility.js?v=0.79.78"></script>
+    <script src="js/kitchen-menu-images.js?v=0.79.78"></script>
+    <script src="js/config.js?v=0.79.78"></script>
+    <script src="js/api.js?v=0.79.78"></script>
+    <script src="js/ui.js?v=0.79.78"></script>
+    <script src="js/auth.js?v=0.79.78"></script>
+    <script src="js/timeline-interaction-model.js?v=0.79.78"></script>
+    <script src="js/timeline-cache.js?v=0.79.78"></script>
+    <script src="js/timeline-resource-identity.js?v=0.79.78"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.78"></script>
+    <script src="js/event-cards.js?v=0.79.78"></script>
+    <script src="js/invite-config.js?v=0.79.78"></script>
+    <script src="js/invite-share.js?v=0.79.78"></script>
+    <script src="js/timeline.js?v=0.79.78"></script>
+    <script src="js/booking-drawer-state.js?v=0.79.78"></script>
+    <script src="js/booking-banquet-selector.js?v=0.79.78"></script>
+    <script src="js/booking-save-path.js?v=0.79.78"></script>
+    <script src="js/booking-package-renderer.js?v=0.79.78"></script>
+    <script src="js/booking-tickets.js?v=0.79.78"></script>
+    <script src="js/booking-banquet-detail.js?v=0.79.78"></script>
+    <script src="js/booking-activity-schedule.js?v=0.79.78"></script>
+    <script src="js/booking.js?v=0.79.78"></script>
+    <script src="js/settings.js?v=0.79.78"></script>
+    <script src="js/booking-form.js?v=0.79.78"></script>
+    <script src="js/booking-linked.js?v=0.79.78"></script>
+    <script src="js/settings-dashboard.js?v=0.79.78"></script>
+    <script src="js/settings-history.js?v=0.79.78"></script>
+    <script src="js/settings-afisha.js?v=0.79.78"></script>
+    <script src="js/settings-certificates.js?v=0.79.78"></script>
+    <script src="js/offline.js?v=0.79.78"></script>
+    <script src="js/crm-feature-registry.js?v=0.79.78"></script>
+    <script src="js/search.js?v=0.79.78"></script>
+    <script src="js/ws.js?v=0.79.78"></script>
+    <script src="js/app.js?v=0.79.78"></script>
+    <script src="js/kleshnya-widget.js?v=0.79.78"></script>
+    <script src="js/components/sidebar.js?v=0.79.78"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.79.77"></script>
+    <script src="js/alerts.js?v=0.79.78"></script>
 </body>
 </html>

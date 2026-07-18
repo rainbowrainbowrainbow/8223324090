@@ -12,7 +12,7 @@ window.BookingForm = {
      * v20.11.0: Initialize form validation listeners
      */
     init() {
-        const fields = ['bookingHasEventToggle', 'roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
+        const fields = ['bookingHasEventToggle', 'bookingTime', 'roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
             'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
             'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup',
             'educationLessonCourse', 'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',

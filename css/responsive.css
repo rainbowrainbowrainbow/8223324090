@@ -1001,6 +1001,23 @@
     .info-label { font-size: 12px; }
     .info-value { font-size: 13px; }
 
+    .info-item--booking-time {
+        grid-column: 1 / -1;
+    }
+
+    .booking-time-control {
+        grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(48px, auto);
+    }
+
+    .booking-time-select,
+    .booking-time-step {
+        min-height: 44px;
+    }
+
+    .booking-time-select {
+        font-size: 16px;
+    }
+
     .form-section {
         margin-bottom: 12px;
     }

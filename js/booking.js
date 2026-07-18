@@ -1490,6 +1490,8 @@ async function fetchBookingRoomAvailabilityForSelectedSlot(options = {}) {
 
 async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
     if (!isParkTimelineBookingMode()) return;
+    const timeChangeToken = Number(options.timeChangeToken || 0) || 0;
+    const isCurrentTimeRequest = () => !timeChangeToken || isLatestBookingTimeChangeToken(timeChangeToken);
     const selectedRoom = String(options.selectedRoom ?? document.getElementById('roomSelect')?.value ?? '').trim();
     await loadBookingRoomResourcesForSelect({
         selectedRoom,
@@ -1499,10 +1501,12 @@ async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
         currentRoomDisabled: true,
         force: options.forceRoomCatalog === true
     });
+    if (!isCurrentTimeRequest()) return;
     snapshotBookingRoomOptions();
     try {
         if (!Array.isArray(options.bookings)) {
             const availability = await fetchBookingRoomAvailabilityForSelectedSlot(options);
+            if (!isCurrentTimeRequest()) return;
             if (availability) {
                 renderBookingRoomOptionsForDay(roomDayBookingsFromAvailabilityResponse(availability), {
                     selectedRoom,
@@ -1514,6 +1518,7 @@ async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
         const bookings = Array.isArray(options.bookings)
             ? options.bookings
             : await getBookingsForDate(AppState.selectedDate);
+        if (!isCurrentTimeRequest()) return;
         const roomDayBookings = collectRoomDayBookingsForBookingDay(bookings, options.excludeId ?? AppState.editingBookingId);
         renderBookingRoomOptionsForDay(roomDayBookings, { selectedRoom });
     } catch (err) {
@@ -2461,6 +2466,11 @@ function getSmartBookingValidationState() {
     selectedActivityScheduleValidationBlockers(formData).forEach(issue => {
         addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
     });
+    if (typeof bookingTimeValidationIssues === 'function') {
+        bookingTimeValidationIssues().forEach(issue => {
+            addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
+        });
+    }
     if (typeof selectedActivityPinataValidationBlockers === 'function') {
         selectedActivityPinataValidationBlockers(formData).forEach(issue => {
             addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
@@ -6329,18 +6339,27 @@ function initBookingPackageWorkspace() {
         const el = document.getElementById(id);
         if (!el) return;
         const refreshHosts = () => {
-            refreshAnimatorSelectsForCurrentSlot().catch(() => {});
             if (id === 'bookingTime') {
-                const firstProgram = getSelectedActivityPrograms()[0];
-                if (firstProgram) delete getSelectedActivityScheduleTimes()[String(firstProgram.id)];
-                setSelectedActivityScheduleIssues({});
-                renderSelectedProgramSummary();
-                scheduleSelectedActivityConflictRefresh();
+                if (typeof handleBookingTimeControlChange === 'function') handleBookingTimeControlChange(el.value);
+                return;
             }
+            refreshAnimatorSelectsForCurrentSlot().catch(() => {});
+            setSelectedActivityScheduleIssues({});
+            clearSelectedActivityPreflightState();
+            clearBookingTimePreflightState({ updateSubmit: false });
+            renderSelectedProgramSummary();
+            renderBookingPackageSummary();
+            scheduleSelectedActivityConflictRefresh();
+            scheduleBookingTimePreflightRefresh(250, nextBookingTimeChangeToken());
         };
         el.addEventListener('change', refreshHosts);
         el.addEventListener('input', refreshHosts);
     });
+    if (typeof stepBookingTimeControl === 'function') {
+        document.getElementById('bookingTimeStepBack')?.addEventListener('click', () => stepBookingTimeControl(-1));
+        document.getElementById('bookingTimeStepForward')?.addEventListener('click', () => stepBookingTimeControl(1));
+    }
+    if (typeof renderBookingTimeOptions === 'function') renderBookingTimeOptions();
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
     initBookingMenuCatalogOpenControl();
     document.getElementById('bookingMenuCatalogCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
@@ -7043,6 +7062,9 @@ async function openBookingPanel(time, lineId, options = {}) {
         room: line?.name || ''
     });
     resetBookingDrawerStateForOpen(options.drawerMode || inferBookingDrawerModeForOpen());
+    nextBookingTimeChangeToken();
+    clearBookingTimePreflightState({ updateSubmit: false });
+    setBookingTimeContextIssue('', { updateSubmit: false });
     resetSelectedActivityScheduleState();
     initializeBookingArrivalDraft(time, options.banquetContext);
 
@@ -7052,9 +7074,9 @@ async function openBookingPanel(time, lineId, options = {}) {
         const d = AppState.selectedDate;
         dateDisplay.textContent = `${formatDate(d)} (${DAYS[d.getDay()]})`;
     }
-    document.getElementById('selectedTimeDisplay').textContent = time;
     document.getElementById('selectedLineDisplay').textContent = line ? line.name : '-';
     document.getElementById('bookingTime').value = time;
+    if (typeof syncBookingTimeControlValue === 'function') syncBookingTimeControlValue(time, { syncTimeline: false });
     document.getElementById('bookingLine').value = isRoomFirstTimelineView() ? ROOM_FIRST_BANQUET_SERVICE_LINE_ID : lineId;
 
     // Скинути форму
@@ -7470,6 +7492,10 @@ function bookingRoomSourceContextStaleMessage(reason) {
             return 'Кімната змінилася після підтягування бронювання. Оберіть кімнату ще раз.';
         case 'stale_source_date':
             return 'Дата змінилася після підтягування бронювання. Закрийте форму й відкрийте бронювання ще раз.';
+        case 'stale_source_time':
+            return 'Час змінився після підтягування бронювання. Оберіть кімнату або банкет ще раз.';
+        case 'banquet_changed_needs_confirmation':
+            return 'Новий час відповідає іншому банкету. Підтвердьте банкет вручну або створіть окреме бронювання.';
         case 'stale_drawer_generation':
         case 'stale_source_generation':
         case 'stale_source_booking':
@@ -8935,6 +8961,570 @@ function selectedActivityScheduleWorkday(options = {}) {
     return bookingActivityScheduleApi().resolveSelectedActivityScheduleWorkday(selectedActivityScheduleOptions(options));
 }
 
+const BOOKING_TIME_SLOT_STEP_MINUTES = 15;
+
+function bookingTimeControlIsSelect(control) {
+    return String(control?.tagName || '').toLowerCase() === 'select';
+}
+
+function bookingTimeSlotModel(currentValue = document.getElementById('bookingTime')?.value || '') {
+    const api = bookingActivityScheduleApi();
+    const currentTime = api.normalizeSelectedActivityScheduleTime(currentValue);
+    const scheduleOptions = selectedActivityScheduleOptions({ stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES });
+    const workday = api.resolveSelectedActivityScheduleWorkday(scheduleOptions);
+    const slotValues = api.buildSelectedActivityScheduleTimeOptions(scheduleOptions);
+    const currentIsSlot = !currentTime || slotValues.includes(currentTime);
+    const options = slotValues.map(value => ({ value, label: value, offGrid: false }));
+
+    if (currentTime && !currentIsSlot) {
+        options.push({ value: currentTime, label: currentTime + ' (\u043f\u043e\u0437\u0430 \u0441\u0456\u0442\u043a\u043e\u044e)', offGrid: true });
+        options.sort((a, b) => {
+            const aMinutes = api.scheduleTimeToMinutes(a.value);
+            const bMinutes = api.scheduleTimeToMinutes(b.value);
+            return (aMinutes ?? 0) - (bMinutes ?? 0);
+        });
+    }
+
+    return { currentTime, currentIsSlot, options, workday };
+}
+
+function renderBookingTimeOptions(currentValue = document.getElementById('bookingTime')?.value || '') {
+    const control = document.getElementById('bookingTime');
+    if (!control) return '';
+    const normalizedTime = normalizeSelectedActivityScheduleTime(currentValue || control.value);
+    if (!bookingTimeControlIsSelect(control)) {
+        if (normalizedTime) control.value = normalizedTime;
+        syncBookingTimeStepButtons(normalizedTime || control.value);
+        return normalizedTime || control.value || '';
+    }
+
+    const model = bookingTimeSlotModel(normalizedTime || control.value);
+    control.innerHTML = '';
+    model.options.forEach(optionModel => {
+        const option = document.createElement('option');
+        option.value = optionModel.value;
+        option.textContent = optionModel.label;
+        if (optionModel.offGrid) option.dataset.offGrid = 'true';
+        control.appendChild(option);
+    });
+    if (model.currentTime) control.value = model.currentTime;
+    control.dataset.currentTime = control.value || model.currentTime || '';
+    control.dataset.currentSlotTime = model.currentIsSlot ? 'true' : 'false';
+
+    renderBookingTimeHint();
+    syncBookingTimeStepButtons(control.value);
+    return control.value || model.currentTime || '';
+}
+
+function bookingTimeStepTarget(direction, currentValue = document.getElementById('bookingTime')?.value || '') {
+    const api = bookingActivityScheduleApi();
+    const model = bookingTimeSlotModel(currentValue);
+    const slots = model.options.filter(option => !option.offGrid).map(option => option.value);
+    if (!slots.length) return '';
+    const currentTime = api.normalizeSelectedActivityScheduleTime(currentValue);
+    const currentMinutes = api.scheduleTimeToMinutes(currentTime);
+    if (currentMinutes === null) return direction > 0 ? slots[0] : slots[slots.length - 1];
+    const candidates = slots.map(value => ({ value, minutes: api.scheduleTimeToMinutes(value) }));
+    if (direction > 0) {
+        return candidates.find(item => item.minutes !== null && item.minutes > currentMinutes)?.value || '';
+    }
+    return candidates.reverse().find(item => item.minutes !== null && item.minutes < currentMinutes)?.value || '';
+}
+
+function syncBookingTimeStepButtons(currentValue = document.getElementById('bookingTime')?.value || '') {
+    const back = document.getElementById('bookingTimeStepBack');
+    const forward = document.getElementById('bookingTimeStepForward');
+    if (!back && !forward) return;
+    let previous = '';
+    let next = '';
+    try {
+        previous = bookingTimeStepTarget(-1, currentValue);
+        next = bookingTimeStepTarget(1, currentValue);
+    } catch (error) {
+        console.warn('[Booking] Failed to resolve booking time step buttons', error);
+    }
+    if (back) back.disabled = !previous;
+    if (forward) forward.disabled = !next;
+}
+
+function syncBookingTimeTimelineSelection(timeValue) {
+    const time = normalizeSelectedActivityScheduleTime(timeValue);
+    if (!time || typeof document === 'undefined') return null;
+    const activeCell = document.querySelector('.grid-cell.selected[data-line][data-time]:not([data-line="afisha"])');
+    if (!activeCell) return null;
+    const lineId = String(activeCell.dataset.line || '').trim();
+    if (!lineId) return null;
+    const lineSelector = typeof bookingBlockSelectorId === 'function' ? bookingBlockSelectorId(lineId) : lineId;
+    const timeSelector = typeof bookingBlockSelectorId === 'function' ? bookingBlockSelectorId(time) : time;
+    const nextCell = document.querySelector(`.grid-cell[data-line="${lineSelector}"][data-time="${timeSelector}"]`);
+    document.querySelectorAll('.grid-cell.selected').forEach(cell => cell.classList.remove('selected', 'timeline-selected-overrun'));
+    if (!nextCell) return null;
+    nextCell.classList.add('selected');
+    AppState.selectedCell = nextCell;
+    AppState.selectedLineId = nextCell.dataset.line;
+    return nextCell;
+}
+
+function syncBookingTimeControlValue(value, options = {}) {
+    const control = document.getElementById('bookingTime');
+    if (!control) return '';
+    const time = normalizeSelectedActivityScheduleTime(value);
+    if (!time) return '';
+    if (bookingTimeControlIsSelect(control)) {
+        renderBookingTimeOptions(time);
+    }
+    control.value = time;
+    control.dataset.currentTime = time;
+    control.dataset.currentSlotTime = bookingTimeSlotModel(time).currentIsSlot ? 'true' : 'false';
+    syncBookingTimeStepButtons(time);
+    renderBookingTimeHint();
+    if (options.syncTimeline) syncBookingTimeTimelineSelection(time);
+    return time;
+}
+
+let _bookingTimePreflightTimer = null;
+const BOOKING_TIME_PREFLIGHT_DEBOUNCE_MS = 350;
+
+function bookingTimePreflightState() {
+    if (!BookingDrawerState.bookingTimePreflight
+        || typeof BookingDrawerState.bookingTimePreflight !== 'object') {
+        BookingDrawerState.bookingTimePreflight = {
+            status: 'idle',
+            message: '',
+            issues: [],
+            token: 0,
+            checkedAt: null
+        };
+    }
+    return BookingDrawerState.bookingTimePreflight;
+}
+
+function clearBookingTimePreflightState(options = {}) {
+    const state = bookingTimePreflightState();
+    const changed = state.status !== 'idle' || state.message || (state.issues || []).length;
+    state.status = 'idle';
+    state.message = '';
+    state.issues = [];
+    state.token = 0;
+    state.checkedAt = null;
+    if (changed || options.render) renderBookingTimeHint();
+    if (changed && options.updateSubmit !== false) updateBookingSubmitState();
+}
+
+function setBookingTimePreflightState(status, message = '', options = {}) {
+    const state = bookingTimePreflightState();
+    state.status = status || 'idle';
+    state.message = String(message || '').trim();
+    state.issues = Array.isArray(options.issues) ? options.issues.filter(Boolean) : [];
+    state.token = Number(options.token || 0) || 0;
+    state.checkedAt = ['free', 'conflict', 'failed'].includes(state.status) ? new Date().toISOString() : null;
+    renderBookingTimeHint();
+    if (options.updateSubmit !== false) updateBookingSubmitState();
+    return state;
+}
+
+function nextBookingTimeChangeToken() {
+    BookingDrawerState.bookingTimeChangeToken = (Number(BookingDrawerState.bookingTimeChangeToken || 0) || 0) + 1;
+    return BookingDrawerState.bookingTimeChangeToken;
+}
+
+function isLatestBookingTimeChangeToken(token) {
+    const cleanToken = Number(token || 0) || 0;
+    return !cleanToken || cleanToken === (Number(BookingDrawerState.bookingTimeChangeToken || 0) || 0);
+}
+
+function bookingTimeOffGridHintText() {
+    const control = document.getElementById('bookingTime');
+    return control?.dataset?.currentSlotTime === 'false'
+        ? '\u041f\u043e\u0442\u043e\u0447\u043d\u0438\u0439 \u0447\u0430\u0441 \u043f\u043e\u0437\u0430 15-\u0445\u0432\u0438\u043b\u0438\u043d\u043d\u043e\u044e \u0441\u0456\u0442\u043a\u043e\u044e'
+        : '';
+}
+
+function bookingTimeContextIssue() {
+    return String(BookingDrawerState.bookingTimeContextIssue || '').trim();
+}
+
+function setBookingTimeContextIssue(message = '', options = {}) {
+    const nextMessage = String(message || '').trim();
+    const changed = String(BookingDrawerState.bookingTimeContextIssue || '') !== nextMessage;
+    BookingDrawerState.bookingTimeContextIssue = nextMessage;
+    if (changed || options.render) renderBookingTimeHint();
+    if (changed && options.updateSubmit !== false) updateBookingSubmitState();
+}
+
+function bookingTimeValidationIssues() {
+    const issues = [];
+    const contextIssue = bookingTimeContextIssue();
+    if (contextIssue) {
+        issues.push({
+            key: 'booking_time_context',
+            message: contextIssue,
+            fields: ['bookingTime']
+        });
+    }
+    const preflight = bookingTimePreflightState();
+    if (preflight.status === 'conflict') {
+        const preflightIssues = Array.isArray(preflight.issues) && preflight.issues.length
+            ? preflight.issues
+            : [{ key: 'booking_time_conflict', message: preflight.message || 'Обраний час конфліктує з існуючим бронюванням.' }];
+        preflightIssues.forEach(issue => {
+            if (!issue?.message) return;
+            issues.push({
+                key: issue.key || 'booking_time_conflict',
+                message: issue.message,
+                fields: issue.fields || ['bookingTime']
+            });
+        });
+    }
+    return issues;
+}
+
+function renderBookingTimeHint() {
+    const hint = document.getElementById('bookingTimeHint');
+    if (!hint) return;
+    const preflight = bookingTimePreflightState();
+    const messages = [bookingTimeOffGridHintText(), bookingTimeContextIssue()].filter(Boolean);
+    if (preflight.status === 'checking') {
+        messages.push('Перевіряю зайнятість слота...');
+    } else if (preflight.status === 'free') {
+        messages.push(preflight.message || 'Слот попередньо вільний. Сервер перевірить остаточно при збереженні.');
+    } else if (preflight.status === 'conflict') {
+        messages.push(preflight.message ? `Конфлікт: ${preflight.message}` : 'Конфлікт у вибраному слоті.');
+    } else if (preflight.status === 'failed') {
+        messages.push(preflight.message || 'Не вдалося попередньо перевірити слот. Сервер перевірить при збереженні.');
+    }
+    hint.textContent = messages.join(' · ');
+    hint.dataset.status = preflight.status || 'idle';
+}
+
+function bookingTimePreflightIssue(key, message, options = {}) {
+    return {
+        key: key || 'booking_time_conflict',
+        message,
+        fields: options.fields || ['bookingTime'],
+        conflictBookingId: options.conflictBookingId || null
+    };
+}
+
+function bookingTimeConflictBookingLabel(booking = {}) {
+    return scheduleBookingLabel(booking) || booking.programName || booking.programCode || booking.id || 'бронювання';
+}
+
+function firstBookingTimeConflict(existingBookings = [], predicate, candidate = {}) {
+    return (existingBookings || []).find(booking => predicate(booking) && selectedActivityScheduleOverlaps(candidate, booking)) || null;
+}
+
+function bookingTimeSingleSlotPreflightIssues(formData = {}, existingBookings = []) {
+    const issues = [];
+    if (!formData.time || !(Number(formData.duration || 0) > 0)) return issues;
+    const candidate = {
+        id: 'booking-time-draft',
+        time: formData.time,
+        duration: Number(formData.duration || 0) || 0,
+        lineId: formData.lineId,
+        room: String(formData.room || '').trim()
+    };
+    if (formData.hasEvent && formData.lineId && String(formData.lineId) !== ROOM_FIRST_BANQUET_SERVICE_LINE_ID) {
+        const lineConflict = firstBookingTimeConflict(existingBookings, booking =>
+            normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(formData.lineId), candidate);
+        if (lineConflict) {
+            issues.push(bookingTimePreflightIssue(
+                'booking_time_primary_animator_conflict',
+                `Ведучий зайнятий: ${bookingTimeConflictBookingLabel(lineConflict)} о ${lineConflict.time}.`,
+                { conflictBookingId: lineConflict.id }
+            ));
+        }
+    }
+
+    const secondLineId = formData.secondAnimatorLineId || selectedSecondAnimatorLineCandidate(formData.secondAnimator)?.id || null;
+    if (formData.hasEvent && secondLineId) {
+        const secondConflict = firstBookingTimeConflict(existingBookings, booking =>
+            normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(secondLineId), candidate);
+        if (secondConflict) {
+            issues.push(bookingTimePreflightIssue(
+                'booking_time_second_animator_conflict',
+                `Другий ведучий зайнятий: ${bookingTimeConflictBookingLabel(secondConflict)} о ${secondConflict.time}.`,
+                { conflictBookingId: secondConflict.id }
+            ));
+        }
+    }
+
+    if (candidate.room && isOperationalBookingRoomValue(candidate.room)) {
+        const roomConflict = firstBookingTimeConflict(existingBookings, booking =>
+            normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(candidate.room), candidate);
+        if (roomConflict) {
+            issues.push(bookingTimePreflightIssue(
+                'booking_time_room_conflict',
+                `Кімната зайнята: ${bookingTimeConflictBookingLabel(roomConflict)} о ${roomConflict.time}.`,
+                { conflictBookingId: roomConflict.id }
+            ));
+        }
+    }
+
+    return issues;
+}
+
+async function validateBookingTimeChangePreflight(token = BookingDrawerState.bookingTimeChangeToken) {
+    if (!isLatestBookingTimeChangeToken(token)) return null;
+    const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
+    const excludeId = bookingEditConflictExcludeIds();
+    const programs = Array.isArray(formData.activityPrograms) ? formData.activityPrograms.filter(Boolean) : [];
+    let issues = [];
+
+    try {
+        if (formData.hasEvent && bookingMultiActivityEnabled() && programs.length > 1) {
+            const result = await validateSelectedActivitySchedule(formData, {
+                render: true,
+                force: true,
+                excludeId
+            });
+            if (!isLatestBookingTimeChangeToken(token)) return null;
+            issues = (result.issues || []).map(issue => bookingTimePreflightIssue(
+                issue.key || `activity_time_${issue.programId || 'conflict'}`,
+                issue.message,
+                { fields: [`activityTime:${issue.programId || ''}`], conflictBookingId: issue.conflictBookingId }
+            ));
+        } else {
+            setSelectedActivityScheduleIssues({});
+            const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
+            if (!isLatestBookingTimeChangeToken(token)) return null;
+            const existingBookings = existingScheduleBookingsForValidation(bookings, excludeId);
+            issues = bookingTimeSingleSlotPreflightIssues(formData, existingBookings);
+        }
+    } catch (err) {
+        if (!isLatestBookingTimeChangeToken(token)) return null;
+        console.warn('[Booking] Booking time preflight failed', err);
+        setBookingTimePreflightState('failed', 'Не вдалося попередньо перевірити слот. Сервер перевірить при збереженні.', { token });
+        return { valid: false, unavailable: true, issues: [] };
+    }
+
+    if (!isLatestBookingTimeChangeToken(token)) return null;
+    if (issues.length) {
+        setBookingTimePreflightState('conflict', issues[0].message, { token, issues });
+        renderBookingPackageSummary();
+        return { valid: false, issues };
+    }
+    setBookingTimePreflightState('free', 'Слот попередньо вільний. Сервер перевірить остаточно при збереженні.', { token });
+    renderBookingPackageSummary();
+    return { valid: true, issues: [] };
+}
+
+function scheduleBookingTimePreflightRefresh(delay = BOOKING_TIME_PREFLIGHT_DEBOUNCE_MS, token = BookingDrawerState.bookingTimeChangeToken) {
+    clearTimeout(_bookingTimePreflightTimer);
+    const cleanToken = Number(token || 0) || 0;
+    setBookingTimePreflightState('checking', '', { token: cleanToken, updateSubmit: false });
+    _bookingTimePreflightTimer = setTimeout(() => {
+        validateBookingTimeChangePreflight(cleanToken).catch(error => {
+            if (!isLatestBookingTimeChangeToken(cleanToken)) return;
+            console.warn('[Booking] Booking time preflight refresh failed', error);
+            setBookingTimePreflightState('failed', 'Не вдалося попередньо перевірити слот. Сервер перевірить при збереженні.', { token: cleanToken });
+        });
+    }, Math.max(0, Number(delay) || 0));
+}
+
+function shiftSelectedActivityScheduleDraftsByBookingTimeDelta(previousTime, nextTime) {
+    if (!bookingMultiActivityEnabled()) return [];
+    const programs = getSelectedActivityPrograms();
+    if (programs.length <= 1) return [];
+    const api = bookingActivityScheduleApi();
+    const previous = api.normalizeSelectedActivityScheduleTime(previousTime || selectedActivityScheduleBaseTime());
+    const next = api.normalizeSelectedActivityScheduleTime(nextTime);
+    const previousMinutes = api.scheduleTimeToMinutes(previous);
+    const nextMinutes = api.scheduleTimeToMinutes(next);
+    if (previousMinutes === null || nextMinutes === null) return [];
+    const delta = nextMinutes - previousMinutes;
+    if (!delta) return [];
+
+    const scheduleTimesSnapshot = { ...getSelectedActivityScheduleTimes() };
+    const rowsBefore = api.buildSelectedActivityScheduleRows(programs, {
+        scheduleTimes: scheduleTimesSnapshot,
+        baseTime: previous,
+        ...selectedActivityScheduleOptions(),
+        allowInvalidManualTimes: true,
+        durationForProgram: typeof bookingSummaryActivityDuration === 'function'
+            ? bookingSummaryActivityDuration
+            : undefined
+    });
+    const shiftedTimes = {};
+    const issueMap = {};
+    rowsBefore.forEach(row => {
+        if (!row.time || row.startMinutes === null) return;
+        const shifted = api.scheduleMinutesToTime(row.startMinutes + delta);
+        shiftedTimes[String(row.programId)] = shifted;
+        if (!isSelectedActivityScheduleSlotTime(shifted, row)) {
+            const label = row.program?.code || row.program?.name || `активність #${row.index + 1}`;
+            addSelectedActivityScheduleIssue(issueMap, row.programId, `${label}: після зміни часу активність виходить за робочий день або 15-хвилинну сітку.`);
+        }
+    });
+    BookingDrawerState.selectedActivityScheduleTimes = shiftedTimes;
+    if (Object.keys(issueMap).length) setSelectedActivityScheduleIssues(issueMap);
+    return rowsBefore;
+}
+
+async function resolveRoomSelectionBanquetContextCandidate(sourceBooking = {}, sourceContext = {}, token = BookingDrawerState.roomSelectionContextRequestToken) {
+    const baseContext = sourceBookingToBanquetContext(sourceBooking);
+    const baseSourceContext = baseContext.groupId ? { ...sourceContext, groupId: baseContext.groupId } : sourceContext;
+    if (baseContext.groupId) return attachBookingRoomSourceContext(baseContext, baseSourceContext);
+    const sourceBookingId = String(sourceBooking.id || '').trim();
+    if (!sourceBookingId || typeof apiGetBanquetByBooking !== 'function') {
+        return attachBookingRoomSourceContext(baseContext, baseSourceContext);
+    }
+    const snapshot = await apiGetBanquetByBooking(sourceBookingId);
+    if (!isLatestBookingTimeChangeToken(token)) return null;
+    if (snapshot?.success === false) return attachBookingRoomSourceContext(baseContext, baseSourceContext);
+    const context = roomSelectionBanquetContextFromSnapshot(snapshot, sourceBooking);
+    const nextSourceContext = context?.groupId ? { ...sourceContext, groupId: context.groupId } : sourceContext;
+    return attachBookingRoomSourceContext(context, nextSourceContext);
+}
+
+async function refreshBookingRoomSelectionContextForTimeChange(token = BookingDrawerState.bookingTimeChangeToken) {
+    if (!isParkTimelineBookingMode() || AppState.editingBookingId) return;
+    if (BookingDrawerState.activeBanquetIntent === 'add_to_existing' && BookingDrawerState.explicitBanquetContext?.groupId) {
+        setBookingTimeContextIssue('', { updateSubmit: false });
+        renderBookingBanquetGroupSelector();
+        return;
+    }
+    const roomName = String(document.getElementById('roomSelect')?.value || '').trim();
+    if (!roomName) {
+        setBookingTimeContextIssue('', { updateSubmit: false });
+        return;
+    }
+    const targetTime = document.getElementById('bookingTime')?.value || '';
+    let sourceBooking = pickRoomBanquetSourceBooking(roomName, targetTime);
+    if (!sourceBooking) {
+        sourceBooking = await fetchFreshRoomBanquetSourceBooking(roomName, targetTime);
+        if (!isLatestBookingTimeChangeToken(token)) return;
+    }
+    if (!sourceBooking) {
+        if (BookingDrawerState.roomSourceContext?.sourceBookingId || BookingDrawerState.roomSelectionBanquetContext?.sourceBookingId) {
+            const staleContext = BookingDrawerState.roomSourceContext ? {
+                ...BookingDrawerState.roomSourceContext,
+                staleReason: 'stale_source_time'
+            } : null;
+            BookingDrawerState.roomSourceContext = staleContext;
+            if (BookingDrawerState.roomSelectionBanquetContext) {
+                BookingDrawerState.roomSelectionBanquetContext = {
+                    ...BookingDrawerState.roomSelectionBanquetContext,
+                    roomSourceContext: staleContext,
+                    staleReason: 'stale_source_time'
+                };
+            }
+            setBookingTimeContextIssue('Для нового часу не знайдено попереднє джерельне бронювання в цій кімнаті. Оберіть банкет/кімнату вручну або створіть окремо.');
+            renderBookingBanquetGroupSelector();
+        } else {
+            setBookingTimeContextIssue('', { updateSubmit: false });
+        }
+        return;
+    }
+
+    const sourceContext = buildBookingRoomSourceContext(sourceBooking, {
+        generationId: token,
+        sourceRole: roomBookingLooksLikeKitchen(sourceBooking) ? 'kitchen' : 'activity',
+        source: roomBookingLooksLikeKitchen(sourceBooking) ? 'kitchen_first_activity_bridge' : 'activity_first_kitchen_bridge'
+    });
+    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
+    const sourceCustomerId = roomBookingCustomerId(sourceBooking);
+    if (selectedCustomerId && sourceCustomerId && String(selectedCustomerId) !== String(sourceCustomerId)) {
+        BookingDrawerState.roomSourceContext = { ...sourceContext, staleReason: 'stale_source_customer' };
+        BookingDrawerState.roomSelectionBanquetContext = attachBookingRoomSourceContext(sourceBookingToBanquetContext(sourceBooking), BookingDrawerState.roomSourceContext);
+        setBookingTimeContextIssue('У вибраній кімнаті на новий час інший клієнт. Клієнта не змінено; оберіть кімнату, клієнта або банкет вручну.');
+        renderBookingBanquetGroupSelector();
+        renderBookingPackageSummary();
+        return;
+    }
+
+    const banquetContext = await resolveRoomSelectionBanquetContextCandidate(sourceBooking, sourceContext, token);
+    if (!isLatestBookingTimeChangeToken(token) || !banquetContext) return;
+    const previousGroupId = String(BookingDrawerState.selectedBanquetGroupId || '').trim();
+    const previousAutoGroupId = String(BookingDrawerState.autoFilledBanquetFromRoom?.groupId || '').trim();
+    const nextGroupId = String(banquetContext.groupId || '').trim();
+    const canAdoptGroup = !previousGroupId
+        || !nextGroupId
+        || previousGroupId === nextGroupId
+        || (previousAutoGroupId && previousAutoGroupId === previousGroupId && previousAutoGroupId === nextGroupId);
+
+    BookingDrawerState.roomSourceContext = banquetContext.roomSourceContext || sourceContext;
+    BookingDrawerState.roomSelectionBanquetContext = banquetContext;
+    if (nextGroupId && !canAdoptGroup) {
+        BookingDrawerState.roomSourceContext = {
+            ...BookingDrawerState.roomSourceContext,
+            staleReason: 'banquet_changed_needs_confirmation'
+        };
+        BookingDrawerState.roomSelectionBanquetContext = {
+            ...banquetContext,
+            roomSourceContext: BookingDrawerState.roomSourceContext,
+            staleReason: 'banquet_changed_needs_confirmation'
+        };
+        setBookingTimeContextIssue('Новий час відповідає іншому банкету. Автоперемикання заблоковано — підтвердьте банкет вручну або створіть окреме бронювання.');
+        renderBookingBanquetGroupSelector();
+        renderBookingPackageSummary();
+        return;
+    }
+
+    if (nextGroupId) {
+        BookingDrawerState.autoFilledBanquetFromRoom = banquetContext;
+        BookingDrawerState.selectedBanquetGroupId = nextGroupId;
+        BookingDrawerState.manualBanquetGroupSelection = false;
+        await refreshBookingBanquetGroupCandidates({
+            preselectGroupId: nextGroupId,
+            preserveSelection: false
+        });
+        if (!isLatestBookingTimeChangeToken(token)) return;
+    } else {
+        BookingDrawerState.autoFilledBanquetFromRoom = null;
+    }
+    setBookingTimeContextIssue('', { updateSubmit: false });
+    renderBookingBanquetGroupSelector();
+    renderBookingPackageSummary();
+}
+
+function refreshBookingTimeDependentsAfterChange(timeValue, options = {}) {
+    const control = document.getElementById('bookingTime');
+    const previousTime = normalizeSelectedActivityScheduleTime(options.previousTime || control?.dataset?.previousTime || control?.dataset?.currentTime || '');
+    const time = syncBookingTimeControlValue(timeValue, { syncTimeline: true });
+    if (!time) return '';
+    if (control?.dataset) delete control.dataset.previousTime;
+    const token = nextBookingTimeChangeToken();
+    setBookingTimeContextIssue('', { updateSubmit: false });
+    clearBookingTimePreflightState({ updateSubmit: false });
+    setSelectedActivityScheduleIssues({});
+    clearSelectedActivityPreflightState();
+    shiftSelectedActivityScheduleDraftsByBookingTimeDelta(previousTime || time, time);
+    if (window.BookingForm) BookingForm._dirty = true;
+    renderSelectedProgramSummary();
+    renderBookingPackageSummary();
+    refreshAnimatorSelectsForCurrentSlot().catch(error => {
+        console.warn('[Booking] Failed to refresh animator selects after time change', error);
+    });
+    const selectedRoom = String(document.getElementById('roomSelect')?.value || '').trim();
+    refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom, timeChangeToken: token }).catch(error => {
+        console.warn('[Booking] Failed to refresh room availability after time change', error);
+    });
+    refreshBookingRoomSelectionContextForTimeChange(token).catch(error => {
+        if (!isLatestBookingTimeChangeToken(token)) return;
+        console.warn('[Booking] Failed to refresh room context after time change', error);
+        setBookingTimeContextIssue('Не вдалося оновити банкетний контекст для нового часу. Перевірте кімнату/банкет вручну.');
+    });
+    scheduleBookingTimePreflightRefresh(BOOKING_TIME_PREFLIGHT_DEBOUNCE_MS, token);
+    return time;
+}
+
+function handleBookingTimeControlChange(timeValue) {
+    return refreshBookingTimeDependentsAfterChange(timeValue);
+}
+
+function stepBookingTimeControl(direction) {
+    const control = document.getElementById('bookingTime');
+    if (!control) return;
+    const target = bookingTimeStepTarget(direction, control.value);
+    if (!target) return;
+    const previousTime = control.dataset?.currentTime || control.value || '';
+    if (previousTime && control.dataset) control.dataset.previousTime = previousTime;
+    syncBookingTimeControlValue(target, { syncTimeline: false });
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+    control.focus?.({ preventScroll: true });
+}
+
 function selectedActivityScheduleLatestStartMinutes(row = {}) {
     const workday = selectedActivityScheduleWorkday();
     const duration = Number(row.duration || row.program?.duration || 0) || 0;
@@ -9019,6 +9609,7 @@ function getSelectedActivityScheduleRows(programs = getSelectedActivityPrograms(
         scheduleTimes: getSelectedActivityScheduleTimes(),
         baseTime: selectedActivityScheduleBaseTime(),
         ...selectedActivityScheduleOptions(),
+        allowInvalidManualTimes: true,
         durationForProgram: typeof bookingSummaryActivityDuration === 'function'
             ? bookingSummaryActivityDuration
             : undefined
@@ -9080,8 +9671,7 @@ function setSelectedActivityScheduleTime(programId, value, options = {}) {
     if (changedRow?.index === 0 && changedRow.time) {
         const bookingTime = document.getElementById('bookingTime');
         if (bookingTime) bookingTime.value = changedRow.time;
-        const selectedTime = document.getElementById('selectedTimeDisplay');
-        if (selectedTime) selectedTime.textContent = changedRow.time;
+        if (typeof syncBookingTimeControlValue === 'function') syncBookingTimeControlValue(changedRow.time, { syncTimeline: true });
         refreshAnimatorSelectsForCurrentSlot().catch(() => {});
     }
     setSelectedActivityScheduleIssues({});
@@ -9905,10 +10495,16 @@ function selectedSecondAnimatorLineCandidate(secondAnimator) {
 }
 
 async function refreshAnimatorSelectsForCurrentSlot() {
+    const primarySection = document.getElementById('bookingPrimaryAnimatorSection');
+    const primarySectionVisible = primarySection && !primarySection.classList.contains('hidden');
     const secondSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
     const extraHostVisible = !!document.getElementById('extraHostToggle')?.checked;
+    if (primarySectionVisible) await populatePrimaryAnimatorSelect();
     if (secondSectionVisible) await populateSecondAnimatorSelect();
     if (extraHostVisible) await populateExtraHostAnimatorSelect();
+    if (typeof populateSelectedActivitySecondAnimatorSelects === 'function') {
+        await populateSelectedActivitySecondAnimatorSelects();
+    }
 }
 
 async function populateSecondAnimatorSelect() {

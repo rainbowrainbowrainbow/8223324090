@@ -239,6 +239,30 @@ checkPage('index.html', (doc, html) => {
     check('sidebarLinks exists', !!doc.getElementById('sidebarLinks'));
     check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
     check('Timeline create booking toolbar button is absent', !doc.getElementById('newBookingBtn'));
+    const bookingTimeControl = doc.getElementById('bookingTime');
+    check('Booking create drawer exposes editable activity start time control',
+        bookingTimeControl?.tagName === 'SELECT'
+        && !doc.querySelector('input[type="hidden"]#bookingTime')
+        && !!doc.getElementById('bookingTimeStepBack')
+        && !!doc.getElementById('bookingTimeStepForward')
+        && bookingFormCode.includes("'bookingTime'")
+        && bookingCode.includes('function renderBookingTimeOptions')
+        && bookingCode.includes('function stepBookingTimeControl')
+        && bookingCode.includes('handleBookingTimeControlChange(el.value)')
+        && bookingCode.includes('function scheduleBookingTimePreflightRefresh')
+        && bookingCode.includes('function refreshBookingRoomSelectionContextForTimeChange')
+        && bookingCode.includes('function shiftSelectedActivityScheduleDraftsByBookingTimeDelta')
+        && bookingCode.includes('timeChangeToken')
+        && bookingCode.includes('booking_time_room_conflict')
+        && bookingCode.includes('banquet_changed_needs_confirmation')
+        && fileText('js/booking-activity-schedule.js').includes('allowInvalidManualTimes')
+        && panelCss.includes('.booking-time-control')
+        && panelCss.includes('grid-template-columns: minmax(44px, auto) minmax(96px, 1fr) minmax(44px, auto)')
+        && panelCss.includes('min-width: 0')
+        && responsiveCss.includes('.info-item--booking-time')
+        && responsiveCss.includes('grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(48px, auto)')
+        && responsiveCss.includes('min-height: 44px')
+        && darkModeCss.includes('body.dark-mode .booking-time-select'));
     check('Booking customer UI reads canonical children and writes new-customer payload from the form draft', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && bookingCode.includes('function bookingCustomerPayloadFromDraft') && bookingCode.includes('if (customer) obj.customer = customer;'));
     check('Timeline period and timeline type controls are split',
         !!doc.querySelector('#periodSelector[data-schedule-view-mode-selector]')

@@ -323,9 +323,14 @@
                         <span class="info-label">Дата:</span>
                         <span id="selectedDateDisplay" class="info-value">-</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Старт активності:</span>
-                        <span id="selectedTimeDisplay" class="info-value">-</span>
+                    <div class="info-item info-item--booking-time">
+                        <label class="info-label" for="bookingTime">Старт активності:</label>
+                        <div class="booking-time-control" aria-describedby="bookingTimeHint">
+                            <button type="button" id="bookingTimeStepBack" class="booking-time-step" aria-label="Змінити старт активності на 15 хвилин раніше">-15</button>
+                            <select id="bookingTime" class="booking-time-select info-value" aria-label="Старт активності" aria-describedby="bookingTimeHint"></select>
+                            <button type="button" id="bookingTimeStepForward" class="booking-time-step" aria-label="Змінити старт активності на 15 хвилин пізніше">+15</button>
+                        </div>
+                        <small id="bookingTimeHint" class="booking-time-hint" aria-live="polite"></small>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Аніматор:</span>
@@ -344,7 +349,6 @@
                         <span id="selectedGuestsDisplay" class="info-value">-</span>
                     </div>
                 </div>
-                <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
 
                 <div id="bookingGuestArrivalSection" class="form-section hidden" hidden aria-hidden="true">

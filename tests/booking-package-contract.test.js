@@ -529,6 +529,20 @@ function createBookingMenuCatalogHarness() {
 
     vm.createContext(context);
     vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
+    context.refreshAnimatorSelectsForCurrentSlot = async () => {
+        dependencyCalls.animatorRefreshes += 1;
+    };
+    context.getBookingFormData = () => ({
+        hasEvent: true,
+        activityPrograms: programs,
+        time: fields.get('bookingTime')?.value || options.baseTime || '12:00',
+        duration: options.duration || programs[0]?.duration || 30,
+        lineId: options.lineId || 'line-main',
+        room: options.room || 'Room A',
+        secondAnimator: options.secondAnimator || null,
+        secondAnimatorLineId: options.secondAnimatorLineId || null,
+        secondAnimatorLineName: options.secondAnimatorLineName || null
+    });
     return context;
 }
 
@@ -644,6 +658,69 @@ function multiActivitySchedulePrograms() {
     ];
 }
 
+function createHarnessElement(overrides = {}) {
+    const element = {
+        tagName: overrides.tagName || 'INPUT',
+        value: overrides.value || '',
+        textContent: overrides.textContent || '',
+        dataset: overrides.dataset || {},
+        disabled: false,
+        hidden: false,
+        children: [],
+        classList: {
+            contains: () => false,
+            toggle: () => {},
+            add: () => {},
+            remove: () => {}
+        },
+        appendChild(child) {
+            this.children.push(child);
+            this.options = this.children;
+            return child;
+        },
+        setAttribute(name, value) {
+            this[name] = String(value);
+        },
+        removeAttribute(name) {
+            delete this[name];
+        },
+        focus: () => {},
+        ...overrides
+    };
+    if (!element.dataset) element.dataset = {};
+    if (!element.children) element.children = [];
+    if (!element.classList) {
+        element.classList = {
+            contains: () => false,
+            toggle: () => {},
+            add: () => {},
+            remove: () => {}
+        };
+    }
+    return element;
+}
+
+function createHarnessSelect(value = '', dataset = {}) {
+    const element = createHarnessElement({
+        tagName: 'SELECT',
+        value,
+        dataset: { ...dataset },
+        children: [],
+        options: []
+    });
+    Object.defineProperty(element, 'innerHTML', {
+        get() {
+            return this._innerHTML || '';
+        },
+        set(value) {
+            this._innerHTML = String(value || '');
+            this.children = [];
+            this.options = this.children;
+        }
+    });
+    return element;
+}
+
 function createMultiActivityScheduleHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
     const start = bookingJs.indexOf('function bookingMultiActivityEnabled');
@@ -651,18 +728,36 @@ function createMultiActivityScheduleHarness(options = {}) {
     assert.ok(start >= 0 && end > start, 'multi-activity schedule helper slice exists');
 
     const programs = options.programs || multiActivitySchedulePrograms();
+    const fieldValues = options.fieldValues || {};
+    const timers = [];
+    const dependencyCalls = {
+        animatorRefreshes: 0,
+        roomAvailability: [],
+        banquetSelectorRenders: 0,
+        groupCandidateRefreshes: []
+    };
     const fields = new Map(Object.entries({
-        bookingTime: { value: options.baseTime || '12:00' },
-        selectedProgram: { value: programs[0]?.id || '' },
-        bookingLine: { value: options.lineId || 'line-main' },
-        roomSelect: { value: options.room || 'Room A' },
-        customerName: { value: '' },
-        bookingGroupName: { value: '' }
+        bookingTime: createHarnessSelect(options.baseTime || '12:00', { currentTime: options.baseTime || '12:00' }),
+        bookingTimeStepBack: createHarnessElement({ tagName: 'BUTTON' }),
+        bookingTimeStepForward: createHarnessElement({ tagName: 'BUTTON' }),
+        bookingTimeHint: createHarnessElement({ tagName: 'SMALL', value: '', textContent: '', dataset: {} }),
+        selectedProgram: createHarnessElement({ tagName: 'SELECT', value: programs[0]?.id || '' }),
+        bookingLine: createHarnessElement({ tagName: 'SELECT', value: options.lineId || 'line-main' }),
+        roomSelect: createHarnessElement({ tagName: 'SELECT', value: options.room || 'Room A' }),
+        customerName: createHarnessElement({ value: fieldValues.customerName || '' }),
+        bookingGroupName: createHarnessElement({ value: fieldValues.bookingGroupName || '' }),
+        bookingGuestArrivalTime: createHarnessElement({ type: 'time', value: fieldValues.bookingGuestArrivalTime || '' }),
+        bookingNotes: createHarnessElement({ tagName: 'TEXTAREA', value: fieldValues.bookingNotes || '' })
     }));
     const notifications = [];
     const revealed = [];
     const context = {
         console,
+        setTimeout: callback => {
+            timers.push(callback);
+            return timers.length;
+        },
+        clearTimeout: () => {},
         window: {
             BookingActivitySchedule
         },
@@ -676,7 +771,8 @@ function createMultiActivityScheduleHarness(options = {}) {
             }
         },
         document: {
-            getElementById: id => fields.get(id) || { value: '' },
+            getElementById: id => fields.get(id) || createHarnessElement({ value: '' }),
+            createElement: tagName => createHarnessElement({ tagName: String(tagName || '').toUpperCase(), dataset: {} }),
             querySelector: () => null,
             querySelectorAll: () => []
         },
@@ -709,6 +805,7 @@ function createMultiActivityScheduleHarness(options = {}) {
         buildExtraData: programId => ({ productId: programId }),
         buildBookingWorkspaceExtraData: () => ({ source: 'test_schedule_harness' }),
         formatDate: value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10)),
+        normalizeBookingDateKey: value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10)),
         timeToMinutes: value => {
             const [hours, minutes] = String(value || '00:00').split(':').map(Number);
             return (hours * 60) + minutes;
@@ -723,8 +820,13 @@ function createMultiActivityScheduleHarness(options = {}) {
         getBookingFormData: () => ({
             hasEvent: true,
             activityPrograms: programs,
+            time: fields.get('bookingTime')?.value || options.baseTime || '12:00',
+            duration: options.duration || programs[0]?.duration || 30,
             lineId: options.lineId || 'line-main',
-            room: options.room || 'Room A'
+            room: options.room || 'Room A',
+            secondAnimator: options.secondAnimator || null,
+            secondAnimatorLineId: options.secondAnimatorLineId || null,
+            secondAnimatorLineName: options.secondAnimatorLineName || null
         }),
         renderSelectedProgramSummary: () => {},
         renderBookingPackageSummary: () => {},
@@ -737,23 +839,82 @@ function createMultiActivityScheduleHarness(options = {}) {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;'),
-        refreshAnimatorSelectsForCurrentSlot: async () => {},
+        refreshAnimatorSelectsForCurrentSlot: async () => {
+            dependencyCalls.animatorRefreshes += 1;
+        },
+        refreshBookingRoomAvailabilityForSelectedDate: async refreshOptions => {
+            dependencyCalls.roomAvailability.push(refreshOptions || {});
+            return [];
+        },
         scheduleSelectedActivityConflictRefresh: () => {},
+        bookingEditConflictExcludeIds: () => null,
+        pickRoomBanquetSourceBooking: options.pickRoomBanquetSourceBooking || (() => null),
+        fetchFreshRoomBanquetSourceBooking: options.fetchFreshRoomBanquetSourceBooking || (async () => null),
+        renderBookingBanquetGroupSelector: () => {
+            dependencyCalls.banquetSelectorRenders += 1;
+        },
+        refreshBookingBanquetGroupCandidates: async refreshOptions => {
+            dependencyCalls.groupCandidateRefreshes.push(refreshOptions || {});
+        },
+        buildBookingRoomSourceContext: (booking, sourceContext = {}) => ({
+            ...sourceContext,
+            sourceBookingId: booking?.id || null,
+            groupId: booking?.groupId || booking?.group_id || null
+        }),
+        sourceBookingToBanquetContext: booking => ({
+            groupId: booking?.groupId || booking?.group_id || null,
+            sourceBookingId: booking?.id || null,
+            customerId: booking?.customerId || booking?.customer_id || null
+        }),
+        attachBookingRoomSourceContext: (contextValue = {}, sourceContext = {}) => ({
+            ...(contextValue || {}),
+            roomSourceContext: sourceContext || null
+        }),
+        bookingBanquetGroupSelectedCustomerId: () => options.selectedCustomerId || null,
+        roomBookingCustomerId: booking => booking?.customerId || booking?.customer_id || null,
+        roomBookingLooksLikeKitchen: booking => String(booking?.category || '').toLowerCase() === 'kitchen',
+        roomSelectionBanquetContextFromSnapshot: (snapshot, sourceBooking) => ({
+            groupId: snapshot?.group?.id || sourceBooking?.groupId || sourceBooking?.group_id || null,
+            sourceBookingId: sourceBooking?.id || null
+        }),
+        apiGetBanquetByBooking: options.apiGetBanquetByBooking || (async sourceBookingId => ({
+            success: true,
+            group: { id: `BQ-${sourceBookingId}` }
+        })),
         showNotification: (message, type) => notifications.push({ message, type }),
         revealHiddenBooking: id => revealed.push(id),
-        CLIENT_PINATA_FILLER_VALUE: 'client_filler'
+        CLIENT_PINATA_FILLER_VALUE: 'client_filler',
+        ROOM_FIRST_BANQUET_SERVICE_LINE_ID: 'banquet-service'
     };
     context.window.BookingForm = { _dirty: false };
+    context.BookingForm = context.window.BookingForm;
     context.window.TimelineBusinessContext = {
         presentation: () => ({ mode: 'park' }),
         current: () => ({ apiValue: 'event_genix' })
     };
     vm.createContext(context);
     vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
+    context.refreshAnimatorSelectsForCurrentSlot = async () => {
+        dependencyCalls.animatorRefreshes += 1;
+    };
+    context.getBookingFormData = () => ({
+        hasEvent: true,
+        activityPrograms: programs,
+        time: fields.get('bookingTime')?.value || options.baseTime || '12:00',
+        duration: options.duration || programs[0]?.duration || 30,
+        lineId: options.lineId || 'line-main',
+        room: options.room || 'Room A',
+        secondAnimator: options.secondAnimator || null,
+        secondAnimatorLineId: options.secondAnimatorLineId || null,
+        secondAnimatorLineName: options.secondAnimatorLineName || null
+    });
     context.renderSelectedProgramSummary = () => {};
     context.renderBookingPackageSummary = () => {};
     context.buildBookingWorkspaceExtraData = () => ({ source: 'test_schedule_harness' });
     context.__programs = programs;
+    context.__fields = fields;
+    context.__timers = timers;
+    context.__calls = dependencyCalls;
     context.__notifications = notifications;
     context.__revealed = revealed;
     return context;
@@ -908,6 +1069,7 @@ function createBookingDrawerSummaryHarness(options = {}) {
         window: dom.window,
         BookingDrawerState: { validationAttempted: false },
         CLIENT_PINATA_FILLER_VALUE: 'client_filler',
+        ROOM_FIRST_BANQUET_SERVICE_LINE_ID: 'banquet-service',
         CLIENT_PINATA_FILLER_LABEL: 'Client filler',
         updateBookingContextHeaderSummary: () => {},
         getBookingWorkspaceHasEvent: () => hasEvent,
@@ -1383,6 +1545,120 @@ test('booking multi-activity manual second time is persisted into banquetActivit
     assert.deepEqual(activities.map(item => item.time), ['12:45', '13:30']);
     assert.equal(base.extraData.multiActivity.schedule[1].manual, true);
     assert.equal(base.extraData.multiActivity.schedule[1].startTime, '12:45');
+});
+
+test('booking time change keeps bookingTime as the edited start source and preserves draft fields', async () => {
+    const [program] = multiActivitySchedulePrograms();
+    const context = createMultiActivityScheduleHarness({
+        programs: [program],
+        baseTime: '12:15',
+        room: 'Room A',
+        lineId: 'line-main',
+        fieldValues: {
+            customerName: 'Olena Test',
+            bookingGroupName: 'Birthday draft',
+            bookingGuestArrivalTime: '11:45',
+            bookingNotes: 'Keep this operator note'
+        }
+    });
+    const fields = context.__fields;
+
+    const result = context.handleBookingTimeControlChange('12:30');
+    await Promise.resolve();
+
+    assert.equal(result, '12:30');
+    assert.equal(fields.get('bookingTime').value, '12:30');
+    assert.equal(context.getBookingFormData().time, '12:30');
+    assert.equal(fields.get('customerName').value, 'Olena Test');
+    assert.equal(fields.get('bookingGroupName').value, 'Birthday draft');
+    assert.equal(fields.get('bookingNotes').value, 'Keep this operator note');
+    assert.equal(fields.get('bookingGuestArrivalTime').value, '11:45');
+    assert.equal(context.window.BookingForm._dirty, true);
+    assert.equal(context.__calls.animatorRefreshes, 1);
+    assert.equal(context.__calls.roomAvailability.length, 1);
+    assert.equal(context.__calls.roomAvailability[0].selectedRoom, 'Room A');
+    assert.equal(context.BookingDrawerState.bookingTimePreflight.status, 'checking');
+    assert.equal(context.__timers.length, 1);
+});
+
+test('booking time preflight reports a concrete second animator conflict', async () => {
+    const [program] = multiActivitySchedulePrograms();
+    const context = createMultiActivityScheduleHarness({
+        programs: [program],
+        secondAnimatorLineId: 'line-second',
+        getBookingsForDate: async () => [{
+            id: 'BK-SECOND-BUSY',
+            date: '2099-02-13',
+            time: '12:15',
+            duration: 60,
+            lineId: 'line-second',
+            room: 'Other room',
+            programId: 'busy-second',
+            label: 'Busy second host',
+            status: 'confirmed'
+        }]
+    });
+    context.__fields.get('bookingTime').value = '12:30';
+    context.BookingDrawerState.bookingTimeChangeToken = 11;
+
+    const result = await context.validateBookingTimeChangePreflight(11);
+
+    assert.equal(result.valid, false);
+    assert.equal(context.BookingDrawerState.bookingTimePreflight.status, 'conflict');
+    assert.equal(context.bookingTimeValidationIssues()[0].key, 'booking_time_second_animator_conflict');
+    assert.match(context.BookingDrawerState.bookingTimePreflight.message, /Busy second host/);
+});
+
+test('booking time shift keeps out-of-workday multi-activity draft visible and blocking', () => {
+    const programs = multiActivitySchedulePrograms().slice(0, 2);
+    const context = createMultiActivityScheduleHarness({ programs, baseTime: '19:00' });
+
+    context.shiftSelectedActivityScheduleDraftsByBookingTimeDelta('19:00', '19:15');
+    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+    const issues = context.BookingDrawerState.selectedActivityScheduleIssues;
+
+    assert.deepEqual(rows.map(row => row.time), ['19:15', '19:45']);
+    assert.equal(context.BookingDrawerState.selectedActivityScheduleTimes['show-40'], '19:45');
+    assert.ok(issues['show-40']?.messages?.length, 'out-of-workday shifted activity should stay visible but block save');
+});
+test('booking time change shifts every multi-activity draft by the same delta', () => {
+    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:45' } });
+
+    context.shiftSelectedActivityScheduleDraftsByBookingTimeDelta('12:00', '12:30');
+    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+
+    assert.deepEqual(rows.map(row => row.time), ['12:30', '13:15', '14:00']);
+    assert.deepEqual({ ...context.BookingDrawerState.selectedActivityScheduleTimes }, {
+        'anim-30': '12:30',
+        'show-40': '13:15',
+        'photo-20': '14:00'
+    });
+});
+
+test('booking time preflight reports a concrete room conflict', async () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [multiActivitySchedulePrograms()[0]],
+        getBookingsForDate: async () => [{
+            id: 'BK-ROOM-BUSY',
+            date: '2099-02-13',
+            time: '12:15',
+            duration: 30,
+            lineId: 'line-other',
+            room: 'Room A',
+            programId: 'busy-room',
+            label: 'Busy room',
+            status: 'confirmed'
+        }]
+    });
+    context.__fields.get('bookingTime').value = '12:30';
+    context.BookingDrawerState.bookingTimeChangeToken = 7;
+
+    const result = await context.validateBookingTimeChangePreflight(7);
+
+    assert.equal(result.valid, false);
+    assert.equal(context.BookingDrawerState.bookingTimePreflight.status, 'conflict');
+    assert.match(context.BookingDrawerState.bookingTimePreflight.message, /Кімната зайнята: Busy room о 12:15/);
+    assert.equal(context.bookingTimeValidationIssues()[0].key, 'booking_time_room_conflict');
 });
 
 test('booking multi-activity second host payload belongs to its activity row', () => {

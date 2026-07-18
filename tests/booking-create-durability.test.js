@@ -1237,6 +1237,73 @@ test('POST /api/bookings creates booking and banquet arrival atomically from exp
     });
 });
 
+test('POST /api/bookings persists edited bookingTime 12:30 while keeping guest arrival independent', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            time: '12:30',
+            notes: 'Operator note survives time edit',
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '11:45' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.time, '12:30');
+        assert.equal(res.data.banquetGroup.group.guestArrivalTime, '11:45');
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].time, '12:30');
+        assert.equal(state.rows[0].notes, 'Operator note survives time edit');
+        assert.equal(state.banquetGroups.length, 1);
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:45');
+    });
+});
+
+test('POST /api/bookings rejects edited bookingTime in the past before persisting banquet context', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl, state }) => {
+            const res = await createBooking(baseUrl, {
+                date: '2026-06-18',
+                time: '12:15',
+                banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '11:45' }
+            });
+
+            assert.equal(res.status, 400, JSON.stringify(res.data));
+            assert.match(res.data.error || '', /12:15/);
+            assert.equal(state.rows.length, 0);
+            assert.equal(state.banquetGroups.length, 0);
+            assert.equal(state.banquetMemberships.length, 0);
+        });
+    });
+});
+
+test('POST /api/bookings rejects occupied edited slot and rolls back draft payload', async () => {
+    await withApp({ stateBackedLineConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-BUSY-LINE',
+            date: '2099-02-10',
+            time: '12:15',
+            duration: 60,
+            line_id: 'line-1',
+            room: 'Other room',
+            label: 'Busy line'
+        }));
+
+        const res = await createBooking(baseUrl, {
+            time: '12:30',
+            duration: 30,
+            lineId: 'line-1',
+            room: 'Room A',
+            notes: 'Draft data must remain client-side after conflict'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.match(res.data.error || '', /12:15/);
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].id, 'BK-2099-BUSY-LINE');
+        assert.ok(state.tx.includes('ROLLBACK'));
+    });
+});
+
 test('POST /api/bookings reconciles an earlier exact-match pinata after explicit banquet creation', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         state.customers.push({
@@ -2889,6 +2956,42 @@ test('booking drawer keeps timeline arrival draft separate from activity booking
     assert.match(bookingJs, /apiCreateBooking\(booking, \{ banquetContext \}\)/);
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities, banquetContext \}\)/);
     assert.match(apiJs, /if \(options\.banquetContext\) payload\.banquetContext = options\.banquetContext/);
+});
+
+test('bookingTime remains the only editable activity start source for create payload', () => {
+    const bookingJs = read('js', 'booking.js');
+    const indexHtml = read('index.html');
+    const formDataBlock = bookingJs.slice(
+        bookingJs.indexOf('function getBookingFormData'),
+        bookingJs.indexOf('async function validateBookingConflicts')
+    );
+    const bookingObjectBlock = bookingJs.slice(
+        bookingJs.indexOf('function buildBookingObject'),
+        bookingJs.indexOf('async function buildSecondAnimatorBooking')
+    );
+    const timeChangeBlock = bookingJs.slice(
+        bookingJs.indexOf('function refreshBookingTimeDependentsAfterChange'),
+        bookingJs.indexOf('function stepBookingTimeControl')
+    );
+
+    assert.match(indexHtml, /<select[^>]+id="bookingTime"/);
+    assert.doesNotMatch(indexHtml, /<input[^>]+id="bookingTime"/);
+    assert.match(formDataBlock, /const time = document\.getElementById\('bookingTime'\)\?\.value/);
+    assert.match(formDataBlock, /time, lineId, lineName/);
+    assert.match(bookingObjectBlock, /time:\s*formData\.time/);
+    assert.doesNotMatch(timeChangeBlock, /bookingGuestArrivalTime|arrivalDraft|syncBookingGuestArrivalField/);
+});
+
+test('booking create failure keeps drawer open and draft data in place', () => {
+    const bookingJs = read('js', 'booking.js');
+    const failureBlock = bookingJs.slice(
+        bookingJs.indexOf('if (createResult && createResult.success === false)'),
+        bookingJs.indexOf('if (!createResultConfirmed(createResult))')
+    );
+
+    assert.match(failureBlock, /showNotification\(createResult\.error \|\| 'Помилка створення бронювання', 'error'\)/);
+    assert.match(failureBlock, /unlockSubmitBtn\(\);\s*return;/);
+    assert.doesNotMatch(failureBlock, /closeBookingPanel\(|resetBookingDrawerStateForOpen|bookingTime'\)\.value\s*=/);
 });
 
 test('active add-to-existing create path only resolves atomic endpoints or blocked states', () => {

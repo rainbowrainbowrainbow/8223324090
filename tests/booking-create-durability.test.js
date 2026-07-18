@@ -1257,6 +1257,87 @@ test('POST /api/bookings persists edited bookingTime 12:30 while keeping guest a
     });
 });
 
+test('POST /api/bookings/full persists the complete 12:15 to 12:30 multi-activity shift payload', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                time: '12:30',
+                duration: 30,
+                hosts: 1,
+                secondAnimator: null,
+                notes: 'Draft survives the 12:15 to 12:30 shift',
+                extraData: {
+                    multiActivity: {
+                        shiftedFrom: '12:15',
+                        shiftedTo: '12:30',
+                        schedule: [
+                            { programId: 'paper-show', startTime: '12:30', duration: 30 },
+                            { programId: 'quest-60', startTime: '13:00', duration: 45 },
+                            { programId: 'anim-60', startTime: '13:45', duration: 15 }
+                        ]
+                    }
+                }
+            },
+            linked: [],
+            banquetActivities: [
+                {
+                    date: '2099-02-13',
+                    time: '13:00',
+                    lineId: 'line-second',
+                    lineName: 'Second Animator',
+                    room: 'Room A',
+                    programId: 'quest-60',
+                    programCode: 'QUEST',
+                    label: 'Quest shifted',
+                    programName: 'Quest shifted',
+                    category: 'quest',
+                    duration: 45,
+                    price: 0,
+                    hosts: 1,
+                    status: 'confirmed',
+                    createdBy: 'creator-user'
+                },
+                {
+                    date: '2099-02-13',
+                    time: '13:45',
+                    lineId: 'line-main',
+                    lineName: 'Anna',
+                    room: 'Room A',
+                    programId: 'anim-60',
+                    programCode: 'ANIM',
+                    label: 'Animation shifted',
+                    programName: 'Animation shifted',
+                    category: 'animation',
+                    duration: 15,
+                    price: 1500,
+                    hosts: 1,
+                    status: 'confirmed',
+                    createdBy: 'creator-user'
+                }
+            ],
+            banquetContext: {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '11:45'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.mainBooking.time, '12:30');
+        assert.deepEqual(res.data.activityBookings.map(item => item.time), ['13:00', '13:45']);
+        assert.equal(res.data.banquetGroup.group.guestArrivalTime, '11:45');
+        assert.deepEqual(state.rows.map(item => item.time), ['12:30', '13:00', '13:45']);
+        assert.equal(state.rows[0].notes, 'Draft survives the 12:15 to 12:30 shift');
+        assert.deepEqual(JSON.parse(state.rows[0].extra_data).multiActivity.schedule.map(item => item.time), [
+            '12:30',
+            '13:00',
+            '13:45'
+        ]);
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:45');
+    });
+});
+
 test('POST /api/bookings rejects edited bookingTime in the past before persisting banquet context', async () => {
     await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
         await withApp({}, async ({ baseUrl, state }) => {

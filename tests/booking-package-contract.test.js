@@ -1512,6 +1512,15 @@ test('booking activity schedule helper limits selectable starts to 15-minute wor
         ...weekdayOptions,
         date: new Date('2099-02-14T00:00:00')
     }), true);
+
+    const exactEndBoundary = {
+        ...weekdayOptions,
+        latestStartMinutes: BookingActivitySchedule.scheduleTimeToMinutes('19:45')
+    };
+    const endBoundarySlots = BookingActivitySchedule.buildSelectedActivityScheduleTimeOptions(exactEndBoundary);
+    assert.equal(endBoundarySlots.at(-1), '19:45');
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('19:45', exactEndBoundary), true);
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('20:00', exactEndBoundary), false);
 });
 
 test('booking multi-activity default schedule is persisted into banquetActivities payload', () => {
@@ -1633,6 +1642,19 @@ test('booking time change shifts every multi-activity draft by the same delta', 
         'show-40': '13:15',
         'photo-20': '14:00'
     });
+});
+
+test('timeline browser smoke protects edited start payload, conflict durability, and responsive drawer overflow', () => {
+    const smoke = read('tests', 'browser', 'timeline-browser-smoke.js');
+
+    assert.match(smoke, /async function assertBookingTimeCreateDurability/);
+    assert.match(smoke, /openBookingPanel\('12:15'/);
+    assert.match(smoke, /selectOption\('12:30'\)/);
+    assert.match(smoke, /capturedPayload\.time,\s*'12:30'/);
+    assert.match(smoke, /capturedPayload\.banquetContext\?\.guestArrivalTime,\s*'11:45'/);
+    assert.match(smoke, /server conflict keeps booking drawer open/);
+    assert.match(smoke, /booking form has no horizontal overflow/);
+    assert.match(smoke, /created booking persisted edited 12:30 start/);
 });
 
 test('booking time preflight reports a concrete room conflict', async () => {

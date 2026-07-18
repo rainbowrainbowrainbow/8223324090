@@ -486,6 +486,187 @@ async function chooseFirstActivityProgram(page) {
     });
 }
 
+async function assertBookingDrawerResponsive(page) {
+    const viewports = [
+        { width: 1440, height: 960, label: 'desktop' },
+        { width: 390, height: 844, label: 'mobile' }
+    ];
+    for (const viewport of viewports) {
+        await page.setViewportSize(viewport);
+        const metrics = await page.evaluate(() => {
+            const panel = document.getElementById('bookingPanel');
+            const form = document.getElementById('bookingForm');
+            const panelRect = panel?.getBoundingClientRect?.();
+            return {
+                viewportWidth: window.innerWidth,
+                panelVisible: Boolean(panel && !panel.classList.contains('hidden')),
+                panelLeft: panelRect?.left ?? Number.NaN,
+                panelRight: panelRect?.right ?? Number.NaN,
+                bodyOverflowX: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+                formOverflowX: form ? Math.max(0, form.scrollWidth - form.clientWidth) : Number.NaN
+            };
+        });
+        assert.equal(metrics.panelVisible, true, `booking drawer remains visible at ${viewport.label}`);
+        assert.ok(metrics.panelLeft >= -1, `booking drawer stays inside the left viewport edge at ${viewport.label}: ${metrics.panelLeft}`);
+        assert.ok(metrics.panelRight <= metrics.viewportWidth + 1, `booking drawer stays inside the right viewport edge at ${viewport.label}: ${metrics.panelRight}`);
+        assert.ok(metrics.bodyOverflowX <= 2, `booking drawer does not create body horizontal overflow at ${viewport.label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.formOverflowX <= 2, `booking form has no horizontal overflow at ${viewport.label}: ${metrics.formOverflowX}`);
+    }
+    await page.setViewportSize({ width: 1440, height: 960 });
+}
+
+async function assertBookingTimeCreateDurability(page, date, animator, room, customer) {
+    await renderTimelineView(page, date, 'animators');
+    const opened = await page.evaluate(async ({ animator, room, customer }) => {
+        const result = await openBookingPanel('12:15', animator.id);
+        if (result !== true) return { ok: false, error: 'openBookingPanel returned false' };
+        if (typeof selectCustomerFromSearch === 'function') {
+            selectCustomerFromSearch(customer);
+        } else if (typeof applySelectedCustomerToBookingForm === 'function') {
+            applySelectedCustomerToBookingForm(customer);
+        }
+        const roomSelect = document.getElementById('roomSelect');
+        if (roomSelect) roomSelect.value = room;
+        const groupName = document.getElementById('bookingGroupName');
+        if (groupName) groupName.value = `Task3 time draft ${RUN_ID}`;
+        const notes = document.getElementById('bookingNotes');
+        if (notes) notes.value = `Task3 booking time durability ${RUN_ID}`;
+        if (typeof initializeBookingArrivalDraft === 'function') {
+            initializeBookingArrivalDraft('11:45', {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '11:45'
+            });
+        }
+        const arrival = document.getElementById('bookingGuestArrivalTime');
+        if (arrival) arrival.value = '11:45';
+        if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        return {
+            ok: true,
+            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            time: document.getElementById('bookingTime')?.value || '',
+            customerId: document.getElementById('selectedCustomerId')?.value || '',
+            room: roomSelect?.value || ''
+        };
+    }, { animator, room, customer });
+    assert.equal(opened.ok, true, `booking time drawer opens: ${opened.error || ''}`);
+    assert.equal(opened.panelVisible, true, 'booking time drawer is visible');
+    assert.equal(opened.time, '12:15', 'booking time drawer starts from the clicked 12:15 slot');
+    assert.equal(String(opened.customerId), String(customer.id), 'booking time draft keeps selected test customer');
+    assert.equal(opened.room, room, 'booking time draft keeps selected test room');
+
+    const program = await chooseFirstActivityProgram(page);
+    assert.ok(program?.id, 'booking time durability scenario selected an activity program');
+    await page.locator('#bookingTime').selectOption('12:30');
+    await page.waitForFunction(() =>
+        document.getElementById('bookingTime')?.value === '12:30'
+        && ['valid', 'conflict', 'failed'].includes(BookingDrawerState?.bookingTimePreflight?.status)
+    );
+
+    const draftBeforeSubmit = await page.evaluate(() => ({
+        time: document.getElementById('bookingTime')?.value || '',
+        groupName: document.getElementById('bookingGroupName')?.value || '',
+        notes: document.getElementById('bookingNotes')?.value || '',
+        arrival: document.getElementById('bookingGuestArrivalTime')?.value || '',
+        customerId: document.getElementById('selectedCustomerId')?.value || '',
+        programId: document.getElementById('selectedProgram')?.value || '',
+        preflightStatus: BookingDrawerState?.bookingTimePreflight?.status || ''
+    }));
+    assert.equal(draftBeforeSubmit.time, '12:30');
+    assert.equal(draftBeforeSubmit.arrival, '11:45', 'guest arrival stays independent from edited activity start');
+    assert.equal(String(draftBeforeSubmit.customerId), String(customer.id));
+    assert.equal(String(draftBeforeSubmit.programId), String(program.id));
+    assert.equal(draftBeforeSubmit.preflightStatus, 'valid', 'edited 12:30 slot passes browser preflight');
+    await assertBookingDrawerResponsive(page);
+
+    let capturedPayload = null;
+    let injectConflict = true;
+    const routePattern = '**/api/bookings*';
+    const routeHandler = async route => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (injectConflict && request.method() === 'POST' && pathname === '/api/bookings') {
+            injectConflict = false;
+            capturedPayload = request.postDataJSON();
+            await route.fulfill({
+                status: 409,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: false,
+                    error: 'Task3 simulated occupied slot conflict',
+                    conflictBookingId: `TASK3-CONFLICT-${RUN_ID}`
+                })
+            });
+            return;
+        }
+        await route.continue();
+    };
+    await page.route(routePattern, routeHandler);
+    const conflictResponse = page.waitForResponse(response =>
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/bookings'
+        && response.status() === 409
+    );
+    await page.evaluate(() => {
+        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
+            bubbles: true,
+            cancelable: true
+        }));
+    });
+    await conflictResponse;
+    await page.waitForFunction(() => {
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        return panel && !panel.classList.contains('hidden') && submit && !submit.disabled;
+    });
+    await page.unroute(routePattern, routeHandler);
+
+    assert.ok(capturedPayload, 'booking create request payload was captured');
+    assert.equal(capturedPayload.time, '12:30');
+    assert.equal(capturedPayload.banquetContext?.guestArrivalTime, '11:45');
+    assert.equal(capturedPayload.notes, draftBeforeSubmit.notes);
+    assert.equal(String(capturedPayload.customerId), String(customer.id));
+
+    const draftAfterConflict = await page.evaluate(() => ({
+        panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+        time: document.getElementById('bookingTime')?.value || '',
+        groupName: document.getElementById('bookingGroupName')?.value || '',
+        notes: document.getElementById('bookingNotes')?.value || '',
+        arrival: document.getElementById('bookingGuestArrivalTime')?.value || '',
+        customerId: document.getElementById('selectedCustomerId')?.value || ''
+    }));
+    assert.equal(draftAfterConflict.panelVisible, true, 'server conflict keeps booking drawer open');
+    assert.deepEqual(draftAfterConflict, {
+        panelVisible: true,
+        time: draftBeforeSubmit.time,
+        groupName: draftBeforeSubmit.groupName,
+        notes: draftBeforeSubmit.notes,
+        arrival: draftBeforeSubmit.arrival,
+        customerId: draftBeforeSubmit.customerId
+    });
+    await assertBookingDrawerResponsive(page);
+
+    const createResponsePromise = page.waitForResponse(response =>
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/bookings'
+    );
+    await page.evaluate(() => {
+        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
+            bubbles: true,
+            cancelable: true
+        }));
+    });
+    const createResponse = await createResponsePromise;
+    const createBody = await createResponse.json();
+    assert.equal(createResponse.ok(), true, JSON.stringify(createBody));
+    assert.equal(createBody.success, true, 'retry after server conflict creates booking');
+    assert.equal(createBody.booking?.time, '12:30', 'created booking persisted edited 12:30 start');
+    assert.equal(createBody.banquetGroup?.group?.guestArrivalTime, '11:45', 'created banquet kept independent guest arrival');
+    await page.waitForFunction(() => document.getElementById('bookingPanel')?.classList.contains('hidden'));
+    return createBody.booking;
+}
+
 async function openActivityFromKitchenSource(page, date, kitchenId) {
     await renderTimelineView(page, date, 'rooms');
     return page.evaluate(async ({ kitchenId }) => {
@@ -1318,6 +1499,7 @@ async function run() {
     const token = session.token;
     const date = process.env.TIMELINE_BROWSER_SMOKE_DATE || futureDate();
     const secondDate = datePlus(date, 1);
+    const bookingTimeDate = datePlus(date, 2);
     const room = DEFAULT_ROOM;
     const createdBookingIds = [];
     const createdCustomerIds = [];
@@ -1351,6 +1533,16 @@ async function run() {
         createdBookingIds.push(activity.id);
 
         ({ context, page } = await openAuthenticatedPage(browser, base, session));
+        const bookingTimeAnimator = await firstAnimatorLine(base, token, bookingTimeDate);
+        const bookingTimeCreate = await assertBookingTimeCreateDurability(
+            page,
+            bookingTimeDate,
+            bookingTimeAnimator,
+            room,
+            customerA
+        );
+        assert.ok(bookingTimeCreate?.id, 'booking time durability retry returned created booking');
+        createdBookingIds.push(bookingTimeCreate.id);
         await assertTimelineDeepLinkSwitching(page, base, date);
         await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
 
@@ -1458,6 +1650,7 @@ async function run() {
         assert.equal(kitchenFirstAnimatorVisible, false, 'kitchen-first kitchen stays hidden from animator timeline');
 
         console.log(`Timeline browser smoke OK: ${base} date=${date} room=${room}`);
+        console.log(`  OK booking start 12:15 -> 12:30, 409 draft durability, and responsive drawer on ${bookingTimeDate}`);
         console.log(`  OK activity first -> kitchen after, group ${groupId(activitySnapshot)}`);
         console.log(`  OK kitchen first -> activity after, group ${groupId(kitchenSnapshot)}`);
         console.log('  OK existing group reuse, visibility, reveal action, and cache view/date switch');

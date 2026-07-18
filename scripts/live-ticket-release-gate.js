@@ -151,7 +151,7 @@ async function managerImpersonationSession() {
     assert.ok(Array.isArray(users), 'creator users list is an array');
     const candidates = users.filter(user => {
         if (String(user?.role || '') !== 'manager') return false;
-        return /(qa|test|codex|smoke|demo|С‚РµСЃС‚)/i.test(
+        return /(qa|test|codex|smoke|demo|тест)/i.test(
             `${user?.username || ''} ${user?.name || ''}`
         );
     });
@@ -365,11 +365,23 @@ async function openAuthenticatedContext(browser, session) {
     await page.route('https://www.clarity.ms/**', fulfillBlockedExternal);
     await page.route('https://fonts.googleapis.com/**', fulfillBlockedExternal);
     await page.route('https://fonts.gstatic.com/**', fulfillBlockedExternal);
-    const diagnostics = { consoleErrors: [], pageErrors: [], navigations: [], authFailures: [] };
+    const diagnostics = {
+        consoleErrors: [],
+        ignoredConsoleErrors: [],
+        pageErrors: [],
+        navigations: [],
+        authFailures: []
+    };
     page.on('console', message => {
         if (message.type() === 'error') {
             const entry = message.text();
-            if (/Failed to load resource: net::ERR_FAILED/i.test(entry)) return;
+            if (
+                /Failed to load resource: net::ERR_FAILED/i.test(entry)
+                || /^Failed to load resource: the server responded with a status of 422 \(\)$/i.test(entry)
+            ) {
+                diagnostics.ignoredConsoleErrors.push(entry);
+                return;
+            }
             diagnostics.consoleErrors.push(entry);
             console.error(`[browser console] ${entry}`);
         }
@@ -715,7 +727,7 @@ async function assertSummaryAndPdf(token, expectedSubtotal) {
         { token }
     );
     const serialized = JSON.stringify(summary);
-    assert.match(serialized, /regular_child|Р—РІРёС‡Р°Р№РЅРёР№ РґРёС‚СЏС‡РёР№/, 'summary contains ticket rows');
+    assert.match(serialized, /regular_child|Звичайний дитячий/, 'summary contains ticket rows');
     assert.ok(
         serialized.includes(String(expectedSubtotal)),
         'summary contains ticket subtotal'
@@ -908,10 +920,12 @@ async function showTicketDetails(page, screenshotPath) {
     await page.waitForSelector('#bookingModal:not(.hidden)');
     const state = await page.evaluate(() => ({
         hasTicketGroup: Boolean(document.querySelector('.booking-detail-package-serving-group--tickets')),
+        ticketRowCount: document.querySelectorAll('.booking-detail-package-table-row--ticket').length,
         text: document.getElementById('bookingDetails')?.textContent || ''
     }));
     assert.equal(state.hasTicketGroup, true, 'booking detail contains ticket group');
-    assert.match(state.text, /РљРІРёС‚|Р—РІРёС‡Р°Р№РЅРёР№|РџС–Р»СЊРіРѕРІРёР№|Р†РјРµРЅРёРЅРЅРёРє/, 'booking detail contains ticket labels');
+    assert.ok(state.ticketRowCount > 0, 'booking detail contains ticket rows');
+    assert.match(state.text, /Квитки|Звичайний|Пільговий|Іменинник|КВИТОК/, 'booking detail contains ticket labels');
     await page.locator('#bookingModal').screenshot({ path: screenshotPath });
     return state;
 }
@@ -968,8 +982,8 @@ async function reservedWeekendPreview(page) {
     });
     const blockedText = `${blocked.stateText} ${blocked.stickyError}`;
     assert.equal(blocked.quote, null, 'weekend under-3 has no accepted quote');
-    assert.match(blockedText, /РґРѕ 3|С‚СЂСЊРѕС…/i, 'weekend under-3 error identifies ticket');
-    assert.match(blockedText, /Р±СѓРґРЅ|РІРёС…С–РґРЅ/i, 'weekend under-3 error identifies day restriction');
+    assert.match(blockedText, /до 3|трьох/i, 'weekend under-3 error identifies ticket');
+    assert.match(blockedText, /будн|вихідн/i, 'weekend under-3 error identifies day restriction');
     await page.locator('#bookingTicketsSection').screenshot({
         path: path.join(SENIOR_ARTIFACT_DIR, '05-weekend-under3-blocked.png')
     });

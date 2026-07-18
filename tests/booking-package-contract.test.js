@@ -5301,6 +5301,19 @@ test('booking modal banquet root header shows planned schedule instead of techni
     assert.equal((emptyDocument.querySelector('.booking-detail-meta')?.textContent || '').includes('10:00 - 10:30'), false);
 });
 
+test('booking finance inserts use one explicit PostgreSQL type for business context', () => {
+    const route = read('routes', 'bookings.js');
+    const financeInsertValues = route.match(
+        /INSERT INTO finance_transactions \(business_context,[\s\S]*?VALUES \(\$1::varchar,[\s\S]*?COALESCE\(business_context, 'event_genix'\) = \$1::varchar/gi
+    ) || [];
+
+    assert.ok(financeInsertValues.length >= 5);
+    assert.doesNotMatch(
+        route,
+        /INSERT INTO finance_transactions \(business_context,[\s\S]{0,400}?VALUES \(\$1,[\s\S]{0,300}?COALESCE\(business_context, 'event_genix'\) = \$1(?:\s|LIMIT)/
+    );
+});
+
 test('booking modal banquet overview separates work summary from technical metadata', () => {
     const bookingJs = read('js', 'booking.js');
     const bookingPackageRendererJs = read('js', 'booking-package-renderer.js');

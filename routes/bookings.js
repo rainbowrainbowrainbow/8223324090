@@ -3279,7 +3279,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await runOptionalBookingTransactionStep(client, 'Finance auto-record', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                     VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
                              $2, $3, $4, $5, $6, $7)`,
                     [businessContext, b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
                 );
@@ -3291,7 +3291,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await runOptionalBookingTransactionStep(client, 'Certificate finance record', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
-                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                     VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
                              $2, $3, $4, 'certificate', $5, $6, 'system')`,
                     [businessContext, b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
                 );
@@ -4350,7 +4350,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                     VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
                              $2, $3, $4, $5, $6, $7)`,
                     [businessContext, main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
                 );
@@ -4362,7 +4362,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full activity)', async () => {
                     await client.query(
                         `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                         VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                         VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
                                  $2, $3, $4, $5, $6, $7)`,
                         [
                             businessContext,
@@ -5637,7 +5637,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 if (finUpdate.rowCount === 0) {
                     await client.query(
                         `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                         VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                         VALUES ($1::varchar, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1::varchar LIMIT 1),
                                  $2, $3, $4, $5, $6, $7)`,
                         [businessContext, b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
                     );

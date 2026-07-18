@@ -33,10 +33,11 @@ function read(file) {
 }
 
 function metricForHtml(html) {
+    const normalizedHtml = String(html || '').replace(/\r\n?/g, '\n');
     return {
-        styleBytes: Array.from(html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)).reduce((sum, match) => sum + match[1].length, 0),
-        inlineStyleAttrs: (html.match(/\sstyle\s*=/g) || []).length,
-        hardColors: (html.match(/#[0-9a-fA-F]{3,8}|rgba?\(/g) || []).length
+        styleBytes: Array.from(normalizedHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)).reduce((sum, match) => sum + match[1].length, 0),
+        inlineStyleAttrs: (normalizedHtml.match(/\sstyle\s*=/g) || []).length,
+        hardColors: (normalizedHtml.match(/#[0-9a-fA-F]{3,8}|rgba?\(/g) || []).length
     };
 }
 

@@ -1328,8 +1328,11 @@ function renderPayrollTimeBreakdown(row = {}) {
 function renderPayrollAdditionalBreakdown(row = {}) {
     const transparency = payrollTransparency(row);
     const roles = Array.isArray(transparency.additionalRoles) ? transparency.additionalRoles : [];
-    if (!roles.length) return '<span class="salary-muted">Немає</span>';
-    return roles.map(role => {
+    const blockers = Array.isArray(row.payrollBlockingIssues)
+        ? row.payrollBlockingIssues
+        : (Array.isArray(row.payroll_blocking_issues) ? row.payroll_blocking_issues : []);
+    if (!roles.length && !blockers.length) return '<span class="salary-muted">Немає</span>';
+    const lines = roles.map(role => {
         const trace = [
             role.attendanceRef ? `attendance #${role.attendanceRef}` : '',
             role.segmentRef ? `segment #${role.segmentRef}` : '',
@@ -1338,13 +1341,22 @@ function renderPayrollAdditionalBreakdown(row = {}) {
         const status = role.status === 'blocked'
             ? '<span class="salary-additional-warning">Потрібна перевірка</span>'
             : '';
+        const amount = role.status === 'blocked'
+            ? '<strong class="salary-additional-warning">Не розраховано</strong>'
+            : `<strong>+ ${formatMoney(role.amount || 0)}</strong>`;
         return `<div class="salary-additional-line">
             <div><b>${escapeHtml(role.professionKey || '—')}</b>${status}</div>
             <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${formatMoney(role.rate || 0)} × ${salaryNumber(role.multiplier || 0).toLocaleString('uk-UA')}</div>
-            <strong>+ ${formatMoney(role.amount || 0)}</strong>
+            ${amount}
             <small>${escapeHtml(trace || role.policyVersion || 'Немає snapshot reference')}</small>
         </div>`;
-    }).join('');
+    });
+    if (blockers.length) {
+        lines.push(`<div class="salary-additional-warning" role="alert">
+            ${blockers.map(issue => escapeHtml(issue.message || issue.code || 'Payroll потребує перевірки')).join('<br>')}
+        </div>`);
+    }
+    return lines.join('');
 }
 
 function renderPayrollProfessionBreakdown(row = {}) {

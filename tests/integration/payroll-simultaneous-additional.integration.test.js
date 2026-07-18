@@ -487,4 +487,119 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         );
         assert.equal(activePaidReports.rows[0].count, 0);
     });
+
+    test('hourly stays payable while per-shift, monthly-fixed, and hybrid fail closed across previews and generation', async () => {
+        await pool.query(
+            `UPDATE hr_time_records
+             SET compensation_snapshot = jsonb_set(compensation_snapshot, '{manualReview}', 'false'::jsonb, false)
+             WHERE staff_id = $1 AND record_date = $2`,
+            [staffId, WORK_DATE]
+        );
+        await pool.query(
+            'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
+            [MONTH, staffId]
+        );
+        await pool.query(
+            `DELETE FROM finance_transactions
+             WHERE staff_id = $1
+               AND payment_method IN ('salary', 'salary_reversal')
+               AND date::date >= $2::date
+               AND date::date < ($2::date + INTERVAL '1 month')`,
+            [staffId, `${MONTH}-01`]
+        );
+
+        const activateScheme = async (schemeType, config) => {
+            await pool.query('DELETE FROM payroll_schemes WHERE staff_id = $1', [staffId]);
+            await pool.query(
+                `INSERT INTO payroll_schemes
+                    (staff_id, scheme_type, title, is_active, config_json, effective_from, created_by, updated_by)
+                 VALUES ($1, $2, $3, true, $4::jsonb, '2099-07-01', 'integration_test', 'integration_test')`,
+                [staffId, schemeType, `${schemeType} integration`, JSON.stringify(config)]
+            );
+        };
+
+        for (const scenario of [
+            { schemeType: 'per_shift', config: { perShiftRate: 900 } },
+            { schemeType: 'monthly_fixed', config: { monthlyAmount: 30000 } },
+            { schemeType: 'hybrid', config: { hourlyRate: 100, perShiftRate: 900 } }
+        ]) {
+            await activateScheme(scenario.schemeType, scenario.config);
+
+            const preview = await authRequest(
+                'GET',
+                `/api/payroll/preview?staffId=${staffId}&month=${MONTH}`
+            );
+            assert.equal(preview.status, 200, JSON.stringify(preview.data));
+            assert.equal(preview.data.preview.additionalAmount, 0);
+            assert.equal(preview.data.preview.additionalRoleHours, 8.5);
+            const previewIssue = preview.data.preview.payrollBlockingIssues.find(
+                issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+            assert.ok(previewIssue, JSON.stringify(preview.data.preview.payrollBlockingIssues));
+            assert.equal(previewIssue.schemeType, scenario.schemeType);
+            assert.equal(previewIssue.professionKey, additionalProfessionKey);
+            assert.equal(previewIssue.paidRoleMinutes, 510);
+            assert.equal(
+                previewIssue.message,
+                'Формула подвійної оплати для цієї схеми не налаштована'
+            );
+
+            const hrSalary = await authRequest('GET', `/api/hr/salary?month=${MONTH}`);
+            assert.equal(hrSalary.status, 200, JSON.stringify(hrSalary.data));
+            const salaryRow = hrSalary.data.data.find(row => Number(row.staff_id) === staffId);
+            assert.ok(salaryRow, 'fixture HR salary row is present');
+            assert.equal(salaryRow.additional_pay, 0);
+            assert.equal(salaryRow.additional_role_hours, 8.5);
+            assert.equal(
+                salaryRow.payroll_blocking_issues[0].code,
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+
+            const generation = await authRequest(
+                'POST',
+                `/api/payroll/generate?month=${MONTH}`,
+                { month: MONTH }
+            );
+            assert.equal(generation.status, 409, JSON.stringify(generation.data));
+            assert.equal(
+                generation.data.code,
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+            assert.equal(
+                generation.data.details.blockingIssues[0].schemeType,
+                scenario.schemeType
+            );
+
+            const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
+            assert.equal(financeCommit.status, 409, JSON.stringify(financeCommit.data));
+            assert.equal(financeCommit.data.code, 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED');
+            assert.equal(
+                financeCommit.data.details.blockingIssues[0].code,
+                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            );
+
+            const reports = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM payroll_reports
+                 WHERE period_month = $1 AND staff_id = $2`,
+                [MONTH, staffId]
+            );
+            assert.equal(reports.rows[0].count, 0);
+        }
+
+        await activateScheme('hourly', { hourlyRate: 100 });
+        const hourlyPreview = await authRequest(
+            'GET',
+            `/api/payroll/preview?staffId=${staffId}&month=${MONTH}`
+        );
+        assert.equal(hourlyPreview.status, 200, JSON.stringify(hourlyPreview.data));
+        assert.equal(hourlyPreview.data.preview.additionalAmount, 1700);
+        assert.equal(hourlyPreview.data.preview.additionalRoleHours, 8.5);
+        assert.equal(
+            hourlyPreview.data.preview.payrollBlockingIssues.some(
+                issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
+            ),
+            false
+        );
+    });
 });

@@ -46,9 +46,23 @@ function payrollAdditionalRoles(row = {}) {
         : (Array.isArray(row.additionalRoles) ? row.additionalRoles : []);
 }
 
+function payrollBlockingIssues(row = {}) {
+    const issues = row.payrollBlockingIssues || row.payroll_blocking_issues
+        || row.reconciliation?.blockingIssues || row.reconciliation?.blocking_issues;
+    return Array.isArray(issues) ? issues : [];
+}
+
+function payrollBlockingIssueForRole(row = {}, role = {}) {
+    return payrollBlockingIssues(row).find(issue => (
+        (!issue.professionKey || issue.professionKey === role.professionKey)
+        && (!issue.date || issue.date === role.workDate)
+    )) || null;
+}
+
 function payrollExportFields(row = {}) {
     const transparency = row.payrollTransparency || row.payroll_transparency || {};
     const roles = payrollAdditionalRoles(row);
+    const blockingIssues = payrollBlockingIssues(row);
     const joined = field => roles
         .map(role => role?.[field])
         .filter(value => value !== null && value !== undefined && value !== '')
@@ -60,7 +74,13 @@ function payrollExportFields(row = {}) {
         additional_profession: joined('professionKey'),
         additional_rate: joined('rate'),
         additional_multiplier: joined('multiplier'),
-        additional_amount: Number(transparency.additionalAmount ?? row.additionalAmount ?? 0)
+        additional_amount: Number(transparency.additionalAmount ?? row.additionalAmount ?? 0),
+        payroll_blocking_codes: [...new Set(blockingIssues.map(issue => issue.code).filter(Boolean))].join('|'),
+        payroll_blocking_details: blockingIssues.map(issue => [
+            issue.professionKey || '',
+            issue.paidRoleMinutes ?? issue.minutes ?? '',
+            issue.message || issue.code || ''
+        ].join(':')).join(' | ')
     };
 }
 
@@ -126,7 +146,8 @@ router.get('/export', async (req, res) => {
             'База', 'Overtime', 'Нараховано', 'Утримання', 'Аванси', 'До виплати',
             'Розподіл за професіями', 'Payroll source refs',
             'physical_hours', 'base_role_hours', 'additional_role_hours',
-            'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount'
+            'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount',
+            'payroll_blocking_codes', 'payroll_blocking_details'
         ];
         const rows = report.staff.map(row => {
             const exportFields = payrollExportFields(row);
@@ -170,7 +191,9 @@ router.get('/export', async (req, res) => {
                 exportFields.additional_profession,
                 exportFields.additional_rate,
                 exportFields.additional_multiplier,
-                exportFields.additional_amount
+                exportFields.additional_amount,
+                exportFields.payroll_blocking_codes,
+                exportFields.payroll_blocking_details
             ].map(csvCell).join(';');
         });
         const csv = '\uFEFF' + [header.map(csvCell).join(';'), ...rows].join('\r\n');
@@ -210,7 +233,9 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'additional_profession', key: 'additional_profession', width: 24 },
             { header: 'additional_rate', key: 'additional_rate', width: 18 },
             { header: 'additional_multiplier', key: 'additional_multiplier', width: 22 },
-            { header: 'additional_amount', key: 'additional_amount', width: 20 }
+            { header: 'additional_amount', key: 'additional_amount', width: 20 },
+            { header: 'payroll_blocking_codes', key: 'payroll_blocking_codes', width: 48 },
+            { header: 'payroll_blocking_details', key: 'payroll_blocking_details', width: 64 }
         ];
         for (const row of report.staff) {
             const exportFields = payrollExportFields(row);
@@ -229,7 +254,7 @@ router.get('/export-xlsx', async (req, res) => {
             });
         }
         summary.views = [{ state: 'frozen', ySplit: 1 }];
-        summary.autoFilter = { from: 'A1', to: 'Q1' };
+        summary.autoFilter = { from: 'A1', to: 'S1' };
         summary.getRow(1).font = { bold: true };
 
         const additionalLines = workbook.addWorksheet('Additional lines');
@@ -248,10 +273,14 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'additional_multiplier', key: 'multiplier', width: 22 },
             { header: 'additional_amount', key: 'amount', width: 20 },
             { header: 'policy_version', key: 'policy_version', width: 30 },
-            { header: 'formula', key: 'formula', width: 34 }
+            { header: 'formula', key: 'formula', width: 34 },
+            { header: 'status', key: 'status', width: 16 },
+            { header: 'blocker_code', key: 'blocker_code', width: 48 },
+            { header: 'blocker_message', key: 'blocker_message', width: 64 }
         ];
         for (const row of report.staff) {
             for (const role of payrollAdditionalRoles(row)) {
+                const blocker = payrollBlockingIssueForRole(row, role);
                 additionalLines.addRow({
                     staff_id: row.staffId,
                     staff_name: row.name,
@@ -267,12 +296,15 @@ router.get('/export-xlsx', async (req, res) => {
                     multiplier: role.multiplier ?? null,
                     amount: role.amount ?? null,
                     policy_version: role.policyVersion || null,
-                    formula: role.formula || null
+                    formula: role.formula || null,
+                    status: role.status || (blocker ? 'blocked' : 'ready'),
+                    blocker_code: blocker?.code || null,
+                    blocker_message: blocker?.message || null
                 });
             }
         }
         additionalLines.views = [{ state: 'frozen', ySplit: 1 }];
-        additionalLines.autoFilter = { from: 'A1', to: 'O1' };
+        additionalLines.autoFilter = { from: 'A1', to: 'R1' };
         additionalLines.getRow(1).font = { bold: true };
 
         const buffer = await workbook.xlsx.writeBuffer();

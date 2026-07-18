@@ -10,7 +10,10 @@ const {
 } = require('../services/hrPayrollPeriod');
 const {
     OVERTIME_MULTIPLIER,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED,
     assertPayrollRowsCommitReady,
+    assertPayrollRowsGenerationReady,
     buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     calculatePayroll,
@@ -251,6 +254,7 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     assert.equal(professionPay.baseAmount, 900);
     assert.equal(professionPay.additionalAmount, 1700);
     assert.equal(professionPay.totalAmount, 2600);
+    assert.deepEqual(professionPay.blockingIssues, []);
     assert.equal(calculation.summary.base, 900);
     assert.equal(calculation.summary.additional, 1700);
     assert.equal(calculation.summary.gross, 2600);
@@ -296,7 +300,7 @@ test('simultaneous additional pay keeps nine physical hours and pays 8.5 extra h
     });
 });
 
-test('per-shift, monthly and hybrid schemes do not enable simultaneous additional pay without an approved formula', () => {
+test('per-shift, monthly and hybrid schemes fail closed for simultaneous additional pay without an approved formula', () => {
     const exactMetrics = metrics({
         physicalMinutes: 540,
         totalMinutes: 540,
@@ -331,12 +335,51 @@ test('per-shift, monthly and hybrid schemes do not enable simultaneous additiona
     assert.equal(perShift.additionalAmount, 0);
     assert.equal(perShift.additionalLines.length, 0);
     assert.equal(perShift.totalAmount, 900);
+    assert.equal(perShift.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
+    assert.equal(perShift.blockingIssues[0].schemeType, 'per_shift');
+    assert.equal(perShift.blockingIssues[0].professionKey, 'hallkeeper');
+    assert.equal(perShift.blockingIssues[0].paidRoleMinutes, 510);
+    assert.equal(perShift.blockingIssues[0].paidRoleHours, 8.5);
+    assert.equal(perShift.blockingIssues[0].message, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE);
     assert.equal(monthly.baseAmount, 30000);
     assert.equal(monthly.additionalAmount, 0);
     assert.equal(monthly.additionalLines.length, 0);
     assert.equal(monthly.totalAmount, 30000);
+    assert.equal(monthly.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
+    assert.equal(monthly.blockingIssues[0].schemeType, 'monthly_fixed');
     assert.equal(hybrid.applies, false);
     assert.equal(hybrid.professionRateSummary.length, 0);
+    assert.equal(hybrid.additionalAmount, 0);
+    assert.equal(hybrid.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
+    assert.equal(hybrid.blockingIssues[0].schemeType, 'hybrid');
+    assert.equal(hybrid.reconciliation.blockingIssues[0].code, PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED);
+    assert.ok(hybrid.reconciliation.warnings.some(
+        issue => issue.code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+    ));
+    assert.throws(
+        () => assertPayrollRowsGenerationReady([{
+            staffId: 7,
+            name: 'Unsupported scheme QA',
+            payrollBlockingIssues: hybrid.blockingIssues
+        }]),
+        error => error.code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+            && error.statusCode === 409
+            && error.details.blockingIssues[0].staffId === 7
+    );
+    assert.doesNotThrow(() => assertPayrollRowsGenerationReady([{
+        staffId: 7,
+        payrollBlockingIssues: []
+    }]));
+    assert.throws(
+        () => assertPayrollRowsCommitReady([{
+            staffId: 7,
+            name: 'Unsupported scheme QA',
+            payrollBlockingIssues: perShift.blockingIssues
+        }]),
+        error => error.code === 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED'
+            && error.statusCode === 409
+            && error.details.blockingIssues[0].code === PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED
+    );
 });
 
 test('simultaneous additional pay applies the immutable snapshot multiplier', () => {
@@ -1345,6 +1388,7 @@ test('payroll routes use the shared allocation service and export one employee r
     const payrollService = fs.readFileSync(path.join(root, 'services', 'payroll.js'), 'utf8');
     const hrPage = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
     const financePage = fs.readFileSync(path.join(root, 'js', 'finance-page.js'), 'utf8');
+    const staffPage = fs.readFileSync(path.join(root, 'js', 'staff-page.js'), 'utf8');
 
     assert.match(hrRoute, /loadPayrollAttendanceMetrics\(\{ from: period\.from, to: period\.to, staffIds \}, db\)/);
     assert.match(hrRoute, /loadPayrollProfileContext\(staffIds, \{ from: period\.from, to: period\.to \}, db\)/);
@@ -1366,8 +1410,10 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(payrollRoute, /function payrollExportFields/);
     assert.match(payrollRoute, /'physical_hours', 'base_role_hours', 'additional_role_hours'/);
     assert.match(payrollRoute, /'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount'/);
+    assert.match(payrollRoute, /'payroll_blocking_codes', 'payroll_blocking_details'/);
     assert.match(payrollRoute, /router\.get\('\/export-xlsx'/);
     assert.match(payrollRoute, /workbook\.addWorksheet\('Additional lines'\)/);
+    assert.match(payrollRoute, /blocker_code: blocker\?\.code/);
     assert.match(payrollService, /payroll_additional_line_generated/);
     assert.match(hrRoute, /compensation_snapshot_corrected/);
     assert.match(hrRoute, /payrollDetailsRedacted: true/);
@@ -1383,6 +1429,9 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(financePage, /\/api\/payroll\/export\?month=/);
     assert.match(financePage, /\/api\/payroll\/export-xlsx\?month=/);
     assert.match(financePage, /renderPayrollAdditionalBreakdown/);
+    assert.match(financePage, /row\.payrollBlockingIssues/);
+    assert.match(financePage, /role="alert"/);
+    assert.match(staffPage, /Для per shift, monthly fixed або hybrid payroll буде заблоковано/);
 });
 
 test('payroll profile resolver keeps profile query budget batched by staff and profile ids', () => {

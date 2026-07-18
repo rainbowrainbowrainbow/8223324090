@@ -10,6 +10,8 @@ const WORKED_ATTENDANCE_STATUSES = new Set(['present', 'late', 'early_leave', 'a
 const SIMULTANEOUS_ADDITIONAL_LINE_TYPE = 'simultaneous_additional';
 const EXPLICIT_ADDITIONAL_RATE_SOURCES = new Set(['staff_profession_rates.hourly_rate']);
 const PAYROLL_ROLE_HOURS_EXPLANATION = 'Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу';
+const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED';
+const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE = 'Формула подвійної оплати для цієї схеми не налаштована';
 
 const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
@@ -1624,14 +1626,98 @@ function attachSimultaneousAdditionalPay(result, metrics = {}) {
     };
 }
 
+function buildUnsupportedSimultaneousAdditionalSchemeIssues(metrics = {}, schemeType = '') {
+    const allocations = Array.isArray(metrics.additionalProfessionAllocations)
+        ? metrics.additionalProfessionAllocations
+        : [];
+    const grouped = new Map();
+    for (const allocation of allocations) {
+        const compensationMode = String(
+            allocation.compensationMode || allocation.compensation_mode || ''
+        ).trim();
+        const minutes = Math.max(0, toNumber(
+            allocation.minutes ?? allocation.actualMinutes ?? allocation.actual_minutes,
+            0
+        ));
+        if (compensationMode !== 'paid_hourly' || minutes <= 0) continue;
+        const professionKey = normalizeProfessionKey(
+            allocation.professionKey || allocation.profession_key
+        );
+        const date = String(allocation.date || allocation.workDate || allocation.work_date || '').slice(0, 10);
+        const key = `${date}:${professionKey || ''}`;
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                date: date || null,
+                professionKey: professionKey || null,
+                minutes: 0,
+                attendanceRefs: new Set(),
+                segmentRefs: new Set(),
+                roleRefs: new Set()
+            });
+        }
+        const group = grouped.get(key);
+        group.minutes += minutes;
+        const attendanceRef = allocation.attendanceRef ?? allocation.attendance_ref;
+        const segmentRef = allocation.segmentRef ?? allocation.segment_ref
+            ?? allocation.segmentId ?? allocation.segment_id;
+        const roleRef = allocation.roleRef ?? allocation.role_ref
+            ?? allocation.roleId ?? allocation.role_id;
+        if (attendanceRef !== null && attendanceRef !== undefined) group.attendanceRefs.add(attendanceRef);
+        if (segmentRef !== null && segmentRef !== undefined) group.segmentRefs.add(segmentRef);
+        if (roleRef !== null && roleRef !== undefined) group.roleRefs.add(roleRef);
+    }
+    return [...grouped.values()].map(group => payrollIssue(
+        PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED,
+        PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
+        {
+            schemeType: String(schemeType || '').trim() || null,
+            date: group.date,
+            professionKey: group.professionKey,
+            minutes: group.minutes,
+            paidRoleMinutes: group.minutes,
+            paidRoleHours: roundHoursFromMinutes(group.minutes),
+            attendanceRefs: [...group.attendanceRefs],
+            segmentRefs: [...group.segmentRefs],
+            roleRefs: [...group.roleRefs]
+        },
+        'error'
+    ));
+}
+
 function applySimultaneousAdditionalPayPolicy(result, metrics = {}, schemeType = 'hourly') {
     if (schemeType === 'hourly') return attachSimultaneousAdditionalPay(result, metrics);
+    const unsupportedIssues = buildUnsupportedSimultaneousAdditionalSchemeIssues(metrics, schemeType);
+    const blockingIssues = compactAllocationIssues([
+        ...(metrics.payrollBlockingIssues || []),
+        ...(metrics.reconciliation?.blockingIssues || []),
+        ...unsupportedIssues
+    ]);
+    const allocationIssues = compactAllocationIssues([
+        ...(result.allocationIssues || []),
+        ...blockingIssues
+    ]);
+    const reconciliation = {
+        ...(result.reconciliation || metrics.reconciliation || {}),
+        days: [...(result.reconciliation?.days || metrics.reconciliation?.days || [])],
+        warnings: [...(result.reconciliation?.warnings || metrics.reconciliation?.warnings || [])],
+        ...(blockingIssues.length ? { blockingIssues: [...blockingIssues] } : {})
+    };
+    for (const issue of blockingIssues) {
+        const exists = reconciliation.warnings.some(warning => (
+            warning.code === issue.code
+            && String(warning.date || '') === String(issue.date || '')
+            && String(warning.professionKey || '') === String(issue.professionKey || '')
+        ));
+        if (!exists) reconciliation.warnings.push(issue);
+    }
     return {
         ...result,
         additionalLines: [],
         additionalAmount: 0,
         totalAmount: toNumber(result.baseAmount, 0) + toNumber(result.overtimeAmount, 0),
-        blockingIssues: []
+        allocationIssues,
+        blockingIssues,
+        reconciliation
     };
 }
 
@@ -2052,7 +2138,23 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
     const schemeType = activeScheme?.schemeType || activeScheme?.scheme_type || 'hourly';
     const standardType = ['hourly', 'per_shift', 'monthly_fixed'].includes(schemeType);
-    if (!standardType) return { applies: false, baseLines: [], overtimeLines: [], professionRateSummary: [] };
+    if (!standardType) {
+        return applySimultaneousAdditionalPayPolicy({
+            applies: false,
+            baseLines: [],
+            overtimeLines: [],
+            baseAmount: 0,
+            overtimeAmount: 0,
+            totalAmount: 0,
+            professionRateSummary: [],
+            allocationIssues: compactAllocationIssues([...(metrics.allocationIssues || [])]),
+            reconciliation: {
+                ...(metrics.reconciliation || {}),
+                days: [...(metrics.reconciliation?.days || [])],
+                warnings: [...(metrics.reconciliation?.warnings || [])]
+            }
+        }, metrics, schemeType);
+    }
     const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
     const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
     if (payrollProfileContextEnabled(payrollProfileContext)) {
@@ -2716,8 +2818,30 @@ async function updatePayrollScheme(id, payload, user) {
     }
 }
 
+function assertPayrollRowsGenerationReady(rows = []) {
+    const blockingIssues = [];
+    for (const row of rows || []) {
+        for (const issue of payrollCommitBlockingIssues(row)) {
+            if (issue.code !== PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED) continue;
+            blockingIssues.push({
+                staffId: row.staff_id ?? row.staffId ?? null,
+                staffName: row.staff_name ?? row.name ?? null,
+                ...issue
+            });
+        }
+    }
+    if (!blockingIssues.length) return;
+    const err = new Error(PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE);
+    err.status = 409;
+    err.statusCode = 409;
+    err.code = PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED;
+    err.details = { blockingIssues };
+    throw err;
+}
+
 async function generatePayrollReports(month, user) {
     const report = await getSalaryReport(month);
+    assertPayrollRowsGenerationReady(report.staff);
     const client = await pool.connect();
     const generated = [];
     const skipped = [];
@@ -2913,7 +3037,10 @@ module.exports = {
     REPORT_STATUSES,
     SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
     PAYROLL_ROLE_HOURS_EXPLANATION,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED,
+    PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
     assertPayrollRowsCommitReady,
+    assertPayrollRowsGenerationReady,
     buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     calculatePayroll,

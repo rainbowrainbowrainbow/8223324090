@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.78",
+  "version": "0.79.79",
   "eventGenix": {
-    "releaseLabel": "Payroll Bulk Apply Fix"
+    "releaseLabel": "Transaction Ownership Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

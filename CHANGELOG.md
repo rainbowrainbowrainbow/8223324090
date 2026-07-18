@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.79 - Transaction Ownership Hardening
+
+### Backend / Транзакції / Стабільність / (18.07.2026) [codex]
+- **Захищено transaction ownership у scoped сервісах** — `customerChildren`, `leadCustomerRepair`, `taskDecompositionLibrary`, `Hermes Studio` і `backfill-room-resource-id` більше не перепідключають checked-out PostgreSQL client.
+- **Nested services не керують чужою транзакцією** — повторно використаний client не отримує вкладені `BEGIN`, `COMMIT`, `ROLLBACK` або `release()`.
+- **Контракт зафіксовано static guard-ом** — `tests/sql-safety.test.js` перевіряє порядок reuse-before-connect, `reuseClient` для неоднозначних helper-ів і payroll bulk contract.
+- **Без змін БД і ролей** — schema, auth, Railway settings, legacy payroll і production data не змінювались.
+
+---
+
 ## v0.79.78 - Payroll Bulk Apply Fix
 
 ### HR / Зарплата / Bulk / (18.07.2026) [codex]

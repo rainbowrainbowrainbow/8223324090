@@ -306,6 +306,7 @@ for (const code of TICKET_TYPE_CODES) {
                             newBanquetFlow: true
                         }),
                         error => error.code === 'TICKET_TYPE_UNAVAILABLE'
+                            && error.message === 'Квиток для дитини до 3 років недоступний у вихідні.'
                     );
                     return;
                 }

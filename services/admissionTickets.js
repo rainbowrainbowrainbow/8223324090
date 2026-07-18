@@ -970,7 +970,10 @@ async function resolveAdmissionTicketQuote({
         }
         if (row.availability === TICKET_AVAILABILITY.UNAVAILABLE) {
             if (quantity > 0) {
-                throw new AdmissionTicketError(`${row.name} is unavailable for ${dayType}`, {
+                const unavailableMessage = code === 'under_3_child' && dayType === TICKET_DAY_TYPES.WEEKEND
+                    ? 'Квиток для дитини до 3 років недоступний у вихідні.'
+                    : `Квиток «${row.name}» недоступний для обраної дати.`;
+                throw new AdmissionTicketError(unavailableMessage, {
                     status: 422,
                     code: 'TICKET_TYPE_UNAVAILABLE',
                     details: { ticketTypeCode: code, dayType, admissionContext }

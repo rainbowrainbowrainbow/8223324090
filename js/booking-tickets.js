@@ -15,6 +15,7 @@ const BookingTickets = (() => {
         status: 'idle',
         quote: null,
         baselineSubtotal: null,
+        comparisonSubtotal: null,
         legacySubtotal: null,
         error: null,
         conversionPreview: false,
@@ -191,8 +192,9 @@ const BookingTickets = (() => {
         const total = document.getElementById('bookingTicketQuoteTotal');
         if (total) {
             const subtotal = Number(state.quote?.ticketSubtotal || 0);
-            const delta = state.baselineSubtotal !== null && subtotal !== Number(state.baselineSubtotal)
-                ? `<small class="booking-ticket-delta">Було ${escapeHtml(money(state.baselineSubtotal))}; різниця ${escapeHtml(money(subtotal - Number(state.baselineSubtotal)))}</small>`
+            const previousSubtotal = state.baselineSubtotal ?? state.comparisonSubtotal;
+            const delta = previousSubtotal !== null && subtotal !== Number(previousSubtotal)
+                ? `<small class="booking-ticket-delta">Було ${escapeHtml(money(previousSubtotal))}; різниця ${escapeHtml(money(subtotal - Number(previousSubtotal)))}</small>`
                 : '';
             total.innerHTML = state.quote
                 ? `<span>Квитки ${delta}</span><strong>${escapeHtml(money(subtotal))}</strong>`
@@ -277,6 +279,9 @@ const BookingTickets = (() => {
 
     function scheduleQuote() {
         clearTimeout(state.timer);
+        if (state.quote && state.baselineSubtotal === null) {
+            state.comparisonSubtotal = Number(state.quote.ticketSubtotal || 0);
+        }
         state.status = 'loading';
         state.quote = null;
         state.error = null;
@@ -303,6 +308,7 @@ const BookingTickets = (() => {
         state.status = 'idle';
         state.quote = null;
         state.baselineSubtotal = null;
+        state.comparisonSubtotal = null;
         state.legacySubtotal = null;
         state.error = null;
         state.conversionPreview = false;
@@ -327,6 +333,7 @@ const BookingTickets = (() => {
             state.status = 'ready';
             state.quote = storedQuote;
             state.baselineSubtotal = Number(storedQuote.ticketSubtotal || 0);
+            state.comparisonSubtotal = null;
             state.legacySubtotal = null;
             setManualValuesFromLines(storedQuote.ticketLines);
             render();
@@ -338,6 +345,7 @@ const BookingTickets = (() => {
         state.quote = null;
         state.legacySubtotal = legacyEntrySubtotal(booking);
         state.baselineSubtotal = state.legacySubtotal;
+        state.comparisonSubtotal = null;
         setManualValuesFromLines([]);
         render();
     }

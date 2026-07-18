@@ -43,6 +43,8 @@ test('booking ticket controls expose only four manual quantities and server quot
     assert.match(tickets, /sequenceKey:/);
     assert.match(tickets, /TICKET_PRICE_CHANGED/);
     assert.match(tickets, /conversionConfirmed/);
+    assert.match(tickets, /comparisonSubtotal/);
+    assert.match(tickets, /const previousSubtotal = state\.baselineSubtotal \?\? state\.comparisonSubtotal/);
     assert.match(booking, /window\.BookingTickets\?\.validationIssue/);
     assert.match(booking, /obj\.ticketQuantities = formData\.ticketQuantities/);
 });

@@ -564,6 +564,7 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
         );
         assert.equal(unavailable.status, 422);
         assert.equal(unavailable.body.code, 'TICKET_TYPE_UNAVAILABLE');
+        assert.equal(unavailable.body.error, 'Квиток для дитини до 3 років недоступний у вихідні.');
     });
 
     test('existing booking quote reads legacy snapshot without conversion and canonical group/room evidence on explicit conversion', async () => {

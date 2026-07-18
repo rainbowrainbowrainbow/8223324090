@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.69",
+  "version": "0.79.71",
   "eventGenix": {
-    "releaseLabel": "Admission Ticket Booking QA Fixes"
+    "releaseLabel": "Ticket Finance Sync"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

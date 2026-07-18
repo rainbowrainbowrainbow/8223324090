@@ -186,6 +186,26 @@ a room rename.
 catalog. The constant and export have been removed; active
 `timeline_resources(type='room')` is the only operational catalog.
 
+## Task 1 Closure And Ticket Dependency
+
+The room-resource foundation is complete for ticket work:
+
+- migration `296` is additive, governed, applied, and backfilled with the
+  documented unresolved legacy exceptions;
+- new/edit/duplicate/full/linked, banquet, booking-template, and recurring write
+  paths validate and persist durable room identity;
+- `room-takeaway` is a virtual non-physical ID and cannot prove a reserved-room
+  ticket context;
+- the ticket tariff/admission decision is fixed in
+  `docs/TICKET_TARIFF_CONTRACT.md` and
+  `services/ticketTariffContract.js`;
+- migrations `297`-`299` are already merged, so `300` is the next ticket
+  migration number at Task 1 closure.
+
+Ticket implementation must not use the 21 unresolved `NULL` legacy rows as
+reserved-room evidence. They resolve to the standard admission context until an
+operator explicitly repairs their room identity.
+
 ## Safety And Rollback
 
 - Schema rollback is documented in migration 296, but the additive columns should

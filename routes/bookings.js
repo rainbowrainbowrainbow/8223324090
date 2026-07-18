@@ -2728,7 +2728,7 @@ router.get('/:date', async (req, res) => {
                     category, duration, price, hosts, second_animator, pinata_filler,
                     pinata_mode, pinata_number, pinata_filler_number,
                     client_pinata_service_price, client_pinata_service_note, costume,
-                    room, notes, created_by, created_at, linked_to, status, kids_count,
+                    room, room_resource_id, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source,
                     banquet_guests, banquet_adults, banquet_tables, banquet_menu

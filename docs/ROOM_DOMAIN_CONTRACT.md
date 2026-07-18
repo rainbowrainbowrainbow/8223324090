@@ -55,7 +55,8 @@ Quarantine:
 Create:
 
 - New room-timeline bookings should select an active physical room resource or the virtual takeaway option.
-- Until `room_resource_id` exists, the server may continue to persist `bookings.room` as the selected room name.
+- The server persists the validated `room_resource_id` and derives the current
+  display `room` snapshot from the canonical resource.
 - The UI must not offer inactive physical rooms for new bookings.
 - The UI should not offer `Інше` for new room-timeline bookings after catalog consolidation.
 
@@ -76,7 +77,8 @@ Rename:
 - `name` changes to the new display name.
 - The old `name` and old `short_name` are added to `metadata.aliases`.
 - Old bookings using the old text continue to resolve to the same room resource through aliases.
-- Conflict checks remain text-sensitive until durable booking room ids are approved, so aliases alone are not enough for full rename safety.
+- Conflict checks and advisory locks use the durable ID first; aliases are a
+  compatibility path only for legacy rows whose ID is `NULL`.
 
 Deactivate:
 
@@ -106,30 +108,23 @@ Unknown legacy room:
 
 | Scenario | Contract expectation | Current/future coverage |
 |---|---|---|
-| Create room booking | Active physical room or takeaway only; no inactive room selection. | Characterize current non-empty text behavior, then cover resource-backed selection. |
-| Edit booking | Existing valid room remains editable; problem room can be repaired. | Cover active room edit and legacy/problem repair path before UI change. |
-| Duplicate booking | Valid source room can carry over; invalid source room requires explicit choice. | Add characterization before disabling `Інше`/inactive choices. |
+| Create room booking | Active physical room or takeaway only; no inactive room selection. | Implemented and covered by room write-path tests. |
+| Edit booking | Existing valid room remains editable; problem room can be repaired. | Implemented and covered by active/inactive/unknown room write tests. |
+| Duplicate booking | Valid source room can carry over; invalid source room requires explicit choice. | Implemented through server canonicalization and durable duplicate payload coverage. |
 | Availability | Free-room list uses the same active room catalog as timeline. | Implemented through active `timeline_resources(type='room')`; `ALL_ROOMS` was removed. |
 | Strict room conflict | Unrelated overlapping physical room bookings conflict. | Covered by focused room conflict tests. |
 | Same-banquet overlap | Kitchen/service and activity overlap in the same banquet can be allowed by policy. | Covered by existing same-banquet room policy tests. |
 | Takeaway | Does not block physical rooms and never resolves to quarantine. | Covered by existing takeaway room tests. |
-| Rename | Same `resource_id`; old name becomes alias; old bookings resolve. | Resolver has alias behavior; add catalog-management test when rename UI/API is changed. |
-| Deactivate | Not selectable for new bookings; old bookings remain visible/repairable. | Resolver quarantines inactive rooms; add UI selection test when catalog UI changes. |
+| Rename | Same `resource_id`; old name becomes alias; old bookings resolve. | Implemented in resource upsert and covered by resolver/catalog tests. |
+| Deactivate | Not selectable for new bookings; old bookings remain visible/repairable. | Implemented by backend validation, resolver quarantine, and deactivation guard tests. |
 | Unknown legacy room | Goes only to quarantine with diagnostic reason. | Covered by resolver/render fallback tests. |
-| Empty quarantine | Quarantine line is not rendered when no problem bookings exist. | Needed for the immediate UX fix. |
-| Non-empty quarantine | Quarantine line renders when at least one booking resolves there. | Needed for the immediate UX fix. |
+| Empty quarantine | Quarantine line is not rendered when no problem bookings exist. | Implemented and covered. |
+| Non-empty quarantine | Quarantine line renders when at least one booking resolves there. | Implemented and covered. |
 
-## Criteria For Durable Room IDs
+## Durable Room ID Migration Rules
 
-Move to `room_resource_id` when at least one of these becomes product-critical:
-
-- room rename must be conflict-safe without rewriting old booking text;
-- inactive-room repair must distinguish historical identity from current display name;
-- room settings become operator-managed in production;
-- availability and conflict checks must survive aliases and localization changes;
-- reporting needs stable physical-room history independent of display names.
-
-Minimum durable-id migration rules:
+Migration `296_room_resource_id_schema.sql` and its guarded production backfill
+implemented these rules:
 
 - `room_resource_id` is nullable at first.
 - `bookings.room` remains as a display snapshot.
@@ -137,9 +132,14 @@ Minimum durable-id migration rules:
 - Ambiguous, `Інше`, blank, and unknown rows are not auto-mapped.
 - Conflict locks and SQL checks keep legacy fallback until backfill coverage is proven.
 
+New and edited booking paths no longer use the legacy fallback for assignment:
+they require a validated active resource or `room-takeaway`. The fallback remains
+read-only compatibility for the 21 documented unresolved legacy rows.
+
 ## Live QA Contract
 
-For documentation-only Task 2, no mutation live QA is required.
+Task 1 live QA is read-only. No room, booking, banquet, template, or recurring
+record is created or changed during verification.
 
 Read-only production API check on 2026-07-17 confirmed:
 

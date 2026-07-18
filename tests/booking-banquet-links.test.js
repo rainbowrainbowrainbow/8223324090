@@ -1335,7 +1335,7 @@ function sourceActivityPayload(overrides = {}) {
 
 test('GET bookings attaches visible banquet links symmetrically', async () => {
     await withApp([
-        bookingRow({ id: 'BK-2099-0001', time: '12:00' }),
+        bookingRow({ id: 'BK-2099-0001', time: '12:00', room_resource_id: 'room-a' }),
         bookingRow({ id: 'BK-2099-0002', time: '13:00', line_id: 'line-2', label: 'Banquet photo' }),
         bookingRow({ id: 'BK-2099-0003', time: '14:30', line_id: 'line-3', label: 'Room activity' })
     ], [{
@@ -1354,15 +1354,19 @@ test('GET bookings attaches visible banquet links symmetrically', async () => {
         label: 'same room: Room A',
         created_by: 'tester',
         created_at: new Date('2099-01-01T00:01:00Z').toISOString()
-    }], async ({ baseUrl }) => {
+    }], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings/2099-06-01`);
         const data = await res.json();
         assert.equal(res.status, 200, JSON.stringify(data));
         const first = data.find(item => item.id === 'BK-2099-0001');
+        assert.equal(first.roomResourceId, 'room-a');
         assert.equal(first.banquetLinks[0].targetId, 'BK-2099-0002');
         assert.equal(first.sharedRoomLinks[0].targetId, 'BK-2099-0003');
         assert.deepEqual(first.bookingLinks.map(link => link.relationType).sort(), ['banquet_activity', 'shared_room_activity']);
         assert.equal(data.find(item => item.id === 'BK-2099-0002').banquetLinks[0].targetId, 'BK-2099-0001');
+        const listQuery = state.queries.find(query => /FROM bookings b/i.test(query.sql) && /WHERE b\.date = \$1/i.test(query.sql));
+        assert.ok(listQuery, 'timeline list query should be captured');
+        assert.match(listQuery.sql, /room, room_resource_id, notes/);
     });
 });
 

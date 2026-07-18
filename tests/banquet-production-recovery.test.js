@@ -7,12 +7,18 @@ const path = require('node:path');
 
 const {
     APPLY_CONFIRMATION,
+    DETACH_CONFIRMATION,
     buildAuditReport,
+    classifyDetachInspection,
     classifyRecoveryInspection,
     parseArgs,
     parseRecoveryPairs,
+    persistDetachPair,
     persistRecoveryPair,
     runAudit,
+    runDetachApply,
+    runDetachDryRun,
+    runQaCleanupDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 } = require('../scripts/banquet-production-recovery');
@@ -178,6 +184,44 @@ test('banquet recovery arguments require bounded audit dates and explicit recove
     );
 });
 
+test('detach and qa-cleanup arguments are allowlisted and confirmation guarded', () => {
+    assert.throws(
+        () => parseArgs(['detach', '--pairs=BK-1:BQ-1', '--apply']),
+        new RegExp(DETACH_CONFIRMATION)
+    );
+    assert.deepEqual(
+        parseArgs(['detach', '--pairs=BK-1:BQ-1']),
+        {
+            command: 'detach',
+            apply: false,
+            json: false,
+            businessContext: 'event_genix',
+            confirmation: '',
+            pairs: [{ bookingId: 'BK-1', groupId: 'BQ-1' }]
+        }
+    );
+    assert.deepEqual(
+        parseArgs(['qa-cleanup']).bookingIds,
+        [
+            'BK-2026-0662',
+            'BK-2026-0663',
+            'BK-2026-0664',
+            'BK-2026-0665',
+            'BK-2026-0666',
+            'BK-2026-0667',
+            'BK-2026-0668'
+        ]
+    );
+    assert.throws(
+        () => parseArgs(['qa-cleanup', '--bookings=BK-2026-0662,BK-2026-9999']),
+        /allowlisted only/
+    );
+    assert.throws(
+        () => parseArgs(['qa-cleanup', '--apply']),
+        /read-only dry-run only/
+    );
+});
+
 test('recovery inspection requires one exact group and is idempotent for an existing activity membership', () => {
     const pair = { bookingId: 'BK-PINATA-1', groupId: 'BQ-1' };
     const target = recoveryTarget();
@@ -229,6 +273,209 @@ test('recovery dry-run reports selected pairs without write queries', async () =
     assert.equal(report.mode, 'dry-run');
     assert.equal(report.summary.ready, 1);
     assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
+});
+
+test('qa cleanup dry-run inventories only allowlisted technical records without writes or customer data', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            if (/FROM bookings b/i.test(String(text))) {
+                return {
+                    rows: [{
+                        booking_id: 'BK-2026-0662',
+                        business_context: 'event_genix',
+                        date: '2099-08-20',
+                        room: 'Room A',
+                        status: 'confirmed',
+                        linked_to: null,
+                        category: 'pinata',
+                        program_id: 'pinata',
+                        program_code: 'PIN',
+                        banquet_memberships: ['BQ-1:activity'],
+                        banquet_links: ['91:BK-PRIMARY-1:banquet_activity'],
+                        deposit_ids: ['25']
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+
+    const report = await runQaCleanupDryRun(db, {
+        businessContext: 'event_genix',
+        bookingIds: ['BK-2026-0662', 'BK-2026-0663']
+    });
+
+    assert.equal(report.mode, 'qa-cleanup-dry-run');
+    assert.equal(report.readOnly, true);
+    assert.equal(report.summary.found, 1);
+    assert.equal(report.summary.missing, 1);
+    assert.equal(report.records[0].bookingId, 'BK-2026-0662');
+    assert.equal(report.records[1].status, 'missing');
+    assert.equal(JSON.stringify(report).includes('customerId'), false);
+    assert.equal(JSON.stringify(report).includes('customer_id'), false);
+    assert.equal(queries[0], 'BEGIN TRANSACTION READ ONLY');
+    assert.equal(queries.at(-1), 'ROLLBACK');
+    assert.equal(queries.some(sql => /\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql)), false);
+});
+
+test('detach inspection allows only pinata activity membership and is idempotent when already absent', () => {
+    const pair = { bookingId: 'BK-PINATA-1', groupId: 'BQ-1' };
+    const ready = classifyDetachInspection(
+        pair,
+        {
+            ...recoveryTarget(),
+            membership_role: 'activity'
+        },
+        'event_genix'
+    );
+    assert.equal(ready.status, 'ready');
+
+    const alreadyDetached = classifyDetachInspection(pair, null, 'event_genix');
+    assert.equal(alreadyDetached.status, 'already_detached');
+
+    const primaryBlocked = classifyDetachInspection(
+        pair,
+        {
+            ...recoveryTarget({ primary_booking_id: 'BK-PINATA-1' }),
+            membership_role: 'primary'
+        },
+        'event_genix'
+    );
+    assert.equal(primaryBlocked.status, 'blocked');
+    assert.equal(primaryBlocked.reason, 'not_activity_membership');
+});
+
+test('detach dry-run reports selected pairs without write queries', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).trim());
+            return { rows: [] };
+        }
+    };
+    const options = {
+        businessContext: 'event_genix',
+        pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+    };
+    const inspectDetachPair = async (_db, pair) => ({
+        result: {
+            pinataBookingId: pair.bookingId,
+            groupId: pair.groupId,
+            businessContext: 'event_genix',
+            status: 'ready',
+            reason: null,
+            matchFingerprint: 'abc123'
+        },
+        target: { ...recoveryTarget(), membership_role: 'activity' }
+    });
+
+    const report = await runDetachDryRun(db, options, { inspectDetachPair });
+
+    assert.equal(report.mode, 'detach-dry-run');
+    assert.equal(report.summary.ready, 1);
+    assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
+});
+
+test('detach apply requires confirmation before opening a transaction', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).trim());
+            return { rows: [] };
+        }
+    };
+
+    await assert.rejects(
+        runDetachApply(db, {
+            apply: true,
+            confirmation: 'WRONG',
+            businessContext: 'event_genix',
+            pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+        }),
+        new RegExp(DETACH_CONFIRMATION)
+    );
+    assert.deepEqual(queries, []);
+});
+
+test('detach apply rolls back the full allowlist on persistence failure', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).trim());
+            return { rows: [] };
+        }
+    };
+    const options = {
+        apply: true,
+        confirmation: DETACH_CONFIRMATION,
+        businessContext: 'event_genix',
+        pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+    };
+    const inspectDetachPair = async (_db, pair) => ({
+        result: {
+            pinataBookingId: pair.bookingId,
+            groupId: pair.groupId,
+            businessContext: 'event_genix',
+            status: 'ready',
+            reason: null,
+            matchFingerprint: 'abc123'
+        },
+        target: { ...recoveryTarget(), membership_role: 'activity' }
+    });
+
+    await assert.rejects(
+        runDetachApply(db, options, {
+            inspectDetachPair,
+            persistDetachPair: async () => {
+                throw new Error('simulated detach failure');
+            }
+        }),
+        /simulated detach failure/
+    );
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+});
+
+test('detach apply is idempotent when every allowlisted pair is already detached', async () => {
+    const queries = [];
+    let persistCalls = 0;
+    const db = {
+        query: async text => {
+            queries.push(String(text).trim());
+            return { rows: [] };
+        }
+    };
+    const options = {
+        apply: true,
+        confirmation: DETACH_CONFIRMATION,
+        businessContext: 'event_genix',
+        pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+    };
+    const inspectDetachPair = async (_db, pair) => ({
+        result: {
+            pinataBookingId: pair.bookingId,
+            groupId: pair.groupId,
+            businessContext: 'event_genix',
+            status: 'already_detached',
+            reason: null,
+            matchFingerprint: null
+        },
+        target: null
+    });
+
+    const report = await runDetachApply(db, options, {
+        inspectDetachPair,
+        persistDetachPair: async () => {
+            persistCalls += 1;
+        }
+    });
+
+    assert.equal(persistCalls, 0);
+    assert.equal(report.summary.detached, 0);
+    assert.equal(report.summary.alreadyDetached, 1);
+    assert.equal(report.summary.verifiedAfter, 1);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT']);
 });
 
 test('recovery apply is transactional and verifies every allowlisted pair after persistence', async () => {
@@ -357,6 +604,52 @@ test('recovery persistence writes only canonical membership, compatibility link,
     assert.equal(queries.some(query => /customers|phone|instagram|client_name/i.test(query.sql)), false);
 });
 
+test('detach persistence deletes only activity membership, compatibility link, and writes technical history', async () => {
+    const queries = [];
+    const db = {
+        query: async (text, params = []) => {
+            const sql = String(text).replace(/\s+/g, ' ').trim();
+            queries.push({ sql, params });
+            if (/^DELETE FROM banquet_group_bookings/i.test(sql)) {
+                return {
+                    rows: [{ booking_id: 'BK-PINATA-1', group_id: 'BQ-1', role: 'activity' }],
+                    rowCount: 1
+                };
+            }
+            if (/^DELETE FROM booking_banquet_links/i.test(sql)) {
+                return { rows: [{ id: 91 }], rowCount: 1 };
+            }
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const inspection = {
+        result: {
+            pinataBookingId: 'BK-PINATA-1',
+            groupId: 'BQ-1',
+            businessContext: 'event_genix',
+            status: 'ready',
+            reason: null,
+            matchFingerprint: 'abc123'
+        },
+        target: {
+            ...recoveryTarget(),
+            membership_role: 'activity'
+        }
+    };
+
+    const result = await persistDetachPair(db, inspection, 'event_genix');
+
+    assert.equal(result.status, 'detached');
+    assert.equal(result.deletedCompatibilityLinks, 1);
+    assert.equal(queries.filter(query => /^DELETE FROM banquet_group_bookings/i.test(query.sql)).length, 1);
+    assert.ok(queries.some(query => /^DELETE FROM booking_banquet_links/i.test(query.sql)));
+    assert.ok(queries.some(query => /^UPDATE banquet_groups/i.test(query.sql)));
+    assert.ok(queries.some(query => /^INSERT INTO history/i.test(query.sql)));
+    assert.equal(queries.some(query => /DELETE FROM bookings/i.test(query.sql)), false);
+    assert.equal(queries.some(query => /banquet_deposits/i.test(query.sql)), false);
+    assert.equal(queries.some(query => /customers|phone|instagram|client_name/i.test(query.sql)), false);
+});
+
 test('production recovery script contains no automatic deposit creation or customer PII query', () => {
     const source = fs.readFileSync(
         path.join(ROOT, 'scripts', 'banquet-production-recovery.js'),
@@ -367,5 +660,7 @@ test('production recovery script contains no automatic deposit creation or custo
     assert.match(source, /--confirm=\$\{APPLY_CONFIRMATION\}/);
     assert.match(source, /canonical_deposit_missing_manual_review_required/);
     assert.doesNotMatch(source, /INSERT INTO banquet_deposits/i);
+    assert.doesNotMatch(source, /DELETE FROM bookings/i);
+    assert.doesNotMatch(source, /DELETE FROM banquet_deposits/i);
     assert.doesNotMatch(source, /JOIN customers|phone|instagram|client_name/i);
 });

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.76",
+  "version": "0.79.77",
   "eventGenix": {
-    "releaseLabel": "Payroll Integrity Final Regression"
+    "releaseLabel": "Admission Ticket Integrity Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

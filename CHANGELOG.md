@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.73 - Attendance Snapshot and Additional Pay Reliability
+
+### HR / Attendance / Payroll / (18.07.2026) [codex]
+- **Усі нові attendance-потоки створюють compensation snapshot** — Hermes import, ручні статуси, погодження відпусток і no-show scheduler переведено на canonical service; запис із фактично відпрацьованим часом не можна мовчки замінити статусом.
+- **Причину 14 legacy-записів встановлено без зміни історії** — усі вони походять із попереднього Hermes import; автоматичного backfill або ретроактивної доплати немає.
+- **Подвійну оплату розширено на `per_shift` і `monthly_fixed`** — базова сума за вихід або місяць не змінюється, а друга професія додається окремою погодинною line за explicit snapshot-ставкою.
+- **Fail-closed збережено** — `hybrid`, `percent` і `manual`, а також відсутня чи невалідна snapshot-ставка блокують generation і commit.
+- **Наскрізна фінансова регресія** — disposable PostgreSQL підтвердив 540/540/510, idempotent draft regeneration, commit і повний reversal для hourly, per-shift та monthly-fixed.
+
+---
+
 ## v0.79.72 - Simultaneous Pay Safety Guard
 
 ### Payroll / Безпека / (18.07.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.66",
+  "version": "0.79.67",
   "eventGenix": {
-    "releaseLabel": "Simultaneous Pay QA Cleanup Reliability"
+    "releaseLabel": "Admission Ticket Pricing Foundation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

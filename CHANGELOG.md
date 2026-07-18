@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.64 - Simultaneous Pay Live QA Reliability
+
+### HR / Attendance / Live QA / (18.07.2026) [codex]
+- **Exact production acceptance використовує canonical attendance flow** — marker-bound QA endpoint викликає ті самі clock-in/clock-out сервіси, що й реальний табель, тому compensation snapshot створюється і фіналізується без окремої спрощеної логіки.
+- **QA-професії мають явний допуск** — disposable staff отримує active + approved role assignments та явні професійні ставки перед збереженням paid role.
+- **Unpaid payload відповідає серверному контракту** — неоплачувана роль більше не надсилає помилковий multiplier, а paid role використовує активну policy version і multiplier `1.0`.
+- **Cleanup залишається fail-closed** — тест не створює bookings, payroll reports або finance transactions і після кожного запуску підтверджує нуль schedule, attendance, check-in та timeline rows.
+
+---
+
 ## v0.79.63 - Room Resource Ticket Contract
 
 ### Бронювання / Room resources / Ticket contract / (18.07.2026) [codex]

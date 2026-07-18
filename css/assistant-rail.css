@@ -1,11 +1,11 @@
 /* assistant-rail.css - aggregate entrypoint for shared CRM assistant rail styles. */
 
-@import url("./assistant-rail-base.css?v=0.79.63");
-@import url("./assistant-rail-handoff.css?v=0.79.63");
-@import url("./assistant-rail-panel.css?v=0.79.63");
-@import url("./assistant-rail-presence.css?v=0.79.63");
-@import url("./assistant-rail-topbar.css?v=0.79.63");
-@import url("./assistant-rail-motion.css?v=0.79.63");
-@import url("./assistant-rail-command.css?v=0.79.63");
-@import url("./assistant-rail-dashboard.css?v=0.79.63");
-@import url("./assistant-rail-timeline.css?v=0.79.63");
+@import url("./assistant-rail-base.css?v=0.79.64");
+@import url("./assistant-rail-handoff.css?v=0.79.64");
+@import url("./assistant-rail-panel.css?v=0.79.64");
+@import url("./assistant-rail-presence.css?v=0.79.64");
+@import url("./assistant-rail-topbar.css?v=0.79.64");
+@import url("./assistant-rail-motion.css?v=0.79.64");
+@import url("./assistant-rail-command.css?v=0.79.64");
+@import url("./assistant-rail-dashboard.css?v=0.79.64");
+@import url("./assistant-rail-timeline.css?v=0.79.64");

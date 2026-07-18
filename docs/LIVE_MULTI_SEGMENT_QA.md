@@ -29,7 +29,7 @@ Use a different run ID for every attempt. A bearer token may replace the usernam
 
 ## Assertions
 
-The runner creates one disposable staff member qualified for `reception`, `manager`, and `animator`, then verifies:
+The runner creates one disposable staff member qualified for `reception`, `manager`, and `animator`, explicitly marks those QA-only role assignments as active and approved, then verifies:
 
 - `09:00-13:00 reception` plus `15:00-20:00 manager`;
 - a 30-minute break on the manager segment, producing 510 planned minutes;

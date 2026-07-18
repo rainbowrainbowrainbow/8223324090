@@ -176,12 +176,17 @@ function normalizedSegments(entry = {}) {
         note: segment.note ?? segment.notes ?? null,
         additionalProfessionKeys: [...(segment.additionalProfessionKeys ?? segment.additional_profession_keys ?? [])].map(String).sort(),
         additionalRoles: [...(segment.additionalRoles ?? segment.additional_roles ?? [])]
-            .map(role => ({
-                professionKey: String(role.professionKey ?? role.profession_key ?? ''),
-                compensationMode: String(role.compensationMode ?? role.compensation_mode ?? 'unpaid'),
-                payMultiplier: Number(role.payMultiplier ?? role.pay_multiplier ?? 1),
-                policyVersion: role.policyVersion ?? role.policy_version ?? null
-            }))
+            .map(role => {
+                const compensationMode = String(role.compensationMode ?? role.compensation_mode ?? 'unpaid');
+                return {
+                    professionKey: String(role.professionKey ?? role.profession_key ?? ''),
+                    compensationMode,
+                    payMultiplier: compensationMode === 'paid_hourly'
+                        ? Number(role.payMultiplier ?? role.pay_multiplier ?? 1)
+                        : null,
+                    policyVersion: role.policyVersion ?? role.policy_version ?? null
+                };
+            })
             .sort((left, right) => left.professionKey.localeCompare(right.professionKey))
     }));
 }
@@ -204,7 +209,7 @@ function schedulePayload(staffId, date, entry = null) {
             additionalRoles: [{
                 professionKey: 'animator',
                 compensationMode: 'unpaid',
-                payMultiplier: 1,
+                payMultiplier: null,
                 policyVersion: null
             }]
         },
@@ -216,7 +221,7 @@ function schedulePayload(staffId, date, entry = null) {
                 {
                     professionKey: 'animator',
                     compensationMode: 'unpaid',
-                    payMultiplier: 1,
+                    payMultiplier: null,
                     policyVersion: null
                 },
                 {
@@ -256,7 +261,7 @@ function assertPlan(entry, expectedDate, label) {
     assert.ok(segments.every(segment => segment.additionalProfessionKeys.includes('animator')), `${label}: animator windows follow both segments`);
     assert.deepEqual(
         segments[1].additionalRoles.map(role => [role.professionKey, role.compensationMode, role.payMultiplier]),
-        [['animator', 'unpaid', 1], ['manager', 'paid_hourly', 1]],
+        [['animator', 'unpaid', null], ['manager', 'paid_hourly', 1]],
         `${label}: paid manager and unpaid animator retain distinct compensation modes`
     );
     assert.ok(planVersion(entry), `${label}: optimistic version token`);
@@ -367,6 +372,52 @@ async function run() {
                 notes: MARKER
             }
         });
+        const roleAssignments = await api(base, `/api/hr/staff/${staffId}/role-assignments`, {
+            method: 'PUT', token: session.token,
+            body: {
+                primary_role: 'reception',
+                assignments: [
+                    {
+                        profession_key: 'reception',
+                        is_primary: true,
+                        status: 'active',
+                        admission_status: 'approved',
+                        internship_status: 'none',
+                        hourly_rate: 100,
+                        notes: MARKER
+                    },
+                    {
+                        profession_key: 'manager',
+                        is_primary: false,
+                        status: 'active',
+                        admission_status: 'approved',
+                        internship_status: 'none',
+                        hourly_rate: 200,
+                        notes: MARKER
+                    },
+                    {
+                        profession_key: 'animator',
+                        is_primary: false,
+                        status: 'active',
+                        admission_status: 'approved',
+                        internship_status: 'none',
+                        hourly_rate: null,
+                        notes: MARKER
+                    }
+                ]
+            }
+        });
+        assert.deepEqual(
+            (roleAssignments.body?.data || [])
+                .map(row => [row.profession_key, row.status, row.admission_status])
+                .sort((left, right) => left[0].localeCompare(right[0])),
+            [
+                ['animator', 'active', 'approved'],
+                ['manager', 'active', 'approved'],
+                ['reception', 'active', 'approved']
+            ],
+            'disposable staff roles are explicitly active and approved'
+        );
         results.push('disposable_staff');
 
         const created = await api(base, '/api/staff/schedule', {

@@ -54,7 +54,9 @@ test('live QA API helper is creator/director-only, marker guarded, atomic, and r
     assert.match(route, /assertLiveQaConfirmation\(liveQaConfirmationFromRequest\(req\)\)/);
     assert.match(route, /loadLiveQaStaff\(client, staffId, runId, \{ forUpdate: true \}\)/);
     assert.match(route, /AT TIME ZONE 'Europe\/Kyiv'/);
-    assert.match(route, /calculateHrClockOutPayroll/);
+    assert.match(route, /recordAttendanceClockIn\(client/);
+    assert.match(route, /recordAttendanceClockOut\(client/);
+    assert.match(route, /compensation_snapshot_state/);
     assert.match(route, /live_multi_segment_qa_attendance_create/);
     assert.match(route, /live_multi_segment_qa_cleanup/);
     assert.match(route, /await reconcileRosterDates\(client, affectedDates\)[\s\S]{0,1500}await client\.query\('COMMIT'\)/);
@@ -80,6 +82,8 @@ test('live runner covers the full read/write contract and always uses server cle
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_RUN_ID/);
     assert.match(script, /LIVE_MULTI_SEGMENT_QA_USER/);
     assert.match(script, /Disposable QA Multi Segment \$\{RUN_ID\}/);
+    assert.match(script, /\/api\/hr\/staff\/\$\{staffId\}\/role-assignments/);
+    assert.match(script, /admission_status: 'approved'/);
     assert.match(script, /\/api\/staff\/schedule\/copy-week/);
     assert.match(script, /HR_SHIFT_PLAN_STALE/);
     assert.match(script, /\/api\/staff\/attendance/);
@@ -122,8 +126,10 @@ test('live runner models the screenshot case as nine physical hours plus an 8.5-
         normalizedSegments({ segments: payload.segments })[1].additionalRoles
             .map(role => [role.professionKey, role.compensationMode, role.payMultiplier]),
         [
-            ['animator', 'unpaid', 1],
+            ['animator', 'unpaid', null],
             ['manager', 'paid_hourly', 1]
         ]
     );
+    assert.equal(payload.segments[0].additionalRoles[0].payMultiplier, null);
+    assert.equal(payload.segments[1].additionalRoles[0].payMultiplier, null);
 });

@@ -186,7 +186,8 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
         /await lockAttendanceWriteTarget\(client, \{ staffId, date \}\)/,
         /loadLiveQaStaff\(client, staffId, runId, \{ forUpdate: true \}\)/,
         /SELECT id FROM hr_time_records[\s\S]*FOR UPDATE/,
-        /INSERT INTO hr_time_records/,
+        /recordAttendanceClockIn\(client/,
+        /recordAttendanceClockOut\(client/,
         /auditLog\('live_multi_segment_qa_attendance_create'[\s\S]*req\.ip, client\)/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/hr/qa/multi-segment/attendance');

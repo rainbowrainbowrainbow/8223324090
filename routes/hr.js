@@ -5585,57 +5585,48 @@ router.post('/qa/multi-segment/attendance', requireRole('creator', 'director'), 
             error.status = 400;
             throw error;
         }
-        const payroll = calculateHrClockOutPayroll({ status: 'present', clock_in: clockIn }, {
-            clockIn,
-            clockOut,
-            plannedStart: loadedShift.plan.plannedStart,
-            plannedEnd: loadedShift.plan.plannedEnd,
-            scheduledWorkedMinutes: loadedShift.plan.plannedMinutes,
-            plan: loadedShift.plan,
-            primaryProfessionKey: loadedShift.plan.primaryProfessionKey,
-            recordDate: date,
-            settlementMode: 'actual_time'
-        });
         const marker = liveQaMarker(runId);
-        const inserted = await client.query(
-            `INSERT INTO hr_time_records
-                (business_context, staff_id, record_date, clock_in, clock_out, planned_start, planned_end,
-                 late_minutes, early_leave_minutes, overtime_minutes, total_worked_minutes, status,
-                 notes, corrected_by, correction_reason, ip_address, user_agent)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-             RETURNING *`,
-            [
-                hrBusinessContextFromRequest(req),
-                staff.id,
-                date,
-                clockIn,
-                clockOut,
-                loadedShift.plan.plannedStart,
-                loadedShift.plan.plannedEnd,
-                payroll.allocation.lateMinutes,
-                payroll.earlyLeaveMinutes,
-                payroll.overtimeMinutes,
-                payroll.totalWorkedMinutes,
-                payroll.status,
-                marker,
-                req.user?.username || null,
-                marker,
-                req.ip,
-                req.headers['user-agent'] || null
-            ]
-        );
+        await recordAttendanceClockIn(client, {
+            staffId: staff.id,
+            recordDate: date,
+            now: clockIn,
+            businessContext: hrBusinessContextFromRequest(req),
+            performedBy: req.user?.username || 'live_multi_segment_qa',
+            method: 'live_multi_segment_qa',
+            source: marker,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'] || null
+        });
+        const clockOutResult = await recordAttendanceClockOut(client, {
+            staffId: staff.id,
+            recordDate: date,
+            now: clockOut,
+            settlementMode: 'actual_time',
+            performedBy: req.user?.username || 'live_multi_segment_qa',
+            method: 'live_multi_segment_qa',
+            source: marker,
+            ip: req.ip
+        });
+        const attendanceRecord = clockOutResult.record;
+        if (!attendanceRecord) {
+            const error = new Error('canonical attendance fixture creation returned no record');
+            error.code = 'LIVE_QA_ATTENDANCE_WRITE_FAILED';
+            error.status = 500;
+            throw error;
+        }
         await auditLog('live_multi_segment_qa_attendance_create', staff.id, req.user?.username, {
             run_id: runId,
-            attendance_id: Number(inserted.rows[0]?.id) || null,
+            attendance_id: Number(attendanceRecord.id) || null,
             date,
-            planned_minutes: payroll.allocation.plannedMinutes,
-            actual_minutes: payroll.allocation.actualMinutes,
-            allocation_source: payroll.allocation.allocationSource
+            planned_minutes: Number(attendanceRecord.plannedMinutes ?? attendanceRecord.planned_minutes) || 0,
+            actual_minutes: Number(attendanceRecord.actualMinutes ?? attendanceRecord.actual_minutes) || 0,
+            allocation_source: attendanceRecord.allocation_source || null,
+            compensation_snapshot_state: attendanceRecord.compensation_snapshot?.state || null
         }, req.ip, client);
         await client.query('COMMIT');
         res.status(201).json({
             success: true,
-            data: decorateAttendanceRecord(inserted.rows[0], loadedShift)
+            data: attendanceRecord
         });
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});

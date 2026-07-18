@@ -1,6 +1,6 @@
 # Historical attendance data-fix decision note
 
-Status: dry-run project prepared; write-mode apply is not allowed until the current dry-run output is reviewed and approved a second time.
+Status: deferred pending a read-only production audit. Write-mode apply is not allowed.
 
 ## Approved owner scope
 
@@ -130,8 +130,47 @@ Safe rollback strategy:
 
 No rollback should be run from memory or from a manually edited list of IDs.
 
+## Execution record (2026-07-19)
+
+### Historical audit and data-fix
+
+| Item | Result |
+| --- | --- |
+| Approved date range | `2026-07-01` through `2026-07-18` |
+| Approved categories | `late-grace`, `overtime-grace` only |
+| Excluded categories | `missing plan source`, `inferred profession card` |
+| Read-only dry-run | **Blocked**: no approved read-only production database connection was available. |
+| Dry-run candidate counts | Not measured. |
+| Dry-run `planHash` | Not produced. |
+| Protected payroll overlap | Not measured; therefore apply must fail closed. |
+| Apply | Not run. |
+| Changed attendance records | 0. |
+| Backup reference | None; apply did not start. |
+| Rollback | Not applicable; no production data was changed. |
+
+The prepared script and its tests are reviewable tooling only. It was not connected to a
+production database during this work. A second owner confirmation is impossible until a
+fresh dry-run provides an exact `planHash`, aggregate counts, and zero protected payroll
+overlap.
+
+### Disposable overtime UI QA
+
+The controlled disposable-fixture QA was completed without payroll-period changes and
+without retained fixture data:
+
+- API, payroll preview, and CSV confirmed a `+16 minute` attendance overtime fact.
+- A separate `+15 minute` case remained at zero attendance overtime while retaining
+  separate allocation overtime, as intended.
+- Cleanup independently confirmed zero active disposable staff matches, attendance rows,
+  check-ins, shifts, and `staff_shift_preferences` rows for the fixture run.
+- The HR monthly DOM could not display the future fixture month: its period picker exposes
+  the current and eleven previous months only. This is a **UI QA limitation**, not evidence
+  that the attendance result is wrong. The positive overtime DOM check is therefore deferred.
+
+No employee identifiers, credentials, or production data exports are recorded here.
+
 ## Current decision
 
-Proceed with dry-run only.
-
-Apply remains blocked until the owner reviews the dry-run output and gives the second confirmation with the current `planHash`.
+Keep the historical correction deferred. The next required owner-facing input is an
+approved read-only production database connection for the scoped dry-run. After that,
+review the measured counts and `planHash` before requesting the separate apply confirmation.

@@ -78,6 +78,13 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
 });
 
+test('physical summary merges overlap before applying one break per physical interval', () => {
+    assert.match(page, /maxBreakMinutes:\s*item\.breakMinutes/);
+    assert.match(page, /last\.maxBreakMinutes = Math\.max\(last\.maxBreakMinutes, item\.breakMinutes\)/);
+    assert.match(page, /durationMinutes - Math\.min\(durationMinutes, item\.maxBreakMinutes\)/);
+    assert.doesNotMatch(page, /const totalBreakMinutes = segments\.reduce/);
+});
+
 test('single and fill-week saves send the normalized segment contract', () => {
     assert.match(page, /payload\.segments = dayPlan\.segments/);
     assert.match(page, /payload\.primaryProfessionKey = dayPlan\.primaryProfessionKey/);

@@ -5019,7 +5019,14 @@ function schedulePlanMetrics(segments = []) {
         const endMinutes = startMinutes === null || rawEndMinutes === null
             ? null
             : (rawEndMinutes <= startMinutes ? rawEndMinutes + (24 * 60) : rawEndMinutes);
-        return { segment, index, startMinutes, endMinutes };
+        const durationMinutes = startMinutes === null || endMinutes === null
+            ? 0
+            : Math.max(0, endMinutes - startMinutes);
+        const breakMinutes = Math.min(
+            durationMinutes,
+            Math.max(0, Number(segment.breakMinutes || 0))
+        );
+        return { segment, index, startMinutes, endMinutes, breakMinutes };
     }).filter(item => item.startMinutes !== null && item.endMinutes !== null)
         .sort((left, right) => left.startMinutes - right.startMinutes || left.endMinutes - right.endMinutes);
     const plannedMinutes = segments.reduce((total, segment) => {
@@ -5030,20 +5037,25 @@ function schedulePlanMetrics(segments = []) {
     timeline.forEach(item => {
         const last = mergedTimeline[mergedTimeline.length - 1];
         if (!last || item.startMinutes >= last.endMinutes) {
-            mergedTimeline.push({ startMinutes: item.startMinutes, endMinutes: item.endMinutes });
+            mergedTimeline.push({
+                startMinutes: item.startMinutes,
+                endMinutes: item.endMinutes,
+                maxBreakMinutes: item.breakMinutes
+            });
             return;
         }
         last.endMinutes = Math.max(last.endMinutes, item.endMinutes);
+        // Overlapping source blocks describe the same physical presence. Break offsets
+        // are not stored, so the summary must not subtract the same break per role/block.
+        last.maxBreakMinutes = Math.max(last.maxBreakMinutes, item.breakMinutes);
     });
-    const grossPhysicalMinutes = mergedTimeline.reduce(
-        (total, item) => total + Math.max(0, item.endMinutes - item.startMinutes),
+    const physicalMinutes = mergedTimeline.reduce(
+        (total, item) => {
+            const durationMinutes = Math.max(0, item.endMinutes - item.startMinutes);
+            return total + Math.max(0, durationMinutes - Math.min(durationMinutes, item.maxBreakMinutes));
+        },
         0
     );
-    const totalBreakMinutes = segments.reduce(
-        (total, segment) => total + Math.max(0, Number(segment.breakMinutes || 0)),
-        0
-    );
-    const physicalMinutes = Math.max(0, grossPhysicalMinutes - Math.min(grossPhysicalMinutes, totalBreakMinutes));
     const additionalPaidMinutes = segments.reduce((total, segment) => {
         const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
         if (!duration || duration <= 0) return total;

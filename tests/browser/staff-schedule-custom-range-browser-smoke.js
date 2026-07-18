@@ -3433,17 +3433,42 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         await cards.nth(1).locator('[data-segment-field="end"]').fill('20:00');
 
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'overlapping physical blocks cannot be saved directly');
+        const stickyValidation = page.locator('[data-schedule-save-validation]');
+        const stickyValidationId = await stickyValidation.getAttribute('id');
+        assert.ok(stickyValidationId, 'sticky save validation has a stable description id');
+        assert.deepEqual(
+            await cards.evaluateAll((items, descriptionId) => items.map(card => ({
+                highlighted: card.classList.contains('has-overlap'),
+                invalid: card.getAttribute('aria-invalid'),
+                describedBy: card.getAttribute('aria-describedby') === descriptionId
+            })), stickyValidationId),
+            [
+                { highlighted: true, invalid: 'true', describedBy: true },
+                { highlighted: true, invalid: 'true', describedBy: true }
+            ],
+            'every contained-overlap block is highlighted and described for assistive technology'
+        );
         assert.match(
             await page.locator('#schPlanSummary').innerText(),
             /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/,
             'top summary explains how to model simultaneous paid work'
         );
         assert.match(
-            await page.locator('[data-schedule-save-validation]').innerText(),
+            await stickyValidation.innerText(),
             /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/,
             'sticky save area explains why save is disabled'
         );
         const convertButton = page.locator('[data-schedule-overlap-convert]');
+        await cards.nth(0).locator('[data-segment-field="break"]').fill('30');
+        await cards.nth(1).locator('[data-segment-field="break"]').fill('30');
+        assert.match(
+            await page.locator('#schPlanSummary').innerText(),
+            /8 год 30 хв[\s\S]*Фізичний час[\s\S]*—[\s\S]*Оплачувані роль-години/,
+            'overlapping blocks subtract the shared break once and keep invalid role-hours unavailable'
+        );
+        assert.equal(await convertButton.isDisabled(), true, 'conversion stays explicit when the outer block has a break');
+        await cards.nth(0).locator('[data-segment-field="break"]').fill('0');
+        await cards.nth(1).locator('[data-segment-field="break"]').fill('0');
         assert.equal(await convertButton.isEnabled(), true, 'contained overlap exposes an explicit safe conversion');
         await captureStableScheduleScreenshot(
             page,
@@ -3462,6 +3487,33 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             'reception',
             'contained profession becomes the explicit paid role'
         );
+        assert.equal(
+            await page.locator('#schPrimaryProfession').inputValue(),
+            'animator',
+            'conversion preserves the selected primary profession'
+        );
+        assert.match(
+            await page.locator('#schPlanSummary').innerText(),
+            /9 год[\s\S]*Фізичний час[\s\S]*17 год 30 хв[\s\S]*Оплачувані роль-години/,
+            'normalized exact case reports 9 physical hours and 17.5 paid role-hours'
+        );
+        assert.ok(
+            await cards.locator('.sch-role-pay-status.is-primary').count() >= 2,
+            'normalized segments visibly identify their primary role'
+        );
+        assert.ok(
+            await cards.locator('.sch-role-pay-status.is-unpaid').count() > 0,
+            'unpaid alternatives remain visibly distinguished'
+        );
+        assert.match(
+            await cards.nth(1).locator('.sch-paid-role-status').innerText(),
+            /Рецепція · оплачувана/,
+            'paid profession is visibly marked as paid'
+        );
+        const duplicateReceptionRole = cards.nth(1).locator(
+            '[data-segment-field="additional-unpaid"][value="reception"]'
+        );
+        assert.equal(await duplicateReceptionRole.isChecked(), false, 'conversion removes a duplicate unpaid copy of the paid profession');
         assert.match(
             await cards.nth(1).locator('[data-paid-role-preview]').innerText(),
             /180 грн\/год[\s\S]*510 хв[\s\S]*multiplier 1\.0[\s\S]*1.?530 грн/,
@@ -3491,6 +3543,11 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             payMultiplier: 1,
             policyVersion: null
         }]);
+        assert.deepEqual(
+            savedBody.segments[1].additionalProfessionKeys,
+            ['reception'],
+            'legacy profession keys contain the paid profession exactly once'
+        );
 
         await page.reload({ waitUntil: 'domcontentloaded' });
         await waitForDayColumns(page, 9);
@@ -3511,6 +3568,35 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         );
         assert.match(await page.locator('#schPlanSummary').innerText(), /Старший менеджер[\s\S]*немає явної погодинної ставки/);
         assert.match(await page.locator('[data-schedule-save-validation]').innerText(), /немає явної погодинної ставки/);
+
+        await cards.nth(1).locator('[data-segment-field="paid-profession"]').selectOption('');
+        await cards.nth(0).locator('[data-segment-field="start"]').fill('09:00');
+        await cards.nth(0).locator('[data-segment-field="end"]').fill('13:00');
+        await cards.nth(1).locator('[data-segment-field="start"]').fill('12:00');
+        await cards.nth(1).locator('[data-segment-field="end"]').fill('16:00');
+        await page.locator('#schAddSegmentBtn').click();
+        await cards.nth(2).locator('[data-segment-field="profession"]').selectOption('reception');
+        await cards.nth(2).locator('[data-segment-field="start"]').fill('15:00');
+        await cards.nth(2).locator('[data-segment-field="end"]').fill('18:00');
+        assert.equal(await cards.count(), 3, 'chain-overlap scenario contains three physical blocks');
+        assert.deepEqual(
+            await cards.evaluateAll(items => items.map(card => ({
+                highlighted: card.classList.contains('has-overlap'),
+                invalid: card.getAttribute('aria-invalid')
+            }))),
+            [
+                { highlighted: true, invalid: 'true' },
+                { highlighted: true, invalid: 'true' },
+                { highlighted: true, invalid: 'true' }
+            ],
+            'all three blocks participating in a chain overlap are highlighted'
+        );
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'chain overlap remains blocked');
+        assert.equal(
+            await page.locator('[data-schedule-overlap-convert]').count(),
+            0,
+            'ambiguous three-block overlap is never converted silently'
+        );
         await page.locator('#schCancelBtn').click();
     } finally {
         SCHEDULE_FIXTURE_ENTRIES.splice(0, SCHEDULE_FIXTURE_ENTRIES.length, ...originalEntries);

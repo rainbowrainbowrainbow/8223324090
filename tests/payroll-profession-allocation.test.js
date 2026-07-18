@@ -1388,7 +1388,9 @@ test('payroll routes use the shared allocation service and export one employee r
 test('payroll profile resolver keeps profile query budget batched by staff and profile ids', () => {
     const root = path.join(__dirname, '..');
     const payrollService = fs.readFileSync(path.join(root, 'services', 'payroll.js'), 'utf8');
-    const contextLoader = payrollService.match(/async function loadPayrollProfileContext[\s\S]*?\n}\n\nfunction schemeRateFallback/)?.[0] || '';
+    const contextLoader = payrollService.match(
+        /async function loadPayrollProfileContext[\s\S]*?\r?\n}\r?\n\r?\nfunction schemeRateFallback/
+    )?.[0] || '';
 
     assert.match(contextLoader, /assignment\.staff_id = ANY\(\$1::int\[\]\)/);
     assert.match(contextLoader, /profile_id = ANY\(\$1::bigint\[\]\)/);

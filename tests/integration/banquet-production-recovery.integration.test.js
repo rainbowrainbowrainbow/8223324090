@@ -14,9 +14,12 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
+    QA_CLEANUP_CONFIRMATION,
     persistDetachPair,
     runDetachApply,
     runDetachDryRun,
+    runQaCleanupApply,
+    runQaCleanupDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 } = require('../../scripts/banquet-production-recovery');
@@ -73,12 +76,12 @@ async function insertBooking(pool, id, overrides = {}) {
         `INSERT INTO bookings (
              id, business_context, date, time, line_id, customer_id,
              program_id, program_code, label, program_name, category,
-             duration, price, hosts, room, status, created_by
+             duration, price, hosts, room, status, created_by, extra_data
          )
          VALUES (
              $1, $2, $3, $4, $5, $6,
              $7, $8, $9, $10, $11,
-             $12, $13, $14, $15, $16, $17
+             $12, $13, $14, $15, $16, $17, $18::jsonb
          )`,
         [
             id,
@@ -97,7 +100,8 @@ async function insertBooking(pool, id, overrides = {}) {
             overrides.hosts ?? 1,
             overrides.room || 'Room A',
             overrides.status || 'confirmed',
-            'banquet-recovery-integration'
+            'banquet-recovery-integration',
+            JSON.stringify(overrides.extraData || {})
         ]
     );
 }
@@ -148,6 +152,82 @@ async function seedDetachPair(pool, suffix, options = {}) {
         );
     }
     return { bookingId: pinataId, groupId, primaryId };
+}
+
+function qaCleanupMarker(runId) {
+    return {
+        disposableQa: {
+            schemaVersion: 1,
+            runId,
+            source: 'timeline_browser_smoke',
+            cleanupExpected: true,
+            testCustomerMarker: `timeline_browser_smoke:${runId}:test_customer`
+        }
+    };
+}
+
+async function seedQaCleanupGroup(pool, suffix) {
+    const runId = `task37-${suffix}`.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 80);
+    const marker = `timeline_browser_smoke:${runId}:test_customer`;
+    const customer = await pool.query(
+        `INSERT INTO customers (name, phone, source, notes)
+         VALUES ($1, $2, 'integration_test', $3)
+         RETURNING id`,
+        [`Timeline QA ${suffix}`, `+380001${String(suffix).slice(-8)}`, `timeline browser smoke ${runId}; ${marker}`]
+    );
+    const customerId = customer.rows[0].id;
+    const primaryId = compactId('bpr-qa-primary', suffix);
+    const kitchenId = compactId('bpr-qa-kitchen', suffix);
+    const groupId = compactId('bpr-qa-group', suffix);
+    await insertBooking(pool, primaryId, {
+        customerId,
+        lineId: 'line-primary',
+        programId: 'qa-activity',
+        programCode: 'QA-ACT',
+        label: 'QA activity',
+        programName: 'QA activity',
+        category: 'animation',
+        extraData: qaCleanupMarker(runId)
+    });
+    await insertBooking(pool, kitchenId, {
+        customerId,
+        lineId: 'banquet-service',
+        programId: null,
+        programCode: 'KITCHEN',
+        label: 'QA kitchen',
+        programName: 'QA kitchen',
+        category: 'banquet',
+        extraData: qaCleanupMarker(runId)
+    });
+    await pool.query(
+        `INSERT INTO banquet_groups
+            (id, business_context, primary_booking_id, customer_id, date, room, group_name,
+             guest_arrival_time, status, source, created_by)
+         VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', $5,
+                 '11:45', 'active', 'timeline_browser_smoke', 'banquet-recovery-integration')`,
+        [groupId, BUSINESS_CONTEXT, primaryId, customerId, `QA ${suffix}`]
+    );
+    await pool.query(
+        `INSERT INTO banquet_group_bookings
+            (group_id, business_context, booking_id, role, sort_order, created_by)
+         VALUES
+            ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
+            ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
+        [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
+    );
+    await pool.query(
+        `INSERT INTO booking_banquet_links
+            (business_context, booking_a_id, booking_b_id, relation_type, label, created_by)
+         VALUES ($1, $2, $3, $4, $5, 'banquet-recovery-integration')`,
+        [BUSINESS_CONTEXT, primaryId, kitchenId, RELATION_TYPE, `QA ${suffix}`]
+    );
+    return {
+        runId,
+        groupId,
+        primaryId,
+        kitchenId,
+        marker
+    };
 }
 
 async function countRows(pool, pair, action = 'banquet_pinata_membership_detached') {
@@ -275,6 +355,59 @@ describe('banquet production recovery on isolated PostgreSQL', {
 
         const afterRerun = await countRows(pool, pair);
         assert.deepEqual(afterRerun, { memberships: 0, links: 0, history: 1 });
+    });
+
+    test('cancels disposable timeline QA banquet group and reruns as guarded no-op', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_cleanup`);
+        const options = {
+            mode: 'marker',
+            apply: true,
+            confirmation: QA_CLEANUP_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            runId: target.runId,
+            groupId: target.groupId,
+            primaryBookingId: target.primaryId,
+            source: 'timeline_browser_smoke',
+            testCustomerMarker: target.marker
+        };
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.readOnly, true);
+        assert.equal(dryRun.summary.ready, 1);
+        assert.equal(dryRun.groups[0].activeBookingIds.length, 2);
+
+        const apply = await withClient(pool, client => runQaCleanupApply(client, options));
+        assert.equal(apply.summary.cancelledGroups, 1);
+        assert.equal(apply.summary.cancelledBookings, 2);
+        assert.equal(apply.after[0].status, 'already_cancelled');
+
+        const statuses = await pool.query(
+            `SELECT
+                (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+                ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+                (
+                    SELECT COUNT(*)::int
+                      FROM history
+                     WHERE business_context = $2
+                       AND action = 'timeline_browser_smoke_qa_cleanup'
+                       AND data->>'group_id' = $1
+                ) AS history_count
+               FROM bookings
+              WHERE id = ANY($3::text[])`,
+            [target.groupId, BUSINESS_CONTEXT, [target.primaryId, target.kitchenId]]
+        );
+        assert.equal(statuses.rows[0].group_status, 'cancelled');
+        assert.deepEqual(statuses.rows[0].booking_statuses, ['cancelled', 'cancelled']);
+        assert.equal(statuses.rows[0].history_count, 1);
+
+        const rerun = await withClient(pool, client => runQaCleanupApply(client, options));
+        assert.equal(rerun.summary.cancelledGroups, 0);
+        assert.equal(rerun.summary.cancelledBookings, 0);
+        assert.equal(rerun.after[0].status, 'already_cancelled');
     });
 
     test('rolls back membership, link, and history when persistence fails after a real delete', async () => {

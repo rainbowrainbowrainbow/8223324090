@@ -2,6 +2,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -19,6 +20,9 @@ const CLEANUP = process.env.TIMELINE_BROWSER_SMOKE_CLEANUP !== 'false';
 const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true';
 const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
 const TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX = 4;
+const QA_CLEANUP_SOURCE = 'timeline_browser_smoke';
+const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
+const TEST_CUSTOMER_MARKER = `${QA_CLEANUP_SOURCE}:${RUN_ID}:test_customer`;
 
 function fail(message) {
     console.error(`Timeline browser smoke failed: ${message}`);
@@ -93,6 +97,67 @@ function scopedPath(path, params = {}) {
     return `${url.pathname}${url.search}`;
 }
 
+function disposableQaMarker(kind = 'booking') {
+    return {
+        schemaVersion: 1,
+        runId: RUN_ID,
+        source: QA_CLEANUP_SOURCE,
+        cleanupExpected: true,
+        testCustomerMarker: TEST_CUSTOMER_MARKER,
+        kind,
+        createdAt: new Date().toISOString()
+    };
+}
+
+function attachDisposableQaMarker(booking, kind = 'booking') {
+    if (!booking || typeof booking !== 'object' || Array.isArray(booking)) return booking;
+    const extra = booking.extraData && typeof booking.extraData === 'object' && !Array.isArray(booking.extraData)
+        ? { ...booking.extraData }
+        : (booking.extra_data && typeof booking.extra_data === 'object' && !Array.isArray(booking.extra_data) ? { ...booking.extra_data } : {});
+    extra.disposableQa = disposableQaMarker(kind);
+    booking.extraData = extra;
+    delete booking.extra_data;
+    return booking;
+}
+
+function markCreateRequestPayload(payload, pathname = '') {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    const cloned = JSON.parse(JSON.stringify(payload));
+    const markNested = (key, kind) => {
+        if (cloned[key] && typeof cloned[key] === 'object' && !Array.isArray(cloned[key])) {
+            attachDisposableQaMarker(cloned[key], kind);
+        }
+    };
+    markNested('main', 'booking_full_main');
+    markNested('booking', 'banquet_member');
+    markNested('memberBooking', 'banquet_member');
+    markNested('member_booking', 'banquet_member');
+    markNested('activityBooking', 'banquet_activity');
+    markNested('activity_booking', 'banquet_activity');
+    if (Array.isArray(cloned.linked)) cloned.linked.forEach(item => attachDisposableQaMarker(item, 'linked_booking'));
+    if (Array.isArray(cloned.activities)) cloned.activities.forEach(item => attachDisposableQaMarker(item, 'activity_booking'));
+    if (!cloned.main
+        && !cloned.booking
+        && !cloned.memberBooking
+        && !cloned.member_booking
+        && !cloned.activityBooking
+        && !cloned.activity_booking
+        && /^\/api\/bookings(?:\/full)?$/i.test(pathname)) {
+        attachDisposableQaMarker(cloned, 'booking');
+    }
+    return cloned;
+}
+
+function isBookingCreateEndpoint(pathname) {
+    return [
+        '/api/bookings',
+        '/api/bookings/full',
+        '/api/banquets/from-source/member-booking',
+        '/api/banquets/from-source/activity-booking'
+    ].includes(pathname)
+        || /^\/api\/banquets\/[^/]+\/(?:member-booking|activity-booking)$/i.test(pathname);
+}
+
 async function readBody(res) {
     const text = await res.text();
     try {
@@ -150,7 +215,7 @@ async function createCustomer(base, token, label) {
             phone: `+38099${String(Date.now()).slice(-7)}`,
             childName: `Child ${label}`,
             source: 'other',
-            notes: `timeline browser smoke ${RUN_ID}`
+            notes: `timeline browser smoke ${RUN_ID}; ${TEST_CUSTOMER_MARKER}`
         }
     });
 }
@@ -219,7 +284,7 @@ async function findBookingTimeSmokeSlot(base, token, room) {
 }
 
 function bookingPayload(base = {}) {
-    return {
+    const payload = {
         businessContext: BUSINESS_CONTEXT,
         status: 'confirmed',
         duration: 60,
@@ -230,6 +295,7 @@ function bookingPayload(base = {}) {
         notes: `timeline browser smoke ${RUN_ID}`,
         ...base
     };
+    return attachDisposableQaMarker(payload, 'api_booking');
 }
 
 function kitchenPackage(servingTime = '14:00') {
@@ -278,6 +344,117 @@ async function deleteCustomer(base, token, customerId) {
         method: 'DELETE',
         token
     }).catch(err => console.warn(`cleanup customer ${customerId} failed: ${err.message}`));
+}
+
+function parseJsonFromStdout(stdout) {
+    const text = String(stdout || '').trim();
+    if (!text) return null;
+    try {
+        return JSON.parse(text);
+    } catch {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+        throw new Error(`operator script did not return JSON: ${text.slice(0, 500)}`);
+    }
+}
+
+function runQaCleanupOperator(args) {
+    const script = path.join(ROOT, 'scripts', 'banquet-production-recovery.js');
+    const result = spawnSync(process.execPath, [script, 'qa-cleanup', ...args], {
+        cwd: ROOT,
+        env: process.env,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000)
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+        throw new Error(`qa cleanup operator failed (${result.status}): ${String(result.stderr || result.stdout || '').trim()}`);
+    }
+    return parseJsonFromStdout(result.stdout);
+}
+
+async function discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets = []) {
+    const byGroupId = new Map();
+    for (const target of knownTargets) {
+        const group = String(target?.groupId || '').trim();
+        if (!group) continue;
+        byGroupId.set(group, {
+            groupId: group,
+            primaryBookingId: String(target.primaryBookingId || '').trim() || null,
+            bookingIds: new Set((target.bookingIds || []).map(String).filter(Boolean))
+        });
+    }
+    for (const bookingId of bookingIds.filter(Boolean)) {
+        const snapshot = await banquetSnapshot(base, token, bookingId).catch(() => null);
+        const group = groupId(snapshot);
+        if (!group) continue;
+        const current = byGroupId.get(group) || {
+            groupId: group,
+            primaryBookingId: String(snapshot?.bookings?.primary?.id || snapshot?.group?.primaryBookingId || '').trim() || null,
+            bookingIds: new Set()
+        };
+        current.primaryBookingId = current.primaryBookingId
+            || String(snapshot?.bookings?.primary?.id || snapshot?.group?.primaryBookingId || '').trim()
+            || null;
+        current.bookingIds.add(String(bookingId));
+        for (const member of snapshot?.members || []) {
+            if (member?.bookingId) current.bookingIds.add(String(member.bookingId));
+        }
+        byGroupId.set(group, current);
+    }
+    return [...byGroupId.values()].map(target => ({
+        ...target,
+        bookingIds: [...target.bookingIds]
+    }));
+}
+
+function assertQaCleanupDryRunReady(report, groupId) {
+    assert.equal(report?.mode, 'qa-cleanup-group-dry-run', `qa cleanup dry-run mode for group ${groupId}`);
+    const group = report.groups?.[0];
+    assert.equal(group?.groupId, groupId, `qa cleanup dry-run returns group ${groupId}`);
+    assert.ok(['ready', 'already_cancelled'].includes(group?.status), `qa cleanup dry-run safe for ${groupId}: ${group?.reason || group?.status}`);
+}
+
+function assertQaCleanupApplyVerified(report, groupId) {
+    assert.equal(report?.mode, 'qa-cleanup-apply', `qa cleanup apply mode for group ${groupId}`);
+    const after = report.after?.[0];
+    assert.equal(after?.groupId, groupId, `qa cleanup apply returns group ${groupId}`);
+    assert.equal(after?.status, 'already_cancelled', `qa cleanup apply verifies cancelled group ${groupId}: ${after?.reason || after?.status}`);
+}
+
+async function verifyBookingsNotActiveInTimeline(base, token, date, bookingIds) {
+    const rows = await fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token });
+    const activeIds = new Set((Array.isArray(rows) ? rows : []).map(item => String(item.id)));
+    const leaked = bookingIds.map(String).filter(id => activeIds.has(id));
+    assert.deepEqual(leaked, [], `cleanup leaves no active bookings in rooms timeline API for ${date}`);
+}
+
+async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], date = '') {
+    const targets = await discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets);
+    for (const target of targets) {
+        const args = [
+            `--run-id=${RUN_ID}`,
+            `--group-id=${target.groupId}`,
+            `--test-customer-marker=${TEST_CUSTOMER_MARKER}`,
+            `--business-context=${BUSINESS_CONTEXT}`,
+            '--json'
+        ];
+        if (target.primaryBookingId) args.push(`--primary-booking-id=${target.primaryBookingId}`);
+        const dryRun = runQaCleanupOperator(args);
+        assertQaCleanupDryRunReady(dryRun, target.groupId);
+        const apply = runQaCleanupOperator([
+            ...args,
+            '--apply',
+            `--confirm=${QA_CLEANUP_CONFIRMATION}`
+        ]);
+        assertQaCleanupApplyVerified(apply, target.groupId);
+        if (date && target.bookingIds.length) {
+            await verifyBookingsNotActiveInTimeline(base, token, date, target.bookingIds);
+        }
+    }
+    return targets;
 }
 
 async function banquetSnapshot(base, token, bookingId) {
@@ -610,6 +787,33 @@ async function openAuthenticatedPage(browser, base, session) {
     const context = await browser.newContext({
         viewport: { width: 1440, height: 960 },
         serviceWorkers: 'block'
+    });
+    await context.route('**/api/**', async route => {
+        const request = route.request();
+        if (request.method() !== 'POST') {
+            await route.continue();
+            return;
+        }
+        const pathname = new URL(request.url()).pathname;
+        if (!isBookingCreateEndpoint(pathname)) {
+            await route.continue();
+            return;
+        }
+        let payload;
+        try {
+            payload = request.postDataJSON();
+        } catch {
+            await route.continue();
+            return;
+        }
+        const markedPayload = markCreateRequestPayload(payload, pathname);
+        await route.continue({
+            headers: {
+                ...request.headers(),
+                'content-type': 'application/json'
+            },
+            postData: JSON.stringify(markedPayload)
+        });
     });
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         localStorage.setItem('pzp_token', token);
@@ -2171,6 +2375,9 @@ async function run() {
     if (!isLocalBase(base) && !ALLOW_NON_LOCAL) {
         fail(`refusing non-local browser smoke for ${base}; set TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION=true for an explicitly approved protected run`);
     }
+    if (!isLocalBase(base) && !CLEANUP) {
+        fail('refusing production timeline smoke with TIMELINE_BROWSER_SMOKE_CLEANUP=false; guarded QA cleanup is mandatory');
+    }
 
     let playwright;
     try {
@@ -2186,6 +2393,8 @@ async function run() {
     const room = DEFAULT_ROOM;
     const createdBookingIds = [];
     const createdCustomerIds = [];
+    const createdBanquetCleanupTargets = [];
+    let bookingTimeDate = date;
 
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
     let context;
@@ -2193,7 +2402,7 @@ async function run() {
     try {
         const animator = await firstAnimatorLine(base, token, date);
         const bookingTimeSlot = await findBookingTimeSmokeSlot(base, token, room);
-        const bookingTimeDate = bookingTimeSlot.date;
+        bookingTimeDate = bookingTimeSlot.date;
         const customerA = await createCustomer(base, token, 'activity-first');
         const customerB = await createCustomer(base, token, 'kitchen-first');
         createdCustomerIds.push(customerA.id, customerB.id);
@@ -2246,6 +2455,11 @@ async function run() {
         assert.ok(groupId(activitySnapshot), 'activity-first banquet group exists');
         assert.equal(String(activitySnapshot.bookings?.primary?.id || activitySnapshot.group?.primaryBookingId), String(activity.id));
         const activityGroupId = groupId(activitySnapshot);
+        createdBanquetCleanupTargets.push({
+            groupId: activityGroupId,
+            primaryBookingId: activity.id,
+            bookingIds: [activity.id, kitchenFromActivity.id]
+        });
 
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFromActivity.id);
@@ -2329,6 +2543,11 @@ async function run() {
         createdBookingIds.push(activityFromKitchen.id);
         const kitchenSnapshot = await banquetSnapshot(base, token, kitchenFirst.id);
         assert.ok(groupId(kitchenSnapshot), 'kitchen-first banquet group exists');
+        createdBanquetCleanupTargets.push({
+            groupId: groupId(kitchenSnapshot),
+            primaryBookingId: kitchenFirst.id,
+            bookingIds: [kitchenFirst.id, activityFromKitchen.id]
+        });
 
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFirst.id);
@@ -2362,8 +2581,21 @@ async function run() {
         await context?.close().catch(() => {});
         await browser.close().catch(() => {});
         if (CLEANUP) {
+            const cleanedGroups = await cleanupBanquetGroups(
+                base,
+                token,
+                createdBookingIds,
+                createdBanquetCleanupTargets,
+                date
+            );
+            const groupBookingIds = new Set(cleanedGroups.flatMap(target => target.bookingIds || []).map(String));
             for (const id of [...createdBookingIds].reverse().filter(Boolean)) {
+                if (groupBookingIds.has(String(id))) continue;
                 await deleteBooking(base, token, id);
+            }
+            const standaloneIds = createdBookingIds.filter(id => id && !groupBookingIds.has(String(id)));
+            if (standaloneIds.length) {
+                await verifyBookingsNotActiveInTimeline(base, token, bookingTimeDate, standaloneIds);
             }
             for (const id of [...createdCustomerIds].reverse().filter(Boolean)) {
                 await deleteCustomer(base, token, id);

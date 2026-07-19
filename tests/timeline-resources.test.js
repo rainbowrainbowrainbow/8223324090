@@ -4508,6 +4508,13 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
         'npx --yes --package playwright node tests/browser/timeline-browser-smoke.js'
     );
     assert.match(smoke, /TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION/);
+    assert.match(smoke, /refusing production timeline smoke with TIMELINE_BROWSER_SMOKE_CLEANUP=false/);
+    assert.match(smoke, /const QA_CLEANUP_SOURCE = 'timeline_browser_smoke'/);
+    assert.match(smoke, /function disposableQaMarker/);
+    assert.match(smoke, /extra\.disposableQa = disposableQaMarker/);
+    assert.match(smoke, /function cleanupBanquetGroups/);
+    assert.match(smoke, /banquet-production-recovery\.js/);
+    assert.match(smoke, /--confirm=\$\{QA_CLEANUP_CONFIRMATION\}/);
     assert.match(smoke, /refusing non-local browser smoke/);
     assert.match(smoke, /function requirePlaywright/);
     assert.match(smoke, /function waitForTimelineReady/);

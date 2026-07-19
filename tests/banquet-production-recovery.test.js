@@ -8,16 +8,20 @@ const path = require('node:path');
 const {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
+    QA_CLEANUP_CONFIRMATION,
     buildAuditReport,
     classifyDetachInspection,
     classifyRecoveryInspection,
+    inspectQaCleanupGroupRows,
     parseArgs,
     parseRecoveryPairs,
     persistDetachPair,
+    persistQaCleanupGroup,
     persistRecoveryPair,
     runAudit,
     runDetachApply,
     runDetachDryRun,
+    runQaCleanupApply,
     runQaCleanupDryRun,
     runRecoveryApply,
     runRecoveryDryRun
@@ -276,7 +280,35 @@ test('detach and qa-cleanup arguments are allowlisted and confirmation guarded',
     );
     assert.throws(
         () => parseArgs(['qa-cleanup', '--apply']),
-        /read-only dry-run only/
+        /--group-id/
+    );
+    assert.throws(
+        () => parseArgs(['qa-cleanup', '--run-id=task37-1', '--group-id=BQ-1', '--apply']),
+        new RegExp(QA_CLEANUP_CONFIRMATION)
+    );
+    assert.deepEqual(
+        parseArgs([
+            'qa-cleanup',
+            '--run-id=task37-1',
+            '--group-id=BQ-1',
+            '--primary-booking-id=BK-1',
+            '--test-customer-marker=timeline_browser_smoke:task37-1:test_customer',
+            '--apply',
+            `--confirm=${QA_CLEANUP_CONFIRMATION}`
+        ]),
+        {
+            command: 'qa-cleanup',
+            mode: 'marker',
+            apply: true,
+            json: false,
+            businessContext: 'event_genix',
+            confirmation: QA_CLEANUP_CONFIRMATION,
+            runId: 'task37-1',
+            groupId: 'BQ-1',
+            primaryBookingId: 'BK-1',
+            source: 'timeline_browser_smoke',
+            testCustomerMarker: 'timeline_browser_smoke:task37-1:test_customer'
+        }
     );
 });
 
@@ -376,6 +408,194 @@ test('qa cleanup dry-run inventories only allowlisted technical records without 
     assert.equal(queries[0], 'BEGIN TRANSACTION READ ONLY');
     assert.equal(queries.at(-1), 'ROLLBACK');
     assert.equal(queries.some(sql => /\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql)), false);
+});
+
+function qaCleanupRow(overrides = {}) {
+    return {
+        group_id: 'BQ-QA-1',
+        group_business_context: 'event_genix',
+        primary_booking_id: 'BK-QA-PRIMARY',
+        group_customer_id: 9001,
+        group_date: '2099-08-20',
+        group_room: 'Room QA',
+        group_name: 'QA group',
+        group_status: 'active',
+        group_source: 'activity_first_kitchen_bridge',
+        guest_arrival_time: '11:45',
+        booking_id: 'BK-QA-PRIMARY',
+        role: 'primary',
+        booking_status: 'confirmed',
+        linked_to: null,
+        booking_customer_id: 9001,
+        booking_date: '2099-08-20',
+        booking_time: '13:00',
+        booking_room: 'Room QA',
+        booking_label: 'QA booking',
+        program_code: 'QA',
+        category: 'animation',
+        extra_data: {
+            disposableQa: {
+                schemaVersion: 1,
+                runId: 'task37-unit',
+                source: 'timeline_browser_smoke',
+                cleanupExpected: true,
+                testCustomerMarker: 'timeline_browser_smoke:task37-unit:test_customer'
+            }
+        },
+        customer_marker_ok: true,
+        active_child_booking_count: 0,
+        active_deposit_count: 0,
+        banquet_link_count: 1,
+        ...overrides
+    };
+}
+
+const qaCleanupOptions = {
+    mode: 'marker',
+    apply: true,
+    confirmation: QA_CLEANUP_CONFIRMATION,
+    businessContext: 'event_genix',
+    runId: 'task37-unit',
+    groupId: 'BQ-QA-1',
+    primaryBookingId: 'BK-QA-PRIMARY',
+    source: 'timeline_browser_smoke',
+    testCustomerMarker: 'timeline_browser_smoke:task37-unit:test_customer'
+};
+
+test('qa cleanup group preflight requires disposable marker and marked test customer', () => {
+    const ready = inspectQaCleanupGroupRows([
+        qaCleanupRow(),
+        qaCleanupRow({
+            booking_id: 'BK-QA-KITCHEN',
+            role: 'kitchen',
+            booking_status: 'confirmed'
+        })
+    ], qaCleanupOptions);
+    assert.equal(ready.status, 'ready');
+    assert.deepEqual(ready.activeBookingIds, ['BK-QA-PRIMARY', 'BK-QA-KITCHEN']);
+
+    const noMarker = inspectQaCleanupGroupRows([
+        qaCleanupRow({ extra_data: {} })
+    ], qaCleanupOptions);
+    assert.equal(noMarker.status, 'blocked');
+    assert.match(noMarker.reason, /missing_marker/);
+
+    const realCustomer = inspectQaCleanupGroupRows([
+        qaCleanupRow({ customer_marker_ok: false })
+    ], qaCleanupOptions);
+    assert.equal(realCustomer.status, 'blocked');
+    assert.match(realCustomer.reason, /real_customer_blocked/);
+
+    const alreadyCancelled = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled'
+        })
+    ], qaCleanupOptions);
+    assert.equal(alreadyCancelled.status, 'already_cancelled');
+});
+
+test('qa cleanup marker dry-run uses read-only transaction and reports exact group scope', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    const report = await runQaCleanupDryRun(db, {
+        ...qaCleanupOptions,
+        apply: false,
+        confirmation: ''
+    }, {
+        inspectQaCleanupGroup: async () => inspectQaCleanupGroupRows([qaCleanupRow()], qaCleanupOptions)
+    });
+
+    assert.equal(report.mode, 'qa-cleanup-group-dry-run');
+    assert.equal(report.readOnly, true);
+    assert.equal(report.summary.ready, 1);
+    assert.equal(report.groups[0].groupId, 'BQ-QA-1');
+    assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
+});
+
+test('qa cleanup apply is transactional, verifies cancellation, and reruns as no-op', async () => {
+    const queries = [];
+    const ready = inspectQaCleanupGroupRows([qaCleanupRow()], qaCleanupOptions);
+    const cancelled = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            active_child_booking_count: 0
+        })
+    ], qaCleanupOptions);
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    let inspected = 0;
+    const report = await runQaCleanupApply(db, qaCleanupOptions, {
+        inspectQaCleanupGroup: async () => {
+            inspected += 1;
+            return inspected === 1 ? ready : cancelled;
+        },
+        persistQaCleanupGroup: async (_db, inspection, options) => ({
+            ...(await persistQaCleanupGroup({
+                query: async (sql, params) => {
+                    queries.push(String(sql).replace(/\s+/g, ' ').trim());
+                    if (/UPDATE bookings/i.test(String(sql))) return { rows: [{ id: 'BK-QA-PRIMARY' }] };
+                    if (/UPDATE banquet_groups/i.test(String(sql))) return { rows: [{ id: inspection.groupId }] };
+                    return { rows: [] };
+                }
+            }, inspection, options))
+        })
+    });
+
+    assert.equal(report.mode, 'qa-cleanup-apply');
+    assert.equal(report.summary.cancelledBookings, 1);
+    assert.equal(report.summary.cancelledGroups, 1);
+    assert.equal(report.after[0].status, 'already_cancelled');
+    assert.equal(queries[0], 'BEGIN ISOLATION LEVEL SERIALIZABLE');
+    assert.equal(queries.at(-1), 'COMMIT');
+    assert.ok(queries.some(sql => /^UPDATE bookings/i.test(sql)));
+    assert.ok(queries.some(sql => /^UPDATE banquet_groups/i.test(sql)));
+    assert.ok(queries.some(sql => /^INSERT INTO history/i.test(sql)));
+
+    const noOpQueries = [];
+    const rerun = await runQaCleanupApply({
+        query: async text => {
+            noOpQueries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    }, qaCleanupOptions, {
+        inspectQaCleanupGroup: async () => cancelled
+    });
+    assert.equal(rerun.summary.cancelledBookings, 0);
+    assert.equal(rerun.summary.cancelledGroups, 0);
+    assert.equal(rerun.after[0].status, 'already_cancelled');
+    assert.equal(noOpQueries.some(sql => /^UPDATE bookings|^UPDATE banquet_groups|^INSERT INTO history/i.test(sql)), false);
+});
+
+test('qa cleanup apply rolls back when preflight finds real customer or missing marker', async () => {
+    const queries = [];
+    await assert.rejects(
+        runQaCleanupApply({
+            query: async text => {
+                queries.push(String(text).replace(/\s+/g, ' ').trim());
+                return { rows: [] };
+            }
+        }, qaCleanupOptions, {
+            inspectQaCleanupGroup: async () => inspectQaCleanupGroupRows([
+                qaCleanupRow({
+                    extra_data: {},
+                    customer_marker_ok: false
+                })
+            ], qaCleanupOptions)
+        }),
+        /QA cleanup blocked by preflight/
+    );
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
 });
 
 test('detach inspection allows only pinata activity membership and is idempotent when already absent', () => {

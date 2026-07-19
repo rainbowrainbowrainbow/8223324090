@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.90 - Attendance KPI Overtime Guard
+
+### HR / Attendance KPI / (19.07.2026) [codex]
+- **KPI понаднормового часу вирівняно з attendance contract** — HR-звіти більше не сумують історичні `overtime_minutes` у межах 1–15 хвилин як реальний overtime.
+- **Межа 15/16 хвилин зафіксована regression-тестом** — 15 хвилин не потрапляє в KPI, а 16+ хвилин рахується як attendance overtime.
+
+---
+
 ## v0.79.89 - Timeline Launcher Deep Links
 
 ### Sidebar / Timeline routing / Regression QA / (19.07.2026) [codex]

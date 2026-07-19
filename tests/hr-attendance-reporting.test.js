@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
+    HR_ATTENDANCE_GRACE_MINUTES,
     attendanceCsvRow,
     attendanceFactMinutes,
     attendancePlanWarningMessage,
@@ -9,6 +12,34 @@ const {
     calculateHrClockOutPayroll,
     decorateAttendanceRecord
 } = require('../services/hrAttendance');
+
+const ROOT = path.join(__dirname, '..');
+const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+
+function sourceBlock(source, startToken, endToken) {
+    const start = source.indexOf(startToken);
+    assert.notEqual(start, -1, `missing ${startToken}`);
+    const end = source.indexOf(endToken, start);
+    assert.notEqual(end, -1, `missing ${endToken}`);
+    return source.slice(start, end);
+}
+
+test('HR KPI snapshot normalizes attendance overtime grace instead of raw historical minutes', () => {
+    const grace = HR_ATTENDANCE_GRACE_MINUTES.overtime;
+    const helperBlock = sourceBlock(HR_ROUTE, 'function attendanceKpiOvertimeMinutesSql', 'function redactPayrollAuditValue');
+    const kpiBlock = sourceBlock(HR_ROUTE, 'async function loadKpiSnapshot', 'function normalizeAuditValue');
+    const normalizeKpiOvertime = minutes => (minutes > grace ? minutes : 0);
+
+    assert.match(helperBlock, /HR_ATTENDANCE_GRACE_MINUTES\.overtime/);
+    assert.match(kpiBlock, /SUM\(\$\{attendanceKpiOvertimeMinutesSql\('tr'\)\}\)/);
+    assert.doesNotMatch(kpiBlock, /SUM\(tr\.overtime_minutes\)/);
+    assert.equal(normalizeKpiOvertime(0), 0);
+    assert.equal(normalizeKpiOvertime(15), 0);
+    assert.equal(normalizeKpiOvertime(16), 16);
+    assert.equal([15, 16].reduce((sum, minutes) => sum + normalizeKpiOvertime(minutes), 0), 16);
+    assert.equal([16].reduce((sum, minutes) => sum + normalizeKpiOvertime(minutes), 0), 16);
+    assert.equal([16, 0].reduce((sum, minutes) => sum + normalizeKpiOvertime(minutes), 0), 16);
+});
 
 test('attendance reporting keeps late, early leave, and overtime as independent facts', () => {
     const facts = attendanceReportingFacts({

@@ -12,18 +12,51 @@ const { Pool } = require('pg');
 
 const VALID_PLAN_SOURCES = new Set(['hr_shift', 'profession_card', 'unscheduled', 'attendance_snapshot']);
 const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update']);
+const CATEGORY_LATE_GRACE = 'late-grace';
+const CATEGORY_OVERTIME_GRACE = 'overtime-grace';
+const CATEGORY_MISSING_PLAN_SOURCE = 'missing-plan-source';
+const CATEGORY_INFERRED_PROFESSION_CARD = 'inferred-profession-card';
+const CATEGORY_NULL_ZERO_NEGATIVE_LATE = 'null-zero-negative-late';
+const READONLY_CATEGORIES = new Set([
+    CATEGORY_LATE_GRACE,
+    CATEGORY_OVERTIME_GRACE,
+    CATEGORY_MISSING_PLAN_SOURCE,
+    CATEGORY_INFERRED_PROFESSION_CARD,
+    CATEGORY_NULL_ZERO_NEGATIVE_LATE
+]);
 
 function usage() {
     return [
         'Usage:',
-        '  node scripts/audit-attendance-historical-impact.js [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--business-context key] [--format json|markdown]',
+        '  node scripts/audit-attendance-historical-impact.js [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--business-context key] [--categories late-grace,overtime-grace] [--format json|markdown]',
         '',
         'Connection:',
         '  ATTENDANCE_AUDIT_DATABASE_URL, PRODUCTION_READONLY_DATABASE_URL, DATABASE_URL, or PG* environment variables.',
         '',
+        'Categories:',
+        '  late-grace, overtime-grace, missing-plan-source, inferred-profession-card, null-zero-negative-late',
+        '',
         'Safety:',
         '  Read-only only. --apply/--fix/--write/--execute/--update are refused.'
     ].join('\n');
+}
+
+function normalizeCategory(value) {
+    const text = String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
+    if (['late', 'late-grace-mismatch', 'late-status-within-grace'].includes(text)) return CATEGORY_LATE_GRACE;
+    if (['overtime', 'overtime-grace-mismatch', 'overtime-within-grace'].includes(text)) return CATEGORY_OVERTIME_GRACE;
+    if (['missing-audit-plan-source', 'missing-plan-source', 'plan-source'].includes(text)) return CATEGORY_MISSING_PLAN_SOURCE;
+    if (['inferred-profession-card', 'profession-card-inference'].includes(text)) return CATEGORY_INFERRED_PROFESSION_CARD;
+    if (['null-zero-negative-late', 'null-late', 'zero-late', 'negative-late'].includes(text)) return CATEGORY_NULL_ZERO_NEGATIVE_LATE;
+    return text;
+}
+
+function normalizeCategories(values = []) {
+    const raw = values.flatMap(value => String(value || '').split(',')).map(normalizeCategory).filter(Boolean);
+    const categories = raw.length ? [...new Set(raw)] : [...READONLY_CATEGORIES];
+    const unknown = categories.filter(category => !READONLY_CATEGORIES.has(category));
+    if (unknown.length) throw new Error(`Unsupported --categories value: ${unknown.join(', ')}`);
+    return categories.sort();
 }
 
 function parseArgs(argv) {
@@ -31,6 +64,8 @@ function parseArgs(argv) {
         from: '',
         to: '',
         businessContext: '',
+        categoryInputs: [],
+        categories: [],
         format: 'json'
     };
     for (let index = 0; index < argv.length; index += 1) {
@@ -51,6 +86,7 @@ function parseArgs(argv) {
         if (arg === '--from') options.from = readValue(arg);
         else if (arg === '--to') options.to = readValue(arg);
         else if (arg === '--business-context') options.businessContext = readValue(arg);
+        else if (arg === '--category' || arg === '--categories') options.categoryInputs.push(readValue(arg));
         else if (arg === '--format') options.format = readValue(arg).toLowerCase();
         else throw new Error(`Unknown argument: ${arg}`);
     }
@@ -65,6 +101,7 @@ function parseArgs(argv) {
     if (options.from && options.to && options.from > options.to) {
         throw new Error('--from must be before or equal to --to');
     }
+    options.categories = normalizeCategories(options.categoryInputs);
     return options;
 }
 
@@ -153,30 +190,56 @@ function baseScopedCte(where) {
     `;
 }
 
-function candidateCte(where) {
-    return `${baseScopedCte(where)},
-        candidates AS (
+function issueSelects(categories = []) {
+    const selected = new Set(categories);
+    const selects = [];
+    if (selected.has(CATEGORY_LATE_GRACE)) {
+        selects.push(`
             SELECT id, staff_id, record_date, period_month, 'late_status_within_grace' AS issue
             FROM audited
-            WHERE status = 'late' AND COALESCE(late_minutes, 0) <= 5
-            UNION ALL
+            WHERE status = 'late' AND late_minutes BETWEEN 1 AND 5`);
+    }
+    if (selected.has(CATEGORY_OVERTIME_GRACE)) {
+        selects.push(`
             SELECT id, staff_id, record_date, period_month, 'overtime_within_grace' AS issue
             FROM audited
-            WHERE COALESCE(overtime_minutes, 0) BETWEEN 1 AND 15
-            UNION ALL
+            WHERE COALESCE(overtime_minutes, 0) BETWEEN 1 AND 15`);
+    }
+    if (selected.has(CATEGORY_NULL_ZERO_NEGATIVE_LATE)) {
+        selects.push(`
+            SELECT id, staff_id, record_date, period_month, 'null_zero_negative_late' AS issue
+            FROM audited
+            WHERE status = 'late'
+              AND (late_minutes IS NULL OR late_minutes = 0 OR late_minutes < 0)`);
+    }
+    if (selected.has(CATEGORY_MISSING_PLAN_SOURCE)) {
+        selects.push(`
             SELECT id, staff_id, record_date, period_month, 'missing_audit_plan_source' AS issue
             FROM audited
             WHERE clock_in IS NOT NULL
               AND (
                     audit_plan_source IS NULL
                     OR audit_plan_source NOT IN ('hr_shift', 'profession_card', 'unscheduled', 'attendance_snapshot')
-              )
-            UNION ALL
+              )`);
+    }
+    if (selected.has(CATEGORY_INFERRED_PROFESSION_CARD)) {
+        selects.push(`
             SELECT id, staff_id, record_date, period_month, 'inferred_profession_card' AS issue
             FROM audited
             WHERE hr_shift_id IS NULL
               AND planned_start IS NOT NULL
-              AND planned_end IS NOT NULL
+              AND planned_end IS NOT NULL`);
+    }
+    return selects.length ? selects.join('\nUNION ALL\n') : `
+            SELECT id, staff_id, record_date, period_month, 'none' AS issue
+            FROM audited
+            WHERE false`;
+}
+
+function candidateCte(where, categories = []) {
+    return `${baseScopedCte(where)},
+        candidates AS (
+            ${issueSelects(categories)}
         )`;
 }
 
@@ -291,7 +354,7 @@ async function loadInferredProfessionBreakdown(client, options) {
 async function loadIssueMatrix(client, options) {
     const where = scopeWhere(options);
     const result = await client.query(
-        `${candidateCte(where)}
+        `${candidateCte(where, options.categories)}
          SELECT issue,
                 COUNT(*)::int AS issue_rows,
                 COUNT(DISTINCT id)::int AS distinct_records,
@@ -328,7 +391,7 @@ async function loadPayrollImpact(client, options) {
         ? 'LEFT JOIN payroll_period_locks pl ON pl.period_month = ps.period_month'
         : 'LEFT JOIN (SELECT NULL::varchar AS period_month, false::boolean AS is_locked, NULL::timestamptz AS locked_at) pl ON false';
     const result = await client.query(
-        `${candidateCte(where)},
+        `${candidateCte(where, options.categories)},
          dedup AS (
             SELECT DISTINCT id, staff_id, period_month
             FROM candidates
@@ -372,7 +435,7 @@ async function loadPayrollImpact(client, options) {
         where.values
     );
     const statusRows = await client.query(
-        `${candidateCte(where)},
+        `${candidateCte(where, options.categories)},
          dedup AS (
             SELECT DISTINCT staff_id, period_month
             FROM candidates
@@ -433,22 +496,27 @@ async function runAudit(options) {
         }
 
         const overview = await loadOverview(client, options);
-        const metrics = [
-            await loadMetric(client, options, 'late_status_within_grace', "status = 'late' AND COALESCE(late_minutes, 0) <= 5"),
-            await loadMetric(client, options, 'overtime_within_grace', 'COALESCE(overtime_minutes, 0) BETWEEN 1 AND 15'),
-            await loadMetric(
+        const metricLoaders = {
+            [CATEGORY_LATE_GRACE]: () => loadMetric(client, options, 'late_status_within_grace', "status = 'late' AND late_minutes BETWEEN 1 AND 5"),
+            [CATEGORY_OVERTIME_GRACE]: () => loadMetric(client, options, 'overtime_within_grace', 'COALESCE(overtime_minutes, 0) BETWEEN 1 AND 15'),
+            [CATEGORY_NULL_ZERO_NEGATIVE_LATE]: () => loadMetric(client, options, 'null_zero_negative_late', "status = 'late' AND (late_minutes IS NULL OR late_minutes = 0 OR late_minutes < 0)"),
+            [CATEGORY_MISSING_PLAN_SOURCE]: () => loadMetric(
                 client,
                 options,
                 'missing_or_invalid_audit_plan_source',
                 "clock_in IS NOT NULL AND (audit_plan_source IS NULL OR audit_plan_source NOT IN ('hr_shift', 'profession_card', 'unscheduled', 'attendance_snapshot'))"
             ),
-            await loadMetric(
+            [CATEGORY_INFERRED_PROFESSION_CARD]: () => loadMetric(
                 client,
                 options,
                 'inferred_profession_card',
                 'hr_shift_id IS NULL AND planned_start IS NOT NULL AND planned_end IS NOT NULL'
             )
-        ];
+        };
+        const metrics = [];
+        for (const category of options.categories) {
+            metrics.push(await metricLoaders[category]());
+        }
         const payrollImpact = await loadPayrollImpact(client, options);
         const report = {
             generatedAt: new Date().toISOString(),
@@ -456,7 +524,8 @@ async function runAudit(options) {
             filters: {
                 from: options.from || null,
                 to: options.to || null,
-                businessContext: options.businessContext || null
+                businessContext: options.businessContext || null,
+                categories: options.categories
             },
             overview,
             metrics,
@@ -493,7 +562,7 @@ function renderMarkdown(report) {
         '',
         `Generated: ${report.generatedAt}`,
         `Mode: ${report.mode}`,
-        `Filters: from=${report.filters.from || 'all'}, to=${report.filters.to || 'all'}, businessContext=${report.filters.businessContext || 'all'}`,
+        `Filters: from=${report.filters.from || 'all'}, to=${report.filters.to || 'all'}, businessContext=${report.filters.businessContext || 'all'}, categories=${(report.filters.categories || []).join(', ') || 'all'}`,
         '',
         '## Overview',
         '',
@@ -543,6 +612,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+    CATEGORY_LATE_GRACE,
+    CATEGORY_NULL_ZERO_NEGATIVE_LATE,
+    CATEGORY_OVERTIME_GRACE,
+    candidateCte,
+    normalizeCategories,
     parseArgs,
     runAudit,
     renderMarkdown

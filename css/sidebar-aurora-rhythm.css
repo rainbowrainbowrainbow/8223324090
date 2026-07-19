@@ -206,7 +206,7 @@
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-brand {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 34px !important;
   align-items: center !important;
   gap: 10px !important;
@@ -698,16 +698,16 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
-  min-height: 40px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  transform: none !important;
+  min-height: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, #ffffff);
+  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, var(--sb-enterprise-text));
   outline-offset: -3px;
 }
 
@@ -751,16 +751,12 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment:focus-visible {
   z-index: 3;
   color: var(--sb-enterprise-text);
-  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, #ffffff);
+  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, var(--sb-enterprise-text));
   outline-offset: -3px;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
-  color: #ffffff;
-}
-
-body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
-  color: #071a1d;
+  color: var(--sb-enterprise-text);
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check {
@@ -805,7 +801,7 @@ body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segme
 }
 
 .sidebar-nav.collapsed .sidebar-design-timeline-launcher {
-  display: none !important;
+  display: none;
 }
 
 @media (max-width: 768px) {
@@ -848,8 +844,8 @@ body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segme
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment,
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check,
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
   }
 }
 

@@ -470,7 +470,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.match(sidebarRhythmCss, /data-sidebar-timeline-active-mode="rooms"[\s\S]*?translateX\(100%\)/);
     assert.match(sidebarRhythmCss, /@media \(prefers-reduced-motion:\s*reduce\)/);
     assert.match(sidebarRhythmCss, /--eg-sidebar-mobile-w:\s*min\(92vw,\s*336px\)/);
-    assert.match(sidebarRhythmCss, /\.sidebar-nav\.collapsed \.sidebar-design-timeline-launcher[\s\S]*?display:\s*none !important/);
+    assert.match(sidebarRhythmCss, /\.sidebar-nav\.collapsed \.sidebar-design-timeline-launcher[\s\S]*?display:\s*none/);
 
     const injectionPoint = /(\r?\n    return \{\r?\n        init,)/;
     assert.match(sidebarCode, injectionPoint);

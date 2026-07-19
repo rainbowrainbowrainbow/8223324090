@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.89 - Timeline Launcher Deep Links
+
+### Sidebar / Timeline routing / Regression QA / (19.07.2026) [codex]
+- **Deep links більше не втрачають режим:** global business-router зберігає валідний `timelineView=rooms|animators` для дозволеного поточного контексту.
+- **Перехід з іншої CRM-сторінки відкриває правильний вигляд:** «Кімнати» не відкотяться до старого режиму з localStorage.
+- **Access policy не змінювалась:** чужий business context не приймається, а protected timeline/booking blocks залишилися недоторканими.
+
+---
+
 ## v0.79.88 - Timeline Launcher Cross-page
 
 ### Sidebar / Timeline / Regression QA / (19.07.2026) [codex]

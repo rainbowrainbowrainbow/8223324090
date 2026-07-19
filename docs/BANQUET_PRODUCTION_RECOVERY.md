@@ -12,8 +12,11 @@ groups that have no canonical deposit record.
   `--apply --confirm=ATTACH_CONFIRMED_PINATAS`.
 - The detach/rollback command is also dry-run by default and requires
   `--apply --confirm=DETACH_CONFIRMED_PINATAS`.
-- The QA cleanup command is read-only inventory only. It does not delete
-  bookings, groups, links, or deposits.
+- The legacy QA cleanup mode remains read-only inventory for the historical
+  built-in booking allowlist.
+- Marker-scoped QA cleanup has a separate dry-run and a guarded transactional
+  apply. Apply is allowed only for records carrying the complete disposable QA
+  marker contract and an exact expected booking ID set.
 - The confirmation token is only a technical guard. A separate explicit owner
   approval for production data mutation is still required.
 - The tool never creates, estimates, or updates a deposit.
@@ -21,10 +24,11 @@ groups that have no canonical deposit record.
   one-way match fingerprint. They do not query or print customer names, phone
   numbers, social handles, or secrets.
 
-## 1. QA cleanup inventory after live QA
+## 1. Disposable QA cleanup after browser smoke
 
-After QA evidence is captured, inventory only the safe QA records that were
-created for the release:
+### 1.1 Legacy read-only inventory
+
+The historical allowlisted mode remains read-only:
 
 ```powershell
 node scripts/banquet-production-recovery.js qa-cleanup --json
@@ -37,14 +41,109 @@ BK-2026-0662,BK-2026-0663,BK-2026-0664,BK-2026-0665,BK-2026-0666,BK-2026-0667,BK
 ```
 
 The command runs in `BEGIN TRANSACTION READ ONLY` and returns only technical
-booking ids, dates, rooms, membership refs, compatibility link refs, and deposit
-ids. It rejects `--apply` and rejects booking ids outside the allowlist. Do not
-delete QA rows without a separate owner approval for production mutation and a
-separate deletion plan.
+booking IDs, dates, rooms, membership refs, compatibility link refs, and deposit
+IDs. It rejects booking IDs outside the allowlist. This legacy mode is not
+proof that a row is disposable and has no write-path.
 
 Additional release QA rows, if any, must be listed separately in the release
 handoff and must not be added to this cleanup allowlist without explicit owner
 confirmation.
+
+### 1.2 Marker-scoped dry-run
+
+Every browser-smoke root, member, activity, kitchen/service row and linked
+technical child must persist the shared `extra_data.disposableQa` marker:
+
+- `schemaVersion`;
+- `runId`;
+- `source=timeline_browser_smoke`;
+- `cleanupExpected=true`;
+- `testCustomerMarker`;
+- `kind`;
+- `createdAt`.
+
+The marker must be supported, no older than 24 hours, and identical to the
+operator scope. A marked group must also use the exact marked test customer.
+Do not treat a `runId`, group ID, customer note, or booking label alone as
+evidence that a record is disposable.
+
+Run a marker-scoped dry-run before every apply:
+
+```powershell
+node scripts/banquet-production-recovery.js qa-cleanup `
+  --run-id=RUN_ID `
+  --group-id=BQ_ID `
+  --primary-booking-id=PRIMARY_BOOKING_ID `
+  --expected-bookings=BOOKING_ID,BOOKING_ID `
+  --test-customer-marker=timeline_browser_smoke:RUN_ID:test_customer `
+  --business-context=event_genix `
+  --json
+```
+
+The dry-run uses `BEGIN TRANSACTION READ ONLY`. Continue only when:
+
+- the returned `groupId` is the requested group;
+- `expectedBookingIds` and `actualBookingIds` are exactly equal;
+- the status is `ready` or `already_cancelled_clean`;
+- every member and technical child has a valid marker;
+- there are no deposits, receipts, payment references, certificates, stock
+  dependencies, foreign customers, external links, or noncanonical finance
+  rows.
+
+`unexpected_member`, `unmarked_child`, `marker_mismatch`,
+`real_customer_blocked`, `financial_dependencies_present`, `not_found`, and
+`inconsistent` are hard stops. Never broaden `--expected-bookings` merely to
+make a blocked result pass.
+
+### 1.3 Marker-scoped apply
+
+Production apply requires a separate explicit owner approval for that exact
+`runId`, group ID and booking ID set. The confirmation token is necessary but
+is not owner approval:
+
+```powershell
+node scripts/banquet-production-recovery.js qa-cleanup `
+  --run-id=RUN_ID `
+  --group-id=BQ_ID `
+  --primary-booking-id=PRIMARY_BOOKING_ID `
+  --expected-bookings=BOOKING_ID,BOOKING_ID `
+  --test-customer-marker=timeline_browser_smoke:RUN_ID:test_customer `
+  --business-context=event_genix `
+  --apply `
+  --confirm=CANCEL_DISPOSABLE_QA_BANQUET `
+  --json
+```
+
+The canonical service:
+
+1. opens a `SERIALIZABLE` transaction;
+2. takes a group-scoped advisory lock and canonical booking-finance locks;
+3. locks and repeats the full preflight inside the transaction;
+4. cancels only the exact verified booking ID set;
+5. performs strict canonical finance synchronization for every booking;
+6. cancels the group only after every booking succeeds;
+7. keeps memberships and compatibility links for audit;
+8. rereads the complete state and requires `already_cancelled_clean`;
+9. writes one technical history event and commits.
+
+Any error rolls back booking statuses, group status, finance changes and the
+history insert together. A repeated apply is idempotent: it returns
+`already_cancelled_clean`, cancels zero rows and writes no second history event.
+There is no fallback that merely updates `status='cancelled'`.
+
+### 1.4 Evidence and PII restrictions
+
+Store only:
+
+- `runId`;
+- group ID;
+- technical booking IDs;
+- classification and blocker codes;
+- before/after counts.
+
+Never put customer names, phone numbers, social handles, credentials, tokens,
+request headers, arbitrary API bodies, or browser form payloads into cleanup
+artifacts, terminal logs, tickets, commits, or release notes.
 
 ## 2. Read-only recovery audit after deploy
 

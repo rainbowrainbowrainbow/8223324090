@@ -23,6 +23,9 @@ const {
     runRecoveryApply,
     runRecoveryDryRun
 } = require('../../scripts/banquet-production-recovery');
+const {
+    QA_CLEANUP_GROUP_LOCK_NAMESPACE
+} = require('../../services/disposableQaCancellation');
 
 const enabled = process.env.RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION === 'true';
 const BUSINESS_CONTEXT = 'event_genix';
@@ -154,14 +157,19 @@ async function seedDetachPair(pool, suffix, options = {}) {
     return { bookingId: pinataId, groupId, primaryId };
 }
 
-function qaCleanupMarker(runId) {
+const QA_CLEANUP_CREATED_AT = '2099-08-20T10:00:00.000Z';
+const QA_CLEANUP_NOW_MS = Date.parse('2099-08-20T12:00:00.000Z');
+
+function qaCleanupMarker(runId, kind) {
     return {
         disposableQa: {
             schemaVersion: 1,
             runId,
             source: 'timeline_browser_smoke',
             cleanupExpected: true,
-            testCustomerMarker: `timeline_browser_smoke:${runId}:test_customer`
+            testCustomerMarker: `timeline_browser_smoke:${runId}:test_customer`,
+            kind,
+            createdAt: QA_CLEANUP_CREATED_AT
         }
     };
 }
@@ -187,7 +195,8 @@ async function seedQaCleanupGroup(pool, suffix) {
         label: 'QA activity',
         programName: 'QA activity',
         category: 'animation',
-        extraData: qaCleanupMarker(runId)
+        price: 350,
+        extraData: qaCleanupMarker(runId, 'banquet_activity')
     });
     await insertBooking(pool, kitchenId, {
         customerId,
@@ -197,7 +206,7 @@ async function seedQaCleanupGroup(pool, suffix) {
         label: 'QA kitchen',
         programName: 'QA kitchen',
         category: 'banquet',
-        extraData: qaCleanupMarker(runId)
+        extraData: qaCleanupMarker(runId, 'banquet_kitchen')
     });
     await pool.query(
         `INSERT INTO banquet_groups
@@ -221,6 +230,12 @@ async function seedQaCleanupGroup(pool, suffix) {
          VALUES ($1, $2, $3, $4, $5, 'banquet-recovery-integration')`,
         [BUSINESS_CONTEXT, primaryId, kitchenId, RELATION_TYPE, `QA ${suffix}`]
     );
+    await pool.query(
+        `INSERT INTO finance_transactions
+            (business_context, type, amount, description, date, booking_id, created_by)
+         VALUES ($1, 'income', 350, $2, '2099-08-20', $3, 'banquet-recovery-integration')`,
+        [BUSINESS_CONTEXT, `Disposable QA ${suffix}`, primaryId]
+    );
     return {
         runId,
         groupId,
@@ -228,6 +243,65 @@ async function seedQaCleanupGroup(pool, suffix) {
         kitchenId,
         marker
     };
+}
+
+function qaCleanupOptions(target, overrides = {}) {
+    return {
+        mode: 'marker',
+        apply: true,
+        confirmation: QA_CLEANUP_CONFIRMATION,
+        businessContext: BUSINESS_CONTEXT,
+        runId: target.runId,
+        groupId: target.groupId,
+        primaryBookingId: target.primaryId,
+        expectedBookingIds: [target.primaryId, target.kitchenId].sort(),
+        source: 'timeline_browser_smoke',
+        testCustomerMarker: target.marker,
+        markerClock: { nowMs: QA_CLEANUP_NOW_MS },
+        ...overrides
+    };
+}
+
+async function readQaCleanupState(pool, target, bookingIds = null) {
+    const ids = (bookingIds || [target.primaryId, target.kitchenId]).map(String).sort();
+    const result = await pool.query(
+        `SELECT
+            (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+            ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+            (
+                SELECT COUNT(*)::int
+                  FROM finance_transactions
+                 WHERE business_context = $2
+                   AND booking_id = ANY($3::text[])
+            ) AS finance_count,
+            (
+                SELECT COUNT(*)::int
+                  FROM banquet_deposits
+                 WHERE business_context = $2
+                   AND (
+                       banquet_group_id = $1
+                       OR primary_booking_id = ANY($3::text[])
+                   )
+            ) AS deposit_count,
+            (
+                SELECT COUNT(*)::int
+                  FROM history
+                 WHERE business_context = $2
+                   AND action = 'timeline_browser_smoke_qa_cleanup'
+                   AND data->>'group_id' = $1
+            ) AS history_count
+           FROM bookings
+          WHERE id = ANY($3::text[])`,
+        [target.groupId, BUSINESS_CONTEXT, ids]
+    );
+    return result.rows[0];
+}
+
+function assertQaCleanupStateUntouched(state, expectedBookingCount = 2) {
+    assert.equal(state.group_status, 'active');
+    assert.deepEqual(state.booking_statuses, Array(expectedBookingCount).fill('confirmed'));
+    assert.equal(state.finance_count, 1);
+    assert.equal(state.history_count, 0);
 }
 
 async function countRows(pool, pair, action = 'banquet_pinata_membership_detached') {
@@ -367,8 +441,10 @@ describe('banquet production recovery on isolated PostgreSQL', {
             runId: target.runId,
             groupId: target.groupId,
             primaryBookingId: target.primaryId,
+            expectedBookingIds: [target.primaryId, target.kitchenId].sort(),
             source: 'timeline_browser_smoke',
-            testCustomerMarker: target.marker
+            testCustomerMarker: target.marker,
+            markerClock: { nowMs: QA_CLEANUP_NOW_MS }
         };
 
         const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
@@ -379,16 +455,23 @@ describe('banquet production recovery on isolated PostgreSQL', {
         assert.equal(dryRun.readOnly, true);
         assert.equal(dryRun.summary.ready, 1);
         assert.equal(dryRun.groups[0].activeBookingIds.length, 2);
+        assert.equal(dryRun.groups[0].removableFinanceTransactionCount, 1);
 
         const apply = await withClient(pool, client => runQaCleanupApply(client, options));
         assert.equal(apply.summary.cancelledGroups, 1);
         assert.equal(apply.summary.cancelledBookings, 2);
-        assert.equal(apply.after[0].status, 'already_cancelled');
+        assert.equal(apply.after[0].status, 'already_cancelled_clean');
 
         const statuses = await pool.query(
             `SELECT
                 (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
                 ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+                (
+                    SELECT COUNT(*)::int
+                      FROM finance_transactions
+                     WHERE business_context = $2
+                       AND booking_id = ANY($3::text[])
+                ) AS finance_count,
                 (
                     SELECT COUNT(*)::int
                       FROM history
@@ -402,12 +485,255 @@ describe('banquet production recovery on isolated PostgreSQL', {
         );
         assert.equal(statuses.rows[0].group_status, 'cancelled');
         assert.deepEqual(statuses.rows[0].booking_statuses, ['cancelled', 'cancelled']);
+        assert.equal(statuses.rows[0].finance_count, 0);
         assert.equal(statuses.rows[0].history_count, 1);
 
         const rerun = await withClient(pool, client => runQaCleanupApply(client, options));
         assert.equal(rerun.summary.cancelledGroups, 0);
         assert.equal(rerun.summary.cancelledBookings, 0);
-        assert.equal(rerun.after[0].status, 'already_cancelled');
+        assert.equal(rerun.after[0].status, 'already_cancelled_clean');
+    });
+
+    test('rolls back the full disposable QA group when strict finance synchronization fails', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_finance_rollback`);
+        const options = {
+            mode: 'marker',
+            apply: true,
+            confirmation: QA_CLEANUP_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            runId: target.runId,
+            groupId: target.groupId,
+            primaryBookingId: target.primaryId,
+            expectedBookingIds: [target.primaryId, target.kitchenId].sort(),
+            source: 'timeline_browser_smoke',
+            testCustomerMarker: target.marker,
+            markerClock: { nowMs: QA_CLEANUP_NOW_MS }
+        };
+
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options, {
+                syncBookingFinanceInTransaction: async () => {
+                    throw new Error('simulated strict finance failure');
+                }
+            })),
+            /simulated strict finance failure/
+        );
+
+        const state = await pool.query(
+            `SELECT
+                (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+                ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+                (
+                    SELECT COUNT(*)::int
+                      FROM finance_transactions
+                     WHERE business_context = $2
+                       AND booking_id = ANY($3::text[])
+                ) AS finance_count,
+                (
+                    SELECT COUNT(*)::int
+                      FROM history
+                     WHERE business_context = $2
+                       AND action = 'timeline_browser_smoke_qa_cleanup'
+                       AND data->>'group_id' = $1
+                ) AS history_count
+               FROM bookings
+              WHERE id = ANY($3::text[])`,
+            [target.groupId, BUSINESS_CONTEXT, [target.primaryId, target.kitchenId]]
+        );
+        assert.equal(state.rows[0].group_status, 'active');
+        assert.deepEqual(state.rows[0].booking_statuses, ['confirmed', 'confirmed']);
+        assert.equal(state.rows[0].finance_count, 1);
+        assert.equal(state.rows[0].history_count, 0);
+    });
+
+    test('blocks missing marker without changing bookings, finance, group, or history', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_missing_marker`);
+        const options = qaCleanupOptions(target);
+        await pool.query(
+            `UPDATE bookings
+                SET extra_data = '{}'::jsonb
+              WHERE id = $1`,
+            [target.kitchenId]
+        );
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.groups[0].status, 'marker_mismatch');
+        assert.match(dryRun.groups[0].reason, /missing_marker/);
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        assertQaCleanupStateUntouched(await readQaCleanupState(pool, target));
+    });
+
+    test('blocks a foreign customer without partially cancelling the group', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_foreign_customer`);
+        const foreignCustomerId = await insertCustomer(pool, `${suffix}_qa_foreign`);
+        const options = qaCleanupOptions(target);
+        await pool.query(
+            `UPDATE bookings
+                SET customer_id = $1
+              WHERE id = $2`,
+            [foreignCustomerId, target.kitchenId]
+        );
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.groups[0].status, 'real_customer_blocked');
+        assert.match(dryRun.groups[0].reason, /group_customer_mismatch|customer_marker_missing/);
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        assertQaCleanupStateUntouched(await readQaCleanupState(pool, target));
+    });
+
+    test('blocks an unmarked linked child and never broad-cancels it', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_unmarked_child`);
+        const childId = compactId('bpr-qa-child', `${suffix}_qa_unmarked_child`);
+        await insertBooking(pool, childId, {
+            customerId: (
+                await pool.query('SELECT customer_id FROM banquet_groups WHERE id = $1', [target.groupId])
+            ).rows[0].customer_id,
+            lineId: 'line-linked-child',
+            programId: 'qa-child',
+            programCode: 'QA-CHILD',
+            label: 'Unmarked QA child',
+            programName: 'Unmarked QA child',
+            category: 'animation',
+            price: 0,
+            extraData: {}
+        });
+        await pool.query(
+            'UPDATE bookings SET linked_to = $1 WHERE id = $2',
+            [target.primaryId, childId]
+        );
+        const options = qaCleanupOptions(target, {
+            expectedBookingIds: [target.primaryId, target.kitchenId, childId].sort()
+        });
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.groups[0].status, 'unmarked_child');
+        assert.match(dryRun.groups[0].reason, /missing_marker/);
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        assertQaCleanupStateUntouched(
+            await readQaCleanupState(pool, target, options.expectedBookingIds),
+            3
+        );
+    });
+
+    test('blocks a canonical banquet deposit and preserves every dependency', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_deposit`);
+        const options = qaCleanupOptions(target);
+        const customerId = (
+            await pool.query('SELECT customer_id FROM banquet_groups WHERE id = $1', [target.groupId])
+        ).rows[0].customer_id;
+        await pool.query(
+            `INSERT INTO banquet_deposits
+                (business_context, banquet_group_id, primary_booking_id, customer_id,
+                 event_date, amount, status, source_kind)
+             VALUES ($1, $2, $3, $4, '2099-08-20', 2000, 'manager_reported', 'integration_test')`,
+            [BUSINESS_CONTEXT, target.groupId, target.primaryId, customerId]
+        );
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.groups[0].status, 'financial_dependencies_present');
+        assert.equal(dryRun.groups[0].depositCount, 1);
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        const state = await readQaCleanupState(pool, target);
+        assertQaCleanupStateUntouched(state);
+        assert.equal(state.deposit_count, 1);
+    });
+
+    test('wrong run and group ids are blocked without mutation or audit history', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_wrong_ids`);
+        const wrongRun = qaCleanupOptions(target, { runId: `${target.runId}-wrong` });
+        const wrongRunDry = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...wrongRun,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(wrongRunDry.groups[0].status, 'marker_mismatch');
+        assert.match(wrongRunDry.groups[0].reason, /run_id_mismatch/);
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, wrongRun)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        const wrongGroup = qaCleanupOptions(target, {
+            groupId: compactId('bpr-qa-missing-group', suffix)
+        });
+        const wrongGroupDry = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...wrongGroup,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(wrongGroupDry.groups[0].status, 'not_found');
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, wrongGroup)),
+            error => error?.code === 'DISPOSABLE_QA_PREFLIGHT_BLOCKED'
+        );
+
+        assertQaCleanupStateUntouched(await readQaCleanupState(pool, target));
+    });
+
+    test('group advisory lock serializes a concurrent cleanup attempt', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_locked`);
+        const options = qaCleanupOptions(target);
+        const blocker = await pool.connect();
+        let settled = false;
+        let applyPromise;
+        try {
+            await blocker.query('BEGIN');
+            await blocker.query(
+                'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+                [`${QA_CLEANUP_GROUP_LOCK_NAMESPACE}:${BUSINESS_CONTEXT}:${target.groupId}`]
+            );
+            applyPromise = withClient(pool, client => runQaCleanupApply(client, options));
+            void applyPromise.then(
+                () => { settled = true; },
+                () => { settled = true; }
+            );
+            await new Promise(resolve => setTimeout(resolve, 150));
+            assert.equal(settled, false, 'cleanup waits for the group-scoped advisory lock');
+        } finally {
+            await blocker.query('COMMIT').catch(() => blocker.query('ROLLBACK').catch(() => {}));
+            blocker.release();
+        }
+
+        const apply = await applyPromise;
+        assert.equal(apply.summary.cancelledGroups, 1);
+        assert.equal(apply.after[0].status, 'already_cancelled_clean');
+        const state = await readQaCleanupState(pool, target);
+        assert.equal(state.group_status, 'cancelled');
+        assert.deepEqual(state.booking_statuses, ['cancelled', 'cancelled']);
+        assert.equal(state.finance_count, 0);
+        assert.equal(state.history_count, 1);
     });
 
     test('rolls back membership, link, and history when persistence fails after a real delete', async () => {

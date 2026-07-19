@@ -4,14 +4,19 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+    DISPOSABLE_QA_SOURCE: QA_CLEANUP_SOURCE
+} = require('../services/disposableQa');
+const qaCancellationService = require('../services/disposableQaCancellation');
 
 const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 const APPLY_CONFIRMATION = 'ATTACH_CONFIRMED_PINATAS';
 const DETACH_CONFIRMATION = 'DETACH_CONFIRMED_PINATAS';
-const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
 const RECOVERY_ACTOR = 'banquet-pinata-recovery';
-const QA_CLEANUP_ACTOR = 'timeline-browser-smoke-cleanup';
-const QA_CLEANUP_SOURCE = 'timeline_browser_smoke';
+const {
+    QA_CLEANUP_ACTOR,
+    QA_CLEANUP_CONFIRMATION
+} = qaCancellationService;
 const BANQUET_RELATION_TYPE = 'banquet_activity';
 const SAFE_QA_CLEANUP_BOOKING_IDS = Object.freeze(
     Array.from({ length: 7 }, (_, index) => `BK-2026-${String(662 + index).padStart(4, '0')}`)
@@ -193,9 +198,22 @@ function parseQaCleanupOptions(argv = []) {
     const testCustomerMarker = String(
         argValue(argv, '--test-customer-marker', argValue(argv, '--testCustomerMarker', '')) || ''
     ).trim();
+    const expectedBookingIdsValue = String(
+        argValue(argv, '--expected-bookings', argValue(argv, '--expectedBookingIds', '')) || ''
+    ).trim();
     const markerSource = String(argValue(argv, '--source', QA_CLEANUP_SOURCE) || '').trim() || QA_CLEANUP_SOURCE;
+    if (markerSource !== QA_CLEANUP_SOURCE) {
+        throw new Error(`QA cleanup source must be exactly ${QA_CLEANUP_SOURCE}`);
+    }
     const confirmation = String(argValue(argv, '--confirm', '') || '').trim();
-    const markerMode = Boolean(apply || runId || groupId || primaryBookingId || testCustomerMarker);
+    const markerMode = Boolean(
+        apply
+        || runId
+        || groupId
+        || primaryBookingId
+        || testCustomerMarker
+        || expectedBookingIdsValue
+    );
     if (markerMode) {
         if (!groupId) {
             throw new Error('QA cleanup requires --group-id=<one banquet group id>');
@@ -213,7 +231,8 @@ function parseQaCleanupOptions(argv = []) {
             groupId: cleanTechnicalId(groupId, 'QA banquet group id'),
             primaryBookingId: primaryBookingId ? cleanTechnicalId(primaryBookingId, 'QA primary booking id') : null,
             source: markerSource,
-            testCustomerMarker: testCustomerMarker || `${QA_CLEANUP_SOURCE}:${runId}`
+            testCustomerMarker: testCustomerMarker || `${markerSource}:${runId}:test_customer`,
+            expectedBookingIds: parseBookingIdList(expectedBookingIdsValue, 'expected QA booking id')
         };
         if (apply && options.confirmation !== QA_CLEANUP_CONFIRMATION) {
             throw new Error(`QA cleanup apply requires --apply --confirm=${QA_CLEANUP_CONFIRMATION}`);
@@ -641,7 +660,7 @@ function buildQaCleanupReport(rows = [], options = {}) {
 
 async function runQaCleanupDryRun(db, options, dependencies = {}) {
     if (options.mode === 'marker') {
-        return runQaCleanupGroupDryRun(db, options, dependencies);
+        return qaCancellationService.runQaCleanupGroupDryRun(db, options, dependencies);
     }
     await db.query('BEGIN TRANSACTION READ ONLY');
     try {
@@ -655,362 +674,8 @@ async function runQaCleanupDryRun(db, options, dependencies = {}) {
     }
 }
 
-function safeJsonObject(value) {
-    if (!value) return {};
-    if (typeof value === 'object' && !Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-        try {
-            const parsed = JSON.parse(value);
-            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-        } catch {
-            return {};
-        }
-    }
-    return {};
-}
-
-function disposableQaMarker(row = {}) {
-    const extra = safeJsonObject(row.extra_data ?? row.extraData);
-    const marker = extra.disposableQa || extra.disposable_qa || {};
-    return marker && typeof marker === 'object' && !Array.isArray(marker) ? marker : {};
-}
-
-function qaMarkerInspection(row = {}, options = {}) {
-    const marker = disposableQaMarker(row);
-    const reasons = [];
-    if (!marker || !Object.keys(marker).length) reasons.push('missing_marker');
-    if (String(marker.runId || marker.run_id || '') !== String(options.runId || '')) reasons.push('run_id_mismatch');
-    if (String(marker.source || '') !== String(options.source || QA_CLEANUP_SOURCE)) reasons.push('source_mismatch');
-    if (marker.cleanupExpected !== true && marker.cleanup_expected !== true) reasons.push('cleanup_expected_missing');
-    if (
-        options.testCustomerMarker
-        && String(marker.testCustomerMarker || marker.test_customer_marker || '') !== String(options.testCustomerMarker)
-    ) {
-        reasons.push('test_customer_marker_mismatch');
-    }
-    return {
-        ok: reasons.length === 0,
-        reasons,
-        marker: {
-            runId: marker.runId || marker.run_id || null,
-            source: marker.source || null,
-            cleanupExpected: marker.cleanupExpected ?? marker.cleanup_expected ?? null,
-            testCustomerMarker: marker.testCustomerMarker || marker.test_customer_marker || null
-        }
-    };
-}
-
-function bookingActive(status) {
-    return String(status || 'confirmed').trim().toLowerCase() !== 'cancelled';
-}
-
-async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
-    const result = await db.query(
-        `SELECT bg.id AS group_id,
-                bg.business_context AS group_business_context,
-                bg.primary_booking_id,
-                bg.customer_id AS group_customer_id,
-                bg.date AS group_date,
-                bg.room AS group_room,
-                bg.group_name,
-                bg.status AS group_status,
-                bg.source AS group_source,
-                bg.guest_arrival_time,
-                bgb.booking_id,
-                bgb.role,
-                b.id AS booking_id,
-                b.status AS booking_status,
-                b.linked_to,
-                b.customer_id AS booking_customer_id,
-                b.date AS booking_date,
-                b.time AS booking_time,
-                b.room AS booking_room,
-                b.label AS booking_label,
-                b.program_code,
-                b.category,
-                b.extra_data,
-                EXISTS (
-                    SELECT 1
-                      FROM customers c
-                     WHERE c.id = b.customer_id
-                       AND ${contextSql('c', '$2')}
-                       AND COALESCE(c.notes, '') LIKE ('%' || $3 || '%')
-                ) AS customer_marker_ok,
-                (
-                    SELECT COUNT(DISTINCT child.id)::int
-                      FROM bookings child
-                     WHERE child.linked_to = b.id
-                       AND ${contextSql('child', '$2')}
-                       AND ${activeSql('child')}
-                ) AS active_child_booking_count,
-                (
-                    SELECT COUNT(DISTINCT deposit.id)::int
-                      FROM banquet_deposits deposit
-                     WHERE ${contextSql('deposit', '$2')}
-                       AND LOWER(COALESCE(NULLIF(BTRIM(deposit.status), ''), 'manager_reported')) <> 'cancelled'
-                       AND (
-                            deposit.banquet_group_id = bg.id
-                            OR deposit.primary_booking_id = bg.primary_booking_id
-                            OR deposit.primary_booking_id = b.id
-                       )
-                ) AS active_deposit_count,
-                (
-                    SELECT COUNT(DISTINCT link.id)::int
-                      FROM booking_banquet_links link
-                     WHERE ${contextSql('link', '$2')}
-                       AND link.relation_type = $4
-                       AND (
-                            link.booking_a_id = b.id
-                            OR link.booking_b_id = b.id
-                            OR link.booking_a_id = bg.primary_booking_id
-                            OR link.booking_b_id = bg.primary_booking_id
-                       )
-                ) AS banquet_link_count
-           FROM banquet_groups bg
-           JOIN banquet_group_bookings bgb
-             ON bgb.group_id = bg.id
-            AND ${contextSql('bgb', '$2')}
-           JOIN bookings b
-             ON b.id = bgb.booking_id
-            AND ${contextSql('b', '$2')}
-          WHERE bg.id = $1
-            AND ${contextSql('bg', '$2')}
-          ORDER BY CASE WHEN b.id = bg.primary_booking_id THEN 0 ELSE 1 END,
-                   bgb.sort_order,
-                   b.id
-          ${forUpdate ? 'FOR UPDATE OF bg, bgb, b' : ''}`,
-        [options.groupId, options.businessContext, options.testCustomerMarker, BANQUET_RELATION_TYPE]
-    );
-    return result.rows || [];
-}
-
-function inspectQaCleanupGroupRows(rows = [], options = {}) {
-    const first = rows[0] || null;
-    if (!first) {
-        return {
-            groupId: options.groupId,
-            primaryBookingId: options.primaryBookingId || null,
-            status: 'not_found',
-            reason: 'group_not_found_or_empty',
-            blockers: ['group_not_found_or_empty'],
-            bookings: [],
-            activeBookingIds: [],
-            activeChildBookingCount: 0,
-            activeDepositCount: 0,
-            banquetLinkCount: 0
-        };
-    }
-    const groupStatus = String(first.group_status || 'active').trim().toLowerCase();
-    const primaryBookingId = String(first.primary_booking_id || '').trim() || null;
-    const blockers = [];
-    if (options.primaryBookingId && primaryBookingId !== String(options.primaryBookingId)) {
-        blockers.push('primary_booking_id_mismatch');
-    }
-    if (!primaryBookingId) blockers.push('primary_booking_missing');
-    const bookings = rows.map(row => {
-        const marker = qaMarkerInspection(row, options);
-        const active = bookingActive(row.booking_status);
-        if (!marker.ok) blockers.push(`booking_marker_${row.booking_id}:${marker.reasons.join('+')}`);
-        if (!row.booking_customer_id) blockers.push(`booking_customer_missing:${row.booking_id}`);
-        if (row.booking_customer_id && row.customer_marker_ok !== true) blockers.push(`real_customer_blocked:${row.booking_id}`);
-        return {
-            bookingId: String(row.booking_id || '').trim(),
-            role: String(row.role || '').trim() || null,
-            status: String(row.booking_status || '').trim() || null,
-            active,
-            customerMarkerOk: row.customer_marker_ok === true,
-            marker: marker.marker,
-            markerOk: marker.ok
-        };
-    });
-    if (!bookings.some(item => item.bookingId === primaryBookingId)) {
-        blockers.push('primary_booking_membership_missing');
-    }
-    const activeBookingIds = bookings.filter(item => item.active).map(item => item.bookingId);
-    const activeChildBookingCount = rows.reduce((total, row) => total + Number(row.active_child_booking_count || 0), 0);
-    const activeDepositCount = Math.max(0, ...rows.map(row => Number(row.active_deposit_count || 0)));
-    const banquetLinkCount = Math.max(0, ...rows.map(row => Number(row.banquet_link_count || 0)));
-    if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
-    const uniqueBlockers = [...new Set(blockers)];
-    let status = 'ready';
-    let reason = null;
-    if (uniqueBlockers.length) {
-        status = 'blocked';
-        reason = uniqueBlockers.join(',');
-    } else if (groupStatus === 'cancelled' && activeBookingIds.length === 0 && activeChildBookingCount === 0) {
-        status = 'already_cancelled';
-    }
-    return {
-        groupId: String(first.group_id || options.groupId || '').trim(),
-        businessContext: normalizeBusinessContext(first.group_business_context || options.businessContext),
-        primaryBookingId,
-        groupStatus,
-        groupSource: String(first.group_source || '').trim() || null,
-        date: String(first.group_date || '').slice(0, 10),
-        room: String(first.group_room || '').trim() || null,
-        guestArrivalTime: String(first.guest_arrival_time || '').trim() || null,
-        status,
-        reason,
-        blockers: uniqueBlockers,
-        bookings,
-        activeBookingIds,
-        activeChildBookingCount,
-        activeDepositCount,
-        banquetLinkCount
-    };
-}
-
-function summarizeQaCleanupGroupInspections(inspections = []) {
-    const count = status => inspections.filter(item => item.status === status).length;
-    return {
-        requested: inspections.length,
-        ready: count('ready'),
-        alreadyCancelled: count('already_cancelled'),
-        blocked: count('blocked'),
-        notFound: count('not_found'),
-        activeBookings: inspections.reduce((total, item) => total + (item.activeBookingIds?.length || 0), 0),
-        activeChildBookings: inspections.reduce((total, item) => total + Number(item.activeChildBookingCount || 0), 0),
-        activeDepositRows: inspections.reduce((total, item) => total + Number(item.activeDepositCount || 0), 0)
-    };
-}
-
-async function inspectQaCleanupGroup(db, options, { forUpdate = false } = {}) {
-    const rows = await loadQaCleanupGroupRows(db, options, { forUpdate });
-    return inspectQaCleanupGroupRows(rows, options);
-}
-
-async function runQaCleanupGroupDryRun(db, options, dependencies = {}) {
-    const inspect = dependencies.inspectQaCleanupGroup || inspectQaCleanupGroup;
-    await db.query('BEGIN TRANSACTION READ ONLY');
-    try {
-        const inspection = await inspect(db, options, { forUpdate: false });
-        await db.query('ROLLBACK');
-        return {
-            mode: 'qa-cleanup-group-dry-run',
-            readOnly: true,
-            businessContext: options.businessContext,
-            runId: options.runId,
-            source: options.source,
-            testCustomerMarker: options.testCustomerMarker,
-            groups: [inspection],
-            summary: summarizeQaCleanupGroupInspections([inspection])
-        };
-    } catch (error) {
-        await db.query('ROLLBACK').catch(() => {});
-        throw error;
-    }
-}
-
-async function persistQaCleanupGroup(db, inspection, options = {}) {
-    if (inspection.status === 'already_cancelled') {
-        return {
-            groupId: inspection.groupId,
-            status: 'already_cancelled',
-            cancelledBookings: 0,
-            cancelledGroups: 0
-        };
-    }
-    const rootBookingIds = inspection.bookings.map(item => item.bookingId).filter(Boolean);
-    const bookingResult = rootBookingIds.length
-        ? await db.query(
-            `UPDATE bookings
-                SET status = 'cancelled', updated_at = NOW()
-              WHERE (id = ANY($1::text[]) OR linked_to = ANY($1::text[]))
-                AND ${contextSql('bookings', '$2')}
-                AND ${activeSql('bookings')}
-              RETURNING id`,
-            [rootBookingIds, options.businessContext]
-        )
-        : { rows: [] };
-    const groupResult = await db.query(
-        `UPDATE banquet_groups
-            SET status = 'cancelled',
-                updated_at = NOW(),
-                updated_by = $3
-          WHERE id = $1
-            AND ${contextSql('banquet_groups', '$2')}
-            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) <> 'cancelled'
-          RETURNING id`,
-        [inspection.groupId, options.businessContext, QA_CLEANUP_ACTOR]
-    );
-    const changed = Number(bookingResult.rows.length || 0) + Number(groupResult.rows.length || 0);
-    if (changed > 0) {
-        await db.query(
-            `INSERT INTO history (business_context, action, username, data)
-             VALUES ($1, $2, $3, $4::jsonb)`,
-            [
-                options.businessContext,
-                'timeline_browser_smoke_qa_cleanup',
-                QA_CLEANUP_ACTOR,
-                JSON.stringify({
-                    group_id: inspection.groupId,
-                    primary_booking_id: inspection.primaryBookingId,
-                    booking_ids: rootBookingIds,
-                    run_id: options.runId,
-                    source: options.source,
-                    cleanup_expected: true,
-                    test_customer_marker: options.testCustomerMarker
-                })
-            ]
-        );
-    }
-    return {
-        groupId: inspection.groupId,
-        status: changed > 0 ? 'cancelled' : 'already_cancelled',
-        cancelledBookings: bookingResult.rows.length,
-        cancelledGroups: groupResult.rows.length
-    };
-}
-
 async function runQaCleanupApply(db, options, dependencies = {}) {
-    if (!options.apply || options.confirmation !== QA_CLEANUP_CONFIRMATION) {
-        throw new Error(`QA cleanup apply requires --apply --confirm=${QA_CLEANUP_CONFIRMATION}`);
-    }
-    if (options.mode !== 'marker') {
-        throw new Error('QA cleanup apply requires --run-id and --group-id disposable marker scope');
-    }
-    const inspect = dependencies.inspectQaCleanupGroup || inspectQaCleanupGroup;
-    const persist = dependencies.persistQaCleanupGroup || persistQaCleanupGroup;
-    await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-    try {
-        const before = await inspect(db, options, { forUpdate: true });
-        if (!['ready', 'already_cancelled'].includes(before.status)) {
-            throw new Error(`QA cleanup blocked by preflight: ${before.reason || before.status}`);
-        }
-        const cleanup = before.status === 'ready'
-            ? await persist(db, before, options)
-            : {
-                groupId: before.groupId,
-                status: 'already_cancelled',
-                cancelledBookings: 0,
-                cancelledGroups: 0
-            };
-        const after = await inspect(db, options, { forUpdate: false });
-        if (after.status !== 'already_cancelled') {
-            throw new Error(`Post-cleanup verification failed: ${after.reason || after.status}`);
-        }
-        await db.query('COMMIT');
-        return {
-            mode: 'qa-cleanup-apply',
-            readOnly: false,
-            businessContext: options.businessContext,
-            runId: options.runId,
-            source: options.source,
-            testCustomerMarker: options.testCustomerMarker,
-            before: [before],
-            cleanup: [cleanup],
-            after: [after],
-            summary: {
-                ...summarizeQaCleanupGroupInspections([before]),
-                cancelledBookings: cleanup.cancelledBookings || 0,
-                cancelledGroups: cleanup.cancelledGroups || 0,
-                verifiedAfter: 1
-            }
-        };
-    } catch (error) {
-        await db.query('ROLLBACK').catch(() => {});
-        throw error;
-    }
+    return qaCancellationService.runQaCleanupApply(db, options, dependencies);
 }
 
 function isActiveRow(row = {}) {
@@ -1982,7 +1647,7 @@ function printQaCleanupReport(report) {
         }
         console.log(
             `requested=${report.summary.requested} ready=${report.summary.ready || 0} `
-            + `alreadyCancelled=${report.summary.alreadyCancelled || 0} blocked=${report.summary.blocked || 0} `
+            + `alreadyCancelledClean=${report.summary.alreadyCancelledClean || 0} blocked=${report.summary.blocked || 0} `
             + `notFound=${report.summary.notFound || 0}`
         );
         return;
@@ -2050,7 +1715,8 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) {
     main().catch(error => {
-        console.error(`Banquet production recovery failed: ${error.message}`);
+        const detail = error?.message || error?.stack || String(error);
+        console.error(`Banquet production recovery failed: ${detail}`);
         process.exitCode = 1;
     });
 }
@@ -2072,8 +1738,9 @@ module.exports = {
     detachInspectionStateAsTarget,
     detachTargetAsRows,
     exactMatch,
-    inspectQaCleanupGroup,
-    inspectQaCleanupGroupRows,
+    inspectQaCleanupGroup: qaCancellationService.inspectQaCleanupGroup,
+    inspectQaCleanupGroupState: qaCancellationService.inspectQaCleanupGroupState,
+    inspectQaCleanupGroupRows: qaCancellationService.inspectQaCleanupGroupRows,
     inspectDetachPair,
     inspectRecoveryPair,
     isPinataRow,
@@ -2085,7 +1752,18 @@ module.exports = {
     loadDetachTarget,
     loadExactCandidateGroupIds,
     loadMissingDepositAuditRows,
-    loadQaCleanupGroupRows,
+    loadQaCleanupCertificateReferences: qaCancellationService.loadQaCleanupCertificateReferences,
+    loadQaCleanupChildBookings: qaCancellationService.loadQaCleanupChildBookings,
+    loadQaCleanupCompatibilityLinks: qaCancellationService.loadQaCleanupCompatibilityLinks,
+    loadQaCleanupDeposits: qaCancellationService.loadQaCleanupDeposits,
+    loadQaCleanupFinanceTransactions: qaCancellationService.loadQaCleanupFinanceTransactions,
+    loadQaCleanupGroupRecord: qaCancellationService.loadQaCleanupGroupRecord,
+    loadQaCleanupGroupRows: qaCancellationService.loadQaCleanupGroupRows,
+    loadQaCleanupGroupState: qaCancellationService.loadQaCleanupGroupState,
+    loadQaCleanupMemberships: qaCancellationService.loadQaCleanupMemberships,
+    loadQaCleanupReceipts: qaCancellationService.loadQaCleanupReceipts,
+    loadQaCleanupRootBookings: qaCancellationService.loadQaCleanupRootBookings,
+    loadQaCleanupStockDependencies: qaCancellationService.loadQaCleanupStockDependencies,
     loadPinataIntegrityAuditRows,
     loadQaCleanupRows,
     loadRecoveryMemberships,
@@ -2103,7 +1781,6 @@ module.exports = {
     parseRecoveryOptions,
     parseRecoveryPairs,
     persistDetachPair,
-    persistQaCleanupGroup,
     persistRecoveryPair,
     printAuditReport,
     printDetachReport,
@@ -2114,7 +1791,7 @@ module.exports = {
     runDetachDryRun,
     runQaCleanupApply,
     runQaCleanupDryRun,
-    runQaCleanupGroupDryRun,
+    runQaCleanupGroupDryRun: qaCancellationService.runQaCleanupGroupDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 };

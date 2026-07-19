@@ -12,6 +12,7 @@ const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
 const RECOVERY_ACTOR = 'banquet-pinata-recovery';
 const QA_CLEANUP_ACTOR = 'timeline-browser-smoke-cleanup';
 const QA_CLEANUP_SOURCE = 'timeline_browser_smoke';
+const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v2_finance_atomic';
 const BANQUET_RELATION_TYPE = 'banquet_activity';
 const SAFE_QA_CLEANUP_BOOKING_IDS = Object.freeze(
     Array.from({ length: 7 }, (_, index) => `BK-2026-${String(662 + index).padStart(4, '0')}`)
@@ -200,6 +201,14 @@ function parseQaCleanupOptions(argv = []) {
         if (!groupId) {
             throw new Error('QA cleanup requires --group-id=<one banquet group id>');
         }
+        const normalizedRunId = parseQaCleanupRunId(runId);
+        const canonicalTestCustomerMarker = `${QA_CLEANUP_SOURCE}:${normalizedRunId}:test_customer`;
+        if (markerSource !== QA_CLEANUP_SOURCE) {
+            throw new Error(`QA cleanup source must be exactly ${QA_CLEANUP_SOURCE}`);
+        }
+        if (testCustomerMarker && testCustomerMarker !== canonicalTestCustomerMarker) {
+            throw new Error(`QA cleanup test customer marker must be exactly ${canonicalTestCustomerMarker}`);
+        }
         const options = {
             command: 'qa-cleanup',
             mode: 'marker',
@@ -209,11 +218,11 @@ function parseQaCleanupOptions(argv = []) {
                 argValue(argv, '--business-context', argValue(argv, '--context', DEFAULT_BUSINESS_CONTEXT))
             ),
             confirmation,
-            runId: parseQaCleanupRunId(runId),
+            runId: normalizedRunId,
             groupId: cleanTechnicalId(groupId, 'QA banquet group id'),
             primaryBookingId: primaryBookingId ? cleanTechnicalId(primaryBookingId, 'QA primary booking id') : null,
-            source: markerSource,
-            testCustomerMarker: testCustomerMarker || `${QA_CLEANUP_SOURCE}:${runId}`
+            source: QA_CLEANUP_SOURCE,
+            testCustomerMarker: canonicalTestCustomerMarker
         };
         if (apply && options.confirmation !== QA_CLEANUP_CONFIRMATION) {
             throw new Error(`QA cleanup apply requires --apply --confirm=${QA_CLEANUP_CONFIRMATION}`);
@@ -710,6 +719,13 @@ async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
                 bg.business_context AS group_business_context,
                 bg.primary_booking_id,
                 bg.customer_id AS group_customer_id,
+                EXISTS (
+                    SELECT 1
+                      FROM customers group_customer
+                     WHERE group_customer.id = bg.customer_id
+                       AND ${contextSql('group_customer', '$2')}
+                       AND POSITION($3 IN COALESCE(group_customer.notes, '')) > 0
+                ) AS group_customer_marker_ok,
                 bg.date AS group_date,
                 bg.room AS group_room,
                 bg.group_name,
@@ -729,12 +745,19 @@ async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
                 b.program_code,
                 b.category,
                 b.extra_data,
+                ARRAY(
+                    SELECT ft.id
+                      FROM finance_transactions ft
+                     WHERE ft.booking_id = b.id
+                       AND ${contextSql('ft', '$2')}
+                     ORDER BY ft.id
+                ) AS finance_transaction_ids,
                 EXISTS (
                     SELECT 1
                       FROM customers c
                      WHERE c.id = b.customer_id
                        AND ${contextSql('c', '$2')}
-                       AND COALESCE(c.notes, '') LIKE ('%' || $3 || '%')
+                       AND POSITION($3 IN COALESCE(c.notes, '')) > 0
                 ) AS customer_marker_ok,
                 (
                     SELECT COUNT(DISTINCT child.id)::int
@@ -797,21 +820,40 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
             activeBookingIds: [],
             activeChildBookingCount: 0,
             activeDepositCount: 0,
-            banquetLinkCount: 0
+            banquetLinkCount: 0,
+            financeTransactionIds: [],
+            financeTransactionCount: 0
         };
     }
+    const financeTransactionIds = [...new Set(rows.flatMap(row =>
+        normalizedTechnicalArray(row.finance_transaction_ids)
+    ))].sort((left, right) => (Number(left) - Number(right)) || left.localeCompare(right));
+    const financeTransactionCount = financeTransactionIds.length;
     const groupStatus = String(first.group_status || 'active').trim().toLowerCase();
     const primaryBookingId = String(first.primary_booking_id || '').trim() || null;
+    const cancelledNoOpCandidate = groupStatus === 'cancelled'
+        && rows.every(row => !bookingActive(row.booking_status))
+        && rows.every(row => Number(row.active_child_booking_count || 0) === 0)
+        && rows.every(row => Number(row.active_deposit_count || 0) === 0)
+        && financeTransactionCount === 0;
     const blockers = [];
     if (options.primaryBookingId && primaryBookingId !== String(options.primaryBookingId)) {
         blockers.push('primary_booking_id_mismatch');
     }
     if (!primaryBookingId) blockers.push('primary_booking_missing');
+    if (!first.group_customer_id && !cancelledNoOpCandidate) {
+        blockers.push('group_customer_missing');
+    }
+    if (first.group_customer_id && first.group_customer_marker_ok !== true) {
+        blockers.push('real_group_customer_blocked');
+    }
     const bookings = rows.map(row => {
         const marker = qaMarkerInspection(row, options);
         const active = bookingActive(row.booking_status);
         if (!marker.ok) blockers.push(`booking_marker_${row.booking_id}:${marker.reasons.join('+')}`);
-        if (!row.booking_customer_id) blockers.push(`booking_customer_missing:${row.booking_id}`);
+        if (!row.booking_customer_id && !cancelledNoOpCandidate) {
+            blockers.push(`booking_customer_missing:${row.booking_id}`);
+        }
         if (row.booking_customer_id && row.customer_marker_ok !== true) blockers.push(`real_customer_blocked:${row.booking_id}`);
         return {
             bookingId: String(row.booking_id || '').trim(),
@@ -820,7 +862,8 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
             active,
             customerMarkerOk: row.customer_marker_ok === true,
             marker: marker.marker,
-            markerOk: marker.ok
+            markerOk: marker.ok,
+            financeTransactionIds: normalizedTechnicalArray(row.finance_transaction_ids)
         };
     });
     if (!bookings.some(item => item.bookingId === primaryBookingId)) {
@@ -830,6 +873,7 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
     const activeChildBookingCount = rows.reduce((total, row) => total + Number(row.active_child_booking_count || 0), 0);
     const activeDepositCount = Math.max(0, ...rows.map(row => Number(row.active_deposit_count || 0)));
     const banquetLinkCount = Math.max(0, ...rows.map(row => Number(row.banquet_link_count || 0)));
+    if (activeChildBookingCount > 0) blockers.push('active_child_bookings_present');
     if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
     const uniqueBlockers = [...new Set(blockers)];
     let status = 'ready';
@@ -837,7 +881,12 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
     if (uniqueBlockers.length) {
         status = 'blocked';
         reason = uniqueBlockers.join(',');
-    } else if (groupStatus === 'cancelled' && activeBookingIds.length === 0 && activeChildBookingCount === 0) {
+    } else if (
+        groupStatus === 'cancelled'
+        && activeBookingIds.length === 0
+        && activeChildBookingCount === 0
+        && financeTransactionCount === 0
+    ) {
         status = 'already_cancelled';
     }
     return {
@@ -856,7 +905,9 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
         activeBookingIds,
         activeChildBookingCount,
         activeDepositCount,
-        banquetLinkCount
+        banquetLinkCount,
+        financeTransactionIds,
+        financeTransactionCount
     };
 }
 
@@ -870,7 +921,8 @@ function summarizeQaCleanupGroupInspections(inspections = []) {
         notFound: count('not_found'),
         activeBookings: inspections.reduce((total, item) => total + (item.activeBookingIds?.length || 0), 0),
         activeChildBookings: inspections.reduce((total, item) => total + Number(item.activeChildBookingCount || 0), 0),
-        activeDepositRows: inspections.reduce((total, item) => total + Number(item.activeDepositCount || 0), 0)
+        activeDepositRows: inspections.reduce((total, item) => total + Number(item.activeDepositCount || 0), 0),
+        financeTransactions: inspections.reduce((total, item) => total + Number(item.financeTransactionCount || 0), 0)
     };
 }
 
@@ -907,10 +959,21 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
             groupId: inspection.groupId,
             status: 'already_cancelled',
             cancelledBookings: 0,
-            cancelledGroups: 0
+            cancelledGroups: 0,
+            deletedFinanceTransactions: 0,
+            deletedFinanceTransactionIds: []
         };
     }
-    const rootBookingIds = inspection.bookings.map(item => item.bookingId).filter(Boolean);
+    const rootBookingIds = [...new Set(inspection.bookings.map(item => item.bookingId).filter(Boolean))];
+    const financeResult = rootBookingIds.length
+        ? await db.query(
+            `DELETE FROM finance_transactions
+              WHERE booking_id = ANY($1::varchar[])
+                AND ${contextSql('finance_transactions', '$2')}
+              RETURNING id, booking_id`,
+            [rootBookingIds, options.businessContext]
+        )
+        : { rows: [] };
     const bookingResult = rootBookingIds.length
         ? await db.query(
             `UPDATE bookings
@@ -933,7 +996,10 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
           RETURNING id`,
         [inspection.groupId, options.businessContext, QA_CLEANUP_ACTOR]
     );
-    const changed = Number(bookingResult.rows.length || 0) + Number(groupResult.rows.length || 0);
+    const deletedFinanceTransactionIds = normalizedTechnicalArray(financeResult.rows.map(row => row.id));
+    const changed = Number(financeResult.rows.length || 0)
+        + Number(bookingResult.rows.length || 0)
+        + Number(groupResult.rows.length || 0);
     if (changed > 0) {
         await db.query(
             `INSERT INTO history (business_context, action, username, data)
@@ -949,7 +1015,9 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
                     run_id: options.runId,
                     source: options.source,
                     cleanup_expected: true,
-                    test_customer_marker: options.testCustomerMarker
+                    test_customer_marker: options.testCustomerMarker,
+                    deleted_finance_transaction_ids: deletedFinanceTransactionIds,
+                    deleted_finance_transaction_count: financeResult.rows.length
                 })
             ]
         );
@@ -958,7 +1026,9 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
         groupId: inspection.groupId,
         status: changed > 0 ? 'cancelled' : 'already_cancelled',
         cancelledBookings: bookingResult.rows.length,
-        cancelledGroups: groupResult.rows.length
+        cancelledGroups: groupResult.rows.length,
+        deletedFinanceTransactions: financeResult.rows.length,
+        deletedFinanceTransactionIds
     };
 }
 
@@ -983,9 +1053,14 @@ async function runQaCleanupApply(db, options, dependencies = {}) {
                 groupId: before.groupId,
                 status: 'already_cancelled',
                 cancelledBookings: 0,
-                cancelledGroups: 0
+                cancelledGroups: 0,
+                deletedFinanceTransactions: 0,
+                deletedFinanceTransactionIds: []
             };
         const after = await inspect(db, options, { forUpdate: false });
+        if (Number(after.financeTransactionCount || 0) > 0) {
+            throw new Error(`Post-cleanup verification failed: finance_transactions_present:${after.financeTransactionCount}`);
+        }
         if (after.status !== 'already_cancelled') {
             throw new Error(`Post-cleanup verification failed: ${after.reason || after.status}`);
         }
@@ -1004,6 +1079,7 @@ async function runQaCleanupApply(db, options, dependencies = {}) {
                 ...summarizeQaCleanupGroupInspections([before]),
                 cancelledBookings: cleanup.cancelledBookings || 0,
                 cancelledGroups: cleanup.cancelledGroups || 0,
+                deletedFinanceTransactions: cleanup.deletedFinanceTransactions || 0,
                 verifiedAfter: 1
             }
         };
@@ -1968,7 +2044,8 @@ function printQaCleanupReport(report) {
             console.log(
                 `group=${item.groupId || '-'} status=${item.status || '-'} groupStatus=${item.groupStatus || '-'} `
                 + `primary=${item.primaryBookingId || '-'} date=${item.date || '-'} room=${item.room || '-'} `
-                + `activeBookings=${item.activeBookingIds?.length || 0} blockers=${item.blockers?.length || 0}`
+                + `activeBookings=${item.activeBookingIds?.length || 0} blockers=${item.blockers?.length || 0} `
+                + `financeTransactions=${item.financeTransactionCount || 0} financeTransactionIds=${item.financeTransactionIds?.join(',') || '-'}`
             );
             if (item.reason) console.log(`  reason=${item.reason}`);
         }
@@ -1976,14 +2053,15 @@ function printQaCleanupReport(report) {
             for (const item of report.cleanup) {
                 console.log(
                     `cleanup group=${item.groupId || '-'} status=${item.status || '-'} `
-                    + `cancelledBookings=${item.cancelledBookings || 0} cancelledGroups=${item.cancelledGroups || 0}`
+                    + `cancelledBookings=${item.cancelledBookings || 0} cancelledGroups=${item.cancelledGroups || 0} `
+                    + `deletedFinanceTransactions=${item.deletedFinanceTransactions || 0} deletedFinanceTransactionIds=${item.deletedFinanceTransactionIds?.join(',') || '-'}`
                 );
             }
         }
         console.log(
             `requested=${report.summary.requested} ready=${report.summary.ready || 0} `
             + `alreadyCancelled=${report.summary.alreadyCancelled || 0} blocked=${report.summary.blocked || 0} `
-            + `notFound=${report.summary.notFound || 0}`
+            + `notFound=${report.summary.notFound || 0} financeTransactions=${report.summary.financeTransactions || 0}`
         );
         return;
     }
@@ -2050,7 +2128,8 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) {
     main().catch(error => {
-        console.error(`Banquet production recovery failed: ${error.message}`);
+        const detail = error?.message || error?.stack || String(error);
+        console.error(`Banquet production recovery failed: ${detail}`);
         process.exitCode = 1;
     });
 }
@@ -2062,6 +2141,7 @@ module.exports = {
     RECOVERY_ACTOR,
     QA_CLEANUP_ACTOR,
     QA_CLEANUP_SOURCE,
+    QA_CLEANUP_CAPABILITY,
     SAFE_QA_CLEANUP_BOOKING_IDS,
     argValue,
     buildAuditReport,

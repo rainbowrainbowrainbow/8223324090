@@ -9,10 +9,12 @@ const {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
+    QA_CLEANUP_CAPABILITY,
     buildAuditReport,
     classifyDetachInspection,
     classifyRecoveryInspection,
     inspectQaCleanupGroupRows,
+    loadQaCleanupGroupRows,
     parseArgs,
     parseRecoveryPairs,
     persistDetachPair,
@@ -247,6 +249,7 @@ test('banquet recovery arguments require bounded audit dates and explicit recove
 });
 
 test('detach and qa-cleanup arguments are allowlisted and confirmation guarded', () => {
+    assert.equal(QA_CLEANUP_CAPABILITY, 'timeline_browser_smoke_cleanup_v2_finance_atomic');
     assert.throws(
         () => parseArgs(['detach', '--pairs=BK-1:BQ-1', '--apply']),
         new RegExp(DETACH_CONFIRMATION)
@@ -309,6 +312,33 @@ test('detach and qa-cleanup arguments are allowlisted and confirmation guarded',
             source: 'timeline_browser_smoke',
             testCustomerMarker: 'timeline_browser_smoke:task37-1:test_customer'
         }
+    );
+    const defaultMarkerOptions = parseArgs([
+        'qa-cleanup',
+        '--run-id=task37-default',
+        '--group-id=BQ-DEFAULT'
+    ]);
+    assert.equal(
+        defaultMarkerOptions.testCustomerMarker,
+        'timeline_browser_smoke:task37-default:test_customer'
+    );
+    assert.throws(
+        () => parseArgs([
+            'qa-cleanup',
+            '--run-id=task37-1',
+            '--group-id=BQ-1',
+            '--source=another_source'
+        ]),
+        /source must be exactly timeline_browser_smoke/
+    );
+    assert.throws(
+        () => parseArgs([
+            'qa-cleanup',
+            '--run-id=task37-1',
+            '--group-id=BQ-1',
+            '--test-customer-marker=timeline_browser_smoke:other-run:test_customer'
+        ]),
+        /test customer marker must be exactly/
     );
 });
 
@@ -416,6 +446,7 @@ function qaCleanupRow(overrides = {}) {
         group_business_context: 'event_genix',
         primary_booking_id: 'BK-QA-PRIMARY',
         group_customer_id: 9001,
+        group_customer_marker_ok: true,
         group_date: '2099-08-20',
         group_room: 'Room QA',
         group_name: 'QA group',
@@ -446,6 +477,7 @@ function qaCleanupRow(overrides = {}) {
         active_child_booking_count: 0,
         active_deposit_count: 0,
         banquet_link_count: 1,
+        finance_transaction_ids: [],
         ...overrides
     };
 }
@@ -464,15 +496,19 @@ const qaCleanupOptions = {
 
 test('qa cleanup group preflight requires disposable marker and marked test customer', () => {
     const ready = inspectQaCleanupGroupRows([
-        qaCleanupRow(),
+        qaCleanupRow({ finance_transaction_ids: [22, 11] }),
         qaCleanupRow({
             booking_id: 'BK-QA-KITCHEN',
             role: 'kitchen',
-            booking_status: 'confirmed'
+            booking_status: 'confirmed',
+            finance_transaction_ids: [33]
         })
     ], qaCleanupOptions);
     assert.equal(ready.status, 'ready');
     assert.deepEqual(ready.activeBookingIds, ['BK-QA-PRIMARY', 'BK-QA-KITCHEN']);
+    assert.deepEqual(ready.financeTransactionIds, ['11', '22', '33']);
+    assert.equal(ready.financeTransactionCount, 3);
+    assert.deepEqual(ready.bookings[0].financeTransactionIds, ['11', '22']);
 
     const noMarker = inspectQaCleanupGroupRows([
         qaCleanupRow({ extra_data: {} })
@@ -486,6 +522,23 @@ test('qa cleanup group preflight requires disposable marker and marked test cust
     assert.equal(realCustomer.status, 'blocked');
     assert.match(realCustomer.reason, /real_customer_blocked/);
 
+    const realGroupCustomer = inspectQaCleanupGroupRows([
+        qaCleanupRow({ group_customer_marker_ok: false })
+    ], qaCleanupOptions);
+    assert.equal(realGroupCustomer.status, 'blocked');
+    assert.match(realGroupCustomer.reason, /real_group_customer_blocked/);
+
+    const mixedCustomerScope = inspectQaCleanupGroupRows([
+        qaCleanupRow(),
+        qaCleanupRow({
+            booking_id: 'BK-QA-KITCHEN',
+            role: 'kitchen',
+            customer_marker_ok: false
+        })
+    ], qaCleanupOptions);
+    assert.equal(mixedCustomerScope.status, 'blocked');
+    assert.match(mixedCustomerScope.reason, /real_customer_blocked:BK-QA-KITCHEN/);
+
     const alreadyCancelled = inspectQaCleanupGroupRows([
         qaCleanupRow({
             group_status: 'cancelled',
@@ -493,6 +546,115 @@ test('qa cleanup group preflight requires disposable marker and marked test cust
         })
     ], qaCleanupOptions);
     assert.equal(alreadyCancelled.status, 'already_cancelled');
+    const cancelledWithFinanceResidue = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            finance_transaction_ids: [91]
+        })
+    ], qaCleanupOptions);
+    assert.equal(cancelledWithFinanceResidue.status, 'ready');
+    assert.equal(cancelledWithFinanceResidue.financeTransactionCount, 1);
+    assert.deepEqual(cancelledWithFinanceResidue.financeTransactionIds, ['91']);
+
+    const cancelledMissingCustomerWithFinance = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            group_customer_id: null,
+            group_customer_marker_ok: false,
+            booking_customer_id: null,
+            customer_marker_ok: false,
+            finance_transaction_ids: [92]
+        })
+    ], qaCleanupOptions);
+    assert.equal(cancelledMissingCustomerWithFinance.status, 'blocked');
+    assert.match(cancelledMissingCustomerWithFinance.reason, /group_customer_missing/);
+
+    const afterCustomerDeletion = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            group_customer_id: null,
+            group_customer_marker_ok: false,
+            booking_customer_id: null,
+            customer_marker_ok: false
+        })
+    ], qaCleanupOptions);
+    assert.equal(afterCustomerDeletion.status, 'already_cancelled');
+
+    const activeWithoutCustomer = inspectQaCleanupGroupRows([
+        qaCleanupRow({ booking_customer_id: null, customer_marker_ok: false })
+    ], qaCleanupOptions);
+    assert.equal(activeWithoutCustomer.status, 'blocked');
+    assert.match(activeWithoutCustomer.reason, /booking_customer_missing/);
+
+    const activeWithoutGroupCustomer = inspectQaCleanupGroupRows([
+        qaCleanupRow({ group_customer_id: null, group_customer_marker_ok: false })
+    ], qaCleanupOptions);
+    assert.equal(activeWithoutGroupCustomer.status, 'blocked');
+    assert.match(activeWithoutGroupCustomer.reason, /group_customer_missing/);
+
+    const cancelledWithoutMarker = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            group_customer_id: null,
+            group_customer_marker_ok: false,
+            booking_customer_id: null,
+            customer_marker_ok: false,
+            extra_data: {}
+        })
+    ], qaCleanupOptions);
+    assert.equal(cancelledWithoutMarker.status, 'blocked');
+    assert.match(cancelledWithoutMarker.reason, /booking_marker_.*missing_marker/);
+
+    const cancelledWithActiveChild = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            active_child_booking_count: 1
+        })
+    ], qaCleanupOptions);
+    assert.equal(cancelledWithActiveChild.status, 'blocked');
+    assert.match(cancelledWithActiveChild.reason, /active_child_bookings_present/);
+
+    const cancelledWithActiveDeposit = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            active_deposit_count: 1
+        })
+    ], qaCleanupOptions);
+    assert.equal(cancelledWithActiveDeposit.status, 'blocked');
+    assert.match(cancelledWithActiveDeposit.reason, /active_deposit_rows_present/);
+});
+
+test('qa cleanup lookup treats markers as literals and validates the group customer', async () => {
+    let sql = '';
+    let params = null;
+    await loadQaCleanupGroupRows({
+        query: async (text, values) => {
+            sql = String(text);
+            params = values;
+            return { rows: [] };
+        }
+    }, qaCleanupOptions);
+
+    assert.match(sql, /AS group_customer_marker_ok/);
+    assert.match(sql, /FROM finance_transactions ft/);
+    assert.match(sql, /ft\.booking_id = b\.id/);
+    assert.match(sql, /ft\.business_context/);
+    assert.match(sql, /AS finance_transaction_ids/);
+    assert.match(sql, /POSITION\(\$3 IN COALESCE\(group_customer\.notes, ''\)\) > 0/);
+    assert.match(sql, /POSITION\(\$3 IN COALESCE\(c\.notes, ''\)\) > 0/);
+    assert.doesNotMatch(sql, /\bLIKE\b/i);
+    assert.deepEqual(params, [
+        'BQ-QA-1',
+        'event_genix',
+        'timeline_browser_smoke:task37-unit:test_customer',
+        'banquet_activity'
+    ]);
 });
 
 test('qa cleanup marker dry-run uses read-only transaction and reports exact group scope', async () => {
@@ -508,23 +670,32 @@ test('qa cleanup marker dry-run uses read-only transaction and reports exact gro
         apply: false,
         confirmation: ''
     }, {
-        inspectQaCleanupGroup: async () => inspectQaCleanupGroupRows([qaCleanupRow()], qaCleanupOptions)
+        inspectQaCleanupGroup: async () => inspectQaCleanupGroupRows([qaCleanupRow({ finance_transaction_ids: [404, 405] })], qaCleanupOptions)
     });
 
     assert.equal(report.mode, 'qa-cleanup-group-dry-run');
     assert.equal(report.readOnly, true);
     assert.equal(report.summary.ready, 1);
     assert.equal(report.groups[0].groupId, 'BQ-QA-1');
+    assert.equal(report.groups[0].financeTransactionCount, 2);
+    assert.deepEqual(report.groups[0].financeTransactionIds, ['404', '405']);
+    assert.equal(report.summary.financeTransactions, 2);
     assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
 });
 
 test('qa cleanup apply is transactional, verifies cancellation, and reruns as no-op', async () => {
     const queries = [];
-    const ready = inspectQaCleanupGroupRows([qaCleanupRow()], qaCleanupOptions);
+    let financeDeleteParams = null;
+    let historyParams = null;
+    const ready = inspectQaCleanupGroupRows([qaCleanupRow({ finance_transaction_ids: [701, 702] })], qaCleanupOptions);
     const cancelled = inspectQaCleanupGroupRows([
         qaCleanupRow({
             group_status: 'cancelled',
             booking_status: 'cancelled',
+            group_customer_id: null,
+            group_customer_marker_ok: false,
+            booking_customer_id: null,
+            customer_marker_ok: false,
             active_child_booking_count: 0
         })
     ], qaCleanupOptions);
@@ -544,6 +715,14 @@ test('qa cleanup apply is transactional, verifies cancellation, and reruns as no
             ...(await persistQaCleanupGroup({
                 query: async (sql, params) => {
                     queries.push(String(sql).replace(/\s+/g, ' ').trim());
+                    if (/DELETE FROM finance_transactions/i.test(String(sql))) {
+                        financeDeleteParams = params;
+                        return { rows: [{ id: 701, booking_id: 'BK-QA-PRIMARY' }, { id: 702, booking_id: 'BK-QA-PRIMARY' }] };
+                    }
+                    if (/INSERT INTO history/i.test(String(sql))) {
+                        historyParams = params;
+                        return { rows: [] };
+                    }
                     if (/UPDATE bookings/i.test(String(sql))) return { rows: [{ id: 'BK-QA-PRIMARY' }] };
                     if (/UPDATE banquet_groups/i.test(String(sql))) return { rows: [{ id: inspection.groupId }] };
                     return { rows: [] };
@@ -555,6 +734,12 @@ test('qa cleanup apply is transactional, verifies cancellation, and reruns as no
     assert.equal(report.mode, 'qa-cleanup-apply');
     assert.equal(report.summary.cancelledBookings, 1);
     assert.equal(report.summary.cancelledGroups, 1);
+    assert.equal(report.summary.deletedFinanceTransactions, 2);
+    assert.deepEqual(report.cleanup[0].deletedFinanceTransactionIds, ['701', '702']);
+    assert.ok(queries.some(sql => /^DELETE FROM finance_transactions/i.test(sql)));
+    assert.deepEqual(financeDeleteParams, [['BK-QA-PRIMARY'], 'event_genix']);
+    assert.deepEqual(JSON.parse(historyParams[3]).deleted_finance_transaction_ids, ['701', '702']);
+    assert.equal(JSON.parse(historyParams[3]).deleted_finance_transaction_count, 2);
     assert.equal(report.after[0].status, 'already_cancelled');
     assert.equal(queries[0], 'BEGIN ISOLATION LEVEL SERIALIZABLE');
     assert.equal(queries.at(-1), 'COMMIT');
@@ -573,8 +758,75 @@ test('qa cleanup apply is transactional, verifies cancellation, and reruns as no
     });
     assert.equal(rerun.summary.cancelledBookings, 0);
     assert.equal(rerun.summary.cancelledGroups, 0);
+    assert.equal(rerun.summary.deletedFinanceTransactions, 0);
     assert.equal(rerun.after[0].status, 'already_cancelled');
-    assert.equal(noOpQueries.some(sql => /^UPDATE bookings|^UPDATE banquet_groups|^INSERT INTO history/i.test(sql)), false);
+    assert.equal(noOpQueries.some(sql => /^DELETE FROM finance_transactions|^UPDATE bookings|^UPDATE banquet_groups|^INSERT INTO history/i.test(sql)), false);
+});
+
+test('qa cleanup apply rolls back when post-cleanup verification is not cancelled', async () => {
+    const queries = [];
+    const stillActive = inspectQaCleanupGroupRows([qaCleanupRow()], qaCleanupOptions);
+    let inspected = 0;
+    await assert.rejects(
+        runQaCleanupApply({
+            query: async text => {
+                queries.push(String(text).replace(/\s+/g, ' ').trim());
+                return { rows: [] };
+            }
+        }, qaCleanupOptions, {
+            inspectQaCleanupGroup: async () => {
+                inspected += 1;
+                return stillActive;
+            },
+            persistQaCleanupGroup: async () => ({
+                groupId: 'BQ-QA-1',
+                status: 'cancelled',
+                cancelledBookings: 1,
+                cancelledGroups: 1
+            })
+        }),
+        /Post-cleanup verification failed/
+    );
+    assert.equal(inspected, 2);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+});
+test('qa cleanup apply rolls back when finance residue remains after cancellation', async () => {
+    const queries = [];
+    const before = inspectQaCleanupGroupRows([
+        qaCleanupRow({ finance_transaction_ids: [801] })
+    ], qaCleanupOptions);
+    const afterWithFinance = inspectQaCleanupGroupRows([
+        qaCleanupRow({
+            group_status: 'cancelled',
+            booking_status: 'cancelled',
+            finance_transaction_ids: [801]
+        })
+    ], qaCleanupOptions);
+    let inspected = 0;
+    await assert.rejects(
+        runQaCleanupApply({
+            query: async text => {
+                queries.push(String(text).replace(/\s+/g, ' ').trim());
+                return { rows: [] };
+            }
+        }, qaCleanupOptions, {
+            inspectQaCleanupGroup: async () => {
+                inspected += 1;
+                return inspected === 1 ? before : afterWithFinance;
+            },
+            persistQaCleanupGroup: async () => ({
+                groupId: 'BQ-QA-1',
+                status: 'cancelled',
+                cancelledBookings: 1,
+                cancelledGroups: 1,
+                deletedFinanceTransactions: 1,
+                deletedFinanceTransactionIds: ['801']
+            })
+        }),
+        /finance_transactions_present:1/
+    );
+    assert.equal(inspected, 2);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
 });
 
 test('qa cleanup apply rolls back when preflight finds real customer or missing marker', async () => {

@@ -4838,8 +4838,49 @@ test('activity-first kitchen existing banquet group still uses group member endp
     );
 
     assert.match(createFlowBlock, /else if \(createPath\.kind === 'existing_group_member'\)[\s\S]*attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\);[\s\S]*apiCreateBanquetMemberBooking\(createPath\.groupId/);
+    assert.match(bookingJs, /function stripEmptyBookingPackageForExistingGroupMember\(booking = \{\}\)/);
+    assert.match(createFlowBlock, /existing_group_member'[\s\S]*stripEmptyBookingPackageForExistingGroupMember\(booking\);[\s\S]*apiCreateBanquetMemberBooking\(createPath\.groupId/);
     assert.match(createFlowBlock, /sourceBookingId: createPath\.sourceBookingId \|\| null/);
     assert.match(createFlowBlock, /role: 'kitchen'/);
+});
+
+test('package-less existing banquet members omit package input without touching material packages', () => {
+    const bookingJs = readBookingSurface();
+    const start = bookingJs.indexOf('function stripEmptyBookingPackageForExistingGroupMember');
+    const end = bookingJs.indexOf('function buildBookingObject', start);
+    const context = {};
+    vm.createContext(context);
+    vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
+
+    const empty = {
+        programBasePrice: 0,
+        menuPositions: [],
+        serviceEvents: [],
+        extraData: {
+            disposableQa: { runId: 'smoke-run' },
+            bookingPackage: {
+                entryCharge: null,
+                menuPositions: [],
+                serviceEvents: []
+            }
+        }
+    };
+    context.stripEmptyBookingPackageForExistingGroupMember(empty);
+    assert.equal(Object.hasOwn(empty, 'programBasePrice'), false);
+    assert.equal(Object.hasOwn(empty, 'menuPositions'), false);
+    assert.equal(Object.hasOwn(empty, 'serviceEvents'), false);
+    assert.equal(Object.hasOwn(empty.extraData, 'bookingPackage'), false);
+    assert.equal(empty.extraData.disposableQa.runId, 'smoke-run');
+
+    const material = {
+        programBasePrice: 0,
+        menuPositions: [{ productId: 'menu-1' }],
+        serviceEvents: [],
+        extraData: { bookingPackage: { menuPositions: [{ productId: 'menu-1' }] } }
+    };
+    context.stripEmptyBookingPackageForExistingGroupMember(material);
+    assert.equal(material.menuPositions.length, 1);
+    assert.equal(material.extraData.bookingPackage.menuPositions.length, 1);
 });
 
 test('activity-first kitchen customer mismatch is blocked before source bridge API call', () => {

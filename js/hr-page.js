@@ -14477,8 +14477,8 @@ async function loadCompanyStructure(options = {}) {
         renderCompanyOrgWorkspace();
         return companyStructureNodes;
     }
+    await ensureProfessionsLoaded({ force: true, silent: true });
     const nodes = applyLoadedCompanyStructure(data);
-    await ensureProfessionsLoaded({ silent: true });
     renderCompanyOrgWorkspace();
     updateCompanyOrgDetail(companyStructureNodeById(selectedCompanyStructureNodeId));
     return nodes;

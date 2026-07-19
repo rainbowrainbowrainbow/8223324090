@@ -481,7 +481,8 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         renderExtraLink: _renderExtraMenuLink,
         handleModeClick: _handleSidebarTimelineModeClick,
         handleModeKeydown: _handleSidebarTimelineModeKeydown,
-        syncLauncherState: _syncSidebarTimelineLauncherState
+        syncLauncherState: _syncSidebarTimelineLauncherState,
+        ensureBusinessProfile: _ensureSidebarBusinessProfile
     };$1`);
 
     const state = {
@@ -489,7 +490,8 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         moduleEnabled: true,
         profiles: {},
         timelineView: 'rooms',
-        timelineSetCalls: []
+        timelineSetCalls: [],
+        hydrationCalls: []
     };
     const assignedHrefs = [];
     const location = {
@@ -534,7 +536,17 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
             current: () => state.context,
             hasModule: () => state.moduleEnabled,
             profileFor: context => state.profiles[context] || null,
-            activeProfile: () => state.profiles[state.context] || null
+            activeProfile: () => state.profiles[state.context] || null,
+            async hydrateProfile(options) {
+                state.hydrationCalls.push(options);
+                await Promise.resolve();
+                state.profiles[options.context] = {
+                    key: options.context,
+                    timeline: { mode: 'park', timelineEnabled: true, roomTimelineEnabled: true },
+                    modules: { enabled: { timeline: true } }
+                };
+                return state.profiles[options.context];
+            }
         }
     };
     const sandbox = {
@@ -713,6 +725,14 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
 
     delete state.profiles.event_genix;
     assert.equal(api.availableModes(rootItem).length, 1);
+    const hydration = api.ensureBusinessProfile();
+    assert.equal(api.availableModes(rootItem).length, 1, 'Rooms stays hidden until the server profile resolves');
+    await hydration;
+    assert.equal(state.hydrationCalls.length, 1);
+    assert.equal(state.hydrationCalls[0].context, 'event_genix');
+    assert.equal(state.hydrationCalls[0].updateUrl, false);
+    assert.equal(state.hydrationCalls[0].emit, true);
+    assert.equal(api.availableModes(rootItem).length, 2);
     state.profiles.event_genix = {
         key: 'event_genix',
         timeline: { mode: 'park', timelineEnabled: true, roomTimelineEnabled: true },

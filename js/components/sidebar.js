@@ -23,7 +23,9 @@ const Sidebar = (() => {
         railPinned: false,
         businessSwitching: false,
         businessSettingsOpen: false,
-        businessSettingsDocumentBound: false
+        businessSettingsDocumentBound: false,
+        businessProfileHydrationContext: '',
+        businessProfileHydrationPromise: null
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/', '/staff', '/chat', '/certificates'];
@@ -1637,6 +1639,34 @@ const Sidebar = (() => {
         const active = api?.activeProfile?.();
         const activeContext = active?.key || active?.id || active?.businessContext;
         return active && activeContext === context ? active : null;
+    }
+
+    function _ensureSidebarBusinessProfile(user = _getCurrentSidebarUser()) {
+        const api = window.CrmBusinessContext;
+        if (typeof api?.hydrateProfile !== 'function') return null;
+        const context = api.current?.(user) || 'event_genix';
+        if (_sidebarBusinessProfileForContext(context)) return null;
+        if (_state.businessProfileHydrationPromise
+            && _state.businessProfileHydrationContext === context) {
+            return _state.businessProfileHydrationPromise;
+        }
+
+        _state.businessProfileHydrationContext = context;
+        const hydration = Promise.resolve(api.hydrateProfile({
+            user,
+            context,
+            updateUrl: false,
+            emit: true
+        })).catch(error => {
+            console.warn('[Sidebar] Business profile hydrate failed', error);
+            return null;
+        }).finally(() => {
+            if (_state.businessProfileHydrationPromise === hydration) {
+                _state.businessProfileHydrationPromise = null;
+            }
+        });
+        _state.businessProfileHydrationPromise = hydration;
+        return hydration;
     }
 
     function _sidebarTimelineViewHref(baseHref, mode) {
@@ -3955,6 +3985,7 @@ const Sidebar = (() => {
         document.body.classList.add('shell-baseline');
         _ensureCollapsedGroupsBaseline();
         render(containerSelector);
+        void _ensureSidebarBusinessProfile();
         initToggle();
         _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial

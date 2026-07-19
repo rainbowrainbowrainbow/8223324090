@@ -133,20 +133,65 @@ function timelineRouteForContext(context, view = '') {
 
 async function waitForSidebar(page) {
     await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForFunction(() => {
-        const sidebar = document.getElementById('sidebarNav');
-        return Boolean(
-            sidebar
-            && document.body.classList.contains('shell-ready')
-            && window.Sidebar
-            && window.CrmBusinessContext
-        );
-    });
+    try {
+        await page.waitForFunction(() => {
+            const sidebar = document.getElementById('sidebarNav');
+            return Boolean(
+                sidebar
+                && document.body.classList.contains('shell-ready')
+                && window.CrmBusinessContext
+            );
+        });
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+            url: location.href,
+            title: document.title,
+            readyState: document.readyState,
+            bodyClass: document.body.className,
+            hasSidebar: Boolean(document.getElementById('sidebarNav')),
+            hasBusinessContextApi: Boolean(window.CrmBusinessContext),
+            currentContext: window.CrmBusinessContext?.current?.() || '',
+            hasStoredToken: Boolean(localStorage.getItem('pzp_token')),
+            hasStoredUser: Boolean(localStorage.getItem('pzp_current_user'))
+        })).catch(() => null);
+        throw new Error(`sidebar did not become ready: ${JSON.stringify(diagnostics)}; ${error.message}`);
+    }
 }
 
 async function gotoContext(page, base, context, view = '') {
-    await page.goto(`${base}${timelineRouteForContext(context, view)}`, { waitUntil: 'domcontentloaded' });
+    try {
+        await page.goto(`${base}${timelineRouteForContext(context, view)}`, { waitUntil: 'domcontentloaded' });
+    } catch (error) {
+        if (!/net::ERR_ABORTED|interrupted by another navigation|frame was detached/i.test(String(error?.message || error))) throw error;
+    }
     await waitForSidebar(page);
+    if (view) {
+        await page.waitForFunction(expectedView => window.TimelineView?.current?.() === expectedView, view);
+    }
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+async function traverseSidebarHistory(page, direction, expected = {}) {
+    const traverse = direction === 'back' ? page.goBack.bind(page) : page.goForward.bind(page);
+    try {
+        await traverse({ waitUntil: 'domcontentloaded' });
+    } catch (error) {
+        if (!/net::ERR_ABORTED|frame was detached/i.test(String(error?.message || error))) throw error;
+    }
+    await waitForSidebar(page);
+    try {
+        await page.waitForFunction(({ pathname, view }) => (
+            (!pathname || location.pathname === pathname)
+            && (!view || window.TimelineView?.current?.() === view)
+        ), expected);
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+            url: location.href,
+            currentView: window.TimelineView?.current?.() || '',
+            historyLength: history.length
+        })).catch(() => null);
+        throw new Error(`history ${direction} did not restore ${JSON.stringify(expected)}: ${JSON.stringify(diagnostics)}; ${error.message}`);
+    }
 }
 
 async function readLauncher(page) {
@@ -220,18 +265,17 @@ async function assertParkLauncher(page, base) {
         return performance.timeOrigin;
     });
 
-    await page.locator('[data-sidebar-timeline-mode="animators"]').focus();
-    await page.keyboard.press('Space');
+    await page.locator('[data-sidebar-timeline-mode="animators"]').press('Space');
     await page.waitForFunction(() => (
         window.TimelineView?.current?.() === 'animators'
         && document.querySelector('[data-sidebar-timeline-mode="animators"]')?.getAttribute('aria-pressed') === 'true'
         && document.querySelector('[data-sidebar-timeline-mode="animators"]')?.getAttribute('aria-current') === 'page'
     ));
+    await page.waitForFunction(() => window.__sidebarTimelineViewChangedCount >= 1);
     assert.equal(await page.evaluate(() => performance.timeOrigin), timeOrigin, 'Space switch does not reload the page');
     assert.ok(await page.evaluate(() => window.__sidebarTimelineViewChangedCount) >= 1, 'runtime dispatches timeline:view-changed');
 
-    await page.locator('[data-sidebar-timeline-mode="rooms"]').focus();
-    await page.keyboard.press('Enter');
+    await page.locator('[data-sidebar-timeline-mode="rooms"]').press('Enter');
     await page.waitForFunction(() => (
         window.TimelineView?.current?.() === 'rooms'
         && document.querySelector('[data-sidebar-timeline-mode="rooms"]')?.getAttribute('aria-pressed') === 'true'
@@ -258,14 +302,39 @@ async function assertParkLauncher(page, base) {
     await page.waitForFunction(() => !document.getElementById('sidebarNav')?.classList.contains('open'));
     await page.setViewportSize({ width: 1440, height: 960 });
 
-    await gotoContext(page, base, PARK_CONTEXT, 'animators');
-    await gotoContext(page, base, PARK_CONTEXT, 'rooms');
-    await page.goBack({ waitUntil: 'domcontentloaded' });
+    await page.goto(`${base}/leads?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
     await waitForSidebar(page);
-    await page.waitForFunction(() => window.TimelineView?.current?.() === 'animators');
-    await page.goForward({ waitUntil: 'domcontentloaded' });
+    const crossPageLauncher = await page.evaluate(() => {
+        const profile = window.CrmBusinessContext?.profileFor?.('event_genix') || null;
+        return {
+            present: Boolean(document.querySelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]')),
+            url: location.href,
+            context: window.CrmBusinessContext?.current?.() || '',
+            extraLinks: Array.from(document.querySelectorAll('.sidebar-design-extra-link[href]')).map(link => link.getAttribute('href')),
+            timelineMode: profile?.timeline?.mode || '',
+            roomTimelineEnabled: profile?.timeline?.roomTimelineEnabled
+        };
+    });
+    assert.equal(crossPageLauncher.present, true, `Park launcher remains available from another CRM page: ${JSON.stringify(crossPageLauncher)}`);
+
+    await page.locator('[data-sidebar-timeline-mode="rooms"]').click();
     await waitForSidebar(page);
-    await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    await page.waitForFunction(() => (
+        location.pathname === '/'
+        && new URL(location.href).searchParams.get('timelineView') === 'rooms'
+        && window.TimelineView?.current?.() === 'rooms'
+    ));
+    await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
+    await traverseSidebarHistory(page, 'forward', { pathname: '/', view: 'rooms' });
+    await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
+
+    await page.locator('[data-sidebar-timeline-mode="animators"]').click();
+    await waitForSidebar(page);
+    await page.waitForFunction(() => (
+        location.pathname === '/'
+        && new URL(location.href).searchParams.get('timelineView') === 'animators'
+        && window.TimelineView?.current?.() === 'animators'
+    ));
 }
 
 async function assertSingleModeCard(page, base, context) {
@@ -344,11 +413,9 @@ async function run() {
         blockedMutations.push(`${method} ${pathname}`);
         await route.abort('blockedbyclient');
     });
-    await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
+    await context.addInitScript(({ token, user }) => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);
-        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
-        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
         if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
     }, session);
     const page = await context.newPage();

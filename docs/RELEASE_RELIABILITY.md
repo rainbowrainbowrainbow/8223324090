@@ -15,6 +15,23 @@ Railway source branch і явно передати її в командах че
 скрипті. `codex/timeline-leads-hardening` і `deployed` є історичними deploy
 sources, доки власник окремо не підтвердить переналаштування Railway.
 
+## Production Branch Rule Exception
+
+Owner decision on 2026-07-19: keep production commit `0658c09c7`
+(`Merge current production into guarded reconciliation release`) as a documented
+one-time exception. Do not rewrite `codex/production` history with
+`force-with-lease` for this release.
+
+Reason: the release was already deployed, production CI was green, Railway served
+`v0.79.98`, and live health/version checks passed. Rewriting production history
+would add operational risk without changing the deployed code.
+
+Rule after this exception: future promotions to `codex/production` must use
+linear history only. If `origin/codex/production` advances during a release,
+rebase/cherry-pick onto the new production head and rerun CI before promotion;
+do not promote a merge commit unless the owner explicitly approves a new
+documented exception.
+
 ## Перед Деплоєм
 
 Запустити:

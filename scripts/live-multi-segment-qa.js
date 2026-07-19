@@ -9,8 +9,12 @@
  */
 
 const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const path = require('node:path');
 const {
     LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
+    LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
+    LIVE_MULTI_SEGMENT_QA_VERSION,
     liveQaMarker,
     normalizeLiveQaRunId
 } = require('../services/liveMultiSegmentQa');
@@ -23,10 +27,39 @@ const CLEANUP_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_CLEANUP_TIMEOUT_MS'
 const OVERALL_TIMEOUT_MS = Number(env('LIVE_MULTI_SEGMENT_QA_OVERALL_TIMEOUT_MS') || 240000);
 const BUSINESS_CONTEXT = env('LIVE_MULTI_SEGMENT_QA_BUSINESS_CONTEXT') || 'event_genix';
 const PAYROLL_SCHEME = env('LIVE_MULTI_SEGMENT_QA_SCHEME') || 'hourly';
+const MATRIX_ARG = process.argv.includes('--matrix') || ['1', 'true', 'yes'].includes(env('LIVE_MULTI_SEGMENT_QA_MATRIX').toLowerCase());
+const MATRIX_SCHEME_ORDER = Object.freeze(['hourly', 'per_shift', 'monthly_fixed', 'hybrid', 'percent', 'manual']);
+const SUPPORTED_PAYROLL_SCHEMES = Object.freeze({
+    hourly: { supported: true, rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 },
+    per_shift: { supported: true, rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 },
+    monthly_fixed: { supported: true, rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 }
+});
+const UNSUPPORTED_PAYROLL_SCHEMES = Object.freeze({
+    hybrid: {
+        supported: false,
+        rateUnit: 'hour',
+        baseRate: 100,
+        amount: 100,
+        extraSchemeBody: { base_kind: 'hourly', base_rate: 100, percent_rate: 0 }
+    },
+    percent: {
+        supported: false,
+        rateUnit: 'hour',
+        baseRate: 100,
+        amount: 10,
+        extraSchemeBody: { percent_rate: 10, percent_base: 0 }
+    },
+    manual: {
+        supported: false,
+        rateUnit: 'hour',
+        baseRate: 100,
+        amount: 900,
+        extraSchemeBody: { manual_amount: 900 }
+    }
+});
 const PAYROLL_SCHEMES = Object.freeze({
-    hourly: { rateUnit: 'hour', baseRate: 100, baseAmount: 900, totalAmount: 2600 },
-    per_shift: { rateUnit: 'day', baseRate: 900, baseAmount: 900, totalAmount: 2600 },
-    monthly_fixed: { rateUnit: 'month', baseRate: 30000, baseAmount: 30000, totalAmount: 31700 }
+    ...SUPPORTED_PAYROLL_SCHEMES,
+    ...UNSUPPORTED_PAYROLL_SCHEMES
 });
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg)) || env('LIVE_MULTI_SEGMENT_QA_URL');
 const RUN_ID = normalizeLiveQaRunId(env('LIVE_MULTI_SEGMENT_QA_RUN_ID'));
@@ -83,19 +116,47 @@ function dateDistance(left, right) {
     return Math.round((dateParts(right) - dateParts(left)) / 86400000);
 }
 
-function assertConfigured() {
+function isMatrixMode() {
+    return MATRIX_ARG;
+}
+
+function payrollSchemeList() {
+    return MATRIX_SCHEME_ORDER.join(', ');
+}
+
+function matrixRunId(baseRunId, scheme, index) {
+    const suffix = `_${index}_${String(scheme || '').replace(/[^A-Za-z0-9_-]/g, '_')}`;
+    const candidate = `${String(baseRunId || '').slice(0, 64 - suffix.length)}${suffix}`;
+    const runId = normalizeLiveQaRunId(candidate);
+    if (!runId) throw new Error(`matrix runId is invalid for ${scheme}`);
+    return runId;
+}
+
+function buildPayrollSchemeMatrixScenarios(baseRunId = RUN_ID, sourceMonday = SOURCE_MONDAY) {
+    return MATRIX_SCHEME_ORDER.map((scheme, index) => ({
+        scheme,
+        runId: matrixRunId(baseRunId, scheme, index + 1),
+        date: addDateDays(sourceMonday, index * 7),
+        supported: PAYROLL_SCHEMES[scheme]?.supported === true
+    }));
+}
+
+function assertConfigured(options = {}) {
+    const matrixMode = options.matrixMode === true;
     normalizeBase(TARGET_URL);
     if (env('LIVE_MULTI_SEGMENT_QA_CONFIRM') !== LIVE_MULTI_SEGMENT_QA_CONFIRMATION) {
         throw new Error(`set LIVE_MULTI_SEGMENT_QA_CONFIRM=${LIVE_MULTI_SEGMENT_QA_CONFIRMATION}`);
     }
     if (!RUN_ID) throw new Error('set a unique LIVE_MULTI_SEGMENT_QA_RUN_ID (8-64 letters, digits, _ or -)');
-    if (!PAYROLL_SCHEMES[PAYROLL_SCHEME]) {
-        throw new Error('LIVE_MULTI_SEGMENT_QA_SCHEME must be hourly, per_shift, or monthly_fixed');
+    if (!matrixMode && !PAYROLL_SCHEMES[PAYROLL_SCHEME]) {
+        throw new Error(`LIVE_MULTI_SEGMENT_QA_SCHEME must be one of: ${payrollSchemeList()}`);
     }
-    const hasToken = Boolean(env('LIVE_MULTI_SEGMENT_QA_TOKEN'));
+    if (env('LIVE_MULTI_SEGMENT_QA_TOKEN')) {
+        throw new Error('LIVE_MULTI_SEGMENT_QA_TOKEN is not accepted; use creator/director test credentials');
+    }
     const hasLogin = Boolean(env('LIVE_MULTI_SEGMENT_QA_USER') && env('LIVE_MULTI_SEGMENT_QA_PASS'));
-    if (!hasToken && !hasLogin) {
-        throw new Error('provide LIVE_MULTI_SEGMENT_QA_TOKEN or LIVE_MULTI_SEGMENT_QA_USER/LIVE_MULTI_SEGMENT_QA_PASS');
+    if (!hasLogin) {
+        throw new Error('provide LIVE_MULTI_SEGMENT_QA_USER and LIVE_MULTI_SEGMENT_QA_PASS');
     }
     if (!Number.isFinite(REQUEST_TIMEOUT_MS) || REQUEST_TIMEOUT_MS < 1000
         || !Number.isFinite(CLEANUP_TIMEOUT_MS) || CLEANUP_TIMEOUT_MS < REQUEST_TIMEOUT_MS
@@ -106,6 +167,13 @@ function assertConfigured() {
     if (!source || source.getUTCDay() !== 1) throw new Error('LIVE_MULTI_SEGMENT_QA_SOURCE_MONDAY must be a valid Monday');
     const distance = dateDistance(kyivToday(), SOURCE_MONDAY);
     if (distance < 30 || distance > 400) throw new Error('source Monday must be 30-400 days in the future');
+    if (matrixMode) {
+        const scenarios = buildPayrollSchemeMatrixScenarios(RUN_ID, SOURCE_MONDAY);
+        const lastDate = scenarios[scenarios.length - 1]?.date;
+        if (!lastDate || dateDistance(kyivToday(), lastDate) > 400) {
+            throw new Error('matrix source Monday must leave every scenario date within 30-400 future days');
+        }
+    }
 }
 
 async function readResponse(response) {
@@ -117,7 +185,30 @@ function detail(body) {
     return body?.error || body?.message || body?.code || (typeof body === 'string' ? body : '');
 }
 
+const MUTATION_ALLOWLIST = [
+    { method: 'POST', pattern: /^\/api\/auth\/login$/ },
+    { method: 'POST', pattern: /^\/api\/staff$/ },
+    { method: 'PUT', pattern: /^\/api\/hr\/staff\/\d+$/ },
+    { method: 'PUT', pattern: /^\/api\/hr\/staff\/\d+\/role-assignments$/ },
+    { method: 'PUT', pattern: /^\/api\/hr\/staff\/\d+\/payroll-scheme$/ },
+    { method: 'PUT', pattern: /^\/api\/staff\/schedule$/ },
+    { method: 'POST', pattern: /^\/api\/hr\/qa\/multi-segment\/attendance$/ },
+    { method: 'DELETE', pattern: /^\/api\/hr\/qa\/multi-segment\/[A-Za-z0-9_-]+$/ }
+];
+
+function routePath(route) {
+    return new URL(route, 'http://eventgenix.local').pathname;
+}
+
+function assertMutationAllowed(method, route) {
+    const normalizedMethod = String(method || 'GET').trim().toUpperCase();
+    if (['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)) return;
+    const pathname = routePath(route);
+    const allowed = MUTATION_ALLOWLIST.some(entry => entry.method === normalizedMethod && entry.pattern.test(pathname));
+    if (!allowed) throw new Error(`live QA runner blocked mutation ${normalizedMethod} ${pathname}`);
+}
 async function api(base, route, options = {}) {
+    assertMutationAllowed(options.method || 'GET', route);
     const timeoutSignal = AbortSignal.timeout(options.cleanup ? CLEANUP_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     const signal = options.cleanup
         ? timeoutSignal
@@ -145,11 +236,6 @@ async function api(base, route, options = {}) {
 }
 
 async function login(base) {
-    const suppliedToken = env('LIVE_MULTI_SEGMENT_QA_TOKEN');
-    if (suppliedToken) {
-        const verified = await api(base, '/api/auth/verify', { token: suppliedToken });
-        return { token: suppliedToken, user: verified.body?.user || verified.body };
-    }
     const response = await api(base, '/api/auth/login', {
         method: 'POST',
         body: {
@@ -298,6 +384,128 @@ async function readCleanupStatus(base, token, staffId) {
     return verification.body?.data || null;
 }
 
+const CLEAN_FINANCIAL_COUNT_KEYS = [
+    'payrollReports',
+    'payrollEntries',
+    'salaryAdjustments',
+    'disciplineActions',
+    'financeTransactions',
+    'salaryTransactions',
+    'salaryReversalTransactions',
+    'payrollMutationAuditRows'
+];
+const CLEAN_ACTIVE_CONFIGURATION_COUNT_KEYS = [
+    'activePayrollSchemes',
+    'activePayrollProfileAssignments'
+];
+
+function assertCleanupStatus(status, label) {
+    assert.equal(status?.financialProofVersion, LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION, `${label}: financial proof version`);
+    assert.equal(status?.verificationComplete, true, `${label}: verification is complete`);
+    assert.equal(status?.fixtureRowsClean, true, `${label}: operational fixture rows are clean`);
+    assert.equal(status?.financiallyClean, true, `${label}: financial counters are clean`);
+    assert.equal(status?.configurationClean, true, `${label}: active payroll configuration is clean`);
+    for (const key of CLEAN_FINANCIAL_COUNT_KEYS) {
+        assert.equal(Number(status?.financialCounts?.[key]), 0, `${label}: ${key} is zero`);
+    }
+    for (const key of CLEAN_ACTIVE_CONFIGURATION_COUNT_KEYS) {
+        assert.equal(Number(status?.configurationCounts?.[key]), 0, `${label}: ${key} is zero`);
+    }
+}
+
+function sanitizeCleanupReport(report = {}) {
+    return {
+        runId: report.runId || RUN_ID || null,
+        archived: report.archived === true,
+        confirmedClean: report.confirmedClean === true,
+        financialProofVersion: report.financialProofVersion || null,
+        operationalCounts: report.after || report.counts || {},
+        financialCounts: report.financialCounts || {},
+        configurationCounts: report.configurationCounts || {},
+        ...(report.note ? { note: report.note } : {}),
+        ...(report.error ? { error: 'cleanup failed; inspect local secure logs' } : {})
+    };
+}
+
+function payrollSchemeUpdateBody(scheme, payrollScheme) {
+    return {
+        scheme_type: scheme,
+        title: `Disposable QA ${scheme} ${RUN_ID}`,
+        amount: payrollScheme.amount ?? payrollScheme.baseRate,
+        effective_from: SOURCE_MONDAY,
+        ...(payrollScheme.extraSchemeBody || {})
+    };
+}
+
+function getPreviewIssues(preview = {}) {
+    return preview.payrollBlockingIssues || preview.payroll_blocking_issues || [];
+}
+
+function getPreviewLines(preview = {}) {
+    return preview.lines || [];
+}
+
+function getPreviewAdditionalAllocations(preview = {}) {
+    return preview.additionalProfessionAllocations || preview.additional_profession_allocations || [];
+}
+
+function assertSupportedPreview(preview, payrollScheme, scheme) {
+    assert.equal(Number(preview?.daysWorked), 1, `${scheme} payroll counts one day worked`);
+    assert.equal(Number(preview?.physicalMinutes), 540, 'payroll preview keeps nine physical hours');
+    const previewRows = (preview?.professionRateSummary || []);
+    const baseRows = previewRows.filter(row => row.kind === 'base');
+    const additionalRows = previewRows.filter(row => row.kind === 'simultaneous_additional');
+    assert.equal(baseRows.length, 1, `${scheme} payroll has one base line`);
+    assert.equal(baseRows[0].profession_key, PRIMARY_PROFESSION, 'base line keeps the primary profession');
+    assert.equal(Number(baseRows[0].rate), payrollScheme.baseRate, 'base line keeps the explicit primary scheme rate');
+    assert.deepEqual(additionalRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
+        [ADDITIONAL_PROFESSION, 510, 200, 1700]
+    ], `${scheme} payroll pays 8.5 simultaneous hall-attendant hours at its profession rate`);
+    assert.equal(Number(preview?.baseAmount), payrollScheme.baseAmount, 'base role amount is not duplicated');
+    assert.equal(Number(preview?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
+    assert.equal(Number(preview?.netAmount), payrollScheme.totalAmount, 'preview totals base and additional pay without changing physical hours');
+    assert.equal(Number(preview?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
+    assert.equal(Number(preview?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
+    assert.equal(Number(preview?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
+    assert.equal(
+        getPreviewIssues(preview).some(issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'),
+        false,
+        `${scheme} preview is supported`
+    );
+}
+
+function assertUnsupportedPreview(preview, scheme) {
+    assert.equal(Number(preview?.physicalMinutes), 540, `${scheme} preview keeps nine physical minutes`);
+    assert.equal(Number(preview?.payrollTransparency?.physicalHours), 9, `${scheme} preview keeps nine physical hours`);
+    assert.equal(Number(preview?.payrollTransparency?.baseRoleMinutes), 540, `${scheme} preview keeps base role minutes`);
+    assert.equal(Number(preview?.payrollTransparency?.additionalRoleMinutes), 510, `${scheme} preview exposes unresolved additional minutes`);
+    assert.equal(Number(preview?.additionalAmount), 0, `${scheme} additional amount is not presented as paid`);
+    const allocations = getPreviewAdditionalAllocations(preview);
+    const additionalAllocation = allocations.find(row => (
+        (row.professionKey || row.profession_key) === ADDITIONAL_PROFESSION
+    ));
+    assert.ok(additionalAllocation, `${scheme} preview includes the unresolved additional allocation`);
+    assert.equal(Number(additionalAllocation.minutes ?? additionalAllocation.actualMinutes ?? additionalAllocation.actual_minutes), 510);
+    const issue = getPreviewIssues(preview).find(row => row.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED');
+    assert.ok(issue, `${scheme} preview exposes unsupported scheme blocker`);
+    assert.equal(issue.professionKey || issue.profession_key, ADDITIONAL_PROFESSION);
+    assert.equal(issue.schemeType || issue.scheme_type, scheme);
+    assert.equal(Number(issue.minutes ?? issue.paidRoleMinutes ?? issue.paid_role_minutes), 510);
+    assert.ok(String(issue.message || '').trim(), `${scheme} preview exposes a blocker message`);
+    assert.equal(
+        (preview?.professionRateSummary || []).some(row => row.kind === 'simultaneous_additional'),
+        false,
+        `${scheme} preview does not create a successful additional pay line`
+    );
+    assert.equal(
+        getPreviewLines(preview).some(row => (
+            (row.lineType || row.line_type) === 'simultaneous_additional' && Number(row.amount || 0) > 0
+        )),
+        false,
+        `${scheme} preview does not pay the unsupported additional role`
+    );
+}
+
 async function cleanup(base, token, staffId) {
     const response = await api(base, `/api/hr/qa/multi-segment/${encodeURIComponent(RUN_ID)}`, {
         method: 'DELETE', token, confirm: true, cleanup: true,
@@ -305,17 +513,76 @@ async function cleanup(base, token, staffId) {
     });
     const after = response.body?.data?.after;
     assert.equal(after?.confirmedClean, true, 'server cleanup is confirmed');
+    assertCleanupStatus(after, 'server cleanup');
     const verification = await readCleanupStatus(base, token, staffId);
     assert.equal(verification?.confirmedClean, true, 'independent read-only cleanup verification');
+    assertCleanupStatus(verification, 'independent read-only cleanup verification');
     return {
         runId: RUN_ID,
         staffId: Number(staffId),
         before: response.body?.data?.before?.counts || {},
         fixtureIds: response.body?.data?.before?.fixtureIds || {},
         after: verification?.counts || {},
+        financialCounts: verification?.financialCounts || {},
+        configurationCounts: verification?.configurationCounts || {},
+        financialProofVersion: verification?.financialProofVersion || null,
         archived: verification?.archived === true,
         confirmedClean: true
     };
+}
+async function runChildScenario(scenario) {
+    return new Promise((resolve, reject) => {
+        const childEnv = {
+            ...process.env,
+            LIVE_MULTI_SEGMENT_QA_MATRIX: '',
+            LIVE_MULTI_SEGMENT_QA_SCHEME: scenario.scheme,
+            LIVE_MULTI_SEGMENT_QA_RUN_ID: scenario.runId,
+            LIVE_MULTI_SEGMENT_QA_SOURCE_MONDAY: scenario.date
+        };
+        delete childEnv.LIVE_MULTI_SEGMENT_QA_TOKEN;
+        const args = [path.resolve(__filename)];
+        if (TARGET_URL) args.push(normalizeBase(TARGET_URL));
+        const child = spawn(process.execPath, args, {
+            env: childEnv,
+            stdio: 'inherit',
+            windowsHide: true
+        });
+        child.once('error', reject);
+        child.once('exit', code => {
+            if (code === 0) {
+                resolve({ ...scenario, status: 'passed' });
+                return;
+            }
+            reject(new Error(`matrix scenario ${scenario.scheme} failed with exit code ${code}`));
+        });
+    });
+}
+
+async function runMatrix() {
+    assertConfigured({ matrixMode: true });
+    const scenarios = buildPayrollSchemeMatrixScenarios(RUN_ID, SOURCE_MONDAY);
+    const summary = [];
+    for (const scenario of scenarios) {
+        console.log(`Matrix scenario start: ${JSON.stringify({
+            scheme: scenario.scheme,
+            runId: scenario.runId,
+            date: scenario.date,
+            supported: scenario.supported
+        })}`);
+        const result = await runChildScenario(scenario);
+        summary.push(result);
+    }
+    console.log(`Live payroll scheme matrix QA passed: ${JSON.stringify({
+        scenarioCount: summary.length,
+        supported: summary.filter(row => row.supported).map(row => row.scheme),
+        unsupported: summary.filter(row => !row.supported).map(row => row.scheme),
+        scenarios: summary.map(row => ({
+            scheme: row.scheme,
+            runId: row.runId,
+            date: row.date,
+            status: row.status
+        }))
+    })}`);
 }
 
 async function run() {
@@ -332,9 +599,11 @@ async function run() {
         session = await login(base);
         assertQaOperator(session);
         const capabilities = await api(base, '/api/hr/qa/multi-segment/capabilities', { token: session.token });
-        assert.equal(capabilities.body?.fixtureVersion, 1, 'live QA helper version');
+        assert.equal(capabilities.body?.fixtureVersion, LIVE_MULTI_SEGMENT_QA_VERSION, 'live QA helper version');
+        assert.equal(capabilities.body?.financialProofVersion, LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION, 'live QA helper financial proof version');
         assert.equal(capabilities.body?.createsBookings, false, 'helper never creates bookings');
         assert.equal(capabilities.body?.createsFinanceTransactions, false, 'helper never creates finance transactions');
+        assert.equal(capabilities.body?.financialAutoCleanup, false, 'helper never auto-cleans financial artifacts');
 
         const catalog = await api(base, '/api/hr/professions', { token: session.token });
         const activeKeys = new Set((catalog.body?.data || []).filter(row => row.is_active !== false).map(row => row.key));
@@ -365,6 +634,13 @@ async function run() {
                 notes: MARKER
             }
         });
+        const schemeUpdate = await api(base, `/api/hr/staff/${staffId}/payroll-scheme`, {
+            method: 'PUT', token: session.token,
+            body: payrollSchemeUpdateBody(PAYROLL_SCHEME, payrollScheme)
+        });
+        assert.equal(schemeUpdate.body?.success, true, 'disposable active payroll scheme is explicit');
+        assert.equal(schemeUpdate.body?.data?.schemeType || schemeUpdate.body?.data?.scheme_type, PAYROLL_SCHEME);
+        results.push(`payroll_scheme_${PAYROLL_SCHEME}`);
         const roleAssignments = await api(base, `/api/hr/staff/${staffId}/role-assignments`, {
             method: 'PUT', token: session.token,
             body: {
@@ -465,30 +741,11 @@ async function run() {
         const month = SOURCE_MONDAY.slice(0, 7);
         const payrollPreview = await api(base, `/api/payroll/preview?staffId=${staffId}&month=${month}`, { token: session.token });
         const preview = payrollPreview.body?.preview;
-        assert.equal(Number(preview?.daysWorked), 1, `${PAYROLL_SCHEME} payroll counts one day worked`);
-        assert.equal(Number(preview?.physicalMinutes), 540, 'payroll preview keeps nine physical hours');
-        const previewRows = (preview?.professionRateSummary || []);
-        const baseRows = previewRows.filter(row => row.kind === 'base');
-        const additionalRows = previewRows.filter(row => row.kind === 'simultaneous_additional');
-        assert.equal(baseRows.length, 1, `${PAYROLL_SCHEME} payroll has one base line`);
-        assert.equal(baseRows[0].profession_key, PRIMARY_PROFESSION, 'base line keeps the primary profession');
-        assert.equal(Number(baseRows[0].rate), payrollScheme.baseRate, 'base line keeps the explicit primary scheme rate');
-        assert.deepEqual(additionalRows.map(row => [row.profession_key, Number(row.actual_minutes), Number(row.rate), Number(row.amount)]), [
-            [ADDITIONAL_PROFESSION, 510, 200, 1700]
-        ], `${PAYROLL_SCHEME} payroll pays 8.5 simultaneous hall-attendant hours at its profession rate`);
-        assert.equal(Number(preview?.baseAmount), payrollScheme.baseAmount, 'base role amount is not duplicated');
-        assert.equal(Number(preview?.additionalAmount), 1700, 'paid additional role has a separate allocation amount');
-        assert.equal(Number(preview?.netAmount), payrollScheme.totalAmount, 'preview totals base and additional pay without changing physical hours');
-        assert.equal(Number(preview?.payrollTransparency?.physicalHours), 9, 'preview exposes nine physical hours');
-        assert.equal(Number(preview?.payrollTransparency?.baseRoleHours), 9, 'preview exposes nine base-role hours');
-        assert.equal(Number(preview?.payrollTransparency?.additionalRoleHours), 8.5, 'preview exposes 8.5 additional role hours');
-        assert.equal(
-            (preview?.payrollBlockingIssues || []).some(
-                issue => issue.code === 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
-            ),
-            false,
-            `${PAYROLL_SCHEME} preview is supported`
-        );
+        if (payrollScheme.supported) {
+            assertSupportedPreview(preview, payrollScheme, PAYROLL_SCHEME);
+        } else {
+            assertUnsupportedPreview(preview, PAYROLL_SCHEME);
+        }
         results.push(`payroll_preview_${PAYROLL_SCHEME}`);
 
         const reportHours = await api(base, `/api/staff/schedule/hours?from=${SOURCE_MONDAY}&to=${SOURCE_MONDAY}`, { token: session.token });
@@ -518,6 +775,9 @@ async function run() {
                         confirmedClean: true,
                         fixtureIds: status.fixtureIds || {},
                         after: status.counts || {},
+                        financialCounts: status.financialCounts || {},
+                        configurationCounts: status.configurationCounts || {},
+                        financialProofVersion: status.financialProofVersion || null,
                         archived: status.archived === true,
                         note: 'cleanup response was interrupted; read-only verification confirmed the final state'
                     };
@@ -529,17 +789,19 @@ async function run() {
                         confirmedClean: false,
                         fixtureIds: status?.fixtureIds || {},
                         counts: status?.counts || {},
+                        financialCounts: status?.financialCounts || {},
+                        configurationCounts: status?.configurationCounts || {},
+                        financialProofVersion: status?.financialProofVersion || null,
                         error: error?.message || String(error)
                     };
                 }
             }
         }
-        console.log(`Cleanup report: ${JSON.stringify(cleanupReport || {
+        console.log(`Cleanup report: ${JSON.stringify(sanitizeCleanupReport(cleanupReport || {
             runId: RUN_ID,
-            staffId: staffId || null,
             confirmedClean: staffId === 0,
             note: staffId ? 'cleanup was not available' : 'no fixture staff id was observed'
-        })}`);
+        }))}`);
     }
     if (cleanupError) {
         const error = new Error(`live QA cleanup failed: ${cleanupError.message || cleanupError}`);
@@ -551,7 +813,7 @@ async function run() {
 }
 
 if (require.main === module) {
-    run().catch(error => {
+    (isMatrixMode() ? runMatrix() : run()).catch(error => {
         console.error(`Live multi-segment QA failed: ${error.message || error}`);
         process.exitCode = 1;
     });
@@ -560,8 +822,14 @@ if (require.main === module) {
 module.exports = {
     addDateDays,
     assertConfigured,
+    assertSupportedPreview,
+    assertUnsupportedPreview,
+    buildPayrollSchemeMatrixScenarios,
     defaultFutureMonday,
     normalizedSegments,
+    PAYROLL_SCHEMES,
     run,
+    runMatrix,
+    sanitizeCleanupReport,
     schedulePayload
 };

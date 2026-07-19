@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.78",
+  "version": "0.79.83",
   "eventGenix": {
-    "releaseLabel": "Payroll Bulk Apply Fix"
+    "releaseLabel": "Admission Tickets Working Hours Gate"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -11,7 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "npm run verify",
-    "verify": "npm run check:runtime && npm run check:version && npm run check:access && npm run check:action-permissions && npm run check:account-access-surface && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:attendance-plan && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:ticket-contract && npm run test:unit && npm run test:ui",
+    "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:account-access-surface && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:attendance-plan && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:ticket-contract && npm run test:unit && npm run test:ui",
     "check:runtime": "node scripts/check-runtime.js",
     "version:current": "node scripts/current-version.js",
     "check:version": "node scripts/version-sync.js",
@@ -57,6 +57,7 @@
     "repair:banquet-pinatas": "node scripts/banquet-production-recovery.js recover",
     "test:banquet-arrival-migrations": "node --test tests/banquet-guest-arrival-migrations.test.js",
     "test:backup-recovery": "node --test tests/backup-artifact.test.js tests/backup-recovery-contract.test.js tests/backup-inventory-contract.test.js",
+    "test:version-tooling": "node --test tests/version-sync-tooling.test.js",
     "test:api:account-access": "node --test tests/api-account-access.test.js",
     "test:hr-release-b": "node --test tests/hr-profession-conditions.test.js tests/hr-profession-checklist-migration.test.js tests/hr-profession-checklists.test.js tests/hr-onboarding-checklist-sync.test.js tests/profile-hr-professions-foundation.test.js tests/hr-profession-readiness-static.test.js tests/training-course-progress.test.js tests/payroll-profiles-migration.test.js tests/hr-payroll-profiles-service.test.js",
     "test:ticket-contract": "node --test tests/ticket-tariff-contract.test.js tests/admission-ticket-catalog-migration.test.js tests/admission-tickets.test.js tests/admission-ticket-ui.test.js tests/admission-ticket-backend-hardening.test.js tests/booking-finance-sync.test.js",
@@ -95,7 +96,7 @@
     "test:browser:hr-onboarding:fullstack:isolated": "npm exec --yes --package=playwright -c \"node scripts/run-isolated-postgres-tests.js fullstack\"",
     "test:integration:live-multi-segment-qa:isolated": "node scripts/run-isolated-postgres-tests.js qa",
     "test:db:isolated": "node scripts/run-isolated-postgres-tests.js all",
-    "test:db-flow-contract": "node --test tests/isolated-postgres-test-flow.test.js",
+    "test:db-flow-contract": "node --test tests/isolated-postgres-test-flow.test.js tests/attendance-snapshot-writer-audit.test.js",
     "db:migrate": "node db/migrate.js",
     "version:sync": "node scripts/version-sync.js --fix",
     "version:bump": "node scripts/version-sync.js --fix --bump",
@@ -111,6 +112,7 @@
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
     "smoke:staff-schedule:write": "npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js",
     "qa:live:multi-segment": "node scripts/live-multi-segment-qa.js",
+    "qa:live:tickets": "npx --yes --package playwright node scripts/live-ticket-release-gate.js",
     "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",

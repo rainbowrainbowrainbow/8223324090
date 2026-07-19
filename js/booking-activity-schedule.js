@@ -153,12 +153,13 @@
         const scheduleTimes = options.scheduleTimes || {};
         const alignOptions = { ...options, mode: 'ceil' };
         const slotTimesOnly = options.slotTimesOnly !== false;
+        const allowInvalidManualTimes = options.allowInvalidManualTimes === true;
         let nextTime = normalizeSelectedActivityScheduleTime(options.baseTime || '');
         if (nextTime && slotTimesOnly) nextTime = snapSelectedActivityScheduleTime(nextTime, alignOptions);
         return (programs || []).filter(Boolean).map((program, index) => {
             const programId = String(program.id);
             const rawManualTime = normalizeSelectedActivityScheduleTime(scheduleTimes[programId]);
-            const manualTime = rawManualTime && (!slotTimesOnly || isSelectedActivityScheduleSlotTime(rawManualTime, options))
+            const manualTime = rawManualTime && (allowInvalidManualTimes || !slotTimesOnly || isSelectedActivityScheduleSlotTime(rawManualTime, options))
                 ? rawManualTime
                 : '';
             const time = manualTime || nextTime || '';

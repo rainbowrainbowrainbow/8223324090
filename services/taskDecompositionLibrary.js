@@ -137,7 +137,8 @@ function mapTemplateRow(row = {}) {
 }
 
 async function withTransaction(db, callback) {
-    const client = typeof db.connect === 'function' ? await db.connect() : null;
+    const existingClient = db && typeof db.query === 'function' && typeof db.release === 'function';
+    const client = !existingClient && typeof db.connect === 'function' ? await db.connect() : null;
     const query = client || db;
     try {
         if (client) await query.query('BEGIN');

@@ -1057,6 +1057,18 @@
         `;
     }
 
+    function renderBanquetPreorderStatus(summary) {
+        const status = summary?.banquetPreorderStatus || summary?.banquet_preorder_status || null;
+        const warnings = Array.isArray(status?.warnings) ? status.warnings.filter(Boolean) : [];
+        if (!warnings.length) return '';
+        return `
+            <div class="summary-note-block summary-preorder-warning">
+                <strong>Передзамовлення / завдаток</strong>
+                <ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+            </div>
+        `;
+    }
+
     function renderDocument(summary) {
         const doc = el('bookingSummaryDocument');
         if (!doc) return;
@@ -1172,6 +1184,7 @@
 
             ${sections.finance ? `<section class="summary-section summary-section--finance">
                 <h2>Фінанси</h2>
+                ${renderBanquetPreorderStatus(summary)}
                 ${renderTotals(summary)}
             </section>` : ''}
 

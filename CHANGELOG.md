@@ -4,6 +4,59 @@
 
 ---
 
+## v0.79.83 - Admission Tickets Working Hours Gate
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Робочі години стали серверним guardrail:** нові бронювання, linked/group saves і банкетні активності тепер перевіряють не лише старт, а й завершення відносно графіка центру.
+- **UI більше не пропонує неможливий останній слот:** час бронювання враховує тривалість програми або multi-activity, тому `20:00` не показується для активності з ненульовою тривалістю.
+- **Legacy-safe редагування:** старі записи поза графіком можна відкрити й змінити без примусового переносу часу, якщо дата/час/тривалість не змінюються.
+- **Release gate посилено після live-QA:** ticket smoke тепер не падає на навмисно заглушені зовнішні ресурси й залишається чутливим до невідомих browser console errors.
+- **Передзамовлення банкетів:** менеджер бачить warning по мінімуму меню для кімнатки/столика та рекомендованому завдатку без змішування цих сум із квитками.
+
+---
+
+## v0.79.82 - Admission Tickets Release Gate
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Live-QA квитків став повторюваним release gate** — runner перенесено з ignored `output/` у `scripts/live-ticket-release-gate.js` і підключено як `npm run qa:live:tickets`.
+- **Версія більше не захардкожена** — production перевіряється проти поточного `package.json` або явного `LIVE_TICKET_QA_EXPECTED_VERSION`.
+- **Покрито матрицю тарифів** — gate перевіряє всі типи квитків, weekday/weekend, standard/reserved context, weekend blocker для дітей до 3 років, summary/detail/PDF і фінансовий total.
+- **QA стало безпечнішим для production** — runner шукає вільний майбутній тестовий слот, збирає browser console/page/auth errors і гарантовано soft-delete-ить disposable booking у `finally`.
+- **P1 regression coverage підтверджено локально** — ticket contract, booking package contract і повний `npm test` проходять перед release bump.
+
+---
+
+## v0.79.81 - Payroll Scheme Matrix QA
+
+### HR / Зарплата / Одночасні ролі / (18.07.2026) [codex]
+- **Перевірено payroll scheme matrix** — guarded runner проходить `hourly`, `per_shift`, `monthly_fixed`, `hybrid`, `percent` і `manual` через окремі disposable fixtures.
+- **Supported schemes рахують рольові години без подвоєння фізичного часу** — canonical case лишає `540` physical minutes, `540` base paid minutes і `510` additional paid minutes.
+- **Unsupported schemes залишаються fail-closed** — `hybrid`, `percent` і `manual` показують `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED` з 510 unresolved minutes замість тихого `0 грн`.
+- **Cleanup proof посилено** — кожен live QA scenario має власний runId, майбутню дату, cleanup у `finally` і нульові payroll/payment/finance counters.
+- **Snapshot audit став release-gate** — post-fix cohort окремо від історичних винятків і падає на missing snapshot, invalid paid allocation або unknown writer.
+
+---
+
+## v0.79.80 - Booking Time and Banquet Recovery
+
+### Бронювання / Таймінг / Банкетки / (18.07.2026) [codex]
+- **Старт активності можна змінити до збереження** — у формі бронювання доступні 15-хвилинна сітка та кнопки ±15 хвилин, а наявний legacy-час поза сіткою залишається видимим.
+- **Конфлікти перевіряються на новому часі** — preflight враховує кімнату, основного й другого аніматора та multi-activity розклад; застарілі async-відповіді не перетирають останній вибір, а активності зміщуються на однакову дельту.
+- **Банкетний контекст не змінюється мовчки** — при зміні часу джерело кімнати переобчислюється, а зміна банкетної групи потребує явного підтвердження менеджера.
+- **Recovery tooling став контрольованішим** — додано read-only QA inventory та allowlisted/idempotent detach у serializable transaction; команда не видаляє бронювання чи завдаток і не запускається автоматично під час deploy.
+
+---
+
+## v0.79.79 - Transaction Ownership Hardening
+
+### Backend / Транзакції / Стабільність / (18.07.2026) [codex]
+- **Захищено transaction ownership у scoped сервісах** — `customerChildren`, `leadCustomerRepair`, `taskDecompositionLibrary`, `Hermes Studio` і `backfill-room-resource-id` більше не перепідключають checked-out PostgreSQL client.
+- **Nested services не керують чужою транзакцією** — повторно використаний client не отримує вкладені `BEGIN`, `COMMIT`, `ROLLBACK` або `release()`.
+- **Контракт зафіксовано static guard-ом** — `tests/sql-safety.test.js` перевіряє порядок reuse-before-connect, `reuseClient` для неоднозначних helper-ів і payroll bulk contract.
+- **Без змін БД і ролей** — schema, auth, Railway settings, legacy payroll і production data не змінювались.
+
+---
+
 ## v0.79.78 - Payroll Bulk Apply Fix
 
 ### HR / Зарплата / Bulk / (18.07.2026) [codex]

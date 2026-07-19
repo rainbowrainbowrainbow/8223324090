@@ -431,6 +431,8 @@ async function getVisibleTaskForSchedule(query, taskId, actor, options = {}) {
 
 async function withTransaction(options, work) {
     const query = options.pool || pool;
+    // A pooled pg.Client already has a transaction owner upstream. Reuse it as a
+    // queryable instead of calling .connect() again.
     if (typeof query.connect !== 'function' || typeof query.release === 'function') return work(query);
     const client = await query.connect();
     try {

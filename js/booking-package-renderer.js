@@ -171,6 +171,27 @@ function bookingPackageMoneyValue(value) {
     return Math.round(amount * 100) / 100;
 }
 
+function bookingPackagePreorderWarnings(bookingPackage = {}) {
+    const status = bookingPackage?.banquetPreorderStatus
+        || bookingPackage?.banquet_preorder_status
+        || null;
+    const warnings = Array.isArray(status?.warnings) ? status.warnings : [];
+    return warnings
+        .map(warning => String(warning?.message || warning?.code || warning || '').trim())
+        .filter(Boolean);
+}
+
+function renderBookingPackagePreorderWarning(bookingPackage = {}) {
+    const warnings = bookingPackagePreorderWarnings(bookingPackage);
+    if (!warnings.length) return '';
+    return `
+        <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning">
+            <strong>Передзамовлення / завдаток</strong>
+            <ul>${warnings.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
+
 function bookingPackageEntryChargeFromPackage(bookingPackage = {}) {
     if (!bookingPackage || typeof bookingPackage !== 'object') return null;
     const raw = bookingPackage.entryCharge || bookingPackage.entry_charge || null;
@@ -313,6 +334,7 @@ function renderBookingPackageDetail(booking, options = {}) {
     });
     const ticketLines = bookingPackageTicketLines(bookingPackage);
     const ticketRows = renderBookingPackageTicketRows(bookingPackage);
+    const preorderWarning = renderBookingPackagePreorderWarning(bookingPackage);
     const entryCharge = ticketLines.length ? null : bookingPackageEntryChargeFromPackage(bookingPackage);
     const entryRow = entryCharge ? renderBookingPackageEntryRow(bookingPackage) : '';
     const businessRowsSummary = showHeaderSummary
@@ -354,6 +376,7 @@ function renderBookingPackageDetail(booking, options = {}) {
             </div>
             ` : ''}
             ${missingServingTimes ? `<div class="booking-summary-note">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій.</div>` : ''}
+            ${preorderWarning}
             ${rows}
             ${entertainmentHtml}
             ${ticketRows}
@@ -387,6 +410,8 @@ function renderBookingPackageDetail(booking, options = {}) {
         renderBookingPackageEntryRow,
         bookingPackageTicketLines,
         renderBookingPackageTicketRows,
+        bookingPackagePreorderWarnings,
+        renderBookingPackagePreorderWarning,
         bookingPackageBusinessRowsSummary,
         renderBookingPackageDetail
     };

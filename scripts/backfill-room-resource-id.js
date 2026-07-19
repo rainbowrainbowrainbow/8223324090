@@ -257,10 +257,12 @@ async function applyBackfill(db, report, options = {}) {
         throw new Error(`Apply requires --expected-safe=${safeItems.length} from the immediately preceding dry-run`);
     }
 
-    const client = typeof db.connect === 'function' ? await db.connect() : db;
+    const reuseClient = options.reuseClient === true
+        || Boolean(db && typeof db.query === 'function' && typeof db.release === 'function');
+    const client = !reuseClient && typeof db.connect === 'function' ? await db.connect() : db;
     const updated = {};
     try {
-        await client.query('BEGIN');
+        if (!reuseClient) await client.query('BEGIN');
         for (const resource of report.plannedCatalogAliases || []) {
             await client.query(
                 `UPDATE timeline_resources
@@ -297,7 +299,7 @@ async function applyBackfill(db, report, options = {}) {
                 updated[table.name] += result.rowCount || 0;
             }
         }
-        await client.query('COMMIT');
+        if (!reuseClient) await client.query('COMMIT');
         return {
             mode: 'apply',
             piiIncluded: false,
@@ -307,10 +309,12 @@ async function applyBackfill(db, report, options = {}) {
             updatedTotal: Object.values(updated).reduce((sum, count) => sum + count, 0)
         };
     } catch (error) {
-        try { await client.query('ROLLBACK'); } catch {}
+        if (!reuseClient) {
+            try { await client.query('ROLLBACK'); } catch {}
+        }
         throw error;
     } finally {
-        if (client !== db && typeof client.release === 'function') client.release();
+        if (!reuseClient && client !== db && typeof client.release === 'function') client.release();
     }
 }
 

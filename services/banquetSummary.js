@@ -6,6 +6,7 @@ const {
     menuPositionsSubtotal,
     formatMenuQuantityWithServingUnit
 } = require('./bookingPackage');
+const { buildBanquetPreorderStatus } = require('./banquetPreorderRules');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
@@ -1720,11 +1721,25 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
     const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
     const deposit = summaryDepositOf(primaryBooking, canonicalDepositProjection || depositProjection);
+    const banquetPreorderStatus = buildBanquetPreorderStatus({
+        booking: kitchenBooking,
+        bookingPackage,
+        menuSubtotal,
+        deposit,
+        room: kitchenBooking?.room || primaryBooking?.room || null,
+        roomResourceId: kitchenBooking?.roomResourceId || kitchenBooking?.room_resource_id || primaryBooking?.roomResourceId || primaryBooking?.room_resource_id || null
+    });
 
     if (!menuPositions.length && !menuRows.length) {
         warnings.push({
             code: 'menu_rows_missing',
             message: 'У бронюванні немає structured menuPositions або legacy banquet_menu.'
+        });
+    }
+    for (const warning of banquetPreorderStatus.warnings || []) {
+        warnings.push({
+            code: cleanText(warning.code, 120) || 'banquet_preorder_warning',
+            message: cleanText(warning.message, 1000) || cleanText(warning.code, 120) || 'Banquet preorder warning'
         });
     }
     const finance = buildFinanceRows({
@@ -1850,6 +1865,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             verifiedAt: deposit.verifiedAt || null,
             accountantTaskId: deposit.accountantTaskId || null
         },
+        banquetPreorderStatus,
         finance,
         terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),
         warnings

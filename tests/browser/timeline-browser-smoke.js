@@ -13,6 +13,7 @@ const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
 const HEADLESS = process.env.TIMELINE_BROWSER_SMOKE_HEADLESS !== 'false';
 const CLEANUP = process.env.TIMELINE_BROWSER_SMOKE_CLEANUP !== 'false';
 const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true';
+const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
 
 function fail(message) {
     console.error(`Timeline browser smoke failed: ${message}`);
@@ -134,6 +135,56 @@ async function firstAnimatorLine(base, token, date) {
     return line;
 }
 
+function smokeTimeToMinutes(value) {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
+    return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+}
+
+function smokeBookingOverlaps(booking, startTime, duration) {
+    const bookingStart = smokeTimeToMinutes(booking?.time);
+    const candidateStart = smokeTimeToMinutes(startTime);
+    if (bookingStart === null || candidateStart === null) return false;
+    const bookingEnd = bookingStart + Math.max(1, Number(booking?.duration || 0) || 1);
+    const candidateEnd = candidateStart + Math.max(1, Number(duration || 0) || 1);
+    return bookingStart < candidateEnd && bookingEnd > candidateStart;
+}
+
+async function findBookingTimeSmokeSlot(base, token, room) {
+    const startDate = futureDate(1);
+    for (let offset = 0; offset < 45; offset += 1) {
+        const date = datePlus(startDate, offset);
+        const lines = await loadLines(base, token, date, 'animators');
+        const candidates = lines.filter(item => {
+            const id = String(item?.id || '');
+            return id
+                && !['afisha', 'banquet-service'].includes(id)
+                && !id.startsWith('empty-roster-')
+                && item.assignmentAllowed !== false
+                && item.isUnavailable !== true;
+        });
+        if (!candidates.length) continue;
+
+        const bookings = await fetchJson(
+            base,
+            scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }),
+            { token }
+        );
+        const rows = Array.isArray(bookings) ? bookings : [];
+        const normalizedRoom = String(room || '').trim().toLowerCase();
+        const candidate = candidates.find(line => !rows.some(booking => {
+            if (String(booking?.status || '').toLowerCase() === 'cancelled') return false;
+            if (!smokeBookingOverlaps(booking, '12:30', 60)) return false;
+            const sameLine = [booking?.lineId, booking?.line_id, booking?.resourceId, booking?.resource_id]
+                .some(value => String(value || '') === String(line.id));
+            const sameRoom = normalizedRoom
+                && String(booking?.room || '').trim().toLowerCase() === normalizedRoom;
+            return sameLine || sameRoom;
+        }));
+        if (candidate) return { date, line: candidate };
+    }
+    throw new Error('no visible free animator line found for the 12:15 -> 12:30 booking time smoke');
+}
+
 function bookingPayload(base = {}) {
     return {
         businessContext: BUSINESS_CONTEXT,
@@ -205,7 +256,10 @@ function groupId(snapshot = {}) {
 }
 
 async function openAuthenticatedPage(browser, base, session) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+    const context = await browser.newContext({
+        viewport: { width: 1440, height: 960 },
+        serviceWorkers: 'block'
+    });
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);
@@ -486,6 +540,257 @@ async function chooseFirstActivityProgram(page) {
     });
 }
 
+async function assertBookingDrawerResponsive(page) {
+    const viewports = [
+        { width: 1440, height: 960, label: 'desktop' },
+        { width: 390, height: 844, label: 'mobile' }
+    ];
+    for (const viewport of viewports) {
+        await page.setViewportSize(viewport);
+        const metrics = await page.evaluate(() => {
+            const panel = document.getElementById('bookingPanel');
+            const form = document.getElementById('bookingForm');
+            const panelRect = panel?.getBoundingClientRect?.();
+            return {
+                viewportWidth: window.innerWidth,
+                panelVisible: Boolean(panel && !panel.classList.contains('hidden')),
+                panelLeft: panelRect?.left ?? Number.NaN,
+                panelRight: panelRect?.right ?? Number.NaN,
+                bodyOverflowX: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+                formOverflowX: form ? Math.max(0, form.scrollWidth - form.clientWidth) : Number.NaN
+            };
+        });
+        assert.equal(metrics.panelVisible, true, `booking drawer remains visible at ${viewport.label}`);
+        assert.ok(metrics.panelLeft >= -1, `booking drawer stays inside the left viewport edge at ${viewport.label}: ${metrics.panelLeft}`);
+        assert.ok(metrics.panelRight <= metrics.viewportWidth + 1, `booking drawer stays inside the right viewport edge at ${viewport.label}: ${metrics.panelRight}`);
+        assert.ok(metrics.bodyOverflowX <= 2, `booking drawer does not create body horizontal overflow at ${viewport.label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.formOverflowX <= 2, `booking form has no horizontal overflow at ${viewport.label}: ${metrics.formOverflowX}`);
+    }
+    await page.setViewportSize({ width: 1440, height: 960 });
+}
+
+async function assertBookingTimeCreateDurability(page, date, animator, room, customer) {
+    await renderTimelineView(page, date, 'animators');
+    const opened = await page.evaluate(async ({ animator, room, customer, runId }) => {
+        const cells = Array.from(document.querySelectorAll('.grid-cell[data-time="12:15"][data-line]'))
+            .filter(node => !['afisha', 'banquet-service'].includes(String(node.dataset.line || '')));
+        let result;
+        if (cells.length && typeof selectCell === 'function') {
+            for (const cell of cells) {
+                await selectCell(cell);
+                result = !document.getElementById('bookingPanel')?.classList.contains('hidden');
+                if (result) break;
+            }
+        } else {
+            result = await openBookingPanel('12:15', animator.id);
+        }
+        if (result !== true) {
+            return {
+                ok: false,
+                error: `no eligible 12:15 timeline cell (${cells.map(cell => cell.dataset.line).join(', ')})`
+            };
+        }
+        if (typeof selectCustomerFromSearch === 'function') {
+            selectCustomerFromSearch(customer);
+        } else if (typeof applySelectedCustomerToBookingForm === 'function') {
+            applySelectedCustomerToBookingForm(customer);
+        }
+        const roomSelect = document.getElementById('roomSelect');
+        if (roomSelect) roomSelect.value = room;
+        const groupName = document.getElementById('bookingGroupName');
+        if (groupName) groupName.value = `Task3 time draft ${runId}`;
+        const notes = document.getElementById('bookingNotes');
+        if (notes) notes.value = `Task3 booking time durability ${runId}`;
+        if (typeof initializeBookingArrivalDraft === 'function') {
+            initializeBookingArrivalDraft('11:45', {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '11:45'
+            });
+        }
+        const arrival = document.getElementById('bookingGuestArrivalTime');
+        if (arrival) arrival.value = '11:45';
+        if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        return {
+            ok: true,
+            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            time: document.getElementById('bookingTime')?.value || '',
+            lineId: document.getElementById('bookingLine')?.value || '',
+            customerId: document.getElementById('selectedCustomerId')?.value || '',
+            room: roomSelect?.value || ''
+        };
+    }, { animator, room, customer, runId: RUN_ID });
+    assert.equal(opened.ok, true, `booking time drawer opens: ${opened.error || ''}`);
+    assert.equal(opened.panelVisible, true, 'booking time drawer is visible');
+    assert.equal(opened.time, '12:15', 'booking time drawer starts from the clicked 12:15 slot');
+    assert.ok(opened.lineId, 'booking time drawer keeps the visible clicked timeline line');
+    assert.equal(String(opened.customerId), String(customer.id), 'booking time draft keeps selected test customer');
+    assert.equal(opened.room, room, 'booking time draft keeps selected test room');
+
+    const program = await chooseFirstActivityProgram(page);
+    assert.ok(program?.id, 'booking time durability scenario selected an activity program');
+    await page.locator('#bookingTime').selectOption('12:30');
+    await page.waitForFunction(() =>
+        document.getElementById('bookingTime')?.value === '12:30'
+        && ['free', 'conflict', 'failed'].includes(BookingDrawerState?.bookingTimePreflight?.status)
+    );
+
+    const draftBeforeSubmit = await page.evaluate(() => ({
+        time: document.getElementById('bookingTime')?.value || '',
+        groupName: document.getElementById('bookingGroupName')?.value || '',
+        notes: document.getElementById('bookingNotes')?.value || '',
+        arrival: document.getElementById('bookingGuestArrivalTime')?.value || '',
+        customerId: document.getElementById('selectedCustomerId')?.value || '',
+        programId: document.getElementById('selectedProgram')?.value || '',
+        preflightStatus: BookingDrawerState?.bookingTimePreflight?.status || ''
+    }));
+    assert.equal(draftBeforeSubmit.time, '12:30');
+    assert.equal(draftBeforeSubmit.arrival, '11:45', 'guest arrival stays independent from edited activity start');
+    assert.equal(String(draftBeforeSubmit.customerId), String(customer.id));
+    assert.equal(String(draftBeforeSubmit.programId), String(program.id));
+    assert.equal(draftBeforeSubmit.preflightStatus, 'free', 'edited 12:30 slot passes browser preflight');
+    await assertBookingDrawerResponsive(page);
+
+    let capturedPayload = null;
+    let capturedBanquetContext = null;
+    let capturedCreatePath = null;
+    let injectConflict = true;
+    const routePattern = '**/api/bookings*';
+    const observedPostPaths = [];
+    const requestObserver = request => {
+        if (request.method() === 'POST') observedPostPaths.push(new URL(request.url()).pathname);
+    };
+    page.on('request', requestObserver);
+    const routeHandler = async route => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (injectConflict
+            && request.method() === 'POST'
+            && ['/api/bookings', '/api/bookings/full'].includes(pathname)) {
+            injectConflict = false;
+            const requestPayload = request.postDataJSON();
+            capturedCreatePath = pathname;
+            capturedPayload = requestPayload.main || requestPayload;
+            capturedBanquetContext = requestPayload.banquetContext || capturedPayload.banquetContext || null;
+            if (capturedPayload && capturedBanquetContext && !capturedPayload.banquetContext) {
+                capturedPayload.banquetContext = capturedBanquetContext;
+            }
+            if (capturedPayload && !capturedPayload.notes) {
+                const comments = capturedPayload.extraData?.bookingWorkspace?.comments || {};
+                capturedPayload.notes = Object.values(comments).find(value => String(value || '').trim()) || null;
+            }
+            await route.fulfill({
+                status: 409,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: false,
+                    error: 'Task3 simulated occupied slot conflict',
+                    conflictBookingId: `TASK3-CONFLICT-${RUN_ID}`
+                })
+            });
+            return;
+        }
+        await route.continue();
+    };
+    await page.route(routePattern, routeHandler);
+    const conflictResponse = page.waitForResponse(response =>
+        response.request().method() === 'POST'
+        && ['/api/bookings', '/api/bookings/full'].includes(new URL(response.url()).pathname)
+        && response.status() === 409
+    ).catch(error => error);
+    await page.evaluate(() => {
+        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
+            bubbles: true,
+            cancelable: true
+        }));
+    });
+    const conflictResult = await Promise.race([
+        conflictResponse,
+        page.waitForTimeout(5000).then(() => null)
+    ]);
+    if (!conflictResult || conflictResult instanceof Error) {
+        const diagnostics = await page.evaluate(() => ({
+            submitDisabled: Boolean(document.getElementById('bookingSubmitBtn')?.disabled),
+            selectedProgram: document.getElementById('selectedProgram')?.value || '',
+            selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
+            bookingTime: document.getElementById('bookingTime')?.value || '',
+            preflightStatus: BookingDrawerState?.bookingTimePreflight?.status || '',
+            validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+            notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                .map(node => String(node.textContent || '').trim())
+                .filter(Boolean)
+                .slice(-5)
+        }));
+        page.off('request', requestObserver);
+        await page.unroute(routePattern, routeHandler);
+        throw new Error(`booking create request was blocked before API: ${JSON.stringify({ diagnostics, observedPostPaths })}`);
+    }
+    await page.waitForFunction(() => {
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        return panel && !panel.classList.contains('hidden') && submit && !submit.disabled;
+    });
+    await page.unroute(routePattern, routeHandler);
+    page.off('request', requestObserver);
+
+    assert.ok(capturedPayload, 'booking create request payload was captured');
+    assert.ok(capturedCreatePath, 'booking create endpoint was captured');
+    assert.equal(capturedPayload.time, '12:30');
+    assert.equal(capturedPayload.banquetContext?.guestArrivalTime, '11:45');
+    assert.equal(capturedPayload.notes, draftBeforeSubmit.notes);
+    assert.equal(String(capturedPayload.customerId), String(customer.id));
+
+    const draftAfterConflict = await page.evaluate(() => ({
+        panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+        time: document.getElementById('bookingTime')?.value || '',
+        groupName: document.getElementById('bookingGroupName')?.value || '',
+        notes: document.getElementById('bookingNotes')?.value || '',
+        arrival: document.getElementById('bookingGuestArrivalTime')?.value || '',
+        customerId: document.getElementById('selectedCustomerId')?.value || ''
+    }));
+    assert.equal(draftAfterConflict.panelVisible, true, 'server conflict keeps booking drawer open');
+    assert.deepEqual(draftAfterConflict, {
+        panelVisible: true,
+        time: draftBeforeSubmit.time,
+        groupName: draftBeforeSubmit.groupName,
+        notes: draftBeforeSubmit.notes,
+        arrival: draftBeforeSubmit.arrival,
+        customerId: draftBeforeSubmit.customerId
+    });
+    await assertBookingDrawerResponsive(page);
+
+    // Live smoke must leave a booking that the public cleanup endpoint can remove.
+    // The intercepted request above still verifies the independent guest-arrival
+    // contract; the durable retry intentionally creates a standalone test booking.
+    await page.evaluate(() => {
+        if (typeof initializeBookingArrivalDraft === 'function') {
+            initializeBookingArrivalDraft('12:30', { mode: 'standalone' });
+        } else {
+            BookingDrawerState.banquetCreationMode = null;
+        }
+    });
+
+    const createResponsePromise = page.waitForResponse(response =>
+        response.request().method() === 'POST'
+        && ['/api/bookings', '/api/bookings/full'].includes(new URL(response.url()).pathname)
+    );
+    await page.evaluate(() => {
+        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
+            bubbles: true,
+            cancelable: true
+        }));
+    });
+    const createResponse = await createResponsePromise;
+    const createBody = await createResponse.json();
+    const createdBooking = createBody.booking || createBody.mainBooking;
+    assert.equal(createResponse.ok(), true, JSON.stringify(createBody));
+    assert.equal(createBody.success, true, 'retry after server conflict creates booking');
+    assert.equal(createdBooking?.time, '12:30', 'created booking persisted edited 12:30 start');
+    await page.waitForFunction(() => document.getElementById('bookingPanel')?.classList.contains('hidden'));
+    return createdBooking;
+}
+
 async function openActivityFromKitchenSource(page, date, kitchenId) {
     await renderTimelineView(page, date, 'rooms');
     return page.evaluate(async ({ kitchenId }) => {
@@ -556,22 +861,35 @@ async function assertBookingBlockVisible(page, bookingId) {
 }
 
 async function setTimelineViewPanelOpen(page, open) {
-    await page.evaluate(nextOpen => {
-        const panel = document.getElementById('timelineViewPanel');
-        const toggle = document.getElementById('timelineViewPanelToggle');
-        if (!panel || !toggle) return;
-        if (!panel.hidden !== Boolean(nextOpen)) toggle.click();
-    }, open);
-    await page.waitForFunction(nextOpen => {
-        const panel = document.getElementById('timelineViewPanel');
-        const toggle = document.getElementById('timelineViewPanelToggle');
-        return Boolean(
-            panel
-            && toggle
-            && panel.hidden === !nextOpen
-            && toggle.getAttribute('aria-expanded') === String(Boolean(nextOpen))
-        );
-    }, open);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            await page.evaluate(nextOpen => {
+                const panel = document.getElementById('timelineViewPanel');
+                const toggle = document.getElementById('timelineViewPanelToggle');
+                if (!panel || !toggle) return;
+                if (!panel.hidden !== Boolean(nextOpen)) toggle.click();
+            }, open);
+            await page.waitForFunction(nextOpen => {
+                const panel = document.getElementById('timelineViewPanel');
+                const toggle = document.getElementById('timelineViewPanelToggle');
+                return Boolean(
+                    panel
+                    && toggle
+                    && panel.hidden === !nextOpen
+                    && toggle.getAttribute('aria-expanded') === String(Boolean(nextOpen))
+                );
+            }, open);
+            return;
+        } catch (error) {
+            if (attempt > 0 || !/execution context was destroyed/i.test(String(error?.message || error))) throw error;
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForFunction(() => {
+                const appVisible = document.getElementById('mainApp')
+                    && !document.getElementById('mainApp').classList.contains('hidden');
+                return appVisible && window.AppState && window.TimelineView;
+            });
+        }
+    }
 }
 
 async function assertTimelineViewPanelInteractions(page) {
@@ -1327,6 +1645,8 @@ async function run() {
     let page;
     try {
         const animator = await firstAnimatorLine(base, token, date);
+        const bookingTimeSlot = await findBookingTimeSmokeSlot(base, token, room);
+        const bookingTimeDate = bookingTimeSlot.date;
         const customerA = await createCustomer(base, token, 'activity-first');
         const customerB = await createCustomer(base, token, 'kitchen-first');
         createdCustomerIds.push(customerA.id, customerB.id);
@@ -1350,6 +1670,22 @@ async function run() {
         }));
         createdBookingIds.push(activity.id);
 
+        ({ context, page } = await openAuthenticatedPage(browser, base, session));
+        const bookingTimeCreate = await assertBookingTimeCreateDurability(
+            page,
+            bookingTimeDate,
+            bookingTimeSlot.line,
+            room,
+            customerA
+        );
+        assert.ok(bookingTimeCreate?.id, 'booking time durability retry returned created booking');
+        createdBookingIds.push(bookingTimeCreate.id);
+        if (BOOKING_TIME_ONLY) {
+            console.log(`Timeline booking-time smoke OK: ${base} date=${bookingTimeDate} room=${room}`);
+            console.log('  OK booking start 12:15 -> 12:30, 409 draft durability, create payload, and responsive drawer');
+            return;
+        }
+        await context.close();
         ({ context, page } = await openAuthenticatedPage(browser, base, session));
         await assertTimelineDeepLinkSwitching(page, base, date);
         await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
@@ -1458,6 +1794,7 @@ async function run() {
         assert.equal(kitchenFirstAnimatorVisible, false, 'kitchen-first kitchen stays hidden from animator timeline');
 
         console.log(`Timeline browser smoke OK: ${base} date=${date} room=${room}`);
+        console.log(`  OK booking start 12:15 -> 12:30, 409 draft durability, and responsive drawer on ${bookingTimeDate}`);
         console.log(`  OK activity first -> kitchen after, group ${groupId(activitySnapshot)}`);
         console.log(`  OK kitchen first -> activity after, group ${groupId(kitchenSnapshot)}`);
         console.log('  OK existing group reuse, visibility, reveal action, and cache view/date switch');

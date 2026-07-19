@@ -27,7 +27,7 @@ function clearModules() {
 function bookingRow(overrides = {}) {
     return {
         id: 'BK-2026-0001',
-        date: '2099-01-20',
+        date: '2099-02-14',
         time: '10:00',
         line_id: 'line-1',
         program_id: 'custom',
@@ -341,6 +341,74 @@ test('linked-atomic updates main and linked bookings in one committed transactio
         assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').line_id, 'line-3');
         assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').time, '11:15');
         assert.equal(state.histories[0].action, 'drag');
+    });
+});
+
+test('linked-atomic rejects a weekday move before opening hours', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2026-0001', date: '2099-02-13', time: '12:00', duration: 60, line_id: 'line-1' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { time: '11:45' },
+            historyAction: 'drag',
+            historyData: { reason: 'before-opening' }
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '12:00');
+    });
+});
+
+test('linked-atomic rejects a weekend move that ends after closing hours', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2026-0001', date: '2099-02-14', time: '19:00', duration: 30, line_id: 'line-1' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { time: '19:45', duration: 30 },
+            historyAction: 'drag',
+            historyData: { reason: 'after-closing' }
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '19:00');
+    });
+});
+
+test('linked-atomic allows unchanged legacy out-of-hours booking when editing non-time fields', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2026-0001', date: '2099-02-13', time: '10:00', duration: 60, line_id: 'line-1', room: 'Room A' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { room: 'Room B' },
+            historyAction: 'drag',
+            historyData: { reason: 'legacy-room-only' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '10:00');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').room, 'Room B');
+    });
+});
+
+test('linked-atomic blocks changed legacy out-of-hours time', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2026-0001', date: '2099-02-13', time: '10:00', duration: 60, line_id: 'line-1', room: 'Room A' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { time: '10:15' },
+            historyAction: 'drag',
+            historyData: { reason: 'legacy-time-change' }
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '10:00');
     });
 });
 

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.79.78">
-    <link rel="stylesheet" href="css/auth.css?v=0.79.78">
-    <link rel="stylesheet" href="css/layout.css?v=0.79.78">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.78">
-    <link rel="stylesheet" href="css/timeline.css?v=0.79.78">
-    <link rel="stylesheet" href="css/panel.css?v=0.79.78">
-    <link rel="stylesheet" href="css/modals.css?v=0.79.78">
-    <link rel="stylesheet" href="css/controls.css?v=0.79.78">
-    <link rel="stylesheet" href="css/features.css?v=0.79.78">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.78">
-    <link rel="stylesheet" href="css/responsive.css?v=0.79.78">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.78">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.78">
+    <link rel="stylesheet" href="css/base.css?v=0.79.83">
+    <link rel="stylesheet" href="css/auth.css?v=0.79.83">
+    <link rel="stylesheet" href="css/layout.css?v=0.79.83">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.83">
+    <link rel="stylesheet" href="css/timeline.css?v=0.79.83">
+    <link rel="stylesheet" href="css/panel.css?v=0.79.83">
+    <link rel="stylesheet" href="css/modals.css?v=0.79.83">
+    <link rel="stylesheet" href="css/controls.css?v=0.79.83">
+    <link rel="stylesheet" href="css/features.css?v=0.79.83">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.83">
+    <link rel="stylesheet" href="css/responsive.css?v=0.79.83">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.83">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.79.83">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.79.78">✨ 0.79.78</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.79.83">✨ 0.79.83</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.79.78 — Payroll Bulk Apply Fix</p>
+                <p class="tagline">AI First CRM v0.79.83 — Admission Tickets Working Hours Gate</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.78</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.83</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -323,9 +323,14 @@
                         <span class="info-label">Дата:</span>
                         <span id="selectedDateDisplay" class="info-value">-</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Старт активності:</span>
-                        <span id="selectedTimeDisplay" class="info-value">-</span>
+                    <div class="info-item info-item--booking-time">
+                        <label class="info-label" for="bookingTime">Старт активності:</label>
+                        <div class="booking-time-control" aria-describedby="bookingTimeHint">
+                            <button type="button" id="bookingTimeStepBack" class="booking-time-step" aria-label="Змінити старт активності на 15 хвилин раніше">-15</button>
+                            <select id="bookingTime" class="booking-time-select info-value" aria-label="Старт активності" aria-describedby="bookingTimeHint"></select>
+                            <button type="button" id="bookingTimeStepForward" class="booking-time-step" aria-label="Змінити старт активності на 15 хвилин пізніше">+15</button>
+                        </div>
+                        <small id="bookingTimeHint" class="booking-time-hint" aria-live="polite"></small>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Аніматор:</span>
@@ -344,7 +349,6 @@
                         <span id="selectedGuestsDisplay" class="info-value">-</span>
                     </div>
                 </div>
-                <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
 
                 <div id="bookingGuestArrivalSection" class="form-section hidden" hidden aria-hidden="true">
@@ -1804,6 +1808,49 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.79.83 — Admission Tickets Working Hours Gate</h4>
+                    <ul>
+                        <li><b>Робочі години стали серверним guardrail:</b> бронювання й банкетні активності перевіряються по старту та завершенню, не лише по часу початку.</li>
+                        <li><b>Останній слот став duration-aware:</b> система більше не пропонує 20:00 для активності з ненульовою тривалістю.</li>
+                        <li><b>Legacy-safe редагування:</b> старі записи поза графіком можна редагувати без зміни часу, але новий невалідний час блокується.</li>
+                        <li><b>Передзамовлення банкетів:</b> менеджер бачить попередження по мінімуму меню та рекомендованому завдатку окремо від квитків.</li>
+                        <li><b>Live ticket gate посилено:</b> QA runner фіксує невідомі browser errors і не ламається на навмисно заглушених зовнішніх ресурсах.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.79.82 — Admission Tickets Release Gate</h4>
+                    <ul>
+                        <li><b>Live-QA квитків став release gate:</b> runner перенесено у scripts і підключено як повторювану перевірку для production.</li>
+                        <li><b>Версія без hardcode:</b> smoke звіряє production з package.json або явним LIVE_TICKET_QA_EXPECTED_VERSION.</li>
+                        <li><b>Матриця тарифів:</b> перевіряються всі типи квитків, будні/вихідні, standard/reserved, summary/detail/PDF і фінансовий total.</li>
+                        <li><b>Безпечна QA-гігієна:</b> runner шукає вільний тестовий слот, збирає browser errors і soft-delete-ить disposable booking у finally.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.79.81 — Payroll Scheme Matrix QA</h4>
+                    <ul>
+                        <li><b>Payroll scheme matrix:</b> supported schemes keep 540 physical minutes and add 510 paid simultaneous-role minutes as a separate line.</li>
+                        <li><b>Fail-closed blockers:</b> hybrid, percent and manual show `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED` instead of a silent 0 грн additional role.</li>
+                        <li><b>Guarded live QA:</b> every scenario uses a separate disposable employee, future date and cleanup proof with zero payroll/payment/finance counters.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.79.80 — Booking Time and Banquet Recovery</h4>
+                    <ul>
+                        <li><b>Час бронювання редагується:</b> доступні 15-хвилинна сітка та швидкі кроки ±15 хвилин.</li>
+                        <li><b>Безпечна зміна часу:</b> до збереження перевіряються кімната, ведучі та розклад усіх активностей.</li>
+                        <li><b>Контрольоване відновлення:</b> QA inventory і recovery detach отримали allowlist, підтвердження та транзакційний захист.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.79.79 — Transaction Ownership Hardening</h4>
+                    <ul>
+                        <li><b>Transaction ownership:</b> scoped helper-и більше не перепідключають checked-out PostgreSQL client і не відкривають вкладені транзакції.</li>
+                        <li><b>Regression guard:</b> static tests перевіряють reuse-before-connect, `reuseClient` і payroll bulk contract.</li>
+                        <li><b>Безпечний release:</b> schema, auth, ролі, legacy payroll, Railway settings і production data не змінювались.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.79.78 — Payroll Bulk Apply Fix</h4>
                     <ul>
                         <li><b>Bulk apply без 500:</b> assign profile, percent version і legacy conversion більше не перепідключають уже активний PostgreSQL transaction client.</li>
@@ -2466,7 +2513,7 @@
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.78" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.79.83" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -2769,44 +2816,44 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.79.78"></script>
-    <script src="js/timeline-visibility.js?v=0.79.78"></script>
-    <script src="js/kitchen-menu-images.js?v=0.79.78"></script>
-    <script src="js/config.js?v=0.79.78"></script>
-    <script src="js/api.js?v=0.79.78"></script>
-    <script src="js/ui.js?v=0.79.78"></script>
-    <script src="js/auth.js?v=0.79.78"></script>
-    <script src="js/timeline-interaction-model.js?v=0.79.78"></script>
-    <script src="js/timeline-cache.js?v=0.79.78"></script>
-    <script src="js/timeline-resource-identity.js?v=0.79.78"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.78"></script>
-    <script src="js/event-cards.js?v=0.79.78"></script>
-    <script src="js/invite-config.js?v=0.79.78"></script>
-    <script src="js/invite-share.js?v=0.79.78"></script>
-    <script src="js/timeline.js?v=0.79.78"></script>
-    <script src="js/booking-drawer-state.js?v=0.79.78"></script>
-    <script src="js/booking-banquet-selector.js?v=0.79.78"></script>
-    <script src="js/booking-save-path.js?v=0.79.78"></script>
-    <script src="js/booking-package-renderer.js?v=0.79.78"></script>
-    <script src="js/booking-tickets.js?v=0.79.78"></script>
-    <script src="js/booking-banquet-detail.js?v=0.79.78"></script>
-    <script src="js/booking-activity-schedule.js?v=0.79.78"></script>
-    <script src="js/booking.js?v=0.79.78"></script>
-    <script src="js/settings.js?v=0.79.78"></script>
-    <script src="js/booking-form.js?v=0.79.78"></script>
-    <script src="js/booking-linked.js?v=0.79.78"></script>
-    <script src="js/settings-dashboard.js?v=0.79.78"></script>
-    <script src="js/settings-history.js?v=0.79.78"></script>
-    <script src="js/settings-afisha.js?v=0.79.78"></script>
-    <script src="js/settings-certificates.js?v=0.79.78"></script>
-    <script src="js/offline.js?v=0.79.78"></script>
-    <script src="js/crm-feature-registry.js?v=0.79.78"></script>
-    <script src="js/search.js?v=0.79.78"></script>
-    <script src="js/ws.js?v=0.79.78"></script>
-    <script src="js/app.js?v=0.79.78"></script>
-    <script src="js/kleshnya-widget.js?v=0.79.78"></script>
-    <script src="js/components/sidebar.js?v=0.79.78"></script>
+    <script src="js/timeline-context.js?v=0.79.83"></script>
+    <script src="js/timeline-visibility.js?v=0.79.83"></script>
+    <script src="js/kitchen-menu-images.js?v=0.79.83"></script>
+    <script src="js/config.js?v=0.79.83"></script>
+    <script src="js/api.js?v=0.79.83"></script>
+    <script src="js/ui.js?v=0.79.83"></script>
+    <script src="js/auth.js?v=0.79.83"></script>
+    <script src="js/timeline-interaction-model.js?v=0.79.83"></script>
+    <script src="js/timeline-cache.js?v=0.79.83"></script>
+    <script src="js/timeline-resource-identity.js?v=0.79.83"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.79.83"></script>
+    <script src="js/event-cards.js?v=0.79.83"></script>
+    <script src="js/invite-config.js?v=0.79.83"></script>
+    <script src="js/invite-share.js?v=0.79.83"></script>
+    <script src="js/timeline.js?v=0.79.83"></script>
+    <script src="js/booking-drawer-state.js?v=0.79.83"></script>
+    <script src="js/booking-banquet-selector.js?v=0.79.83"></script>
+    <script src="js/booking-save-path.js?v=0.79.83"></script>
+    <script src="js/booking-package-renderer.js?v=0.79.83"></script>
+    <script src="js/booking-tickets.js?v=0.79.83"></script>
+    <script src="js/booking-banquet-detail.js?v=0.79.83"></script>
+    <script src="js/booking-activity-schedule.js?v=0.79.83"></script>
+    <script src="js/booking.js?v=0.79.83"></script>
+    <script src="js/settings.js?v=0.79.83"></script>
+    <script src="js/booking-form.js?v=0.79.83"></script>
+    <script src="js/booking-linked.js?v=0.79.83"></script>
+    <script src="js/settings-dashboard.js?v=0.79.83"></script>
+    <script src="js/settings-history.js?v=0.79.83"></script>
+    <script src="js/settings-afisha.js?v=0.79.83"></script>
+    <script src="js/settings-certificates.js?v=0.79.83"></script>
+    <script src="js/offline.js?v=0.79.83"></script>
+    <script src="js/crm-feature-registry.js?v=0.79.83"></script>
+    <script src="js/search.js?v=0.79.83"></script>
+    <script src="js/ws.js?v=0.79.83"></script>
+    <script src="js/app.js?v=0.79.83"></script>
+    <script src="js/kleshnya-widget.js?v=0.79.83"></script>
+    <script src="js/components/sidebar.js?v=0.79.83"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.79.78"></script>
+    <script src="js/alerts.js?v=0.79.83"></script>
 </body>
 </html>

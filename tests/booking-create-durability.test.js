@@ -857,6 +857,40 @@ async function withApp(dbOptions, fn) {
         timeToMinutes: value => {
             const [h, m] = String(value).split(':').map(Number);
             return h * 60 + m;
+        },
+        minutesToTime: value => {
+            const minutes = Number(value) || 0;
+            return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        },
+        validateBookingWithinWorkingHours: (booking = {}, options = {}) => {
+            const date = String(booking.date || '').slice(0, 10);
+            const time = String(booking.time || '').slice(0, 5);
+            const duration = Number(booking.duration || 0);
+            const existing = options.existingBooking || null;
+            if (
+                options.allowUnchangedLegacy
+                && existing
+                && String(existing.date || '').slice(0, 10) === date
+                && String(existing.time || '').slice(0, 5) === time
+                && Number(existing.duration || 0) === duration
+            ) {
+                return { valid: true };
+            }
+            const [year, month, day] = date.split('-').map(Number);
+            const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+            const start = weekend ? 600 : 720;
+            const end = 1200;
+            const [hours, minutes] = time.split(':').map(Number);
+            const startMinutes = (hours * 60) + minutes;
+            if (startMinutes < start || startMinutes > end || startMinutes + duration > end) {
+                return {
+                    valid: false,
+                    code: 'BOOKING_OUTSIDE_WORKING_HOURS',
+                    error: `Booking must be within working hours ${weekend ? '10:00' : '12:00'}-20:00`,
+                    details: { date, time, duration }
+                };
+            }
+            return { valid: true };
         }
     });
     installMock('../services/timelineResources', {
@@ -1234,6 +1268,278 @@ test('POST /api/bookings creates booking and banquet arrival atomically from exp
         assert.equal(state.banquetMemberships[0].booking_id, res.data.booking.id);
         assert.equal(state.banquetMemberships[0].role, 'primary');
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings persists edited bookingTime 12:30 while keeping guest arrival independent', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            time: '12:30',
+            notes: 'Operator note survives time edit',
+            banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '11:45' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.time, '12:30');
+        assert.equal(res.data.banquetGroup.group.guestArrivalTime, '11:45');
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].time, '12:30');
+        assert.equal(state.rows[0].notes, 'Operator note survives time edit');
+        assert.equal(state.banquetGroups.length, 1);
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:45');
+    });
+});
+
+test('POST /api/bookings rejects weekday booking before opening hours', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            date: '2099-02-13',
+            time: '11:45',
+            duration: 15
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.length, 0);
+    });
+});
+
+test('POST /api/bookings accepts the last valid weekday slot', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            date: '2099-02-13',
+            time: '19:30',
+            duration: 30,
+            lineId: 'line-main',
+            lineName: 'Anna'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(state.rows[0].time, '19:30');
+        assert.equal(state.rows[0].duration, 30);
+    });
+});
+
+test('POST /api/bookings/full rejects linked booking ending after closing hours', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-14',
+                time: '19:00',
+                duration: 30
+            },
+            linked: [{
+                date: '2099-02-14',
+                time: '19:45',
+                lineId: 'line-second',
+                room: 'Room A',
+                programId: 'paper-show',
+                programCode: 'PAPER',
+                label: 'Paper(30)',
+                programName: 'Paper Show',
+                category: 'show',
+                duration: 30,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.length, 0);
+    });
+});
+
+test('PUT /api/bookings/:id allows unchanged legacy out-of-hours booking metadata edit', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.customers.push({
+            id: 701,
+            business_context: 'event_genix',
+            name: 'Legacy Customer',
+            phone: '+380000000701'
+        });
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-LEGACY',
+            date: '2099-02-13',
+            time: '10:00',
+            duration: 60,
+            line_id: 'line-main',
+            room: 'Room A',
+            category: 'animation',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Legacy booking',
+            program_name: 'Legacy booking',
+            extra_data: null
+        }));
+
+        const res = await updateBooking(baseUrl, 'BK-2099-LEGACY', {
+            notes: 'metadata-only legacy edit',
+            room: 'Room A'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').time, '10:00');
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').notes, 'metadata-only legacy edit');
+    });
+});
+
+test('PUT /api/bookings/:id blocks changed legacy out-of-hours time', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-LEGACY',
+            date: '2099-02-13',
+            time: '10:00',
+            duration: 60,
+            line_id: 'line-main',
+            room: 'Room A',
+            category: 'animation',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Legacy booking',
+            program_name: 'Legacy booking',
+            extra_data: null
+        }));
+
+        const res = await updateBooking(baseUrl, 'BK-2099-LEGACY', {
+            time: '10:15',
+            room: 'Room A'
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BOOKING_OUTSIDE_WORKING_HOURS');
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-LEGACY').time, '10:00');
+    });
+});
+
+test('POST /api/bookings/full persists the complete 12:15 to 12:30 multi-activity shift payload', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                time: '12:30',
+                duration: 30,
+                hosts: 1,
+                secondAnimator: null,
+                notes: 'Draft survives the 12:15 to 12:30 shift',
+                extraData: {
+                    multiActivity: {
+                        shiftedFrom: '12:15',
+                        shiftedTo: '12:30',
+                        schedule: [
+                            { programId: 'paper-show', startTime: '12:30', duration: 30 },
+                            { programId: 'quest-60', startTime: '13:00', duration: 45 },
+                            { programId: 'anim-60', startTime: '13:45', duration: 15 }
+                        ]
+                    }
+                }
+            },
+            linked: [],
+            banquetActivities: [
+                {
+                    date: '2099-02-13',
+                    time: '13:00',
+                    lineId: 'line-second',
+                    lineName: 'Second Animator',
+                    room: 'Room A',
+                    programId: 'quest-60',
+                    programCode: 'QUEST',
+                    label: 'Quest shifted',
+                    programName: 'Quest shifted',
+                    category: 'quest',
+                    duration: 45,
+                    price: 0,
+                    hosts: 1,
+                    status: 'confirmed',
+                    createdBy: 'creator-user'
+                },
+                {
+                    date: '2099-02-13',
+                    time: '13:45',
+                    lineId: 'line-main',
+                    lineName: 'Anna',
+                    room: 'Room A',
+                    programId: 'anim-60',
+                    programCode: 'ANIM',
+                    label: 'Animation shifted',
+                    programName: 'Animation shifted',
+                    category: 'animation',
+                    duration: 15,
+                    price: 1500,
+                    hosts: 1,
+                    status: 'confirmed',
+                    createdBy: 'creator-user'
+                }
+            ],
+            banquetContext: {
+                mode: 'new',
+                groupId: null,
+                guestArrivalTime: '11:45'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.mainBooking.time, '12:30');
+        assert.deepEqual(res.data.activityBookings.map(item => item.time), ['13:00', '13:45']);
+        assert.equal(res.data.banquetGroup.group.guestArrivalTime, '11:45');
+        assert.deepEqual(state.rows.map(item => item.time), ['12:30', '13:00', '13:45']);
+        assert.equal(state.rows[0].notes, 'Draft survives the 12:15 to 12:30 shift');
+        assert.deepEqual(JSON.parse(state.rows[0].extra_data).multiActivity.schedule.map(item => item.time), [
+            '12:30',
+            '13:00',
+            '13:45'
+        ]);
+        assert.equal(state.banquetGroups[0].guest_arrival_time, '11:45');
+    });
+});
+
+test('POST /api/bookings rejects edited bookingTime in the past before persisting banquet context', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl, state }) => {
+            const res = await createBooking(baseUrl, {
+                date: '2026-06-18',
+                time: '12:15',
+                banquetContext: { mode: 'new', groupId: null, guestArrivalTime: '11:45' }
+            });
+
+            assert.equal(res.status, 400, JSON.stringify(res.data));
+            assert.match(res.data.error || '', /12:15/);
+            assert.equal(state.rows.length, 0);
+            assert.equal(state.banquetGroups.length, 0);
+            assert.equal(state.banquetMemberships.length, 0);
+        });
+    });
+});
+
+test('POST /api/bookings rejects occupied edited slot and rolls back draft payload', async () => {
+    await withApp({ stateBackedLineConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push(earlierPinataRow({
+            id: 'BK-2099-BUSY-LINE',
+            date: '2099-02-10',
+            time: '12:15',
+            duration: 60,
+            line_id: 'line-1',
+            room: 'Other room',
+            label: 'Busy line'
+        }));
+
+        const res = await createBooking(baseUrl, {
+            time: '12:30',
+            duration: 30,
+            lineId: 'line-1',
+            room: 'Room A',
+            notes: 'Draft data must remain client-side after conflict'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.match(res.data.error || '', /12:15/);
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].id, 'BK-2099-BUSY-LINE');
+        assert.ok(state.tx.includes('ROLLBACK'));
     });
 });
 
@@ -2570,7 +2876,7 @@ test('POST /api/bookings/full still rejects banquet activity when an unrelated r
         const res = await createFullBooking(baseUrl, {
             main: {
                 date: '2099-02-13',
-                time: '10:00',
+                time: '12:00',
                 lineId: 'banquet-service',
                 lineName: 'Banquet service',
                 room: 'Prep Room',
@@ -2647,7 +2953,7 @@ test('POST /api/bookings/full still rejects banquet activity on a busy animator 
         const res = await createFullBooking(baseUrl, {
             main: {
                 date: '2099-02-13',
-                time: '10:00',
+                time: '12:00',
                 lineId: 'banquet-service',
                 lineName: 'Banquet service',
                 room: 'Prep Room',
@@ -2889,6 +3195,42 @@ test('booking drawer keeps timeline arrival draft separate from activity booking
     assert.match(bookingJs, /apiCreateBooking\(booking, \{ banquetContext \}\)/);
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities, banquetContext \}\)/);
     assert.match(apiJs, /if \(options\.banquetContext\) payload\.banquetContext = options\.banquetContext/);
+});
+
+test('bookingTime remains the only editable activity start source for create payload', () => {
+    const bookingJs = read('js', 'booking.js');
+    const indexHtml = read('index.html');
+    const formDataBlock = bookingJs.slice(
+        bookingJs.indexOf('function getBookingFormData'),
+        bookingJs.indexOf('async function validateBookingConflicts')
+    );
+    const bookingObjectBlock = bookingJs.slice(
+        bookingJs.indexOf('function buildBookingObject'),
+        bookingJs.indexOf('async function buildSecondAnimatorBooking')
+    );
+    const timeChangeBlock = bookingJs.slice(
+        bookingJs.indexOf('function refreshBookingTimeDependentsAfterChange'),
+        bookingJs.indexOf('function stepBookingTimeControl')
+    );
+
+    assert.match(indexHtml, /<select[^>]+id="bookingTime"/);
+    assert.doesNotMatch(indexHtml, /<input[^>]+id="bookingTime"/);
+    assert.match(formDataBlock, /const time = document\.getElementById\('bookingTime'\)\?\.value/);
+    assert.match(formDataBlock, /time, lineId, lineName/);
+    assert.match(bookingObjectBlock, /time:\s*formData\.time/);
+    assert.doesNotMatch(timeChangeBlock, /bookingGuestArrivalTime|arrivalDraft|syncBookingGuestArrivalField/);
+});
+
+test('booking create failure keeps drawer open and draft data in place', () => {
+    const bookingJs = read('js', 'booking.js');
+    const failureBlock = bookingJs.slice(
+        bookingJs.indexOf('if (createResult && createResult.success === false)'),
+        bookingJs.indexOf('if (!createResultConfirmed(createResult))')
+    );
+
+    assert.match(failureBlock, /showNotification\(createResult\.error \|\| 'Помилка створення бронювання', 'error'\)/);
+    assert.match(failureBlock, /unlockSubmitBtn\(\);\s*return;/);
+    assert.doesNotMatch(failureBlock, /closeBookingPanel\(|resetBookingDrawerStateForOpen|bookingTime'\)\.value\s*=/);
 });
 
 test('active add-to-existing create path only resolves atomic endpoints or blocked states', () => {

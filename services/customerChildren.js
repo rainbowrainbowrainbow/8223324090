@@ -297,9 +297,21 @@ function positiveIntegerOrNull(value) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function isExistingTransactionClient(value) {
+    return Boolean(value && typeof value.query === 'function' && typeof value.release === 'function');
+}
+
 async function withTransaction(options, callback) {
     if (options.client && typeof options.client.query === 'function') {
         return callback(options.client);
+    }
+
+    if (options.reuseClient === true && options.db && typeof options.db.query === 'function') {
+        return callback(options.db);
+    }
+
+    if (isExistingTransactionClient(options.db) || isExistingTransactionClient(options.pool)) {
+        return callback(options.db || options.pool);
     }
 
     if (options.db && typeof options.db.query === 'function' && typeof options.db.connect !== 'function') {

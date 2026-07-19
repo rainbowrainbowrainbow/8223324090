@@ -178,6 +178,10 @@ function appendUniqueLeadCustomerNote(existingValue, noteValue, leadId) {
 }
 
 async function withTransaction(queryable, work) {
+    if (queryable && typeof queryable.query === 'function' && typeof queryable.release === 'function') {
+        return work(queryable);
+    }
+
     if (queryable && typeof queryable.connect === 'function') {
         const client = await queryable.connect();
         try {

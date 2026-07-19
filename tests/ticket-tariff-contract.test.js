@@ -186,3 +186,17 @@ test('migration 300 owns the ticket catalog after the merged room-resource found
         assert.match(roomMigration, new RegExp(`ALTER TABLE ${table}[\\s\\S]*ADD COLUMN IF NOT EXISTS room_resource_id`));
     }
 });
+
+test('live ticket release gate is committed and version-agnostic', () => {
+    const scriptPath = path.join(ROOT, 'scripts', 'live-ticket-release-gate.js');
+    assert.equal(fs.existsSync(scriptPath), true);
+    const script = fs.readFileSync(scriptPath, 'utf8');
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+
+    assert.match(pkg.scripts['qa:live:tickets'], /scripts\/live-ticket-release-gate\.js|scripts\\live-ticket-release-gate\.js/);
+    assert.match(script, /LIVE_TICKET_QA_EXPECTED_VERSION/);
+    assert.doesNotMatch(script, /assert\.equal\(report\.version,\s*['"]0\.79\./);
+    assert.match(script, /findFreeTestSlot/);
+    assert.match(script, /softDeleteAndVerify/);
+    assert.match(script, /assertNoUnknownBrowserErrors/);
+});

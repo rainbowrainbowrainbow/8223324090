@@ -275,6 +275,10 @@ function buildRegenerateCreateBody(job, body, businessContext) {
 }
 
 async function withTransaction(queryable, fn) {
+    if (queryable && typeof queryable.query === 'function' && typeof queryable.release === 'function') {
+        return fn(queryable);
+    }
+
     if (!queryable || typeof queryable.connect !== 'function') {
         return fn(queryable);
     }

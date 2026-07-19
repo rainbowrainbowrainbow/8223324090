@@ -190,3 +190,88 @@ describe('Hermes job status migration repair', () => {
         }
     });
 });
+
+// Transaction ownership contract:
+// - pg.Pool owns connect(), BEGIN/COMMIT/ROLLBACK, and release().
+// - A checked-out pg.Client is already a queryable transaction participant.
+// - Nested services must not reconnect, open, commit, roll back, or release it.
+// - Use explicit reuseClient when a helper can receive an already-open client
+//   through an ambiguous db/queryable option.
+describe('transaction ownership helpers', () => {
+    function readProjectFile(file) {
+        return fs.readFileSync(path.join(ROOT, file), 'utf8');
+    }
+
+    function sliceFrom(source, marker) {
+        const start = source.indexOf(marker);
+        assert.ok(start >= 0, `${marker} should exist`);
+        return source.slice(start);
+    }
+
+    it('reuses already checked-out pg clients instead of reconnecting them', () => {
+        const customerChildren = readProjectFile('services/customerChildren.js');
+        const leadRepair = readProjectFile('services/leadCustomerRepair.js');
+        const taskLibrary = readProjectFile('services/taskDecompositionLibrary.js');
+        const taskScheduling = readProjectFile('services/taskScheduling.js');
+        const hermesStudio = readProjectFile('routes/hermes-studio.js');
+        const backfillRoom = readProjectFile('scripts/backfill-room-resource-id.js');
+
+        assert.match(customerChildren, /function isExistingTransactionClient/);
+        assert.match(customerChildren, /typeof value\.release === 'function'/);
+        const customerBlock = sliceFrom(customerChildren, 'async function withTransaction(options, callback)');
+        assert.match(customerBlock, /options\.reuseClient === true/);
+        assert.match(customerBlock, /isExistingTransactionClient\(options\.db\)/);
+        assert.ok(
+            customerBlock.indexOf('options.reuseClient === true') < customerBlock.indexOf('await pool.connect()'),
+            'customer children must decide to reuse a passed client before connecting a pool'
+        );
+
+        const leadBlock = sliceFrom(leadRepair, 'async function withTransaction(queryable, work)');
+        assert.match(leadBlock, /typeof queryable\.release === 'function'/);
+        assert.ok(
+            leadBlock.indexOf("typeof queryable.release === 'function'") < leadBlock.indexOf('await queryable.connect()'),
+            'lead repair must reuse a passed client before connecting a pool'
+        );
+
+        const taskLibraryBlock = sliceFrom(taskLibrary, 'async function withTransaction(db, callback)');
+        assert.match(taskLibraryBlock, /existingClient/);
+        assert.match(taskLibraryBlock, /typeof db\.release === 'function'/);
+        assert.match(taskLibraryBlock, /!existingClient && typeof db\.connect === 'function'/);
+
+        const taskSchedulingBlock = sliceFrom(taskScheduling, 'async function withTransaction(options, work)');
+        assert.match(taskSchedulingBlock, /typeof query\.release === 'function'/);
+        assert.ok(
+            taskSchedulingBlock.indexOf("typeof query.release === 'function'") < taskSchedulingBlock.indexOf('await query.connect()'),
+            'task scheduling must treat a passed pg client as queryable'
+        );
+
+        const hermesBlock = sliceFrom(hermesStudio, 'async function withTransaction(queryable, fn)');
+        assert.match(hermesBlock, /typeof queryable\.release === 'function'/);
+        assert.ok(
+            hermesBlock.indexOf("typeof queryable.release === 'function'") < hermesBlock.indexOf('await queryable.connect()'),
+            'Hermes Studio must reuse a passed client before connecting a pool'
+        );
+
+        const backfillStart = backfillRoom.indexOf('async function applyBackfill');
+        assert.ok(backfillStart >= 0, 'async function applyBackfill should exist');
+        const backfillBlock = backfillRoom.slice(backfillStart);
+        assert.match(backfillBlock, /options\.reuseClient === true/);
+        assert.match(backfillBlock, /typeof db\.release === 'function'/);
+        assert.match(backfillBlock, /if \(!reuseClient\) await client\.query\('BEGIN'\)/);
+        assert.match(backfillBlock, /if \(!reuseClient\) await client\.query\('COMMIT'\)/);
+        assert.match(backfillBlock, /if \(!reuseClient\)[\s\S]*ROLLBACK/);
+        assert.match(backfillBlock, /if \(!reuseClient && client !== db/);
+    });
+
+    it('keeps payroll bulk nested writes on the explicit reuseClient contract', () => {
+        const payrollProfiles = readProjectFile('services/hrPayrollProfiles.js');
+        const bulkStart = payrollProfiles.indexOf('async function applyPayrollProfileBulk');
+        assert.ok(bulkStart >= 0, 'async function applyPayrollProfileBulk should exist');
+        const bulkBlock = payrollProfiles.slice(bulkStart);
+
+        assert.match(payrollProfiles, /const reuseClient = options\?\.reuseClient === true/);
+        assert.match(payrollProfiles, /const canConnect = !reuseClient && typeof source\.connect === 'function'/);
+        assert.ok((bulkBlock.match(/reuseClient: true/g) || []).length >= 4);
+        assert.doesNotMatch(bulkBlock, /manageTransaction: false(?!,\s*reuseClient: true)/);
+    });
+});

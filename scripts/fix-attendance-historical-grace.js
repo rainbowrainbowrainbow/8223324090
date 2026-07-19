@@ -265,7 +265,7 @@ function poolConfig(options) {
     if (connectionString) {
         return {
             connectionString,
-            ssl: { rejectUnauthorized: false },
+            ssl: sslConfigForConnectionString(connectionString),
             application_name: options.apply
                 ? 'attendance_historical_grace_data_fix_apply'
                 : 'attendance_historical_grace_data_fix_dry_run'
@@ -275,6 +275,19 @@ function poolConfig(options) {
         throw new Error('Set ATTENDANCE_DATA_FIX_DATABASE_URL before --apply');
     }
     throw new Error('Set ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL before dry-run. Generic DATABASE_URL, ATTENDANCE_DATA_FIX_DATABASE_URL, and PG* are refused for dry-run.');
+}
+
+function sslConfigForConnectionString(connectionString) {
+    try {
+        const parsed = new URL(connectionString);
+        const hostname = parsed.hostname.toLowerCase();
+        const sslMode = String(parsed.searchParams.get('sslmode') || '').toLowerCase();
+        if (sslMode === 'disable') return false;
+        if (['localhost', '127.0.0.1', '::1'].includes(hostname)) return false;
+    } catch (_) {
+        // If parsing fails, keep the safer remote default and let pg report the connection error.
+    }
+    return { rejectUnauthorized: false };
 }
 
 function categorySql(categories, alias = 'tr') {
@@ -1590,6 +1603,7 @@ module.exports = {
     recoverApplyOutcome,
     renderMarkdown,
     runDataFix,
+    sslConfigForConnectionString,
     verifyAppliedChanges,
     verifyBackupEnvelope,
     writeBackupFile,

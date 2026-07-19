@@ -17,6 +17,7 @@ const {
     loadBackupArtifact,
     loadPayrollImpact,
     lockPayrollGateTables,
+    sslConfigForConnectionString,
     summarizeChanges
 } = require('./fix-attendance-historical-grace');
 
@@ -118,7 +119,7 @@ function poolConfig(options) {
     if (connectionString) {
         return {
             connectionString,
-            ssl: { rejectUnauthorized: false },
+            ssl: sslConfigForConnectionString(connectionString),
             application_name: options.apply
                 ? 'attendance_historical_grace_rollback_apply'
                 : 'attendance_historical_grace_rollback_dry_run'

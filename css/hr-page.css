@@ -9479,6 +9479,44 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
 .hr-org-tree-select small { color: var(--gray-500); white-space: nowrap; }
 .hr-org-tree-select.is-active { background: rgba(37,99,235,.09); color: var(--primary-700); }
 .hr-org-tree-row.is-archived { opacity: .58; }
+.hr-org-tree-professions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: -1px 0 7px 36px;
+    padding: 0;
+    list-style: none;
+}
+.hr-org-tree-profession {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    border: 1px solid rgba(37,99,235,.16);
+    border-radius: 999px;
+    background: rgba(37,99,235,.07);
+    color: var(--primary-700);
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 850;
+    cursor: pointer;
+}
+.hr-org-tree-profession span {
+    color: var(--gray-500);
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.hr-org-tree-profession strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hr-org-tree-profession:hover,
+.hr-org-tree-profession:focus-visible { background: rgba(37,99,235,.12); outline: none; }
 .hr-org-detail {
     position: sticky;
     top: 10px;
@@ -9519,6 +9557,14 @@ body.dark-mode .hr-org-tree-list ul { border-color: rgba(255,255,255,.12); }
 body.dark-mode .hr-org-tree-select,
 body.dark-mode .hr-org-tree-toggle,
 body.dark-mode .hr-org-node-menu button { color: var(--gray-200); }
+body.dark-mode .hr-org-tree-profession {
+    border-color: rgba(129,140,248,.28);
+    background: rgba(129,140,248,.12);
+    color: #c7d2fe;
+}
+body.dark-mode .hr-org-tree-profession span { color: var(--gray-400); }
+body.dark-mode .hr-org-tree-profession:hover,
+body.dark-mode .hr-org-tree-profession:focus-visible { background: rgba(129,140,248,.18); }
 
 @media (max-width: 1050px) {
     .hr-org-layout { grid-template-columns: minmax(0, 1fr) 280px; }

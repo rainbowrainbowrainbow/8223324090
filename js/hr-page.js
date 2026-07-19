@@ -13434,12 +13434,13 @@ function renderCompanyOrgChart() {
 
 function companyOrgTreeVisibleIds() {
     const query = normalizeSearchText(companyOrgSearchQuery);
-    if (!query) return new Set(companyStructureNodes.map(node => node.id));
+    const activeNodes = companyStructureNodes.filter(node => node.archived !== true);
+    if (!query) return new Set(activeNodes.map(node => node.id));
     const visible = new Set();
-    companyStructureNodes.forEach(node => {
+    activeNodes.forEach(node => {
         if (!companyOrgNodeMatchesSearch(node, query)) return;
         let cursor = node;
-        while (cursor && !visible.has(cursor.id)) {
+        while (cursor && cursor.archived !== true && !visible.has(cursor.id)) {
             visible.add(cursor.id);
             cursor = cursor.parentId ? companyStructureNodeById(cursor.parentId) : null;
         }
@@ -13447,22 +13448,34 @@ function companyOrgTreeVisibleIds() {
     return visible;
 }
 
+function companyOrgTreeProfessionList(node) {
+    const linked = companyOrgLinkedProfessions(node.id)
+        .filter(item => item.is_active !== false && item.isActive !== false)
+        .sort((a, b) => String(a.title || a.key || '').localeCompare(String(b.title || b.key || ''), 'uk'));
+    if (!linked.length) return '';
+    return `<ul class="hr-org-tree-professions" role="group" aria-label="Професії вузла ${escapeHtml(node.title)}">
+        ${linked.map(item => `<li role="none"><button type="button" class="hr-org-tree-profession" data-org-tree-profession-key="${escapeHtml(item.key)}" data-org-tree-profession-node="${escapeHtml(node.id)}"><span>Професія</span><strong>${escapeHtml(item.title || item.key)}</strong></button></li>`).join('')}
+    </ul>`;
+}
+
 function renderCompanyOrgTreeBranch(node, level, visibleIds) {
-    const children = companyStructureChildrenOf(node.id).filter(child => visibleIds.has(child.id));
+    const children = companyStructureChildrenOf(node.id).filter(child => child.archived !== true && visibleIds.has(child.id));
     const expanded = Boolean(children.length && (!node.collapsed || companyOrgSearchQuery));
-    const professionCount = companyOrgLinkedProfessions(node.id).length;
+    const professionCount = companyOrgLinkedProfessions(node.id).filter(item => item.is_active !== false && item.isActive !== false).length;
     const staffCount = companyOrgLinkedStaffIds(node.id).length;
+    const professionList = companyOrgTreeProfessionList(node);
     return `<li role="none">
-        <div class="hr-org-tree-row${node.archived ? ' is-archived' : ''}" data-org-tree-row="${escapeHtml(node.id)}">
+        <div class="hr-org-tree-row" data-org-tree-row="${escapeHtml(node.id)}">
             <button type="button" class="hr-org-tree-toggle" data-org-tree-toggle="${escapeHtml(node.id)}" ${children.length ? `aria-label="${expanded ? 'Згорнути' : 'Розгорнути'} ${escapeHtml(node.title)}" aria-expanded="${expanded ? 'true' : 'false'}"` : 'disabled aria-hidden="true"'}>${children.length ? (expanded ? '▾' : '▸') : '·'}</button>
             <button type="button" class="hr-org-tree-select${node.id === selectedCompanyStructureNodeId ? ' is-active' : ''}" role="treeitem" aria-level="${level}" data-org-tree-select="${escapeHtml(node.id)}">
-                <strong>${escapeHtml(node.title)}</strong><small>${professionCount} проф. · ${staffCount} люд.${node.archived ? ' · архів' : ''}</small>
+                <strong>${escapeHtml(node.title)}</strong><small>${professionCount} проф. · ${staffCount} люд.</small>
             </button>
             ${companyStructureCanMutate() ? `<span class="hr-org-node-quick-actions">
                 <button type="button" data-org-tree-add="${escapeHtml(node.id)}" aria-label="Додати до ${escapeHtml(node.title)}">+</button>
                 <button type="button" data-org-tree-more="${escapeHtml(node.id)}" aria-label="Дії з ${escapeHtml(node.title)}">⋯</button>
             </span>` : ''}
         </div>
+        ${professionList}
         ${expanded ? `<ul role="group">${children.map(child => renderCompanyOrgTreeBranch(child, level + 1, visibleIds)).join('')}</ul>` : ''}
     </li>`;
 }
@@ -13496,6 +13509,17 @@ function renderCompanyOrgTree() {
         button.addEventListener('click', () => {
             const node = companyStructureNodeById(button.dataset.orgTreeToggle);
             if (node) setCompanyStructureNodeCollapsed(node.id, !node.collapsed);
+        });
+    });
+    root.querySelectorAll('[data-org-tree-profession-key]').forEach(button => {
+        button.addEventListener('click', () => {
+            const nodeId = button.dataset.orgTreeProfessionNode;
+            if (nodeId) selectCompanyOrgNodeById(nodeId, { openInspector: true });
+            openProfessionWorkspace({
+                key: button.dataset.orgTreeProfessionKey,
+                initialTab: 'main',
+                returnContext: captureProfessionReturnContext({ tab: 'structure', nodeId })
+            });
         });
     });
     root.querySelectorAll('[data-org-tree-add]').forEach(button => {

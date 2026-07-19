@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.91 - HR structure tree profession rows
+
+### Release / Versioning / (19.07.2026) [codex]
+- **HR structure tree profession rows** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.90 - HR structure profession refresh
 
 ### Release / Versioning / (19.07.2026) [codex]

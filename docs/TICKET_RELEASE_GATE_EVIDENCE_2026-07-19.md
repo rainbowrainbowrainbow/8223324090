@@ -36,17 +36,16 @@ Release: `v0.79.83 - Admission Tickets Working Hours Gate`
 
 ## Production evidence
 
-- Product release SHA: `5fd832a40d45d00c5220f23b4e69e2498c7ed868`
-- Product CI run: `29665334978` - passed.
-- Product deployment: `0eee3a68-4b27-4e94-9c4a-d8ef1e943b31` - Railway production `SUCCESS`.
+- Final release SHA: `7cc9487f4f1030ecb188617ac747289f32b99072`
+- Final CI run: `29665611463` - passed.
+- Final deployment: `bcf56259-d234-48fc-8c73-1bba515768ec` - Railway production `SUCCESS`.
+- Product behavior SHA before tooling hardening: `5fd832a40d45d00c5220f23b4e69e2498c7ed868`
+- Product behavior CI run: `29665334978` - passed.
+- Product behavior deployment: `0eee3a68-4b27-4e94-9c4a-d8ef1e943b31` - Railway production `SUCCESS`, later superseded by the final tooling deployment.
 - Production URL: `https://8223324090-production.up.railway.app`
 - `/api/version`: `v0.79.83 - Admission Tickets Working Hours Gate`
 - `/api/health`, `/api/ready`, `/api/health/deep`: passed through public live smoke.
-- `npm run qa:live:tickets -- https://8223324090-production.up.railway.app`: passed after release-gate runner normalization.
-- Cleanup proof: disposable booking `BK-2026-0740` was soft-deleted and absent from the active timeline.
+- `npm run qa:live:tickets -- https://8223324090-production.up.railway.app`: passed on the final production deployment.
+- Cleanup proof: disposable booking `BK-2026-0741` was soft-deleted and absent from the active timeline.
 - Expected negative-path browser diagnostics: two `422` resource messages from the weekend under-3 blocker were stored as known/ignored console errors; unknown console/page/auth errors were empty.
-
-## Final SHA note
-
-The product deployment above is the production behavior evidence. A final tooling-only commit may update this gate runner/evidence document without changing the production version marker.
 

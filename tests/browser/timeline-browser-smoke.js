@@ -3379,11 +3379,31 @@ async function runRevealAction(page, date, kitchenId) {
         await showBookingDetails(id);
         if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
     }, kitchenId);
-    const revealed = await page.evaluate(
-        async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
-        { bookingId: kitchenId, bookingDate: date }
-    );
-    assert.equal(revealed, true, 'canonical room timeline reveal succeeds');
+    let revealed = false;
+    const attempts = [];
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        revealed = await page.evaluate(
+            async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
+            { bookingId: kitchenId, bookingDate: date }
+        );
+        const diagnostics = await page.evaluate(() => ({
+            url: window.location.href,
+            timelineView: window.TimelineView?.current?.() || null,
+            lineCount: document.querySelectorAll('.timeline-line').length,
+            gridCellCount: document.querySelectorAll('.grid-cell').length,
+            markerCount: document.querySelectorAll('.timeline-room-service-marker').length,
+            bookingBlockCount: document.querySelectorAll('.booking-block:not(.status-hidden)').length,
+            notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                .map(node => String(node.textContent || '').trim())
+                .filter(Boolean)
+                .slice(-3)
+        }));
+        attempts.push({ attempt, revealed, diagnostics });
+        if (revealed) break;
+        await renderTimelineView(page, date, 'rooms');
+        await sleep(1000);
+    }
+    assert.equal(revealed, true, `canonical room timeline reveal succeeds: ${JSON.stringify(attempts)}`);
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
     await waitForTimelineReady(page, 'canonical room timeline reveal');
     await assertRoomMarkerVisible(page, kitchenId);

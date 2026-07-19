@@ -4540,6 +4540,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /TIMELINE_BROWSER_SMOKE_RATE_LIMIT_RETRY_MS \|\| 65000/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
     assert.match(smoke, /function writeTimelineFailureDiagnostic/);
+    assert.match(smoke, /canonical room timeline reveal succeeds: \$\{JSON\.stringify\(attempts\)\}/);
     assert.match(smoke, /function ensureKitchenTicketQuoteReady/);
     assert.match(smoke, /BookingTickets\?\.quoteNow/);
     assert.match(smoke, /BookingTickets\?\.collect/);

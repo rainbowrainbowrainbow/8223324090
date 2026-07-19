@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.105 - HR structure tree production polish
+
+### HR / Structure tree / Production QA / (19.07.2026) [codex]
+- **Дерево структури HR** — виправлено критичні regressions у dark/light темах, картці вузла, collapse/search/archive state, quick actions, keyboard navigation і mobile inspector.
+- **Захист від повторення багів** — додано unit/integration та browser smoke покриття для CSS geometry, контрасту, breakpoint-ів, ARIA/focus і відсутності ghost zoom controls у tree mode.
+- **Release hygiene** — оновлено version metadata, changelog і cache markers для production rollout.
+
+---
+
 ## v0.79.104 - HR structure tree polish
 
 ### HR / Structure UI / (19.07.2026) [codex]

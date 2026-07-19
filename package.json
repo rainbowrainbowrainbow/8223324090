@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.83",
+  "version": "0.79.84",
   "eventGenix": {
-    "releaseLabel": "Admission Tickets Working Hours Gate"
+    "releaseLabel": "Simultaneous Pay Final Acceptance"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -32,6 +32,7 @@ const {
     lockAttendanceWriteTargets
 } = require('../services/attendanceWriteLock');
 const {
+    HR_ATTENDANCE_GRACE_MINUTES,
     attendancePlanFromCompensationSnapshot,
     buildLegacyAttendanceCompensationSnapshot,
     calculateAttendanceClockIn,
@@ -241,6 +242,12 @@ const log = createLogger('HR');
 
 function canViewPayrollDetails(user = {}) {
     return userHasAnyRole(user, PAYROLL_CONTROL_ROLES);
+}
+
+function attendanceKpiOvertimeMinutesSql(alias = 'tr') {
+    const prefix = alias ? `${alias}.` : '';
+    const column = `${prefix}overtime_minutes`;
+    return `CASE WHEN COALESCE(${column}, 0) > ${HR_ATTENDANCE_GRACE_MINUTES.overtime} THEN COALESCE(${column}, 0) ELSE 0 END`;
 }
 
 function redactPayrollAuditValue(value) {
@@ -2596,7 +2603,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COUNT(*) FILTER (WHERE tr.status IN ('absent', 'no_show'))::int AS days_absent,
                    COALESCE(SUM(tr.late_minutes) FILTER (WHERE COALESCE(tr.late_minutes, 0) > 5), 0)::int AS total_late_minutes,
                    COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_worked_minutes,
-                   COALESCE(SUM(tr.overtime_minutes), 0)::numeric AS total_overtime_minutes
+                   COALESCE(SUM(${attendanceKpiOvertimeMinutesSql('tr')}), 0)::numeric AS total_overtime_minutes
             FROM hr_time_records tr
             JOIN params p ON tr.record_date >= p.date_from AND tr.record_date <= p.date_to
             GROUP BY tr.staff_id

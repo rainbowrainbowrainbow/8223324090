@@ -3550,8 +3550,11 @@ async function run() {
                 sourceBookingId: activity.id,
                 role: 'kitchen',
                 banquetContext: {
-                    mode: 'existing',
-                    groupId: activityGroupId
+                    mode: 'new',
+                    groupId: null,
+                    guestArrivalTime: activitySnapshot.group?.guestArrivalTime
+                        || activitySnapshot.guestArrivalTime
+                        || '13:00'
                 },
                 booking: bookingPayload({
                     date,

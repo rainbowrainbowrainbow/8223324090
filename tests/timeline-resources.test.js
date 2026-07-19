@@ -4556,7 +4556,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /typeSwitch/);
     assert.match(smoke, /function assertTimelineViewPanelInteractions/);
     assert.match(smoke, /\/api\/banquets\/from-source\/member-booking/);
-    assert.match(smoke, /banquetContext:\s*\{\s*mode: 'existing',\s*groupId: activityGroupId\s*\}/);
+    assert.match(smoke, /banquetContext:\s*\{\s*mode: 'new',\s*groupId: null,\s*guestArrivalTime: activitySnapshot\.group\?\.guestArrivalTime/);
     assert.match(smoke, /\/api\/banquets\/from-source\/activity-booking/);
     assert.match(smoke, /function openActiveBanquetEmptyCellDrawer/);
     assert.match(smoke, /page\.evaluate\(async \(\{ date, room, time, snapshot \}\) =>/);

@@ -48,6 +48,11 @@ test('anomaly audit accepts exactly one dedicated read-only connection variable'
         }),
         /Set exactly one/
     );
+
+    const localConfig = audit.poolConfig({
+        PRODUCTION_READONLY_DATABASE_URL: 'postgres://readonly:secret@127.0.0.1:5432/audit'
+    });
+    assert.equal(localConfig.ssl, false);
 });
 
 test('anomaly audit fails closed when generic or write-capable database variables exist', () => {

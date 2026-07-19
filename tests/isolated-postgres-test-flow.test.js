@@ -157,6 +157,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const attendanceLockSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-lock-concurrency.integration.test.js'), 'utf8');
         const attendanceCompensationSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-attendance-compensation-snapshot.integration.test.js'), 'utf8');
         const attendanceDocumentAutomationSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-attendance-document-automation-concurrency.integration.test.js'), 'utf8');
+        const attendanceRoleLifecycleSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-audit-role-lifecycle.integration.test.js'), 'utf8');
         const attendanceBackupSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-backup-roundtrip.integration.test.js'), 'utf8');
         const fullBackupRecoverySuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'full-backup-recovery.integration.test.js'), 'utf8');
         const banquetProductionRecoverySuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'banquet-production-recovery.integration.test.js'), 'utf8');
@@ -174,9 +175,10 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
-        assert.match(runner, /attendance:\s*\[\s*'tests\/integration\/attendance-lock-concurrency\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-compensation-snapshot\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-document-automation-concurrency\.integration\.test\.js',\s*'tests\/integration\/attendance-historical-grace-datafix\.integration\.test\.js',\s*'tests\/integration\/attendance-backup-roundtrip\.integration\.test\.js',\s*'tests\/integration\/full-backup-recovery\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /attendance:\s*\[\s*'tests\/integration\/attendance-lock-concurrency\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-compensation-snapshot\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-document-automation-concurrency\.integration\.test\.js',\s*'tests\/integration\/attendance-historical-grace-datafix\.integration\.test\.js',\s*'tests\/integration\/attendance-audit-role-lifecycle\.integration\.test\.js',\s*'tests\/integration\/attendance-backup-roundtrip\.integration\.test\.js',\s*'tests\/integration\/full-backup-recovery\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_ATTENDANCE_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_ATTENDANCE_DATAFIX_INTEGRATION/);
+        assert.match(runner, /RUN_ATTENDANCE_ROLE_LIFECYCLE_INTEGRATION/);
         assert.match(runner, /RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION/);
         assert.match(runner, /RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION/);
         assert.match(runner, /RUN_ATTENDANCE_BACKUP_INTEGRATION/);
@@ -221,6 +223,9 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(attendanceDocumentAutomationSuite, /RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION/);
         assert.match(attendanceDocumentAutomationSuite, /Promise\.all/);
         assert.match(attendanceDocumentAutomationSuite, /idempotency_key/);
+        assert.match(attendanceRoleLifecycleSuite, /RUN_ATTENDANCE_ROLE_LIFECYCLE_INTEGRATION/);
+        assert.match(attendanceRoleLifecycleSuite, /countGeneratedRoles/);
+        assert.match(attendanceRoleLifecycleSuite, /recoverRole/);
         assert.match(attendanceBackupSuite, /RUN_ATTENDANCE_BACKUP_INTEGRATION/);
         assert.match(attendanceBackupSuite, /\/api\/backup\/restore-encrypted/);
         assert.match(fullBackupRecoverySuite, /RUN_FULL_BACKUP_RECOVERY_INTEGRATION/);

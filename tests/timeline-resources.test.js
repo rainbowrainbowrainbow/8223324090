@@ -4570,12 +4570,32 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(emptyCellSubmit, /clickActiveBanquetMemberSubmit/);
     assert.match(emptyCellSubmit, /setBookingKitchenEnabled\(false/);
     assert.doesNotMatch(emptyCellSubmit, /dispatchEvent\(new Event\('submit'/);
+    const kitchenActivitySubmitStart = smoke.indexOf('async function submitActivityFromKitchen');
+    const kitchenActivitySubmitEnd = smoke.indexOf('async function assertRoomMarkerVisible', kitchenActivitySubmitStart);
+    const kitchenActivitySubmit = smoke.slice(kitchenActivitySubmitStart, kitchenActivitySubmitEnd);
+    assert.match(kitchenActivitySubmit, /acknowledgeGuestArrivalPromptIfVisible/);
+    assert.match(kitchenActivitySubmit, /locator\('#bookingForm \.btn-submit'\)\.click\(\)/);
+    assert.doesNotMatch(kitchenActivitySubmit, /dispatchEvent\(new Event\('submit'/);
     assert.match(smoke, /active inspector -> empty cell/);
     assert.match(smoke, /\/api\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/member-booking/);
     assert.match(smoke, /genericBookingRequests/);
     assert.match(smoke, /does not use generic booking endpoints/);
     assert.match(smoke, /activity first -> kitchen/);
     assert.match(smoke, /kitchen first -> activity/);
+    assert.match(smoke, /date: kitchenFirstDate,\s*time: '13:00'/);
+    assert.doesNotMatch(smoke, /time: '18:15'/);
+    assert.match(smoke, /kitchenFirstDate, 'rooms', \{ forceBookings: true \}/);
+    assert.match(smoke, /findKitchenFirstSmokeDate/);
+    assert.match(smoke, /source kitchen -> activity endpoint returns ok: \$\{responseDiagnostic\}/);
+    assert.match(smoke, /timeline render error: \$\{renderState\.errorText\}/);
+    assert.match(smoke, /label: `banquet snapshot \$\{bookingId\}`/);
+    const kitchenFirstCreateStart = smoke.indexOf('const kitchenFirstCreate = await createBooking');
+    const kitchenFirstCreateEnd = smoke.indexOf('recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate)', kitchenFirstCreateStart);
+    assert.doesNotMatch(
+        smoke.slice(kitchenFirstCreateStart, kitchenFirstCreateEnd),
+        /banquetGuests/,
+        'kitchen-first bridge source must stay non-ticketed'
+    );
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.94",
+  "version": "0.79.95",
   "eventGenix": {
-    "releaseLabel": "Захищене очищення QA-бронювань"
+    "releaseLabel": "HR leadership node dropdown"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

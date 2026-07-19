@@ -4323,9 +4323,30 @@ async function loadProfessions() {
     renderProfessions();
 }
 
+const PROFESSION_CATALOG_DEPARTMENT_NODE_TITLES = new Set([
+    'Керівництво',
+    'Адміністративно-операційний відділ',
+    'Відділ продажів / CRM',
+    'Арт-відділ',
+    'Ігрові зони',
+    'Кухня',
+    'Кондитерський цех',
+    'Технічний відділ',
+    'Бухгалтерія',
+    'HR',
+    'Маркетинг',
+    'IT'
+]);
+
+function isProfessionCatalogDepartmentNode(node = {}) {
+    const title = String(node.title || '').trim();
+    return PROFESSION_CATALOG_DEPARTMENT_NODE_TITLES.has(title);
+}
+
 function professionCatalogVisibleStructureNodes() {
     return sortCompanyStructureNodes((professionCatalogStructureNodes || []).filter(node => (
         node
+        && isProfessionCatalogDepartmentNode(node)
         && node.archived !== true
         && node.is_archived !== true
         && node.isArchived !== true

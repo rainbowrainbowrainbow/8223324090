@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.95 - HR leadership node dropdown
+
+### Release / Versioning / (19.07.2026) [codex]
+- **HR leadership node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.94 - Захищене очищення QA-бронювань
 
 ### QA cleanup / PostgreSQL / Release safety / (19.07.2026) [codex]

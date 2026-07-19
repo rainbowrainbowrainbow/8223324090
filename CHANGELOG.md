@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.106 - HR structure mobile inspector fix
+
+### HR / Structure tree / Mobile QA / (19.07.2026) [codex]
+- **Mobile inspector** — виправлено overflow sheet на вузьких екранах: картка вузла більше не виходить праворуч за viewport через `width: 100%` разом із padding.
+- **Live QA feedback loop** — regression знайдено на production-smoke 390px і закрито перед фінальною передачею власнику.
+- **Release hygiene** — оновлено version metadata, changelog і cache markers для повторного production rollout.
+
+---
+
 ## v0.79.105 - HR structure tree production polish
 
 ### HR / Structure tree / Production QA / (19.07.2026) [codex]

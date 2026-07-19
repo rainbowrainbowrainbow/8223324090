@@ -1358,19 +1358,22 @@ async function openAuthenticatedPage(browser, base, session, bookingCapture = nu
     return { context, page };
 }
 
-async function renderTimelineView(page, date, view) {
+async function renderTimelineView(page, date, view, { forceBookings = false } = {}) {
     let lastError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             await waitForTimelineReady(page, `before render timeline ${view} ${date}`);
-            await page.evaluate(async ({ date, view }) => {
+            await page.evaluate(async ({ date, view, forceBookings }) => {
                 AppState.selectedDate = new Date(`${date}T00:00:00`);
                 const input = document.getElementById('timelineDate');
                 if (input) input.value = date;
                 if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(date);
                 if (window.TimelineView?.set) await window.TimelineView.set(view, { render: false });
+                if (forceBookings && typeof invalidateTimelineDateCache === 'function') {
+                    invalidateTimelineDateCache(date, { lines: false, bookings: true });
+                }
                 if (typeof renderTimeline === 'function') await renderTimeline();
-            }, { date, view });
+            }, { date, view, forceBookings });
             await waitForTimelineReady(page, `after render timeline ${view} ${date}`);
             return;
         } catch (error) {
@@ -3640,7 +3643,7 @@ async function run() {
         await verifyPersistedCreateResult(base, token, kitchenFirstCreate, 'kitchen-first root');
         const kitchenFirst = kitchenFirstCreate.booking;
 
-        await renderTimelineView(page, secondDate, 'rooms');
+        await renderTimelineView(page, secondDate, 'rooms', { forceBookings: true });
         await assertRoomMarkerVisible(page, kitchenFirst.id);
         const kitchenFirstDrawer = await openActivityFromKitchenSource(page, secondDate, kitchenFirst.id);
         assertBridgeSelector(kitchenFirstDrawer, 'kitchen first -> activity');

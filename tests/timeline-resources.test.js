@@ -4586,6 +4586,14 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.doesNotMatch(smoke, /time: '18:15'/);
     assert.match(smoke, /kitchenFirstDate, 'rooms', \{ forceBookings: true \}/);
     assert.match(smoke, /findKitchenFirstSmokeDate/);
+    assert.match(smoke, /source kitchen -> activity endpoint returns ok: \$\{responseDiagnostic\}/);
+    const kitchenFirstCreateStart = smoke.indexOf('const kitchenFirstCreate = await createBooking');
+    const kitchenFirstCreateEnd = smoke.indexOf('recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate)', kitchenFirstCreateStart);
+    assert.doesNotMatch(
+        smoke.slice(kitchenFirstCreateStart, kitchenFirstCreateEnd),
+        /banquetGuests/,
+        'kitchen-first bridge source must stay non-ticketed'
+    );
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);

@@ -2618,7 +2618,12 @@ async function submitActivityFromKitchen(page) {
     await acknowledgePreorderWarningIfVisible(page, 'source kitchen -> activity');
     const response = await responsePromise;
     const body = await response.json();
-    assert.equal(response.ok(), true, 'source kitchen -> activity endpoint returns ok');
+    const responseDiagnostic = JSON.stringify({
+        status: response.status(),
+        code: body?.code || null,
+        error: body?.error || body?.message || null
+    });
+    assert.equal(response.ok(), true, `source kitchen -> activity endpoint returns ok: ${responseDiagnostic}`);
     assert.equal(body.success, true, 'source kitchen -> activity response success');
     return bookingCreateResult(body);
 }
@@ -3717,7 +3722,6 @@ async function run() {
             customerName: customerB.name,
             customerPhone: customerB.phone,
             childName: customerB.childName,
-            banquetGuests: 5,
             bookingPackage: kitchenPackage('13:15')
         }));
         recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate);

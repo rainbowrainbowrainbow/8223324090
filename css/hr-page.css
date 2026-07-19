@@ -9800,7 +9800,9 @@ body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStr
     .hr-org-detail {
         position: fixed;
         z-index: 3000;
-        inset: auto 0 0;
+        inset: auto auto 0 0;
+        width: 100vw;
+        max-width: 100vw;
         max-height: min(86vh, 720px);
         overflow: auto;
         border: 0;

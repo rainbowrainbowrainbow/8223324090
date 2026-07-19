@@ -955,7 +955,16 @@ async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], 
 }
 
 async function banquetSnapshot(base, token, bookingId) {
-    return fetchJson(base, scopedPath(`/api/banquets/by-booking/${encodeURIComponent(bookingId)}`), { token });
+    return fetchJsonWithRetry(
+        base,
+        scopedPath(`/api/banquets/by-booking/${encodeURIComponent(bookingId)}`),
+        { token },
+        {
+            attempts: 3,
+            delayMs: RATE_LIMIT_RETRY_MS,
+            label: `banquet snapshot ${bookingId}`
+        }
+    );
 }
 
 function groupId(snapshot = {}) {

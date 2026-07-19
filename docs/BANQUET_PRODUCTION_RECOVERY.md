@@ -326,26 +326,68 @@ The dry-run requires exact group scope and returns technical state only:
 Dry-run is blocked when the group no longer matches the expected classification,
 the primary booking is not cancelled, the group is not active, there are no
 active non-primary members, an active canonical deposit exists, ticket snapshot
-ownership exists, or active members carry priced financial fields.
+ownership exists, active members carry priced financial fields, or related
+finance transactions already exist for the primary/member bookings.
 
-Production apply is intentionally not available in this phase. Adding the apply
-path requires explicit owner approval with this exact wording:
+## Stale Group Reconciliation Guarded Apply
 
-```text
-Дозволяю додати guarded real-banquet reconciliation apply без його запуску
+Apply exists only for the explicit business decision `CANCEL GROUP` and only for
+strategy `cancel-stale-group`. It must not be used to keep or restore a banquet.
+If the decision is `KEEP BOOKING`, do not run this command; create a replacement
+through the canonical manager booking-set workflow.
+
+Production apply requires a separate owner approval after a fresh dry-run. The
+approval must include:
+
+- exact group ID;
+- exact command;
+- dry-run summary;
+- rollback/compensation plan;
+- confirmation token `RECONCILE_STALE_BANQUET_GROUP`.
+
+Guarded apply command shape:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_cancelled_primary --strategy=cancel-stale-group --allowlist=ACTIVE_NON_PRIMARY_BOOKING_ID[,MORE_IDS] --apply --confirm=RECONCILE_STALE_BANQUET_GROUP --json
 ```
 
-Running production apply later requires a separate approval with the exact group
-allowlist, expected before-state, command, rollback/compensation plan, and
-confirmation token. Previous SSH audit approval does not authorize this write.
+The `--allowlist` must exactly match the active non-primary member IDs from the
+fresh dry-run. If the member set changed, apply blocks before mutation.
 
-Any future apply must use a serializable transaction, lock and revalidate the
-group and member bookings, cancel only the remaining active group members and
-the group, avoid physical deletes, write technical history only after successful
-mutation, and verify that the group is cancelled and active members are zero.
+Apply guards:
+
+- exact group ID and exact business context are required;
+- only `expected-classification=active_group_cancelled_primary` is accepted;
+- only `strategy=cancel-stale-group` is accepted;
+- active deposits block apply;
+- ticket ownership snapshots block apply;
+- priced active members block apply;
+- finance transactions on the primary or member bookings block apply;
+- group/member/booking/deposit/finance state is locked and revalidated inside a
+  serializable transaction;
+- only allowlisted active non-primary member bookings are cancelled;
+- the group is cancelled after member cancellation;
+- customer rows, primary booking, deposits, history, memberships, and links are
+  not physically deleted;
+- technical history is written only after the booking/group updates succeed;
+- post-apply verification requires group `cancelled` and active non-primary
+  members `0`;
+- repeated apply is idempotent and reports `already_applied` when the group is
+  already cancelled and the allowlist still matches the non-primary members.
+
+After apply, run verification in this order:
+
+1. summary-only audit for the same bounded date range;
+2. exact dry-run for the same group;
+3. read-only timeline check;
+4. read-only banquet details check;
+5. confirm no active orphan member remains;
+6. confirm unrelated groups were untouched.
+
+Do not store raw production JSON in the repository or chat. Keep evidence
+aggregate-only unless an owner explicitly asks for a bounded operator review.
 
 ## Railway SSH operator flow
-
 Use the dedicated audit SSH key and the local SSH alias configured for operator
 audits. Do not use a personal catch-all key for routine recovery checks.
 

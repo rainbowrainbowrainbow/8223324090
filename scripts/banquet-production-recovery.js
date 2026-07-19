@@ -274,6 +274,9 @@ function parseReconcileGroupStateOptions(argv = []) {
         argValue(argv, '--expected-classification', argValue(argv, '--classification', '')) || ''
     ).trim();
     const confirmation = String(argValue(argv, '--confirm', '') || '').trim();
+    const allowlistValue = String(
+        argValue(argv, '--allowlist', argValue(argv, '--expected-members', argValue(argv, '--expected-member-ids', ''))) || ''
+    ).trim();
     if (!groupId) throw new Error('Group state reconciliation requires --group-id=<one banquet group id>');
     if (!strategy || !RECONCILE_GROUP_STATE_STRATEGIES.includes(strategy)) {
         throw new Error(`Group state reconciliation requires --strategy=${RECONCILE_GROUP_STATE_STRATEGIES.join('|')}`);
@@ -283,24 +286,27 @@ function parseReconcileGroupStateOptions(argv = []) {
             `Group state reconciliation requires --expected-classification=${RECONCILE_GROUP_STATE_CLASSIFICATIONS.join('|')}`
         );
     }
-    if (apply) {
-        throw new Error(
-            `Group state reconciliation apply is not implemented in this phase; future apply will require --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION} and separate owner approval`
-        );
+    if (apply && confirmation !== RECONCILE_GROUP_STATE_CONFIRMATION) {
+        throw new Error(`Group state reconciliation apply requires --apply --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`);
     }
-    if (confirmation) {
+    if (apply && !allowlistValue) {
+        throw new Error('Group state reconciliation apply requires --allowlist=<exact active non-primary booking ids>');
+    }
+    if (!apply && confirmation) {
         throw new Error('Group state reconciliation dry-run does not accept --confirm');
     }
     return {
         command: 'reconcile-group-state',
-        apply: false,
+        apply,
         json: argv.includes('--json'),
         businessContext: normalizeBusinessContext(
             argValue(argv, '--business-context', argValue(argv, '--context', DEFAULT_BUSINESS_CONTEXT))
         ),
+        confirmation,
         groupId: cleanTechnicalId(groupId, 'banquet group id'),
         strategy,
-        expectedClassification
+        expectedClassification,
+        allowlist: apply ? parseBookingIdList(allowlistValue, 'reconciliation allowlist booking id') : []
     };
 }
 
@@ -701,7 +707,89 @@ async function runAudit(db, options) {
     }
 }
 
+async function lockReconcileGroupStateRows(db, options) {
+    await db.query(
+        `SELECT bg.id
+           FROM banquet_groups bg
+          WHERE bg.id = $1
+            AND ${contextSql('bg', '$2')}
+          FOR UPDATE`,
+        [options.groupId, options.businessContext]
+    );
+    await db.query(
+        `SELECT booking.id
+           FROM bookings booking
+          WHERE ${contextSql('booking', '$2')}
+            AND booking.id IN (
+                SELECT bg.primary_booking_id
+                  FROM banquet_groups bg
+                 WHERE bg.id = $1
+                   AND ${contextSql('bg', '$2')}
+                UNION
+                SELECT membership.booking_id
+                  FROM banquet_group_bookings membership
+                 WHERE membership.group_id = $1
+                   AND ${contextSql('membership', '$2')}
+            )
+          ORDER BY booking.id
+          FOR UPDATE`,
+        [options.groupId, options.businessContext]
+    );
+    await db.query(
+        `SELECT membership.id
+           FROM banquet_group_bookings membership
+          WHERE membership.group_id = $1
+            AND ${contextSql('membership', '$2')}
+          ORDER BY membership.booking_id
+          FOR UPDATE`,
+        [options.groupId, options.businessContext]
+    );
+    await db.query(
+        `SELECT deposit.id
+           FROM banquet_deposits deposit
+          WHERE ${contextSql('deposit', '$2')}
+            AND LOWER(COALESCE(NULLIF(BTRIM(deposit.status), ''), 'manager_reported')) <> 'cancelled'
+            AND (
+                deposit.banquet_group_id = $1
+                OR deposit.primary_booking_id IN (
+                    SELECT bg.primary_booking_id
+                      FROM banquet_groups bg
+                     WHERE bg.id = $1
+                       AND ${contextSql('bg', '$2')}
+                    UNION
+                    SELECT membership.booking_id
+                      FROM banquet_group_bookings membership
+                     WHERE membership.group_id = $1
+                       AND ${contextSql('membership', '$2')}
+                )
+            )
+          ORDER BY deposit.id
+          FOR UPDATE`,
+        [options.groupId, options.businessContext]
+    );
+    await db.query(
+        `SELECT finance.id
+           FROM finance_transactions finance
+          WHERE ${contextSql('finance', '$2')}
+            AND finance.booking_id IN (
+                SELECT bg.primary_booking_id
+                  FROM banquet_groups bg
+                 WHERE bg.id = $1
+                   AND ${contextSql('bg', '$2')}
+                UNION
+                SELECT membership.booking_id
+                  FROM banquet_group_bookings membership
+                 WHERE membership.group_id = $1
+                   AND ${contextSql('membership', '$2')}
+            )
+          ORDER BY finance.id
+          FOR UPDATE`,
+        [options.groupId, options.businessContext]
+    );
+}
+
 async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } = {}) {
+    if (forUpdate) await lockReconcileGroupStateRows(db, options);
     const result = await db.query(
         `SELECT bg.id AS group_id,
                 CASE
@@ -732,6 +820,19 @@ async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } 
                 )::integer AS primary_membership_count,
                 COALESCE(
                     ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
+                        FILTER (WHERE member_booking.id IS NOT NULL),
+                    ARRAY[]::text[]
+                ) AS member_ids,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
+                        FILTER (
+                            WHERE member_booking.id IS NOT NULL
+                              AND member_booking.id <> bg.primary_booking_id
+                        ),
+                    ARRAY[]::text[]
+                ) AS non_primary_member_ids,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
                         FILTER (WHERE ${activeSql('member_booking')}),
                     ARRAY[]::text[]
                 ) AS active_member_ids,
@@ -743,6 +844,14 @@ async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } 
                         ),
                     ARRAY[]::text[]
                 ) AS active_non_primary_member_ids,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
+                        FILTER (
+                            WHERE LOWER(COALESCE(NULLIF(BTRIM(member_booking.status), ''), 'confirmed')) = 'cancelled'
+                              AND member_booking.id <> bg.primary_booking_id
+                        ),
+                    ARRAY[]::text[]
+                ) AS cancelled_non_primary_member_ids,
                 COUNT(DISTINCT deposit.id) FILTER (WHERE deposit.id IS NOT NULL)::integer AS active_deposit_count,
                 COUNT(DISTINCT member_booking.id) FILTER (
                     WHERE ${activeSql('member_booking')}
@@ -756,7 +865,8 @@ async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } 
                 COUNT(DISTINCT member_booking.id) FILTER (
                     WHERE ${activeSql('member_booking')}
                       AND COALESCE(member_booking.price, 0) > 0
-                )::integer AS priced_active_member_count
+                )::integer AS priced_active_member_count,
+                COUNT(DISTINCT finance.id) FILTER (WHERE finance.id IS NOT NULL)::integer AS finance_transaction_count
            FROM banquet_groups bg
            LEFT JOIN bookings primary_booking
              ON primary_booking.id = bg.primary_booking_id
@@ -775,17 +885,31 @@ async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } 
                 OR deposit.primary_booking_id = bg.primary_booking_id
                 OR deposit.primary_booking_id = member_booking.id
             )
+           LEFT JOIN finance_transactions finance
+             ON ${contextSql('finance', '$2')}
+            AND finance.booking_id IS NOT NULL
+            AND (
+                finance.booking_id = bg.primary_booking_id
+                OR finance.booking_id = member_booking.id
+            )
           WHERE bg.id = $1
             AND ${contextSql('bg', '$2')}
           GROUP BY bg.id, bg.business_context, bg.primary_booking_id, bg.customer_id, bg.date, bg.room,
-                   bg.status, primary_booking.date, primary_booking.room, primary_booking.status
-          ${forUpdate ? 'FOR UPDATE OF bg, primary_booking, membership, member_booking' : ''}`,
+                   bg.status, primary_booking.date, primary_booking.room, primary_booking.status`,
         [options.groupId, options.businessContext]
     );
     return result.rows[0] || null;
 }
 
+function sameTechnicalIdSet(left = [], right = []) {
+    const normalizedLeft = normalizedTechnicalArray(left);
+    const normalizedRight = normalizedTechnicalArray(right);
+    return normalizedLeft.length === normalizedRight.length
+        && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 function classifyReconcileGroupStateTarget(row = null, options = {}) {
+    const allowlist = normalizedTechnicalArray(options.allowlist || []);
     if (!row) {
         return {
             groupId: options.groupId,
@@ -795,8 +919,12 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
             classification: null,
             reason: 'group_not_found',
             blockers: ['group_not_found'],
+            memberIds: [],
+            nonPrimaryMemberIds: [],
             activeMemberIds: [],
-            activeNonPrimaryMemberIds: []
+            activeNonPrimaryMemberIds: [],
+            cancelledNonPrimaryMemberIds: [],
+            allowlist
         };
     }
     const groupStatus = String(row.group_status || '').trim().toLowerCase();
@@ -805,19 +933,37 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
     const activeDepositCount = Number(row.active_deposit_count || 0);
     const ticketSnapshotMemberCount = Number(row.ticket_snapshot_member_count || 0);
     const pricedActiveMemberCount = Number(row.priced_active_member_count || 0);
-    const classification = groupStatus === 'active'
+    const financeTransactionCount = Number(row.finance_transaction_count || 0);
+    const memberIds = normalizedTechnicalArray(row.member_ids);
+    const nonPrimaryMemberIds = normalizedTechnicalArray(row.non_primary_member_ids);
+    const activeMemberIds = normalizedTechnicalArray(row.active_member_ids);
+    const activeNonPrimaryMemberIds = normalizedTechnicalArray(row.active_non_primary_member_ids);
+    const cancelledNonPrimaryMemberIds = normalizedTechnicalArray(row.cancelled_non_primary_member_ids);
+    const alreadyApplied = groupStatus === 'cancelled'
+        && primaryStatus === 'cancelled'
+        && activeNonPrimaryMemberCount === 0;
+    const classification = (alreadyApplied || (
+        groupStatus === 'active'
         && primaryStatus === 'cancelled'
         && activeNonPrimaryMemberCount > 0
+    ))
         ? 'active_group_cancelled_primary'
         : 'unsupported_group_state';
     const blockers = [];
     if (classification !== options.expectedClassification) blockers.push('expected_classification_mismatch');
-    if (groupStatus !== 'active') blockers.push('group_not_active');
+    if (!alreadyApplied) {
+        if (groupStatus !== 'active') blockers.push('group_not_active');
+        if (activeNonPrimaryMemberCount <= 0) blockers.push('no_active_non_primary_members');
+    }
     if (primaryStatus !== 'cancelled') blockers.push('primary_not_cancelled');
-    if (activeNonPrimaryMemberCount <= 0) blockers.push('no_active_non_primary_members');
     if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
     if (ticketSnapshotMemberCount > 0) blockers.push('ticket_ownership_conflict');
     if (pricedActiveMemberCount > 0) blockers.push('member_financial_fields_present');
+    if (financeTransactionCount > 0) blockers.push('finance_transaction_conflict');
+    if (allowlist.length) {
+        const expectedMembers = alreadyApplied ? nonPrimaryMemberIds : activeNonPrimaryMemberIds;
+        if (!sameTechnicalIdSet(allowlist, expectedMembers)) blockers.push('allowlist_member_set_mismatch');
+    }
     const uniqueBlockers = [...new Set(blockers)];
     return {
         groupId: String(row.group_id || options.groupId || '').trim(),
@@ -828,7 +974,7 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
         strategy: options.strategy,
         expectedClassification: options.expectedClassification,
         classification,
-        status: uniqueBlockers.length ? 'blocked' : 'ready',
+        status: uniqueBlockers.length ? 'blocked' : (alreadyApplied ? 'already_applied' : 'ready'),
         reason: uniqueBlockers.join(',') || null,
         blockers: uniqueBlockers,
         groupStatus,
@@ -838,11 +984,16 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
         activeNonPrimaryMemberCount,
         cancelledMemberCount: Number(row.cancelled_member_count || 0),
         primaryMembershipCount: Number(row.primary_membership_count || 0),
-        activeMemberIds: normalizedTechnicalArray(row.active_member_ids),
-        activeNonPrimaryMemberIds: normalizedTechnicalArray(row.active_non_primary_member_ids),
+        memberIds,
+        nonPrimaryMemberIds,
+        activeMemberIds,
+        activeNonPrimaryMemberIds,
+        cancelledNonPrimaryMemberIds,
+        allowlist,
         activeDepositCount,
         ticketSnapshotMemberCount,
         pricedActiveMemberCount,
+        financeTransactionCount,
         matchFingerprint: matchFingerprint(row)
     };
 }
@@ -865,13 +1016,148 @@ async function runReconcileGroupStateDryRun(db, options, dependencies = {}) {
             summary: {
                 requested: 1,
                 ready: result.status === 'ready' ? 1 : 0,
+                alreadyApplied: result.status === 'already_applied' ? 1 : 0,
                 blocked: result.status === 'blocked' ? 1 : 0,
                 notFound: result.status === 'not_found' ? 1 : 0,
                 activeMembers: result.activeMemberCount || 0,
                 activeNonPrimaryMembers: result.activeNonPrimaryMemberCount || 0,
                 activeDepositRows: result.activeDepositCount || 0,
                 ticketOwnershipConflicts: result.ticketSnapshotMemberCount || 0,
-                financialFieldConflicts: result.pricedActiveMemberCount || 0
+                financialFieldConflicts: result.pricedActiveMemberCount || 0,
+                financeTransactionConflicts: result.financeTransactionCount || 0
+            }
+        };
+    } catch (error) {
+        await db.query('ROLLBACK').catch(() => {});
+        throw error;
+    }
+}
+
+async function persistReconcileGroupStateCancellation(db, result, options) {
+    if (options.strategy !== 'cancel-stale-group') {
+        throw new Error(`Unsupported group state reconciliation strategy: ${options.strategy || '-'}`);
+    }
+    if (result.status !== 'ready') {
+        throw new Error(`Group state reconciliation target is not ready: ${result.groupId}:${result.reason || result.status}`);
+    }
+    if (!sameTechnicalIdSet(options.allowlist, result.activeNonPrimaryMemberIds)) {
+        throw new Error(`Group state reconciliation allowlist changed for ${result.groupId}`);
+    }
+    const memberIds = normalizedTechnicalArray(result.activeNonPrimaryMemberIds);
+    if (!memberIds.length) {
+        throw new Error(`Group state reconciliation has no active non-primary members: ${result.groupId}`);
+    }
+    const cancelledBookings = await db.query(
+        `UPDATE bookings
+            SET status = 'cancelled',
+                updated_at = NOW()
+          WHERE id = ANY($1::text[])
+            AND ${contextSql('bookings', '$2')}
+            AND ${activeSql('bookings')}
+          RETURNING id`,
+        [memberIds, options.businessContext]
+    );
+    const cancelledBookingIds = normalizedTechnicalArray((cancelledBookings.rows || []).map(row => row.id));
+    if (!sameTechnicalIdSet(cancelledBookingIds, memberIds)) {
+        throw new Error(`Group state reconciliation cancelled ${cancelledBookingIds.length} of ${memberIds.length} allowlisted members`);
+    }
+
+    const cancelledGroup = await db.query(
+        `UPDATE banquet_groups
+            SET status = 'cancelled',
+                updated_at = NOW(),
+                updated_by = $3
+          WHERE id = $1
+            AND ${contextSql('banquet_groups', '$2')}
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) = 'active'
+          RETURNING id`,
+        [result.groupId, options.businessContext, RECOVERY_ACTOR]
+    );
+    if (cancelledGroup.rowCount !== 1) {
+        throw new Error(`Group state reconciliation did not cancel group ${result.groupId}`);
+    }
+
+    await db.query(
+        `INSERT INTO history (business_context, action, username, data)
+         VALUES ($1, $2, $3, $4::jsonb)`,
+        [
+            options.businessContext,
+            'banquet_group_state_reconciled_cancel_stale_group',
+            RECOVERY_ACTOR,
+            JSON.stringify({
+                group_id: result.groupId,
+                primary_booking_id: result.primaryBookingId,
+                cancelled_member_booking_ids: memberIds,
+                strategy: options.strategy,
+                expected_classification: options.expectedClassification,
+                match_fingerprint: result.matchFingerprint,
+                source: RECOVERY_ACTOR
+            })
+        ]
+    );
+    return {
+        groupId: result.groupId,
+        primaryBookingId: result.primaryBookingId,
+        cancelledMemberBookingIds: memberIds,
+        cancelledBookings: memberIds.length,
+        cancelledGroups: 1,
+        status: 'applied',
+        matchFingerprint: result.matchFingerprint
+    };
+}
+
+async function runReconcileGroupStateApply(db, options, dependencies = {}) {
+    if (!options.apply || options.confirmation !== RECONCILE_GROUP_STATE_CONFIRMATION) {
+        throw new Error(`Group state reconciliation apply requires --apply --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`);
+    }
+    if (options.strategy !== 'cancel-stale-group') {
+        throw new Error(`Unsupported group state reconciliation strategy: ${options.strategy || '-'}`);
+    }
+    if (options.expectedClassification !== 'active_group_cancelled_primary') {
+        throw new Error('Group state reconciliation apply requires --expected-classification=active_group_cancelled_primary');
+    }
+    const allowlist = normalizedTechnicalArray(options.allowlist || []);
+    if (!allowlist.length) throw new Error('Group state reconciliation apply requires a non-empty exact allowlist');
+    const loadTarget = dependencies.loadReconcileGroupStateTarget || loadReconcileGroupStateTarget;
+    const persist = dependencies.persistReconcileGroupStateCancellation || persistReconcileGroupStateCancellation;
+    await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+    try {
+        const beforeTarget = await loadTarget(db, { ...options, allowlist }, { forUpdate: true });
+        const before = classifyReconcileGroupStateTarget(beforeTarget, { ...options, allowlist });
+        if (before.status === 'blocked' || before.status === 'not_found') {
+            throw new Error(`Group state reconciliation blocked by preflight: ${before.groupId || options.groupId}:${before.reason || before.status}`);
+        }
+
+        const applied = before.status === 'ready'
+            ? [await persist(db, before, { ...options, allowlist })]
+            : [];
+
+        const afterTarget = await loadTarget(db, { ...options, allowlist }, { forUpdate: false });
+        const after = classifyReconcileGroupStateTarget(afterTarget, { ...options, allowlist });
+        if (after.status !== 'already_applied') {
+            throw new Error(`Post-reconciliation verification failed: ${after.groupId || options.groupId}:${after.reason || after.status}`);
+        }
+
+        await db.query('COMMIT');
+        return {
+            mode: 'reconcile-group-state-apply',
+            readOnly: false,
+            businessContext: options.businessContext,
+            strategy: options.strategy,
+            expectedClassification: options.expectedClassification,
+            groupId: options.groupId,
+            allowlist,
+            before,
+            applied,
+            after,
+            summary: {
+                requested: 1,
+                applied: applied.length,
+                alreadyApplied: before.status === 'already_applied' ? 1 : 0,
+                blocked: 0,
+                verifiedAfter: after.status === 'already_applied' ? 1 : 0,
+                cancelledBookings: applied.reduce((total, item) => total + (item.cancelledBookings || 0), 0),
+                cancelledGroups: applied.reduce((total, item) => total + (item.cancelledGroups || 0), 0)
             }
         };
     } catch (error) {
@@ -2052,7 +2338,7 @@ function printQaCleanupReport(report) {
 }
 
 function printReconcileGroupStateReport(report) {
-    console.log('Banquet group state reconciliation dry-run');
+    console.log(report.readOnly ? 'Banquet group state reconciliation dry-run' : 'Banquet group state reconciliation apply');
     console.log(
         `context=${report.businessContext} strategy=${report.strategy} `
         + `expected=${report.expectedClassification} group=${report.groupId}`
@@ -2069,12 +2355,13 @@ function printReconcileGroupStateReport(report) {
     );
     console.log(
         `activeDeposits=${item.activeDepositCount || 0} ticketConflicts=${item.ticketSnapshotMemberCount || 0} `
-        + `financialFieldConflicts=${item.pricedActiveMemberCount || 0} fingerprint=${item.matchFingerprint || '-'}`
+        + `financialFieldConflicts=${item.pricedActiveMemberCount || 0} `
+        + `financeTransactionConflicts=${item.financeTransactionCount || 0} fingerprint=${item.matchFingerprint || '-'}`
     );
     if (Array.isArray(item.activeNonPrimaryMemberIds) && item.activeNonPrimaryMemberIds.length) {
         console.log(`activeNonPrimaryMemberIds=${item.activeNonPrimaryMemberIds.join(',')}`);
     }
-    console.log('dry-run only: production apply is not implemented in this phase.');
+    console.log(report.readOnly ? 'dry-run only: no bookings or groups were changed.' : 'apply completed: only allowlisted active non-primary members and the group were cancelled.');
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -2099,7 +2386,9 @@ async function main(argv = process.argv.slice(2)) {
                 ? await runQaCleanupApply(client, options)
                 : await runQaCleanupDryRun(client, options);
         } else {
-            report = await runReconcileGroupStateDryRun(client, options);
+            report = options.apply
+                ? await runReconcileGroupStateApply(client, options)
+                : await runReconcileGroupStateDryRun(client, options);
         }
         if (options.command === 'audit' && options.summaryOnly) printAuditSummaryOnlyReport(report, { json: options.json });
         else if (options.json) console.log(JSON.stringify(report, null, 2));
@@ -2197,6 +2486,7 @@ module.exports = {
     parseRecoveryPairs,
     persistDetachPair,
     persistRecoveryPair,
+    persistReconcileGroupStateCancellation,
     printAuditReport,
     printAuditSummaryOnlyReport,
     printDetachReport,
@@ -2209,6 +2499,7 @@ module.exports = {
     runQaCleanupApply,
     runQaCleanupDryRun,
     runQaCleanupGroupDryRun: qaCancellationService.runQaCleanupGroupDryRun,
+    runReconcileGroupStateApply,
     runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun

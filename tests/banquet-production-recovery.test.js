@@ -9,6 +9,7 @@ const {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
+    RECONCILE_GROUP_STATE_CONFIRMATION,
     buildAuditReport,
     buildAuditSummaryOnlyReport,
     classifyDetachInspection,
@@ -27,6 +28,7 @@ const {
     runDetachDryRun,
     runQaCleanupApply,
     runQaCleanupDryRun,
+    runReconcileGroupStateApply,
     runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun
@@ -454,7 +456,7 @@ test('detach and qa-cleanup arguments are allowlisted and confirmation guarded',
     );
 });
 
-test('group state reconciliation arguments require exact scope and keep apply disabled in phase A', () => {
+test('group state reconciliation arguments require exact scope and guarded apply approval', () => {
     assert.throws(
         () => parseArgs(['reconcile-group-state']),
         /--group-id/
@@ -479,7 +481,18 @@ test('group state reconciliation arguments require exact scope and keep apply di
             '--expected-classification=active_group_cancelled_primary',
             '--apply'
         ]),
-        /apply is not implemented in this phase/
+        /--confirm=RECONCILE_STALE_BANQUET_GROUP/
+    );
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-1',
+            '--strategy=cancel-stale-group',
+            '--expected-classification=active_group_cancelled_primary',
+            '--apply',
+            `--confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`
+        ]),
+        /--allowlist=/
     );
     assert.deepEqual(
         parseArgs([
@@ -495,9 +508,34 @@ test('group state reconciliation arguments require exact scope and keep apply di
             apply: false,
             json: true,
             businessContext: 'event_genix',
+            confirmation: '',
             groupId: 'BQ-1',
             strategy: 'cancel-stale-group',
-            expectedClassification: 'active_group_cancelled_primary'
+            expectedClassification: 'active_group_cancelled_primary',
+            allowlist: []
+        }
+    );
+    assert.deepEqual(
+        parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-1',
+            '--strategy=cancel-stale-group',
+            '--expected-classification=active_group_cancelled_primary',
+            '--business-context=event_genix',
+            '--apply',
+            `--confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`,
+            '--allowlist=BK-2,BK-1'
+        ]),
+        {
+            command: 'reconcile-group-state',
+            apply: true,
+            json: false,
+            businessContext: 'event_genix',
+            confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+            groupId: 'BQ-1',
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary',
+            allowlist: ['BK-1', 'BK-2']
         }
     );
 });
@@ -1005,11 +1043,14 @@ function staleGroupStateRow(overrides = {}) {
         active_non_primary_member_count: 1,
         cancelled_member_count: 1,
         primary_membership_count: 1,
+        member_ids: ['BK-STALE-KITCHEN', 'BK-STALE-PRIMARY'],
+        non_primary_member_ids: ['BK-STALE-KITCHEN'],
         active_member_ids: ['BK-STALE-KITCHEN'],
         active_non_primary_member_ids: ['BK-STALE-KITCHEN'],
         active_deposit_count: 0,
         ticket_snapshot_member_count: 0,
         priced_active_member_count: 0,
+        finance_transaction_count: 0,
         ...overrides
     };
 }
@@ -1052,6 +1093,112 @@ test('group state reconciliation classifies stale active group with cancelled pr
     );
     assert.equal(financialBlocked.status, 'blocked');
     assert.match(financialBlocked.reason, /member_financial_fields_present/);
+
+    const financeTransactionBlocked = classifyReconcileGroupStateTarget(
+        staleGroupStateRow({ finance_transaction_count: 1 }),
+        reconcileOptions
+    );
+    assert.equal(financeTransactionBlocked.status, 'blocked');
+    assert.match(financeTransactionBlocked.reason, /finance_transaction_conflict/);
+
+    const allowlistMismatch = classifyReconcileGroupStateTarget(
+        staleGroupStateRow(),
+        { ...reconcileOptions, allowlist: ['BK-OTHER'] }
+    );
+    assert.equal(allowlistMismatch.status, 'blocked');
+    assert.match(allowlistMismatch.reason, /allowlist_member_set_mismatch/);
+
+    const alreadyApplied = classifyReconcileGroupStateTarget(
+        staleGroupStateRow({
+            group_status: 'cancelled',
+            active_member_count: 0,
+            active_non_primary_member_count: 0,
+            cancelled_member_count: 2,
+            active_member_ids: [],
+            active_non_primary_member_ids: [],
+            cancelled_non_primary_member_ids: ['BK-STALE-KITCHEN']
+        }),
+        { ...reconcileOptions, allowlist: ['BK-STALE-KITCHEN'] }
+    );
+    assert.equal(alreadyApplied.status, 'already_applied');
+    assert.equal(alreadyApplied.reason, null);
+});
+
+test('group state reconciliation apply uses serializable transaction and rolls back blocked targets', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    let persisted = false;
+
+    await assert.rejects(
+        runReconcileGroupStateApply(db, {
+            ...reconcileOptions,
+            apply: true,
+            confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+            allowlist: ['BK-STALE-KITCHEN']
+        }, {
+            loadReconcileGroupStateTarget: async () => staleGroupStateRow({ active_deposit_count: 1 }),
+            persistReconcileGroupStateCancellation: async () => {
+                persisted = true;
+            }
+        }),
+        /blocked by preflight.*active_deposit_rows_present/
+    );
+
+    assert.equal(persisted, false);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+});
+
+test('group state reconciliation apply verifies idempotent after-state without production ids', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    let loadCalls = 0;
+    const report = await runReconcileGroupStateApply(db, {
+        ...reconcileOptions,
+        apply: true,
+        confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+        allowlist: ['BK-STALE-KITCHEN']
+    }, {
+        loadReconcileGroupStateTarget: async () => {
+            loadCalls += 1;
+            if (loadCalls === 1) return staleGroupStateRow();
+            return staleGroupStateRow({
+                group_status: 'cancelled',
+                active_member_count: 0,
+                active_non_primary_member_count: 0,
+                cancelled_member_count: 2,
+                active_member_ids: [],
+                active_non_primary_member_ids: [],
+                cancelled_non_primary_member_ids: ['BK-STALE-KITCHEN']
+            });
+        },
+        persistReconcileGroupStateCancellation: async (_db, result) => ({
+            groupId: result.groupId,
+            primaryBookingId: result.primaryBookingId,
+            cancelledMemberBookingIds: result.activeNonPrimaryMemberIds,
+            cancelledBookings: result.activeNonPrimaryMemberIds.length,
+            cancelledGroups: 1,
+            status: 'applied',
+            matchFingerprint: result.matchFingerprint
+        })
+    });
+
+    assert.equal(report.mode, 'reconcile-group-state-apply');
+    assert.equal(report.summary.applied, 1);
+    assert.equal(report.summary.verifiedAfter, 1);
+    assert.equal(report.after.status, 'already_applied');
+    assert.equal(JSON.stringify(report).includes('customerId'), false);
+    assert.equal(JSON.stringify(report).includes('customer_id'), false);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT']);
 });
 
 test('group state reconciliation dry-run is read-only and never writes', async () => {

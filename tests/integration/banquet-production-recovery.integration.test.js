@@ -15,12 +15,14 @@ const {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
+    RECONCILE_GROUP_STATE_CONFIRMATION,
     persistDetachPair,
     runAudit,
     runDetachApply,
     runDetachDryRun,
     runQaCleanupApply,
     runQaCleanupDryRun,
+    runReconcileGroupStateApply,
     runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun
@@ -32,6 +34,7 @@ const {
 const enabled = process.env.RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION === 'true';
 const BUSINESS_CONTEXT = 'event_genix';
 const RELATION_TYPE = 'banquet_activity';
+const RECONCILE_HISTORY_ACTION = 'banquet_group_state_reconciled_cancel_stale_group';
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION=true');
@@ -366,6 +369,38 @@ async function insertBanquetDeposit(pool, target) {
         ]
     );
 }
+async function readReconcileApplyState(pool, target, extraBookingIds = []) {
+    const bookingIds = [target.primaryId, target.kitchenId, ...extraBookingIds].map(String).sort();
+    const result = await pool.query(
+        `SELECT
+            (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+            COALESCE(
+                JSONB_OBJECT_AGG(bookings.id, bookings.status ORDER BY bookings.id)
+                    FILTER (WHERE bookings.id IS NOT NULL),
+                '{}'::jsonb
+            ) AS booking_statuses,
+            (
+                SELECT COUNT(*)::int
+                  FROM banquet_group_bookings membership
+                  JOIN bookings member_booking ON member_booking.id = membership.booking_id
+                 WHERE membership.business_context = $2
+                   AND membership.group_id = $1
+                   AND member_booking.id <> $3
+                   AND LOWER(COALESCE(NULLIF(BTRIM(member_booking.status), ''), 'confirmed')) <> 'cancelled'
+            ) AS active_non_primary_members,
+            (
+                SELECT COUNT(*)::int
+                  FROM history
+                 WHERE business_context = $2
+                   AND action = $5
+                   AND data->>'group_id' = $1
+            ) AS history_count
+           FROM bookings
+          WHERE bookings.id = ANY($4::text[])`,
+        [target.groupId, BUSINESS_CONTEXT, target.primaryId, bookingIds, RECONCILE_HISTORY_ACTION]
+    );
+    return result.rows[0];
+}
 
 async function countRows(pool, pair, action = 'banquet_pinata_membership_detached') {
     const [membership, links, history] = await Promise.all([
@@ -505,6 +540,132 @@ describe('banquet production recovery on isolated PostgreSQL', {
         assert.equal(report.result.status, 'blocked');
         assert.match(report.result.reason, /active_deposit_rows_present/);
         assert.equal(report.summary.activeDepositRows, 1);
+    });
+
+    test('guarded stale group reconciliation apply cancels only allowlisted active member and is idempotent', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_reconcile_apply`);
+        const options = {
+            apply: true,
+            confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary',
+            allowlist: [target.kitchenId]
+        };
+
+        const apply = await withClient(pool, client => runReconcileGroupStateApply(client, options));
+        assert.equal(apply.mode, 'reconcile-group-state-apply');
+        assert.equal(apply.summary.applied, 1);
+        assert.equal(apply.summary.cancelledBookings, 1);
+        assert.equal(apply.summary.cancelledGroups, 1);
+        assert.equal(apply.after.status, 'already_applied');
+
+        const state = await readReconcileApplyState(pool, target);
+        assert.equal(state.group_status, 'cancelled');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[target.kitchenId], 'cancelled');
+        assert.equal(state.active_non_primary_members, 0);
+        assert.equal(state.history_count, 1);
+
+        const rerun = await withClient(pool, client => runReconcileGroupStateApply(client, options));
+        assert.equal(rerun.summary.applied, 0);
+        assert.equal(rerun.summary.alreadyApplied, 1);
+        assert.equal(rerun.after.status, 'already_applied');
+
+        const afterRerun = await readReconcileApplyState(pool, target);
+        assert.equal(afterRerun.history_count, 1);
+    });
+
+    test('guarded stale group reconciliation apply blocks changed member set without writes', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_reconcile_changed_members`);
+        const extraId = compactId('bpr-state-extra', `${suffix}_changed_members`);
+        await insertBooking(pool, extraId, {
+            customerId: target.customerId,
+            lineId: 'banquet-service-extra',
+            programId: null,
+            programCode: 'SERVICE',
+            label: 'State extra fixture',
+            programName: 'State extra fixture',
+            category: 'banquet',
+            status: 'confirmed'
+        });
+        await pool.query(
+            `INSERT INTO banquet_group_bookings
+                (group_id, business_context, booking_id, role, sort_order, created_by)
+             VALUES ($1, $2, $3, 'service', 30, 'banquet-recovery-integration')`,
+            [target.groupId, BUSINESS_CONTEXT, extraId]
+        );
+
+        await assert.rejects(
+            withClient(pool, client => runReconcileGroupStateApply(client, {
+                apply: true,
+                confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+                businessContext: BUSINESS_CONTEXT,
+                groupId: target.groupId,
+                strategy: 'cancel-stale-group',
+                expectedClassification: 'active_group_cancelled_primary',
+                allowlist: [target.kitchenId]
+            })),
+            /allowlist_member_set_mismatch/
+        );
+
+        const state = await readReconcileApplyState(pool, target, [extraId]);
+        assert.equal(state.group_status, 'active');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[target.kitchenId], 'confirmed');
+        assert.equal(state.booking_statuses[extraId], 'confirmed');
+        assert.equal(state.active_non_primary_members, 2);
+        assert.equal(state.history_count, 0);
+    });
+
+    test('guarded stale group reconciliation apply rolls back if technical history insert fails', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_reconcile_history_rollback`);
+        await pool.query(`DROP TRIGGER IF EXISTS bpr_fail_reconcile_history_insert ON history`);
+        await pool.query(`DROP FUNCTION IF EXISTS bpr_fail_reconcile_history_insert()`);
+        await pool.query(`
+            CREATE FUNCTION bpr_fail_reconcile_history_insert()
+            RETURNS trigger
+            LANGUAGE plpgsql
+            AS $$
+            BEGIN
+                IF NEW.action = 'banquet_group_state_reconciled_cancel_stale_group' THEN
+                    RAISE EXCEPTION 'forced reconcile history insert failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$
+        `);
+        await pool.query(`
+            CREATE TRIGGER bpr_fail_reconcile_history_insert
+            BEFORE INSERT ON history
+            FOR EACH ROW
+            EXECUTE FUNCTION bpr_fail_reconcile_history_insert()
+        `);
+        try {
+            await assert.rejects(
+                withClient(pool, client => runReconcileGroupStateApply(client, {
+                    apply: true,
+                    confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+                    businessContext: BUSINESS_CONTEXT,
+                    groupId: target.groupId,
+                    strategy: 'cancel-stale-group',
+                    expectedClassification: 'active_group_cancelled_primary',
+                    allowlist: [target.kitchenId]
+                })),
+                /forced reconcile history insert failure/
+            );
+        } finally {
+            await pool.query(`DROP TRIGGER IF EXISTS bpr_fail_reconcile_history_insert ON history`);
+            await pool.query(`DROP FUNCTION IF EXISTS bpr_fail_reconcile_history_insert()`);
+        }
+
+        const state = await readReconcileApplyState(pool, target);
+        assert.equal(state.group_status, 'active');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[target.kitchenId], 'confirmed');
+        assert.equal(state.active_non_primary_members, 1);
+        assert.equal(state.history_count, 0);
     });
 
     test('recovers missing pinata membership and compatibility link, then reruns cleanly', async () => {

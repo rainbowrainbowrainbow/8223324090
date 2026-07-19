@@ -2,12 +2,14 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT_PATH = path.join(ROOT, 'scripts', 'fix-attendance-historical-grace.js');
 const AUDIT_SCRIPT_PATH = path.join(ROOT, 'scripts', 'audit-attendance-historical-impact.js');
+const ROLLBACK_SCRIPT_PATH = path.join(ROOT, 'scripts', 'rollback-attendance-historical-grace.js');
 const {
     assertPayrollWriteAllowed,
     buildApprovalManifest,
@@ -16,13 +18,17 @@ const {
     candidateSelectSql,
     categorySql,
     countOverlappingChanges,
+    ensureBackupDirectory,
     expectedApplyConfirmation,
     parseArgs,
     planChange,
     poolConfig,
+    verifyBackupEnvelope,
+    writeBackupFile,
     summarizeChanges
 } = require(SCRIPT_PATH);
 const auditScript = require(AUDIT_SCRIPT_PATH);
+const rollbackScript = require(ROLLBACK_SCRIPT_PATH);
 
 function baseArgs(extra = []) {
     return [
@@ -411,12 +417,18 @@ test('payroll apply guard fails closed when control tables or protected periods 
                 paidPayrollReports: 0
             }]
         }),
-        /locked\/closed\/paid payroll impact/
+        /protected or open payroll impact/
     );
     for (const protectedState of [
         { payrollPeriodLocked: true },
         { hasLockTimestamp: true },
-        { paidPayrollReports: 1 }
+        { paidPayrollReports: 1 },
+        { payrollReports: 1, draftPayrollReports: 1 },
+        { payrollEntries: 1 },
+        { salaryAdjustments: 1 },
+        { salaryFinanceTransactions: 1 },
+        { committedPayrollReports: 1 },
+        { financeLinkedPayrollReports: 1 }
     ]) {
         assert.throws(
             () => assertPayrollWriteAllowed({
@@ -426,12 +438,13 @@ test('payroll apply guard fails closed when control tables or protected periods 
                     month: '2026-07',
                     payrollPeriodLocked: false,
                     hasLockTimestamp: false,
+                    payrollReports: 0,
                     closedPayrollReports: 0,
                     paidPayrollReports: 0,
                     ...protectedState
                 }]
             }),
-            /locked\/closed\/paid payroll impact/
+            /protected or open payroll impact/
         );
     }
     assert.doesNotThrow(() => assertPayrollWriteAllowed({
@@ -441,6 +454,7 @@ test('payroll apply guard fails closed when control tables or protected periods 
             month: '2026-07',
             payrollPeriodLocked: false,
             hasLockTimestamp: false,
+            payrollReports: 0,
             closedPayrollReports: 0,
             paidPayrollReports: 0
         }]
@@ -478,15 +492,167 @@ test('final dry-run report remains aggregate-only', () => {
     assert.equal(report.summary.totalRows, 1);
 });
 
+test('backup writer creates durable checksum artifact outside the repository', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'attendance-grace-backup-'));
+    const planHash = 'a'.repeat(64);
+    const payload = {
+        format: 'eventgenix.attendance_historical_grace_backup',
+        version: 2,
+        generatedAt: '2026-07-19T10:00:00.000Z',
+        planHash,
+        approvalManifest: { operationId: `attendance-grace-2026-07-01-2026-07-18-${planHash.slice(0, 12)}` },
+        plannedChanges: [{
+            id: 70,
+            staff_id: 17,
+            record_date: '2026-07-10',
+            business_context: 'event_genix',
+            immutable: {
+                clock_in: null,
+                clock_out: null,
+                planned_start: null,
+                planned_end: null,
+                total_worked_minutes: 480
+            },
+            categories: ['overtime-grace'],
+            before: { status: 'present', late_minutes: 0, early_leave_minutes: 0, overtime_minutes: 15 },
+            after: { status: 'present', late_minutes: 0, early_leave_minutes: 0, overtime_minutes: 0 }
+        }],
+        tables: {
+            hr_time_records: [{ id: 70 }],
+            hr_audit_log: [],
+            payroll_reports: [],
+            payroll_period_locks: [],
+            payroll_entries: [],
+            salary_adjustments: [],
+            finance_transactions: []
+        }
+    };
+
+    assert.throws(
+        () => ensureBackupDirectory(path.join(ROOT, 'tmp-attendance-backups')),
+        /outside the repository/
+    );
+    assert.throws(
+        () => writeBackupFile({ from: '2026-07-01', to: '2026-07-18', backupDir: 'relative-backup', maxBackupBytes: 1024 * 1024 }, payload),
+        /absolute path/
+    );
+
+    const artifact = writeBackupFile({
+        from: '2026-07-01',
+        to: '2026-07-18',
+        backupDir: tempDir,
+        maxBackupBytes: 1024 * 1024
+    }, payload);
+    assert.equal(path.isAbsolute(artifact.filePath), true);
+    assert.equal(artifact.rowCounts.hr_time_records, 1);
+    assert.equal(/^[a-f0-9]{64}$/.test(artifact.checksumSha256), true);
+    const envelope = JSON.parse(fs.readFileSync(artifact.filePath, 'utf8'));
+    assert.equal(verifyBackupEnvelope(envelope), true);
+    assert.equal(envelope.manifest.checksumSha256, artifact.checksumSha256);
+});
+
+test('rollback CLI validates reviewed backup and fails on drift', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'attendance-grace-rollback-'));
+    const planHash = 'b'.repeat(64);
+    const change = planChange({
+        id: 80,
+        staff_id: 18,
+        record_date: '2026-07-11',
+        business_context: 'event_genix',
+        clock_in: '2026-07-11 09:00:00+03',
+        clock_out: '2026-07-11 18:15:00+03',
+        planned_start: '2026-07-11 09:00:00+03',
+        planned_end: '2026-07-11 18:00:00+03',
+        total_worked_minutes: 555,
+        status: 'present',
+        late_minutes: 0,
+        early_leave_minutes: 0,
+        overtime_minutes: 15,
+        fix_late_grace: false,
+        fix_overtime_grace: true
+    });
+    const payload = {
+        format: 'eventgenix.attendance_historical_grace_backup',
+        version: 2,
+        generatedAt: '2026-07-19T10:00:00.000Z',
+        planHash,
+        approvalManifest: { operationId: `attendance-grace-2026-07-01-2026-07-18-${planHash.slice(0, 12)}` },
+        plannedChanges: [change],
+        tables: {
+            hr_time_records: [{ id: 80 }],
+            hr_audit_log: [],
+            payroll_reports: [],
+            payroll_period_locks: [],
+            payroll_entries: [],
+            salary_adjustments: [],
+            finance_transactions: []
+        }
+    };
+    const artifact = writeBackupFile({
+        from: '2026-07-01',
+        to: '2026-07-18',
+        backupDir: tempDir,
+        maxBackupBytes: 1024 * 1024
+    }, payload);
+
+    assert.throws(
+        () => rollbackScript.parseArgs([
+            '--apply',
+            '--backup-file', artifact.filePath,
+            '--plan-hash', planHash,
+            '--executed-by', 'Codex QA',
+            '--reason', 'rollback dry-run reviewed',
+            '--confirm', 'wrong'
+        ]),
+        /--confirm must exactly equal/
+    );
+    const rollbackOptions = rollbackScript.parseArgs([
+        '--backup-file', artifact.filePath,
+        '--plan-hash', planHash,
+        '--executed-by', 'Codex QA',
+        '--reason', 'rollback dry-run reviewed'
+    ]);
+    const verified = rollbackScript.loadVerifiedBackup(rollbackOptions);
+    assert.equal(verified.changes.length, 1);
+
+    const goodRows = new Map([[80, {
+        id: 80,
+        record_date: '2026-07-11',
+        business_context: 'event_genix',
+        clock_in: change.immutable.clock_in,
+        clock_out: change.immutable.clock_out,
+        planned_start: change.immutable.planned_start,
+        planned_end: change.immutable.planned_end,
+        total_worked_minutes: change.immutable.total_worked_minutes,
+        status: change.after.status,
+        late_minutes: change.after.late_minutes,
+        early_leave_minutes: change.after.early_leave_minutes,
+        overtime_minutes: change.after.overtime_minutes
+    }]]);
+    assert.doesNotThrow(() => rollbackScript.assertRollbackCurrentState(goodRows, [change]));
+
+    const driftRows = new Map([[80, { ...goodRows.get(80), overtime_minutes: 16 }]]);
+    assert.throws(
+        () => rollbackScript.assertRollbackCurrentState(driftRows, [change]),
+        /Rollback drift detected/
+    );
+});
+
 test('script keeps production safety guardrails in source', () => {
     const source = fs.readFileSync(SCRIPT_PATH, 'utf8');
     assert.match(source, /BEGIN READ ONLY/);
+    assert.match(source, /BEGIN ISOLATION LEVEL SERIALIZABLE/);
+    assert.match(source, /lock_timeout/);
+    assert.match(source, /LOCK TABLE/);
     assert.match(source, /FOR UPDATE/);
     assert.match(source, /ATTENDANCE_DATA_FIX_DATABASE_URL/);
     assert.match(source, /ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL/);
     assert.match(source, /late_minutes BETWEEN 1 AND 5/);
     assert.match(source, /IS NOT DISTINCT FROM changes\.before_late_minutes/);
     assert.match(source, /attendance_historical_grace_data_fix/);
+    assert.match(source, /attendance_historical_grace_data_fix_operation/);
+    assert.match(source, /backup_artifact_id/);
+    assert.doesNotMatch(source, /backup_file: backupFile/);
     assert.match(source, /hr_audit_log/);
     assert.match(source, /payroll_period_locks/);
     assert.match(source, /closed_payroll_reports/);

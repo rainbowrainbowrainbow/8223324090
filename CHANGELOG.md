@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.109 - HR structure mobile inspector offset
+
+### HR / Structure tree / Mobile QA / (19.07.2026) [codex]
+- **Mobile inspector offset** — після live QA на 820px додано viewport compensation для sheet картки вузла, щоб `position: fixed` не успадковував зміщення від layout ancestor.
+- **Breakpoint hardening** — inspector на mobile лишається в межах viewport після переходів 821→820→390 px, search/collapse і quick actions без Save.
+- **Production safety** — зміна обмежена frontend HR structure state/layout, без БД, migrations, auth, permissions, secrets або Railway settings.
+
+---
+
 ## v0.79.108 - HR structure mobile inspector bounds
 
 ### HR / Structure tree / Mobile QA / (19.07.2026) [codex]

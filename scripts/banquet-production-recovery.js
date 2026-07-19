@@ -970,44 +970,131 @@ async function runRecoveryApply(db, options, dependencies = {}) {
     }
 }
 
-async function loadDetachTarget(db, pair, businessContext, forUpdate) {
+async function loadDetachMemberships(db, pair, businessContext, forUpdate) {
     const result = await db.query(
-        `SELECT pinata.id AS pinata_booking_id,
-                pinata.business_context AS pinata_business_context,
-                pinata.date AS pinata_date,
-                pinata.room AS pinata_room,
-                pinata.customer_id AS pinata_customer_id,
-                pinata.category AS pinata_category,
-                pinata.program_id AS pinata_program_id,
-                pinata.program_code AS pinata_program_code,
-                pinata.status AS pinata_status,
-                pinata.linked_to AS pinata_linked_to,
-                membership.group_id,
-                membership.role AS membership_role,
-                group_row.status AS group_status,
-                group_row.group_name,
-                group_row.primary_booking_id,
-                primary_booking.date AS primary_date,
-                primary_booking.room AS primary_room,
-                primary_booking.customer_id AS primary_customer_id,
-                primary_booking.status AS primary_status
+        `SELECT membership.group_id,
+                membership.booking_id,
+                membership.role
            FROM banquet_group_bookings membership
-           JOIN bookings pinata
-             ON pinata.id = membership.booking_id
-            AND ${contextSql('pinata', '$3')}
-           JOIN banquet_groups group_row
-             ON group_row.id = membership.group_id
-            AND ${contextSql('group_row', '$3')}
-           LEFT JOIN bookings primary_booking
-             ON primary_booking.id = group_row.primary_booking_id
-            AND ${contextSql('primary_booking', '$3')}
           WHERE membership.booking_id = $1
             AND membership.group_id = $2
             AND ${contextSql('membership', '$3')}
-          ${forUpdate ? 'FOR UPDATE OF membership, pinata, group_row' : ''}`,
+          ${forUpdate ? 'FOR UPDATE' : ''}`,
         [pair.bookingId, pair.groupId, businessContext]
     );
+    return result.rows || [];
+}
+
+async function loadDetachGroup(db, pair, businessContext, forUpdate) {
+    const result = await db.query(
+        `SELECT group_row.id AS group_id,
+                group_row.business_context,
+                group_row.status,
+                group_row.group_name,
+                group_row.primary_booking_id
+           FROM banquet_groups group_row
+          WHERE group_row.id = $1
+            AND ${contextSql('group_row', '$2')}
+          ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [pair.groupId, businessContext]
+    );
     return result.rows?.[0] || null;
+}
+
+async function loadDetachBookingRecord(db, bookingId, businessContext, forUpdate) {
+    const id = String(bookingId || '').trim();
+    if (!id) return null;
+    const result = await db.query(
+        `SELECT booking.id AS booking_id,
+                booking.business_context,
+                booking.date,
+                booking.room,
+                booking.customer_id,
+                booking.category,
+                booking.program_id,
+                booking.program_code,
+                booking.status,
+                booking.linked_to
+           FROM bookings booking
+          WHERE booking.id = $1
+            AND ${contextSql('booking', '$2')}
+          ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [id, businessContext]
+    );
+    return result.rows?.[0] || null;
+}
+
+async function loadDetachCompatibilityLinks(db, pair, group, businessContext, forUpdate) {
+    const primaryBookingId = String(group?.primary_booking_id || '').trim();
+    const bookingId = String(pair.bookingId || '').trim();
+    if (!primaryBookingId || !bookingId || primaryBookingId === bookingId) return [];
+    const result = await db.query(
+        `SELECT link.id,
+                link.booking_a_id,
+                link.booking_b_id,
+                link.relation_type
+           FROM booking_banquet_links link
+          WHERE ${contextSql('link', '$1')}
+            AND link.relation_type = $4
+            AND (
+                (link.booking_a_id = $2 AND link.booking_b_id = $3)
+                OR (link.booking_a_id = $3 AND link.booking_b_id = $2)
+            )
+          ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [businessContext, primaryBookingId, bookingId, BANQUET_RELATION_TYPE]
+    );
+    return result.rows || [];
+}
+
+async function loadDetachInspectionState(db, pair, businessContext, { forUpdate = false } = {}) {
+    const memberships = await loadDetachMemberships(db, pair, businessContext, forUpdate);
+    const group = await loadDetachGroup(db, pair, businessContext, forUpdate);
+    const pinataBooking = await loadDetachBookingRecord(db, pair.bookingId, businessContext, forUpdate);
+    const primaryBooking = group?.primary_booking_id
+        ? await loadDetachBookingRecord(db, group.primary_booking_id, businessContext, forUpdate)
+        : null;
+    const compatibilityLinks = await loadDetachCompatibilityLinks(db, pair, group, businessContext, forUpdate);
+    return {
+        memberships,
+        group,
+        pinataBooking,
+        primaryBooking,
+        compatibilityLinks
+    };
+}
+
+function detachInspectionStateAsTarget(state = {}) {
+    const pinata = state.pinataBooking || null;
+    const group = state.group || null;
+    const primary = state.primaryBooking || null;
+    const membership = Array.isArray(state.memberships) ? state.memberships[0] : null;
+    if (!pinata && !group && !membership) return null;
+    return {
+        pinata_booking_id: pinata?.booking_id || membership?.booking_id || null,
+        pinata_business_context: pinata?.business_context || null,
+        pinata_date: pinata?.date || null,
+        pinata_room: pinata?.room || null,
+        pinata_customer_id: pinata?.customer_id ?? null,
+        pinata_category: pinata?.category || null,
+        pinata_program_id: pinata?.program_id || null,
+        pinata_program_code: pinata?.program_code || null,
+        pinata_status: pinata?.status || null,
+        pinata_linked_to: pinata?.linked_to || null,
+        group_id: group?.group_id || membership?.group_id || null,
+        membership_role: membership?.role || null,
+        group_status: group?.status || null,
+        group_name: group?.group_name || null,
+        primary_booking_id: group?.primary_booking_id || null,
+        primary_date: primary?.date || null,
+        primary_room: primary?.room || null,
+        primary_customer_id: primary?.customer_id ?? null,
+        primary_status: primary?.status || null
+    };
+}
+
+async function loadDetachTarget(db, pair, businessContext, forUpdate) {
+    const state = await loadDetachInspectionState(db, pair, businessContext, { forUpdate });
+    return detachInspectionStateAsTarget(state);
 }
 
 function detachTargetAsRows(target = {}) {
@@ -1034,49 +1121,185 @@ function detachTargetAsRows(target = {}) {
     };
 }
 
-function classifyDetachInspection(pair, target, businessContext) {
+function detachBookingRecordAsRow(record = {}) {
+    return {
+        id: record.booking_id || record.id,
+        business_context: record.business_context,
+        date: record.date,
+        room: record.room,
+        customer_id: record.customer_id,
+        category: record.category,
+        program_id: record.program_id,
+        program_code: record.program_code,
+        status: record.status,
+        linked_to: record.linked_to
+    };
+}
+
+function normalizeDetachInspectionState(targetOrState) {
+    if (!targetOrState) {
+        return {
+            memberships: [],
+            group: null,
+            pinataBooking: null,
+            primaryBooking: null,
+            compatibilityLinks: []
+        };
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(targetOrState, 'memberships')
+        || Object.prototype.hasOwnProperty.call(targetOrState, 'group')
+        || Object.prototype.hasOwnProperty.call(targetOrState, 'pinataBooking')
+        || Object.prototype.hasOwnProperty.call(targetOrState, 'compatibilityLinks')
+    ) {
+        return {
+            memberships: Array.isArray(targetOrState.memberships) ? targetOrState.memberships : [],
+            group: targetOrState.group || null,
+            pinataBooking: targetOrState.pinataBooking || null,
+            primaryBooking: targetOrState.primaryBooking || null,
+            compatibilityLinks: Array.isArray(targetOrState.compatibilityLinks) ? targetOrState.compatibilityLinks : []
+        };
+    }
+    return {
+        memberships: targetOrState.membership_role
+            ? [{
+                group_id: targetOrState.group_id,
+                booking_id: targetOrState.pinata_booking_id,
+                role: targetOrState.membership_role
+            }]
+            : [],
+        group: targetOrState.group_id
+            ? {
+                group_id: targetOrState.group_id,
+                business_context: targetOrState.business_context,
+                status: targetOrState.group_status,
+                group_name: targetOrState.group_name,
+                primary_booking_id: targetOrState.primary_booking_id
+            }
+            : null,
+        pinataBooking: targetOrState.pinata_booking_id
+            ? {
+                booking_id: targetOrState.pinata_booking_id,
+                business_context: targetOrState.pinata_business_context,
+                date: targetOrState.pinata_date,
+                room: targetOrState.pinata_room,
+                customer_id: targetOrState.pinata_customer_id,
+                category: targetOrState.pinata_category,
+                program_id: targetOrState.pinata_program_id,
+                program_code: targetOrState.pinata_program_code,
+                status: targetOrState.pinata_status,
+                linked_to: targetOrState.pinata_linked_to
+            }
+            : null,
+        primaryBooking: targetOrState.primary_booking_id
+            ? {
+                booking_id: targetOrState.primary_booking_id,
+                business_context: targetOrState.business_context,
+                date: targetOrState.primary_date,
+                room: targetOrState.primary_room,
+                customer_id: targetOrState.primary_customer_id,
+                status: targetOrState.primary_status
+            }
+            : null,
+        compatibilityLinks: []
+    };
+}
+
+function classifyDetachInspection(pair, targetOrState, businessContext) {
     const base = {
         pinataBookingId: pair.bookingId,
         groupId: pair.groupId,
         businessContext,
-        status: 'blocked',
+        status: 'inconsistent',
         reason: null,
-        matchFingerprint: null
+        matchFingerprint: null,
+        compatibilityLinkCount: 0
     };
-    if (!target) return { ...base, status: 'already_detached' };
-    const rows = detachTargetAsRows(target);
-    base.matchFingerprint = matchFingerprint(rows.pinata);
-    if (!isPinataRow(rows.pinata)) return { ...base, reason: 'booking_is_not_pinata' };
-    if (String(target.membership_role || '').trim().toLowerCase() !== 'activity') {
+    const state = normalizeDetachInspectionState(targetOrState);
+    const memberships = state.memberships || [];
+    const compatibilityLinks = state.compatibilityLinks || [];
+    const group = state.group || null;
+    const pinataBooking = state.pinataBooking || null;
+    const primaryBooking = state.primaryBooking || null;
+    const pinataRow = pinataBooking ? detachBookingRecordAsRow(pinataBooking) : null;
+    const primaryRow = primaryBooking ? detachBookingRecordAsRow(primaryBooking) : null;
+    base.compatibilityLinkCount = compatibilityLinks.length;
+    if (!pinataBooking || !group) {
+        const missing = [
+            !pinataBooking ? 'booking' : null,
+            !group ? 'group' : null
+        ].filter(Boolean).join('_and_');
+        return {
+            ...base,
+            status: 'not_found',
+            reason: `${missing}_not_found`
+        };
+    }
+    base.matchFingerprint = matchFingerprint(pinataRow);
+    if (!isPinataRow(pinataRow)) return { ...base, reason: 'booking_is_not_pinata' };
+    if (!isActiveRow(pinataRow)) return { ...base, reason: 'pinata_not_active' };
+    if (String(pinataRow.linked_to || '').trim()) return { ...base, reason: 'pinata_is_linked_child' };
+    if (String(group.status || 'active').trim().toLowerCase() !== 'active') {
+        return { ...base, reason: 'group_not_active' };
+    }
+    if (String(group.primary_booking_id || '').trim()) {
+        if (!primaryBooking) return { ...base, reason: 'primary_booking_not_found' };
+        if (!isActiveRow(primaryRow)) return { ...base, reason: 'primary_not_active' };
+        if (String(primaryRow.id || '').trim() === String(pinataRow.id || '').trim()) {
+            return { ...base, reason: 'pinata_is_group_primary' };
+        }
+    } else {
+        return { ...base, reason: 'group_missing_primary_booking' };
+    }
+    if (memberships.length > 1) {
+        return {
+            ...base,
+            reason: 'duplicate_memberships',
+            existingRoles: memberships.map(row => String(row.role || '').trim()).filter(Boolean)
+        };
+    }
+    if (!memberships.length) {
+        if (compatibilityLinks.length) {
+            return {
+                ...base,
+                status: 'orphan_link',
+                reason: 'compatibility_link_without_membership'
+            };
+        }
+        return {
+            ...base,
+            status: 'already_detached_and_clean'
+        };
+    }
+    const membership = memberships[0];
+    if (String(membership.role || '').trim().toLowerCase() !== 'activity') {
         return {
             ...base,
             reason: 'not_activity_membership',
-            existingRole: String(target.membership_role || '').trim() || null
+            existingRole: String(membership.role || '').trim() || null
         };
-    }
-    if (String(rows.primary.id || '').trim() && String(rows.primary.id) === String(rows.pinata.id)) {
-        return { ...base, reason: 'pinata_is_group_primary' };
     }
     return {
         ...base,
-        status: 'ready',
+        status: 'attached',
         existingRole: 'activity'
     };
 }
 
 async function inspectDetachPair(db, pair, businessContext, { forUpdate = false } = {}) {
-    const target = await loadDetachTarget(db, pair, businessContext, forUpdate);
+    const state = await loadDetachInspectionState(db, pair, businessContext, { forUpdate });
     return {
-        result: classifyDetachInspection(pair, target, businessContext),
-        target
+        result: classifyDetachInspection(pair, state, businessContext),
+        target: detachInspectionStateAsTarget(state),
+        state
     };
 }
 
 async function persistDetachPair(db, inspection, businessContext) {
     const result = inspection.result;
     const target = inspection.target;
-    if (result.status !== 'ready' || !target) {
-        throw new Error(`Detach pair is not ready: ${result.pinataBookingId}:${result.groupId}`);
+    if (result.status !== 'attached' || !target) {
+        throw new Error(`Detach pair is not attached: ${result.pinataBookingId}:${result.groupId}`);
     }
     const membership = await db.query(
         `DELETE FROM banquet_group_bookings
@@ -1145,6 +1368,23 @@ async function persistDetachPair(db, inspection, businessContext) {
     };
 }
 
+function summarizeDetachResults(inspections) {
+    const results = inspections.map(item => item.result || item);
+    const count = status => results.filter(item => item.status === status).length;
+    const blocked = results.filter(item => (
+        !['attached', 'already_detached_and_clean'].includes(item.status)
+    )).length;
+    return {
+        requested: results.length,
+        attached: count('attached'),
+        alreadyDetachedAndClean: count('already_detached_and_clean'),
+        orphanLink: count('orphan_link'),
+        notFound: count('not_found'),
+        inconsistent: count('inconsistent'),
+        blocked
+    };
+}
+
 async function runDetachDryRun(db, options, dependencies = {}) {
     const inspect = dependencies.inspectDetachPair || inspectDetachPair;
     await db.query('BEGIN TRANSACTION READ ONLY');
@@ -1159,12 +1399,7 @@ async function runDetachDryRun(db, options, dependencies = {}) {
             readOnly: true,
             businessContext: options.businessContext,
             pairs: inspections.map(item => item.result),
-            summary: {
-                requested: inspections.length,
-                ready: inspections.filter(item => item.result.status === 'ready').length,
-                alreadyDetached: inspections.filter(item => item.result.status === 'already_detached').length,
-                blocked: inspections.filter(item => item.result.status === 'blocked').length
-            }
+            summary: summarizeDetachResults(inspections)
         };
     } catch (error) {
         await db.query('ROLLBACK').catch(() => {});
@@ -1184,17 +1419,19 @@ async function runDetachApply(db, options, dependencies = {}) {
         for (const pair of options.pairs) {
             before.push(await inspect(db, pair, options.businessContext, { forUpdate: true }));
         }
-        const blocked = before.filter(item => item.result.status === 'blocked');
+        const blocked = before.filter(item => (
+            !['attached', 'already_detached_and_clean'].includes(item.result.status)
+        ));
         if (blocked.length) {
             const labels = blocked.map(item => (
-                `${item.result.pinataBookingId}:${item.result.groupId}:${item.result.reason}`
+                `${item.result.pinataBookingId}:${item.result.groupId}:${item.result.reason || item.result.status}`
             ));
             throw new Error(`Detach blocked by preflight: ${labels.join(',')}`);
         }
 
         const detached = [];
         for (const inspection of before) {
-            if (inspection.result.status === 'ready') {
+            if (inspection.result.status === 'attached') {
                 detached.push(await persist(db, inspection, options.businessContext));
             }
         }
@@ -1203,7 +1440,7 @@ async function runDetachApply(db, options, dependencies = {}) {
         for (const pair of options.pairs) {
             after.push(await inspect(db, pair, options.businessContext, { forUpdate: false }));
         }
-        const invalidAfter = after.filter(item => item.result.status !== 'already_detached');
+        const invalidAfter = after.filter(item => item.result.status !== 'already_detached_and_clean');
         if (invalidAfter.length) {
             const labels = invalidAfter.map(item => (
                 `${item.result.pinataBookingId}:${item.result.groupId}:${item.result.reason || item.result.status}`
@@ -1220,10 +1457,8 @@ async function runDetachApply(db, options, dependencies = {}) {
             detached,
             after: after.map(item => item.result),
             summary: {
-                requested: options.pairs.length,
+                ...summarizeDetachResults(before),
                 detached: detached.length,
-                alreadyDetached: before.filter(item => item.result.status === 'already_detached').length,
-                blocked: 0,
                 verifiedAfter: after.length
             }
         };
@@ -1308,7 +1543,10 @@ function printDetachReport(report) {
     }
     console.log(
         `requested=${report.summary.requested} detached=${report.summary.detached || 0} `
-        + `alreadyDetached=${report.summary.alreadyDetached} blocked=${report.summary.blocked}`
+        + `attached=${report.summary.attached || 0} `
+        + `alreadyDetachedClean=${report.summary.alreadyDetachedAndClean || 0} `
+        + `orphanLink=${report.summary.orphanLink || 0} notFound=${report.summary.notFound || 0} `
+        + `inconsistent=${report.summary.inconsistent || 0} blocked=${report.summary.blocked || 0}`
     );
     if (report.mode === 'detach-dry-run') {
         console.log(`dry-run only: add --apply --confirm=${DETACH_CONFIRMATION} after separate production approval.`);
@@ -1392,11 +1630,18 @@ module.exports = {
     buildQaCleanupReport,
     classifyDetachInspection,
     classifyRecoveryInspection,
+    detachBookingRecordAsRow,
+    detachInspectionStateAsTarget,
     detachTargetAsRows,
     exactMatch,
     inspectDetachPair,
     inspectRecoveryPair,
     isPinataRow,
+    loadDetachBookingRecord,
+    loadDetachCompatibilityLinks,
+    loadDetachGroup,
+    loadDetachInspectionState,
+    loadDetachMemberships,
     loadDetachTarget,
     loadExactCandidateGroupIds,
     loadMissingDepositAuditRows,

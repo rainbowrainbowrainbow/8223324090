@@ -193,3 +193,35 @@ No production data was changed by this audit. The original 14-record finding
 remains a dated pre-fix audit snapshot and should not be rewritten; the fact that
 current production no longer shows those rows as missing snapshots is a separate
 history question, not authorization for backfill or payroll recalculation.
+
+## Final production acceptance — v0.79.84
+
+Фінальний disposable acceptance виконано на production runtime релізу
+`v0.79.84` (`c26208dd3`) після повністю зеленого GitHub Actions CI.
+
+Aggregate-only результат:
+
+| Check | Result |
+| --- | --- |
+| Exact attendance contract | `540 physical / 540 base / 510 additional` |
+| Supported payroll previews | `hourly`, `per_shift`, `monthly_fixed` passed |
+| Unsupported payroll previews | `hybrid`, `percent`, `manual` failed closed with the documented blocker |
+| Additional rate source | Explicit profession rate from the finalized compensation snapshot |
+| Audit trace | `paid_role_assigned` and `compensation_snapshot_created` confirmed |
+| New QA attendance snapshot coverage | Six of six records received a finalized snapshot before cleanup |
+| Payroll/finance mutations | None |
+| Cleanup | Six of six scenarios independently confirmed clean |
+| Post-acceptance health | Application healthy, database connected, no HTTP 5xx or relevant SQL/snapshot errors |
+
+The runner did not invoke payroll generation, approval, payment, finance commit,
+or reversal. Cleanup removed the disposable schedule and attendance rows,
+deactivated the disposable staff fixtures, and independently confirmed zero
+payroll drafts, payroll entries, salary adjustments, or finance transactions for
+those fixtures.
+
+Accepted boundaries remain unchanged:
+
+- `hybrid`, `percent`, and `manual` stay fail-closed until separate formulas are approved;
+- the historical pre-fix attendance cohort is not backfilled and does not receive
+  retroactive additional pay;
+- approved and paid financial history remains immutable.

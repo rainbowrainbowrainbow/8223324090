@@ -209,6 +209,15 @@ test('aggregate failure output preserves both scenario and cleanup causes', () =
     assert.match(output, /guarded cleanup preflight blocked/);
 });
 
+test('timeline rate-limit diagnostic recognizes the rendered HTTP 429 state', () => {
+    assert.equal(smoke.isTimelineRateLimited({
+        notifications: ['Не вдалося завантажити бронювання · HTTP 429']
+    }), true);
+    assert.equal(smoke.isTimelineRateLimited({
+        notifications: ['Бронювання створено!']
+    }), false);
+});
+
 test('cleanup diagnostics retain only allowlisted technical classification fields', () => {
     assert.deepEqual(smoke.safeCleanupClassification({
         status: 'marker_mismatch',

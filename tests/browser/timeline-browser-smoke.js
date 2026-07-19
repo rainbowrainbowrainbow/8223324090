@@ -313,6 +313,12 @@ function isRateLimitError(error) {
     return /\breturned 429\b/.test(String(error?.message || error || ''));
 }
 
+function isTimelineRateLimited(diagnostics = {}) {
+    return (diagnostics.notifications || []).some(message => (
+        /HTTP\s*429|Забагато запитів/i.test(String(message || ''))
+    ));
+}
+
 async function readBody(res) {
     const text = await res.text();
     try {
@@ -832,7 +838,16 @@ async function verifyCancelledBanquetSnapshot(base, token, target) {
     assert.ok(anchorId, `cancelled snapshot anchor exists for ${target.groupId}`);
     let snapshot;
     try {
-        snapshot = await banquetSnapshot(base, token, anchorId);
+        snapshot = await fetchJsonWithRetry(
+            base,
+            scopedPath(`/api/banquets/by-booking/${encodeURIComponent(anchorId)}`),
+            { token },
+            {
+                attempts: 3,
+                delayMs: RATE_LIMIT_RETRY_MS,
+                label: `cancelled banquet snapshot ${target.groupId}`
+            }
+        );
     } catch (error) {
         assert.match(
             String(error?.message || error),
@@ -3396,7 +3411,8 @@ async function runRevealAction(page, date, kitchenId) {
     }, kitchenId);
     let revealed = false;
     const attempts = [];
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let rateLimitBackoffs = 0;
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
         revealed = await page.evaluate(
             async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
             { bookingId: kitchenId, bookingDate: date }
@@ -3415,6 +3431,13 @@ async function runRevealAction(page, date, kitchenId) {
         }));
         attempts.push({ attempt, revealed, diagnostics });
         if (revealed) break;
+        if (isTimelineRateLimited(diagnostics) && rateLimitBackoffs < 1) {
+            rateLimitBackoffs += 1;
+            console.warn(`canonical room timeline reveal: HTTP 429, retrying after ${RATE_LIMIT_RETRY_MS}ms`);
+            await sleep(RATE_LIMIT_RETRY_MS);
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitForTimelineReady(page, 'canonical room timeline reveal after rate-limit reload');
+        }
         await renderTimelineView(page, date, 'rooms');
         await sleep(1000);
     }
@@ -3598,8 +3621,8 @@ async function run() {
         );
 
         const kitchenFirstCreate = await createBooking(base, token, bookingPayload({
-            date,
-            time: '18:15',
+            date: secondDate,
+            time: '13:00',
             lineId: 'banquet-service',
             room,
             label: `Task37 kitchen first ${RUN_ID}`,
@@ -3611,15 +3634,15 @@ async function run() {
             customerPhone: customerB.phone,
             childName: customerB.childName,
             banquetGuests: 5,
-            bookingPackage: kitchenPackage('18:30')
+            bookingPackage: kitchenPackage('13:15')
         }));
         recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate);
         await verifyPersistedCreateResult(base, token, kitchenFirstCreate, 'kitchen-first root');
         const kitchenFirst = kitchenFirstCreate.booking;
 
-        await renderTimelineView(page, date, 'rooms');
+        await renderTimelineView(page, secondDate, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFirst.id);
-        const kitchenFirstDrawer = await openActivityFromKitchenSource(page, date, kitchenFirst.id);
+        const kitchenFirstDrawer = await openActivityFromKitchenSource(page, secondDate, kitchenFirst.id);
         assertBridgeSelector(kitchenFirstDrawer, 'kitchen first -> activity');
         const program = await chooseFirstActivityProgram(page);
         assert.ok(program?.id, 'activity program selected for kitchen-first bridge');
@@ -3633,9 +3656,9 @@ async function run() {
             ...activityFromKitchen.bookingIds
         ]);
 
-        await renderTimelineView(page, date, 'rooms');
+        await renderTimelineView(page, secondDate, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFirst.id);
-        await renderTimelineView(page, date, 'animators');
+        await renderTimelineView(page, secondDate, 'animators');
         await assertBookingBlockVisible(page, activityFromKitchen.booking.id);
         const kitchenFirstAnimatorVisible = await page.evaluate(id => {
             const escaped = CSS.escape(String(id));
@@ -3727,6 +3750,7 @@ module.exports = {
     bookingCreateResult,
     formatErrorForOutput,
     isBookingCreateEndpoint,
+    isTimelineRateLimited,
     markCreateRequestPayload,
     normalizedBookingIds,
     safeCleanupClassification,

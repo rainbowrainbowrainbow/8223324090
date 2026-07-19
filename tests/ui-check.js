@@ -4172,6 +4172,8 @@ check('Sidebar timeline launcher keeps mode, URL, semantic, sync and mobile-clos
     && sidebarCode.includes('function _ensureSidebarBusinessProfile')
     && sidebarCode.includes('api.hydrateProfile({')
     && sidebarCode.includes('void _ensureSidebarBusinessProfile();')
+    && apiCode.includes('function crmBusinessHasTimelineViewHandoff')
+    && apiCode.includes('crmBusinessHasTimelineViewHandoff(current, context)')
     && sidebarCode.includes("[data-sidebar-rail-item], [data-sidebar-timeline-mode]")
     && sidebarCode.includes('if (isMobileSidebar()) setMobileSidebarOpen(false);')
     && sidebarAuroraCss.includes('--eg-timeline-launcher-duration: 170ms')

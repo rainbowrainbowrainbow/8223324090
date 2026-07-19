@@ -1028,6 +1028,15 @@ function crmBusinessHasLeadBookingHandoff(url) {
         || params.has('eventDate');
 }
 
+function crmBusinessHasTimelineViewHandoff(url, context) {
+    const params = url?.searchParams;
+    const timelineView = String(params?.get('timelineView') || params?.get('timeline_view') || '').trim();
+    if (!['animators', 'rooms'].includes(timelineView)) return false;
+    const requestedContext = params.get('businessContext');
+    return !requestedContext
+        || normalizeCrmBusinessContext(requestedContext) === normalizeCrmBusinessContext(context);
+}
+
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
@@ -1053,7 +1062,8 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     if (target.pathname === current.pathname && target.search === current.search) return false;
     if (page?.id === 'timeline'
         && target.pathname === current.pathname
-        && crmBusinessHasLeadBookingHandoff(current)) {
+        && (crmBusinessHasLeadBookingHandoff(current)
+            || crmBusinessHasTimelineViewHandoff(current, context))) {
         return false;
     }
     window.__crmBusinessNavigationPending = true;

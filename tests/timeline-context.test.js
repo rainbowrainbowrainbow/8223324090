@@ -439,6 +439,9 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessTimelineRoute/);
     assert.match(apiCode, /\?businessContext=\$\{encodeURIComponent\(key\)\}/);
     assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return crmBusinessTimelineRoute\(key\)/);
+    assert.match(apiCode, /function crmBusinessHasTimelineViewHandoff/);
+    assert.match(apiCode, /\['animators', 'rooms'\]\.includes\(timelineView\)/);
+    assert.match(apiCode, /crmBusinessHasTimelineViewHandoff\(current, context\)/);
     assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
     assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);

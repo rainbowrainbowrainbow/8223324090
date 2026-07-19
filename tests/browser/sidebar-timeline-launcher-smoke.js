@@ -10,6 +10,7 @@ const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
     || process.env.LIVE_SMOKE_URL;
 const ALLOW_NON_LOCAL = process.env.SIDEBAR_TIMELINE_SMOKE_ALLOW_PRODUCTION === 'true';
 const TEST_ACCOUNT_CONFIRMED = process.env.SIDEBAR_TIMELINE_SMOKE_TEST_ACCOUNT === 'true';
+const SKIP_SINGLE_CONTEXT = process.env.SIDEBAR_TIMELINE_SMOKE_SKIP_SINGLE_CONTEXT === 'true';
 const HEADLESS = process.env.SIDEBAR_TIMELINE_SMOKE_HEADLESS !== 'false';
 const TIMEOUT_MS = Number(process.env.SIDEBAR_TIMELINE_SMOKE_TIMEOUT_MS || 25000);
 const PARK_CONTEXT = 'event_genix';
@@ -319,11 +320,20 @@ async function assertParkLauncher(page, base) {
 
     await page.locator('[data-sidebar-timeline-mode="rooms"]').click();
     await waitForSidebar(page);
-    await page.waitForFunction(() => (
-        location.pathname === '/'
-        && new URL(location.href).searchParams.get('timelineView') === 'rooms'
-        && window.TimelineView?.current?.() === 'rooms'
-    ));
+    try {
+        await page.waitForFunction(() => (
+            location.pathname === '/'
+            && new URL(location.href).searchParams.get('timelineView') === 'rooms'
+            && window.TimelineView?.current?.() === 'rooms'
+        ));
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+            url: location.href,
+            currentView: window.TimelineView?.current?.() || '',
+            context: window.CrmBusinessContext?.current?.() || ''
+        }));
+        throw new Error(`Rooms deep link did not settle: ${JSON.stringify(diagnostics)}; ${error.message}`);
+    }
     await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
     await traverseSidebarHistory(page, 'forward', { pathname: '/', view: 'rooms' });
     await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
@@ -392,7 +402,7 @@ async function run() {
 
     const session = await login(base);
     const singleContext = singleModeContextFor(session.user);
-    if (!singleContext) {
+    if (!singleContext && !SKIP_SINGLE_CONTEXT) {
         fail('test account has no Dar/Maysternya one-mode context; set SIDEBAR_TIMELINE_SMOKE_SINGLE_CONTEXT');
     }
 
@@ -423,10 +433,11 @@ async function run() {
 
     try {
         await assertParkLauncher(page, base);
-        await assertSingleModeCard(page, base, singleContext);
+        if (singleContext) await assertSingleModeCard(page, base, singleContext);
         console.log(`Sidebar timeline launcher smoke OK: ${base}`);
         console.log(`  OK Park two-mode launcher, local switching, mobile close, keyboard, direct URLs and Back/Forward`);
-        console.log(`  OK ${singleContext} one-mode direct card`);
+        if (singleContext) console.log(`  OK ${singleContext} one-mode direct card`);
+        else console.log('  SKIP one-mode direct card: test account has no Dar/Maysternya context');
         if (blockedMutations.length) {
             console.log(`  Safety gate blocked ${blockedMutations.length} non-read API request(s)`);
         } else {

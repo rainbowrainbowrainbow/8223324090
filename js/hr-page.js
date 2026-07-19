@@ -12927,6 +12927,10 @@ function sortCompanyStructureNodes(nodes) {
     return [...(nodes || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.title).localeCompare(String(b.title), 'uk'));
 }
 
+function companyOrgVisibleNodes() {
+    return sortCompanyStructureNodes(companyStructureNodes.filter(node => node.archived !== true));
+}
+
 function compareCompanyOrgAutoLayoutNodes(a, b) {
     const laneDelta = (ORG_AUTO_LAYOUT_LANE_RANK[a?.lane] ?? 99) - (ORG_AUTO_LAYOUT_LANE_RANK[b?.lane] ?? 99);
     if (laneDelta) return laneDelta;
@@ -12952,7 +12956,9 @@ function companyStructureNodesByLane(lane) {
 }
 
 function companyOrgLinkedProfessions(nodeId) {
-    return (hrProfessions || []).filter(item => (item.structure_node_id || item.structureNodeId) === nodeId);
+    return (hrProfessions || [])
+        .filter(item => (item.structure_node_id || item.structureNodeId) === nodeId)
+        .filter(item => item.is_active !== false && item.isActive !== false);
 }
 
 function companyOrgLinkedStaffIds(nodeId) {
@@ -13036,7 +13042,7 @@ function companyOrgStageSizeForNodes(nodes) {
 }
 
 function companyOrgStageSize() {
-    return companyOrgStageSizeForNodes(companyStructureNodes);
+    return companyOrgStageSizeForNodes(companyOrgVisibleNodes());
 }
 
 function companyOrgNodeAnchor(node, edge = 'center') {
@@ -13078,8 +13084,9 @@ function renderCompanyOrgLinks() {
     layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
-    const byId = new Map(companyStructureNodes.map(node => [node.id, node]));
-    const linkHtml = companyStructureNodes.map(node => {
+    const visibleNodes = companyOrgVisibleNodes();
+    const byId = new Map(visibleNodes.map(node => [node.id, node]));
+    const linkHtml = visibleNodes.map(node => {
         const parent = node.parentId ? byId.get(node.parentId) : null;
         if (!parent) return '';
         const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
@@ -13115,8 +13122,13 @@ function renderCompanyOrgNode(node) {
     const size = companyOrgNodeSize(node);
     const displayGroup = companyStructureNodeDisplayGroup(node);
     const displayGroupLabel = companyStructureDisplayGroupLabel(displayGroup);
-    const professionCount = companyOrgLinkedProfessions(node.id).length;
+    const linkedProfessions = companyOrgLinkedProfessions(node.id)
+        .sort((a, b) => String(a.title || a.key || '').localeCompare(String(b.title || b.key || ''), 'uk'));
+    const professionCount = linkedProfessions.length;
     const staffCount = companyOrgLinkedStaffIds(node.id).length;
+    const professionPreview = linkedProfessions.length
+        ? `<span class="hr-org-node-professions" aria-label="Професії вузла ${escapeHtml(node.title)}">${linkedProfessions.map(item => `<span>${escapeHtml(item.title || item.key)}</span>`).join('')}</span>`
+        : '<span class="hr-org-node-professions is-empty">Професій не привʼязано</span>';
     const searchClass = companyOrgNodeMatchesSearch(node) ? '' : ' is-search-dim';
     const archivedClass = node.archived ? ' is-archived' : '';
     return `
@@ -13124,6 +13136,7 @@ function renderCompanyOrgNode(node) {
             <button type="button" class="hr-org-node hr-org-node--${tone} hr-org-node--lane-${lane}${active}" data-org-node-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(node.title)}. ${professionCount} професій, ${staffCount} працівників.${editable ? ' Перетягніть на інший вузол, щоб змінити керівника.' : ' Режим лише для перегляду.'}">
                 <span class="hr-org-node-lane">${escapeHtml(displayGroupLabel || ORG_LANE_LABELS[lane] || 'Роль')}</span>
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
+                ${professionPreview}
                 <span class="hr-org-node-counts"><span title="Професії">${professionCount} проф.</span><span title="Працівники">${staffCount} люд.</span></span>
                 ${(node.collapsed || node.archived) ? `<span class="hr-org-node-state">${node.archived ? 'Архів' : 'Згорнуто'}</span>` : ''}
             </button>
@@ -13415,16 +13428,17 @@ function renderCompanyOrgChart() {
         renderCompanyStructureEditorState();
         return;
     }
+    const visibleNodes = companyOrgVisibleNodes();
     const { width, height } = companyOrgStageSize();
     stage.style.width = `${width}px`;
     stage.style.minHeight = `${height}px`;
     stage.classList.toggle('is-linking', Boolean(companyOrgLinkingNodeId));
-    stage.innerHTML = companyStructureNodes.length ? `
+    stage.innerHTML = visibleNodes.length ? `
         <svg class="hr-org-link-layer" role="group" aria-label="Лінії підпорядкування" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>
         <div class="hr-org-node-plane">
-            ${sortCompanyStructureNodes(companyStructureNodes).map(renderCompanyOrgNode).join('')}
+            ${visibleNodes.map(renderCompanyOrgNode).join('')}
         </div>
-    ` : '<div class="hr-org-loading">Немає вузлів структури</div>';
+    ` : '<div class="hr-org-loading">Немає активних вузлів структури</div>';
     bindCompanyOrgChartEvents(stage);
     renderCompanyOrgLinks();
     updateCompanyOrgLinkStatus();

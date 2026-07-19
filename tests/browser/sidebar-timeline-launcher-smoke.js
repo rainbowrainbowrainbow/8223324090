@@ -305,6 +305,7 @@ async function assertParkLauncher(page, base) {
 
     await page.goto(`${base}/leads?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
     await waitForSidebar(page);
+    const crossPagePath = new URL(page.url()).pathname;
     const crossPageLauncher = await page.evaluate(() => {
         const profile = window.CrmBusinessContext?.profileFor?.('event_genix') || null;
         return {
@@ -334,9 +335,9 @@ async function assertParkLauncher(page, base) {
         }));
         throw new Error(`Rooms deep link did not settle: ${JSON.stringify(diagnostics)}; ${error.message}`);
     }
-    await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
+    await traverseSidebarHistory(page, 'back', { pathname: crossPagePath });
     await traverseSidebarHistory(page, 'forward', { pathname: '/', view: 'rooms' });
-    await traverseSidebarHistory(page, 'back', { pathname: '/leads' });
+    await traverseSidebarHistory(page, 'back', { pathname: crossPagePath });
 
     await page.locator('[data-sidebar-timeline-mode="animators"]').click();
     await waitForSidebar(page);

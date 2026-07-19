@@ -561,6 +561,12 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
     const compatibilityLinks = Array.isArray(state.compatibilityLinks)
         ? state.compatibilityLinks
         : [];
+    const compatibilityLinkScope = compatibilityLinks.map(link => ({
+        id: Number.isSafeInteger(Number(link.id)) ? Number(link.id) : String(link.id || '').trim() || null,
+        bookingAId: String(link.booking_a_id || '').trim() || null,
+        bookingBId: String(link.booking_b_id || '').trim() || null,
+        relationType: String(link.relation_type || '').trim() || null
+    }));
     for (const link of compatibilityLinks) {
         const a = String(link.booking_a_id || '').trim();
         const b = String(link.booking_b_id || '').trim();
@@ -689,7 +695,8 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
         certificateReferenceCount: certificateReferences.length,
         stockDependencyCount: stockDependencies.length,
         banquetLinkCount: compatibilityLinks.length
-            || Number(state.legacyBanquetLinkCount || 0)
+            || Number(state.legacyBanquetLinkCount || 0),
+        compatibilityLinks: compatibilityLinkScope
     };
 }
 

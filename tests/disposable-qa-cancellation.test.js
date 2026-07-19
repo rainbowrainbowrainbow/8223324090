@@ -113,6 +113,27 @@ test('preflight allows one canonical booking income for strict finance synchroni
     assert.equal(inspection.blockingFinanceTransactionCount, 0);
 });
 
+test('preflight exposes sanitized compatibility link scope when cleanup blocks', () => {
+    const inspection = inspectQaCleanupGroupState(groupState({
+        compatibilityLinks: [{
+            id: 205,
+            booking_a_id: 'BK-QA-PRIMARY',
+            booking_b_id: 'BK-EXTERNAL',
+            relation_type: 'shared_room_activity',
+            label: 'must not leak into operator report'
+        }]
+    }), OPTIONS);
+
+    assert.equal(inspection.status, 'inconsistent');
+    assert.deepEqual(inspection.compatibilityLinks, [{
+        id: 205,
+        bookingAId: 'BK-QA-PRIMARY',
+        bookingBId: 'BK-EXTERNAL',
+        relationType: 'shared_room_activity'
+    }]);
+    assert.equal(JSON.stringify(inspection).includes('must not leak'), false);
+});
+
 test('preflight blocks deposits, receipts, payment references, and noncanonical finance', () => {
     const inspection = inspectQaCleanupGroupState(groupState({
         bookings: [bookingRow({ paid_amount: 100, payment_status: 'paid' })],

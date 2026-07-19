@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.101 - Timeline launcher visual guard
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Timeline launcher visual guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.100 - Безпечний Railway preflight для QA cleanup
 
 ### Timeline / Production QA / (19.07.2026) [codex]

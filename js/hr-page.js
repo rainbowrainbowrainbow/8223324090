@@ -12583,15 +12583,18 @@ let companyOrgSuppressNextClick = false;
 let companyOrgViewMode = 'chart';
 let companyOrgZoom = 1;
 let companyOrgSearchQuery = '';
+let companyOrgArchiveFilter = 'active';
 let companyOrgSearchRenderTimer = null;
 let companyOrgResponsiveBound = false;
 let companyOrgSavedDraftSignature = '';
 let companyOrgTreeCollapsedIds = new Set();
 let companyOrgTreeExpandedIds = new Set();
+let companyOrgInspectorReturnFocus = null;
 let companyOrgUndoStack = [];
 let companyOrgRedoStack = [];
 let companyOrgNodeIdSequence = 0;
 const COMPANY_ORG_HISTORY_LIMIT = 50;
+const COMPANY_ORG_ARCHIVE_FILTERS = new Set(['active', 'archived', 'all']);
 
 function canEditCompanyStructure() {
     if (companyStructurePermissionDenied) return false;
@@ -12790,6 +12793,16 @@ function resetCompanyOrgViewState() {
     }
 }
 
+function normalizeCompanyOrgArchiveFilter(value) {
+    return COMPANY_ORG_ARCHIVE_FILTERS.has(value) ? value : 'active';
+}
+
+function companyOrgNodeMatchesArchiveFilter(node) {
+    if (companyOrgArchiveFilter === 'all') return true;
+    if (companyOrgArchiveFilter === 'archived') return node?.archived === true;
+    return node?.archived !== true;
+}
+
 function companyStructureCurrentDraftSignature() {
     const notes = document.getElementById('companyStructureNotes')?.value || '';
     const instructions = document.getElementById('companyInstructionsText')?.value || '';
@@ -12948,7 +12961,6 @@ function normalizeCompanyStructureNodes(nodes) {
             y: clampCompanyOrgCoord(raw.y, 5000) ?? fallbackPosition.y,
             meta: raw.meta ? String(raw.meta).trim().slice(0, 80) : null,
             displayGroup: companyStructureNodeDisplayGroup({ ...raw, id }) || null,
-            collapsed: raw.collapsed === true,
             archived: raw.archived === true
         };
     });
@@ -12981,7 +12993,8 @@ function sortCompanyStructureNodes(nodes) {
 }
 
 function companyOrgVisibleNodes() {
-    return sortCompanyStructureNodes(companyStructureNodes.filter(node => node.archived !== true));
+    const visibleIds = companyOrgVisibleNodeIds();
+    return sortCompanyStructureNodes(companyStructureNodes.filter(node => visibleIds.has(node.id)));
 }
 
 function compareCompanyOrgAutoLayoutNodes(a, b) {
@@ -13070,6 +13083,32 @@ function companyOrgNodeMatchesSearch(node, query = companyOrgSearchQuery) {
         professionText,
         staffText
     ].join(' ')).includes(needle);
+}
+
+function addCompanyOrgVisibleNodePath(visible, node) {
+    let cursor = node;
+    while (cursor && !visible.has(cursor.id)) {
+        visible.add(cursor.id);
+        cursor = cursor.parentId ? companyStructureNodeById(cursor.parentId) : null;
+    }
+}
+
+function companyOrgVisibleNodeIds() {
+    const query = normalizeSearchText(companyOrgSearchQuery);
+    const visible = new Set();
+    sortCompanyStructureNodes(companyStructureNodes).forEach(node => {
+        if (!companyOrgNodeMatchesArchiveFilter(node)) return;
+        if (query && !companyOrgNodeMatchesSearch(node, query)) return;
+        addCompanyOrgVisibleNodePath(visible, node);
+    });
+    return visible;
+}
+
+function companyOrgVisibleEmptyMessage() {
+    if (normalizeSearchText(companyOrgSearchQuery)) return 'За пошуком нічого не знайдено. Очистіть пошук або змініть фільтр активності.';
+    if (companyOrgArchiveFilter === 'archived') return 'Архівних вузлів немає.';
+    if (companyOrgArchiveFilter === 'all') return 'У структурі немає вузлів для показу.';
+    return 'Немає активних вузлів структури.';
 }
 
 function companyStructureTextFromNodes(nodes) {
@@ -13198,7 +13237,7 @@ function renderCompanyOrgNode(node) {
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
                 ${professionPreview}
                 <span class="hr-org-node-counts"><span title="Професії">${professionCount} проф.</span><span title="Працівники">${staffCount} люд.</span></span>
-                ${(node.collapsed || node.archived) ? `<span class="hr-org-node-state">${node.archived ? 'Архів' : 'Згорнуто'}</span>` : ''}
+                ${node.archived ? '<span class="hr-org-node-state">Архів</span>' : ''}
             </button>
             ${editable ? `<span class="hr-org-node-quick-actions">
                 <button type="button" data-org-quick-add="${escapeHtml(node.id)}" aria-label="Додати до ${escapeHtml(node.title)}" aria-haspopup="menu" aria-expanded="false">+</button>
@@ -13238,7 +13277,6 @@ function addCompanyStructureNode({ relation = 'child', sourceId = selectedCompan
         y: snapCompanyOrgCoord(Number(source.y || 0) + (relation === 'child' ? ORG_NODE_HEIGHT + 80 : 0), 5000) ?? 0,
         meta: null,
         displayGroup: companyStructureNodeDisplayGroup(source) || null,
-        collapsed: false,
         archived: false
     };
     pushCompanyOrgHistory();
@@ -13272,7 +13310,6 @@ function duplicateCompanyStructureNode(nodeId = selectedCompanyStructureNodeId) 
         order: (Number(source.order) || 0) + 1,
         x: snapCompanyOrgCoord(Number(source.x || 0) + 40, 5000) ?? source.x,
         y: snapCompanyOrgCoord(Number(source.y || 0) + 40, 5000) ?? source.y,
-        collapsed: false,
         archived: false
     };
     pushCompanyOrgHistory();
@@ -13326,7 +13363,7 @@ function companyOrgNodeIsTreeCollapsed(node) {
     if (!node?.id) return false;
     if (companyOrgTreeExpandedIds.has(node.id)) return false;
     if (companyOrgTreeCollapsedIds.has(node.id)) return true;
-    return node.collapsed === true;
+    return false;
 }
 
 async function requestArchiveCompanyStructureNode(nodeId = selectedCompanyStructureNodeId) {
@@ -13513,7 +13550,7 @@ function renderCompanyOrgChart() {
         <div class="hr-org-node-plane">
             ${visibleNodes.map(renderCompanyOrgNode).join('')}
         </div>
-    ` : '<div class="hr-org-loading">Немає активних вузлів структури</div>';
+    ` : `<div class="hr-org-loading">${escapeHtml(companyOrgVisibleEmptyMessage())}</div>`;
     bindCompanyOrgChartEvents(stage);
     renderCompanyOrgLinks();
     updateCompanyOrgLinkStatus();
@@ -13522,19 +13559,7 @@ function renderCompanyOrgChart() {
 }
 
 function companyOrgTreeVisibleIds() {
-    const query = normalizeSearchText(companyOrgSearchQuery);
-    const activeNodes = companyStructureNodes.filter(node => node.archived !== true);
-    if (!query) return new Set(activeNodes.map(node => node.id));
-    const visible = new Set();
-    activeNodes.forEach(node => {
-        if (!companyOrgNodeMatchesSearch(node, query)) return;
-        let cursor = node;
-        while (cursor && cursor.archived !== true && !visible.has(cursor.id)) {
-            visible.add(cursor.id);
-            cursor = cursor.parentId ? companyStructureNodeById(cursor.parentId) : null;
-        }
-    });
-    return visible;
+    return companyOrgVisibleNodeIds();
 }
 
 function companyOrgTreeProfessionList(node) {
@@ -13548,27 +13573,26 @@ function companyOrgTreeProfessionList(node) {
 }
 
 function renderCompanyOrgTreeBranch(node, level, visibleIds) {
-    const children = companyStructureChildrenOf(node.id).filter(child => child.archived !== true && visibleIds.has(child.id));
+    const children = companyStructureChildrenOf(node.id).filter(child => visibleIds.has(child.id));
     const expanded = Boolean(children.length && (!companyOrgNodeIsTreeCollapsed(node) || companyOrgSearchQuery));
     const professionCount = companyOrgLinkedProfessions(node.id).filter(item => item.is_active !== false && item.isActive !== false).length;
     const staffCount = companyOrgLinkedStaffIds(node.id).length;
     const professionList = companyOrgTreeProfessionList(node);
     const selected = node.id === selectedCompanyStructureNodeId;
+    const query = normalizeSearchText(companyOrgSearchQuery);
+    const searchMatch = Boolean(query && companyOrgNodeMatchesSearch(node, query));
     return `<li role="none">
-        <div class="hr-org-tree-row" data-org-tree-row="${escapeHtml(node.id)}">
+        <div class="hr-org-tree-row${node.archived ? ' is-archived' : ''}" data-org-tree-row="${escapeHtml(node.id)}">
             <button type="button" class="hr-org-tree-toggle" data-org-tree-toggle="${escapeHtml(node.id)}" ${children.length ? `aria-label="${expanded ? 'Згорнути' : 'Розгорнути'} ${escapeHtml(node.title)}" aria-expanded="${expanded ? 'true' : 'false'}"` : 'disabled aria-hidden="true"'}>${children.length ? (expanded ? '▾' : '▸') : '·'}</button>
-            <button type="button" class="hr-org-tree-select${selected ? ' is-active' : ''}" role="treeitem" aria-level="${level}" aria-selected="${selected ? 'true' : 'false'}" ${children.length ? `aria-expanded="${expanded ? 'true' : 'false'}"` : ''} tabindex="${selected ? '0' : '-1'}" data-org-tree-select="${escapeHtml(node.id)}" data-org-tree-level="${level}">
-                <strong>${escapeHtml(node.title)}</strong><small>${professionCount} проф. · ${staffCount} люд.</small>
+            <button type="button" class="hr-org-tree-select${selected ? ' is-active' : ''}${searchMatch ? ' is-search-match' : ''}" role="treeitem" aria-level="${level}" aria-selected="${selected ? 'true' : 'false'}" ${children.length ? `aria-expanded="${expanded ? 'true' : 'false'}"` : ''} tabindex="${selected ? '0' : '-1'}" data-org-tree-select="${escapeHtml(node.id)}" data-org-tree-level="${level}">
+                <strong title="${escapeHtml(node.title)}">${escapeHtml(node.title)}</strong><small>${professionCount} проф. · ${staffCount} люд.${node.archived ? ' · Архів' : ''}</small>
             </button>
             ${companyStructureCanMutate() ? `<span class="hr-org-node-quick-actions">
-                <button type="button" data-org-tree-add="${escapeHtml(node.id)}" aria-label="Додати до ${escapeHtml(node.title)}" aria-haspopup="menu" aria-expanded="false">+</button>
+                <button type="button" data-org-tree-add="${escapeHtml(node.id)}" aria-label="Додати дочірній вузол до ${escapeHtml(node.title)}">+</button>
                 <button type="button" data-org-tree-more="${escapeHtml(node.id)}" aria-label="Дії з ${escapeHtml(node.title)}" aria-haspopup="menu" aria-expanded="false">⋯</button>
-                <span class="hr-org-node-menu hidden" role="menu" data-org-tree-add-menu="${escapeHtml(node.id)}">
-                    <button type="button" role="menuitem" data-org-action="add-child" data-org-action-node="${escapeHtml(node.id)}">Дочірній вузол</button>
+                <span class="hr-org-node-menu hidden" role="menu" data-org-tree-more-menu="${escapeHtml(node.id)}">
                     <button type="button" role="menuitem" data-org-action="add-sibling" data-org-action-node="${escapeHtml(node.id)}">Сусідній вузол</button>
                     <button type="button" role="menuitem" data-org-action="add-profession" data-org-action-node="${escapeHtml(node.id)}">Професію у вузлі</button>
-                </span>
-                <span class="hr-org-node-menu hidden" role="menu" data-org-tree-more-menu="${escapeHtml(node.id)}">
                     <button type="button" role="menuitem" data-org-action="rename" data-org-action-node="${escapeHtml(node.id)}">Перейменувати</button>
                     <button type="button" role="menuitem" data-org-action="duplicate" data-org-action-node="${escapeHtml(node.id)}">Дублювати</button>
                     <button type="button" role="menuitem" data-org-action="move" data-org-action-node="${escapeHtml(node.id)}">Перемістити</button>
@@ -13590,6 +13614,11 @@ function focusCompanyOrgTreeButton(button) {
     button.focus?.({ preventScroll: true });
     button.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     return true;
+}
+
+function focusCompanyOrgTreeNode(nodeId) {
+    if (!nodeId) return false;
+    return focusCompanyOrgTreeButton(document.querySelector(`[data-org-tree-select="${nodeId}"]`));
 }
 
 function focusCompanyOrgTreeItemByOffset(current, offset) {
@@ -13635,21 +13664,23 @@ function handleCompanyOrgTreeKeydown(event) {
         return;
     }
     if (event.key === 'ArrowRight') {
-        const children = companyStructureChildrenOf(node.id).filter(child => child.archived !== true);
+        const visibleIds = companyOrgTreeVisibleIds();
+        const children = companyStructureChildrenOf(node.id).filter(child => visibleIds.has(child.id));
         if (!children.length) return;
         event.preventDefault();
         if (companyOrgNodeIsTreeCollapsed(node) && !companyOrgSearchQuery) {
             setCompanyStructureNodeCollapsed(node.id, false);
             document.querySelector(`[data-org-tree-select="${node.id}"]`)?.focus?.({ preventScroll: true });
         } else {
-            const child = children.find(item => companyOrgTreeVisibleIds().has(item.id));
+            const child = children.find(item => visibleIds.has(item.id));
             document.querySelector(`[data-org-tree-select="${child?.id || ''}"]`)?.focus?.({ preventScroll: true });
         }
         return;
     }
     if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        const children = companyStructureChildrenOf(node.id).filter(child => child.archived !== true);
+        const visibleIds = companyOrgTreeVisibleIds();
+        const children = companyStructureChildrenOf(node.id).filter(child => visibleIds.has(child.id));
         if (children.length && !companyOrgNodeIsTreeCollapsed(node) && !companyOrgSearchQuery) {
             setCompanyStructureNodeCollapsed(node.id, true);
             document.querySelector(`[data-org-tree-select="${node.id}"]`)?.focus?.({ preventScroll: true });
@@ -13660,23 +13691,36 @@ function handleCompanyOrgTreeKeydown(event) {
 }
 
 function firstCompanyOrgSearchMatch() {
+    const query = normalizeSearchText(companyOrgSearchQuery);
     return sortCompanyStructureNodes(companyStructureNodes)
-        .filter(node => node.archived !== true)
-        .find(node => companyOrgNodeMatchesSearch(node)) || null;
+        .filter(node => companyOrgNodeMatchesArchiveFilter(node))
+        .find(node => !query || companyOrgNodeMatchesSearch(node, query)) || null;
 }
 
 function reconcileCompanyOrgSearchSelection() {
-    if (!companyOrgSearchQuery) return;
+    const query = normalizeSearchText(companyOrgSearchQuery);
     const visibleIds = companyOrgTreeVisibleIds();
     const selected = companyStructureNodeById(selectedCompanyStructureNodeId);
-    if (selected && visibleIds.has(selected.id) && companyOrgNodeMatchesSearch(selected)) return;
+    if (selected
+        && visibleIds.has(selected.id)
+        && companyOrgNodeMatchesArchiveFilter(selected)
+        && (!query || companyOrgNodeMatchesSearch(selected, query))) return;
     const match = firstCompanyOrgSearchMatch();
-    if (match) selectedCompanyStructureNodeId = match.id;
+    if (match) {
+        selectedCompanyStructureNodeId = match.id;
+        return;
+    }
+    const fallback = sortCompanyStructureNodes(companyStructureNodes).find(node => visibleIds.has(node.id));
+    selectedCompanyStructureNodeId = fallback?.id || null;
 }
 
 function renderCompanyOrgTree() {
     const root = document.getElementById('companyOrgTree');
     if (!root) return;
+    const activeElement = document.activeElement;
+    const focusedTreeId = root.contains(activeElement)
+        ? (activeElement?.dataset?.orgTreeSelect || activeElement?.dataset?.orgTreeToggle || activeElement?.dataset?.orgTreeMore || activeElement?.dataset?.orgTreeAdd || null)
+        : null;
     if (companyStructureLoadState === 'loading' || companyStructureLoadState === 'idle') {
         root.innerHTML = '<div class="hr-org-loading">Завантаження дерева…</div>';
         return;
@@ -13693,7 +13737,7 @@ function renderCompanyOrgTree() {
     const visibleIds = companyOrgTreeVisibleIds();
     const roots = sortCompanyStructureNodes(companyStructureNodes.filter(node => !node.parentId || !companyStructureNodeById(node.parentId))).filter(node => visibleIds.has(node.id));
     if (!roots.length) {
-        root.innerHTML = '<div class="hr-org-loading">За пошуком нічого не знайдено.</div>';
+        root.innerHTML = `<div class="hr-org-loading">${escapeHtml(companyOrgVisibleEmptyMessage())}</div>`;
         return;
     }
     root.innerHTML = `<ul class="hr-org-tree-list" role="none">${roots.map(node => renderCompanyOrgTreeBranch(node, 1, visibleIds)).join('')}</ul>`;
@@ -13721,8 +13765,7 @@ function renderCompanyOrgTree() {
     root.querySelectorAll('[data-org-tree-add]').forEach(button => {
         button.addEventListener('click', event => {
             event.stopPropagation();
-            selectCompanyOrgNodeById(button.dataset.orgTreeAdd);
-            toggleCompanyOrgNodeMenu(button, button.closest('.hr-org-node-quick-actions')?.querySelector('[data-org-tree-add-menu]'));
+            handleCompanyOrgNodeAction('add-child', button.dataset.orgTreeAdd);
         });
     });
     root.querySelectorAll('[data-org-tree-more]').forEach(button => {
@@ -13741,6 +13784,7 @@ function renderCompanyOrgTree() {
     root.onclick = event => {
         if (!event.target.closest?.('.hr-org-node-menu, [data-org-tree-add], [data-org-tree-more]')) closeCompanyOrgNodeMenus();
     };
+    if (focusedTreeId) focusCompanyOrgTreeNode(focusedTreeId);
 }
 
 function applyCompanyOrgZoom() {
@@ -14236,6 +14280,41 @@ function bindCompanyOrgKeyboard() {
         if (event.key === 'Escape' && document.getElementById('hrOrgInspector')?.classList.contains('is-mobile-open')) {
             closeCompanyOrgInspector();
         }
+        if (event.key === 'Tab' && document.getElementById('hrOrgInspector')?.classList.contains('is-mobile-open')) {
+            trapCompanyOrgInspectorFocus(event);
+        }
+    });
+}
+
+function companyOrgInspectorFocusableElements() {
+    const inspector = document.getElementById('hrOrgInspector');
+    if (!inspector) return [];
+    return Array.from(inspector.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), details summary, [tabindex]:not([tabindex="-1"])'))
+        .filter(element => !element.hidden && element.offsetParent !== null);
+}
+
+function trapCompanyOrgInspectorFocus(event) {
+    const focusable = companyOrgInspectorFocusableElements();
+    if (!focusable.length) {
+        event.preventDefault();
+        document.getElementById('hrOrgDetailTitle')?.focus?.({ preventScroll: true });
+        return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus?.({ preventScroll: true });
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus?.({ preventScroll: true });
+    }
+}
+
+function setCompanyOrgBackgroundInert(inert) {
+    document.querySelectorAll('#tab-structure .hr-org-tools, #tab-structure .hr-org-main, #tab-structure .hr-org-notes').forEach(element => {
+        element.inert = Boolean(inert);
+        element.setAttribute('aria-hidden', inert ? 'true' : 'false');
     });
 }
 
@@ -14254,6 +14333,9 @@ function bindCompanyOrgResponsiveState() {
     };
     window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', sync);
+    const mobileQuery = window.matchMedia?.('(max-width: 820px)');
+    mobileQuery?.addEventListener?.('change', sync);
+    mobileQuery?.addListener?.(sync);
 }
 
 function ensureCompanyOrgDetailMeta() {
@@ -14268,6 +14350,18 @@ function ensureCompanyOrgDetailMeta() {
     return meta;
 }
 
+function ensureCompanyOrgDetailElement(id, className, beforeSelector = null) {
+    let element = document.getElementById(id);
+    if (element) return element;
+    const anchor = beforeSelector ? document.querySelector(beforeSelector) : document.getElementById('hrOrgInspectorActions');
+    if (!anchor) return null;
+    element = document.createElement('div');
+    element.id = id;
+    element.className = className;
+    anchor.insertAdjacentElement('beforebegin', element);
+    return element;
+}
+
 function ensureCompanyOrgDetailProfessions() {
     let root = document.getElementById('hrOrgDetailProfessions');
     const editButton = document.getElementById('hrOrgEditSelectedBtn');
@@ -14280,24 +14374,73 @@ function ensureCompanyOrgDetailProfessions() {
     return root;
 }
 
+function companyOrgNodeTypeLabel(node = {}) {
+    const lane = ORG_LANE_LABELS[node.lane] || node.lane || 'Роль';
+    const tone = ORG_TONE_LABELS[node.tone] || node.tone || '';
+    return [lane, tone].filter(Boolean).join(' · ');
+}
+
+function renderCompanyOrgStaffPreview(node) {
+    const root = ensureCompanyOrgDetailElement('hrOrgDetailStaff', 'hr-org-detail-staff');
+    if (!root) return;
+    const linkedStaff = node ? companyOrgLinkedStaff(node.id) : [];
+    if (!node) {
+        root.innerHTML = '';
+        return;
+    }
+    const staffList = linkedStaff.slice(0, 6).map(person => {
+        const id = Number(person.id);
+        const canOpen = Number.isFinite(id) && typeof openStaffEdit === 'function';
+        const subtitle = [person.role_type, person.phone].filter(Boolean).join(' · ');
+        const content = `<span>${escapeHtml(person.name || `#${id}`)}</span>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}`;
+        return `<li>${canOpen
+            ? `<button type="button" data-org-staff-id="${id}">${content}</button>`
+            : `<span>${content}</span>`}</li>`;
+    }).join('');
+    const overflow = linkedStaff.length > 6 ? `<div class="hr-org-detail-note">+${linkedStaff.length - 6} ще у цьому вузлі</div>` : '';
+    root.innerHTML = `
+        <div class="hr-org-detail-section-title">Співробітники</div>
+        <div class="hr-org-detail-count">${linkedStaff.length} у цьому вузлі</div>
+        ${linkedStaff.length ? `<ul>${staffList}</ul>${overflow}` : '<div class="hr-org-detail-note">Співробітників напряму не привʼязано. Перевірте професії або команду HR.</div>'}
+    `;
+    root.querySelectorAll('[data-org-staff-id]').forEach(button => {
+        button.addEventListener('click', () => openStaffEdit(Number(button.dataset.orgStaffId)));
+    });
+}
+
 function updateCompanyOrgDetail(node) {
     const title = document.getElementById('hrOrgDetailTitle');
+    const type = document.getElementById('hrOrgDetailType');
     const text = document.getElementById('hrOrgDetailText');
     const meta = ensureCompanyOrgDetailMeta();
+    const parentRoot = ensureCompanyOrgDetailElement('hrOrgDetailParent', 'hr-org-detail-section', '.hr-org-inspector-field');
     const professionsRoot = ensureCompanyOrgDetailProfessions();
     const editButton = document.getElementById('hrOrgEditSelectedBtn');
     if (title) title.textContent = node?.title || 'Нічого не вибрано';
+    if (type) type.textContent = node ? `${companyOrgNodeTypeLabel(node)}${node.archived ? ' · Архівний' : ''}` : 'Виберіть вузол';
     if (text) text.textContent = node?.description || 'Після завантаження виберіть вузол структури.';
+    if (parentRoot) {
+        const parent = node?.parentId ? companyStructureNodeById(node.parentId) : null;
+        parentRoot.innerHTML = node ? `
+            <div class="hr-org-detail-section-title">Батьківський підрозділ</div>
+            <div class="hr-org-detail-parent-name">${escapeHtml(parent?.title || 'Кореневий рівень')}</div>
+        ` : '';
+    }
     if (meta) {
         const parent = node?.parentId ? companyStructureNodeById(node.parentId) : null;
         const childCount = node ? companyStructureChildrenOf(node.id).length : 0;
         const professionCount = node ? companyOrgLinkedProfessions(node.id).length : 0;
         const staffCount = node ? companyOrgLinkedStaffIds(node.id).length : 0;
+        const displayGroup = node ? companyStructureNodeDisplayGroup(node) : '';
+        const displayGroupLabel = displayGroup ? companyStructureDisplayGroupLabel(displayGroup) : '';
         meta.innerHTML = node ? `
-            <div><dt>Керівник</dt><dd>${escapeHtml(parent?.title || 'Кореневий вузол')}</dd></div>
-            <div><dt>Команда</dt><dd>${professionCount} проф. · ${staffCount} люд.</dd></div>
-            <div><dt>Дочірні</dt><dd>${childCount}</dd></div>
-            <div><dt>Стан</dt><dd>${node.archived ? 'Архівний' : (node.collapsed ? 'Згорнутий' : 'Активний')}</dd></div>
+            <div><dt>ID</dt><dd>${escapeHtml(node.id)}</dd></div>
+            <div><dt>Parent</dt><dd>${escapeHtml(parent?.id || 'root')}</dd></div>
+            <div><dt>Display group</dt><dd>${escapeHtml(displayGroupLabel ? `${displayGroupLabel} (${displayGroup})` : 'Не задано')}</dd></div>
+            <div><dt>Порядок</dt><dd>${Number(node.order) || 0}</dd></div>
+            <div><dt>Тип</dt><dd>${escapeHtml(companyOrgNodeTypeLabel(node))}</dd></div>
+            <div><dt>Авто-layout</dt><dd>X ${Math.round(Number(node.x || 0))}, Y ${Math.round(Number(node.y || 0))} · ${childCount} доч. · ${professionCount} проф. · ${staffCount} люд.</dd></div>
+            <div><dt>Стан</dt><dd>${node.archived ? 'Архівний' : 'Активний'}</dd></div>
         ` : '';
     }
     const parentSelect = document.getElementById('hrOrgInspectorParent');
@@ -14320,9 +14463,9 @@ function updateCompanyOrgDetail(node) {
     if (professionsRoot) {
         const linked = node ? companyOrgLinkedProfessions(node.id) : [];
         professionsRoot.innerHTML = linked.length ? `
-            <strong>Професії вузла</strong>
+            <div class="hr-org-detail-section-title">Професії</div>
             <div>${linked.map(item => `<button type="button" data-org-profession-key="${escapeHtml(item.key)}">${escapeHtml(item.title || item.key)}${item.is_active === false || item.isActive === false ? ' · архів' : ''}</button>`).join('')}</div>
-        ` : (node ? '<span>До вузла ще не привʼязано професій.</span><button type="button" class="btn-secondary" data-org-empty-add-profession>Додати професію</button>' : '');
+        ` : (node ? '<div class="hr-org-detail-section-title">Професії</div><span>До вузла ще не привʼязано професій.</span><button type="button" class="btn-secondary" data-org-empty-add-profession>Додати професію</button>' : '');
         professionsRoot.querySelectorAll('[data-org-profession-key]').forEach(button => {
             button.addEventListener('click', () => openProfessionWorkspace({
                 key: button.dataset.orgProfessionKey,
@@ -14332,6 +14475,7 @@ function updateCompanyOrgDetail(node) {
         });
         professionsRoot.querySelector('[data-org-empty-add-profession]')?.addEventListener('click', () => openProfessionWorkspaceForStructureNode(node.id));
     }
+    renderCompanyOrgStaffPreview(node);
     const mutable = Boolean(node && companyStructureCanMutate());
     const actionRoot = document.getElementById('hrOrgInspectorActions');
     if (actionRoot) actionRoot.classList.toggle('hidden', !canEditCompanyStructure());
@@ -14356,7 +14500,11 @@ function setCompanyOrgInspectorOpen(open) {
     const inspector = document.getElementById('hrOrgInspector');
     if (!inspector) return;
     const mobile = window.matchMedia?.('(max-width: 820px)').matches === true;
+    const wasOpen = inspector.classList.contains('is-mobile-open');
     const visible = !mobile || open === true;
+    if (mobile && visible && !wasOpen && !inspector.contains(document.activeElement)) {
+        companyOrgInspectorReturnFocus = typeof HTMLElement === 'function' && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     inspector.classList.toggle('is-mobile-open', mobile && visible);
     inspector.setAttribute('aria-hidden', visible ? 'false' : 'true');
     if (mobile) {
@@ -14367,15 +14515,18 @@ function setCompanyOrgInspectorOpen(open) {
         inspector.removeAttribute('aria-modal');
     }
     inspector.inert = !visible;
+    setCompanyOrgBackgroundInert(mobile && visible);
     document.body.classList.toggle('hr-org-inspector-lock', mobile && visible);
-    if (mobile && visible) document.getElementById('hrOrgDetailTitle')?.focus?.({ preventScroll: true });
+    if (mobile && visible && !wasOpen) document.getElementById('hrOrgDetailTitle')?.focus?.({ preventScroll: true });
 }
 
 function closeCompanyOrgInspector() {
     setCompanyOrgInspectorOpen(false);
-    const target = companyOrgViewMode === 'tree'
+    const fallback = companyOrgViewMode === 'tree'
         ? document.querySelector(`[data-org-tree-select="${selectedCompanyStructureNodeId || ''}"]`)
         : document.querySelector(`[data-org-node-id="${selectedCompanyStructureNodeId || ''}"]`);
+    const target = companyOrgInspectorReturnFocus?.isConnected ? companyOrgInspectorReturnFocus : fallback;
+    companyOrgInspectorReturnFocus = null;
     target?.focus?.({ preventScroll: true });
 }
 
@@ -14391,7 +14542,12 @@ function selectCompanyOrgNodeById(id, options = {}) {
     document.querySelectorAll('[data-org-node-id]').forEach(item => {
         if (item.dataset.orgNodeId === node.id) item.classList.add('is-active');
     });
-    document.querySelectorAll('[data-org-tree-select]').forEach(item => item.classList.toggle('is-active', item.dataset.orgTreeSelect === node.id));
+    document.querySelectorAll('[data-org-tree-select]').forEach(item => {
+        const selected = item.dataset.orgTreeSelect === node.id;
+        item.classList.toggle('is-active', selected);
+        item.setAttribute('aria-selected', selected ? 'true' : 'false');
+        item.tabIndex = selected ? 0 : -1;
+    });
     updateCompanyOrgDetail(node);
     renderCompanyOrgLinks();
     if (options.openInspector) setCompanyOrgInspectorOpen(true);
@@ -14693,6 +14849,14 @@ function bindCompanyStructureEditorControls() {
         if (companyOrgViewMode === 'chart') focusCompanyOrgCanvasOnNode(match.id);
         else document.querySelector(`[data-org-tree-select="${match.id}"]`)?.scrollIntoView?.({ block: 'center' });
     });
+    const archiveFilter = document.getElementById('hrOrgArchiveFilter');
+    archiveFilter?.addEventListener('change', event => {
+        companyOrgArchiveFilter = normalizeCompanyOrgArchiveFilter(event.target.value);
+        event.target.value = companyOrgArchiveFilter;
+        reconcileCompanyOrgSearchSelection();
+        renderCompanyOrgWorkspace();
+        selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+    });
 }
 
 function initCompanyOrgChart() {
@@ -14702,6 +14866,9 @@ function initCompanyOrgChart() {
     companyOrgViewMode = window.matchMedia?.('(max-width: 820px)').matches ? 'tree' : 'chart';
     companyOrgZoom = 1;
     companyOrgSearchQuery = '';
+    companyOrgArchiveFilter = 'active';
+    const archiveFilter = document.getElementById('hrOrgArchiveFilter');
+    if (archiveFilter) archiveFilter.value = companyOrgArchiveFilter;
     resetCompanyOrgHistory();
     resetCompanyOrgViewState();
     companyOrgSavedDraftSignature = '';

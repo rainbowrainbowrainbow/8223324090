@@ -434,6 +434,11 @@
                         </div>
                         <div class="hr-org-tools" aria-label="Інструменти структури компанії">
                             <label class="hr-org-search"><span class="sr-only">Пошук у структурі</span><input type="search" id="hrOrgSearch" placeholder="Знайти вузол або професію…" autocomplete="off"></label>
+                            <label class="hr-org-archive-filter"><span class="sr-only">Фільтр активності вузлів</span><select id="hrOrgArchiveFilter" aria-label="Фільтр активності вузлів">
+                                <option value="active" selected>Активні</option>
+                                <option value="archived">Архівні</option>
+                                <option value="all">Усі</option>
+                            </select></label>
                             <div class="hr-org-view-switch" role="group" aria-label="Режим відображення">
                                 <button type="button" id="hrOrgViewChart" class="hr-org-tool-btn is-active" aria-pressed="true">Схема</button>
                                 <button type="button" id="hrOrgViewTree" class="hr-org-tool-btn" aria-pressed="false">Дерево</button>
@@ -459,15 +464,16 @@
                                 </div>
                                 <div class="hr-org-tree hidden" id="companyOrgTree" role="tree" aria-label="Дерево структури компанії"></div>
                             </div>
-                            <aside class="hr-org-detail" id="hrOrgInspector" aria-live="polite" aria-label="Інспектор вузла">
+                            <aside class="hr-org-detail" id="hrOrgInspector" aria-live="polite" aria-label="Інспектор вузла" aria-labelledby="hrOrgDetailTitle">
                                 <div class="hr-org-detail-head">
-                                    <div><div class="hr-org-detail-kicker">Обраний вузол</div><h4 id="hrOrgDetailTitle" tabindex="-1">Директор</h4></div>
+                                    <div><div class="hr-org-detail-kicker">Обраний вузол</div><h4 id="hrOrgDetailTitle" tabindex="-1">Директор</h4><div id="hrOrgDetailType" class="hr-org-detail-type">Кореневий підрозділ</div></div>
                                     <button type="button" id="hrOrgInspectorClose" class="hr-org-inspector-close" aria-label="Закрити інспектор">×</button>
                                 </div>
                                 <p id="hrOrgDetailText">Фінальна відповідальність за бізнес, фінанси, команду, стандарти й стратегічні рішення.</p>
-                                <dl id="hrOrgDetailMeta" class="hr-org-detail-meta"></dl>
-                                <label class="hr-org-inspector-field">Батьківський вузол<select id="hrOrgInspectorParent"></select></label>
+                                <div id="hrOrgDetailParent" class="hr-org-detail-section"></div>
+                                <label class="hr-org-inspector-field">Батьківський підрозділ<select id="hrOrgInspectorParent"></select></label>
                                 <div id="hrOrgDetailProfessions" class="hr-org-detail-professions"></div>
+                                <div id="hrOrgDetailStaff" class="hr-org-detail-staff"></div>
                                 <div class="hr-org-inspector-actions" id="hrOrgInspectorActions">
                                     <button type="button" id="hrOrgAddChildBtn" class="btn-secondary">+ Дочірній</button>
                                     <button type="button" id="hrOrgAddSiblingBtn" class="btn-secondary">+ Сусідній</button>
@@ -477,6 +483,10 @@
                                     <button type="button" id="hrOrgArchiveBtn" class="btn-secondary">Архівувати</button>
                                     <button type="button" id="hrOrgAutoLayoutBtn" class="btn-secondary">Авто-layout</button>
                                 </div>
+                                <details id="hrOrgSystemInfo" class="hr-org-system-info">
+                                    <summary>Системна інформація</summary>
+                                    <dl id="hrOrgDetailMeta" class="hr-org-detail-meta"></dl>
+                                </details>
                             </aside>
                         </div>
                         <span id="companyStructureModeBadge" class="sr-only">Редагована карта</span>

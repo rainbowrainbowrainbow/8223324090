@@ -9284,10 +9284,41 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
 
 /* HR company structure workspace */
 .hr-org-chart-card {
-    --hr-org-primary-500: #2563eb;
-    --hr-org-primary-700: #1d4ed8;
-    --hr-org-danger-500: #dc2626;
+    --hr-org-accent: #2563EB;
+    --hr-org-accent-strong: #1D4ED8;
+    --hr-org-accent-surface: rgba(37,99,235,.09);
+    --hr-org-accent-surface-hover: rgba(37,99,235,.13);
+    --hr-org-danger: #DC2626;
+    --hr-org-surface: var(--white);
+    --hr-org-surface-muted: var(--gray-50);
+    --hr-org-surface-elevated: var(--white);
+    --hr-org-text: var(--gray-900);
+    --hr-org-text-muted: var(--gray-600);
+    --hr-org-text-subtle: var(--gray-500);
+    --hr-org-border: var(--gray-100);
+    --hr-org-border-strong: var(--gray-200);
+    --hr-org-tree-line: var(--gray-200);
+    --hr-org-focus-ring: rgba(37,99,235,.16);
+    --hr-org-menu-shadow: 0 14px 34px rgba(15,23,42,.18);
     overflow: hidden;
+}
+body.dark-mode .hr-org-chart-card {
+    --hr-org-accent: #60A5FA;
+    --hr-org-accent-strong: #93C5FD;
+    --hr-org-accent-surface: rgba(96,165,250,.16);
+    --hr-org-accent-surface-hover: rgba(96,165,250,.23);
+    --hr-org-danger: #FCA5A5;
+    --hr-org-surface: #111827;
+    --hr-org-surface-muted: rgba(255,255,255,.05);
+    --hr-org-surface-elevated: #172033;
+    --hr-org-text: #F8FAFC;
+    --hr-org-text-muted: #CBD5E1;
+    --hr-org-text-subtle: #94A3B8;
+    --hr-org-border: rgba(255,255,255,.10);
+    --hr-org-border-strong: rgba(255,255,255,.16);
+    --hr-org-tree-line: rgba(203,213,225,.26);
+    --hr-org-focus-ring: rgba(96,165,250,.22);
+    --hr-org-menu-shadow: 0 18px 42px rgba(0,0,0,.36);
 }
 .hr-org-tools {
     display: flex;
@@ -9298,24 +9329,32 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     border-bottom: 1px solid var(--gray-100);
 }
 .hr-org-search { flex: 1 1 220px; min-width: 180px; }
-.hr-org-search input {
+.hr-org-archive-filter { flex: 0 0 132px; }
+.hr-org-search input,
+.hr-org-archive-filter select {
     width: 100%;
     height: 36px;
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--hr-org-border-strong);
     border-radius: 9px;
-    background: var(--white);
-    color: var(--gray-900);
+    background: var(--hr-org-surface);
+    color: var(--hr-org-text);
     padding: 0 11px;
     font: inherit;
+}
+.hr-org-search input:focus-visible,
+.hr-org-archive-filter select:focus-visible {
+    outline: none;
+    border-color: var(--hr-org-accent);
+    box-shadow: 0 0 0 3px var(--hr-org-focus-ring);
 }
 .hr-org-view-switch,
 .hr-org-zoom { display: inline-flex; align-items: center; gap: 3px; }
 .hr-org-view-switch .hr-org-tool-btn.is-active {
-    border-color: var(--primary-500, var(--hr-org-primary-500));
-    background: rgba(37,99,235,.09);
-    color: var(--primary-700, var(--hr-org-primary-700));
+    border-color: var(--hr-org-accent);
+    background: var(--hr-org-accent-surface);
+    color: var(--hr-org-accent-strong);
 }
-.hr-org-zoom output { min-width: 44px; color: var(--gray-600); font-size: 12px; font-weight: 800; text-align: center; }
+.hr-org-zoom output { min-width: 44px; color: var(--hr-org-text-muted); font-size: 12px; font-weight: 800; text-align: center; }
 .hr-org-toolbar-spacer { flex: 1 1 24px; }
 .hr-org-save-status { max-width: 260px; font-size: 12px; }
 .hr-org-layout {
@@ -9332,20 +9371,20 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     height: 610px;
     overflow: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--gray-100);
+    border: 1px solid var(--hr-org-border);
     border-radius: 12px;
-    background: var(--gray-50);
+    background: var(--hr-org-surface-muted);
 }
 .hr-org-stage { transform-origin: 0 0; }
 .hr-org-node-shell { transition: opacity .16s ease, filter .16s ease; }
 .hr-org-node-shell.is-search-dim { opacity: .2; filter: grayscale(.65); }
 .hr-org-node-shell.is-dragging { pointer-events: none; }
 .hr-org-node-shell.is-drop-target .hr-org-node {
-    outline: 3px solid var(--primary-500, var(--hr-org-primary-500));
+    outline: 3px solid var(--hr-org-accent);
     outline-offset: 3px;
     box-shadow: 0 12px 30px rgba(37,99,235,.2);
 }
-.hr-org-node-shell.is-drop-invalid .hr-org-node { outline: 3px solid var(--danger-500, var(--hr-org-danger-500)); outline-offset: 3px; }
+.hr-org-node-shell.is-drop-invalid .hr-org-node { outline: 3px solid var(--hr-org-danger); outline-offset: 3px; }
 .hr-org-node-shell.is-archived { opacity: .58; }
 .hr-org-node-shell.is-archived .hr-org-node { border-style: dashed; }
 .hr-org-node {
@@ -9412,10 +9451,10 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
 .hr-org-node-quick-actions > button {
     width: 24px;
     height: 24px;
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--hr-org-border-strong);
     border-radius: 7px;
-    background: var(--white);
-    color: var(--gray-800);
+    background: var(--hr-org-surface-elevated);
+    color: var(--hr-org-text);
     font: inherit;
     font-weight: 900;
     line-height: 1;
@@ -9430,17 +9469,17 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     display: grid;
     gap: 2px;
     padding: 5px;
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--hr-org-border-strong);
     border-radius: 9px;
-    background: var(--white);
-    box-shadow: 0 14px 34px rgba(15,23,42,.18);
+    background: var(--hr-org-surface-elevated);
+    box-shadow: var(--hr-org-menu-shadow);
 }
 .hr-org-node-menu.hidden { display: none; }
 .hr-org-node-menu button {
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: var(--gray-800);
+    color: var(--hr-org-text);
     padding: 7px 8px;
     font: inherit;
     font-size: 12px;
@@ -9449,7 +9488,7 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     cursor: pointer;
 }
 .hr-org-node-menu button:hover,
-.hr-org-node-menu button:focus-visible { background: var(--gray-50); }
+.hr-org-node-menu button:focus-visible { background: var(--hr-org-surface-muted); }
 .hr-org-drop-preview {
     position: sticky;
     z-index: 30;
@@ -9468,15 +9507,16 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
 .hr-org-tree {
     height: 610px;
     overflow: auto;
-    border: 1px solid var(--gray-100);
+    border: 1px solid var(--hr-org-border);
     border-radius: 12px;
-    background: var(--white);
+    background: var(--hr-org-surface);
+    color: var(--hr-org-text);
     padding: 10px;
 }
 .hr-org-tree.hidden { display: none; }
 .hr-org-tree-list,
 .hr-org-tree-list ul { min-width: 0; margin: 0; padding: 0; list-style: none; }
-.hr-org-tree-list ul { margin-left: 14px; padding-left: 10px; border-left: 1px solid var(--gray-200); }
+.hr-org-tree-list ul { margin-left: 14px; padding-left: 10px; border-left: 1px solid var(--hr-org-tree-line); }
 .hr-org-tree-row {
     position: relative;
     display: grid;
@@ -9492,23 +9532,39 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     border: 0;
     border-radius: 7px;
     background: transparent;
-    color: var(--gray-800);
+    color: var(--hr-org-text);
     font: inherit;
     cursor: pointer;
 }
 .hr-org-tree-toggle { width: 26px; height: 30px; }
-.hr-org-tree-toggle:disabled { opacity: .25; cursor: default; }
+.hr-org-tree-toggle:disabled { opacity: .38; cursor: default; }
 .hr-org-tree-select {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 3px;
     padding: 7px 9px;
     text-align: left;
 }
-.hr-org-tree-select strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hr-org-tree-select small { color: var(--gray-500); white-space: nowrap; }
-.hr-org-tree-select.is-active { background: rgba(37,99,235,.09); color: var(--primary-700, var(--hr-org-primary-700)); }
+.hr-org-tree-select strong { overflow-wrap: anywhere; white-space: normal; }
+.hr-org-tree-select small { color: var(--hr-org-text-subtle); white-space: normal; }
+.hr-org-tree-select:hover,
+.hr-org-tree-select:focus-visible {
+    outline: none;
+    background: var(--hr-org-surface-muted);
+    box-shadow: 0 0 0 3px var(--hr-org-focus-ring);
+}
+.hr-org-tree-select.is-active {
+    border: 1px solid var(--hr-org-accent);
+    background: var(--hr-org-accent-surface);
+    color: var(--hr-org-accent-strong);
+    box-shadow: 0 0 0 3px var(--hr-org-focus-ring);
+}
+.hr-org-tree-select.is-search-match {
+    box-shadow: inset 3px 0 0 var(--hr-org-accent);
+}
+.hr-org-tree-select.is-active.is-search-match {
+    box-shadow: inset 3px 0 0 var(--hr-org-accent-strong), 0 0 0 3px var(--hr-org-focus-ring);
+}
 .hr-org-tree-row.is-archived { opacity: .58; }
 .hr-org-tree-professions {
     display: flex;
@@ -9525,8 +9581,8 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     max-width: 100%;
     border: 1px solid rgba(37,99,235,.16);
     border-radius: 999px;
-    background: rgba(37,99,235,.07);
-    color: var(--primary-700, var(--hr-org-primary-700));
+    background: var(--hr-org-accent-surface);
+    color: var(--hr-org-accent-strong);
     padding: 4px 8px;
     font: inherit;
     font-size: 11px;
@@ -9534,7 +9590,7 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
     cursor: pointer;
 }
 .hr-org-tree-profession span {
-    color: var(--gray-500);
+    color: var(--hr-org-text-subtle);
     font-size: 9px;
     font-weight: 900;
     text-transform: uppercase;
@@ -9542,87 +9598,190 @@ body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracte
 }
 .hr-org-tree-profession strong {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 .hr-org-tree-profession:hover,
-.hr-org-tree-profession:focus-visible { background: rgba(37,99,235,.12); outline: none; }
+.hr-org-tree-profession:focus-visible { background: var(--hr-org-accent-surface-hover); outline: none; }
 .hr-org-detail {
     position: sticky;
     display: block;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: none;
+    gap: 0;
     top: 10px;
     align-self: start;
+    width: 100%;
     min-width: 0;
     max-height: 610px;
     overflow: auto;
-    border: 1px solid var(--gray-100);
+    border: 1px solid var(--hr-org-border);
     border-radius: 12px;
-    background: var(--white);
+    background: var(--hr-org-surface);
+    color: var(--hr-org-text);
     padding: 14px;
+    box-shadow: none;
 }
 .hr-org-detail *,
 .hr-org-detail-head > div {
     min-width: 0;
 }
-.hr-org-detail-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.hr-org-detail-head {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: start;
+}
 .hr-org-inspector-close { display: none; border: 0; background: transparent; color: var(--gray-500); font-size: 24px; cursor: pointer; }
+.hr-org-detail-type {
+    margin-top: 4px;
+    color: var(--hr-org-text-muted);
+    font-size: 12px;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+}
+.hr-org-detail-kicker,
+.hr-org-detail h4,
+.hr-org-detail p,
+.hr-org-detail-section,
+.hr-org-detail-meta,
+.hr-org-detail-professions,
+.hr-org-detail-staff,
+.hr-org-system-info,
+.hr-org-inspector-field,
+.hr-org-inspector-actions {
+    grid-column: auto;
+    width: 100%;
+}
 .hr-org-detail h4,
 .hr-org-detail p {
     overflow-wrap: anywhere;
 }
+.hr-org-detail-section,
+.hr-org-detail-professions,
+.hr-org-detail-staff,
+.hr-org-system-info {
+    margin-top: 12px;
+}
+.hr-org-detail-section-title,
+.hr-org-detail-professions strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--hr-org-text-muted);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+.hr-org-detail-parent-name,
+.hr-org-detail-count,
+.hr-org-detail-note {
+    color: var(--hr-org-text);
+    font-size: 13px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+.hr-org-detail-note {
+    color: var(--hr-org-text-muted);
+    font-weight: 700;
+}
 .hr-org-detail-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 12px 0; }
-.hr-org-detail-meta > div { min-width: 0; border-radius: 8px; background: var(--gray-50); padding: 8px; }
-.hr-org-detail-meta dt { color: var(--gray-500); font-size: 10px; font-weight: 850; text-transform: uppercase; }
-.hr-org-detail-meta dd { margin: 3px 0 0; color: var(--gray-800); font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
-.hr-org-inspector-field { display: grid; gap: 5px; margin: 12px 0; color: var(--gray-600); font-size: 11px; font-weight: 850; }
-.hr-org-inspector-field select { width: 100%; min-width: 0; border: 1px solid var(--gray-200); border-radius: 8px; background: var(--white); color: var(--gray-900); padding: 8px; }
+.hr-org-detail-meta > div { min-width: 0; border-radius: 8px; background: var(--hr-org-surface-muted); padding: 8px; }
+.hr-org-detail-meta dt { color: var(--hr-org-text-subtle); font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.hr-org-detail-meta dd { margin: 3px 0 0; color: var(--hr-org-text); font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+.hr-org-inspector-field { display: grid; gap: 5px; margin: 12px 0; color: var(--hr-org-text-muted); font-size: 11px; font-weight: 850; }
+.hr-org-inspector-field select { width: 100%; min-width: 0; border: 1px solid var(--hr-org-border-strong); border-radius: 8px; background: var(--hr-org-surface); color: var(--hr-org-text); padding: 8px; }
 .hr-org-inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
 .hr-org-inspector-actions button { min-width: 0; }
-.hr-org-detail-professions button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-org-detail-professions button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.hr-org-detail-staff ul {
+    display: grid;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.hr-org-detail-staff button,
+.hr-org-detail-staff li > span {
+    width: 100%;
+    display: grid;
+    gap: 2px;
+    border: 1px solid var(--hr-org-border-strong);
+    border-radius: 9px;
+    background: var(--hr-org-surface-muted);
+    color: var(--hr-org-text);
+    padding: 8px 10px;
+    text-align: left;
+    font: inherit;
+}
+.hr-org-detail-staff button {
+    cursor: pointer;
+}
+.hr-org-detail-staff button:hover,
+.hr-org-detail-staff button:focus-visible {
+    outline: none;
+    border-color: var(--hr-org-accent);
+    box-shadow: 0 0 0 3px var(--hr-org-focus-ring);
+}
+.hr-org-detail-staff small {
+    color: var(--hr-org-text-muted);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+.hr-org-system-info {
+    border-top: 1px solid var(--hr-org-border);
+    padding-top: 10px;
+}
+.hr-org-system-info summary {
+    color: var(--hr-org-text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+}
+.hr-org-node.is-active {
+    outline: 3px solid var(--hr-org-accent);
+    outline-offset: 3px;
+    box-shadow: 0 18px 34px rgba(15,23,42,.18), 0 0 0 5px var(--hr-org-focus-ring);
+}
 body.hr-org-inspector-lock { overflow: hidden; }
 
-body.dark-mode .hr-org-search input,
-body.dark-mode .hr-org-tree,
-body.dark-mode .hr-org-detail,
-body.dark-mode .hr-org-node-quick-actions > button,
-body.dark-mode .hr-org-node-menu,
-body.dark-mode .hr-org-inspector-field select {
-    border-color: rgba(255,255,255,.1);
-    background: #111827;
-    color: #F8FAFC;
-}
-body.dark-mode .hr-org-detail-meta > div,
-body.dark-mode .hr-org-node-menu button:hover,
-body.dark-mode .hr-org-node-menu button:focus-visible { background: rgba(255,255,255,.05); }
 body.dark-mode .hr-org-node-professions span {
     background: rgba(15,23,42,.72);
     color: #e5e7eb;
 }
-body.dark-mode .hr-org-node-professions.is-empty { color: var(--gray-400); }
-body.dark-mode .hr-org-tree-list ul { border-color: rgba(255,255,255,.12); }
+body.dark-mode .hr-org-node-professions.is-empty { color: var(--hr-org-text-subtle); }
 body.dark-mode .hr-org-tree-select,
 body.dark-mode .hr-org-tree-toggle,
-body.dark-mode .hr-org-node-menu button { color: var(--gray-200); }
+body.dark-mode .hr-org-node-menu button { color: var(--hr-org-text); }
 body.dark-mode .hr-org-tree-select small,
 body.dark-mode .hr-org-detail-meta dt,
 body.dark-mode .hr-org-inspector-field {
-    color: #CBD5E1;
+    color: var(--hr-org-text-muted);
 }
 body.dark-mode .hr-org-detail-meta dd {
-    color: #F8FAFC;
+    color: var(--hr-org-text);
 }
 body.dark-mode .hr-org-tree-profession {
     border-color: rgba(129,140,248,.34);
-    background: rgba(129,140,248,.16);
-    color: #E0E7FF;
+    background: var(--hr-org-accent-surface);
+    color: var(--hr-org-accent-strong);
 }
-body.dark-mode .hr-org-tree-profession span { color: #CBD5E1; }
-body.dark-mode .hr-org-tree-profession:hover,
-body.dark-mode .hr-org-tree-profession:focus-visible { background: rgba(129,140,248,.24); }
+body.dark-mode .hr-org-tree-profession span { color: var(--hr-org-text-muted); }
 
-@media (max-width: 1050px) {
+body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStructure:disabled,
+body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStructure:disabled:hover,
+body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStructure:disabled:focus-visible {
+    border: 1px solid var(--hr-org-border-strong);
+    background: var(--hr-org-surface-muted);
+    color: var(--hr-org-text-subtle);
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 1;
+    filter: none;
+    transform: none;
+}
+
+@media (max-width: 1100px) {
     .hr-org-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 320px); }
     .hr-org-save-status { max-width: 180px; }
 }
@@ -9640,15 +9799,18 @@ body.dark-mode .hr-org-tree-profession:focus-visible { background: rgba(129,140,
     .hr-org-detail {
         position: fixed;
         z-index: 3000;
-        inset: 0;
-        max-height: none;
+        inset: auto 0 0;
+        max-height: min(86vh, 720px);
+        overflow: auto;
         border: 0;
-        border-radius: 0;
+        border-radius: 18px 18px 0 0;
         padding: 18px;
         transform: translateY(105%);
         transition: transform .2s ease;
+        box-shadow: 0 -24px 70px rgba(15,23,42,.28);
     }
     .hr-org-detail.is-mobile-open { transform: translateY(0); }
+    .hr-org-detail[aria-hidden="true"] { pointer-events: none; }
     .hr-org-inspector-close { display: block; }
 }
 @media (max-width: 560px) {
@@ -9704,9 +9866,9 @@ body.dark-mode .hr-org-tree-profession:focus-visible { background: rgba(129,140,
 .hr-checklist-dashboard-summary-card:hover,
 .hr-checklist-dashboard-summary-card:focus-visible,
 .hr-checklist-dashboard-summary-card.is-active {
-    border-color: var(--primary-500);
+    border-color: #2563EB;
     background: rgba(37,99,235,.06);
-    color: var(--primary-700);
+    color: #1D4ED8;
 }
 .hr-checklist-dashboard-list { display: grid; gap: 7px; }
 .hr-checklist-dashboard-row {

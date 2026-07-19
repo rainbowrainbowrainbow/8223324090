@@ -38,6 +38,15 @@ function createHarness() {
     window.showNotification = () => {};
     window.apiVerifyToken = async () => ({ id: 1, role: 'creator', name: 'Tester' });
     window.__canManageStructure = true;
+    window.__hrOrgMobile = false;
+    window.matchMedia = query => ({
+        matches: query.includes('820px') ? window.__hrOrgMobile : false,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {}
+    });
     window.canAccess = action => action === 'manage_staff' && window.__canManageStructure;
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
@@ -59,6 +68,11 @@ function createHarness() {
                 setEditable(editable) {
                     window.__canManageStructure = Boolean(editable);
                     renderCompanyOrgWorkspace();
+                },
+                setMobile(mobile) {
+                    window.__hrOrgMobile = Boolean(mobile);
+                    bindCompanyOrgResponsiveState();
+                    setCompanyOrgInspectorOpen(document.getElementById('hrOrgInspector')?.classList.contains('is-mobile-open'));
                 },
                 setFetch(handler) { hrFetch = handler; },
                 load(options = {}) { return loadCompanyStructure(options); },
@@ -94,6 +108,15 @@ function createHarness() {
                     renderCompanyOrgWorkspace();
                     selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
                 },
+                setArchiveFilter(value) {
+                    companyOrgArchiveFilter = normalizeCompanyOrgArchiveFilter(value);
+                    const filter = document.getElementById('hrOrgArchiveFilter');
+                    if (filter) filter.value = companyOrgArchiveFilter;
+                    reconcileCompanyOrgSearchSelection();
+                    renderCompanyOrgWorkspace();
+                    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+                },
+                payload() { return companyStructureDraftPayload(); },
                 state() {
                     return {
                         loaded: companyStructureLoaded,
@@ -110,8 +133,8 @@ function createHarness() {
                     document.body.innerHTML = [
                         '<section id="tab-structure">',
                         '<span id="companyStructureModeBadge"></span>',
-                        '<button id="hrOrgAutoLayoutBtn"></button>',
                         '<input id="hrOrgSearch">',
+                        '<select id="hrOrgArchiveFilter"><option value="active" selected>Active</option><option value="archived">Archived</option><option value="all">All</option></select>',
                         '<button id="hrOrgViewChart"></button>',
                         '<button id="hrOrgViewTree"></button>',
                         '<button id="hrOrgFitBtn"></button>',
@@ -121,12 +144,20 @@ function createHarness() {
                         '<button id="hrOrgUndoBtn"></button>',
                         '<button id="hrOrgRedoBtn"></button>',
                         '<span id="hrOrgLinkStatus"></span>',
-                        '<h4 id="hrOrgDetailTitle"></h4>',
+                        '<div class="hr-org-tools"></div>',
+                        '<div class="hr-org-main">',
+                        '<div id="companyOrgCanvas" class="hr-org-canvas"><div id="companyOrgChart" class="hr-org-stage"></div></div>',
+                        '<div id="companyOrgTree" class="hr-org-tree hidden" role="tree"></div>',
+                        '</div>',
+                        '<aside id="hrOrgInspector" class="hr-org-detail" aria-labelledby="hrOrgDetailTitle">',
+                        '<button id="hrOrgInspectorClose"></button>',
+                        '<h4 id="hrOrgDetailTitle" tabindex="-1"></h4>',
+                        '<div id="hrOrgDetailType"></div>',
                         '<p id="hrOrgDetailText"></p>',
-                        '<dl id="hrOrgDetailMeta"></dl>',
+                        '<div id="hrOrgDetailParent"></div>',
                         '<select id="hrOrgInspectorParent"></select>',
                         '<div id="hrOrgDetailProfessions"></div>',
-                        '<div id="hrOrgInspector"><button id="hrOrgInspectorClose"></button></div>',
+                        '<div id="hrOrgDetailStaff"></div>',
                         '<div id="hrOrgInspectorActions">',
                         '<button id="hrOrgAddChildBtn"></button>',
                         '<button id="hrOrgAddSiblingBtn"></button>',
@@ -134,7 +165,10 @@ function createHarness() {
                         '<button id="hrOrgEditSelectedBtn"></button>',
                         '<button id="hrOrgDuplicateBtn"></button>',
                         '<button id="hrOrgArchiveBtn"></button>',
+                        '<button id="hrOrgAutoLayoutBtn"></button>',
                         '</div>',
+                        '<details id="hrOrgSystemInfo"><summary>System</summary><dl id="hrOrgDetailMeta"></dl></details>',
+                        '</aside>',
                         '<textarea id="companyStructureText"></textarea>',
                         '<textarea id="companyStructureNotes"></textarea>',
                         '<textarea id="companyInstructionsText"></textarea>',
@@ -147,8 +181,7 @@ function createHarness() {
                         '<button id="btnReloadCompanyStructureConflict" class="hidden"></button>',
                         '<button id="btnCopyCompanyStructureDraft" class="hidden"></button>',
                         '</div>',
-                        '<div id="companyOrgCanvas" class="hr-org-canvas"><div id="companyOrgChart" class="hr-org-stage"></div></div>',
-                        '<div id="companyOrgTree" class="hr-org-tree hidden"></div>',
+                        '<div class="hr-org-notes"></div>',
                         '</section>'
                     ].join('');
                     hrFetch = async () => ({ success: true, data: { nodes: companyStructureNodes, updatedAt: '2099-05-31T12:00:00Z' } });
@@ -1288,22 +1321,31 @@ test('HR org fit and view switching are viewport-only and do not dirty saved coo
 test('HR org tree collapse and expand are local viewport state only', () => {
     const { window, api } = createHarness();
     api.setNodes([
-        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40, collapsed: true },
         { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
     ]);
     api.renderCanvas();
     api.setView('tree');
 
     const revision = api.state().draftRevision;
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
     click(window, window.document.querySelector('[data-org-tree-toggle="parent"]'));
 
     assert.equal(api.state().draftRevision, revision);
     assert.equal(api.state().saveState, 'clean');
-    assert.notEqual(api.nodes().find(node => node.id === 'parent').collapsed, true);
+    assert.equal(api.nodes().find(node => node.id === 'parent').collapsed, true);
+    assert.equal(api.payload().nodes.some(node => Object.prototype.hasOwnProperty.call(node, 'collapsed')), false);
     assert.equal(window.document.querySelector('[data-org-tree-select="child"]'), null);
+
+    api.setEditable(false);
+    api.setView('tree');
+    click(window, window.document.querySelector('[data-org-tree-toggle="parent"]'));
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
+    assert.equal(window.document.querySelector('[data-org-tree-add="parent"]'), null);
+    assert.equal(api.state().saveState, 'clean');
 });
 
-test('HR org tree quick actions open action menus instead of dead-focusing inspector controls', () => {
+test('HR org tree quick actions open child add and node action menu', () => {
     const { window, api } = createHarness();
     api.setNodes([
         { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
@@ -1313,16 +1355,33 @@ test('HR org tree quick actions open action menus instead of dead-focusing inspe
     api.setView('tree');
 
     click(window, window.document.querySelector('[data-org-tree-add="parent"]'));
-    const addMenu = window.document.querySelector('[data-org-tree-add-menu="parent"]');
-    assert.equal(addMenu.classList.contains('hidden'), false);
-    assert.match(addMenu.textContent, /Дочірній вузол/);
-    assert.equal(window.document.querySelector('[data-org-tree-add="parent"]').getAttribute('aria-expanded'), 'true');
+    assert.ok(window.document.querySelector('.form-modal-overlay'));
+    assert.match(window.document.querySelector('.form-modal-overlay').textContent, /Новий дочірній вузол/);
+    assert.equal(window.document.querySelector('[data-org-tree-add-menu="parent"]'), null);
+    window.document.querySelector('.form-modal-overlay')?.remove();
 
     click(window, window.document.querySelector('[data-org-tree-more="parent"]'));
     const moreMenu = window.document.querySelector('[data-org-tree-more-menu="parent"]');
-    assert.equal(addMenu.classList.contains('hidden'), true);
     assert.equal(moreMenu.classList.contains('hidden'), false);
     assert.match(moreMenu.textContent, /Перейменувати/);
+    assert.match(moreMenu.textContent, /Сусідній вузол/);
+});
+
+test('HR org undo returns to saved revision as clean state', () => {
+    const { api, window } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 }
+    ]);
+    api.renderCanvas();
+
+    const added = api.add({ relation: 'child', sourceId: 'parent', title: 'Temp child' });
+    assert.equal(added.parentId, 'parent');
+    assert.equal(api.state().saveState, 'changed');
+
+    api.undo();
+    assert.equal(api.nodes().length, 1);
+    assert.equal(api.state().saveState, 'saved');
+    assert.equal(window.document.getElementById('btnSaveCompanyStructure').disabled, true);
 });
 
 test('HR org tree search can select by staff name and keeps the inspector on a visible node', () => {
@@ -1339,22 +1398,140 @@ test('HR org tree search can select by staff name and keeps the inspector on a v
 
     assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
     assert.equal(window.document.querySelector('[data-org-tree-select="child"]').getAttribute('aria-selected'), 'true');
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]').classList.contains('is-search-match'));
     assert.equal(window.document.getElementById('hrOrgDetailTitle').textContent, 'Child');
+});
+
+test('HR org archive filter preserves visible active descendants and can find archived nodes', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Archived Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40, archived: true },
+        { id: 'child', title: 'Active Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.renderCanvas();
+    api.setView('tree');
+
+    assert.ok(window.document.querySelector('[data-org-tree-select="parent"]'));
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
+    assert.ok(window.document.querySelector('[data-org-tree-row="parent"]').classList.contains('is-archived'));
+    assert.equal(window.document.getElementById('hrOrgDetailTitle').textContent, 'Active Child');
+
+    api.setArchiveFilter('archived');
+    assert.ok(window.document.querySelector('[data-org-tree-select="parent"]'));
+    assert.equal(window.document.querySelector('[data-org-tree-select="child"]'), null);
+
+    api.search('Archived Parent');
+    assert.ok(window.document.querySelector('[data-org-tree-select="parent"]'));
+    assert.equal(window.document.querySelector('[data-org-tree-select="parent"]').getAttribute('aria-selected'), 'true');
+
+    api.setArchiveFilter('all');
+    api.search('Active Child');
+    assert.ok(window.document.querySelector('[data-org-tree-select="parent"]'));
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
+    assert.equal(window.document.querySelector('[data-org-tree-select="child"]').getAttribute('aria-selected'), 'true');
+});
+
+test('HR org node inspector presents manager content before collapsed system information', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent Division', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Long Child Division Name For Readability', description: 'Owns daily operations.', tone: 'purple', lane: 'operations', parentId: 'parent', order: 2, x: 100, y: 180, displayGroup: 'sales' }
+    ]);
+    api.setProfessions([{ key: 'manager', title: 'Operations Manager', structure_node_id: 'child', is_active: true }]);
+    api.setStaff([{ id: 77, name: 'Ada Manager', role_type: 'lead', phone: '+380000000000', company_structure_node_id: 'child' }]);
+    api.renderCanvas();
+
+    click(window, window.document.querySelector('[data-org-tree-select="child"]'));
+
+    const inspector = window.document.getElementById('hrOrgInspector');
+    assert.equal(window.document.getElementById('hrOrgDetailTitle').textContent, 'Long Child Division Name For Readability');
+    assert.match(window.document.getElementById('hrOrgDetailType').textContent, /Операційний контур|Operations|Контур/);
+    assert.match(window.document.getElementById('hrOrgDetailText').textContent, /Owns daily operations/);
+    assert.match(window.document.getElementById('hrOrgDetailParent').textContent, /Parent Division/);
+    assert.match(window.document.getElementById('hrOrgDetailProfessions').textContent, /Operations Manager/);
+    assert.match(window.document.getElementById('hrOrgDetailStaff').textContent, /Ada Manager/);
+    assert.ok(inspector.querySelector('#hrOrgInspectorActions'));
+    assert.ok(inspector.querySelector('#hrOrgSystemInfo'));
+    assert.equal(window.document.getElementById('hrOrgSystemInfo').open, false);
+    assert.match(window.document.getElementById('hrOrgDetailMeta').textContent, /ID/);
+    assert.match(window.document.getElementById('hrOrgDetailMeta').textContent, /Parent/);
+    assert.match(window.document.getElementById('hrOrgDetailMeta').textContent, /Display group/);
+    assert.match(window.document.getElementById('hrOrgDetailMeta').textContent, /Авто-layout/);
+});
+
+test('HR org tree keeps keyboard focus and selection attributes after rerender', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.renderCanvas();
+    api.setView('tree');
+
+    const parentButton = window.document.querySelector('[data-org-tree-select="parent"]');
+    const toggle = window.document.querySelector('[data-org-tree-toggle="parent"]');
+    parentButton.focus();
+    parentButton.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    assert.equal(window.document.activeElement.dataset.orgTreeSelect, 'child');
+
+    toggle.focus();
+    click(window, toggle);
+    assert.equal(window.document.activeElement.dataset.orgTreeSelect, 'parent');
+    assert.equal(window.document.querySelector('[data-org-tree-select="parent"]').getAttribute('aria-selected'), 'true');
+    assert.equal(window.document.querySelector('[data-org-tree-select="parent"]').tabIndex, 0);
+});
+
+test('HR org mobile inspector behaves as an accessible dialog and returns focus', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.renderCanvas();
+    api.setView('tree');
+    api.setMobile(true);
+
+    const childButton = window.document.querySelector('[data-org-tree-select="child"]');
+    childButton.focus();
+    click(window, childButton);
+
+    const inspector = window.document.getElementById('hrOrgInspector');
+    assert.equal(inspector.getAttribute('role'), 'dialog');
+    assert.equal(inspector.getAttribute('aria-modal'), 'true');
+    assert.equal(inspector.getAttribute('aria-hidden'), 'false');
+    assert.equal(window.document.querySelector('.hr-org-main').inert, true);
+    assert.ok(window.document.body.classList.contains('hr-org-inspector-lock'));
+
+    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
+    assert.equal(window.document.querySelector('.hr-org-main').inert, false);
+    assert.equal(window.document.activeElement.dataset.orgTreeSelect, 'child');
 });
 
 test('HR org inspector CSS resets the legacy two-column grid and dark mode avoids inverted variables', () => {
     const css = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
     const lateDetailCss = css.slice(css.indexOf('/* HR company structure workspace */'));
+    const orgWorkspaceCss = lateDetailCss.slice(0, lateDetailCss.indexOf('/* Profession checklist templates and dashboard */'));
     const detailRule = lateDetailCss.match(/\.hr-org-detail\s*\{[\s\S]*?\n\}/)?.[0] || '';
-    const darkRule = lateDetailCss.match(/body\.dark-mode \.hr-org-search input,[\s\S]*?body\.dark-mode \.hr-org-inspector-field select\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const darkTokensRule = lateDetailCss.match(/body\.dark-mode \.hr-org-chart-card\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const saveDisabledRule = lateDetailCss.match(/#btnSaveCompanyStructure:disabled,[\s\S]*?#btnSaveCompanyStructure:disabled:focus-visible\s*\{[\s\S]*?\n\}/)?.[0] || '';
 
     assert.match(detailRule, /display:\s*block/);
-    assert.match(detailRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    assert.match(detailRule, /grid-template-columns:\s*none/);
+    assert.match(detailRule, /width:\s*100%/);
     assert.doesNotMatch(detailRule, /minmax\(0,\s*1fr\)\s+auto/);
     assert.match(lateDetailCss, /\.hr-org-detail-meta\s*\{[\s\S]*?repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(darkRule, /background:\s*#111827/);
-    assert.match(darkRule, /color:\s*#F8FAFC/);
-    assert.doesNotMatch(darkRule, /background:\s*var\(--gray-900\)/);
+    assert.match(darkTokensRule, /--hr-org-surface:\s*#111827/);
+    assert.match(darkTokensRule, /--hr-org-text:\s*#F8FAFC/);
+    assert.match(lateDetailCss, /\.hr-org-tree\s*\{[\s\S]*?background:\s*var\(--hr-org-surface\)/);
+    assert.match(lateDetailCss, /\.hr-org-detail\s*\{[\s\S]*?background:\s*var\(--hr-org-surface\)/);
+    assert.match(lateDetailCss, /@media \(max-width:\s*1100px\)/);
+    assert.doesNotMatch(orgWorkspaceCss, /@media \(max-width:\s*1050px\)/);
+    assert.doesNotMatch(darkTokensRule, /var\(--gray-900\)/);
+    assert.doesNotMatch(orgWorkspaceCss, /var\(--primary-500\)|var\(--danger-500\)/);
+    assert.match(saveDisabledRule, /cursor:\s*not-allowed/);
+    assert.match(saveDisabledRule, /opacity:\s*1/);
+    assert.match(saveDisabledRule, /background:\s*var\(--hr-org-surface-muted\)/);
 });
 
 test('HR org auto-arrange spreads cards instead of stacking roles on top of each other', async () => {

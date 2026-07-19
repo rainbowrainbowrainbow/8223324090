@@ -24,6 +24,10 @@ const HEADLESS = process.env.TIMELINE_BROWSER_SMOKE_HEADLESS !== 'false';
 const CLEANUP = process.env.TIMELINE_BROWSER_SMOKE_CLEANUP !== 'false';
 const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true';
 const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
+const RATE_LIMIT_RETRY_MS = Math.max(
+    1000,
+    Number(process.env.TIMELINE_BROWSER_SMOKE_RATE_LIMIT_RETRY_MS || 65000)
+);
 const TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX = 4;
 const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v3_shared_finance_atomic';
 const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
@@ -1645,7 +1649,13 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                 if (typeof setBookingServiceEvents === 'function') {
                     setBookingServiceEvents([{ type: 'room_setup', title: 'Task37 setup', time: '13:45' }], { render: true });
                 }
+                // Menu rendering synchronizes workspace mode and re-enables ticket state.
+                // The quote is verified above, but persisting it would attach tickets to
+                // the primary activity while this member owns the menu package.
+                if (window.BookingTickets?.reset) window.BookingTickets.reset();
+                if (window.BookingTickets?.setActive) window.BookingTickets.setActive(false);
                 document.getElementById('bookingNotes').value = 'Task37 kitchen browser smoke';
+                if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
             });
             await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, `source activity -> kitchen bridge before submit attempt ${attempt}`, { expectCreatePath: true });
             await page.locator('#bookingSubmitBtn').click();
@@ -1697,7 +1707,7 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                     const submit = document.getElementById('bookingSubmitBtn');
                     return Boolean(submit && !submit.disabled);
                 }, undefined, { timeout: 15000 }).catch(() => {});
-                await sleep(15000);
+                await sleep(RATE_LIMIT_RETRY_MS);
                 continue;
             }
             assert.equal(response.ok(), true, `source activity -> kitchen endpoint returns ok: status=${response.status()} body=${JSON.stringify(body)}`);
@@ -1821,7 +1831,23 @@ async function assertSidebarTimelineLauncherSwitching(page, label, viewport) {
 
 async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot) {
     await renderTimelineView(page, date, 'rooms');
-    return page.evaluate(async ({ room, time, snapshot }) => {
+    return page.evaluate(async ({ date, room, time, snapshot }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0
+                && rect.right > 0
+                && rect.bottom > 0
+                && rect.left < window.innerWidth
+                && rect.top < window.innerHeight;
+        };
         const groupId = String(snapshot?.groupId || snapshot?.group?.id || '').trim();
         const primary = snapshot?.bookings?.primary || {};
         const kitchen = Array.isArray(snapshot?.bookings?.kitchen) ? snapshot.bookings.kitchen[0] : null;
@@ -1871,37 +1897,228 @@ async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot
         if (!cell) return { ok: false, error: `empty cell not found: ${lineId} ${time}` };
         await selectCell(cell);
         await new Promise(resolve => setTimeout(resolve, 250));
+        if (!elementVisible(document.getElementById('bookingPanel')) && typeof openBookingPanel === 'function') {
+            await openBookingPanel(time, lineId, {
+                banquetContext: summary,
+                contextSource: 'timeline_empty_cell_smoke_retry'
+            });
+        }
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
         const banner = document.querySelector('.booking-active-banquet-context');
         const standalone = document.querySelector('[data-booking-standalone-override]');
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        if (submit) {
+            submit.scrollIntoView({ block: 'center', inline: 'nearest' });
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }
         return {
             ok: true,
+            date,
+            time,
+            room,
+            lineId,
+            customerId: summary.customerId || '',
+            customerName: summary.customerName || '',
             activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
             selectedGroupId: BookingDrawerState.selectedBanquetGroupId || '',
             activeBanquetIntent: BookingDrawerState.activeBanquetIntent || '',
             roleIntent: BookingDrawerState.activeBanquetRoleIntent || '',
             bannerText: banner?.textContent || '',
             hasStandaloneOverride: Boolean(standalone),
-            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
             guests: document.getElementById('banquetGuests')?.value || ''
         };
-    }, { room, time, snapshot });
+    }, { date, room, time, snapshot });
 }
 
-async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
-    await ensureKitchenTicketQuoteReady(page, 'active inspector -> empty cell member');
+async function ensureActiveBanquetMemberDrawer(page, groupId, drawer = {}) {
+    const state = await page.evaluate(async ({ groupId, drawer }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0;
+        };
+        const cleanGroupId = String(groupId || drawer?.activeContext?.groupId || '').trim();
+        const context = drawer?.activeContext && typeof drawer.activeContext === 'object'
+            ? { ...drawer.activeContext, mode: 'existing', groupId: cleanGroupId }
+            : {
+                mode: 'existing',
+                groupId: cleanGroupId,
+                date: drawer?.date || '',
+                room: drawer?.room || '',
+                targetTime: drawer?.time || '',
+                targetLineId: drawer?.lineId || '',
+                roleIntent: drawer?.roleIntent || 'kitchen',
+                source: 'timeline_browser_smoke_active_empty_cell'
+            };
+        const needsOpen = !elementVisible(document.getElementById('bookingPanel'))
+            || String(BookingDrawerState?.selectedBanquetGroupId || '') !== cleanGroupId
+            || BookingDrawerState?.activeBanquetIntent !== 'add_to_existing';
+        if (needsOpen && typeof openBookingPanel === 'function') {
+            await openBookingPanel(drawer?.time || context.targetTime, drawer?.lineId || context.targetLineId, {
+                banquetContext: context,
+                contextSource: 'timeline_empty_cell_submit_retry'
+            });
+        }
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        return {
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
+            selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+            activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+            roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            panelClass: panel?.className || '',
+            submitDisabled: submit?.disabled || false
+        };
+    }, { groupId, drawer });
+    assert.equal(state.panelVisible, true, `active inspector -> empty cell drawer is visible before submit: ${JSON.stringify(state)}`);
+    assert.equal(String(state.selectedGroupId), String(groupId), `active inspector -> empty cell keeps selected group before submit: ${JSON.stringify(state)}`);
+    assert.equal(state.activeBanquetIntent, 'add_to_existing', `active inspector -> empty cell keeps add-to-existing intent before submit: ${JSON.stringify(state)}`);
+    return state;
+}
+
+async function clickActiveBanquetMemberSubmit(page, groupId, drawer = {}) {
+    const state = await page.evaluate(async ({ groupId, drawer }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0;
+        };
+        const setInputValue = (id, value) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.value = String(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const cleanGroupId = String(groupId || drawer?.activeContext?.groupId || '').trim();
+        const context = drawer?.activeContext && typeof drawer.activeContext === 'object'
+            ? { ...drawer.activeContext, mode: 'existing', groupId: cleanGroupId }
+            : {
+                mode: 'existing',
+                groupId: cleanGroupId,
+                date: drawer?.date || '',
+                room: drawer?.room || '',
+                targetTime: drawer?.time || '',
+                targetLineId: drawer?.lineId || '',
+                roleIntent: drawer?.roleIntent || 'kitchen',
+                source: 'timeline_browser_smoke_active_empty_cell'
+            };
+        const openIfNeeded = async () => {
+            const needsOpen = !elementVisible(document.getElementById('bookingPanel'))
+                || String(BookingDrawerState?.selectedBanquetGroupId || '') !== cleanGroupId
+                || BookingDrawerState?.activeBanquetIntent !== 'add_to_existing';
+            if (needsOpen && typeof openBookingPanel === 'function') {
+                await openBookingPanel(drawer?.time || context.targetTime, drawer?.lineId || context.targetLineId, {
+                    banquetContext: context,
+                    contextSource: 'timeline_empty_cell_submit_retry'
+                });
+            }
+        };
+        const applyDraftSetup = () => {
+            if (typeof setBookingKitchenEnabled === 'function') {
+                setBookingKitchenEnabled(false, { markDirty: true });
+            }
+            const customerId = context.customerId || context.sourceCustomerId || context.banquetGroupCustomerId || drawer?.customerId || '';
+            const customerName = context.customerName || context.sourceCustomerName || drawer?.customerName || '';
+            if (customerId || customerName) {
+                if (typeof applySelectedCustomerToBookingForm === 'function') {
+                    applySelectedCustomerToBookingForm({ id: customerId, name: customerName }, {
+                        markDirty: false,
+                        renderSummary: false
+                    });
+                }
+                const selectedCustomer = document.getElementById('selectedCustomerId');
+                if (selectedCustomer && customerId) selectedCustomer.value = String(customerId);
+                const customerSearch = document.getElementById('customerSearch');
+                if (customerSearch && customerName) {
+                    customerSearch.value = String(customerName);
+                    customerSearch.dataset.selectedValue = String(customerName);
+                }
+                const customerNameInput = document.getElementById('customerName');
+                if (customerNameInput && customerName) customerNameInput.value = String(customerName);
+            }
+            setInputValue('banquetGuests', '');
+            setInputValue('banquetAdults', '');
+            setInputValue('banquetTables', '');
+            if (typeof BookingPackageState !== 'undefined') {
+                BookingPackageState.menuPositions = [];
+                BookingPackageState.serviceEvents = [];
+            }
+            if (typeof renderBookingMenuPositions === 'function') renderBookingMenuPositions();
+            if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+            if (window.BookingTickets?.reset) window.BookingTickets.reset();
+            if (window.BookingTickets?.setActive) window.BookingTickets.setActive(false);
+            const banquetMenu = document.getElementById('banquetMenu');
+            if (banquetMenu) banquetMenu.value = '';
+            const notes = document.getElementById('bookingNotes');
+            if (notes) notes.value = 'Task37 active inspector empty cell smoke';
+            if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        };
+        await openIfNeeded();
+        applyDraftSetup();
+        await openIfNeeded();
+        applyDraftSetup();
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        if (elementVisible(submit)) submit.scrollIntoView({ block: 'center', inline: 'nearest' });
+        const beforeClick = {
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
+            submitDisabled: submit?.disabled || false,
+            selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+            activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+            roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+            panelClass: panel?.className || ''
+        };
+        if (beforeClick.panelVisible && beforeClick.submitVisible && !beforeClick.submitDisabled) submit.click();
+        return beforeClick;
+    }, { groupId, drawer });
+    assert.equal(state.panelVisible, true, `active inspector -> empty cell drawer visible at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.submitVisible, true, `active inspector -> empty cell submit visible at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.submitDisabled, false, `active inspector -> empty cell submit enabled at submit click: ${JSON.stringify(state)}`);
+    assert.equal(String(state.selectedGroupId), String(groupId), `active inspector -> empty cell selected group at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.activeBanquetIntent, 'add_to_existing', `active inspector -> empty cell add-to-existing intent at submit click: ${JSON.stringify(state)}`);
+    return state;
+}
+
+async function submitActiveBanquetMemberFromEmptyCell(page, groupId, drawer = {}) {
+    await ensureActiveBanquetMemberDrawer(page, groupId, drawer);
     const genericBookingRequests = [];
+    const observedPostPaths = [];
     const requestHandler = request => {
         if (request.method() !== 'POST') return;
         const pathname = new URL(request.url()).pathname;
+        observedPostPaths.push(pathname);
         if (pathname === '/api/bookings' || pathname === '/api/bookings/full') {
             genericBookingRequests.push(request.url());
         }
     };
     page.on('request', requestHandler);
-    const responsePromise = page.waitForResponse(response =>
-        response.url().includes(`/api/banquets/${encodeURIComponent(groupId)}/member-booking`)
-        && response.request().method() === 'POST'
-    );
     await page.evaluate(() => {
         const setInputValue = (id, value) => {
             const input = document.getElementById(id);
@@ -1910,32 +2127,83 @@ async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
         };
-        if (typeof setBookingKitchenEnabled === 'function') setBookingKitchenEnabled(true, { markDirty: true });
-        setInputValue('banquetGuests', document.getElementById('banquetGuests')?.value || '4');
-        setInputValue('banquetAdults', document.getElementById('banquetAdults')?.value || '0');
-        if (typeof setBookingMenuPositions === 'function') {
-            setBookingMenuPositions([{
-                productId: 'task37-empty-cell-menu',
-                title: 'Task37 empty cell menu',
-                quantity: 1,
-                unitPrice: 4500,
-                subtotal: 4500,
-                kitchenType: 'menu',
-                servingUnit: 'portion',
-                servingTime: '17:30'
-            }]);
+        if (typeof setBookingKitchenEnabled === 'function') {
+            setBookingKitchenEnabled(false, { markDirty: true });
         }
+        setInputValue('banquetGuests', '');
+        setInputValue('banquetAdults', '');
+        setInputValue('banquetTables', '');
+        if (typeof BookingPackageState !== 'undefined') {
+            BookingPackageState.menuPositions = [];
+            BookingPackageState.serviceEvents = [];
+        } else {
+            if (typeof setBookingMenuPositions === 'function') setBookingMenuPositions([]);
+            if (typeof setBookingServiceEvents === 'function') setBookingServiceEvents([], { render: true });
+        }
+        if (typeof renderBookingMenuPositions === 'function') renderBookingMenuPositions();
+        if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        if (window.BookingTickets?.reset) window.BookingTickets.reset();
+        if (window.BookingTickets?.setActive) window.BookingTickets.setActive(false);
+        const banquetMenu = document.getElementById('banquetMenu');
+        if (banquetMenu) banquetMenu.value = '';
         document.getElementById('bookingNotes').value = 'Task37 active inspector empty cell smoke';
-        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
     });
-    await acknowledgePreorderWarningIfVisible(page, 'active inspector -> empty cell member');
-    const response = await responsePromise;
-    page.off('request', requestHandler);
-    const body = await response.json();
-    assert.equal(response.ok(), true, 'active inspector -> empty cell member endpoint returns ok');
-    assert.equal(body.success, true, 'active inspector -> empty cell response success');
-    assert.deepEqual(genericBookingRequests, [], 'active inspector -> empty cell does not use generic booking endpoints');
-    return bookingCreateResult(body);
+    await ensureActiveBanquetMemberDrawer(page, groupId, drawer);
+    try {
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            const responsePromise = page.waitForResponse(response => {
+                const pathname = new URL(response.url()).pathname;
+                return pathname === `/api/banquets/${encodeURIComponent(groupId)}/member-booking`
+                    && response.request().method() === 'POST';
+            }, { timeout: 60000 }).catch(error => ({ __smokeError: error }));
+            await clickActiveBanquetMemberSubmit(page, groupId, drawer);
+            await acknowledgePreorderWarningIfVisible(page, 'active inspector -> empty cell member');
+            const response = await responsePromise;
+            if (response?.__smokeError) {
+                const diagnostics = await page.evaluate(() => ({
+                    submitDisabled: document.getElementById('bookingSubmitBtn')?.disabled || false,
+                    submitText: document.getElementById('bookingSubmitBtn')?.textContent?.trim() || '',
+                    modalText: document.querySelector('.modal:not(.hidden), .confirm-modal, [role="dialog"]')?.textContent?.trim() || '',
+                    activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+                    selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+                    activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+                    roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+                    ticketIssue: window.BookingTickets?.validationIssue?.() || null,
+                    ticketCollect: window.BookingTickets?.collect?.() || {},
+                    menuPositionCount: typeof BookingPackageState !== 'undefined' && Array.isArray(BookingPackageState.menuPositions)
+                        ? BookingPackageState.menuPositions.length
+                        : null,
+                    serviceEventCount: typeof BookingPackageState !== 'undefined' && Array.isArray(BookingPackageState.serviceEvents)
+                        ? BookingPackageState.serviceEvents.length
+                        : null,
+                    validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+                    notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                        .map(node => String(node.textContent || '').trim())
+                        .filter(Boolean)
+                        .slice(-5)
+                })).catch(() => null);
+                throw new Error(`active inspector -> empty cell member request was not observed: ${JSON.stringify({
+                    waitError: response.__smokeError?.message || String(response.__smokeError),
+                    observedPostPaths,
+                    diagnostics
+                })}`);
+            }
+            const body = await response.json().catch(async () => ({ raw: await response.text().catch(() => '') }));
+            if (response.status() === 429 && attempt < 3) {
+                console.warn(`active inspector -> empty cell member rate limited; retry ${attempt + 1}/3`);
+                await sleep(RATE_LIMIT_RETRY_MS);
+                continue;
+            }
+            assert.equal(response.ok(), true, `active inspector -> empty cell member endpoint returns ok: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.equal(body.success, true, `active inspector -> empty cell response success: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.deepEqual(genericBookingRequests, [], 'active inspector -> empty cell does not use generic booking endpoints');
+            return bookingCreateResult(body);
+        }
+    } finally {
+        page.off('request', requestHandler);
+    }
+    throw new Error('active inspector -> empty cell retry loop exited unexpectedly');
 }
 
 async function chooseFirstActivityProgram(page) {
@@ -3236,11 +3504,13 @@ async function run() {
         const emptyCellDrawer = await openActiveBanquetEmptyCellDrawer(page, date, room, '17:00', activitySnapshot);
         assert.equal(emptyCellDrawer.ok, true, `active inspector -> empty cell opens drawer: ${emptyCellDrawer.error || ''}`);
         assert.equal(emptyCellDrawer.panelVisible, true, 'active inspector -> empty cell drawer visible');
+        assert.equal(emptyCellDrawer.submitVisible, true, 'active inspector -> empty cell submit visible');
         assert.equal(String(emptyCellDrawer.activeContext?.groupId || emptyCellDrawer.selectedGroupId), activityGroupId, 'active inspector context keeps the banquet group');
         assert.equal(emptyCellDrawer.activeBanquetIntent, 'add_to_existing', 'empty cell drawer has add-to-existing intent');
+        assert.equal(emptyCellDrawer.roleIntent, 'kitchen', 'empty cell drawer keeps kitchen role intent');
         assert.ok(emptyCellDrawer.hasStandaloneOverride, 'empty cell drawer exposes explicit standalone override');
         assert.ok(String(emptyCellDrawer.bannerText || '').trim(), 'empty cell drawer shows active banquet banner');
-        const emptyCellKitchen = await submitActiveBanquetMemberFromEmptyCell(page, activityGroupId);
+        const emptyCellKitchen = await submitActiveBanquetMemberFromEmptyCell(page, activityGroupId, emptyCellDrawer);
         assert.ok(emptyCellKitchen?.booking?.id, 'active inspector empty-cell kitchen booking created');
         recordCreatedBookingIds(createdBookingIds, emptyCellKitchen);
         const emptyCellSnapshot = await banquetSnapshot(base, token, emptyCellKitchen.booking.id);
@@ -3269,8 +3539,7 @@ async function run() {
                     duration: 60,
                     customerId: customerA.id,
                     customerName: customerA.name,
-                    banquetGuests: 4,
-                    bookingPackage: kitchenPackage('15:30')
+                    banquetGuests: 4
                 })
             }
         });

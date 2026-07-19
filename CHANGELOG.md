@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.113 - Timeline smoke and guarded banquet QA
+
+### Timeline / Бронювання / Production QA / (20.07.2026) [codex]
+- **Безпечне додавання до активного банкету** — порожній пакет більше не перетворює нового учасника на другого package owner; меню, сервіси та квитки з реальними даними зберігаються без змін.
+- **Стабільний browser smoke** — виправлено readiness порожньої клітинки, реальний submit click, повтор після production rate limit і діагностику падінь.
+- **Guarded cleanup** — live QA використовує disposable markers, dry-run, атомарне скасування booking/group/finance та перевіряє безпечний повторний запуск.
+- **Protected surface** — контрольні hash-блоки timeline/booking не змінювалися.
+
+---
+
 ## v0.79.112 - Deployment Commit Metadata
 
 ### API / Надійність релізів / (20.07.2026) [codex]

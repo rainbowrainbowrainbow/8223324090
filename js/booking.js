@@ -11651,6 +11651,51 @@ function attachActiveBanquetIntentMarker(booking) {
     return booking;
 }
 
+function stripEmptyBookingPackageForExistingGroupMember(booking = {}) {
+    const extraData = booking.extraData && typeof booking.extraData === 'object'
+        ? booking.extraData
+        : {};
+    const bookingPackage = booking.bookingPackage
+        || booking.booking_package
+        || extraData.bookingPackage
+        || extraData.booking_package
+        || {};
+    const hasMaterialPackage = [
+        booking.menuPositions,
+        booking.menu_positions,
+        booking.serviceEvents,
+        booking.service_events,
+        bookingPackage.menuPositions,
+        bookingPackage.menu_positions,
+        bookingPackage.serviceEvents,
+        bookingPackage.service_events,
+        bookingPackage.ticketLines,
+        bookingPackage.ticket_lines
+    ].some(value => Array.isArray(value) && value.length > 0)
+        || Boolean(
+            (bookingPackage.entryCharge ?? bookingPackage.entry_charge)
+            && typeof (bookingPackage.entryCharge ?? bookingPackage.entry_charge) === 'object'
+        )
+        || Array.isArray(booking.ticketQuantities)
+        || Array.isArray(booking.ticket_quantities)
+        || Boolean(booking.ticketQuote || booking.ticket_quote)
+        || Boolean(String(booking.banquetMenu || booking.banquet_menu || '').trim());
+    if (hasMaterialPackage) return booking;
+
+    delete booking.menuPositions;
+    delete booking.menu_positions;
+    delete booking.serviceEvents;
+    delete booking.service_events;
+    delete booking.programBasePrice;
+    delete booking.program_base_price;
+    delete booking.bookingPackage;
+    delete booking.booking_package;
+    delete extraData.bookingPackage;
+    delete extraData.booking_package;
+    booking.extraData = extraData;
+    return booking;
+}
+
 function buildBookingObject(formData, program) {
     const isEducationLessonBooking = isEducationTimelineBookingMode() && !!formData.educationLesson;
     const hasCatalogProgram = !!program;
@@ -13043,6 +13088,7 @@ async function handleBookingSubmit(e) {
             } else if (createPath.kind === 'existing_group_member') {
                 setBookingDrawerMode(BOOKING_DRAWER_MODES.EXISTING_GROUP_MEMBER);
                 attachBanquetGroupContextToBooking(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource);
+                stripEmptyBookingPackageForExistingGroupMember(booking);
                 createResult = await apiCreateBanquetMemberBooking(createPath.groupId, {
                     sourceBookingId: createPath.sourceBookingId || null,
                     role: 'kitchen',

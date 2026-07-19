@@ -917,7 +917,7 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
                 SET status = 'cancelled', updated_at = NOW()
               WHERE (id = ANY($1::text[]) OR linked_to = ANY($1::text[]))
                 AND ${contextSql('bookings', '$2')}
-                AND ${activeSql('bookings.status')}
+                AND ${activeSql('bookings')}
               RETURNING id`,
             [rootBookingIds, options.businessContext]
         )

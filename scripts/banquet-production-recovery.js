@@ -9,9 +9,12 @@ const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 const APPLY_CONFIRMATION = 'ATTACH_CONFIRMED_PINATAS';
 const DETACH_CONFIRMATION = 'DETACH_CONFIRMED_PINATAS';
 const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
+const RECONCILE_GROUP_STATE_CONFIRMATION = 'RECONCILE_STALE_BANQUET_GROUP';
 const RECOVERY_ACTOR = 'banquet-pinata-recovery';
 const QA_CLEANUP_ACTOR = 'timeline-browser-smoke-cleanup';
 const QA_CLEANUP_SOURCE = 'timeline_browser_smoke';
+const RECONCILE_GROUP_STATE_STRATEGIES = Object.freeze(['cancel-stale-group']);
+const RECONCILE_GROUP_STATE_CLASSIFICATIONS = Object.freeze(['active_group_cancelled_primary']);
 const BANQUET_RELATION_TYPE = 'banquet_activity';
 const SAFE_QA_CLEANUP_BOOKING_IDS = Object.freeze(
     Array.from({ length: 7 }, (_, index) => `BK-2026-${String(662 + index).padStart(4, '0')}`)
@@ -91,6 +94,7 @@ function parseAuditOptions(argv = []) {
         to,
         businessContext,
         json: argv.includes('--json'),
+        summaryOnly: argv.includes('--summary-only') || argv.includes('--summaryOnly'),
         strict: argv.includes('--strict')
     };
 }
@@ -243,13 +247,52 @@ function parseQaCleanupOptions(argv = []) {
     };
 }
 
+function parseReconcileGroupStateOptions(argv = []) {
+    const apply = argv.includes('--apply');
+    const groupId = String(argValue(argv, '--group-id', argValue(argv, '--group', '')) || '').trim();
+    const strategy = String(argValue(argv, '--strategy', '') || '').trim();
+    const expectedClassification = String(
+        argValue(argv, '--expected-classification', argValue(argv, '--classification', '')) || ''
+    ).trim();
+    const confirmation = String(argValue(argv, '--confirm', '') || '').trim();
+    if (!groupId) throw new Error('Group state reconciliation requires --group-id=<one banquet group id>');
+    if (!strategy || !RECONCILE_GROUP_STATE_STRATEGIES.includes(strategy)) {
+        throw new Error(`Group state reconciliation requires --strategy=${RECONCILE_GROUP_STATE_STRATEGIES.join('|')}`);
+    }
+    if (!expectedClassification || !RECONCILE_GROUP_STATE_CLASSIFICATIONS.includes(expectedClassification)) {
+        throw new Error(
+            `Group state reconciliation requires --expected-classification=${RECONCILE_GROUP_STATE_CLASSIFICATIONS.join('|')}`
+        );
+    }
+    if (apply) {
+        throw new Error(
+            `Group state reconciliation apply is not implemented in this phase; future apply will require --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION} and separate owner approval`
+        );
+    }
+    if (confirmation) {
+        throw new Error('Group state reconciliation dry-run does not accept --confirm');
+    }
+    return {
+        command: 'reconcile-group-state',
+        apply: false,
+        json: argv.includes('--json'),
+        businessContext: normalizeBusinessContext(
+            argValue(argv, '--business-context', argValue(argv, '--context', DEFAULT_BUSINESS_CONTEXT))
+        ),
+        groupId: cleanTechnicalId(groupId, 'banquet group id'),
+        strategy,
+        expectedClassification
+    };
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
     const command = String(argv[0] || '').trim().toLowerCase();
     if (command === 'audit') return parseAuditOptions(argv.slice(1));
     if (command === 'recover') return parseRecoveryOptions(argv.slice(1));
     if (command === 'detach' || command === 'rollback') return parseDetachOptions(argv.slice(1));
     if (command === 'qa-cleanup') return parseQaCleanupOptions(argv.slice(1));
-    throw new Error('First argument must be audit, recover, detach, or qa-cleanup');
+    if (command === 'reconcile-group-state') return parseReconcileGroupStateOptions(argv.slice(1));
+    throw new Error('First argument must be audit, recover, detach, qa-cleanup, or reconcile-group-state');
 }
 
 function matchFingerprint(row = {}) {
@@ -363,6 +406,7 @@ async function loadMissingDepositAuditRows(db, options) {
            JOIN bookings primary_booking
              ON primary_booking.id = bg.primary_booking_id
             AND ${contextSql('primary_booking', '$3')}
+            AND ${activeSql('primary_booking')}
           WHERE primary_booking.date >= $1
             AND primary_booking.date <= $2
             AND ${contextSql('bg', '$3')}
@@ -378,6 +422,87 @@ async function loadMissingDepositAuditRows(db, options) {
                    )
             )
           ORDER BY business_context, primary_booking.date, bg.id`,
+        [options.from, options.to, options.businessContext]
+    );
+    return result.rows || [];
+}
+
+async function loadGroupStateIntegrityAuditRows(db, options) {
+    const result = await db.query(
+        `WITH group_state AS (
+            SELECT bg.id AS group_id,
+                   bg.primary_booking_id,
+                   CASE
+                       WHEN LOWER(COALESCE(NULLIF(BTRIM(bg.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+                            IN ('park_zakrevsky', 'park', 'pzp') THEN '${DEFAULT_BUSINESS_CONTEXT}'
+                       ELSE LOWER(COALESCE(NULLIF(BTRIM(bg.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+                   END AS business_context,
+                   COALESCE(primary_booking.date, bg.date) AS date,
+                   COALESCE(primary_booking.room, bg.room) AS room,
+                   COALESCE(primary_booking.customer_id, bg.customer_id) AS customer_id,
+                   LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) AS group_status,
+                   LOWER(COALESCE(NULLIF(BTRIM(primary_booking.status), ''), 'confirmed')) AS primary_status,
+                   COUNT(membership.booking_id)::integer AS member_count,
+                   COUNT(member_booking.id) FILTER (
+                       WHERE LOWER(COALESCE(NULLIF(BTRIM(member_booking.status), ''), 'confirmed')) <> 'cancelled'
+                   )::integer AS active_member_count,
+                   COUNT(member_booking.id) FILTER (
+                       WHERE LOWER(COALESCE(NULLIF(BTRIM(member_booking.status), ''), 'confirmed')) = 'cancelled'
+                   )::integer AS cancelled_member_count,
+                   COUNT(membership.booking_id) FILTER (
+                       WHERE membership.booking_id = bg.primary_booking_id
+                         AND LOWER(COALESCE(NULLIF(BTRIM(membership.role), ''), '')) = 'primary'
+                   )::integer AS primary_membership_count
+              FROM banquet_groups bg
+              LEFT JOIN bookings primary_booking
+                ON primary_booking.id = bg.primary_booking_id
+               AND ${contextSql('primary_booking', '$3')}
+              LEFT JOIN banquet_group_bookings membership
+                ON membership.group_id = bg.id
+               AND ${contextSql('membership', '$3')}
+              LEFT JOIN bookings member_booking
+                ON member_booking.id = membership.booking_id
+               AND ${contextSql('member_booking', '$3')}
+             WHERE COALESCE(primary_booking.date, bg.date) >= $1
+               AND COALESCE(primary_booking.date, bg.date) <= $2
+               AND ${contextSql('bg', '$3')}
+             GROUP BY bg.id, bg.primary_booking_id, bg.business_context, bg.date, bg.room, bg.customer_id,
+                      primary_booking.date, primary_booking.room, primary_booking.customer_id, bg.status,
+                      primary_booking.status
+        )
+        SELECT group_state.group_id,
+               group_state.primary_booking_id,
+               group_state.business_context,
+               group_state.date,
+               group_state.room,
+               group_state.customer_id,
+               group_state.group_status,
+               group_state.primary_status,
+               group_state.member_count,
+               group_state.active_member_count,
+               group_state.cancelled_member_count,
+               group_state.primary_membership_count,
+               issue.issue_code
+          FROM group_state
+          JOIN LATERAL (
+              VALUES
+                  ('active_group_cancelled_primary',
+                      group_state.group_status = 'active'
+                      AND group_state.primary_status = 'cancelled'),
+                  ('active_group_without_primary_membership',
+                      group_state.group_status = 'active'
+                      AND group_state.primary_membership_count = 0),
+                  ('cancelled_group_with_active_members',
+                      group_state.group_status = 'cancelled'
+                      AND group_state.active_member_count > 0),
+                  ('active_group_without_active_members',
+                      group_state.group_status = 'active'
+                      AND group_state.active_member_count = 0),
+                  ('member_status_mismatch',
+                      group_state.group_status = 'active'
+                      AND group_state.cancelled_member_count > 0)
+          ) AS issue(issue_code, applies) ON issue.applies
+         ORDER BY group_state.business_context, group_state.date, group_state.group_id, issue.issue_code`,
         [options.from, options.to, options.businessContext]
     );
     return result.rows || [];
@@ -438,7 +563,11 @@ async function loadPinataIntegrityAuditRows(db, options) {
     return result.rows || [];
 }
 
-function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [], options = {}) {
+function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [], groupStateRows = [], options = {}) {
+    if (!Array.isArray(groupStateRows) && groupStateRows && typeof groupStateRows === 'object') {
+        options = groupStateRows;
+        groupStateRows = [];
+    }
     const pinatas = new Map();
     for (const row of pinataRows) {
         const bookingId = String(row.pinata_booking_id || '').trim();
@@ -494,6 +623,21 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
         roleMismatch: row.role_mismatch === true,
         exactKeyMismatch: row.exact_key_mismatch === true
     }));
+    const groupStateIntegrityIssues = groupStateRows.map(row => ({
+        groupId: String(row.group_id || '').trim(),
+        primaryBookingId: String(row.primary_booking_id || '').trim(),
+        businessContext: normalizeBusinessContext(row.business_context),
+        date: String(row.date || '').slice(0, 10),
+        room: String(row.room || '').trim(),
+        groupStatus: String(row.group_status || '').trim().toLowerCase(),
+        primaryStatus: String(row.primary_status || '').trim().toLowerCase(),
+        memberCount: Number(row.member_count || 0),
+        activeMemberCount: Number(row.active_member_count || 0),
+        cancelledMemberCount: Number(row.cancelled_member_count || 0),
+        primaryMembershipCount: Number(row.primary_membership_count || 0),
+        issueCode: String(row.issue_code || '').trim(),
+        matchFingerprint: matchFingerprint(row)
+    }));
 
     return {
         readOnly: true,
@@ -508,7 +652,8 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
             ambiguousPinatas: ambiguous.length,
             standalonePinatas: standalone.length,
             groupsMissingCanonicalDeposit: depositsForManualReview.length,
-            pinataIntegrityIssues: integrityIssues.length
+            pinataIntegrityIssues: integrityIssues.length,
+            groupStateIntegrityIssues: groupStateIntegrityIssues.length
         },
         pinatas: {
             exactMatches,
@@ -516,7 +661,8 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
             standalone
         },
         depositsForManualReview,
-        integrityIssues
+        integrityIssues,
+        groupStateIntegrityIssues
     };
 }
 
@@ -526,9 +672,189 @@ async function runAudit(db, options) {
         const pinataRows = await loadUngroupedPinataAuditRows(db, options);
         const depositRows = await loadMissingDepositAuditRows(db, options);
         const integrityRows = await loadPinataIntegrityAuditRows(db, options);
-        const report = buildAuditReport(pinataRows, depositRows, integrityRows, options);
+        const groupStateRows = await loadGroupStateIntegrityAuditRows(db, options);
+        const report = buildAuditReport(pinataRows, depositRows, integrityRows, groupStateRows, options);
         await db.query('ROLLBACK');
         return report;
+    } catch (error) {
+        await db.query('ROLLBACK').catch(() => {});
+        throw error;
+    }
+}
+
+async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } = {}) {
+    const result = await db.query(
+        `SELECT bg.id AS group_id,
+                CASE
+                    WHEN LOWER(COALESCE(NULLIF(BTRIM(bg.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+                         IN ('park_zakrevsky', 'park', 'pzp') THEN '${DEFAULT_BUSINESS_CONTEXT}'
+                    ELSE LOWER(COALESCE(NULLIF(BTRIM(bg.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+                END AS business_context,
+                bg.primary_booking_id,
+                bg.customer_id,
+                COALESCE(primary_booking.date, bg.date) AS date,
+                COALESCE(primary_booking.room, bg.room) AS room,
+                LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) AS group_status,
+                LOWER(COALESCE(NULLIF(BTRIM(primary_booking.status), ''), 'confirmed')) AS primary_status,
+                COUNT(DISTINCT membership.booking_id)::integer AS member_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE ${activeSql('member_booking')}
+                )::integer AS active_member_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE ${activeSql('member_booking')}
+                      AND member_booking.id <> bg.primary_booking_id
+                )::integer AS active_non_primary_member_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE LOWER(COALESCE(NULLIF(BTRIM(member_booking.status), ''), 'confirmed')) = 'cancelled'
+                )::integer AS cancelled_member_count,
+                COUNT(DISTINCT membership.booking_id) FILTER (
+                    WHERE membership.booking_id = bg.primary_booking_id
+                      AND LOWER(COALESCE(NULLIF(BTRIM(membership.role), ''), '')) = 'primary'
+                )::integer AS primary_membership_count,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
+                        FILTER (WHERE ${activeSql('member_booking')}),
+                    ARRAY[]::text[]
+                ) AS active_member_ids,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT member_booking.id ORDER BY member_booking.id)
+                        FILTER (
+                            WHERE ${activeSql('member_booking')}
+                              AND member_booking.id <> bg.primary_booking_id
+                        ),
+                    ARRAY[]::text[]
+                ) AS active_non_primary_member_ids,
+                COUNT(DISTINCT deposit.id) FILTER (WHERE deposit.id IS NOT NULL)::integer AS active_deposit_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE ${activeSql('member_booking')}
+                      AND (
+                          COALESCE(member_booking.extra_data::text, '') ILIKE '%ticketLines%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticket_lines%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticketQuote%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticket_quote%'
+                      )
+                )::integer AS ticket_snapshot_member_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE ${activeSql('member_booking')}
+                      AND COALESCE(member_booking.price, 0) > 0
+                )::integer AS priced_active_member_count
+           FROM banquet_groups bg
+           LEFT JOIN bookings primary_booking
+             ON primary_booking.id = bg.primary_booking_id
+            AND ${contextSql('primary_booking', '$2')}
+           LEFT JOIN banquet_group_bookings membership
+             ON membership.group_id = bg.id
+            AND ${contextSql('membership', '$2')}
+           LEFT JOIN bookings member_booking
+             ON member_booking.id = membership.booking_id
+            AND ${contextSql('member_booking', '$2')}
+           LEFT JOIN banquet_deposits deposit
+             ON ${contextSql('deposit', '$2')}
+            AND LOWER(COALESCE(NULLIF(BTRIM(deposit.status), ''), 'manager_reported')) <> 'cancelled'
+            AND (
+                deposit.banquet_group_id = bg.id
+                OR deposit.primary_booking_id = bg.primary_booking_id
+                OR deposit.primary_booking_id = member_booking.id
+            )
+          WHERE bg.id = $1
+            AND ${contextSql('bg', '$2')}
+          GROUP BY bg.id, bg.business_context, bg.primary_booking_id, bg.customer_id, bg.date, bg.room,
+                   bg.status, primary_booking.date, primary_booking.room, primary_booking.status
+          ${forUpdate ? 'FOR UPDATE OF bg, primary_booking, membership, member_booking' : ''}`,
+        [options.groupId, options.businessContext]
+    );
+    return result.rows[0] || null;
+}
+
+function classifyReconcileGroupStateTarget(row = null, options = {}) {
+    if (!row) {
+        return {
+            groupId: options.groupId,
+            strategy: options.strategy,
+            expectedClassification: options.expectedClassification,
+            status: 'not_found',
+            classification: null,
+            reason: 'group_not_found',
+            blockers: ['group_not_found'],
+            activeMemberIds: [],
+            activeNonPrimaryMemberIds: []
+        };
+    }
+    const groupStatus = String(row.group_status || '').trim().toLowerCase();
+    const primaryStatus = String(row.primary_status || '').trim().toLowerCase();
+    const activeNonPrimaryMemberCount = Number(row.active_non_primary_member_count || 0);
+    const activeDepositCount = Number(row.active_deposit_count || 0);
+    const ticketSnapshotMemberCount = Number(row.ticket_snapshot_member_count || 0);
+    const pricedActiveMemberCount = Number(row.priced_active_member_count || 0);
+    const classification = groupStatus === 'active'
+        && primaryStatus === 'cancelled'
+        && activeNonPrimaryMemberCount > 0
+        ? 'active_group_cancelled_primary'
+        : 'unsupported_group_state';
+    const blockers = [];
+    if (classification !== options.expectedClassification) blockers.push('expected_classification_mismatch');
+    if (groupStatus !== 'active') blockers.push('group_not_active');
+    if (primaryStatus !== 'cancelled') blockers.push('primary_not_cancelled');
+    if (activeNonPrimaryMemberCount <= 0) blockers.push('no_active_non_primary_members');
+    if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
+    if (ticketSnapshotMemberCount > 0) blockers.push('ticket_ownership_conflict');
+    if (pricedActiveMemberCount > 0) blockers.push('member_financial_fields_present');
+    const uniqueBlockers = [...new Set(blockers)];
+    return {
+        groupId: String(row.group_id || options.groupId || '').trim(),
+        primaryBookingId: String(row.primary_booking_id || '').trim() || null,
+        businessContext: normalizeBusinessContext(row.business_context || options.businessContext),
+        date: String(row.date || '').slice(0, 10),
+        room: String(row.room || '').trim() || null,
+        strategy: options.strategy,
+        expectedClassification: options.expectedClassification,
+        classification,
+        status: uniqueBlockers.length ? 'blocked' : 'ready',
+        reason: uniqueBlockers.join(',') || null,
+        blockers: uniqueBlockers,
+        groupStatus,
+        primaryStatus,
+        memberCount: Number(row.member_count || 0),
+        activeMemberCount: Number(row.active_member_count || 0),
+        activeNonPrimaryMemberCount,
+        cancelledMemberCount: Number(row.cancelled_member_count || 0),
+        primaryMembershipCount: Number(row.primary_membership_count || 0),
+        activeMemberIds: normalizedTechnicalArray(row.active_member_ids),
+        activeNonPrimaryMemberIds: normalizedTechnicalArray(row.active_non_primary_member_ids),
+        activeDepositCount,
+        ticketSnapshotMemberCount,
+        pricedActiveMemberCount,
+        matchFingerprint: matchFingerprint(row)
+    };
+}
+
+async function runReconcileGroupStateDryRun(db, options, dependencies = {}) {
+    const loadTarget = dependencies.loadReconcileGroupStateTarget || loadReconcileGroupStateTarget;
+    await db.query('BEGIN TRANSACTION READ ONLY');
+    try {
+        const target = await loadTarget(db, options, { forUpdate: false });
+        const result = classifyReconcileGroupStateTarget(target, options);
+        await db.query('ROLLBACK');
+        return {
+            mode: 'reconcile-group-state-dry-run',
+            readOnly: true,
+            businessContext: options.businessContext,
+            strategy: options.strategy,
+            expectedClassification: options.expectedClassification,
+            groupId: options.groupId,
+            result,
+            summary: {
+                requested: 1,
+                ready: result.status === 'ready' ? 1 : 0,
+                blocked: result.status === 'blocked' ? 1 : 0,
+                notFound: result.status === 'not_found' ? 1 : 0,
+                activeMembers: result.activeMemberCount || 0,
+                activeNonPrimaryMembers: result.activeNonPrimaryMemberCount || 0,
+                activeDepositRows: result.activeDepositCount || 0,
+                ticketOwnershipConflicts: result.ticketSnapshotMemberCount || 0,
+                financialFieldConflicts: result.pricedActiveMemberCount || 0
+            }
+        };
     } catch (error) {
         await db.query('ROLLBACK').catch(() => {});
         throw error;
@@ -706,29 +1032,63 @@ function bookingActive(status) {
 
 async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
     const result = await db.query(
-        `SELECT bg.id AS group_id,
-                bg.business_context AS group_business_context,
-                bg.primary_booking_id,
-                bg.customer_id AS group_customer_id,
-                bg.date AS group_date,
-                bg.room AS group_room,
-                bg.group_name,
-                bg.status AS group_status,
-                bg.source AS group_source,
-                bg.guest_arrival_time,
-                bgb.booking_id,
-                bgb.role,
-                b.id AS booking_id,
-                b.status AS booking_status,
-                b.linked_to,
-                b.customer_id AS booking_customer_id,
-                b.date AS booking_date,
-                b.time AS booking_time,
-                b.room AS booking_room,
-                b.label AS booking_label,
-                b.program_code,
-                b.category,
-                b.extra_data,
+        `WITH scoped_group AS (
+            SELECT bg.*
+              FROM banquet_groups bg
+             WHERE bg.id = $1
+               AND ${contextSql('bg', '$2')}
+             ${forUpdate ? 'FOR UPDATE OF bg' : ''}
+        ),
+        cleanup_records AS (
+            SELECT 'member'::text AS record_kind,
+                   NULL::text AS parent_booking_id,
+                   bgb.booking_id,
+                   bgb.role
+              FROM scoped_group bg
+              JOIN banquet_group_bookings bgb
+                ON bgb.group_id = bg.id
+               AND ${contextSql('bgb', '$2')}
+            UNION ALL
+            SELECT 'linked_child'::text AS record_kind,
+                   parent_membership.booking_id AS parent_booking_id,
+                   child.id AS booking_id,
+                   NULL::text AS role
+              FROM scoped_group bg
+              JOIN banquet_group_bookings parent_membership
+                ON parent_membership.group_id = bg.id
+               AND ${contextSql('parent_membership', '$2')}
+              JOIN bookings child
+                ON child.linked_to = parent_membership.booking_id
+        )
+        SELECT bg.id AS group_id,
+               bg.business_context AS group_business_context,
+               bg.primary_booking_id,
+               bg.customer_id AS group_customer_id,
+               bg.date AS group_date,
+               bg.room AS group_room,
+               bg.group_name,
+               bg.status AS group_status,
+               bg.source AS group_source,
+               bg.guest_arrival_time,
+               cleanup_records.record_kind,
+               cleanup_records.parent_booking_id,
+               cleanup_records.role,
+               b.id AS booking_id,
+               CASE
+                   WHEN LOWER(COALESCE(NULLIF(BTRIM(b.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+                        IN ('park_zakrevsky', 'park', 'pzp') THEN '${DEFAULT_BUSINESS_CONTEXT}'
+                   ELSE LOWER(COALESCE(NULLIF(BTRIM(b.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}'))
+               END AS booking_business_context,
+               b.status AS booking_status,
+               b.linked_to,
+               b.customer_id AS booking_customer_id,
+               b.date AS booking_date,
+               b.time AS booking_time,
+               b.room AS booking_room,
+               b.label AS booking_label,
+               b.program_code,
+               b.category,
+               b.extra_data,
                 EXISTS (
                     SELECT 1
                       FROM customers c
@@ -736,13 +1096,6 @@ async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
                        AND ${contextSql('c', '$2')}
                        AND COALESCE(c.notes, '') LIKE ('%' || $3 || '%')
                 ) AS customer_marker_ok,
-                (
-                    SELECT COUNT(DISTINCT child.id)::int
-                      FROM bookings child
-                     WHERE child.linked_to = b.id
-                       AND ${contextSql('child', '$2')}
-                       AND ${activeSql('child')}
-                ) AS active_child_booking_count,
                 (
                     SELECT COUNT(DISTINCT deposit.id)::int
                       FROM banquet_deposits deposit
@@ -766,19 +1119,16 @@ async function loadQaCleanupGroupRows(db, options, { forUpdate = false } = {}) {
                             OR link.booking_b_id = bg.primary_booking_id
                        )
                 ) AS banquet_link_count
-           FROM banquet_groups bg
-           JOIN banquet_group_bookings bgb
-             ON bgb.group_id = bg.id
-            AND ${contextSql('bgb', '$2')}
-           JOIN bookings b
-             ON b.id = bgb.booking_id
-            AND ${contextSql('b', '$2')}
-          WHERE bg.id = $1
-            AND ${contextSql('bg', '$2')}
+          FROM scoped_group bg
+          JOIN cleanup_records
+            ON TRUE
+          JOIN bookings b
+            ON b.id = cleanup_records.booking_id
           ORDER BY CASE WHEN b.id = bg.primary_booking_id THEN 0 ELSE 1 END,
-                   bgb.sort_order,
+                   CASE cleanup_records.record_kind WHEN 'member' THEN 0 ELSE 1 END,
+                   cleanup_records.parent_booking_id NULLS FIRST,
                    b.id
-          ${forUpdate ? 'FOR UPDATE OF bg, bgb, b' : ''}`,
+          ${forUpdate ? 'FOR UPDATE OF b' : ''}`,
         [options.groupId, options.businessContext, options.testCustomerMarker, BANQUET_RELATION_TYPE]
     );
     return result.rows || [];
@@ -795,7 +1145,9 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
             blockers: ['group_not_found_or_empty'],
             bookings: [],
             activeBookingIds: [],
+            activeChildBookingIds: [],
             activeChildBookingCount: 0,
+            cancellableBookingIds: [],
             activeDepositCount: 0,
             banquetLinkCount: 0
         };
@@ -807,14 +1159,37 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
         blockers.push('primary_booking_id_mismatch');
     }
     if (!primaryBookingId) blockers.push('primary_booking_missing');
-    const bookings = rows.map(row => {
+    const byRecord = new Map();
+    for (const row of rows) {
+        const bookingId = String(row.booking_id || '').trim();
+        const recordKind = String(row.record_kind || 'member').trim() || 'member';
+        const recordKey = `${recordKind}:${bookingId}:${String(row.parent_booking_id || '')}`;
+        if (bookingId && !byRecord.has(recordKey)) byRecord.set(recordKey, row);
+    }
+    const bookings = [...byRecord.values()].map(row => {
         const marker = qaMarkerInspection(row, options);
         const active = bookingActive(row.booking_status);
+        const bookingId = String(row.booking_id || '').trim();
+        const recordKind = String(row.record_kind || 'member').trim() || 'member';
+        const bookingBusinessContext = normalizeBusinessContext(row.booking_business_context || options.businessContext);
         if (!marker.ok) blockers.push(`booking_marker_${row.booking_id}:${marker.reasons.join('+')}`);
+        if (bookingBusinessContext !== normalizeBusinessContext(options.businessContext)) {
+            blockers.push(`booking_business_context_mismatch:${row.booking_id}`);
+        }
         if (!row.booking_customer_id) blockers.push(`booking_customer_missing:${row.booking_id}`);
+        if (
+            row.booking_customer_id
+            && first.group_customer_id
+            && Number(row.booking_customer_id) !== Number(first.group_customer_id)
+        ) {
+            blockers.push(`booking_customer_mismatch:${row.booking_id}`);
+        }
         if (row.booking_customer_id && row.customer_marker_ok !== true) blockers.push(`real_customer_blocked:${row.booking_id}`);
         return {
-            bookingId: String(row.booking_id || '').trim(),
+            bookingId,
+            recordKind,
+            parentBookingId: String(row.parent_booking_id || '').trim() || null,
+            businessContext: bookingBusinessContext,
             role: String(row.role || '').trim() || null,
             status: String(row.booking_status || '').trim() || null,
             active,
@@ -826,8 +1201,15 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
     if (!bookings.some(item => item.bookingId === primaryBookingId)) {
         blockers.push('primary_booking_membership_missing');
     }
-    const activeBookingIds = bookings.filter(item => item.active).map(item => item.bookingId);
-    const activeChildBookingCount = rows.reduce((total, row) => total + Number(row.active_child_booking_count || 0), 0);
+    const activeBookingIds = [...new Set(bookings.filter(item => item.active).map(item => item.bookingId))].sort();
+    const activeChildBookingIds = [...new Set(bookings
+        .filter(item => item.recordKind === 'linked_child' && item.active)
+        .map(item => item.bookingId))].sort();
+    const activeChildBookingCount = activeChildBookingIds.length;
+    const cancellableBookingIds = [...new Set(bookings
+        .filter(item => item.active)
+        .map(item => item.bookingId)
+        .filter(Boolean))].sort();
     const activeDepositCount = Math.max(0, ...rows.map(row => Number(row.active_deposit_count || 0)));
     const banquetLinkCount = Math.max(0, ...rows.map(row => Number(row.banquet_link_count || 0)));
     if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
@@ -854,7 +1236,9 @@ function inspectQaCleanupGroupRows(rows = [], options = {}) {
         blockers: uniqueBlockers,
         bookings,
         activeBookingIds,
+        activeChildBookingIds,
         activeChildBookingCount,
+        cancellableBookingIds,
         activeDepositCount,
         banquetLinkCount
     };
@@ -910,16 +1294,18 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
             cancelledGroups: 0
         };
     }
-    const rootBookingIds = inspection.bookings.map(item => item.bookingId).filter(Boolean);
-    const bookingResult = rootBookingIds.length
+    const cancellableBookingIds = Array.isArray(inspection.cancellableBookingIds)
+        ? inspection.cancellableBookingIds.map(String).filter(Boolean)
+        : inspection.bookings.map(item => item.bookingId).filter(Boolean);
+    const bookingResult = cancellableBookingIds.length
         ? await db.query(
             `UPDATE bookings
                 SET status = 'cancelled', updated_at = NOW()
-              WHERE (id = ANY($1::text[]) OR linked_to = ANY($1::text[]))
+              WHERE id = ANY($1::text[])
                 AND ${contextSql('bookings', '$2')}
                 AND ${activeSql('bookings')}
               RETURNING id`,
-            [rootBookingIds, options.businessContext]
+            [cancellableBookingIds, options.businessContext]
         )
         : { rows: [] };
     const groupResult = await db.query(
@@ -945,7 +1331,7 @@ async function persistQaCleanupGroup(db, inspection, options = {}) {
                 JSON.stringify({
                     group_id: inspection.groupId,
                     primary_booking_id: inspection.primaryBookingId,
-                    booking_ids: rootBookingIds,
+                    booking_ids: cancellableBookingIds,
                     run_id: options.runId,
                     source: options.source,
                     cleanup_expected: true,
@@ -1883,7 +2269,8 @@ function printAuditReport(report) {
     );
     console.log(
         `depositManualReview=${report.summary.groupsMissingCanonicalDeposit} `
-        + `pinataIntegrityIssues=${report.summary.pinataIntegrityIssues}`
+        + `pinataIntegrityIssues=${report.summary.pinataIntegrityIssues} `
+        + `groupStateIntegrityIssues=${report.summary.groupStateIntegrityIssues}`
     );
     for (const item of report.pinatas.exactMatches) {
         console.log(
@@ -1916,6 +2303,57 @@ function printAuditReport(report) {
             + `exactKeyMismatch=${item.exactKeyMismatch ? 'yes' : 'no'}`
         );
     }
+    for (const item of report.groupStateIntegrityIssues) {
+        console.log(
+            `group-integrity group=${item.groupId} primary=${item.primaryBookingId || '-'} issue=${item.issueCode} `
+            + `groupStatus=${item.groupStatus || '-'} primaryStatus=${item.primaryStatus || '-'} `
+            + `members=${item.memberCount} activeMembers=${item.activeMemberCount} `
+            + `cancelledMembers=${item.cancelledMemberCount} primaryMemberships=${item.primaryMembershipCount} `
+            + `fingerprint=${item.matchFingerprint}`
+        );
+    }
+}
+
+function buildAuditSummaryOnlyReport(report = {}) {
+    return {
+        readOnly: true,
+        businessContext: report.businessContext || DEFAULT_BUSINESS_CONTEXT,
+        range: {
+            from: report.range?.from || null,
+            to: report.range?.to || null
+        },
+        summary: {
+            ungroupedPinatas: Number(report.summary?.ungroupedPinatas || 0),
+            exactMatchPinatas: Number(report.summary?.exactMatchPinatas || 0),
+            ambiguousPinatas: Number(report.summary?.ambiguousPinatas || 0),
+            standalonePinatas: Number(report.summary?.standalonePinatas || 0),
+            groupsMissingCanonicalDeposit: Number(report.summary?.groupsMissingCanonicalDeposit || 0),
+            pinataIntegrityIssues: Number(report.summary?.pinataIntegrityIssues || 0),
+            groupStateIntegrityIssues: Number(report.summary?.groupStateIntegrityIssues || 0)
+        }
+    };
+}
+
+function printAuditSummaryOnlyReport(report, { json = false } = {}) {
+    const summaryReport = buildAuditSummaryOnlyReport(report);
+    if (json) {
+        console.log(JSON.stringify(summaryReport, null, 2));
+        return summaryReport;
+    }
+    console.log('Banquet production recovery audit summary (read-only)');
+    console.log(`context=${summaryReport.businessContext} range=${summaryReport.range.from}..${summaryReport.range.to}`);
+    console.log(
+        `ungroupedPinatas=${summaryReport.summary.ungroupedPinatas} `
+        + `exact=${summaryReport.summary.exactMatchPinatas} `
+        + `ambiguous=${summaryReport.summary.ambiguousPinatas} `
+        + `standalone=${summaryReport.summary.standalonePinatas}`
+    );
+    console.log(
+        `depositManualReview=${summaryReport.summary.groupsMissingCanonicalDeposit} `
+        + `pinataIntegrityIssues=${summaryReport.summary.pinataIntegrityIssues} `
+        + `groupStateIntegrityIssues=${summaryReport.summary.groupStateIntegrityIssues}`
+    );
+    return summaryReport;
 }
 
 function printRecoveryReport(report) {
@@ -2008,6 +2446,32 @@ function printQaCleanupReport(report) {
     console.log('dry-run only: no bookings, groups, links, or deposits were deleted.');
 }
 
+function printReconcileGroupStateReport(report) {
+    console.log('Banquet group state reconciliation dry-run');
+    console.log(
+        `context=${report.businessContext} strategy=${report.strategy} `
+        + `expected=${report.expectedClassification} group=${report.groupId}`
+    );
+    const item = report.result || {};
+    console.log(
+        `status=${item.status || '-'} classification=${item.classification || '-'} `
+        + `reason=${item.reason || '-'} primary=${item.primaryBookingId || '-'}`
+    );
+    console.log(
+        `groupStatus=${item.groupStatus || '-'} primaryStatus=${item.primaryStatus || '-'} `
+        + `members=${item.memberCount || 0} activeMembers=${item.activeMemberCount || 0} `
+        + `activeNonPrimaryMembers=${item.activeNonPrimaryMemberCount || 0} cancelledMembers=${item.cancelledMemberCount || 0}`
+    );
+    console.log(
+        `activeDeposits=${item.activeDepositCount || 0} ticketConflicts=${item.ticketSnapshotMemberCount || 0} `
+        + `financialFieldConflicts=${item.pricedActiveMemberCount || 0} fingerprint=${item.matchFingerprint || '-'}`
+    );
+    if (Array.isArray(item.activeNonPrimaryMemberIds) && item.activeNonPrimaryMemberIds.length) {
+        console.log(`activeNonPrimaryMemberIds=${item.activeNonPrimaryMemberIds.join(',')}`);
+    }
+    console.log('dry-run only: production apply is not implemented in this phase.');
+}
+
 async function main(argv = process.argv.slice(2)) {
     loadEnvFile();
     const options = parseArgs(argv);
@@ -2025,19 +2489,24 @@ async function main(argv = process.argv.slice(2)) {
             report = options.apply
                 ? await runDetachApply(client, options)
                 : await runDetachDryRun(client, options);
-        } else {
+        } else if (options.command === 'qa-cleanup') {
             report = options.apply
                 ? await runQaCleanupApply(client, options)
                 : await runQaCleanupDryRun(client, options);
+        } else {
+            report = await runReconcileGroupStateDryRun(client, options);
         }
-        if (options.json) console.log(JSON.stringify(report, null, 2));
+        if (options.command === 'audit' && options.summaryOnly) printAuditSummaryOnlyReport(report, { json: options.json });
+        else if (options.json) console.log(JSON.stringify(report, null, 2));
         else if (options.command === 'audit') printAuditReport(report);
         else if (options.command === 'recover') printRecoveryReport(report);
         else if (options.command === 'detach') printDetachReport(report);
-        else printQaCleanupReport(report);
+        else if (options.command === 'qa-cleanup') printQaCleanupReport(report);
+        else printReconcileGroupStateReport(report);
         if (options.command === 'audit' && options.strict && (
             report.summary.ambiguousPinatas > 0
             || report.summary.pinataIntegrityIssues > 0
+            || report.summary.groupStateIntegrityIssues > 0
         )) {
             process.exitCode = 1;
         }
@@ -2059,13 +2528,16 @@ module.exports = {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
+    RECONCILE_GROUP_STATE_CONFIRMATION,
     RECOVERY_ACTOR,
     QA_CLEANUP_ACTOR,
     QA_CLEANUP_SOURCE,
     SAFE_QA_CLEANUP_BOOKING_IDS,
     argValue,
     buildAuditReport,
+    buildAuditSummaryOnlyReport,
     buildQaCleanupReport,
+    classifyReconcileGroupStateTarget,
     classifyDetachInspection,
     classifyRecoveryInspection,
     detachBookingRecordAsRow,
@@ -2076,6 +2548,7 @@ module.exports = {
     inspectQaCleanupGroupRows,
     inspectDetachPair,
     inspectRecoveryPair,
+    loadReconcileGroupStateTarget,
     isPinataRow,
     loadDetachBookingRecord,
     loadDetachCompatibilityLinks,
@@ -2084,6 +2557,7 @@ module.exports = {
     loadDetachMemberships,
     loadDetachTarget,
     loadExactCandidateGroupIds,
+    loadGroupStateIntegrityAuditRows,
     loadMissingDepositAuditRows,
     loadQaCleanupGroupRows,
     loadPinataIntegrityAuditRows,
@@ -2100,14 +2574,17 @@ module.exports = {
     parseDetachOptions,
     parseQaCleanupOptions,
     parseQaCleanupRunId,
+    parseReconcileGroupStateOptions,
     parseRecoveryOptions,
     parseRecoveryPairs,
     persistDetachPair,
     persistQaCleanupGroup,
     persistRecoveryPair,
     printAuditReport,
+    printAuditSummaryOnlyReport,
     printDetachReport,
     printQaCleanupReport,
+    printReconcileGroupStateReport,
     printRecoveryReport,
     runAudit,
     runDetachApply,
@@ -2115,6 +2592,7 @@ module.exports = {
     runQaCleanupApply,
     runQaCleanupDryRun,
     runQaCleanupGroupDryRun,
+    runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 };

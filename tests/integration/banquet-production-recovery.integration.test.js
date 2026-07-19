@@ -18,8 +18,10 @@ const {
     persistDetachPair,
     runDetachApply,
     runDetachDryRun,
+    runAudit,
     runQaCleanupApply,
     runQaCleanupDryRun,
+    runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 } = require('../../scripts/banquet-production-recovery');
@@ -76,16 +78,16 @@ async function insertBooking(pool, id, overrides = {}) {
         `INSERT INTO bookings (
              id, business_context, date, time, line_id, customer_id,
              program_id, program_code, label, program_name, category,
-             duration, price, hosts, room, status, created_by, extra_data
+             duration, price, hosts, room, status, linked_to, created_by, extra_data
          )
          VALUES (
              $1, $2, $3, $4, $5, $6,
              $7, $8, $9, $10, $11,
-             $12, $13, $14, $15, $16, $17, $18::jsonb
+             $12, $13, $14, $15, $16, $17, $18, $19::jsonb
          )`,
         [
             id,
-            BUSINESS_CONTEXT,
+            overrides.businessContext || BUSINESS_CONTEXT,
             overrides.date || '2099-08-20',
             overrides.time || '13:00',
             overrides.lineId || 'line-main',
@@ -100,6 +102,7 @@ async function insertBooking(pool, id, overrides = {}) {
             overrides.hosts ?? 1,
             overrides.room || 'Room A',
             overrides.status || 'confirmed',
+            overrides.linkedTo || null,
             'banquet-recovery-integration',
             JSON.stringify(overrides.extraData || {})
         ]
@@ -166,7 +169,7 @@ function qaCleanupMarker(runId) {
     };
 }
 
-async function seedQaCleanupGroup(pool, suffix) {
+async function seedQaCleanupGroup(pool, suffix, options = {}) {
     const runId = `task37-${suffix}`.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 80);
     const marker = `timeline_browser_smoke:${runId}:test_customer`;
     const customer = await pool.query(
@@ -178,6 +181,7 @@ async function seedQaCleanupGroup(pool, suffix) {
     const customerId = customer.rows[0].id;
     const primaryId = compactId('bpr-qa-primary', suffix);
     const kitchenId = compactId('bpr-qa-kitchen', suffix);
+    const linkedChildId = compactId(options.childPrefix || 'bpr-qa-linked', suffix);
     const groupId = compactId('bpr-qa-group', suffix);
     await insertBooking(pool, primaryId, {
         customerId,
@@ -199,6 +203,20 @@ async function seedQaCleanupGroup(pool, suffix) {
         category: 'banquet',
         extraData: qaCleanupMarker(runId)
     });
+    if (options.linkedChild !== false) {
+        await insertBooking(pool, linkedChildId, {
+            customerId: options.childCustomerId || customerId,
+            businessContext: options.childBusinessContext || BUSINESS_CONTEXT,
+            lineId: 'line-linked',
+            programId: 'qa-linked',
+            programCode: 'QA-LINK',
+            label: 'QA linked child',
+            programName: 'QA linked child',
+            category: 'animation',
+            linkedTo: primaryId,
+            extraData: options.unmarkedChild ? {} : qaCleanupMarker(runId)
+        });
+    }
     await pool.query(
         `INSERT INTO banquet_groups
             (id, business_context, primary_booking_id, customer_id, date, room, group_name,
@@ -226,8 +244,70 @@ async function seedQaCleanupGroup(pool, suffix) {
         groupId,
         primaryId,
         kitchenId,
+        linkedChildId: options.linkedChild === false ? null : linkedChildId,
         marker
     };
+}
+
+async function seedActiveGroupWithCancelledPrimary(pool, suffix) {
+    const customerId = await insertCustomer(pool, suffix);
+    const primaryId = compactId('bpr-state-primary', suffix);
+    const kitchenId = compactId('bpr-state-kitchen', suffix);
+    const groupId = compactId('bpr-state-group', suffix);
+    await insertBooking(pool, primaryId, {
+        customerId,
+        lineId: 'line-primary',
+        programId: 'qa-activity',
+        programCode: 'QA-ACT',
+        label: 'State primary fixture',
+        programName: 'State primary fixture',
+        category: 'animation',
+        status: 'cancelled'
+    });
+    await insertBooking(pool, kitchenId, {
+        customerId,
+        lineId: 'banquet-service',
+        programId: null,
+        programCode: 'KITCHEN',
+        label: 'State kitchen fixture',
+        programName: 'State kitchen fixture',
+        category: 'banquet',
+        status: 'confirmed'
+    });
+    await pool.query(
+        `INSERT INTO banquet_groups
+            (id, business_context, primary_booking_id, customer_id, date, room, group_name,
+             guest_arrival_time, status, source, created_by)
+         VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', $5,
+                 '11:45', 'active', 'integration_test', 'banquet-recovery-integration')`,
+        [groupId, BUSINESS_CONTEXT, primaryId, customerId, `State ${suffix}`]
+    );
+    await pool.query(
+        `INSERT INTO banquet_group_bookings
+            (group_id, business_context, booking_id, role, sort_order, created_by)
+         VALUES
+            ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
+            ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
+        [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
+    );
+    return { groupId, primaryId, kitchenId, customerId };
+}
+
+async function insertBanquetDeposit(pool, target) {
+    await pool.query(
+        `INSERT INTO banquet_deposits (
+             business_context, banquet_group_id, primary_booking_id, customer_id,
+             event_date, amount, status, source_kind, source_payload
+         )
+         VALUES ($1, $2, $3, $4, '2099-08-20', 100, 'manager_reported', 'integration_test', $5::jsonb)`,
+        [
+            BUSINESS_CONTEXT,
+            target.groupId,
+            target.primaryId,
+            target.customerId,
+            JSON.stringify({ source: 'banquet-production-recovery.integration' })
+        ]
+    );
 }
 
 async function countRows(pool, pair, action = 'banquet_pinata_membership_detached') {
@@ -283,6 +363,91 @@ describe('banquet production recovery on isolated PostgreSQL', {
 
     after(async () => {
         await pool?.end();
+    });
+
+    test('audit classifies active group with cancelled primary as state integrity, not missing deposit', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_state`);
+
+        const report = await withClient(pool, client => runAudit(client, {
+            businessContext: BUSINESS_CONTEXT,
+            from: '2099-08-20',
+            to: '2099-08-20'
+        }));
+
+        assert.equal(report.readOnly, true);
+        assert.equal(
+            report.depositsForManualReview.some(item => item.groupId === target.groupId),
+            false
+        );
+        assert.ok(report.groupStateIntegrityIssues.some(item => (
+            item.groupId === target.groupId
+            && item.primaryBookingId === target.primaryId
+            && item.issueCode === 'active_group_cancelled_primary'
+            && item.groupStatus === 'active'
+            && item.primaryStatus === 'cancelled'
+            && item.memberCount === 2
+            && item.activeMemberCount === 1
+        )));
+        assert.equal(JSON.stringify(report).includes('customerId'), false);
+        assert.equal(JSON.stringify(report).includes('customer_id'), false);
+    });
+
+    test('dry-runs stale banquet group reconciliation without mutating records', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_reconcile_ready`);
+        const options = {
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary'
+        };
+
+        const first = await withClient(pool, client => runReconcileGroupStateDryRun(client, options));
+        assert.equal(first.readOnly, true);
+        assert.equal(first.mode, 'reconcile-group-state-dry-run');
+        assert.equal(first.result.status, 'ready');
+        assert.equal(first.result.classification, 'active_group_cancelled_primary');
+        assert.deepEqual(first.result.activeNonPrimaryMemberIds, [target.kitchenId]);
+
+        const second = await withClient(pool, client => runReconcileGroupStateDryRun(client, options));
+        assert.equal(second.result.status, 'ready');
+        assert.deepEqual(second.summary, first.summary);
+
+        const statuses = await pool.query(
+            `SELECT
+                (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+                (SELECT status FROM bookings WHERE id = $3) AS primary_status,
+                (SELECT status FROM bookings WHERE id = $4) AS kitchen_status,
+                (
+                    SELECT COUNT(*)::int
+                      FROM history
+                     WHERE business_context = $2
+                       AND action LIKE 'banquet_group_state_reconciliation%'
+                       AND data->>'group_id' = $1
+                ) AS history_count
+            `,
+            [target.groupId, BUSINESS_CONTEXT, target.primaryId, target.kitchenId]
+        );
+        assert.equal(statuses.rows[0].group_status, 'active');
+        assert.equal(statuses.rows[0].primary_status, 'cancelled');
+        assert.equal(statuses.rows[0].kitchen_status, 'confirmed');
+        assert.equal(statuses.rows[0].history_count, 0);
+    });
+
+    test('dry-run blocks stale group reconciliation when active deposit exists', async () => {
+        const target = await seedActiveGroupWithCancelledPrimary(pool, `${suffix}_reconcile_deposit`);
+        await insertBanquetDeposit(pool, target);
+
+        const report = await withClient(pool, client => runReconcileGroupStateDryRun(client, {
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary'
+        }));
+
+        assert.equal(report.readOnly, true);
+        assert.equal(report.result.status, 'blocked');
+        assert.match(report.result.reason, /active_deposit_rows_present/);
+        assert.equal(report.summary.activeDepositRows, 1);
     });
 
     test('recovers missing pinata membership and compatibility link, then reruns cleanly', async () => {
@@ -378,12 +543,117 @@ describe('banquet production recovery on isolated PostgreSQL', {
         }));
         assert.equal(dryRun.readOnly, true);
         assert.equal(dryRun.summary.ready, 1);
-        assert.equal(dryRun.groups[0].activeBookingIds.length, 2);
+        assert.equal(dryRun.groups[0].activeBookingIds.length, 3);
+        assert.deepEqual(dryRun.groups[0].activeChildBookingIds, [target.linkedChildId]);
 
         const apply = await withClient(pool, client => runQaCleanupApply(client, options));
         assert.equal(apply.summary.cancelledGroups, 1);
-        assert.equal(apply.summary.cancelledBookings, 2);
+        assert.equal(apply.summary.cancelledBookings, 3);
         assert.equal(apply.after[0].status, 'already_cancelled');
+
+        const statuses = await pool.query(
+            `SELECT
+                (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+                ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+                (
+                    SELECT COUNT(*)::int
+                      FROM history
+                     WHERE business_context = $2
+                       AND action = 'timeline_browser_smoke_qa_cleanup'
+                       AND data->>'group_id' = $1
+                ) AS history_count
+               FROM bookings
+              WHERE id = ANY($3::text[])`,
+            [target.groupId, BUSINESS_CONTEXT, [target.primaryId, target.kitchenId, target.linkedChildId]]
+        );
+        assert.equal(statuses.rows[0].group_status, 'cancelled');
+        assert.deepEqual(statuses.rows[0].booking_statuses, ['cancelled', 'cancelled', 'cancelled']);
+        assert.equal(statuses.rows[0].history_count, 1);
+
+        const rerun = await withClient(pool, client => runQaCleanupApply(client, options));
+        assert.equal(rerun.summary.cancelledGroups, 0);
+        assert.equal(rerun.summary.cancelledBookings, 0);
+        assert.equal(rerun.after[0].status, 'already_cancelled');
+    });
+
+    test('blocks QA cleanup when a linked child is not disposable marked and rolls back', async () => {
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_unmarked_child`, { unmarkedChild: true });
+        const options = {
+            mode: 'marker',
+            apply: true,
+            confirmation: QA_CLEANUP_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            runId: target.runId,
+            groupId: target.groupId,
+            primaryBookingId: target.primaryId,
+            source: 'timeline_browser_smoke',
+            testCustomerMarker: target.marker
+        };
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.summary.blocked, 1);
+        assert.match(dryRun.groups[0].reason, new RegExp(`booking_marker_${target.linkedChildId}:missing_marker`));
+
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            /QA cleanup blocked by preflight/
+        );
+
+        const statuses = await pool.query(
+            `SELECT
+                (SELECT status FROM banquet_groups WHERE id = $1) AS group_status,
+                ARRAY_AGG(status ORDER BY id) AS booking_statuses,
+                (
+                    SELECT COUNT(*)::int
+                      FROM history
+                     WHERE business_context = $2
+                       AND action = 'timeline_browser_smoke_qa_cleanup'
+                       AND data->>'group_id' = $1
+                ) AS history_count
+               FROM bookings
+              WHERE id = ANY($3::text[])`,
+            [target.groupId, BUSINESS_CONTEXT, [target.primaryId, target.kitchenId, target.linkedChildId]]
+        );
+        assert.equal(statuses.rows[0].group_status, 'active');
+        assert.deepEqual(statuses.rows[0].booking_statuses, ['confirmed', 'confirmed', 'confirmed']);
+        assert.equal(statuses.rows[0].history_count, 0);
+    });
+
+    test('blocks QA cleanup when a linked child belongs to another customer or context and rolls back', async () => {
+        const otherCustomerId = await insertCustomer(pool, `${suffix}_foreign_child_customer`);
+        const target = await seedQaCleanupGroup(pool, `${suffix}_qa_foreign_child`, {
+            childCustomerId: otherCustomerId,
+            childBusinessContext: 'other_context'
+        });
+        const options = {
+            mode: 'marker',
+            apply: true,
+            confirmation: QA_CLEANUP_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            runId: target.runId,
+            groupId: target.groupId,
+            primaryBookingId: target.primaryId,
+            source: 'timeline_browser_smoke',
+            testCustomerMarker: target.marker
+        };
+
+        const dryRun = await withClient(pool, client => runQaCleanupDryRun(client, {
+            ...options,
+            apply: false,
+            confirmation: ''
+        }));
+        assert.equal(dryRun.summary.blocked, 1);
+        assert.match(dryRun.groups[0].reason, new RegExp(`booking_business_context_mismatch:${target.linkedChildId}`));
+        assert.match(dryRun.groups[0].reason, new RegExp(`booking_customer_mismatch:${target.linkedChildId}`));
+
+        await assert.rejects(
+            withClient(pool, client => runQaCleanupApply(client, options)),
+            /QA cleanup blocked by preflight/
+        );
 
         const statuses = await pool.query(
             `SELECT
@@ -400,14 +670,14 @@ describe('banquet production recovery on isolated PostgreSQL', {
               WHERE id = ANY($3::text[])`,
             [target.groupId, BUSINESS_CONTEXT, [target.primaryId, target.kitchenId]]
         );
-        assert.equal(statuses.rows[0].group_status, 'cancelled');
-        assert.deepEqual(statuses.rows[0].booking_statuses, ['cancelled', 'cancelled']);
-        assert.equal(statuses.rows[0].history_count, 1);
-
-        const rerun = await withClient(pool, client => runQaCleanupApply(client, options));
-        assert.equal(rerun.summary.cancelledGroups, 0);
-        assert.equal(rerun.summary.cancelledBookings, 0);
-        assert.equal(rerun.after[0].status, 'already_cancelled');
+        const foreignChild = await pool.query(
+            `SELECT status FROM bookings WHERE id = $1`,
+            [target.linkedChildId]
+        );
+        assert.equal(statuses.rows[0].group_status, 'active');
+        assert.deepEqual(statuses.rows[0].booking_statuses, ['confirmed', 'confirmed']);
+        assert.equal(foreignChild.rows[0].status, 'confirmed');
+        assert.equal(statuses.rows[0].history_count, 0);
     });
 
     test('rolls back membership, link, and history when persistence fails after a real delete', async () => {

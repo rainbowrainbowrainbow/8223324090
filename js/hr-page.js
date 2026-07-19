@@ -863,15 +863,46 @@ function departmentLabel(value) {
         .join(' ');
 }
 
+function companyStructureApprovedFallbackNode(nodeId = '') {
+    const selected = String(nodeId || '').trim();
+    if (!selected) return null;
+    const fromLoaded = companyStructureNodeById(selected);
+    if (fromLoaded) return fromLoaded;
+    return DEFAULT_COMPANY_STRUCTURE_NODES.find(node => String(node.id || '') === selected) || null;
+}
+
+function staffCardCompanyStructureSelectNodes(current = '') {
+    const selected = String(current || '').trim();
+    const candidates = [
+        ...visibleCompanyStructureSubdivisionNodes(companyStructureNodes || []),
+        ...visibleCompanyStructureSubdivisionNodes(DEFAULT_COMPANY_STRUCTURE_NODES)
+    ];
+    const currentNode = companyStructureApprovedFallbackNode(selected);
+    if (currentNode && !candidates.some(node => String(node.id || '') === selected)) {
+        candidates.push(currentNode);
+    }
+    const seenIds = new Set();
+    const seenTitles = new Set();
+    return sortCompanyStructureNodes(candidates.filter(node => {
+        const id = String(node.id || '').trim();
+        const title = normalizeSearchText(node.title || node.label || node.name);
+        if (!id || !title) return false;
+        if (seenIds.has(id) || seenTitles.has(title)) return false;
+        seenIds.add(id);
+        seenTitles.add(title);
+        return true;
+    }));
+}
+
 function companyStructureSelectOptions(current = '') {
-    const selected = String(current || '');
-    const visibleNodes = visibleCompanyStructureSubdivisionNodes(companyStructureNodes || []);
+    const selected = String(current || '').trim();
+    const visibleNodes = staffCardCompanyStructureSelectNodes(selected);
     const options = visibleNodes.map(node => ({
         value: node.id,
         label: `${node.title}${node.meta ? ' - ' + node.meta : ''}`,
         selected: node.id === selected
     }));
-    return [{ value: '', label: 'Без привʼязки', selected: !visibleNodes.some(node => node.id === selected) }, ...options];
+    return [{ value: '', label: 'Без привʼязки', selected: !selected }, ...options];
 }
 
 function renderSelectOptions(options = [], selected = '') {

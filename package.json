@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.109",
+  "version": "0.79.110",
   "eventGenix": {
-    "releaseLabel": "HR structure mobile inspector offset"
+    "releaseLabel": "Staff node dropdown fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

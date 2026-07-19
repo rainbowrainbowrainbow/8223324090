@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.110 - Staff node dropdown fix
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Staff node dropdown fix** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.109 - HR structure mobile inspector offset
 
 ### HR / Structure tree / Mobile QA / (19.07.2026) [codex]

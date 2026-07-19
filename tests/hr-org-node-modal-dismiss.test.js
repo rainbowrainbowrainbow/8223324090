@@ -386,6 +386,18 @@ function createStaffProfileHarness() {
                     history: staffId => historyDefers.get(Number(staffId)),
                     activeId: activeEditStaffId,
                     staff: () => teamStaff,
+                    setProfile(id, profile = {}) {
+                        const numericId = Number(id);
+                        staffProfiles.set(numericId, { id: numericId, ...profile });
+                        teamStaff = Array.from(staffProfiles.values()).map(item => ({ ...item }));
+                    },
+                    setCompanyStructureNodes(nodes = []) {
+                        companyStructureNodes = normalizeCompanyStructureNodes(nodes);
+                    },
+                    structureOptions() {
+                        return Array.from(document.getElementById('editCompanyStructureNode')?.options || [])
+                            .map(option => ({ value: option.value, text: option.textContent, selected: option.selected }));
+                    },
                     confirmCalls: () => window.__confirmCalls
                 };
             })();
@@ -693,6 +705,35 @@ test('HR staff profile opens from fresh data and marks clean only after hydratio
     await api.close('staffEditModal');
     assert.equal(api.confirmCalls().length, 1, 'real field edit should ask to discard');
     assert.equal(api.modal().style.display, 'flex');
+});
+
+test('HR staff profile structure dropdown keeps current approved node when loaded structure is partial', async () => {
+    const { window, api } = createStaffProfileHarness();
+    api.setCompanyStructureNodes([
+        { id: 'director', title: 'Керівництво', description: 'Leadership.', tone: 'gold', lane: 'root', parentId: null, order: 10 },
+        { id: 'hr', title: 'HR', description: 'People.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 20 }
+    ]);
+    api.setProfile(3, {
+        id: 3,
+        name: 'Шарлай Сергій',
+        role_type: 'art_director',
+        secondary_professions: [],
+        company_structure_node_id: 'art_director',
+        phone: 'fresh-3',
+        hourly_rate: 0,
+        rate_unit: 'hour',
+        skills: []
+    });
+
+    await api.open(3);
+
+    const select = window.document.getElementById('editCompanyStructureNode');
+    const options = api.structureOptions();
+    assert.equal(select.value, 'art_director');
+    assert.ok(
+        options.some(option => option.value === 'art_director' && /Арт-відділ/.test(option.text)),
+        'staff card must keep the current Арт-відділ node visible even when the loaded node list is partial'
+    );
 });
 
 test('HR staff profile ignores stale history responses after rapid profile switches', async () => {

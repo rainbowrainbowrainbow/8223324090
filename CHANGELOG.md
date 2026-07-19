@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.88 - Timeline Launcher Cross-page
+
+### Sidebar / Timeline / Regression QA / (19.07.2026) [codex]
+- **Park launcher працює на всіх CRM-сторінках:** sidebar гідратує чинний business profile через наявний `CrmBusinessContext` і після серверного підтвердження показує «Свята» та «Кімнати».
+- **Без flash недоступного режиму:** до завершення гідрації `Кімнати` не рендеряться, а однорежимні контексти зберігають звичайну компактну картку.
+- **Browser smoke став надійнішим:** перевіряє переходи з іншої CRM-сторінки, Back/Forward, keyboard, mobile close та не зберігає refresh token у тестовій сесії.
+
+---
+
 ## v0.79.87 - Timeline Smoke Durability
 
 ### Release / Versioning / (19.07.2026) [codex]

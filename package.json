@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.111",
+  "version": "0.79.112",
   "eventGenix": {
-    "releaseLabel": "Staff node dropdown approved order"
+    "releaseLabel": "Deployment Commit Metadata"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

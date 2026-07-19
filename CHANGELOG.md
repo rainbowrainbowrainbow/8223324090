@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.112 - Deployment Commit Metadata
+
+### API / Надійність релізів / (20.07.2026) [codex]
+- **Точний commit production** — `/api/version` тепер повертає повний immutable commit SHA та source branch із системного metadata Railway.
+- **Безпечний fallback** — якщо deployment metadata відсутнє або невалідне, API повертає `null` і не підставляє локальний Git SHA.
+
+---
+
 ## v0.79.111 - Staff node dropdown approved order
 
 ### Release / Versioning / (20.07.2026) [codex]

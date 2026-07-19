@@ -216,6 +216,7 @@ test('timeline rate-limit diagnostic recognizes the rendered HTTP 429 state', ()
     assert.equal(smoke.isTimelineRateLimited({
         notifications: ['Бронювання створено!']
     }), false);
+    assert.equal(smoke.isRateLimitError(new Error('Забагато запитів, спробуйте пізніше')), true);
 });
 
 test('cleanup diagnostics retain only allowlisted technical classification fields', () => {

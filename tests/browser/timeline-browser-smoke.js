@@ -310,7 +310,8 @@ function sleep(ms) {
 }
 
 function isRateLimitError(error) {
-    return /\breturned 429\b/.test(String(error?.message || error || ''));
+    return /\breturned 429\b|HTTP\s*429|Забагато запитів/i
+        .test(String(error?.message || error || ''));
 }
 
 function isTimelineRateLimited(diagnostics = {}) {
@@ -3408,10 +3409,27 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
 async function runRevealAction(page, date, kitchenId) {
     await renderTimelineView(page, date, 'rooms');
-    await page.evaluate(async id => {
-        await showBookingDetails(id);
-        if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
-    }, kitchenId);
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+            await page.evaluate(async id => {
+                await showBookingDetails(id);
+                if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
+            }, kitchenId);
+            break;
+        } catch (error) {
+            if (!isRateLimitError(error) || attempt >= 2) {
+                throw new Error(
+                    `canonical booking detail readiness failed before room reveal: ${error?.message || error}`,
+                    { cause: error }
+                );
+            }
+            console.warn(`canonical booking detail readiness: HTTP 429, retrying after ${RATE_LIMIT_RETRY_MS}ms`);
+            await sleep(RATE_LIMIT_RETRY_MS);
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitForTimelineReady(page, 'canonical booking detail after rate-limit reload');
+            await renderTimelineView(page, date, 'rooms', { forceBookings: true });
+        }
+    }
     let revealed = false;
     const attempts = [];
     let rateLimitBackoffs = 0;
@@ -3753,6 +3771,7 @@ module.exports = {
     bookingCreateResult,
     formatErrorForOutput,
     isBookingCreateEndpoint,
+    isRateLimitError,
     isTimelineRateLimited,
     markCreateRequestPayload,
     normalizedBookingIds,

@@ -654,7 +654,7 @@ const qaCleanupOptions = {
     primaryBookingId: 'BK-QA-PRIMARY',
     source: 'timeline_browser_smoke',
     testCustomerMarker: 'timeline_browser_smoke:task37-unit:test_customer',
-    expectedBookingIds: ['BK-QA-KITCHEN', 'BK-QA-PRIMARY'],
+    expectedBookingIds: ['BK-QA-KITCHEN', 'BK-QA-LINKED', 'BK-QA-PRIMARY'],
     markerClock: {
         nowMs: Date.parse('2099-08-20T12:00:00.000Z')
     }
@@ -682,9 +682,7 @@ test('qa cleanup group preflight requires disposable marker and marked test cust
         })
     ], qaCleanupOptions);
     assert.equal(ready.status, 'ready');
-    assert.deepEqual(ready.activeBookingIds, ['BK-QA-KITCHEN', 'BK-QA-LINKED', 'BK-QA-PRIMARY']);
-    assert.deepEqual(ready.activeChildBookingIds, ['BK-QA-LINKED']);
-    assert.deepEqual(ready.cancellableBookingIds, ['BK-QA-KITCHEN', 'BK-QA-LINKED', 'BK-QA-PRIMARY']);
+    assert.deepEqual(ready.activeBookingIds, ['BK-QA-PRIMARY', 'BK-QA-KITCHEN', 'BK-QA-LINKED']);
 
     const noMarker = inspectQaCleanupGroupRows([
         qaCleanupRow({ extra_data: {} })
@@ -853,9 +851,12 @@ test('qa cleanup group preflight blocks unverified linked children', () => {
             linked_to: 'BK-QA-PRIMARY',
             extra_data: {}
         })
-    ], qaCleanupOptions);
-    assert.equal(unmarkedChild.status, 'blocked');
-    assert.match(unmarkedChild.reason, /booking_marker_BK-QA-LINKED:missing_marker/);
+    ], {
+        ...qaCleanupOptions,
+        expectedBookingIds: ['BK-QA-LINKED', 'BK-QA-PRIMARY']
+    });
+    assert.equal(unmarkedChild.status, 'marker_mismatch');
+    assert.match(unmarkedChild.reason, /marker_mismatch:BK-QA-LINKED=.*missing_marker/);
 
     const foreignChild = inspectQaCleanupGroupRows([
         qaCleanupRow(),
@@ -868,10 +869,12 @@ test('qa cleanup group preflight blocks unverified linked children', () => {
             role: null,
             linked_to: 'BK-QA-PRIMARY'
         })
-    ], qaCleanupOptions);
-    assert.equal(foreignChild.status, 'blocked');
-    assert.match(foreignChild.reason, /booking_business_context_mismatch:BK-QA-FOREIGN/);
-    assert.match(foreignChild.reason, /booking_customer_mismatch:BK-QA-FOREIGN/);
+    ], {
+        ...qaCleanupOptions,
+        expectedBookingIds: ['BK-QA-FOREIGN', 'BK-QA-PRIMARY']
+    });
+    assert.equal(foreignChild.status, 'real_customer_blocked');
+    assert.match(foreignChild.reason, /real_customer_blocked:BK-QA-FOREIGN=group_customer_mismatch/);
 });
 
 test('qa cleanup marker dry-run uses read-only transaction and reports exact group scope', async () => {

@@ -16,6 +16,7 @@ const {
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
     persistDetachPair,
+    runAudit,
     runDetachApply,
     runDetachDryRun,
     runQaCleanupApply,

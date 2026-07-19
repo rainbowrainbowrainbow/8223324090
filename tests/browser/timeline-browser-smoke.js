@@ -3529,6 +3529,10 @@ async function run() {
             body: {
                 sourceBookingId: activity.id,
                 role: 'kitchen',
+                banquetContext: {
+                    mode: 'existing',
+                    groupId: activityGroupId
+                },
                 booking: bookingPayload({
                     date,
                     time: '15:00',

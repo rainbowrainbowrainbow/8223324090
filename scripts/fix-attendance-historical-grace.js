@@ -18,30 +18,41 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
-const SCRIPT_VERSION = 2;
+const SCRIPT_VERSION = 3;
+const BACKUP_FORMAT_VERSION = 2;
 const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 const MAX_APPLY_DAYS = 31;
 const DEFAULT_MAX_RECORDS = 500;
+const DEFAULT_MAX_BACKUP_BYTES = 25 * 1024 * 1024;
 const MANIFEST_TTL_HOURS = 24;
 const AUDIT_ACTOR_MAX_LENGTH = 50;
+const APPLY_LOCK_TIMEOUT = '5s';
+const APPLY_STATEMENT_TIMEOUT = '45s';
 const CATEGORY_LATE_GRACE = 'late-grace';
 const CATEGORY_OVERTIME_GRACE = 'overtime-grace';
 const CATEGORY_NULL_ZERO_NEGATIVE_LATE = 'null-zero-negative-late';
 const SUPPORTED_CATEGORIES = new Set([CATEGORY_LATE_GRACE, CATEGORY_OVERTIME_GRACE]);
 const UNSUPPORTED_WRITE_CATEGORIES = new Set(['missing-plan-source', 'inferred-profession-card']);
-const CLOSED_PAYROLL_STATUSES = new Set(['reviewed', 'approved', 'paid']);
+const PROTECTED_PAYROLL_STATUSES = new Set(['reviewed', 'approved', 'paid']);
+const PAYROLL_GATE_TABLES = Object.freeze([
+    'payroll_reports',
+    'payroll_period_locks',
+    'payroll_entries',
+    'salary_adjustments',
+    'finance_transactions'
+]);
 const BLOCKED_WRITE_FLAGS = new Set(['--fix', '--write', '--execute', '--update']);
 const ROOT = path.resolve(__dirname, '..');
 
 function usage() {
     return [
         'Usage:',
-        '  node scripts/fix-attendance-historical-grace.js --from YYYY-MM-DD --to YYYY-MM-DD --business-context event_genix --approved-by "Director / Serhii" --executed-by "operator" --reason "reports_only" --categories "late-grace,overtime-grace" [--max-records 500] [--format json|markdown]',
+        '  node scripts/fix-attendance-historical-grace.js --from YYYY-MM-DD --to YYYY-MM-DD --business-context event_genix --approved-by "Director / Serhii" --executed-by "operator" --reason "reports_only" --categories "late-grace,overtime-grace" [--max-records 500] [--max-backup-bytes 26214400] [--format json|markdown]',
         '',
         'Dry-run is default and uses BEGIN READ ONLY.',
         '',
         'Apply, only after owner review of the current dry-run output:',
-        '  node scripts/fix-attendance-historical-grace.js --apply --from YYYY-MM-DD --to YYYY-MM-DD --business-context event_genix --approved-by "Director / Serhii" --executed-by "operator" --reason "reports_only" --categories "late-grace,overtime-grace" --review-token <dry-run-plan-hash> --backup-dir <dir> --confirm <exact-confirmation>',
+        '  node scripts/fix-attendance-historical-grace.js --apply --from YYYY-MM-DD --to YYYY-MM-DD --business-context event_genix --approved-by "Director / Serhii" --executed-by "operator" --reason "reports_only" --categories "late-grace,overtime-grace" --review-token <dry-run-plan-hash> --backup-dir <absolute-dir-outside-repo> --confirm <exact-confirmation>',
         '',
         'Connection:',
         '  Dry-run: ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL only.',
@@ -106,6 +117,15 @@ function normalizeMaxRecords(value) {
     return number;
 }
 
+function normalizeMaxBackupBytes(value) {
+    if (value === undefined || value === null || value === '') return DEFAULT_MAX_BACKUP_BYTES;
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < 1024 || number > 512 * 1024 * 1024) {
+        throw new Error('--max-backup-bytes must be an integer from 1024 to 536870912');
+    }
+    return number;
+}
+
 function normalizeCategory(value) {
     const text = String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
     if (['late', 'late-grace-mismatch', 'late-status-within-grace'].includes(text)) return CATEGORY_LATE_GRACE;
@@ -158,6 +178,7 @@ function parseArgs(argv) {
         confirm: '',
         backupDir: '',
         maxRecords: DEFAULT_MAX_RECORDS,
+        maxBackupBytes: DEFAULT_MAX_BACKUP_BYTES,
         format: 'json',
         output: ''
     };
@@ -200,6 +221,7 @@ function parseArgs(argv) {
         else if (arg === '--confirm') options.confirm = readValue(arg);
         else if (arg === '--backup-dir') options.backupDir = readValue(arg);
         else if (arg === '--max-records') options.maxRecords = readValue(arg);
+        else if (arg === '--max-backup-bytes') options.maxBackupBytes = readValue(arg);
         else if (arg === '--format') options.format = readValue(arg).toLowerCase();
         else if (arg === '--output') options.output = readValue(arg);
         else throw new Error(`Unknown argument: ${arg}`);
@@ -216,6 +238,7 @@ function parseArgs(argv) {
     if (!options.reason) throw new Error('--reason is required');
     options.categories = normalizeCategories(options.categoryInputs);
     options.maxRecords = normalizeMaxRecords(options.maxRecords);
+    options.maxBackupBytes = normalizeMaxBackupBytes(options.maxBackupBytes);
     if (!['json', 'markdown'].includes(options.format)) throw new Error('--format must be json or markdown');
     if (options.apply) {
         if (dateRangeDays(options.from, options.to) > MAX_APPLY_DAYS) {
@@ -277,16 +300,16 @@ function candidateSelectSql(options, { forUpdate = false } = {}) {
                tr.staff_id,
                tr.record_date::text AS record_date,
                COALESCE(tr.business_context, 'event_genix') AS business_context,
-               tr.clock_in,
-               tr.clock_out,
-               tr.planned_start,
-               tr.planned_end,
+               tr.clock_in::text AS clock_in,
+               tr.clock_out::text AS clock_out,
+               tr.planned_start::text AS planned_start,
+               tr.planned_end::text AS planned_end,
                tr.status,
                tr.late_minutes::int AS late_minutes,
                tr.early_leave_minutes::int AS early_leave_minutes,
                tr.overtime_minutes::int AS overtime_minutes,
                COALESCE(tr.total_worked_minutes, 0)::int AS total_worked_minutes,
-               tr.updated_at,
+               tr.updated_at::text AS updated_at,
                (${lateFlag}) AS fix_late_grace,
                (${overtimeFlag}) AS fix_overtime_grace
           FROM hr_time_records tr
@@ -299,14 +322,15 @@ function candidateSelectSql(options, { forUpdate = false } = {}) {
     `;
 }
 
-function closedStatus(status) {
-    return CLOSED_PAYROLL_STATUSES.has(String(status || '').trim());
-}
-
 function nullableInteger(value) {
     if (value === null || value === undefined || value === '') return null;
     const number = Number(value);
     return Number.isFinite(number) ? Math.trunc(number) : null;
+}
+
+function nullableText(value) {
+    if (value === null || value === undefined) return null;
+    return String(value);
 }
 
 function planChange(row) {
@@ -342,6 +366,13 @@ function planChange(row) {
         staff_id: Number(row.staff_id),
         record_date: row.record_date,
         business_context: row.business_context || DEFAULT_BUSINESS_CONTEXT,
+        immutable: {
+            clock_in: nullableText(row.clock_in),
+            clock_out: nullableText(row.clock_out),
+            planned_start: nullableText(row.planned_start),
+            planned_end: nullableText(row.planned_end),
+            total_worked_minutes: nullableInteger(row.total_worked_minutes)
+        },
         categories,
         before,
         after,
@@ -354,6 +385,17 @@ function planChange(row) {
 async function tableExists(client, tableName) {
     const result = await client.query('SELECT to_regclass($1) AS relation', [`public.${tableName}`]);
     return Boolean(result.rows[0]?.relation);
+}
+
+async function tableColumns(client, tableName) {
+    const result = await client.query(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = $1`,
+        [tableName]
+    );
+    return new Set(result.rows.map(row => row.column_name));
 }
 
 async function loadCandidateChanges(client, options, flags = {}) {
@@ -401,10 +443,16 @@ async function loadReadOnlyAuditCounts(client, options) {
 async function loadPayrollImpact(client, changes) {
     const hasReports = await tableExists(client, 'payroll_reports');
     const hasLocks = await tableExists(client, 'payroll_period_locks');
+    const hasEntries = await tableExists(client, 'payroll_entries');
+    const hasSalaryAdjustments = await tableExists(client, 'salary_adjustments');
+    const hasFinanceTransactions = await tableExists(client, 'finance_transactions');
     if (!changes.length) {
         return {
             payrollReportsTablePresent: hasReports,
             payrollPeriodLocksTablePresent: hasLocks,
+            payrollEntriesTablePresent: hasEntries,
+            salaryAdjustmentsTablePresent: hasSalaryAdjustments,
+            financeTransactionsTablePresent: hasFinanceTransactions,
             risk: hasReports && hasLocks ? 'none_detected' : 'unknown_schema',
             periods: []
         };
@@ -414,10 +462,25 @@ async function loadPayrollImpact(client, changes) {
         return {
             payrollReportsTablePresent: false,
             payrollPeriodLocksTablePresent: hasLocks,
+            payrollEntriesTablePresent: hasEntries,
+            salaryAdjustmentsTablePresent: hasSalaryAdjustments,
+            financeTransactionsTablePresent: hasFinanceTransactions,
             risk: 'unknown_schema',
             periods: []
         };
     }
+    const reportColumns = await tableColumns(client, 'payroll_reports');
+    const activeReportPredicate = [
+        reportColumns.has('voided_at') ? 'pr.voided_at IS NULL' : 'true',
+        "COALESCE(pr.status, 'draft') NOT IN ('voided', 'reversed')"
+    ].join(' AND ');
+    const committedPredicate = reportColumns.has('committed_at')
+        ? 'pr.committed_at IS NOT NULL'
+        : 'false';
+    const financeLinkedParts = [];
+    if (reportColumns.has('finance_transaction_id')) financeLinkedParts.push('pr.finance_transaction_id IS NOT NULL');
+    if (reportColumns.has('reversal_transaction_id')) financeLinkedParts.push('pr.reversal_transaction_id IS NOT NULL');
+    const financeLinkedPredicate = financeLinkedParts.length ? financeLinkedParts.join(' OR ') : 'false';
     const lockJoin = hasLocks
         ? 'LEFT JOIN payroll_period_locks pl ON pl.period_month = ps.period_month'
         : 'LEFT JOIN (SELECT NULL::varchar AS period_month, false::boolean AS is_locked, NULL::timestamptz AS locked_at) pl ON false';
@@ -436,15 +499,37 @@ async function loadPayrollImpact(client, changes) {
          ),
          report_stats AS (
             SELECT c.period_month,
-                   COUNT(DISTINCT pr.id)::int AS payroll_reports,
                    COUNT(DISTINCT pr.id) FILTER (
-                        WHERE pr.voided_at IS NULL
+                        WHERE ${activeReportPredicate}
+                   )::int AS payroll_reports,
+                   COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
+                          AND pr.status = 'draft'
+                   )::int AS draft_payroll_reports,
+                   COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
+                          AND pr.status = 'reviewed'
+                   )::int AS reviewed_payroll_reports,
+                   COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
+                          AND pr.status = 'approved'
+                   )::int AS approved_payroll_reports,
+                   COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
                           AND pr.status IN ('reviewed', 'approved', 'paid')
                    )::int AS closed_payroll_reports,
                    COUNT(DISTINCT pr.id) FILTER (
-                        WHERE pr.voided_at IS NULL
+                        WHERE ${activeReportPredicate}
                           AND pr.status = 'paid'
                    )::int AS paid_payroll_reports
+                  ,COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
+                          AND (${committedPredicate})
+                   )::int AS committed_payroll_reports
+                  ,COUNT(DISTINCT pr.id) FILTER (
+                        WHERE ${activeReportPredicate}
+                          AND (${financeLinkedPredicate})
+                   )::int AS finance_linked_payroll_reports
               FROM candidates c
               LEFT JOIN payroll_reports pr
                      ON pr.period_month = c.period_month
@@ -457,8 +542,13 @@ async function loadPayrollImpact(client, changes) {
                 COALESCE(pl.is_locked, false) AS payroll_period_locked,
                 (pl.locked_at IS NOT NULL) AS has_lock_timestamp,
                 COALESCE(rs.payroll_reports, 0)::int AS payroll_reports,
+                COALESCE(rs.draft_payroll_reports, 0)::int AS draft_payroll_reports,
+                COALESCE(rs.reviewed_payroll_reports, 0)::int AS reviewed_payroll_reports,
+                COALESCE(rs.approved_payroll_reports, 0)::int AS approved_payroll_reports,
                 COALESCE(rs.closed_payroll_reports, 0)::int AS closed_payroll_reports,
-                COALESCE(rs.paid_payroll_reports, 0)::int AS paid_payroll_reports
+                COALESCE(rs.paid_payroll_reports, 0)::int AS paid_payroll_reports,
+                COALESCE(rs.committed_payroll_reports, 0)::int AS committed_payroll_reports,
+                COALESCE(rs.finance_linked_payroll_reports, 0)::int AS finance_linked_payroll_reports
            FROM period_stats ps
            ${lockJoin}
            LEFT JOIN report_stats rs ON rs.period_month = ps.period_month
@@ -472,20 +562,103 @@ async function loadPayrollImpact(client, changes) {
         payrollPeriodLocked: row.payroll_period_locked === true,
         hasLockTimestamp: row.has_lock_timestamp === true,
         payrollReports: Number(row.payroll_reports || 0),
+        draftPayrollReports: Number(row.draft_payroll_reports || 0),
+        reviewedPayrollReports: Number(row.reviewed_payroll_reports || 0),
+        approvedPayrollReports: Number(row.approved_payroll_reports || 0),
         closedPayrollReports: Number(row.closed_payroll_reports || 0),
-        paidPayrollReports: Number(row.paid_payroll_reports || 0)
+        paidPayrollReports: Number(row.paid_payroll_reports || 0),
+        committedPayrollReports: Number(row.committed_payroll_reports || 0),
+        financeLinkedPayrollReports: Number(row.finance_linked_payroll_reports || 0),
+        payrollEntries: 0,
+        salaryAdjustments: 0,
+        salaryFinanceTransactions: 0
     }));
+    const periodMap = new Map(periods.map(period => [period.month, period]));
+
+    async function mergeMonthlyCount(tableName, fieldName, sql) {
+        if (!periods.length) return;
+        const queryResult = await client.query(sql, [ids]);
+        for (const row of queryResult.rows) {
+            const period = periodMap.get(row.period_month);
+            if (period) period[fieldName] = Number(row.row_count || 0);
+        }
+    }
+
+    if (hasEntries) {
+        await mergeMonthlyCount(
+            'payroll_entries',
+            'payrollEntries',
+            `WITH candidates AS (
+                SELECT id, staff_id, to_char(record_date, 'YYYY-MM') AS period_month
+                  FROM hr_time_records
+                 WHERE id = ANY($1::int[])
+             )
+             SELECT c.period_month, COUNT(DISTINCT pe.id)::int AS row_count
+               FROM candidates c
+               JOIN payroll_entries pe
+                 ON pe.staff_id = c.staff_id
+                AND pe.period_month = c.period_month
+              GROUP BY c.period_month`
+        );
+    }
+    if (hasSalaryAdjustments) {
+        await mergeMonthlyCount(
+            'salary_adjustments',
+            'salaryAdjustments',
+            `WITH candidates AS (
+                SELECT id, staff_id, to_char(record_date, 'YYYY-MM') AS period_month
+                  FROM hr_time_records
+                 WHERE id = ANY($1::int[])
+             )
+             SELECT c.period_month, COUNT(DISTINCT sa.id)::int AS row_count
+               FROM candidates c
+               JOIN salary_adjustments sa
+                 ON sa.staff_id = c.staff_id
+                AND sa.month = c.period_month
+              GROUP BY c.period_month`
+        );
+    }
+    if (hasFinanceTransactions) {
+        await mergeMonthlyCount(
+            'finance_transactions',
+            'salaryFinanceTransactions',
+            `WITH candidates AS (
+                SELECT id, staff_id, to_char(record_date, 'YYYY-MM') AS period_month
+                  FROM hr_time_records
+                 WHERE id = ANY($1::int[])
+             )
+             SELECT c.period_month, COUNT(DISTINCT ft.id)::int AS row_count
+               FROM candidates c
+               JOIN finance_transactions ft
+                 ON ft.staff_id = c.staff_id
+                AND LEFT(ft.date, 7) = c.period_month
+                AND ft.payment_method IN ('salary', 'salary_reversal')
+              GROUP BY c.period_month`
+        );
+    }
     return {
         payrollReportsTablePresent: true,
         payrollPeriodLocksTablePresent: hasLocks,
+        payrollEntriesTablePresent: hasEntries,
+        salaryAdjustmentsTablePresent: hasSalaryAdjustments,
+        financeTransactionsTablePresent: hasFinanceTransactions,
         risk: hasLocks ? riskFromPayrollImpact(periods) : 'unknown_schema',
         periods
     };
 }
 
 function riskFromPayrollImpact(periods) {
-    if (periods.some(period => period.payrollPeriodLocked || period.hasLockTimestamp || period.paidPayrollReports > 0)) return 'high';
-    if (periods.some(period => period.closedPayrollReports > 0)) return 'medium';
+    if (periods.some(period => (
+        period.payrollPeriodLocked
+        || period.hasLockTimestamp
+        || period.paidPayrollReports > 0
+        || period.approvedPayrollReports > 0
+        || period.committedPayrollReports > 0
+        || period.financeLinkedPayrollReports > 0
+        || period.payrollEntries > 0
+        || period.salaryFinanceTransactions > 0
+    ))) return 'high';
+    if (periods.some(period => period.closedPayrollReports > 0 || period.reviewedPayrollReports > 0 || period.salaryAdjustments > 0)) return 'medium';
     if (periods.some(period => period.payrollReports > 0)) return 'low';
     return 'none_detected';
 }
@@ -500,12 +673,20 @@ function assertPayrollWriteAllowed(payrollImpact) {
     const blocked = (payrollImpact.periods || []).filter(period => (
         period.payrollPeriodLocked
         || period.hasLockTimestamp
+        || period.payrollReports > 0
         || period.closedPayrollReports > 0
         || period.paidPayrollReports > 0
+        || period.reviewedPayrollReports > 0
+        || period.approvedPayrollReports > 0
+        || period.committedPayrollReports > 0
+        || period.financeLinkedPayrollReports > 0
+        || period.payrollEntries > 0
+        || period.salaryAdjustments > 0
+        || period.salaryFinanceTransactions > 0
     ));
     if (blocked.length) {
         const months = blocked.map(period => period.month).join(', ');
-        throw new Error(`Refusing --apply: locked/closed/paid payroll impact exists for ${months}`);
+        throw new Error(`Refusing --apply: protected or open payroll impact exists for ${months}`);
     }
 }
 
@@ -612,10 +793,12 @@ function buildPlanHash(options, changes, payrollImpact, runtimeMetadata = {}) {
         reason: options.reason,
         categories: options.categories,
         maxRecords: options.maxRecords,
+        maxBackupBytes: options.maxBackupBytes,
         changes: changes.map(change => ({
             id: change.id,
             record_date: change.record_date,
             business_context: change.business_context,
+            immutable: change.immutable,
             categories: change.categories,
             before: change.before,
             after: change.after
@@ -623,6 +806,9 @@ function buildPlanHash(options, changes, payrollImpact, runtimeMetadata = {}) {
         payrollImpact: {
             payrollReportsTablePresent: payrollImpact.payrollReportsTablePresent,
             payrollPeriodLocksTablePresent: payrollImpact.payrollPeriodLocksTablePresent,
+            payrollEntriesTablePresent: payrollImpact.payrollEntriesTablePresent,
+            salaryAdjustmentsTablePresent: payrollImpact.salaryAdjustmentsTablePresent,
+            financeTransactionsTablePresent: payrollImpact.financeTransactionsTablePresent,
             risk: payrollImpact.risk,
             periods: payrollImpact.periods
         }
@@ -653,6 +839,7 @@ function buildApprovalManifest(options, changes, payrollImpact, runtimeMetadata,
             reason: options.reason,
             categories: options.categories,
             maxRecords: options.maxRecords,
+            maxBackupBytes: options.maxBackupBytes,
             lockedPaidClosedPayrollCanChange: false
         },
         categoryCounts: summary.byCategory,
@@ -661,8 +848,16 @@ function buildApprovalManifest(options, changes, payrollImpact, runtimeMetadata,
             protectedPayrollPeriods: (payrollImpact.periods || []).filter(period => (
                 period.payrollPeriodLocked
                 || period.hasLockTimestamp
+                || period.payrollReports > 0
                 || period.closedPayrollReports > 0
                 || period.paidPayrollReports > 0
+                || period.reviewedPayrollReports > 0
+                || period.approvedPayrollReports > 0
+                || period.committedPayrollReports > 0
+                || period.financeLinkedPayrollReports > 0
+                || period.payrollEntries > 0
+                || period.salaryAdjustments > 0
+                || period.salaryFinanceTransactions > 0
             )).length
         },
         payrollRisk: payrollImpact.risk,
@@ -711,9 +906,40 @@ async function loadBackupPayload(client, options, changes, payrollImpact, planHa
             [periods]
         )
         : { rows: [] };
+    const payrollEntries = await tableExists(client, 'payroll_entries') && staffIds.length
+        ? await client.query(
+            `SELECT *
+               FROM payroll_entries
+              WHERE staff_id = ANY($1::int[])
+                AND period_month = ANY($2::text[])
+              ORDER BY period_month, staff_id, id`,
+            [staffIds, periods]
+        )
+        : { rows: [] };
+    const salaryAdjustments = await tableExists(client, 'salary_adjustments') && staffIds.length
+        ? await client.query(
+            `SELECT *
+               FROM salary_adjustments
+              WHERE staff_id = ANY($1::int[])
+                AND month = ANY($2::text[])
+              ORDER BY month, staff_id, id`,
+            [staffIds, periods]
+        )
+        : { rows: [] };
+    const financeTransactions = await tableExists(client, 'finance_transactions') && staffIds.length
+        ? await client.query(
+            `SELECT *
+               FROM finance_transactions
+              WHERE staff_id = ANY($1::int[])
+                AND LEFT(date, 7) = ANY($2::text[])
+                AND payment_method IN ('salary', 'salary_reversal')
+              ORDER BY date, staff_id, id`,
+            [staffIds, periods]
+        )
+        : { rows: [] };
     return {
         format: 'eventgenix.attendance_historical_grace_backup',
-        version: 1,
+        version: BACKUP_FORMAT_VERSION,
         generatedAt: new Date().toISOString(),
         planHash,
         approvalManifest,
@@ -734,23 +960,225 @@ async function loadBackupPayload(client, options, changes, payrollImpact, planHa
             hr_time_records: timeRecords.rows,
             hr_audit_log: auditLog.rows,
             payroll_reports: payrollReports.rows,
-            payroll_period_locks: payrollLocks.rows
+            payroll_period_locks: payrollLocks.rows,
+            payroll_entries: payrollEntries.rows,
+            salary_adjustments: salaryAdjustments.rows,
+            finance_transactions: financeTransactions.rows
         }
     };
 }
 
-function writeBackupFile(options, payload) {
-    const dir = path.resolve(options.backupDir);
-    fs.mkdirSync(dir, { recursive: true });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `attendance-historical-grace-backup-${options.from}-${options.to}-${payload.planHash.slice(0, 12)}-${timestamp}.json`;
-    const fullPath = path.join(dir, filename);
-    fs.writeFileSync(fullPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
-    return fullPath;
+function normalizePathForCompare(value) {
+    return path.resolve(value).replace(/[\\\/]+$/, '').toLowerCase();
 }
 
-async function applyChanges(client, options, changes, backupFile, planHash) {
-    if (!changes.length) return { updatedRows: 0, auditRows: 0 };
+function isPathInside(child, parent) {
+    const relative = path.relative(parent, child);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function assertNoSymlinkPath(targetPath) {
+    const resolved = path.resolve(targetPath);
+    const root = path.parse(resolved).root;
+    const relativeParts = path.relative(root, resolved).split(path.sep).filter(Boolean);
+    let current = root;
+    for (const part of relativeParts) {
+        current = path.join(current, part);
+        if (!fs.existsSync(current)) continue;
+        const stat = fs.lstatSync(current);
+        if (stat.isSymbolicLink()) {
+            throw new Error(`Backup path must not contain symlink/reparse segments: ${current}`);
+        }
+    }
+}
+
+function ensureBackupDirectory(rawDir) {
+    if (!path.isAbsolute(rawDir || '')) {
+        throw new Error('--backup-dir must be an absolute path outside the repository');
+    }
+    const dir = path.resolve(rawDir);
+    const repo = path.resolve(ROOT);
+    if (isPathInside(normalizePathForCompare(dir), normalizePathForCompare(repo))) {
+        throw new Error('--backup-dir must be outside the repository');
+    }
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    assertNoSymlinkPath(dir);
+    const stat = fs.lstatSync(dir);
+    if (!stat.isDirectory()) throw new Error('--backup-dir must resolve to a directory');
+    try {
+        fs.chmodSync(dir, 0o700);
+    } catch (_) {
+        // Best effort on Windows/OneDrive filesystems; the operator still controls ACL approval.
+    }
+    return dir;
+}
+
+function backupRowCounts(payload) {
+    return Object.fromEntries(Object.entries(payload.tables || {}).map(([table, rows]) => [
+        table,
+        Array.isArray(rows) ? rows.length : 0
+    ]));
+}
+
+function backupEnvelopeForChecksum(envelope) {
+    return {
+        ...envelope,
+        manifest: {
+            ...envelope.manifest,
+            checksumSha256: null
+        }
+    };
+}
+
+function serializeBackupEnvelope(envelope) {
+    return `${JSON.stringify(envelope, null, 2)}\n`;
+}
+
+function checksumBackupEnvelope(envelope) {
+    return crypto
+        .createHash('sha256')
+        .update(serializeBackupEnvelope(backupEnvelopeForChecksum(envelope)))
+        .digest('hex');
+}
+
+function verifyBackupEnvelope(envelope) {
+    if (!envelope || typeof envelope !== 'object') throw new Error('Backup artifact is not a JSON object');
+    if (envelope.format !== 'eventgenix.attendance_historical_grace_backup_artifact') {
+        throw new Error('Unsupported backup artifact format');
+    }
+    if (!envelope.payload || envelope.payload.format !== 'eventgenix.attendance_historical_grace_backup') {
+        throw new Error('Unsupported backup payload format');
+    }
+    const expected = envelope.manifest?.checksumSha256;
+    if (!expected) throw new Error('Backup artifact is missing checksumSha256');
+    const actual = checksumBackupEnvelope(envelope);
+    if (actual !== expected) throw new Error('Backup artifact checksum mismatch');
+    return true;
+}
+
+function loadBackupArtifact(filePath) {
+    if (!path.isAbsolute(filePath || '')) throw new Error('--backup-file must be an absolute path');
+    assertNoSymlinkPath(filePath);
+    const envelope = JSON.parse(fs.readFileSync(path.resolve(filePath), 'utf8'));
+    verifyBackupEnvelope(envelope);
+    return envelope;
+}
+
+function fsyncDirectory(dir) {
+    try {
+        const fd = fs.openSync(dir, 'r');
+        try {
+            fs.fsyncSync(fd);
+            return true;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (_) {
+        return false;
+    }
+}
+
+function writeBackupFile(options, payload) {
+    const dir = ensureBackupDirectory(options.backupDir);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const artifactId = `attendance-historical-grace-${options.from}-${options.to}-${payload.planHash.slice(0, 12)}-${timestamp}`;
+    const filename = `${artifactId}.json`;
+    const fullPath = path.join(dir, filename);
+    const envelope = {
+        format: 'eventgenix.attendance_historical_grace_backup_artifact',
+        manifest: {
+            artifactId,
+            createdAt: new Date().toISOString(),
+            planHash: payload.planHash,
+            operationId: payload.approvalManifest?.operationId || null,
+            backupFormatVersion: BACKUP_FORMAT_VERSION,
+            rowCounts: backupRowCounts(payload),
+            plannedChanges: Array.isArray(payload.plannedChanges) ? payload.plannedChanges.length : 0,
+            checksumSha256: null,
+            checksumPayload: 'sha256 of canonical backup artifact JSON with manifest.checksumSha256 set to null'
+        },
+        payload
+    };
+    envelope.manifest.checksumSha256 = checksumBackupEnvelope(envelope);
+    const bytes = Buffer.from(serializeBackupEnvelope(envelope), 'utf8');
+    if (bytes.length > options.maxBackupBytes) {
+        throw new Error(`Refusing --apply: backup artifact ${bytes.length} bytes exceeds --max-backup-bytes ${options.maxBackupBytes}`);
+    }
+    const tempPath = `${fullPath}.tmp-${process.pid}-${Date.now()}`;
+    const fd = fs.openSync(tempPath, 'wx', 0o600);
+    try {
+        fs.writeFileSync(fd, bytes);
+        fs.fsyncSync(fd);
+    } finally {
+        fs.closeSync(fd);
+    }
+    try {
+        fs.chmodSync(tempPath, 0o600);
+    } catch (_) {}
+    fs.renameSync(tempPath, fullPath);
+    const directoryFsync = fsyncDirectory(dir);
+    verifyBackupEnvelope(JSON.parse(fs.readFileSync(fullPath, 'utf8')));
+    return {
+        artifactId,
+        filePath: fullPath,
+        checksumSha256: envelope.manifest.checksumSha256,
+        byteLength: bytes.length,
+        rowCounts: envelope.manifest.rowCounts,
+        directoryFsync
+    };
+}
+
+async function beginApplyTransaction(client) {
+    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+    await client.query(`SET LOCAL lock_timeout = '${APPLY_LOCK_TIMEOUT}'`);
+    await client.query(`SET LOCAL statement_timeout = '${APPLY_STATEMENT_TIMEOUT}'`);
+    await client.query(`SET LOCAL idle_in_transaction_session_timeout = '${APPLY_STATEMENT_TIMEOUT}'`);
+}
+
+async function lockPayrollGateTables(client) {
+    const lockedTables = [];
+    for (const tableName of PAYROLL_GATE_TABLES) {
+        if (await tableExists(client, tableName)) {
+            await client.query(`LOCK TABLE ${tableName} IN SHARE ROW EXCLUSIVE MODE`);
+            lockedTables.push(tableName);
+        }
+    }
+    return lockedTables;
+}
+
+async function insertOperationAudit(client, options, changes, planHash, approvalManifest, backupArtifact, phase = 'apply') {
+    const summary = summarizeChanges(changes);
+    const details = {
+        script: 'fix-attendance-historical-grace',
+        script_version: SCRIPT_VERSION,
+        operation_id: approvalManifest.operationId,
+        operation_phase: phase,
+        plan_hash: planHash,
+        backup_artifact_id: backupArtifact.artifactId,
+        backup_checksum_sha256: backupArtifact.checksumSha256,
+        approved_by: options.approvedBy,
+        executed_by: options.executedBy,
+        reason: options.reason,
+        summary,
+        approved_scope: {
+            from: options.from,
+            to: options.to,
+            business_context: options.businessContext,
+            categories: options.categories,
+            locked_paid_closed_payroll_can_change: false
+        }
+    };
+    const result = await client.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('attendance_historical_grace_data_fix_operation', NULL, $1, $2::jsonb, NULL)
+         RETURNING id`,
+        [options.executedBy, JSON.stringify(details)]
+    );
+    return result.rowCount;
+}
+
+async function applyChanges(client, options, changes, backupArtifact, planHash, approvalManifest) {
+    if (!changes.length) return { updatedRows: 0, auditRows: 0, operationAuditRows: 0 };
     const updatePayload = changes.map(change => ({
         id: change.id,
         record_date: change.record_date,
@@ -805,8 +1233,10 @@ async function applyChanges(client, options, changes, backupFile, planHash) {
         details: {
             script: 'fix-attendance-historical-grace',
             script_version: SCRIPT_VERSION,
+            operation_id: approvalManifest.operationId,
             plan_hash: planHash,
-            backup_file: backupFile,
+            backup_artifact_id: backupArtifact.artifactId,
+            backup_checksum_sha256: backupArtifact.checksumSha256,
             approved_by: options.approvedBy,
             executed_by: options.executedBy,
             reason: options.reason,
@@ -843,7 +1273,121 @@ async function applyChanges(client, options, changes, backupFile, planHash) {
     if (audit.rowCount !== changes.length) {
         throw new Error(`Inserted ${audit.rowCount} audit rows, expected ${changes.length}`);
     }
-    return { updatedRows: updated.rowCount, auditRows: audit.rowCount };
+    const operationAuditRows = await insertOperationAudit(client, options, changes, planHash, approvalManifest, backupArtifact);
+    if (operationAuditRows !== 1) {
+        throw new Error(`Inserted ${operationAuditRows} operation audit rows, expected 1`);
+    }
+    return { updatedRows: updated.rowCount, auditRows: audit.rowCount, operationAuditRows };
+}
+
+function sameValue(actual, expected) {
+    return (actual ?? null) === (expected ?? null);
+}
+
+async function verifyAppliedChanges(client, changes, planHash, backupArtifact, approvalManifest) {
+    const ids = changes.map(change => change.id);
+    const result = await client.query(
+        `SELECT id,
+                record_date::text AS record_date,
+                COALESCE(business_context, 'event_genix') AS business_context,
+                clock_in::text AS clock_in,
+                clock_out::text AS clock_out,
+                planned_start::text AS planned_start,
+                planned_end::text AS planned_end,
+                status,
+                late_minutes::int AS late_minutes,
+                early_leave_minutes::int AS early_leave_minutes,
+                overtime_minutes::int AS overtime_minutes,
+                COALESCE(total_worked_minutes, 0)::int AS total_worked_minutes
+           FROM hr_time_records
+          WHERE id = ANY($1::int[])`,
+        [ids]
+    );
+    const rowsById = new Map(result.rows.map(row => [Number(row.id), row]));
+    for (const change of changes) {
+        const row = rowsById.get(change.id);
+        if (!row) throw new Error(`Read-back failed: record ${change.id} is missing`);
+        if (row.record_date !== change.record_date) throw new Error(`Read-back failed: record ${change.id} date drift`);
+        if (row.business_context !== change.business_context) throw new Error(`Read-back failed: record ${change.id} business context drift`);
+        for (const key of ['clock_in', 'clock_out', 'planned_start', 'planned_end']) {
+            if (!sameValue(row[key], change.immutable?.[key])) {
+                throw new Error(`Read-back failed: record ${change.id} immutable ${key} drift`);
+            }
+        }
+        if (!sameValue(nullableInteger(row.total_worked_minutes), change.immutable?.total_worked_minutes)) {
+            throw new Error(`Read-back failed: record ${change.id} total_worked_minutes drift`);
+        }
+        for (const [key, expected] of Object.entries(change.after)) {
+            const actual = key.endsWith('_minutes') ? nullableInteger(row[key]) : (row[key] ?? null);
+            if (!sameValue(actual, expected)) {
+                throw new Error(`Read-back failed: record ${change.id} ${key} is ${actual}, expected ${expected}`);
+            }
+        }
+    }
+    const audit = await client.query(
+        `SELECT
+            COUNT(*) FILTER (
+                WHERE action = 'attendance_historical_grace_data_fix'
+            )::int AS row_audit_rows,
+            COUNT(*) FILTER (
+                WHERE action = 'attendance_historical_grace_data_fix_operation'
+            )::int AS operation_audit_rows
+           FROM hr_audit_log
+          WHERE details->>'plan_hash' = $1
+            AND details->>'operation_id' = $2
+            AND details->>'backup_artifact_id' = $3`,
+        [planHash, approvalManifest.operationId, backupArtifact.artifactId]
+    );
+    const row = audit.rows[0] || {};
+    const rowAuditRows = Number(row.row_audit_rows || 0);
+    const operationAuditRows = Number(row.operation_audit_rows || 0);
+    if (rowAuditRows !== changes.length) {
+        throw new Error(`Read-back failed: ${rowAuditRows} row audit entries, expected ${changes.length}`);
+    }
+    if (operationAuditRows !== 1) {
+        throw new Error(`Read-back failed: ${operationAuditRows} operation audit entries, expected 1`);
+    }
+    return {
+        recordsVerified: rowsById.size,
+        rowAuditRows,
+        operationAuditRows
+    };
+}
+
+async function recoverApplyOutcome(config, operationId, planHash) {
+    const { Pool } = require('pg');
+    const pool = new Pool(config);
+    try {
+        const client = await pool.connect();
+        try {
+            const result = await client.query(
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE action = 'attendance_historical_grace_data_fix_operation'
+                    )::int AS operation_audit_rows,
+                    COUNT(*) FILTER (
+                        WHERE action = 'attendance_historical_grace_data_fix'
+                    )::int AS row_audit_rows
+                   FROM hr_audit_log
+                  WHERE details->>'operation_id' = $1
+                    AND details->>'plan_hash' = $2`,
+                [operationId, planHash]
+            );
+            const row = result.rows[0] || {};
+            const operationAuditRows = Number(row.operation_audit_rows || 0);
+            const rowAuditRows = Number(row.row_audit_rows || 0);
+            if (operationAuditRows > 0 || rowAuditRows > 0) {
+                return { state: 'committed', operationAuditRows, rowAuditRows };
+            }
+            return { state: 'rolled_back_or_not_committed', operationAuditRows, rowAuditRows };
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        return { state: 'unknown', error: error.message };
+    } finally {
+        await pool.end().catch(() => {});
+    }
 }
 
 function buildReport(options, changes, payrollImpact, planHash, extra = {}) {
@@ -861,6 +1405,7 @@ function buildReport(options, changes, payrollImpact, planHash, extra = {}) {
                 businessContext: options.businessContext,
                 categories: options.categories,
                 maxRecords: options.maxRecords,
+                maxBackupBytes: options.maxBackupBytes,
                 lockedPaidClosedPayrollCanChange: false
             }
         },
@@ -888,13 +1433,12 @@ async function runDataFix(options) {
     const client = await pool.connect();
     try {
         if (options.apply) {
-            await client.query('BEGIN');
-            await client.query(`SET LOCAL statement_timeout = '45s'`);
-            await client.query(`SET LOCAL idle_in_transaction_session_timeout = '45s'`);
+            await beginApplyTransaction(client);
             const readonly = await client.query('SHOW transaction_read_only');
             if (readonly.rows[0]?.transaction_read_only === 'on') {
                 throw new Error('PostgreSQL transaction is read-only; cannot apply data-fix');
             }
+            const lockedTables = await lockPayrollGateTables(client);
             const changes = await loadCandidateChanges(client, options, { forUpdate: true });
             const payrollImpact = await loadPayrollImpact(client, changes);
             assertPayrollWriteAllowed(payrollImpact);
@@ -906,15 +1450,27 @@ async function runDataFix(options) {
                 throw new Error(`--review-token does not match current dry-run planHash. Current planHash: ${planHash}`);
             }
             const backupPayload = await loadBackupPayload(client, options, changes, payrollImpact, planHash, approvalManifest);
-            const backupFile = writeBackupFile(options, backupPayload);
-            const applyResult = await applyChanges(client, options, changes, backupFile, planHash);
-            await client.query('COMMIT');
+            const backupArtifact = writeBackupFile(options, backupPayload);
+            const applyResult = await applyChanges(client, options, changes, backupArtifact, planHash, approvalManifest);
+            const readBack = await verifyAppliedChanges(client, changes, planHash, backupArtifact, approvalManifest);
+            const payrollImpactBeforeCommit = await loadPayrollImpact(client, changes);
+            assertPayrollWriteAllowed(payrollImpactBeforeCommit);
+            try {
+                await client.query('COMMIT');
+            } catch (commitError) {
+                const recovery = await recoverApplyOutcome(config, approvalManifest.operationId, planHash);
+                throw new Error(`COMMIT result is ambiguous for ${approvalManifest.operationId}; recoveryState=${recovery.state}; do not rerun apply automatically. Original error: ${commitError.message}`);
+            }
             return buildReport(options, changes, payrollImpact, planHash, {
                 applied: true,
-                backupFile,
+                backupFile: backupArtifact.filePath,
+                backupArtifact,
                 applyResult,
                 approvalManifest,
-                readOnlyAuditCounts
+                readOnlyAuditCounts,
+                lockedTables,
+                readBack,
+                payrollImpactBeforeCommit
             });
         }
 
@@ -978,15 +1534,15 @@ function renderMarkdown(report) {
         '',
         `Risk: ${report.payrollImpact.risk}`,
         '',
-        '| Month | Candidate records | Staff | Locked | Payroll reports | Closed reports | Paid reports |',
-        '| --- | ---: | ---: | --- | ---: | ---: | ---: |',
+        '| Month | Candidate records | Staff | Locked | Reports | Draft | Reviewed | Approved | Paid | Committed | Finance-linked | Entries | Adjustments | Salary finance |',
+        '| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
         ...(report.payrollImpact.periods || []).map(period => (
-            `| ${period.month} | ${period.candidateRecords} | ${period.candidateStaff} | ${period.payrollPeriodLocked || period.hasLockTimestamp ? 'yes' : 'no'} | ${period.payrollReports} | ${period.closedPayrollReports} | ${period.paidPayrollReports} |`
+            `| ${period.month} | ${period.candidateRecords} | ${period.candidateStaff} | ${period.payrollPeriodLocked || period.hasLockTimestamp ? 'yes' : 'no'} | ${period.payrollReports} | ${period.draftPayrollReports || 0} | ${period.reviewedPayrollReports || 0} | ${period.approvedPayrollReports || 0} | ${period.paidPayrollReports || 0} | ${period.committedPayrollReports || 0} | ${period.financeLinkedPayrollReports || 0} | ${period.payrollEntries || 0} | ${period.salaryAdjustments || 0} | ${period.salaryFinanceTransactions || 0} |`
         )),
         '',
         report.mode === 'dry_run'
             ? `Apply gate: review this output, then rerun with --review-token ${report.planHash} and --confirm "${report.applyGate.requiredConfirm}".`
-            : `Applied: ${report.applied === true}; backup: ${report.backupFile || 'n/a'}`
+            : `Applied: ${report.applied === true}; backup artifact: ${report.backupArtifact?.artifactId || 'n/a'}; checksum: ${report.backupArtifact?.checksumSha256 || 'n/a'}`
     ];
     return lines.join('\n');
 }
@@ -1015,18 +1571,27 @@ module.exports = {
     CATEGORY_NULL_ZERO_NEGATIVE_LATE,
     CATEGORY_OVERTIME_GRACE,
     assertPayrollWriteAllowed,
+    beginApplyTransaction,
     buildApprovalManifest,
     buildPlanHash,
     buildReport,
     candidateSelectSql,
     categorySql,
     countOverlappingChanges,
+    ensureBackupDirectory,
     expectedApplyConfirmation,
+    loadBackupArtifact,
+    loadPayrollImpact,
     loadReadOnlyAuditCounts,
+    lockPayrollGateTables,
     parseArgs,
     planChange,
     poolConfig,
+    recoverApplyOutcome,
     renderMarkdown,
     runDataFix,
+    verifyAppliedChanges,
+    verifyBackupEnvelope,
+    writeBackupFile,
     summarizeChanges
 };

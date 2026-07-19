@@ -174,8 +174,9 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
-        assert.match(runner, /attendance:\s*\[\s*'tests\/integration\/attendance-lock-concurrency\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-compensation-snapshot\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-document-automation-concurrency\.integration\.test\.js',\s*'tests\/integration\/attendance-backup-roundtrip\.integration\.test\.js',\s*'tests\/integration\/full-backup-recovery\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /attendance:\s*\[\s*'tests\/integration\/attendance-lock-concurrency\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-compensation-snapshot\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-document-automation-concurrency\.integration\.test\.js',\s*'tests\/integration\/attendance-historical-grace-datafix\.integration\.test\.js',\s*'tests\/integration\/attendance-backup-roundtrip\.integration\.test\.js',\s*'tests\/integration\/full-backup-recovery\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_ATTENDANCE_LOCK_INTEGRATION/);
+        assert.match(runner, /RUN_ATTENDANCE_DATAFIX_INTEGRATION/);
         assert.match(runner, /RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION/);
         assert.match(runner, /RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION/);
         assert.match(runner, /RUN_ATTENDANCE_BACKUP_INTEGRATION/);

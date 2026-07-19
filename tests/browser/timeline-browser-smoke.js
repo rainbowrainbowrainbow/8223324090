@@ -32,6 +32,11 @@ const BOOKING_CREATE_ROUTE_PATTERN = /\/api\/(?:bookings(?:\/full)?|banquets\/(?
 const QA_CLEANUP_TRANSPORT = process.env.TIMELINE_BROWSER_SMOKE_QA_CLEANUP_TRANSPORT
     || (TARGET_URL && !isLocalBase(normalizeBase(TARGET_URL)) ? 'railway-ssh' : 'local');
 const RAILWAY_CLEANUP_ENVIRONMENT = process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_ENVIRONMENT || 'production';
+const RAILWAY_CLEANUP_PROJECT = process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_PROJECT || '';
+
+function railwayProjectArgs() {
+    return RAILWAY_CLEANUP_PROJECT ? ['--project', RAILWAY_CLEANUP_PROJECT] : [];
+}
 
 function inferRailwayServiceFromTarget(urlText = '') {
     try {
@@ -549,6 +554,7 @@ function cleanupOperatorInvocation(args) {
         const railwayCommand = resolveRailwayCommand();
         const railwayArgs = [
             'ssh',
+            ...railwayProjectArgs(),
             '--service',
             RAILWAY_CLEANUP_SERVICE,
             '--environment',
@@ -606,20 +612,7 @@ function assertQaCleanupTransportReady() {
     if (!CLEANUP) return;
     const readyMarker = 'timeline-smoke-cleanup-ready';
     const timeout = Math.max(Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000), 120000);
-    const preflightScript = [
-        "const recovery=require('./scripts/banquet-production-recovery.js');",
-        "const {pool}=require('./db');",
-        '(async()=>{',
-        "if(typeof recovery.runQaCleanupDryRun!=='function')throw new Error('qa cleanup operator unavailable');",
-        `if(recovery.QA_CLEANUP_CAPABILITY!==${JSON.stringify(QA_CLEANUP_CAPABILITY)})throw new Error('qa cleanup operator capability mismatch');`,
-        'const client=await pool.connect();',
-        "try{await client.query('BEGIN READ ONLY');await client.query('SELECT 1');await client.query('ROLLBACK');}",
-        "catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}",
-        'finally{client.release();}',
-        'await pool.end();',
-        `process.stdout.write('${readyMarker}');`,
-        '})().catch(async()=>{try{await pool.end();}catch{}process.exit(2);});'
-    ].join('');
+    const preflightScript = path.join(ROOT, 'scripts', 'timeline-smoke-cleanup-preflight.js');
     let invocation;
     if (QA_CLEANUP_TRANSPORT === 'local') {
         if (!String(process.env.DATABASE_URL || '').trim()) {
@@ -628,7 +621,7 @@ function assertQaCleanupTransportReady() {
         invocation = {
             label: 'local-node/read-only-db',
             command: process.execPath,
-            args: ['-e', preflightScript]
+            args: [preflightScript, '--expected-capability', QA_CLEANUP_CAPABILITY]
         };
     } else if (QA_CLEANUP_TRANSPORT === 'railway-ssh') {
         if (!RAILWAY_CLEANUP_SERVICE) {
@@ -637,12 +630,14 @@ function assertQaCleanupTransportReady() {
         const railwayCommand = resolveRailwayCommand();
         const railwayArgs = [
             'ssh',
+            ...railwayProjectArgs(),
             '--service', RAILWAY_CLEANUP_SERVICE,
             '--environment', RAILWAY_CLEANUP_ENVIRONMENT,
             '--',
             'node',
-            '-e',
-            preflightScript
+            'scripts/timeline-smoke-cleanup-preflight.js',
+            '--expected-capability',
+            QA_CLEANUP_CAPABILITY
         ];
         invocation = {
             label: `railway-ssh:${RAILWAY_CLEANUP_SERVICE}/${RAILWAY_CLEANUP_ENVIRONMENT}/read-only-db`,

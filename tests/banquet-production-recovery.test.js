@@ -1718,3 +1718,21 @@ test('production recovery script contains no automatic deposit creation or custo
     assert.doesNotMatch(source, /DELETE FROM banquet_deposits/i);
     assert.doesNotMatch(source, /JOIN customers|phone|instagram|client_name/i);
 });
+
+test('timeline cleanup preflight is shell-safe and read-only', () => {
+    const preflight = fs.readFileSync(
+        path.join(ROOT, 'scripts', 'timeline-smoke-cleanup-preflight.js'),
+        'utf8'
+    );
+    const smoke = fs.readFileSync(
+        path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'),
+        'utf8'
+    );
+    assert.match(preflight, /BEGIN READ ONLY/);
+    assert.match(preflight, /QA_CLEANUP_CAPABILITY/);
+    assert.match(preflight, /ROLLBACK/);
+    assert.match(smoke, /timeline-smoke-cleanup-preflight\.js/);
+    assert.match(smoke, /TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_PROJECT/);
+    assert.match(smoke, /\.\.\.railwayProjectArgs\(\)/);
+    assert.doesNotMatch(smoke, /args: \['-e', preflightScript\]/);
+});

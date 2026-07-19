@@ -468,7 +468,12 @@ async function findKitchenFirstSmokeDate(base, token, room, startDate, excludedD
     for (let offset = 0; offset < 45; offset += 1) {
         const date = datePlus(startDate, offset);
         if (excluded.has(date)) continue;
-        const line = await firstAnimatorLine(base, token, date);
+        const lines = await loadLines(base, token, date, 'animators');
+        const line = lines.find(item => (
+            String(item?.id || '')
+            && !['afisha', 'banquet-service'].includes(String(item.id))
+        ));
+        if (!line) continue;
         const bookings = await fetchJsonWithRetry(
             base,
             scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }),

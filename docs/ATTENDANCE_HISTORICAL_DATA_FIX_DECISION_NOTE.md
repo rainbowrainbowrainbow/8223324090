@@ -84,19 +84,29 @@ It also prints a canonical approval manifest with:
 Apply requires all of the following:
 
 1. Owner reviews the latest dry-run output.
-2. Payroll impact does not include locked, closed, approved, or paid periods.
+2. Payroll impact is clean. Apply fails closed on locked, draft/open, reviewed, approved,
+   paid, committed, finance-linked payroll reports, payroll entries, salary adjustments,
+   and salary finance transactions.
 3. `--review-token` equals the dry-run `planHash`.
 4. The current candidate count is `> 0` and `<= --max-records`.
-5. `--backup-dir` is provided.
+5. `--backup-dir` is an absolute path outside the repository, with approved ACL/encryption
+   and retention policy.
 6. `--confirm` exactly matches the confirmation string printed by dry-run.
 7. `ATTENDANCE_DATA_FIX_DATABASE_URL` is set intentionally.
 8. Both `payroll_reports` and `payroll_period_locks` guard tables are available; apply fails closed if either table cannot be verified.
+9. Any draft/open payroll overlap requires separate finance acknowledgement before tooling
+   may be widened. Current tooling does not bypass this block.
 
 The dry-run `planHash` binds the date range, business context, categories, owner, reason,
 current candidate before/after values, detected payroll impact, git SHA, script SHA-256,
 script version, and DB fingerprint. The approval manifest records DB role separately,
 but the role is not part of `planHash` so the reviewed read-only dry-run can be applied
 through the separately approved write role against the same database fingerprint.
+
+Apply runs inside a `SERIALIZABLE` transaction with short `lock_timeout`, statement timeout,
+payroll gate table locks, read-back verification, and a repeated payroll gate check before
+`COMMIT`. If the `COMMIT` result is ambiguous, the script reconnects and checks operation
+audit evidence; it does not rerun apply automatically.
 
 Example shape only; do not run until the dry-run has been reviewed:
 
@@ -112,22 +122,44 @@ node scripts/fix-attendance-historical-grace.js \
   --reason "reports_only; no payroll period changes" \
   --categories "late-grace,overtime-grace" \
   --max-records 500 \
+  --max-backup-bytes 26214400 \
   --review-token <dry-run-planHash> \
-  --backup-dir <secure-local-backup-dir> \
+  --backup-dir <absolute-secure-backup-dir-outside-repo> \
   --confirm "<exact-confirmation-from-dry-run>"
+```
+
+Before production apply, approve backup handling explicitly:
+
+```text
+APPROVE HISTORICAL ATTENDANCE BACKUP POLICY
+
+Storage location:
+Encryption/ACL:
+Retention period:
+Backup owner:
+Restore drill completed: yes/no
+Personal data handling approved by:
 ```
 
 ## Backup and audit trail
 
-Before `UPDATE`, apply mode exports a JSON backup containing:
+Before `UPDATE`, apply mode exports a checksumed JSON backup artifact containing:
 
 - targeted `hr_time_records`;
 - related `hr_audit_log` rows;
 - matching `payroll_reports` rows for impacted staff/months;
 - matching `payroll_period_locks` rows;
+- matching `payroll_entries` rows;
+- matching `salary_adjustments` rows;
+- matching salary `finance_transactions` rows;
 - planned before/after changes;
 - dry-run `planHash`;
 - approval scope and owner.
+
+The backup writer requires an absolute directory outside the repository, refuses symlinked
+path segments, writes through a temporary file, fsyncs the file, atomically renames it, and
+records a SHA-256 checksum plus row counts in the artifact manifest. The database audit log
+stores only the artifact ID and checksum, not the operator's local absolute backup path.
 
 Every changed attendance row also gets an `hr_audit_log` entry with action:
 
@@ -138,20 +170,49 @@ attendance_historical_grace_data_fix
 The audit row stores `approved_by` and `executed_by` separately. The database
 `performed_by` value uses the bounded `executed_by` actor.
 
+Apply also writes one operation-level audit row:
+
+```text
+attendance_historical_grace_data_fix_operation
+```
+
 ## Rollback instructions
 
-Rollback is a separate write-mode operation and requires owner approval.
+Rollback is a separate write-mode operation and requires owner approval. Use the tested CLI:
+
+```bash
+node scripts/rollback-attendance-historical-grace.js \
+  --backup-file <absolute-backup-json> \
+  --plan-hash <applied-planHash> \
+  --executed-by "<operator name>" \
+  --reason "<rollback reason>" \
+  --format markdown
+```
+
+Rollback dry-run verifies the backup checksum and confirms current row values still match
+the applied after-values. Apply requires the exact confirmation printed by the dry-run:
+
+```bash
+ATTENDANCE_DATA_FIX_DATABASE_URL=<write-db-url> \
+node scripts/rollback-attendance-historical-grace.js \
+  --apply \
+  --backup-file <absolute-backup-json> \
+  --plan-hash <applied-planHash> \
+  --executed-by "<operator name>" \
+  --reason "<rollback reason>" \
+  --confirm "ROLLBACK_ATTENDANCE_HISTORICAL_FIX_<planHash-prefix>"
+```
 
 Safe rollback strategy:
 
 1. Stop and preserve the backup JSON created before apply.
-2. Confirm the `planHash`, date range, owner, and categories match the applied run.
+2. Confirm the `planHash`, checksum, date range, owner, and categories match the applied run.
 3. Restore only `hr_time_records` fields from the backup:
    - `status`;
    - `late_minutes`;
    - `overtime_minutes`.
 4. Do not rewrite payroll reports or payroll periods during rollback unless finance explicitly approves it.
-5. Insert a new `hr_audit_log` action describing the rollback.
+5. Insert new `hr_audit_log` row-level and operation-level actions describing the rollback.
 6. Run the read-only historical audit again for the same date range.
 
 No rollback should be run from memory or from a manually edited list of IDs.
@@ -167,7 +228,7 @@ No rollback should be run from memory or from a manually edited list of IDs.
 | Approved categories | `late-grace`, `overtime-grace` only |
 | Excluded categories | `missing plan source`, `inferred profession card` |
 | Additional read-only bucket | `null-zero-negative-late`; not writable without separate owner approval |
-| Tooling guard update | v2 narrows late candidates to `late_minutes 1..5`, refuses write/generic DB URLs for dry-run, adds `--max-records`, compare-and-set updates, and canonical approval manifest. |
+| Tooling guard update | v3 narrows late candidates to `late_minutes 1..5`, refuses write/generic DB URLs for dry-run, adds `--max-records`, compare-and-set updates, canonical approval manifest, serializable apply, payroll table locks, read-back verification, durable checksumed backups, operation audit, and rollback CLI. |
 | Read-only dry-run | **Blocked**: no approved read-only production database connection was available. |
 | Dry-run candidate counts | Not measured. |
 | Dry-run `planHash` | Not produced. |

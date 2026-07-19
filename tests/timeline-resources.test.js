@@ -4570,6 +4570,12 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(emptyCellSubmit, /clickActiveBanquetMemberSubmit/);
     assert.match(emptyCellSubmit, /setBookingKitchenEnabled\(false/);
     assert.doesNotMatch(emptyCellSubmit, /dispatchEvent\(new Event\('submit'/);
+    const kitchenActivitySubmitStart = smoke.indexOf('async function submitActivityFromKitchen');
+    const kitchenActivitySubmitEnd = smoke.indexOf('async function assertRoomMarkerVisible', kitchenActivitySubmitStart);
+    const kitchenActivitySubmit = smoke.slice(kitchenActivitySubmitStart, kitchenActivitySubmitEnd);
+    assert.match(kitchenActivitySubmit, /acknowledgeGuestArrivalPromptIfVisible/);
+    assert.match(kitchenActivitySubmit, /locator\('#bookingForm \.btn-submit'\)\.click\(\)/);
+    assert.doesNotMatch(kitchenActivitySubmit, /dispatchEvent\(new Event\('submit'/);
     assert.match(smoke, /active inspector -> empty cell/);
     assert.match(smoke, /\/api\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/member-booking/);
     assert.match(smoke, /genericBookingRequests/);

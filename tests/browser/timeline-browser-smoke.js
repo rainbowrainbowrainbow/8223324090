@@ -1676,6 +1676,23 @@ async function acknowledgePreorderWarningIfVisible(page, label) {
     return true;
 }
 
+async function acknowledgeGuestArrivalPromptIfVisible(page, label) {
+    const overlay = page.locator('.confirm-overlay').filter({
+        has: page.locator('.confirm-message', { hasText: /Час приходу гостей/i })
+    }).last();
+    const visible = await overlay.waitFor({ state: 'visible', timeout: 3000 })
+        .then(() => true)
+        .catch(() => false);
+    if (!visible) return false;
+    const input = overlay.locator('.prompt-input');
+    if (!String(await input.inputValue()).trim()) await input.fill('13:00');
+    await overlay.locator('.confirm-ok').click();
+    await overlay.waitFor({ state: 'detached', timeout: 5000 }).catch(error => {
+        throw new Error(`${label}: guest arrival prompt did not close: ${error?.message || error}`);
+    });
+    return true;
+}
+
 async function fillKitchenAndSubmit(page, sourceBookingId) {
     const sourceBooking = sourceBookingId && typeof sourceBookingId === 'object' ? sourceBookingId : { id: sourceBookingId };
     sourceBookingId = sourceBookingIdOf(sourceBooking);
@@ -2594,8 +2611,10 @@ async function submitActivityFromKitchen(page) {
     );
     await page.evaluate(() => {
         document.getElementById('bookingNotes').value = 'Task37 activity browser smoke';
-        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
+    await page.locator('#bookingForm .btn-submit').scrollIntoViewIfNeeded();
+    await page.locator('#bookingForm .btn-submit').click();
+    await acknowledgeGuestArrivalPromptIfVisible(page, 'source kitchen -> activity');
     await acknowledgePreorderWarningIfVisible(page, 'source kitchen -> activity');
     const response = await responsePromise;
     const body = await response.json();

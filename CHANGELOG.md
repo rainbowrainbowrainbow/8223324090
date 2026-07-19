@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.100 - Безпечний Railway preflight для QA cleanup
+
+### Timeline / Production QA / (19.07.2026) [codex]
+- **Shell-safe Railway preflight** — inline `node -e` замінено на окремий read-only script, тому `railway ssh` більше не руйнує команду через shell quoting.
+- **Fail-closed capability check** — до першого production write перевіряються exact cleanup capability, доступність dry-run operator і read-only DB transaction.
+- **Worktree-independent transport** — smoke приймає explicit Railway project, service та environment без зміни Railway settings.
+
+---
+
 ## v0.79.99 - Стабільний timeline smoke і безпечний QA cleanup
 
 ### Timeline / Browser QA / Safe cleanup / (19.07.2026) [codex]

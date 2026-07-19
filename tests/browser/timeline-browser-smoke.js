@@ -3584,7 +3584,7 @@ async function run() {
 
         const kitchenFirstCreate = await createBooking(base, token, bookingPayload({
             date,
-            time: '16:00',
+            time: '18:15',
             lineId: 'banquet-service',
             room,
             label: `Task37 kitchen first ${RUN_ID}`,
@@ -3596,7 +3596,7 @@ async function run() {
             customerPhone: customerB.phone,
             childName: customerB.childName,
             banquetGuests: 5,
-            bookingPackage: kitchenPackage('16:30')
+            bookingPackage: kitchenPackage('18:30')
         }));
         recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate);
         await verifyPersistedCreateResult(base, token, kitchenFirstCreate, 'kitchen-first root');

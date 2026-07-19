@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.104 - HR structure tree polish
+
+### HR / Structure UI / (19.07.2026) [codex]
+- **Темна тема режиму “Дерево”** — tree, quick actions, chips, inspector/card surfaces and form controls now use explicit dark-safe colors instead of inherited inverted light surfaces.
+- **Зрозуміла картка вузла** — inspector resets the broken legacy two-column grid, wraps long text safely, and shows owner-facing fields: керівник, команда, дочірні вузли, стан.
+- **Tree UX fixes** — expand/collapse is viewport-only and no longer creates unsaved changes; search can find linked staff; tree quick actions open real add/more menus; keyboard navigation stays on visible nodes.
+- **Regression coverage** — added HR structure tests for tree collapse dirty-state, tree menus, staff-name search, and dark/inspector CSS contracts.
+
+---
+
 ## v0.79.103 - HR structure dropdown cleanup
 
 ### HR / Structure UI / (19.07.2026) [codex]

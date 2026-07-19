@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.99 - Стабільний timeline smoke і безпечний QA cleanup
+
+### Timeline / Browser QA / Safe cleanup / (19.07.2026) [codex]
+- **Sidebar launcher і browser smoke** — перемикання «Свята / Кімнати» перевіряється через реальні desktop/mobile кнопки; readiness більше не залежить від видаленого top-selector.
+- **Booking-time regressions** — закріплено зміну 12:15 → 12:30, durability введених даних, незалежний guest arrival, конфлікти та multi-activity shift.
+- **Guarded production cleanup** — smoke додає disposable QA marker, fail-closed перевіряє cleanup capability і після сценарію атомарно скасовує booking/group та відповідні finance transactions.
+
+---
+
 ## v0.79.98 - Захищене закриття stale банкетів
 
 ### Backend / Recovery / Operator safety / (19.07.2026) [codex]

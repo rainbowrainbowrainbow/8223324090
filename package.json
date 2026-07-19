@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.98",
+  "version": "0.79.99",
   "eventGenix": {
-    "releaseLabel": "Захищене закриття stale банкетів"
+    "releaseLabel": "Стабільний timeline smoke і безпечний QA cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

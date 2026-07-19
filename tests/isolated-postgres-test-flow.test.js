@@ -159,6 +159,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const attendanceDocumentAutomationSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-attendance-document-automation-concurrency.integration.test.js'), 'utf8');
         const attendanceBackupSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'attendance-backup-roundtrip.integration.test.js'), 'utf8');
         const fullBackupRecoverySuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'full-backup-recovery.integration.test.js'), 'utf8');
+        const banquetProductionRecoverySuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'banquet-production-recovery.integration.test.js'), 'utf8');
         const simultaneousAdditionalPayrollSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'payroll-simultaneous-additional.integration.test.js'), 'utf8');
         const onboardingBrowserSuite = fs.readFileSync(path.join(root, 'tests', 'browser', 'hr-onboarding-flow-browser-smoke.js'), 'utf8');
         const fullstackBrowserSuite = fs.readFileSync(path.join(root, 'tests', 'browser', 'hr-onboarding-fullstack-browser-smoke.js'), 'utf8');
@@ -179,6 +180,15 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION/);
         assert.match(runner, /RUN_ATTENDANCE_BACKUP_INTEGRATION/);
         assert.match(runner, /RUN_FULL_BACKUP_RECOVERY_INTEGRATION/);
+        assert.match(runner, /'banquet-recovery':\s*\[\s*'tests\/integration\/banquet-production-recovery\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION/);
+        assert.match(banquetProductionRecoverySuite, /RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION/);
+        assert.match(banquetProductionRecoverySuite, /REQUIRE_ISOLATED_TEST_TARGET/);
+        assert.match(banquetProductionRecoverySuite, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER/);
+        assert.match(banquetProductionRecoverySuite, /DATABASE_URL: ''/);
+        assert.match(banquetProductionRecoverySuite, /orphan_link/);
+        assert.match(banquetProductionRecoverySuite, /already_detached_and_clean/);
+        assert.match(banquetProductionRecoverySuite, /simulated post-persist failure/);
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js'\s*\]/);
         assert.match(simultaneousAdditionalPayrollSuite, /physicalMinutes, 540/);
@@ -202,6 +212,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(workflow, /hr-payroll-postgres:/);
         assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
         assert.match(workflow, /test:integration:attendance-lock:isolated/);
+        assert.match(workflow, /test:integration:banquet-recovery:isolated/);
         assert.match(attendanceLockSuite, /pg_locks/);
         assert.match(attendanceLockSuite, /RUN_ATTENDANCE_LOCK_INTEGRATION/);
         assert.match(attendanceCompensationSuite, /RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION/);

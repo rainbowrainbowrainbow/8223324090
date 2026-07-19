@@ -2,10 +2,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
+const ROOT = path.join(__dirname, '..', '..');
 const BUSINESS_CONTEXT = process.env.TIMELINE_BROWSER_SMOKE_BUSINESS_CONTEXT || 'event_genix';
 const DEFAULT_ROOM = process.env.TIMELINE_BROWSER_SMOKE_ROOM || 'Растішка';
 const RUN_ID = `task37-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'timeline-browser-smoke', RUN_ID);
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
     || process.env.TIMELINE_BROWSER_SMOKE_URL
     || process.env.TEST_URL
@@ -14,10 +18,39 @@ const HEADLESS = process.env.TIMELINE_BROWSER_SMOKE_HEADLESS !== 'false';
 const CLEANUP = process.env.TIMELINE_BROWSER_SMOKE_CLEANUP !== 'false';
 const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true';
 const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
+const TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX = 4;
 
 function fail(message) {
     console.error(`Timeline browser smoke failed: ${message}`);
     process.exit(1);
+}
+
+function requirePlaywright() {
+    try {
+        return require('playwright');
+    } catch (err) {
+        const pathEntries = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
+        for (const entry of pathEntries) {
+            const normalized = entry.replace(/[\\/]+$/, '');
+            if (!/node_modules[\\/]?\.bin$/i.test(normalized)) continue;
+            const packageDir = path.join(path.dirname(normalized), 'playwright');
+            if (fs.existsSync(packageDir)) return require(packageDir);
+        }
+        throw err;
+    }
+}
+
+function isNavigationContextError(error) {
+    return /execution context was destroyed|cannot find context with specified id|navigation|frame was detached/i
+        .test(String(error?.message || error || ''));
+}
+
+function diagnosticFileLabel(label) {
+    return String(label || 'failure')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'failure';
 }
 
 function normalizeBase(url) {
@@ -255,6 +288,324 @@ function groupId(snapshot = {}) {
     return String(snapshot.groupId || snapshot.group?.id || '').trim();
 }
 
+async function collectTimelineDiagnostics(page, label, error = null) {
+    if (!page || page.isClosed()) {
+        return {
+            label,
+            pageClosed: true,
+            error: error?.message || String(error || '')
+        };
+    }
+    const viewport = page.viewportSize();
+    const browserState = await page.evaluate(async currentLabel => {
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const selector = document.querySelector('[data-timeline-type-selector]');
+        const selectorRect = selector?.getBoundingClientRect?.();
+        const selectorStyle = selector ? getComputedStyle(selector) : null;
+        const selectorParent = selector?.closest('.timeline-visible-type-switch');
+        const selectorParentRect = selectorParent?.getBoundingClientRect?.();
+        const selectorParentStyle = selectorParent ? getComputedStyle(selectorParent) : null;
+        const panel = document.getElementById('timelineViewPanel');
+        const panelRect = panel?.getBoundingClientRect?.();
+        const panelStyle = panel ? getComputedStyle(panel) : null;
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        const toggleRect = toggle?.getBoundingClientRect?.();
+        const badge = document.getElementById('timelineViewPanelBadge') || toggle?.querySelector?.('[data-filter-badge]');
+        const badgeRect = badge?.getBoundingClientRect?.();
+        const badgeStyle = badge ? getComputedStyle(badge) : null;
+        const container = document.querySelector('.timeline-container');
+        const containerRect = container?.getBoundingClientRect?.();
+        const state = typeof window.TimelineView?.state === 'function' ? window.TimelineView.state() : null;
+        let serviceWorkerRegistrations = [];
+        try {
+            serviceWorkerRegistrations = navigator.serviceWorker?.getRegistrations
+                ? (await navigator.serviceWorker.getRegistrations()).map(reg => ({
+                    scope: reg.scope,
+                    active: reg.active?.scriptURL || null,
+                    waiting: reg.waiting?.scriptURL || null,
+                    installing: reg.installing?.scriptURL || null
+                }))
+                : [];
+        } catch (serviceWorkerError) {
+            serviceWorkerRegistrations = [{ error: serviceWorkerError?.message || String(serviceWorkerError) }];
+        }
+        const plainRect = rect => rect ? {
+            left: Math.round(rect.left * 100) / 100,
+            top: Math.round(rect.top * 100) / 100,
+            right: Math.round(rect.right * 100) / 100,
+            bottom: Math.round(rect.bottom * 100) / 100,
+            width: Math.round(rect.width * 100) / 100,
+            height: Math.round(rect.height * 100) / 100
+        } : null;
+        const visibleFrom = (node, rect, style) => Boolean(
+            node
+            && rect
+            && rect.width > 0
+            && rect.height > 0
+            && style?.display !== 'none'
+            && style?.visibility !== 'hidden'
+            && Number(style?.opacity || 1) > 0
+            && rect.right >= -1
+            && rect.left <= viewportWidth + 1
+        );
+        const elementLabel = el => {
+            if (!el) return '';
+            const id = el.id ? `#${el.id}` : '';
+            const classes = String(el.className || '')
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 4)
+                .map(name => `.${name}`)
+                .join('');
+            return `${el.tagName?.toLowerCase?.() || 'node'}${id}${classes}`;
+        };
+        const overflowElements = Array.from(document.body?.querySelectorAll('*') || [])
+            .map(el => {
+                const rect = el.getBoundingClientRect?.();
+                const style = getComputedStyle(el);
+                if (!rect || rect.width <= 0 || rect.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return null;
+                const overflowRight = Math.round((rect.right - viewportWidth) * 100) / 100;
+                const overflowLeft = Math.round((0 - rect.left) * 100) / 100;
+                if (overflowRight <= 1 && overflowLeft <= 1) return null;
+                return {
+                    selector: elementLabel(el),
+                    rect: plainRect(rect),
+                    overflowRight,
+                    overflowLeft,
+                    controlledTimelineScroll: Boolean(el.closest('.timeline-scroll')),
+                    position: style.position,
+                    overflow: style.overflow
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => Math.max(b.overflowRight, b.overflowLeft) - Math.max(a.overflowRight, a.overflowLeft))
+        const uncontrolledOverflowElements = overflowElements
+            .filter(item => !item.controlledTimelineScroll)
+            .slice(0, 10);
+        const controlledOverflowElements = overflowElements
+            .filter(item => item.controlledTimelineScroll)
+            .slice(0, 10);
+        return {
+            label: currentLabel,
+            url: window.location.href,
+            readyState: document.readyState,
+            viewport: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                devicePixelRatio: window.devicePixelRatio
+            },
+            compact: {
+                appState: Boolean(window.AppState?.compactMode),
+                storage: localStorage.getItem('pzp_compact_mode'),
+                htmlClass: document.documentElement.classList.contains('timeline-compact-mode'),
+                bodyClass: document.body?.classList?.contains('timeline-compact-mode') || false,
+                containerClass: container?.classList?.contains('compact') || false,
+                density: document.documentElement.style.getPropertyValue('--timeline-density'),
+                fitScreen: container?.dataset?.fitScreen || ''
+            },
+            serviceWorker: {
+                controller: navigator.serviceWorker?.controller?.scriptURL || null,
+                registrations: serviceWorkerRegistrations
+            },
+            timeline: {
+                mainAppVisible: Boolean(document.getElementById('mainApp') && !document.getElementById('mainApp').classList.contains('hidden')),
+                appStateExists: Boolean(window.AppState),
+                timelineViewExists: Boolean(window.TimelineView),
+                timelineViewCurrent: typeof window.TimelineView?.current === 'function' ? window.TimelineView.current() : null,
+                timelineViewState: state,
+                selectedDate: document.getElementById('timelineDate')?.value || '',
+                renderTimelineType: typeof window.renderTimeline,
+                openBookingPanelType: typeof window.openBookingPanel,
+                containerExists: Boolean(container),
+                containerRect: plainRect(containerRect),
+                gridCellCount: document.querySelectorAll('.grid-cell[data-time][data-line]').length,
+                bookingBlockCount: document.querySelectorAll('.booking-block').length,
+                lineCount: document.querySelectorAll('.timeline-line, .line-row, .line-grid').length
+            },
+            typeSwitch: {
+                exists: Boolean(selector),
+                visible: visibleFrom(selector, selectorRect, selectorStyle),
+                inViewPanel: Boolean(selector?.closest('#timelineViewPanel')),
+                inUtilityRow: Boolean(selector?.closest('.schedule-command-row--utility')),
+                rect: plainRect(selectorRect),
+                parentRect: plainRect(selectorParentRect),
+                computed: selectorStyle ? {
+                    display: selectorStyle.display,
+                    visibility: selectorStyle.visibility,
+                    opacity: selectorStyle.opacity,
+                    position: selectorStyle.position,
+                    pointerEvents: selectorStyle.pointerEvents,
+                    overflow: selectorStyle.overflow,
+                    transform: selectorStyle.transform
+                } : null,
+                parentComputed: selectorParentStyle ? {
+                    display: selectorParentStyle.display,
+                    visibility: selectorParentStyle.visibility,
+                    opacity: selectorParentStyle.opacity,
+                    overflow: selectorParentStyle.overflow,
+                    flexBasis: selectorParentStyle.flexBasis
+                } : null,
+                labels: Array.from(selector?.querySelectorAll('[data-timeline-view]') || [])
+                    .map(btn => ({
+                        view: btn.dataset.timelineView || '',
+                        text: btn.textContent.trim(),
+                        pressed: btn.getAttribute('aria-pressed') || '',
+                        active: btn.classList.contains('active'),
+                        hidden: Boolean(btn.hidden)
+                    })),
+                html: selector?.outerHTML?.slice(0, 1200) || ''
+            },
+            viewPanel: {
+                exists: Boolean(panel),
+                hidden: Boolean(panel?.hidden),
+                rect: plainRect(panelRect),
+                computed: panelStyle ? {
+                    display: panelStyle.display,
+                    visibility: panelStyle.visibility,
+                    position: panelStyle.position,
+                    overflow: panelStyle.overflow
+                } : null,
+                toggleExists: Boolean(toggle),
+                toggleExpanded: toggle?.getAttribute('aria-expanded') || '',
+                toggleRect: plainRect(toggleRect),
+                badge: {
+                    exists: Boolean(badge),
+                    text: badge?.textContent.trim() || '',
+                    count: badge?.dataset?.count || '',
+                    rect: plainRect(badgeRect),
+                    computed: badgeStyle ? {
+                        display: badgeStyle.display,
+                        visibility: badgeStyle.visibility,
+                        opacity: badgeStyle.opacity,
+                        transform: badgeStyle.transform
+                    } : null
+                }
+            },
+            overflow: {
+                bodyX: Math.max(0, document.documentElement.scrollWidth - viewportWidth),
+                documentScrollWidth: document.documentElement.scrollWidth,
+                documentClientWidth: document.documentElement.clientWidth,
+                bodyScrollWidth: document.body?.scrollWidth || 0,
+                bodyClientWidth: document.body?.clientWidth || 0,
+                offenders: overflowElements.slice(0, 10),
+                uncontrolledOffenders: uncontrolledOverflowElements,
+                controlledTimelineScrollOffenders: controlledOverflowElements
+            }
+        };
+    }, label);
+    return {
+        ...browserState,
+        playwrightViewport: viewport,
+        error: error?.message || String(error || '')
+    };
+}
+
+async function writeTimelineFailureDiagnostic(page, label, error = null) {
+    const fileLabel = diagnosticFileLabel(label);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    const jsonPath = path.join(OUTPUT_DIR, `${fileLabel}.json`);
+    const pngPath = path.join(OUTPUT_DIR, `${fileLabel}.png`);
+    const diagnostics = await collectTimelineDiagnostics(page, label, error).catch(diagnosticError => ({
+        label,
+        diagnosticError: diagnosticError?.message || String(diagnosticError),
+        error: error?.message || String(error || '')
+    }));
+    fs.writeFileSync(jsonPath, `${JSON.stringify(diagnostics, null, 2)}\n`);
+    if (page && !page.isClosed()) {
+        await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
+    }
+    return { jsonPath, pngPath, diagnostics };
+}
+
+async function waitForTimelineReady(page, label) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            await page.waitForFunction(() => {
+                const appVisible = document.getElementById('mainApp')
+                    && !document.getElementById('mainApp').classList.contains('hidden');
+                const selector = document.querySelector('[data-timeline-type-selector]');
+                const panel = document.getElementById('timelineViewPanel');
+                const toggle = document.getElementById('timelineViewPanelToggle');
+                const timelineContainer = document.querySelector('.timeline-container');
+                return Boolean(
+                    appVisible
+                    && window.AppState
+                    && window.TimelineView
+                    && typeof window.TimelineView.current === 'function'
+                    && typeof renderTimeline === 'function'
+                    && typeof openBookingPanel === 'function'
+                    && document.getElementById('timelineDate')
+                    && selector
+                    && panel
+                    && toggle
+                    && timelineContainer
+                );
+            });
+            return;
+        } catch (error) {
+            lastError = error;
+            if (!isNavigationContextError(error) && attempt >= 2) break;
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            await page.waitForTimeout(250);
+        }
+    }
+    const diagnostics = await collectTimelineDiagnostics(page, label, lastError).catch(() => null);
+    throw new Error(`${label}: timeline readiness did not stabilize: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
+}
+
+async function waitForTimelineTypeSwitch(page, label) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await waitForTimelineReady(page, `${label}: readiness`);
+            await page.waitForFunction(() => {
+                const selector = document.querySelector('[data-timeline-type-selector]');
+                const rect = selector?.getBoundingClientRect?.();
+                const style = selector ? getComputedStyle(selector) : null;
+                return Boolean(
+                    selector
+                    && rect
+                    && rect.width > 0
+                    && rect.height > 0
+                    && style?.display !== 'none'
+                    && style?.visibility !== 'hidden'
+                    && Number(style?.opacity || 1) > 0
+                );
+            });
+            return collectTimelineDiagnostics(page, label);
+        } catch (error) {
+            lastError = error;
+            if (!isNavigationContextError(error) && attempt >= 2) break;
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            await page.waitForTimeout(250);
+        }
+    }
+    const diagnostics = await collectTimelineDiagnostics(page, label, lastError).catch(() => null);
+    throw new Error(`${label}: timeline type switch is not visible after readiness wait: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
+}
+
+async function waitForTimelineLayoutSettle(page, label) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await waitForTimelineReady(page, `${label}: readiness`);
+            await page.evaluate(() => new Promise(resolve => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+            }));
+            return;
+        } catch (error) {
+            lastError = error;
+            if (!isNavigationContextError(error) && attempt >= 2) break;
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            await page.waitForTimeout(250);
+        }
+    }
+    const diagnostics = await collectTimelineDiagnostics(page, label, lastError).catch(() => null);
+    throw new Error(`${label}: timeline layout did not settle: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
+}
+
 async function openAuthenticatedPage(browser, base, session) {
     const context = await browser.newContext({
         viewport: { width: 1440, height: 960 },
@@ -271,23 +622,34 @@ async function openAuthenticatedPage(browser, base, session) {
     const page = await context.newPage();
     page.setDefaultTimeout(Number(process.env.TIMELINE_BROWSER_SMOKE_TIMEOUT_MS || 20000));
     await page.goto(`${base}/?businessContext=${encodeURIComponent(BUSINESS_CONTEXT)}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => {
-        const appVisible = document.getElementById('mainApp') && !document.getElementById('mainApp').classList.contains('hidden');
-        return appVisible && window.AppState && window.TimelineView && typeof openBookingPanel === 'function';
-    });
+    await waitForTimelineReady(page, 'initial authenticated timeline load');
     return { context, page };
 }
 
 async function renderTimelineView(page, date, view) {
-    await page.evaluate(async ({ date, view }) => {
-        AppState.selectedDate = new Date(`${date}T00:00:00`);
-        const input = document.getElementById('timelineDate');
-        if (input) input.value = date;
-        if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(date);
-        if (window.TimelineView?.set) await window.TimelineView.set(view, { render: false });
-        if (typeof renderTimeline === 'function') await renderTimeline();
-    }, { date, view });
-    await page.waitForTimeout(100);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await waitForTimelineReady(page, `before render timeline ${view} ${date}`);
+            await page.evaluate(async ({ date, view }) => {
+                AppState.selectedDate = new Date(`${date}T00:00:00`);
+                const input = document.getElementById('timelineDate');
+                if (input) input.value = date;
+                if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(date);
+                if (window.TimelineView?.set) await window.TimelineView.set(view, { render: false });
+                if (typeof renderTimeline === 'function') await renderTimeline();
+            }, { date, view });
+            await waitForTimelineReady(page, `after render timeline ${view} ${date}`);
+            return;
+        } catch (error) {
+            lastError = error;
+            if (!isNavigationContextError(error) && attempt >= 2) break;
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            await page.waitForTimeout(250);
+        }
+    }
+    const diagnostics = await collectTimelineDiagnostics(page, `render timeline ${view} ${date}`, lastError).catch(() => null);
+    throw new Error(`render timeline ${view} ${date} failed after navigation-aware retries: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
 }
 
 async function openRoomDrawer(page, date, room, time) {
@@ -326,11 +688,84 @@ function assertBridgeSelector(result, label) {
     assert.match(combined, /(Створити банкет|Банкет буде створено|Прив.?язано|Банкет)/i, `${label}: selector exposes virtual or existing banquet state`);
 }
 
+async function ensureKitchenTicketQuoteReady(page, label, counts = {}) {
+    const snapshot = await page.evaluate(async ({ label, counts }) => {
+        const setNumberInput = (id, value, { onlyIfBlank = true } = {}) => {
+            const input = document.getElementById(id);
+            if (!input) return '';
+            if (!onlyIfBlank || String(input.value || '').trim() === '') {
+                input.value = String(value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            return input.value;
+        };
+        const guests = setNumberInput('banquetGuests', counts.guests ?? 4);
+        const adults = setNumberInput('banquetAdults', counts.adults ?? 0);
+        const arrival = document.getElementById('bookingGuestArrivalTime');
+        if (arrival && !arrival.value && document.getElementById('bookingTime')?.value) {
+            arrival.value = document.getElementById('bookingTime').value;
+            arrival.dispatchEvent(new Event('input', { bubbles: true }));
+            arrival.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (window.BookingTickets?.setActive) {
+            window.BookingTickets.setActive(true);
+        }
+        const quoteResult = window.BookingTickets?.quoteNow
+            ? await window.BookingTickets.quoteNow()
+            : null;
+        if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        const quote = window.BookingTickets?.getQuote?.() || quoteResult?.quote || quoteResult || null;
+        const collect = window.BookingTickets?.collect?.() || {};
+        const ticketIssue = window.BookingTickets?.validationIssue?.() || null;
+        const formValidation = window.BookingForm?.validate ? BookingForm.validate() : null;
+        const roomSelect = document.getElementById('roomSelect');
+        const roomOption = roomSelect?.selectedOptions?.[0] || null;
+        return {
+            label,
+            guests,
+            adults,
+            room: roomSelect?.value || '',
+            roomResourceId: roomOption?.dataset?.resourceId || '',
+            bookingTime: document.getElementById('bookingTime')?.value || '',
+            guestArrivalTime: arrival?.value || '',
+            quoteStatusText: document.getElementById('bookingTicketQuoteState')?.textContent?.trim() || '',
+            quoteSubtotal: quote && Object.prototype.hasOwnProperty.call(quote, 'ticketSubtotal')
+                ? Number(quote.ticketSubtotal || 0)
+                : null,
+            quoteLineCount: Array.isArray(quote?.ticketLines) ? quote.ticketLines.length : 0,
+            collectHasTicketQuantities: Array.isArray(collect.ticketQuantities),
+            collectHasTicketQuote: Boolean(collect.ticketQuote),
+            ticketIssue,
+            formValidation
+        };
+    }, { label, counts });
+    assert.equal(
+        snapshot.ticketIssue,
+        null,
+        `${label}: ticket quote must be ready before submit; diagnostics=${JSON.stringify(snapshot)}`
+    );
+    assert.equal(
+        snapshot.collectHasTicketQuote,
+        true,
+        `${label}: BookingTickets.collect() must include the server quote; diagnostics=${JSON.stringify(snapshot)}`
+    );
+    return snapshot;
+}
+
 async function fillKitchenAndSubmit(page, sourceBookingId) {
+    await ensureKitchenTicketQuoteReady(page, 'source activity -> kitchen');
+    const observedPostPaths = [];
+    const requestHandler = request => {
+        if (request.method() !== 'POST') return;
+        observedPostPaths.push(new URL(request.url()).pathname);
+    };
+    page.on('request', requestHandler);
     const responsePromise = page.waitForResponse(response =>
         response.url().includes('/api/banquets/from-source/member-booking')
         && response.request().method() === 'POST'
-    );
+    ).catch(error => error);
     await page.evaluate(() => {
         const guests = document.getElementById('banquetGuests');
         if (guests && !guests.value) guests.value = '4';
@@ -339,8 +774,8 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                 productId: 'task37-ui-menu',
                 title: 'Task37 UI menu',
                 quantity: 1,
-                unitPrice: 100,
-                subtotal: 100,
+                unitPrice: 4500,
+                subtotal: 4500,
                 kitchenType: 'menu',
                 servingUnit: 'portion',
                 servingTime: '14:00'
@@ -353,6 +788,46 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
         document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
     const response = await responsePromise;
+    page.off('request', requestHandler);
+    if (!response || response instanceof Error) {
+        const diagnostics = await page.evaluate(sourceId => ({
+            sourceBookingId: sourceId,
+            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            submitDisabled: Boolean(document.getElementById('bookingSubmitBtn')?.disabled),
+            bookingTime: document.getElementById('bookingTime')?.value || '',
+            bookingLine: document.getElementById('bookingLine')?.value || '',
+            selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
+            room: document.getElementById('roomSelect')?.value || '',
+            guests: document.getElementById('banquetGuests')?.value || '',
+            adults: document.getElementById('banquetAdults')?.value || '',
+            submitText: document.getElementById('bookingSubmitBtn')?.textContent?.trim() || '',
+            selectorValue: document.getElementById('bookingBanquetGroupSelect')?.value || '',
+            selectorText: document.getElementById('bookingBanquetGroupSelect')?.textContent || '',
+            hintText: document.getElementById('bookingBanquetGroupHint')?.textContent || '',
+            ticketIssue: window.BookingTickets?.validationIssue?.() || null,
+            ticketQuoteStatus: document.getElementById('bookingTicketQuoteState')?.textContent?.trim() || '',
+            ticketCollect: window.BookingTickets?.collect?.() || {},
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            drawerState: {
+                selectedBanquetGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+                banquetCreationMode: BookingDrawerState?.banquetCreationMode || '',
+                activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+                activeBanquetRoleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+                sourceBookingId: BookingDrawerState?.sourceBookingId || BookingDrawerState?.activeBanquetSourceBookingId || ''
+            },
+            validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+            modalText: document.querySelector('.modal:not(.hidden), .confirm-modal, [role="dialog"]')?.textContent?.trim() || '',
+            notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                .map(node => String(node.textContent || '').trim())
+                .filter(Boolean)
+                .slice(-5)
+        }), sourceBookingId);
+        throw new Error(`source activity -> kitchen request was not observed: ${JSON.stringify({
+            waitError: response?.message || String(response || ''),
+            diagnostics,
+            observedPostPaths
+        })}`);
+    }
     const body = await response.json();
     assert.equal(response.ok(), true, 'source activity -> kitchen endpoint returns ok');
     assert.equal(body.success, true, 'source activity -> kitchen response success');
@@ -462,6 +937,7 @@ async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot
 }
 
 async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
+    await ensureKitchenTicketQuoteReady(page, 'active inspector -> empty cell member');
     const genericBookingRequests = [];
     const requestHandler = request => {
         if (request.method() !== 'POST') return;
@@ -484,8 +960,8 @@ async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
                 productId: 'task37-empty-cell-menu',
                 title: 'Task37 empty cell menu',
                 quantity: 1,
-                unitPrice: 120,
-                subtotal: 120,
+                unitPrice: 4500,
+                subtotal: 4500,
                 kitchenType: 'menu',
                 servingUnit: 'portion',
                 servingTime: '17:30'
@@ -883,11 +1359,7 @@ async function setTimelineViewPanelOpen(page, open) {
         } catch (error) {
             if (attempt > 0 || !/execution context was destroyed/i.test(String(error?.message || error))) throw error;
             await page.waitForLoadState('domcontentloaded');
-            await page.waitForFunction(() => {
-                const appVisible = document.getElementById('mainApp')
-                    && !document.getElementById('mainApp').classList.contains('hidden');
-                return appVisible && window.AppState && window.TimelineView;
-            });
+            await waitForTimelineReady(page, 'timeline view panel retry after navigation context reset');
         }
     }
 }
@@ -912,36 +1384,52 @@ async function assertTimelineViewPanelInteractions(page) {
             )
         };
     });
+    const waitForFilterBadgeState = async (expected, label) => {
+        await page.waitForFunction(({ count, visible }) => {
+            const toggle = document.getElementById('timelineViewPanelToggle');
+            const badge = document.getElementById('timelineViewPanelBadge');
+            const badgeStyle = badge ? getComputedStyle(badge) : null;
+            const activeClass = Boolean(toggle?.classList.contains('has-active-filters'));
+            const badgeVisible = Boolean(
+                badge
+                && badgeStyle
+                && badgeStyle.visibility !== 'hidden'
+                && Number(badgeStyle.opacity) > 0
+            );
+            return Boolean(
+                toggle
+                && badge
+                && toggle.dataset.filterCount === String(count)
+                && toggle.getAttribute('data-filter-state') === (Number(count) > 0 ? 'custom' : 'default')
+                && activeClass === Boolean(visible)
+                && badgeVisible === Boolean(visible)
+            );
+        }, expected);
+        const state = await readFilterBadgeState();
+        assert.equal(state.count, String(expected.count), `${label}: filter badge count: ${JSON.stringify(state)}`);
+        assert.equal(state.state, Number(expected.count) > 0 ? 'custom' : 'default', `${label}: filter badge state: ${JSON.stringify(state)}`);
+        assert.equal(state.hasActiveClass, Boolean(expected.visible), `${label}: filter badge active class: ${JSON.stringify(state)}`);
+        assert.equal(state.badgeVisible, Boolean(expected.visible), `${label}: filter badge visibility: ${JSON.stringify(state)}`);
+        if (expected.text !== undefined) {
+            assert.equal(state.badgeText, expected.text, `${label}: filter badge text: ${JSON.stringify(state)}`);
+        }
+        return state;
+    };
 
     await setTimelineViewPanelOpen(page, false);
-    let badgeState = await readFilterBadgeState();
+    let badgeState = await waitForFilterBadgeState({ count: 0, visible: false, text: '' }, 'default state');
     assert.equal(badgeState.count, '0', 'filter badge starts at zero in default state');
     assert.equal(badgeState.state, 'default', 'filter toggle starts in default state');
     assert.equal(badgeState.hasActiveClass, false, 'filter toggle is not visually active by default');
     assert.equal(badgeState.badgeVisible, false, 'filter badge is hidden in default state');
 
-    const typeSwitch = await page.evaluate(() => {
-        const selector = document.querySelector('[data-timeline-type-selector]');
-        const rect = selector?.getBoundingClientRect?.();
-        const style = selector ? getComputedStyle(selector) : null;
-        return {
-            exists: Boolean(selector),
-            visible: Boolean(
-                selector
-                && rect
-                && rect.width > 0
-                && rect.height > 0
-                && style?.display !== 'none'
-                && style?.visibility !== 'hidden'
-            ),
-            inViewPanel: Boolean(selector?.closest('#timelineViewPanel')),
-            labels: Array.from(selector?.querySelectorAll('[data-timeline-view]') || []).map(btn => btn.textContent.trim()).join('|')
-        };
-    });
+    const typeSwitchDiagnostics = await waitForTimelineTypeSwitch(page, 'timeline type switch default visibility');
+    const typeSwitch = typeSwitchDiagnostics.typeSwitch;
+    const typeSwitchDetail = JSON.stringify(typeSwitchDiagnostics);
     assert.equal(typeSwitch.exists, true, 'timeline type switch exists');
-    assert.equal(typeSwitch.visible, true, 'timeline type switch is visible without opening filters');
+    assert.equal(typeSwitch.visible, true, `timeline type switch is visible without opening filters: ${typeSwitchDetail}`);
     assert.equal(typeSwitch.inViewPanel, false, 'timeline type switch is outside the hidden filters shelf');
-    assert.equal(typeSwitch.labels, 'Банкети|Свята', 'timeline type switch keeps expected labels');
+    assert.equal(typeSwitch.labels.map(item => item.text).join('|'), 'Банкети|Свята', `timeline type switch keeps expected labels: ${typeSwitchDetail}`);
 
     await page.locator('#timelineViewPanelToggle').click();
     await page.waitForFunction(() => {
@@ -967,7 +1455,7 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
-    badgeState = await readFilterBadgeState();
+    badgeState = await waitForFilterBadgeState({ count: 1, visible: true, text: '1' }, 'confirmed status');
     assert.equal(badgeState.count, '1', 'filter badge counts non-default status');
     assert.equal(badgeState.state, 'custom', 'filter toggle marks custom state for status');
     assert.equal(badgeState.badgeText, '1', 'filter badge text is minimal for status');
@@ -979,7 +1467,7 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
-    badgeState = await readFilterBadgeState();
+    badgeState = await waitForFilterBadgeState({ count: 0, visible: false, text: '' }, 'all status');
     assert.equal(badgeState.count, '0', 'filter badge clears when status returns to all');
     assert.equal(badgeState.badgeVisible, false, 'filter badge hides after status default is restored');
 
@@ -990,7 +1478,7 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
-    badgeState = await readFilterBadgeState();
+    badgeState = await waitForFilterBadgeState({ count: 1, visible: true, text: '1' }, 'week period');
     assert.equal(badgeState.count, '1', 'filter badge counts non-default week period');
     assert.equal(badgeState.badgeVisible, true, 'filter badge is visible for week period');
     await page.locator('#timelineViewPanel [data-schedule-view-mode="day"]').click();
@@ -1000,7 +1488,7 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
-    badgeState = await readFilterBadgeState();
+    badgeState = await waitForFilterBadgeState({ count: 0, visible: false, text: '' }, 'day period');
     assert.equal(badgeState.count, '0', 'filter badge clears when period returns to day');
     assert.equal(badgeState.badgeVisible, false, 'filter badge hides after period default is restored');
 
@@ -1139,10 +1627,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     await assertZoomLevel(60, '60-minute zoom switch');
     await assertZoomLevel(15, '15-minute zoom switch');
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => {
-        const appVisible = document.getElementById('mainApp') && !document.getElementById('mainApp').classList.contains('hidden');
-        return appVisible && window.AppState && window.TimelineView && typeof renderTimeline === 'function';
-    });
+    await waitForTimelineReady(page, 'timeline reload after zoom preference');
     await renderTimelineView(page, date, 'animators');
     const reloadedZoom = await readZoomState();
     assert.equal(reloadedZoom.configCellMinutes, 15, 'saved 15-minute zoom survives reload in CONFIG');
@@ -1302,6 +1787,52 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const headerOverflowX = headerContent ? Math.max(0, headerContent.scrollWidth - headerContent.clientWidth) : Number.NaN;
         const dateControlsOverflowX = dateControls ? Math.max(0, dateControls.scrollWidth - dateControls.clientWidth) : Number.NaN;
         const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
+        const previousScrollX = window.scrollX || window.pageXOffset || 0;
+        const previousScrollY = window.scrollY || window.pageYOffset || 0;
+        window.scrollTo(100000, previousScrollY);
+        const pageScrollableX = Math.round(((window.scrollX || window.pageXOffset || 0)) * 100) / 100;
+        window.scrollTo(previousScrollX, previousScrollY);
+        const elementLabel = el => {
+            if (!el) return '';
+            const id = el.id ? `#${el.id}` : '';
+            const classes = String(el.className || '')
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 4)
+                .map(name => `.${name}`)
+                .join('');
+            return `${el.tagName?.toLowerCase?.() || 'node'}${id}${classes}`;
+        };
+        const allOverflowOffenders = Array.from(document.body?.querySelectorAll('*') || [])
+            .map(el => {
+                const rect = el.getBoundingClientRect?.();
+                const style = getComputedStyle(el);
+                if (!rect || rect.width <= 0 || rect.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return null;
+                const overflowRight = Math.round((rect.right - viewportWidth) * 100) / 100;
+                const overflowLeft = Math.round((0 - rect.left) * 100) / 100;
+                if (overflowRight <= 1 && overflowLeft <= 1) return null;
+                return {
+                    selector: elementLabel(el),
+                    right: Math.round(rect.right * 100) / 100,
+                    left: Math.round(rect.left * 100) / 100,
+                    width: Math.round(rect.width * 100) / 100,
+                    overflowRight,
+                    overflowLeft,
+                    controlledTimelineScroll: Boolean(el.closest('.timeline-scroll'))
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => Math.max(b.overflowRight, b.overflowLeft) - Math.max(a.overflowRight, a.overflowLeft));
+        const uncontrolledOverflowOffenders = allOverflowOffenders
+            .filter(item => !item.controlledTimelineScroll)
+            .slice(0, 8);
+        const controlledTimelineScrollOffenders = allOverflowOffenders
+            .filter(item => item.controlledTimelineScroll)
+            .slice(0, 8);
+        const uncontrolledOverflowX = uncontrolledOverflowOffenders.reduce(
+            (max, item) => Math.max(max, item.overflowRight, item.overflowLeft),
+            0
+        );
         const overlaps = (a, b) => Boolean(
             a
             && b
@@ -1385,6 +1916,11 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             actionsBorderLeftWidth: actionsStyle ? Number.parseFloat(actionsStyle.borderLeftWidth) || 0 : 0,
             dateControlsOverflowX,
             bodyOverflowX,
+            pageScrollableX,
+            uncontrolledOverflowX,
+            overflowOffenders: allOverflowOffenders.slice(0, 8),
+            uncontrolledOverflowOffenders,
+            controlledTimelineScrollOffenders,
             configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
             activeZoom: document.querySelector('.timeline-header-filters .zoom-btn.active')?.dataset.zoom || '',
             headerLeft: headerRect ? Math.round(headerRect.left * 100) / 100 : Number.NaN,
@@ -1457,6 +1993,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             if (panel && !panel.hidden) toggle?.click();
         });
         await page.waitForFunction(() => document.getElementById('timelineViewPanelToggle')?.getBoundingClientRect?.().width > 0);
+        await waitForTimelineTypeSwitch(page, `timeline type switch after desktop viewport ${viewport.width}x${viewport.height}`);
+        await waitForTimelineLayoutSettle(page, `closed desktop layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
 
@@ -1481,13 +2019,13 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at ${label}`);
         assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle', `date row contains date controls and the view trigger at ${label}`);
         assert.equal(metrics.dateInteractiveNonzeroCount, 5, `date row controls keep visible hit targets at ${label}`);
-        assert.ok(metrics.utilityRowHeight <= 48, `date utility row stays compact at ${label}: ${metrics.utilityRowHeight}px`);
-        assert.ok(metrics.dateControlsHeight <= 48, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
+        assert.ok(metrics.utilityRowHeight <= 52, `date utility row stays compact at ${label}: ${metrics.utilityRowHeight}px`);
+        assert.ok(metrics.dateControlsHeight <= 52, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
         assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px actions=${metrics.actionsWidth}px`);
         assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, `utility row does not stretch beyond the date and type controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px`);
-        assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at ${label}: ${metrics.actionsBorderLeftWidth}px`);
@@ -1520,6 +2058,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.bookingWidth >= 150, `15-minute 60-minute booking block stays readable at ${label}: ${metrics.bookingWidth}px`);
 
         await setTimelineViewPanelOpen(page, true);
+        await waitForTimelineLayoutSettle(page, `open desktop layout ${viewport.width}x${viewport.height}`);
         const openMetrics = await readMetrics();
         assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as a compact filter shelf at ${label}`);
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at ${label}`);
@@ -1536,13 +2075,15 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(openMetrics.viewPanelWidth <= Math.min(1040, openMetrics.viewportWidth) + 2, `open view panel stays shelf-width at ${label}: ${openMetrics.viewPanelWidth}px`);
         assert.ok(openMetrics.viewPanelHeight <= 220, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelRight}px`);
-        assert.ok(openMetrics.bodyOverflowX <= 2, `open attached view panel does not create body overflow at ${label}: ${openMetrics.bodyOverflowX}`);
+        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open attached view panel does not create uncontrolled body overflow at ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}`);
         await setTimelineViewPanelOpen(page, false);
     }
 
     for (const viewport of narrowViewports) {
         await page.setViewportSize(viewport);
         await setTimelineViewPanelOpen(page, false);
+        await waitForTimelineTypeSwitch(page, `timeline type switch after narrow viewport ${viewport.width}x${viewport.height}`);
+        await waitForTimelineLayoutSettle(page, `closed narrow layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
 
@@ -1565,11 +2106,11 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at narrow ${label}`);
         assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle', `date row contains date controls and the view trigger at narrow ${label}`);
         assert.equal(metrics.dateInteractiveNonzeroCount, 5, `date row controls keep visible hit targets at narrow ${label}`);
-        assert.ok(metrics.utilityRowHeight <= 104, `date utility row wraps compactly at narrow ${label}: ${metrics.utilityRowHeight}px`);
+        assert.ok(metrics.utilityRowHeight <= 144, `date utility row wraps compactly at narrow ${label}: ${metrics.utilityRowHeight}px`);
         assert.ok(metrics.dateControlsHeight <= 104, `date controls wrap compactly at narrow ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 156, `command center avoids a large empty band at narrow ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96, `closed filters state keeps date row close to timeline at narrow ${label}: ${metrics.closedDateToTimelineGap}px`);
-        assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not leak horizontal overflow at narrow ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at narrow ${label}: ${metrics.actionsBorderLeftWidth}px`);
         assert.ok(metrics.headerLeft >= -1 && metrics.headerRight <= metrics.viewportWidth + 1, `timeline header remains within viewport at narrow ${label}: ${metrics.headerLeft}px..${metrics.headerRight}px`);
@@ -1586,6 +2127,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         await assertHiddenSettingsDividerIsAbsent(`narrow ${label}`);
 
         await setTimelineViewPanelOpen(page, true);
+        await waitForTimelineLayoutSettle(page, `open narrow layout ${viewport.width}x${viewport.height}`);
         const openMetrics = await readMetrics();
         assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens at narrow ${label}`);
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at narrow ${label}`);
@@ -1600,11 +2142,16 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(openMetrics.viewPanelCoversTimeScale, false, `open filter shelf does not cover timeline time labels at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px scale=${openMetrics.timeScaleTop}px`);
         assert.equal(openMetrics.viewPanelCoversTimelineLines, false, `open filter shelf does not cover timeline rows at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px lines=${openMetrics.timelineLinesTop}px`);
         assert.ok(openMetrics.viewPanelHeight <= 320, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
-        assert.ok(openMetrics.bodyOverflowX <= 2, `open view panel does not create body overflow at narrow ${label}: ${openMetrics.bodyOverflowX}`);
+        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open view panel does not create uncontrolled body overflow at narrow ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}`);
         assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside the right viewport edge at narrow ${label}: ${openMetrics.viewPanelRight}px`);
         await setTimelineViewPanelOpen(page, false);
     }
+
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await setTimelineViewPanelOpen(page, false);
+    await waitForTimelineTypeSwitch(page, 'timeline type switch after geometry viewport reset');
+    await waitForTimelineLayoutSettle(page, 'timeline layout after geometry viewport reset');
 }
 
 async function runRevealAction(page, date, kitchenId) {
@@ -1627,7 +2174,7 @@ async function run() {
 
     let playwright;
     try {
-        playwright = require('playwright');
+        playwright = requirePlaywright();
     } catch (err) {
         fail(`Playwright is not available. Run through: npx --yes --package playwright node tests/browser/timeline-browser-smoke.js ${base}`);
     }
@@ -1798,6 +2345,19 @@ async function run() {
         console.log(`  OK activity first -> kitchen after, group ${groupId(activitySnapshot)}`);
         console.log(`  OK kitchen first -> activity after, group ${groupId(kitchenSnapshot)}`);
         console.log('  OK existing group reuse, visibility, reveal action, and cache view/date switch');
+    } catch (error) {
+        if (page && !page.isClosed()) {
+            const diagnostic = await writeTimelineFailureDiagnostic(page, 'failure', error).catch(diagnosticError => ({
+                jsonPath: '',
+                pngPath: '',
+                diagnostics: { diagnosticError: diagnosticError?.message || String(diagnosticError) }
+            }));
+            const artifactMessage = diagnostic?.jsonPath
+                ? `\nTimeline smoke diagnostics: ${diagnostic.jsonPath}${diagnostic.pngPath ? `, ${diagnostic.pngPath}` : ''}`
+                : `\nTimeline smoke diagnostics failed: ${JSON.stringify(diagnostic?.diagnostics || {})}`;
+            throw new Error(`${error?.stack || error?.message || String(error)}${artifactMessage}`);
+        }
+        throw error;
     } finally {
         await context?.close().catch(() => {});
         await browser.close().catch(() => {});

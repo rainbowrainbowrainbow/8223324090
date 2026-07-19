@@ -49,6 +49,64 @@ function recoveryTarget(overrides = {}) {
     };
 }
 
+function detachInspectionState(overrides = {}) {
+    const target = recoveryTarget(overrides.target || {});
+    return {
+        memberships: Object.prototype.hasOwnProperty.call(overrides, 'memberships')
+            ? overrides.memberships
+            : [{
+                group_id: target.group_id,
+                booking_id: target.pinata_booking_id,
+                role: 'activity'
+            }],
+        group: Object.prototype.hasOwnProperty.call(overrides, 'group')
+            ? overrides.group
+            : {
+                group_id: target.group_id,
+                business_context: 'event_genix',
+                status: target.group_status,
+                group_name: target.group_name,
+                primary_booking_id: target.primary_booking_id
+            },
+        pinataBooking: Object.prototype.hasOwnProperty.call(overrides, 'pinataBooking')
+            ? overrides.pinataBooking
+            : {
+                booking_id: target.pinata_booking_id,
+                business_context: target.pinata_business_context,
+                date: target.pinata_date,
+                room: target.pinata_room,
+                customer_id: target.pinata_customer_id,
+                category: target.pinata_category,
+                program_id: target.pinata_program_id,
+                program_code: target.pinata_program_code,
+                status: target.pinata_status,
+                linked_to: target.pinata_linked_to
+            },
+        primaryBooking: Object.prototype.hasOwnProperty.call(overrides, 'primaryBooking')
+            ? overrides.primaryBooking
+            : {
+                booking_id: target.primary_booking_id,
+                business_context: 'event_genix',
+                date: target.primary_date,
+                room: target.primary_room,
+                customer_id: target.primary_customer_id,
+                category: 'show',
+                program_id: 'paper-show',
+                program_code: 'PAPER',
+                status: target.primary_status,
+                linked_to: null
+            },
+        compatibilityLinks: Object.prototype.hasOwnProperty.call(overrides, 'compatibilityLinks')
+            ? overrides.compatibilityLinks
+            : [{
+                id: 91,
+                booking_a_id: target.primary_booking_id,
+                booking_b_id: target.pinata_booking_id,
+                relation_type: 'banquet_activity'
+            }]
+    };
+}
+
 test('banquet recovery audit separates exact, ambiguous, standalone, deposit-review, and integrity rows without customer data', () => {
     const options = {
         businessContext: 'event_genix',
@@ -322,29 +380,54 @@ test('qa cleanup dry-run inventories only allowlisted technical records without 
 
 test('detach inspection allows only pinata activity membership and is idempotent when already absent', () => {
     const pair = { bookingId: 'BK-PINATA-1', groupId: 'BQ-1' };
-    const ready = classifyDetachInspection(
+    const attached = classifyDetachInspection(pair, detachInspectionState(), 'event_genix');
+    assert.equal(attached.status, 'attached');
+    assert.equal(attached.existingRole, 'activity');
+    assert.equal(attached.compatibilityLinkCount, 1);
+
+    const cleanDetached = classifyDetachInspection(
         pair,
-        {
-            ...recoveryTarget(),
-            membership_role: 'activity'
-        },
+        detachInspectionState({
+            memberships: [],
+            compatibilityLinks: []
+        }),
         'event_genix'
     );
-    assert.equal(ready.status, 'ready');
+    assert.equal(cleanDetached.status, 'already_detached_and_clean');
+    assert.equal(cleanDetached.compatibilityLinkCount, 0);
 
-    const alreadyDetached = classifyDetachInspection(pair, null, 'event_genix');
-    assert.equal(alreadyDetached.status, 'already_detached');
+    const orphanLink = classifyDetachInspection(
+        pair,
+        detachInspectionState({ memberships: [] }),
+        'event_genix'
+    );
+    assert.equal(orphanLink.status, 'orphan_link');
+    assert.equal(orphanLink.reason, 'compatibility_link_without_membership');
+
+    const wrongIds = classifyDetachInspection(
+        pair,
+        detachInspectionState({
+            memberships: [],
+            group: null,
+            pinataBooking: null,
+            primaryBooking: null,
+            compatibilityLinks: []
+        }),
+        'event_genix'
+    );
+    assert.equal(wrongIds.status, 'not_found');
+    assert.equal(wrongIds.reason, 'booking_and_group_not_found');
 
     const primaryBlocked = classifyDetachInspection(
         pair,
-        {
-            ...recoveryTarget({ primary_booking_id: 'BK-PINATA-1' }),
-            membership_role: 'primary'
-        },
+        detachInspectionState({
+            target: { primary_booking_id: 'BK-PINATA-1' },
+            memberships: [{ group_id: 'BQ-1', booking_id: 'BK-PINATA-1', role: 'primary' }]
+        }),
         'event_genix'
     );
-    assert.equal(primaryBlocked.status, 'blocked');
-    assert.equal(primaryBlocked.reason, 'not_activity_membership');
+    assert.equal(primaryBlocked.status, 'inconsistent');
+    assert.equal(primaryBlocked.reason, 'pinata_is_group_primary');
 });
 
 test('detach dry-run reports selected pairs without write queries', async () => {
@@ -357,25 +440,69 @@ test('detach dry-run reports selected pairs without write queries', async () => 
     };
     const options = {
         businessContext: 'event_genix',
-        pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+        pairs: [
+            { bookingId: 'BK-PINATA-1', groupId: 'BQ-1' },
+            { bookingId: 'BK-CLEAN', groupId: 'BQ-1' },
+            { bookingId: 'BK-ORPHAN', groupId: 'BQ-1' },
+            { bookingId: 'BK-MISSING', groupId: 'BQ-404' },
+            { bookingId: 'BK-BADROLE', groupId: 'BQ-1' }
+        ]
     };
-    const inspectDetachPair = async (_db, pair) => ({
-        result: {
-            pinataBookingId: pair.bookingId,
-            groupId: pair.groupId,
-            businessContext: 'event_genix',
-            status: 'ready',
-            reason: null,
-            matchFingerprint: 'abc123'
-        },
-        target: { ...recoveryTarget(), membership_role: 'activity' }
-    });
+    const inspectDetachPair = async (_db, pair) => {
+        const byBookingId = {
+            'BK-PINATA-1': { status: 'attached', reason: null, compatibilityLinkCount: 1 },
+            'BK-CLEAN': { status: 'already_detached_and_clean', reason: null, compatibilityLinkCount: 0 },
+            'BK-ORPHAN': {
+                status: 'orphan_link',
+                reason: 'compatibility_link_without_membership',
+                compatibilityLinkCount: 1
+            },
+            'BK-MISSING': { status: 'not_found', reason: 'booking_and_group_not_found', compatibilityLinkCount: 0 },
+            'BK-BADROLE': { status: 'inconsistent', reason: 'not_activity_membership', compatibilityLinkCount: 0 }
+        };
+        return {
+            result: {
+                ...byBookingId[pair.bookingId],
+                pinataBookingId: pair.bookingId,
+                groupId: pair.groupId,
+                businessContext: 'event_genix',
+                matchFingerprint: 'abc123'
+            },
+            target: { ...recoveryTarget(), membership_role: 'activity' }
+        };
+    };
 
     const report = await runDetachDryRun(db, options, { inspectDetachPair });
 
     assert.equal(report.mode, 'detach-dry-run');
-    assert.equal(report.summary.ready, 1);
+    assert.deepEqual(report.summary, {
+        requested: 5,
+        attached: 1,
+        alreadyDetachedAndClean: 1,
+        orphanLink: 1,
+        notFound: 1,
+        inconsistent: 1,
+        blocked: 3
+    });
+    assert.equal(Object.prototype.hasOwnProperty.call(report.summary, 'ready'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(report.summary, 'alreadyDetached'), false);
     assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
+    assert.equal(queries.some(sql => /\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql)), false);
+});
+
+test('detach inspection reports member role conflicts as inconsistent', () => {
+    const pair = { bookingId: 'BK-PINATA-1', groupId: 'BQ-1' };
+    const roleConflict = classifyDetachInspection(
+        pair,
+        detachInspectionState({
+            memberships: [{ group_id: 'BQ-1', booking_id: 'BK-PINATA-1', role: 'primary' }]
+        }),
+        'event_genix'
+    );
+
+    assert.equal(roleConflict.status, 'inconsistent');
+    assert.equal(roleConflict.reason, 'not_activity_membership');
+    assert.equal(roleConflict.existingRole, 'primary');
 });
 
 test('detach apply requires confirmation before opening a transaction', async () => {
@@ -418,7 +545,7 @@ test('detach apply rolls back the full allowlist on persistence failure', async 
             pinataBookingId: pair.bookingId,
             groupId: pair.groupId,
             businessContext: 'event_genix',
-            status: 'ready',
+            status: 'attached',
             reason: null,
             matchFingerprint: 'abc123'
         },
@@ -457,7 +584,7 @@ test('detach apply is idempotent when every allowlisted pair is already detached
             pinataBookingId: pair.bookingId,
             groupId: pair.groupId,
             businessContext: 'event_genix',
-            status: 'already_detached',
+            status: 'already_detached_and_clean',
             reason: null,
             matchFingerprint: null
         },
@@ -473,9 +600,51 @@ test('detach apply is idempotent when every allowlisted pair is already detached
 
     assert.equal(persistCalls, 0);
     assert.equal(report.summary.detached, 0);
-    assert.equal(report.summary.alreadyDetached, 1);
+    assert.equal(report.summary.alreadyDetachedAndClean, 1);
+    assert.equal(report.summary.blocked, 0);
     assert.equal(report.summary.verifiedAfter, 1);
     assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT']);
+});
+
+test('detach apply blocks orphan compatibility links before persistence', async () => {
+    const queries = [];
+    let persistCalls = 0;
+    const db = {
+        query: async text => {
+            queries.push(String(text).trim());
+            return { rows: [] };
+        }
+    };
+    const options = {
+        apply: true,
+        confirmation: DETACH_CONFIRMATION,
+        businessContext: 'event_genix',
+        pairs: [{ bookingId: 'BK-PINATA-1', groupId: 'BQ-1' }]
+    };
+    const inspectDetachPair = async (_db, pair) => ({
+        result: {
+            pinataBookingId: pair.bookingId,
+            groupId: pair.groupId,
+            businessContext: 'event_genix',
+            status: 'orphan_link',
+            reason: 'compatibility_link_without_membership',
+            matchFingerprint: 'abc123',
+            compatibilityLinkCount: 1
+        },
+        target: null
+    });
+
+    await assert.rejects(
+        runDetachApply(db, options, {
+            inspectDetachPair,
+            persistDetachPair: async () => {
+                persistCalls += 1;
+            }
+        }),
+        /compatibility_link_without_membership/
+    );
+    assert.equal(persistCalls, 0);
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
 });
 
 test('recovery apply is transactional and verifies every allowlisted pair after persistence', async () => {
@@ -627,7 +796,7 @@ test('detach persistence deletes only activity membership, compatibility link, a
             pinataBookingId: 'BK-PINATA-1',
             groupId: 'BQ-1',
             businessContext: 'event_genix',
-            status: 'ready',
+            status: 'attached',
             reason: null,
             matchFingerprint: 'abc123'
         },
@@ -641,13 +810,53 @@ test('detach persistence deletes only activity membership, compatibility link, a
 
     assert.equal(result.status, 'detached');
     assert.equal(result.deletedCompatibilityLinks, 1);
+    const membershipDeleteIndex = queries.findIndex(query => /^DELETE FROM banquet_group_bookings/i.test(query.sql));
+    const historyInsertIndex = queries.findIndex(query => /^INSERT INTO history/i.test(query.sql));
     assert.equal(queries.filter(query => /^DELETE FROM banquet_group_bookings/i.test(query.sql)).length, 1);
+    assert.ok(historyInsertIndex > membershipDeleteIndex);
     assert.ok(queries.some(query => /^DELETE FROM booking_banquet_links/i.test(query.sql)));
     assert.ok(queries.some(query => /^UPDATE banquet_groups/i.test(query.sql)));
     assert.ok(queries.some(query => /^INSERT INTO history/i.test(query.sql)));
     assert.equal(queries.some(query => /DELETE FROM bookings/i.test(query.sql)), false);
+    assert.equal(queries.some(query => /^UPDATE bookings/i.test(query.sql)), false);
     assert.equal(queries.some(query => /banquet_deposits/i.test(query.sql)), false);
     assert.equal(queries.some(query => /customers|phone|instagram|client_name/i.test(query.sql)), false);
+});
+
+test('detach persistence does not write history when activity membership delete fails', async () => {
+    const queries = [];
+    const db = {
+        query: async (text, params = []) => {
+            const sql = String(text).replace(/\s+/g, ' ').trim();
+            queries.push({ sql, params });
+            if (/^DELETE FROM banquet_group_bookings/i.test(sql)) {
+                return { rows: [], rowCount: 0 };
+            }
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const inspection = {
+        result: {
+            pinataBookingId: 'BK-PINATA-1',
+            groupId: 'BQ-1',
+            businessContext: 'event_genix',
+            status: 'attached',
+            reason: null,
+            matchFingerprint: 'abc123'
+        },
+        target: {
+            ...recoveryTarget(),
+            membership_role: 'activity'
+        }
+    };
+
+    await assert.rejects(
+        persistDetachPair(db, inspection, 'event_genix'),
+        /Activity membership detach was not applied/
+    );
+    assert.ok(queries.some(query => /^DELETE FROM banquet_group_bookings/i.test(query.sql)));
+    assert.equal(queries.some(query => /^INSERT INTO history/i.test(query.sql)), false);
+    assert.equal(queries.some(query => /^UPDATE banquet_groups/i.test(query.sql)), false);
 });
 
 test('production recovery script contains no automatic deposit creation or customer PII query', () => {
@@ -658,6 +867,7 @@ test('production recovery script contains no automatic deposit creation or custo
     assert.match(source, /BEGIN TRANSACTION READ ONLY/);
     assert.match(source, /BEGIN ISOLATION LEVEL SERIALIZABLE/);
     assert.match(source, /--confirm=\$\{APPLY_CONFIRMATION\}/);
+    assert.match(source, /--confirm=\$\{DETACH_CONFIRMATION\}/);
     assert.match(source, /canonical_deposit_missing_manual_review_required/);
     assert.doesNotMatch(source, /INSERT INTO banquet_deposits/i);
     assert.doesNotMatch(source, /DELETE FROM bookings/i);

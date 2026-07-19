@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.85 - Banquet Recovery Safety Gate
+
+### Backend / Recovery / CI / (19.07.2026) [codex]
+- **Banquet recovery переведено у fail-closed режим:** скрипт явно розрізняє `attached`, `already_detached_and_clean`, `orphan_link`, `not_found` і `inconsistent`, не чіпає primary banquet booking та не маскує небезпечні стани.
+- **Dry-run і apply розведені без спільного write-шляху:** dry-run працює read-only із rollback, а production detach потребує явний confirmation token і пише history тільки після успішного detach.
+- **Додано isolated PostgreSQL gate для recovery flow:** disposable runner перевіряє реальний detach, idempotent rerun, orphan compatibility link, missing records і rollback після post-persist failure без production credentials.
+- **Timeline browser smoke став діагностичним:** fallback для Playwright, failure artifacts і контрольований overflow guard допомагають швидше ловити регресії без зміни protected timeline surface.
+
+---
+
 ## v0.79.84 - Simultaneous Pay Final Acceptance
 
 ### Release / Versioning / (19.07.2026) [codex]

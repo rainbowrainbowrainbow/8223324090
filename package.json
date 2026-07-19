@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.84",
+  "version": "0.79.85",
   "eventGenix": {
-    "releaseLabel": "Simultaneous Pay Final Acceptance"
+    "releaseLabel": "Banquet Recovery Safety Gate"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -79,7 +79,7 @@
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:service-worker": "npx --yes --package playwright node tests/browser/service-worker-browser-smoke.js",
     "test:browser:timeline-summary": "npx --yes --package playwright node tests/browser/timeline-room-summary-browser-smoke.js",
-    "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",
+    "test:browser:timeline": "npx --yes --package playwright node tests/browser/timeline-browser-smoke.js",
     "test:browser:staff-schedule": "npx --yes --package playwright node tests/browser/staff-schedule-custom-range-browser-smoke.js",
     "test:api": "node --test tests/api.test.js",
     "test:api:isolated": "node scripts/run-isolated-postgres-tests.js api",
@@ -87,6 +87,7 @@
     "test:integration:attendance-lock:isolated": "node scripts/run-isolated-postgres-tests.js attendance",
     "test:integration:room-lock": "node --test tests/integration/room-lock-concurrency.integration.test.js",
     "test:integration:backup-recovery:isolated": "node scripts/run-isolated-postgres-tests.js recovery",
+    "test:integration:banquet-recovery:isolated": "node scripts/run-isolated-postgres-tests.js banquet-recovery",
     "test:integration:hr-disposable": "node --test tests/integration/hr-disposable.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",

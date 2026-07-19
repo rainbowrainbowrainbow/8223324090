@@ -23,6 +23,9 @@ groups that have no canonical deposit record.
 - Reports contain technical booking/group identifiers, dates, rooms, and a
   one-way match fingerprint. They do not query or print customer names, phone
   numbers, social handles, or secrets.
+- Use `audit --summary-only` for routine operator summaries. Raw `--json` output
+  is for controlled operator review only and must not be committed, pasted into
+  public tickets, or stored in the repository.
 
 ## 1. Disposable QA cleanup after browser smoke
 
@@ -150,6 +153,16 @@ artifacts, terminal logs, tickets, commits, or release notes.
 Use an explicit bounded date range:
 
 ```powershell
+npm run audit:banquet-recovery -- --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --summary-only
+```
+
+`--summary-only` prints aggregate counters only. It does not print booking IDs,
+group IDs, rooms, customer fields, or fingerprints. Use it for routine production
+checks and release notes.
+
+Use raw JSON only when an approved operator must inspect exact technical rows:
+
+```powershell
 npm run audit:banquet-recovery -- --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --json
 ```
 
@@ -159,12 +172,19 @@ The report separates:
   business context, customer, date, and trimmed room;
 - `pinatas.ambiguous`: more than one active group matches;
 - `pinatas.standalone`: no active group matches;
-- `depositsForManualReview`: active groups with no non-cancelled canonical
-  deposit linked by group or primary booking;
+- `depositsForManualReview`: active groups whose primary booking is also active
+  and that have no non-cancelled canonical deposit linked by group or primary
+  booking;
 - `integrityIssues`: duplicate membership, wrong canonical role, or an exact-key
   mismatch on an existing pinata membership.
+- `groupStateIntegrityIssues`: banquet group state problems that must not be
+  handled as deposit creation, including active groups with a cancelled primary,
+  missing primary membership, cancelled groups with active members, active groups
+  without active members, and member status mismatch.
 
 Do not turn ambiguous or standalone rows into recovery pairs.
+Do not create deposits for `groupStateIntegrityIssues`; those rows need a
+separate business decision and a bounded reconciliation plan.
 
 ## 3. Build the confirmed recovery allowlist
 
@@ -243,10 +263,10 @@ Repeated apply is idempotent when the membership is already absent.
 
 ## 7. Post-recovery verification
 
-Repeat the same read-only audit and save the technical before/after summaries:
+Repeat the same read-only aggregate audit and save only the summary counters:
 
 ```powershell
-npm run audit:banquet-recovery -- --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --json
+npm run audit:banquet-recovery -- --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --summary-only
 ```
 
 For every recovered group, verify on the live site:
@@ -263,6 +283,107 @@ production approval.
 ## Deposit review
 
 `depositsForManualReview` is a manager review queue, not a repair plan. A missing
-record does not prove a deposit amount, date, method, or status. Create or update
-a canonical deposit only through the normal manager workflow and only when a
-trusted source is available.
+record does not prove a deposit amount, date, method, or status. The queue only
+contains active groups with active primary bookings. Create or update a canonical
+deposit only through the normal manager workflow and only when a trusted source
+is available.
+
+`groupStateIntegrityIssues` is a data integrity queue, not an accounting queue.
+For example, an active group whose primary booking is cancelled must be resolved
+by an explicit owner-approved reconciliation decision. Do not silently restore
+the primary booking, create a deposit, switch the group to another booking, or
+cancel production records from this audit.
+
+## Stale Group Reconciliation Dry-Run
+
+Use this only for the specific integrity class:
+
+```text
+active group + cancelled primary booking + active non-primary members
+```
+
+The only supported strategy is `cancel-stale-group`. It is not a restore path.
+Do not directly restore a cancelled primary booking. If the business decision is
+to keep the banquet, create a replacement through the canonical booking-set
+workflow instead of using this strategy.
+
+Read-only dry-run:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_cancelled_primary --strategy=cancel-stale-group --json
+```
+
+The dry-run requires exact group scope and returns technical state only:
+
+- current group status;
+- primary booking status;
+- active/cancelled member counts;
+- active non-primary member IDs;
+- active deposit count;
+- ticket ownership conflict count;
+- active priced-member conflict count.
+
+Dry-run is blocked when the group no longer matches the expected classification,
+the primary booking is not cancelled, the group is not active, there are no
+active non-primary members, an active canonical deposit exists, ticket snapshot
+ownership exists, or active members carry priced financial fields.
+
+Production apply is intentionally not available in this phase. Adding the apply
+path requires explicit owner approval with this exact wording:
+
+```text
+Дозволяю додати guarded real-banquet reconciliation apply без його запуску
+```
+
+Running production apply later requires a separate approval with the exact group
+allowlist, expected before-state, command, rollback/compensation plan, and
+confirmation token. Previous SSH audit approval does not authorize this write.
+
+Any future apply must use a serializable transaction, lock and revalidate the
+group and member bookings, cancel only the remaining active group members and
+the group, avoid physical deletes, write technical history only after successful
+mutation, and verify that the group is cancelled and active members are zero.
+
+## Railway SSH operator flow
+
+Use the dedicated audit SSH key and the local SSH alias configured for operator
+audits. Do not use a personal catch-all key for routine recovery checks.
+
+Before running a command:
+
+1. Verify the SSH host key through the normal OpenSSH known-hosts prompt or an
+   already trusted `known_hosts` entry.
+2. Run only bounded commands with explicit `--from` and `--to` dates.
+3. Prefer `--summary-only` for production status checks.
+4. Do not save raw production reports in the repository.
+5. Do not print account metadata, private key paths, emails, secrets, or raw
+   production identifiers in handoff notes.
+
+Example summary-only audit over the SSH alias:
+
+```powershell
+ssh eventgenix-railway-audit node scripts/banquet-production-recovery.js audit --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --summary-only
+```
+
+Raw JSON over SSH is allowed only for a bounded operator review:
+
+```powershell
+ssh eventgenix-railway-audit node scripts/banquet-production-recovery.js audit --from=YYYY-MM-DD --to=YYYY-MM-DD --business-context=event_genix --json
+```
+
+## SSH key lifecycle
+
+The audit key has broader Railway account/workspace scope than a single command.
+Rotation or revoke requires separate owner approval.
+
+Generic rotation procedure:
+
+1. Create a new dedicated audit key.
+2. Add it to Railway with a date-scoped name.
+3. Verify a read-only `node --version` or `audit --summary-only` command.
+4. Remove the old key from Railway only after the new key is verified.
+5. Update the local SSH alias to the new key.
+6. Record only the rotation date and key label, not private key material,
+   fingerprints, account metadata, or raw production output.
+
+Next rotation/reconfirmation target: no later than 2026-10-19.

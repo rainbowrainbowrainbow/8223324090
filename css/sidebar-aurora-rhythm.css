@@ -632,9 +632,185 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   line-height: 1.12 !important;
 }
 
+/* Timeline launcher: keeps the Aurora card rhythm while exposing both views. */
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher {
+  --eg-timeline-launcher-duration: 170ms;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--sb-enterprise-border);
+  border-radius: var(--eg-sidebar-control-radius);
+  background: var(--sb-enterprise-surface);
+  box-shadow: none;
+  transition:
+    border-color var(--eg-timeline-launcher-duration) ease,
+    background-color var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher.active {
+  border-color: var(--sb-enterprise-border-strong);
+  background: var(--sb-polish-active);
+  box-shadow: inset 3px 0 0 var(--sb-enterprise-accent);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 4px;
+  bottom: 3px;
+  width: calc(50% - 4px);
+  height: 32px;
+  border-radius: calc(var(--eg-sidebar-control-radius) - 2px);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--sb-enterprise-accent) 72%, var(--sb-enterprise-surface-2)),
+    color-mix(in srgb, var(--sb-enterprise-info) 48%, var(--sb-enterprise-surface-2))
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-enterprise-accent) 24%, transparent);
+  opacity: 0;
+  transform: translateX(0);
+  pointer-events: none;
+  transition:
+    transform var(--eg-timeline-launcher-duration) cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="animators"]::after {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="rooms"]::after {
+  opacity: 1;
+  transform: translateX(100%);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main,
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main.active,
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:hover,
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:focus-visible {
+  position: relative;
+  z-index: 2;
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, #ffffff);
+  outline-offset: -3px;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher:has(> .sidebar-design-timeline-main:hover),
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher:has(> .sidebar-design-timeline-main:focus-visible) {
+  border-color: var(--sb-enterprise-border-strong);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-top: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 88%, transparent);
+  color: var(--sb-enterprise-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--eg-timeline-launcher-duration) ease,
+    opacity var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment[data-sidebar-timeline-mode="rooms"] {
+  border-left: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 72%, transparent);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment:hover {
+  color: var(--sb-enterprise-text);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment:focus-visible {
+  z-index: 3;
+  color: var(--sb-enterprise-text);
+  outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, #ffffff);
+  outline-offset: -3px;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
+  color: #ffffff;
+}
+
+body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
+  color: #071a1d;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check {
+  position: relative;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity var(--eg-timeline-launcher-duration) ease,
+    transform var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active .sidebar-design-timeline-segment-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  opacity: 0.74;
+  transition: opacity var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active .sidebar-design-timeline-segment-label {
+  opacity: 1;
+}
+
+.sidebar-nav.collapsed .sidebar-design-timeline-launcher {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   :root {
-    --eg-sidebar-mobile-w: min(88vw, 300px);
+    --eg-sidebar-mobile-w: min(92vw, 336px);
   }
 
   .sidebar-nav:not(.collapsed) .sidebar-brand {
@@ -663,5 +839,27 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 
   .sidebar-nav:not(.collapsed) .sidebar-business-context {
     grid-template-columns: 46px minmax(0, 1fr) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after {
+    border: 1px solid Highlight;
+    background: Highlight;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
+    color: HighlightText;
   }
 }

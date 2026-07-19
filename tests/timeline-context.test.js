@@ -451,6 +451,308 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
 });
 
+test('sidebar timeline launcher derives zero, one, or two modes from the hydrated business profile', async () => {
+    const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
+    const sidebarRhythmCss = fs.readFileSync(path.join(ROOT, 'css', 'sidebar-aurora-rhythm.css'), 'utf8');
+    const miniLinkStart = sidebarCode.indexOf('function _renderSidebarMiniLink(');
+    const miniLinkEnd = sidebarCode.indexOf('function _renderSidebarRailSection(', miniLinkStart);
+    assert.notEqual(miniLinkStart, -1);
+    assert.notEqual(miniLinkEnd, -1);
+    const miniLinkBlock = sidebarCode.slice(miniLinkStart, miniLinkEnd);
+    assert.match(miniLinkBlock, /_sidebarNavigationHrefForBusinessItem\(item\)/);
+    assert.doesNotMatch(miniLinkBlock, /data-sidebar-timeline-mode/);
+    assert.match(sidebarCode, /sidebar\.addEventListener\('click', _handleSidebarTimelineModeClick\)/);
+    assert.match(sidebarCode, /sidebar\.addEventListener\('keydown', _handleSidebarTimelineModeKeydown\)/);
+    assert.match(sidebarCode, /\[data-sidebar-rail-item\], \[data-sidebar-timeline-mode\]/);
+    assert.match(sidebarCode, /const link = e\.target\.closest\([\s\S]*?\[data-sidebar-timeline-mode\][\s\S]*?if \(!link\) return;[\s\S]*?if \(isMobileSidebar\(\)\) setMobileSidebarOpen\(false\);/);
+    assert.match(sidebarRhythmCss, /--eg-timeline-launcher-duration:\s*170ms/);
+    assert.match(sidebarRhythmCss, /\.sidebar-design-timeline-segment\s*\{[\s\S]*?min-height:\s*38px/);
+    assert.match(sidebarRhythmCss, /data-sidebar-timeline-active-mode="rooms"[\s\S]*?translateX\(100%\)/);
+    assert.match(sidebarRhythmCss, /@media \(prefers-reduced-motion:\s*reduce\)/);
+    assert.match(sidebarRhythmCss, /--eg-sidebar-mobile-w:\s*min\(92vw,\s*336px\)/);
+    assert.match(sidebarRhythmCss, /\.sidebar-nav\.collapsed \.sidebar-design-timeline-launcher[\s\S]*?display:\s*none !important/);
+
+    const injectionPoint = /(\r?\n    return \{\r?\n        init,)/;
+    assert.match(sidebarCode, injectionPoint);
+    const instrumentedCode = sidebarCode.replace(injectionPoint, `
+    window.__sidebarTimelineTestApi = {
+        availableModes: _getAvailableTimelineModes,
+        cardModel: _sidebarTimelineCardModel,
+        renderExtraLink: _renderExtraMenuLink,
+        handleModeClick: _handleSidebarTimelineModeClick,
+        handleModeKeydown: _handleSidebarTimelineModeKeydown,
+        syncLauncherState: _syncSidebarTimelineLauncherState
+    };$1`);
+
+    const state = {
+        context: 'event_genix',
+        moduleEnabled: true,
+        profiles: {},
+        timelineView: 'rooms',
+        timelineSetCalls: []
+    };
+    const assignedHrefs = [];
+    const location = {
+        origin: 'https://crm.test',
+        pathname: '/',
+        search: '',
+        hash: '',
+        href: 'https://crm.test/',
+        assign: href => assignedHrefs.push(href)
+    };
+    const localStorage = {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {}
+    };
+    const windowListeners = new Map();
+    const document = {
+        body: null,
+        addEventListener() {},
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => []
+    };
+    const window = {
+        location,
+        localStorage,
+        addEventListener(type, listener) {
+            const listeners = windowListeners.get(type) || [];
+            listeners.push(listener);
+            windowListeners.set(type, listeners);
+        },
+        dispatchEvent() {},
+        TimelineView: {
+            current: () => state.timelineView,
+            set(mode) {
+                state.timelineSetCalls.push(mode);
+                state.timelineView = mode;
+                return Promise.resolve(mode);
+            }
+        },
+        CrmBusinessContext: {
+            current: () => state.context,
+            hasModule: () => state.moduleEnabled,
+            profileFor: context => state.profiles[context] || null,
+            activeProfile: () => state.profiles[state.context] || null
+        }
+    };
+    const sandbox = {
+        console,
+        URL,
+        URLSearchParams,
+        location,
+        localStorage,
+        window,
+        document,
+        setTimeout,
+        clearTimeout,
+        setInterval,
+        clearInterval
+    };
+
+    vm.runInNewContext(instrumentedCode, sandbox);
+
+    const api = window.__sidebarTimelineTestApi;
+    const rootItem = { href: '/', icon: 'calendar', label: 'Таймлайн', access: 'timeline' };
+    const maysternyaItem = { href: '/maysternya-doli', icon: 'calendar', label: 'Таймлайн МД', access: 'maysternya_doli' };
+    const compact = modes => Array.from(modes, ({ key, label, href }) => ({ key, label, href }));
+
+    state.profiles.event_genix = {
+        key: 'event_genix',
+        timeline: { mode: 'park', timelineEnabled: true, roomTimelineEnabled: true },
+        modules: { enabled: { timeline: true } },
+        shell: { timelineEnabled: true }
+    };
+    assert.deepEqual(compact(api.availableModes(rootItem)), [
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' },
+        { key: 'rooms', label: 'Кімнати', href: '/?timelineView=rooms' }
+    ]);
+    assert.equal(api.cardModel(rootItem).variant, 'launcher');
+    assert.equal(api.cardModel(rootItem).href, '/');
+    const launcherHtml = api.renderExtraLink(rootItem, '/', '');
+    assert.match(launcherHtml, /^<div class="sidebar-design-timeline-launcher active"/);
+    assert.match(launcherHtml, /class="sidebar-design-extra-link sidebar-design-timeline-main active" href="\/"/);
+    assert.match(launcherHtml, /data-sidebar-timeline-active-mode="rooms"/);
+    assert.match(launcherHtml, /href="\/\?timelineView=animators" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
+    assert.match(launcherHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);
+    assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-check/g) || []).length, 2);
+    assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-label/g) || []).length, 2);
+    assert.doesNotMatch(launcherHtml, /<button\b/i);
+    assert.equal((launcherHtml.match(/<a\b/g) || []).length, 3);
+    let anchorDepth = 0;
+    let maxAnchorDepth = 0;
+    (launcherHtml.match(/<\/?a\b[^>]*>/g) || []).forEach(tag => {
+        anchorDepth += tag.startsWith('</') ? -1 : 1;
+        maxAnchorDepth = Math.max(maxAnchorDepth, anchorDepth);
+    });
+    assert.equal(anchorDepth, 0);
+    assert.equal(maxAnchorDepth, 1);
+
+    const makeModeLink = (mode, href) => ({
+        dataset: { sidebarTimelineMode: mode },
+        getAttribute: name => name === 'href' ? href : null
+    });
+    const makeClick = (link, overrides = {}) => ({
+        button: 0,
+        defaultPrevented: false,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        target: { closest: () => link },
+        preventDefault() { this.defaultPrevented = true; },
+        ...overrides
+    });
+    const animatorLink = makeModeLink('animators', '/?timelineView=animators');
+    const plainTimelineClick = makeClick(animatorLink);
+    assert.equal(api.handleModeClick(plainTimelineClick), true);
+    await Promise.resolve();
+    assert.equal(plainTimelineClick.defaultPrevented, true);
+    assert.deepEqual(state.timelineSetCalls, ['animators']);
+    assert.equal(state.timelineView, 'animators');
+    assert.deepEqual(assignedHrefs, []);
+
+    const ctrlTimelineClick = makeClick(makeModeLink('rooms', '/?timelineView=rooms'), { ctrlKey: true });
+    assert.equal(api.handleModeClick(ctrlTimelineClick), false);
+    assert.equal(ctrlTimelineClick.defaultPrevented, false);
+    assert.deepEqual(state.timelineSetCalls, ['animators']);
+
+    const middleTimelineClick = makeClick(makeModeLink('rooms', '/?timelineView=rooms'), { button: 1 });
+    assert.equal(api.handleModeClick(middleTimelineClick), false);
+    assert.equal(middleTimelineClick.defaultPrevented, false);
+    assert.deepEqual(state.timelineSetCalls, ['animators']);
+
+    let keyboardClickCount = 0;
+    const keyboardLink = { click: () => { keyboardClickCount += 1; } };
+    const spaceModeKeydown = {
+        key: ' ',
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+        target: { closest: () => keyboardLink },
+        preventDefault() { this.defaultPrevented = true; }
+    };
+    assert.equal(api.handleModeKeydown(spaceModeKeydown), true);
+    assert.equal(spaceModeKeydown.defaultPrevented, true);
+    assert.equal(keyboardClickCount, 1);
+    assert.equal(api.handleModeKeydown({ ...spaceModeKeydown, key: 'Enter', defaultPrevented: false }), false);
+
+    location.pathname = '/dashboard';
+    const remotePageClick = makeClick(makeModeLink('rooms', '/?timelineView=rooms'));
+    assert.equal(api.handleModeClick(remotePageClick), false);
+    assert.equal(remotePageClick.defaultPrevented, false);
+    assert.deepEqual(state.timelineSetCalls, ['animators']);
+    location.pathname = '/';
+
+    const makeClassList = initial => {
+        const values = new Set(initial);
+        return {
+            toggle(name, force) {
+                if (force) values.add(name);
+                else values.delete(name);
+            },
+            contains: name => values.has(name)
+        };
+    };
+    const makeSyncLink = mode => {
+        const attributes = new Map();
+        return {
+            dataset: { sidebarTimelineMode: mode },
+            classList: makeClassList([]),
+            setAttribute: (name, value) => attributes.set(name, value),
+            removeAttribute: name => attributes.delete(name),
+            getAttribute: name => attributes.get(name)
+        };
+    };
+    const syncedAnimatorLink = makeSyncLink('animators');
+    const syncedRoomsLink = makeSyncLink('rooms');
+    const launcherNode = {
+        dataset: {},
+        classList: makeClassList([]),
+        querySelectorAll: () => [syncedAnimatorLink, syncedRoomsLink]
+    };
+    document.querySelectorAll = selector => selector === '[data-sidebar-timeline-launcher]' ? [launcherNode] : [];
+    state.timelineView = 'rooms';
+    const timelineViewListener = windowListeners.get('timeline:view-changed')?.at(-1);
+    assert.equal(typeof timelineViewListener, 'function');
+    timelineViewListener({ detail: { view: 'rooms' } });
+    assert.equal(launcherNode.dataset.sidebarTimelineActiveMode, 'rooms');
+    assert.equal(syncedAnimatorLink.classList.contains('active'), false);
+    assert.equal(syncedRoomsLink.classList.contains('active'), true);
+    assert.equal(syncedAnimatorLink.getAttribute('aria-pressed'), 'false');
+    assert.equal(syncedRoomsLink.getAttribute('aria-pressed'), 'true');
+    assert.equal(syncedRoomsLink.getAttribute('aria-current'), 'page');
+
+    state.timelineView = 'animators';
+    timelineViewListener({ detail: { view: 'animators' } });
+    assert.equal(syncedAnimatorLink.classList.contains('active'), true);
+    assert.equal(syncedRoomsLink.classList.contains('active'), false);
+    assert.equal(syncedAnimatorLink.getAttribute('aria-pressed'), 'true');
+    assert.equal(syncedRoomsLink.getAttribute('aria-pressed'), 'false');
+    assert.equal(syncedRoomsLink.getAttribute('aria-current'), undefined);
+    document.querySelectorAll = () => [];
+
+    delete state.profiles.event_genix.timeline.roomTimelineEnabled;
+    assert.equal(api.availableModes(rootItem).length, 2);
+
+    state.profiles.event_genix.timeline.roomTimelineEnabled = false;
+    assert.deepEqual(compact(api.availableModes(rootItem)), [
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' }
+    ]);
+    assert.equal(api.cardModel(rootItem).variant, 'single');
+    assert.equal(api.cardModel(rootItem).href, '/?timelineView=animators');
+    const singleModeHtml = api.renderExtraLink(rootItem, '/', '');
+    assert.doesNotMatch(singleModeHtml, /timeline-launcher|timeline-mode-count|data-sidebar-timeline-mode/);
+    assert.equal((singleModeHtml.match(/<a\b/g) || []).length, 1);
+
+    state.profiles.event_genix.timeline = { mode: 'simple', timelineEnabled: true };
+    assert.equal(api.availableModes(rootItem).length, 1);
+
+    delete state.profiles.event_genix;
+    assert.equal(api.availableModes(rootItem).length, 1);
+    state.profiles.event_genix = {
+        key: 'event_genix',
+        timeline: { mode: 'park', timelineEnabled: true, roomTimelineEnabled: true },
+        modules: { enabled: { timeline: true } }
+    };
+    assert.equal(api.availableModes(rootItem).length, 2);
+
+    state.context = 'dar';
+    state.profiles.dar = {
+        key: 'dar',
+        timeline: { mode: 'simple', timelineEnabled: true },
+        modules: { enabled: { timeline: true } }
+    };
+    assert.deepEqual(compact(api.availableModes(rootItem)), [
+        { key: 'animators', label: 'Свята', href: '/?businessContext=dar&timelineView=animators' }
+    ]);
+
+    state.context = 'maysternya_doli';
+    state.profiles.maysternya_doli = {
+        key: 'maysternya_doli',
+        timeline: { mode: 'simple', timelineEnabled: true },
+        modules: { enabled: { timeline: true } }
+    };
+    assert.deepEqual(compact(api.availableModes(maysternyaItem)), [
+        { key: 'animators', label: 'Свята', href: '/maysternya-doli?timelineView=animators' }
+    ]);
+
+    state.profiles.maysternya_doli.timeline = { mode: 'disabled', timelineEnabled: false };
+    state.moduleEnabled = false;
+    assert.deepEqual(compact(api.availableModes(maysternyaItem)), []);
+    assert.equal(api.cardModel(maysternyaItem).variant, 'hidden');
+    assert.equal(api.renderExtraLink(maysternyaItem, '/maysternya-doli', ''), '');
+
+    state.context = 'event_genix';
+    state.profiles.event_genix.timeline = { mode: 'disabled', timelineEnabled: false };
+    assert.deepEqual(compact(api.availableModes(rootItem, { role: 'creator' })), [
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' }
+    ]);
+});
+
 test('lead conversion routes Maysternya bookings to the Maysternya timeline surface', () => {
     const leadsCode = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
 

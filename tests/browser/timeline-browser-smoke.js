@@ -1633,7 +1633,7 @@ async function assertTimelineViewPanelInteractions(page) {
     assert.equal(typeSwitch.exists, true, 'timeline type switch exists');
     assert.equal(typeSwitch.visible, true, `timeline type switch is visible without opening filters: ${typeSwitchDetail}`);
     assert.equal(typeSwitch.inViewPanel, false, 'timeline type switch is outside the hidden filters shelf');
-    assert.equal(typeSwitch.labels.map(item => item.text).join('|'), 'Банкети|Свята', `timeline type switch keeps expected labels: ${typeSwitchDetail}`);
+    assert.equal(typeSwitch.labels.map(item => item.text).join('|'), 'Кімнати|Свята', `timeline type switch keeps expected labels: ${typeSwitchDetail}`);
 
     await page.locator('#timelineViewPanelToggle').click();
     await page.waitForFunction(() => {

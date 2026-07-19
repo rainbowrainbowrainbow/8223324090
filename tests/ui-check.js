@@ -270,7 +270,7 @@ checkPage('index.html', (doc, html) => {
         && !!doc.querySelector('[data-schedule-view-mode="week"][data-period="7"]')
         && !doc.querySelector('#periodSelector [data-schedule-view-mode="rooms"]')
         && !!doc.querySelector('[data-timeline-type-selector]')
-        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]')?.textContent.trim() === 'Банкети'
+        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]')?.textContent.trim() === 'Кімнати'
         && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"]')?.textContent.trim() === 'Свята'
         && !doc.querySelector('#timelineHolidaysToggle')
         && !htmlContains('index.html', 'timeline-holidays-switch')
@@ -594,7 +594,7 @@ checkPage('index.html', (doc, html) => {
         && Array.from(doc.querySelectorAll('.timeline-header-filters .status-filter-btn')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
         && Array.from(doc.querySelectorAll('.timeline-header-filters [data-schedule-view-mode]')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
         && Array.from(doc.querySelectorAll('.timeline-header-filters [data-timeline-view]')).length === 0
-        && Array.from(doc.querySelectorAll('.schedule-command-row--utility [data-timeline-view]')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility [data-timeline-view]')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Кімнати|animators:Свята'
         && Array.from(doc.querySelectorAll('.timeline-header-filters .zoom-btn')).map(btn => btn.dataset.zoom).join('|') === '15|30|60'
         && !!doc.querySelector('.header .timeline-header-actions #logoutBtn[type="button"]:not([onclick])')
         && !doc.querySelector('.timeline-header-filters #logoutBtn'));
@@ -635,7 +635,7 @@ checkPage('index.html', (doc, html) => {
         && !!doc.querySelector('.schedule-command-row--utility .timeline-visible-type-switch .timeline-type-selector.segmentedControl')
         && Array.from(doc.querySelectorAll('.status-filter-controls .segmentedItem')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
         && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .segmentedItem')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
-        && Array.from(doc.querySelectorAll('.timeline-type-selector .segmentedItem')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
+        && Array.from(doc.querySelectorAll('.timeline-type-selector .segmentedItem')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Кімнати|animators:Свята'
         && Array.from(doc.querySelectorAll('.zoom-controls .segmentedItem')).map(btn => btn.dataset.zoom).join('|') === '15|30|60'
         && !!doc.querySelector('#prevDay.toolbarIconButton.toolbarGhostButton')
         && !!doc.querySelector('#nextDay.toolbarIconButton.toolbarGhostButton')
@@ -3939,7 +3939,7 @@ check('Timeline period selector and timeline type selector stay separate',
     && htmlContains('index.html', 'data-timeline-type-selector')
     && htmlContains('index.html', 'data-timeline-view="rooms"')
     && htmlContains('index.html', 'data-timeline-view="animators"')
-    && htmlContains('index.html', '>Банкети</button>')
+    && htmlContains('index.html', '>Кімнати</button>')
     && htmlContains('index.html', '>Свята</button>')
     && !htmlContains('index.html', 'data-timeline-holidays-toggle')
     && !htmlContains('index.html', 'id="timelineHolidaysToggle"')
@@ -4160,6 +4160,21 @@ check('Sidebar profile summary cleanup removes oval, de-pills role, and keeps id
 check('Sidebar USD tile fits the full rate after the polished profile layout', sidebarAuroraCss.includes('v0.73.36: polished profile card composition') && sidebarAuroraCss.includes('button.sidebar-identity-meta-item[data-sidebar-meta="currency"]') && sidebarAuroraCss.includes('grid-template-columns: auto minmax(0, 1fr) !important') && sidebarAuroraCss.includes('width: 100% !important') && sidebarAuroraCss.includes('.sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v') && sidebarAuroraCss.includes('font-size: 12.2px !important') && sidebarAuroraCss.includes('text-overflow: unset !important') && sidebarAuroraCss.includes('.sidebar-identity-aux-v') && sidebarAuroraCss.includes('font-variant-numeric: tabular-nums !important'));
 check('Sidebar currency signal opens the Finance rates window instead of a bottom sidebar panel', !sidebarCode.includes('function _fetchSidebarWeatherFallback') && sidebarCode.includes('function _openFinanceCurrencyRates') && sidebarCode.includes('/finance?currency=rates') && sidebarCode.includes("finance:open-currency-rates") && sidebarCode.includes('data-sidebar-currency-signal') && sidebarAuroraCss.includes('v0.58.15: sidebar currency chip is optional; full rates live in Finance.'));
 check('Sidebar mobile quick access and identity chips keep the final no-cut fit', sidebarCode.includes('formatToParts(date)') && sidebarAuroraCss.includes('v0.72.0: mobile sidebar quick access fit') && sidebarAuroraCss.includes('--eg-sidebar-mobile-w: min(100vw, 336px)') && sidebarAuroraCss.includes('max-width: 76px !important') && sidebarAuroraCss.includes('grid-template-columns: minmax(0, 1fr) 44px !important') && sidebarAuroraCss.includes('grid-template-columns: 40px minmax(0, 1fr) 22px !important') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-extras-title') && sidebarAuroraCss.includes('white-space: normal !important') && sidebarAuroraCss.includes('.sidebar-extra-picker') && sidebarAuroraCss.includes('max-height: min(42dvh, 360px) !important'));
+check('Sidebar timeline launcher keeps mode, URL, semantic, sync and mobile-close contracts',
+    sidebarCode.includes("Object.freeze({ key: 'animators', label: 'Свята' })")
+    && sidebarCode.includes("Object.freeze({ key: 'rooms', label: 'Кімнати' })")
+    && sidebarCode.includes("url.searchParams.set('timelineView', mode)")
+    && sidebarCode.includes("variant: modeCount === 2 ? 'launcher' : (modeCount === 1 ? 'single' : 'hidden')")
+    && sidebarCode.includes('data-sidebar-timeline-mode-count="${timelineCard.modeCount}"')
+    && sidebarCode.includes('data-sidebar-timeline-active-mode="${_escAttr(activeMode)}"')
+    && sidebarCode.includes('aria-pressed="${modeActive ?')
+    && sidebarCode.includes("window.addEventListener('timeline:view-changed'")
+    && sidebarCode.includes("[data-sidebar-rail-item], [data-sidebar-timeline-mode]")
+    && sidebarCode.includes('if (isMobileSidebar()) setMobileSidebarOpen(false);')
+    && sidebarAuroraCss.includes('--eg-timeline-launcher-duration: 170ms')
+    && sidebarAuroraCss.includes('.sidebar-design-timeline-segment')
+    && sidebarAuroraCss.includes('min-height: 38px')
+    && sidebarAuroraCss.includes('@media (prefers-reduced-motion: reduce)'));
 check('Sidebar enterprise redesign exposes component contracts, metric tones, ARIA and denser target widths', sidebarCode.includes('SIDEBAR_COMPONENTS') && sidebarCode.includes('SidebarShell') && sidebarCode.includes('UserSummaryCard') && sidebarCode.includes('function getMetricTone') && sidebarCode.includes("case 'tasks'") && sidebarCode.includes("case 'alerts'") && sidebarCode.includes("case 'leads'") && sidebarCode.includes('aria-expanded=') && sidebarCode.includes('aria-current="page"') && sidebarAuroraCss.includes('v0.67.4: компактніший sidebar') && sidebarAuroraCss.includes('--eg-claude-sidebar-w: clamp(196px, 12vw, 210px)') && sidebarAuroraCss.includes('--eg-sidebar-mobile-w: clamp(252px, 72vw, 280px)') && sidebarAuroraCss.includes('width: var(--eg-sidebar-mobile-w)') && sidebarAuroraCss.includes('--eg-sidebar-collapsed-w: 80px'));
 check('Sidebar visual rhythm polish keeps one final spacing contract', sidebarAuroraCss.includes('v0.68.53: sidebar visual rhythm and layout polish') && sidebarAuroraCss.includes('--eg-sidebar-rhythm-x: 10px') && sidebarAuroraCss.includes('--eg-sidebar-card-radius: 10px') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-business-context') && sidebarAuroraCss.includes('grid-template-columns: minmax(0, 1fr) !important') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-extras-head-row') && sidebarAuroraCss.includes('grid-template-columns: minmax(0, 1fr) 36px !important'));
 check('Sidebar identity header and rail rhythm stay tight after profile polish', sidebarAuroraCss.includes('v0.73.46: tighter sidebar identity header and denser navigation rhythm') && sidebarAuroraCss.includes('justify-content: flex-start') && sidebarAuroraCss.includes('border-left: 1px solid color-mix') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-links') && sidebarAuroraCss.includes('gap: 5px !important') && sidebarAuroraCss.includes('.sidebar-rail-section') && sidebarAuroraCss.includes('height: 54px !important'));

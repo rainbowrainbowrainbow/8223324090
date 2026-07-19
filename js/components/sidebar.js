@@ -107,6 +107,10 @@ const Sidebar = (() => {
         '#settings'
     ]);
     const MAYSTERNYA_ACCESS_OVERRIDES = new Set(['maysternya_doli', 'customers', 'leads', 'omni']);
+    const SIDEBAR_TIMELINE_MODES = Object.freeze([
+        Object.freeze({ key: 'animators', label: 'Свята' }),
+        Object.freeze({ key: 'rooms', label: 'Кімнати' })
+    ]);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -628,7 +632,12 @@ const Sidebar = (() => {
 
     function _getDefaultExtraMenuItems(role) {
         const user = _getCurrentSidebarUser();
-        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user) && _isNavItemVisible(item, user, role));
+        const available = NAV_ITEMS.filter(item => item.href
+            && item.type !== 'group'
+            && (!role || hasAccess(item, role))
+            && _businessAllowsSidebarItem(item, user)
+            && _isNavItemVisible(item, user, role)
+            && _sidebarItemHasAvailableTimelineMode(item, user));
         const byHref = new Map(available.map(item => [item.href, item]));
         return _getRoleQuickAccessHrefs(role, user)
             .map(href => byHref.get(href))
@@ -657,6 +666,7 @@ const Sidebar = (() => {
                 if (role && !hasAccess(item, role)) return false;
                 if (!_businessAllowsSidebarItem(item, user)) return false;
                 if (!_isNavItemVisible(item, user, role)) return false;
+                if (!_sidebarItemHasAvailableTimelineMode(item, user)) return false;
                 return true;
             })
             .map(item => ({
@@ -821,7 +831,10 @@ const Sidebar = (() => {
         return UTILITY_RAIL_PRIMARY_HREFS
             .map(_findNavItemByHref)
             .filter(Boolean)
-            .filter(item => (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user) && _isNavItemVisible(item, user, role));
+            .filter(item => (!role || hasAccess(item, role))
+                && _businessAllowsSidebarItem(item, user)
+                && _isNavItemVisible(item, user, role)
+                && _sidebarItemHasAvailableTimelineMode(item, user));
     }
 
     function _railFavoriteItems(role, usedKeys = new Set()) {
@@ -848,6 +861,7 @@ const Sidebar = (() => {
                     if (role && !hasAccess(item, role)) return false;
                     if (!_businessAllowsSidebarItem(item, user)) return false;
                     if (!_isNavItemVisible(item, user, role)) return false;
+                    if (!_sidebarItemHasAvailableTimelineMode(item, user)) return false;
                     const href = String(item.href || '');
                     if (!href.startsWith('/') && !href.startsWith('#')) return false;
                     return !usedKeys.has(_railKeyForItem(item));
@@ -997,8 +1011,7 @@ const Sidebar = (() => {
         ];
     }
 
-    function _renderExtraMenuLink(item, currentPath, currentHash, options = {}) {
-        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+    function _renderExtraMenuLinkBody(item) {
         const statusText = _navStatusFor(item);
         const statusTone = _navStatusToneFor(item);
         const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
@@ -1014,9 +1027,38 @@ const Sidebar = (() => {
                 ${description}
             </span>
             ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : '<span class="sidebar-design-extra-open" aria-hidden="true">›</span>'}`;
-        const targetAttrs = _isExternalExtraHref(item.href) ? ' target="_blank" rel="noopener noreferrer"' : '';
-        return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}"${targetAttrs}>
-            ${body}
+        return body;
+    }
+
+    function _renderTimelineLauncher(item, timelineCard, currentPath, currentHash) {
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const activeMode = _sidebarCurrentTimelineView();
+        const modeLinks = timelineCard.modes.map(mode => {
+            const modeActive = mode.key === activeMode;
+            return `<a class="sidebar-design-timeline-segment${modeActive ? ' active' : ''}" href="${_escAttr(mode.href)}" data-sidebar-timeline-mode="${_escAttr(mode.key)}" aria-pressed="${modeActive ? 'true' : 'false'}"${modeActive ? ' aria-current="page"' : ''} aria-label="${_escAttr(`Відкрити таймлайн: ${mode.label}`)}">
+                <span class="sidebar-design-timeline-segment-check" aria-hidden="true"></span>
+                <span class="sidebar-design-timeline-segment-label">${_escHtml(mode.label)}</span>
+            </a>`;
+        }).join('');
+        return `<div class="sidebar-design-timeline-launcher${isActive ? ' active' : ''}" data-sidebar-timeline-launcher data-sidebar-timeline-mode-count="${timelineCard.modeCount}" data-sidebar-timeline-active-mode="${_escAttr(activeMode)}" role="group" aria-label="Швидкий вибір таймлайна">
+            <a class="sidebar-design-extra-link sidebar-design-timeline-main${isActive ? ' active' : ''}" href="${_escAttr(timelineCard.href)}">
+                ${_renderExtraMenuLinkBody(item)}
+            </a>
+            ${modeLinks}
+        </div>`;
+    }
+
+    function _renderExtraMenuLink(item, currentPath, currentHash, options = {}) {
+        const timelineCard = _sidebarTimelineCardModel(item);
+        if (timelineCard && timelineCard.modeCount === 0) return '';
+        if (timelineCard?.variant === 'launcher') {
+            return _renderTimelineLauncher(item, timelineCard, currentPath, currentHash);
+        }
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const navigationHref = timelineCard?.href || _sidebarNavigationHrefForBusinessItem(item);
+        const targetAttrs = _isExternalExtraHref(navigationHref) ? ' target="_blank" rel="noopener noreferrer"' : '';
+        return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(navigationHref)}"${targetAttrs}>
+            ${_renderExtraMenuLinkBody(item)}
         </a>`;
     }
 
@@ -1356,6 +1398,7 @@ const Sidebar = (() => {
             if (item.quickAccessOnly) continue;
             if (!_businessAllowsSidebarItem(item, savedUser)) continue;
             if (!_isNavItemVisible(item, savedUser, role)) continue;
+            if (!_sidebarItemHasAvailableTimelineMode(item, savedUser)) continue;
 
             // ── Skip no access ────────────────────────────────────
             if (role && !hasAccess(item, role)) continue;
@@ -1376,7 +1419,7 @@ const Sidebar = (() => {
             const statusText = _navStatusFor(item);
             const statusTone = _navStatusToneFor(item);
             const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
-            const itemHref = _sidebarHrefForBusinessItem(item, savedUser);
+            const itemHref = _sidebarNavigationHrefForBusinessItem(item, savedUser);
             const legacyClass = item.navLegacy ? ' nav-link--legacy' : '';
             const legacyAttr = item.navLegacy ? ' data-sidebar-legacy="hr"' : '';
             const bucketAttr = item.hrTeamBucket ? ` data-hr-team-bucket="${_escAttr(item.hrTeamBucket)}"` : '';
@@ -1573,6 +1616,177 @@ const Sidebar = (() => {
         if (!current || current === 'event_genix' || current === 'maysternya_doli') return href;
         if (!api.hasModule?.(current, 'timeline')) return href;
         return `/?businessContext=${encodeURIComponent(current)}`;
+    }
+
+    function _isSidebarTimelineItem(item = {}) {
+        const href = String(item.href || '').split(/[?#]/)[0].replace(/\.html$/i, '') || '/';
+        return _businessModuleForItem(item) === 'timeline'
+            && (href === '/' || href === '/maysternya-doli');
+    }
+
+    function _sidebarTimelineContextForItem(item = {}, user = _getCurrentSidebarUser()) {
+        const href = String(item.href || '').split(/[?#]/)[0].replace(/\.html$/i, '') || '/';
+        if (href === '/maysternya-doli') return 'maysternya_doli';
+        return window.CrmBusinessContext?.current?.(user) || 'event_genix';
+    }
+
+    function _sidebarBusinessProfileForContext(context) {
+        const api = window.CrmBusinessContext;
+        const direct = api?.profileFor?.(context);
+        if (direct) return direct;
+        const active = api?.activeProfile?.();
+        const activeContext = active?.key || active?.id || active?.businessContext;
+        return active && activeContext === context ? active : null;
+    }
+
+    function _sidebarTimelineViewHref(baseHref, mode) {
+        try {
+            const origin = window.location?.origin || 'http://localhost';
+            const url = new URL(baseHref, origin);
+            url.searchParams.set('timelineView', mode);
+            return `${url.pathname}${url.search}${url.hash}`;
+        } catch {
+            const [pathAndSearch, hash = ''] = String(baseHref || '/').split('#', 2);
+            const separator = pathAndSearch.includes('?') ? '&' : '?';
+            return `${pathAndSearch}${separator}timelineView=${encodeURIComponent(mode)}${hash ? `#${hash}` : ''}`;
+        }
+    }
+
+    function _getAvailableTimelineModes(item = { href: '/', access: 'timeline' }, user = _getCurrentSidebarUser()) {
+        if (!_isSidebarTimelineItem(item)) return [];
+        if (!_businessAllowsSidebarItem(item, user)) return [];
+        const context = _sidebarTimelineContextForItem(item, user);
+        const profile = _sidebarBusinessProfileForContext(context);
+        const timeline = profile?.timeline;
+
+        const baseHref = _sidebarHrefForBusinessItem(item, user);
+        const available = [SIDEBAR_TIMELINE_MODES[0]];
+        // Require the hydrated profile so stale local display settings cannot flash a Rooms launcher.
+        const roomsAvailable = context === 'event_genix'
+            && Boolean(timeline)
+            && timeline.mode === 'park'
+            && timeline.roomTimelineEnabled !== false;
+        if (roomsAvailable) available.push(SIDEBAR_TIMELINE_MODES[1]);
+
+        return available.map(mode => ({
+            ...mode,
+            href: _sidebarTimelineViewHref(baseHref, mode.key)
+        }));
+    }
+
+    function _sidebarTimelineCardModel(item = {}, user = _getCurrentSidebarUser()) {
+        if (!_isSidebarTimelineItem(item)) return null;
+        const modes = _getAvailableTimelineModes(item, user);
+        const modeCount = modes.length;
+        return {
+            modes,
+            modeCount,
+            variant: modeCount === 2 ? 'launcher' : (modeCount === 1 ? 'single' : 'hidden'),
+            href: modeCount === 1 ? modes[0].href : _sidebarHrefForBusinessItem(item, user)
+        };
+    }
+
+    function _sidebarItemHasAvailableTimelineMode(item = {}, user = _getCurrentSidebarUser()) {
+        if (!_isSidebarTimelineItem(item)) return true;
+        return _getAvailableTimelineModes(item, user).length > 0;
+    }
+
+    function _sidebarNavigationHrefForBusinessItem(item = {}, user = _getCurrentSidebarUser()) {
+        const timelineCard = _sidebarTimelineCardModel(item, user);
+        if (timelineCard) return timelineCard.href;
+        return _sidebarHrefForBusinessItem(item, user);
+    }
+
+    function _sidebarCurrentTimelineView(preferredView = '') {
+        const runtimeView = window.TimelineView?.current?.();
+        const candidates = [runtimeView, preferredView];
+        return String(candidates.find(value => SIDEBAR_TIMELINE_MODES.some(mode => mode.key === value)) || '');
+    }
+
+    function _syncSidebarTimelineLauncherState(preferredView = '') {
+        const activeMode = _sidebarCurrentTimelineView(preferredView);
+        document.querySelectorAll('[data-sidebar-timeline-launcher]').forEach(launcher => {
+            launcher.dataset.sidebarTimelineActiveMode = activeMode;
+            launcher.classList.toggle('has-active-mode', Boolean(activeMode));
+            launcher.querySelectorAll('[data-sidebar-timeline-mode]').forEach(link => {
+                const isActive = Boolean(activeMode) && link.dataset.sidebarTimelineMode === activeMode;
+                link.classList.toggle('active', isActive);
+                link.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                if (isActive) link.setAttribute('aria-current', 'page');
+                else link.removeAttribute('aria-current');
+            });
+        });
+    }
+
+    function _sidebarTimelinePath(value) {
+        const path = String(value || '/').replace(/\.html$/i, '').replace(/\/+$/, '');
+        return path || '/';
+    }
+
+    function _sidebarTimelineModeLinkTargetsCurrentSurface(link) {
+        const href = link?.getAttribute?.('href') || '';
+        if (!href) return false;
+        try {
+            const origin = window.location?.origin || 'http://localhost';
+            const target = new URL(href, origin);
+            if (_sidebarTimelinePath(target.pathname) !== _sidebarTimelinePath(window.location?.pathname)) return false;
+            const targetContext = target.searchParams.get('businessContext');
+            const currentContext = window.CrmBusinessContext?.current?.(_getCurrentSidebarUser());
+            return !targetContext || !currentContext || targetContext === currentContext;
+        } catch {
+            return false;
+        }
+    }
+
+    function _isSidebarPlainPrimaryClick(event) {
+        if (!event || event.defaultPrevented) return false;
+        if (typeof event.button === 'number' && event.button !== 0) return false;
+        return !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+    }
+
+    function _navigateSidebarTimelineModeFallback(link) {
+        const href = link?.getAttribute?.('href') || '';
+        if (!href) return;
+        if (typeof window.location?.assign === 'function') window.location.assign(href);
+        else window.location.href = href;
+    }
+
+    function _handleSidebarTimelineModeClick(event) {
+        const link = event?.target?.closest?.('[data-sidebar-timeline-mode][href]');
+        if (!link || !_isSidebarPlainPrimaryClick(event)) return false;
+        const mode = String(link.dataset.sidebarTimelineMode || '');
+        if (!SIDEBAR_TIMELINE_MODES.some(item => item.key === mode)) return false;
+        if (!_sidebarTimelineModeLinkTargetsCurrentSurface(link) || typeof window.TimelineView?.set !== 'function') {
+            return false;
+        }
+
+        event.preventDefault();
+        try {
+            const result = window.TimelineView.set(mode);
+            if (result && typeof result.then === 'function') {
+                result
+                    .then(nextMode => _syncSidebarTimelineLauncherState(nextMode))
+                    .catch(error => {
+                        console.error('[Sidebar] Timeline view switch failed', error);
+                        _navigateSidebarTimelineModeFallback(link);
+                    });
+            } else {
+                _syncSidebarTimelineLauncherState(result || mode);
+            }
+        } catch (error) {
+            console.error('[Sidebar] Timeline view switch failed', error);
+            _navigateSidebarTimelineModeFallback(link);
+        }
+        return true;
+    }
+
+    function _handleSidebarTimelineModeKeydown(event) {
+        if (event?.key !== ' ' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
+        const link = event.target?.closest?.('[data-sidebar-timeline-mode][href]');
+        if (!link) return false;
+        event.preventDefault();
+        link.click();
+        return true;
     }
 
     function _badgeTypeFor(item) {
@@ -1969,7 +2183,7 @@ const Sidebar = (() => {
                     ? ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`
                     : '';
                 const badgeType = _badgeTypeFor(item);
-                const itemHref = _sidebarHrefForBusinessItem(item, user);
+                const itemHref = _sidebarNavigationHrefForBusinessItem(item, user);
                 return `<a href="${_escAttr(itemHref)}" class="sidebar-rail-flyout-link${isActive ? ' active' : ''}" role="menuitem"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
                     ${_renderIcon(item.icon, 'sidebar-rail-flyout-icon')}
                     <span class="sidebar-rail-flyout-copy">
@@ -2423,6 +2637,7 @@ const Sidebar = (() => {
         _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);
         _bindProductivityQuickBlock(productivity);
+        _syncSidebarTimelineLauncherState();
 
         const alertsChip = document.getElementById('focusChipAlerts');
         if (alertsChip && alertsChip.dataset.alertsBound !== 'true') {
@@ -3545,7 +3760,7 @@ const Sidebar = (() => {
         const kind = options.kind || 'route';
         const meta = _railMetaForItem(item);
         const cue = options.cue || _railRouteCue(item);
-        const itemHref = _sidebarHrefForBusinessItem(item);
+        const itemHref = _sidebarNavigationHrefForBusinessItem(item);
         const shortLabel = _railShortLabel(item);
         const kindLabel = _railKindLabel(kind);
         return `<a href="${_escAttr(itemHref)}" class="sidebar-mini-link sidebar-mini-link--${_escAttr(kind)}${isActive ? ' active' : ''}" aria-label="${_escAttr(item.label)}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}
@@ -3700,10 +3915,15 @@ const Sidebar = (() => {
                 }
             });
         }
+        if (sidebar && sidebar.dataset.sidebarTimelineLauncherBound !== 'true') {
+            sidebar.dataset.sidebarTimelineLauncherBound = 'true';
+            sidebar.addEventListener('click', _handleSidebarTimelineModeClick);
+            sidebar.addEventListener('keydown', _handleSidebarTimelineModeKeydown);
+        }
         if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
             sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .focus-chip, .sidebar-primary-action, .sidebar-design-extra-link, .sidebar-mini-link, [data-sidebar-rail-item]');
+                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .focus-chip, .sidebar-primary-action, .sidebar-design-extra-link, .sidebar-mini-link, [data-sidebar-rail-item], [data-sidebar-timeline-mode]');
                 if (!link) return;
                 if (isMobileSidebar()) setMobileSidebarOpen(false);
             });
@@ -3882,6 +4102,9 @@ const Sidebar = (() => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c?.id) render('#' + c.id);
         initUserCard();
+    });
+    window.addEventListener('timeline:view-changed', event => {
+        _syncSidebarTimelineLauncherState(event?.detail?.view || '');
     });
 
     // ─── Sidebar action helpers ──────────────────────────────────

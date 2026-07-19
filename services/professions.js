@@ -64,7 +64,8 @@ const HIDDEN_PROFESSION_KEYS = new Set([
     'head_cook',
     'head_chef',
     'cleaning',
-    'technician'
+    'technician',
+    'intern'
 ]);
 
 function isHiddenProfessionKey(value) {

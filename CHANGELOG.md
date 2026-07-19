@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.106 - ZP KPI profession cleanup
+
+### HR / ЗП і KPI / Profession cleanup / (19.07.2026) [codex]
+- **Fallback-список основної професії** — у HR-картці лишено тільки професії із затвердженого плану: керівництво/офіс, арт, ігрові зони, кухня, зал, операції та безпека.
+- **Legacy-дублі приховано** — `intern` додано до прихованих legacy/зайвих професій разом із `bartender`, `cleaning`, `head_chef`, `head_cook`, `hr_manager`, `instructor`, `technician`.
+- **Payroll guard** — нові payroll profiles більше не можна створювати для hidden або inactive професій, щоб ЗП/KPI не підхоплювали зайві ролі. Live staff/payroll/attendance дані цим релізом не змінювались.
+
+---
+
 ## v0.79.105 - HR structure tree production polish
 
 ### HR / Structure tree / Production QA / (19.07.2026) [codex]

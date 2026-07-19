@@ -974,7 +974,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /data-schedule-view-mode="day"/);
     assert.match(html, /data-schedule-view-mode="week"/);
     assert.doesNotMatch(html, /id="periodSelector"[\s\S]*data-schedule-view-mode="rooms"/);
-    assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="rooms"[\s\S]*>Банкети<\/button>/);
+    assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="rooms"[\s\S]*>Кімнати<\/button>/);
     assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="animators"[\s\S]*>Свята<\/button>/);
     assert.doesNotMatch(html, /id="timelineHolidaysToggle"[^>]*data-timeline-holidays-toggle/);
     assert.match(html, /<option value="rooms" selected>Кімнати<\/option>/);

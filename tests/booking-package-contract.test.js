@@ -4533,6 +4533,8 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /entryPriceRules: \[\]/);
     assert.match(bookingJs, /function preloadBookingEntryPriceRules\(/);
     assert.match(bookingJs, /function requestBookingEntryPriceRulesPreview\(/);
+    assert.match(bookingJs, /function normalizeBookingNonNegativeCountValue\(value\)/);
+    assert.match(bookingJs, /obj\.banquetAdults = formData\.kitchenEnabled \? normalizeBookingNonNegativeCountValue\(document\.getElementById\('banquetAdults'\)\?\.value\) : null;/);
     assert.match(bookingJs, /apiGetCenterPriceRule\(code\)/);
     assert.match(bookingJs, /if \(loadedRules\.length && options\.render !== false && shouldRenderBookingEntryPreviewAfterLoad\(\)\)/);
     assert.match(bookingJs, /function bookingMenuPositionIsEntry\(/);

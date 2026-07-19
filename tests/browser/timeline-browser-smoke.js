@@ -158,6 +158,14 @@ function isBookingCreateEndpoint(pathname) {
         || /^\/api\/banquets\/[^/]+\/(?:member-booking|activity-booking)$/i.test(pathname);
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(error) {
+    return /\breturned 429\b/.test(String(error?.message || error || ''));
+}
+
 async function readBody(res) {
     const text = await res.text();
     try {
@@ -183,6 +191,24 @@ async function fetchJson(base, path, options = {}) {
         throw new Error(`${path} returned ${res.status}: ${detail}`);
     }
     return body;
+}
+
+async function fetchJsonWithRetry(base, path, options = {}, retryOptions = {}) {
+    const attempts = Number(retryOptions.attempts || 5);
+    const delayMs = Number(retryOptions.delayMs || 15000);
+    const label = retryOptions.label || path;
+    let lastError = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+            return await fetchJson(base, path, options);
+        } catch (error) {
+            lastError = error;
+            if (!isRateLimitError(error) || attempt >= attempts) break;
+            console.warn(`${label}: rate limited during cleanup, retry ${attempt + 1}/${attempts}`);
+            await sleep(delayMs);
+        }
+    }
+    throw lastError;
 }
 
 async function login(base) {
@@ -332,18 +358,22 @@ async function createBooking(base, token, body) {
 
 async function deleteBooking(base, token, bookingId) {
     if (!bookingId) return;
-    await fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`), {
-        method: 'DELETE',
-        token
-    }).catch(err => console.warn(`cleanup booking ${bookingId} failed: ${err.message}`));
+    await fetchJsonWithRetry(
+        base,
+        scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`),
+        { method: 'DELETE', token },
+        { label: `cleanup booking ${bookingId}` }
+    ).catch(err => console.warn(`cleanup booking ${bookingId} failed: ${err.message}`));
 }
 
 async function deleteCustomer(base, token, customerId) {
     if (!customerId) return;
-    await fetchJson(base, scopedPath(`/api/customers/${encodeURIComponent(customerId)}`), {
-        method: 'DELETE',
-        token
-    }).catch(err => console.warn(`cleanup customer ${customerId} failed: ${err.message}`));
+    await fetchJsonWithRetry(
+        base,
+        scopedPath(`/api/customers/${encodeURIComponent(customerId)}`),
+        { method: 'DELETE', token },
+        { label: `cleanup customer ${customerId}` }
+    ).catch(err => console.warn(`cleanup customer ${customerId} failed: ${err.message}`));
 }
 
 function parseJsonFromStdout(stdout) {
@@ -424,11 +454,19 @@ function assertQaCleanupApplyVerified(report, groupId) {
     assert.equal(after?.status, 'already_cancelled', `qa cleanup apply verifies cancelled group ${groupId}: ${after?.reason || after?.status}`);
 }
 
-async function verifyBookingsNotActiveInTimeline(base, token, date, bookingIds) {
-    const rows = await fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token });
-    const activeIds = new Set((Array.isArray(rows) ? rows : []).map(item => String(item.id)));
-    const leaked = bookingIds.map(String).filter(id => activeIds.has(id));
-    assert.deepEqual(leaked, [], `cleanup leaves no active bookings in rooms timeline API for ${date}`);
+async function verifyBookingsNotActiveInTimeline(base, token, date, bookingIds, timelineViews = ['rooms', 'animators']) {
+    const leaked = [];
+    for (const timelineView of timelineViews) {
+        const rows = await fetchJsonWithRetry(
+            base,
+            scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView }),
+            { token },
+            { label: `cleanup verify ${timelineView} timeline ${date}` }
+        );
+        const activeIds = new Set((Array.isArray(rows) ? rows : []).map(item => String(item.id)));
+        leaked.push(...bookingIds.map(String).filter(id => activeIds.has(id)).map(id => `${timelineView}:${id}`));
+    }
+    assert.deepEqual(leaked, [], `cleanup leaves no active bookings in timeline API for ${date}`);
 }
 
 async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], date = '') {
@@ -462,6 +500,7 @@ async function banquetSnapshot(base, token, bookingId) {
 }
 
 function groupId(snapshot = {}) {
+    if (!snapshot || typeof snapshot !== 'object') return '';
     return String(snapshot.groupId || snapshot.group?.id || '').trim();
 }
 
@@ -536,6 +575,22 @@ async function collectTimelineDiagnostics(page, label, error = null) {
                 .join('');
             return `${el.tagName?.toLowerCase?.() || 'node'}${id}${classes}`;
         };
+        const isControlledOffCanvasSidebar = (el, rect) => {
+            const sidebar = el?.closest?.('#sidebarNav');
+            if (!sidebar) return false;
+            const sidebarRect = sidebar.getBoundingClientRect?.();
+            const sidebarStyle = getComputedStyle(sidebar);
+            const documentFitsViewport = document.documentElement.scrollWidth <= viewportWidth + 1;
+            const sidebarRailWidth = Math.max(48, Math.min(72, viewportWidth * 0.1));
+            return Boolean(
+                sidebarRect
+                && sidebarRect.width > 0
+                && sidebarRect.right <= sidebarRailWidth
+                && sidebarRect.left < -1
+                && documentFitsViewport
+                && ['fixed', 'absolute', 'sticky'].includes(sidebarStyle.position)
+            );
+        };
         const overflowElements = Array.from(document.body?.querySelectorAll('*') || [])
             .map(el => {
                 const rect = el.getBoundingClientRect?.();
@@ -550,6 +605,7 @@ async function collectTimelineDiagnostics(page, label, error = null) {
                     overflowRight,
                     overflowLeft,
                     controlledTimelineScroll: Boolean(el.closest('.timeline-scroll')),
+                    controlledOffCanvasSidebar: isControlledOffCanvasSidebar(el, rect),
                     position: style.position,
                     overflow: style.overflow
                 };
@@ -557,10 +613,13 @@ async function collectTimelineDiagnostics(page, label, error = null) {
             .filter(Boolean)
             .sort((a, b) => Math.max(b.overflowRight, b.overflowLeft) - Math.max(a.overflowRight, a.overflowLeft))
         const uncontrolledOverflowElements = overflowElements
-            .filter(item => !item.controlledTimelineScroll)
+            .filter(item => !item.controlledTimelineScroll && !item.controlledOffCanvasSidebar)
             .slice(0, 10);
         const controlledOverflowElements = overflowElements
             .filter(item => item.controlledTimelineScroll)
+            .slice(0, 10);
+        const controlledOffCanvasSidebarElements = overflowElements
+            .filter(item => item.controlledOffCanvasSidebar)
             .slice(0, 10);
         return {
             label: currentLabel,
@@ -666,7 +725,8 @@ async function collectTimelineDiagnostics(page, label, error = null) {
                 bodyClientWidth: document.body?.clientWidth || 0,
                 offenders: overflowElements.slice(0, 10),
                 uncontrolledOffenders: uncontrolledOverflowElements,
-                controlledTimelineScrollOffenders: controlledOverflowElements
+                controlledTimelineScrollOffenders: controlledOverflowElements,
+                controlledOffCanvasSidebarOffenders: controlledOffCanvasSidebarElements
             }
         };
     }, label);
@@ -771,6 +831,19 @@ async function waitForTimelineLayoutSettle(page, label) {
             await page.evaluate(() => new Promise(resolve => {
                 requestAnimationFrame(() => requestAnimationFrame(resolve));
             }));
+            await page.waitForFunction(tolerance => {
+                const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+                const documentOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
+                const shellOverflowX = Array.from(document.querySelectorAll('.header, #main-content, .main-content'))
+                    .map(el => {
+                        const rect = el.getBoundingClientRect?.();
+                        const style = getComputedStyle(el);
+                        if (!rect || rect.width <= 0 || rect.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return 0;
+                        return Math.max(0, rect.right - viewportWidth);
+                    })
+                    .reduce((max, value) => Math.max(max, Math.round(value * 100) / 100), 0);
+                return documentOverflowX <= tolerance && shellOverflowX <= tolerance;
+            }, TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, { timeout: 5000 });
             return;
         } catch (error) {
             lastError = error;
@@ -958,85 +1031,263 @@ async function ensureKitchenTicketQuoteReady(page, label, counts = {}) {
     return snapshot;
 }
 
+function sourceBookingIdOf(sourceBooking) {
+    if (sourceBooking && typeof sourceBooking === 'object') return String(sourceBooking.id || sourceBooking.bookingId || sourceBooking.booking_id || '').trim();
+    return String(sourceBooking || '').trim();
+}
+
+async function ensureActivityFirstKitchenBridgeReady(page, sourceBooking, label, options = {}) {
+    const sourceBookingId = sourceBookingIdOf(sourceBooking);
+    assert.ok(sourceBookingId, `${label}: source booking id is available`);
+    const snapshot = await page.evaluate(async ({ sourceBooking, sourceBookingId, expectCreatePath }) => {
+        const state = window.BookingDrawerState || {};
+        const read = () => {
+            const roomContext = state.roomSelectionBanquetContext || {};
+            const sourceContext = state.roomSourceContext || roomContext.roomSourceContext || {};
+            let createPath = null;
+            try {
+                const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
+                createPath = typeof window.resolveBookingCreatePath === 'function'
+                    ? window.resolveBookingCreatePath({ formData }, state)
+                    : null;
+            } catch (error) {
+                createPath = { error: error?.message || String(error) };
+            }
+            return {
+                sourceBookingId: String(roomContext.sourceBookingId || sourceContext.sourceBookingId || '').trim(),
+                groupId: String(roomContext.groupId || sourceContext.groupId || state.selectedBanquetGroupId || '').trim(),
+                sourceRole: sourceContext.sourceRole || roomContext.sourceRole || '',
+                staleReason: sourceContext.staleReason || roomContext.staleReason || '',
+                selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
+                selectorValue: document.getElementById('bookingBanquetGroupSelect')?.value || '',
+                selectorText: document.getElementById('bookingBanquetGroupSelect')?.textContent || '',
+                hintText: document.getElementById('bookingBanquetGroupHint')?.textContent || '',
+                createPath
+            };
+        };
+
+        let current = read();
+        if (String(current.sourceBookingId) !== String(sourceBookingId)) {
+            const normalized = typeof normalizeRoomDayBookingEntry === 'function'
+                ? normalizeRoomDayBookingEntry(sourceBooking || {})
+                : (sourceBooking || {});
+            const token = typeof nextBookingRoomSelectionContextToken === 'function'
+                ? nextBookingRoomSelectionContextToken()
+                : Number(state.roomSelectionContextRequestToken || 0) + 1;
+            state.roomSelectionContextRequestToken = token;
+            const sourceContext = typeof setBookingRoomSourceContext === 'function'
+                ? setBookingRoomSourceContext(normalized, {
+                    generationId: token,
+                    sourceRole: 'activity',
+                    source: 'timeline_browser_smoke_activity_first_kitchen_bridge'
+                })
+                : {
+                    generationId: token,
+                    drawerGenerationId: Number(state.drawerGenerationId || 0) || 0,
+                    sourceBookingId,
+                    sourceRole: 'activity',
+                    customerId: normalized.customerId ?? normalized.customer_id ?? null,
+                    date: normalized.date || '',
+                    room: normalized.room || document.getElementById('roomSelect')?.value || null,
+                    time: normalized.time || document.getElementById('bookingTime')?.value || '',
+                    source: 'timeline_browser_smoke_activity_first_kitchen_bridge'
+                };
+            let context = null;
+            if (typeof resolveRoomSelectionBanquetContext === 'function') {
+                context = await resolveRoomSelectionBanquetContext(normalized, token).catch(error => ({
+                    sourceBookingId,
+                    sourceBooking: normalized,
+                    sourceError: error?.message || String(error),
+                    source: 'timeline_browser_smoke_activity_first_kitchen_bridge'
+                }));
+            }
+            if (!context && typeof sourceBookingToBanquetContext === 'function') {
+                context = sourceBookingToBanquetContext(normalized);
+            }
+            if (!context) {
+                context = {
+                    sourceBookingId,
+                    sourceBooking: normalized,
+                    sourceCustomerId: normalized.customerId ?? normalized.customer_id ?? null,
+                    sourceCustomerName: normalized.customerName || normalized.customer_name || null,
+                    sourceRoom: normalized.room || null,
+                    sourceTime: normalized.time || '',
+                    source: 'timeline_browser_smoke_activity_first_kitchen_bridge'
+                };
+            }
+            state.roomSourceContext = state.roomSourceContext || sourceContext;
+            state.roomSelectionBanquetContext = typeof attachBookingRoomSourceContext === 'function'
+                ? attachBookingRoomSourceContext(context, state.roomSourceContext)
+                : { ...context, roomSourceContext: state.roomSourceContext };
+            state.autoFilledBanquetFromRoom = state.roomSelectionBanquetContext?.groupId
+                ? state.roomSelectionBanquetContext
+                : null;
+            state.selectedBanquetGroupId = state.roomSelectionBanquetContext?.groupId || '';
+            state.manualBanquetGroupSelection = false;
+            state.standaloneBookingOverride = false;
+            if (typeof syncAutoFilledBanquetGuestsFromRoom === 'function') {
+                syncAutoFilledBanquetGuestsFromRoom(normalized);
+            }
+            if (!document.getElementById('selectedCustomerId')?.value && typeof hydrateBookingCustomerSelection === 'function') {
+                await hydrateBookingCustomerSelection(normalized, { renderSummary: false }).catch(() => null);
+            }
+            if (typeof renderBookingBanquetGroupSelector === 'function') renderBookingBanquetGroupSelector();
+            if (typeof syncBookingGuestArrivalField === 'function') syncBookingGuestArrivalField();
+            if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        }
+        current = read();
+        return {
+            ...current,
+            expectCreatePath: Boolean(expectCreatePath)
+        };
+    }, { sourceBooking, sourceBookingId, expectCreatePath: Boolean(options.expectCreatePath) });
+
+    assert.equal(String(snapshot.sourceBookingId), sourceBookingId, `${label}: source bridge keeps source booking ${sourceBookingId}; snapshot=${JSON.stringify(snapshot)}`);
+    assert.equal(String(snapshot.staleReason || ''), '', `${label}: source bridge is not stale; snapshot=${JSON.stringify(snapshot)}`);
+    if (options.expectCreatePath) {
+        assert.equal(snapshot.createPath?.blocked, false, `${label}: create path is not blocked; snapshot=${JSON.stringify(snapshot)}`);
+        assert.equal(snapshot.createPath?.kind, 'source_activity_to_kitchen', `${label}: create path targets source activity -> kitchen; snapshot=${JSON.stringify(snapshot)}`);
+        assert.equal(String(snapshot.createPath?.sourceBookingId || ''), sourceBookingId, `${label}: create payload path carries source booking id; snapshot=${JSON.stringify(snapshot)}`);
+    }
+    return snapshot;
+}
+
+async function acknowledgePreorderWarningIfVisible(page, label) {
+    const visible = await page.waitForFunction(() => {
+        const modal = document.getElementById('confirmModal');
+        const yes = document.getElementById('confirmYes');
+        const title = document.getElementById('confirmTitle')?.textContent || '';
+        const message = document.getElementById('confirmMessage')?.textContent || '';
+        const style = modal ? getComputedStyle(modal) : null;
+        return Boolean(
+            modal
+            && yes
+            && !yes.disabled
+            && !modal.classList.contains('hidden')
+            && style?.display !== 'none'
+            && style?.visibility !== 'hidden'
+            && /Передзамовлення|завдаток/i.test(`${title}\n${message}`)
+        );
+    }, undefined, { timeout: 1500 }).then(() => true).catch(() => false);
+    if (!visible) return false;
+    await page.locator('#confirmYes').click();
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('confirmModal');
+        const style = modal ? getComputedStyle(modal) : null;
+        return !modal || modal.classList.contains('hidden') || style?.display === 'none' || style?.visibility === 'hidden';
+    }, undefined, { timeout: 5000 }).catch(error => {
+        throw new Error(`${label}: preorder warning confirmation did not close: ${error?.message || error}`);
+    });
+    return true;
+}
+
 async function fillKitchenAndSubmit(page, sourceBookingId) {
+    const sourceBooking = sourceBookingId && typeof sourceBookingId === 'object' ? sourceBookingId : { id: sourceBookingId };
+    sourceBookingId = sourceBookingIdOf(sourceBooking);
+    await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, 'source activity -> kitchen bridge before ticket quote');
     await ensureKitchenTicketQuoteReady(page, 'source activity -> kitchen');
+    await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, 'source activity -> kitchen bridge before submit', { expectCreatePath: true });
     const observedPostPaths = [];
     const requestHandler = request => {
         if (request.method() !== 'POST') return;
         observedPostPaths.push(new URL(request.url()).pathname);
     };
     page.on('request', requestHandler);
-    const responsePromise = page.waitForResponse(response =>
-        response.url().includes('/api/banquets/from-source/member-booking')
-        && response.request().method() === 'POST'
-    ).catch(error => error);
-    await page.evaluate(() => {
-        const guests = document.getElementById('banquetGuests');
-        if (guests && !guests.value) guests.value = '4';
-        if (typeof setBookingMenuPositions === 'function') {
-            setBookingMenuPositions([{
-                productId: 'task37-ui-menu',
-                title: 'Task37 UI menu',
-                quantity: 1,
-                unitPrice: 4500,
-                subtotal: 4500,
-                kitchenType: 'menu',
-                servingUnit: 'portion',
-                servingTime: '14:00'
-            }]);
+    try {
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            const responsePromise = page.waitForResponse(response =>
+                response.url().includes('/api/banquets/from-source/member-booking')
+                && response.request().method() === 'POST'
+            ).catch(error => error);
+            await page.evaluate(() => {
+                const setInputValue = (id, value) => {
+                    const input = document.getElementById(id);
+                    if (!input) return;
+                    input.value = String(value);
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                };
+                setInputValue('banquetGuests', document.getElementById('banquetGuests')?.value || '4');
+                setInputValue('banquetAdults', document.getElementById('banquetAdults')?.value || '0');
+                if (typeof setBookingMenuPositions === 'function') {
+                    setBookingMenuPositions([{
+                        productId: 'task37-ui-menu',
+                        title: 'Task37 UI menu',
+                        quantity: 1,
+                        unitPrice: 4500,
+                        subtotal: 4500,
+                        kitchenType: 'menu',
+                        servingUnit: 'portion',
+                        servingTime: '14:00'
+                    }]);
+                }
+                if (typeof setBookingServiceEvents === 'function') {
+                    setBookingServiceEvents([{ type: 'room_setup', title: 'Task37 setup', time: '13:45' }], { render: true });
+                }
+                document.getElementById('bookingNotes').value = 'Task37 kitchen browser smoke';
+            });
+            await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, `source activity -> kitchen bridge before submit attempt ${attempt}`, { expectCreatePath: true });
+            await page.locator('#bookingSubmitBtn').click();
+            await acknowledgePreorderWarningIfVisible(page, 'source activity -> kitchen');
+            const response = await responsePromise;
+            if (!response || response instanceof Error) {
+                const diagnostics = await page.evaluate(sourceId => ({
+                    sourceBookingId: sourceId,
+                    panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+                    submitDisabled: Boolean(document.getElementById('bookingSubmitBtn')?.disabled),
+                    bookingTime: document.getElementById('bookingTime')?.value || '',
+                    bookingLine: document.getElementById('bookingLine')?.value || '',
+                    selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
+                    room: document.getElementById('roomSelect')?.value || '',
+                    guests: document.getElementById('banquetGuests')?.value || '',
+                    adults: document.getElementById('banquetAdults')?.value || '',
+                    submitText: document.getElementById('bookingSubmitBtn')?.textContent?.trim() || '',
+                    selectorValue: document.getElementById('bookingBanquetGroupSelect')?.value || '',
+                    selectorText: document.getElementById('bookingBanquetGroupSelect')?.textContent || '',
+                    hintText: document.getElementById('bookingBanquetGroupHint')?.textContent || '',
+                    ticketIssue: window.BookingTickets?.validationIssue?.() || null,
+                    ticketQuoteStatus: document.getElementById('bookingTicketQuoteState')?.textContent?.trim() || '',
+                    ticketCollect: window.BookingTickets?.collect?.() || {},
+                    activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+                    drawerState: {
+                        selectedBanquetGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+                        banquetCreationMode: BookingDrawerState?.banquetCreationMode || '',
+                        activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+                        activeBanquetRoleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+                        sourceBookingId: BookingDrawerState?.sourceBookingId || BookingDrawerState?.activeBanquetSourceBookingId || ''
+                    },
+                    validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+                    modalText: document.querySelector('.modal:not(.hidden), .confirm-modal, [role="dialog"]')?.textContent?.trim() || '',
+                    notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                        .map(node => String(node.textContent || '').trim())
+                        .filter(Boolean)
+                        .slice(-5)
+                }), sourceBookingId);
+                throw new Error(`source activity -> kitchen request was not observed: ${JSON.stringify({
+                    waitError: response?.message || String(response || ''),
+                    diagnostics,
+                    observedPostPaths
+                })}`);
+            }
+            const body = await response.json();
+            if (response.status() === 429 && attempt < 3) {
+                console.warn(`source activity -> kitchen rate limited; retry ${attempt + 1}/3`);
+                await page.waitForFunction(() => {
+                    const submit = document.getElementById('bookingSubmitBtn');
+                    return Boolean(submit && !submit.disabled);
+                }, undefined, { timeout: 15000 }).catch(() => {});
+                await sleep(15000);
+                continue;
+            }
+            assert.equal(response.ok(), true, `source activity -> kitchen endpoint returns ok: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.equal(body.success, true, `source activity -> kitchen response success: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.equal(String(body.group?.primaryBookingId || body.banquetGroup?.group?.primaryBookingId || body.banquetGroup?.group?.primary_booking_id || sourceBookingId), String(sourceBookingId));
+            return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
         }
-        if (typeof setBookingServiceEvents === 'function') {
-            setBookingServiceEvents([{ type: 'room_setup', title: 'Task37 setup', time: '13:45' }], { render: true });
-        }
-        document.getElementById('bookingNotes').value = 'Task37 kitchen browser smoke';
-        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    const response = await responsePromise;
-    page.off('request', requestHandler);
-    if (!response || response instanceof Error) {
-        const diagnostics = await page.evaluate(sourceId => ({
-            sourceBookingId: sourceId,
-            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
-            submitDisabled: Boolean(document.getElementById('bookingSubmitBtn')?.disabled),
-            bookingTime: document.getElementById('bookingTime')?.value || '',
-            bookingLine: document.getElementById('bookingLine')?.value || '',
-            selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
-            room: document.getElementById('roomSelect')?.value || '',
-            guests: document.getElementById('banquetGuests')?.value || '',
-            adults: document.getElementById('banquetAdults')?.value || '',
-            submitText: document.getElementById('bookingSubmitBtn')?.textContent?.trim() || '',
-            selectorValue: document.getElementById('bookingBanquetGroupSelect')?.value || '',
-            selectorText: document.getElementById('bookingBanquetGroupSelect')?.textContent || '',
-            hintText: document.getElementById('bookingBanquetGroupHint')?.textContent || '',
-            ticketIssue: window.BookingTickets?.validationIssue?.() || null,
-            ticketQuoteStatus: document.getElementById('bookingTicketQuoteState')?.textContent?.trim() || '',
-            ticketCollect: window.BookingTickets?.collect?.() || {},
-            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
-            drawerState: {
-                selectedBanquetGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
-                banquetCreationMode: BookingDrawerState?.banquetCreationMode || '',
-                activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
-                activeBanquetRoleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
-                sourceBookingId: BookingDrawerState?.sourceBookingId || BookingDrawerState?.activeBanquetSourceBookingId || ''
-            },
-            validation: window.BookingForm?.validate ? BookingForm.validate() : null,
-            modalText: document.querySelector('.modal:not(.hidden), .confirm-modal, [role="dialog"]')?.textContent?.trim() || '',
-            notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
-                .map(node => String(node.textContent || '').trim())
-                .filter(Boolean)
-                .slice(-5)
-        }), sourceBookingId);
-        throw new Error(`source activity -> kitchen request was not observed: ${JSON.stringify({
-            waitError: response?.message || String(response || ''),
-            diagnostics,
-            observedPostPaths
-        })}`);
+    } finally {
+        page.off('request', requestHandler);
     }
-    const body = await response.json();
-    assert.equal(response.ok(), true, 'source activity -> kitchen endpoint returns ok');
-    assert.equal(body.success, true, 'source activity -> kitchen response success');
-    assert.equal(String(body.group?.primaryBookingId || body.banquetGroup?.group?.primaryBookingId || body.banquetGroup?.group?.primary_booking_id || sourceBookingId), String(sourceBookingId));
-    return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+    throw new Error('source activity -> kitchen retry loop exited unexpectedly');
 }
 
 async function assertTimelineDeepLinkSwitching(page, base, date) {
@@ -1156,9 +1407,16 @@ async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
         && response.request().method() === 'POST'
     );
     await page.evaluate(() => {
+        const setInputValue = (id, value) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.value = String(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
         if (typeof setBookingKitchenEnabled === 'function') setBookingKitchenEnabled(true, { markDirty: true });
-        const guests = document.getElementById('banquetGuests');
-        if (guests) guests.value = guests.value || '4';
+        setInputValue('banquetGuests', document.getElementById('banquetGuests')?.value || '4');
+        setInputValue('banquetAdults', document.getElementById('banquetAdults')?.value || '0');
         if (typeof setBookingMenuPositions === 'function') {
             setBookingMenuPositions([{
                 productId: 'task37-empty-cell-menu',
@@ -1174,6 +1432,7 @@ async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
         document.getElementById('bookingNotes').value = 'Task37 active inspector empty cell smoke';
         document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
+    await acknowledgePreorderWarningIfVisible(page, 'active inspector -> empty cell member');
     const response = await responsePromise;
     page.off('request', requestHandler);
     const body = await response.json();
@@ -1385,6 +1644,7 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
             cancelable: true
         }));
     });
+    await acknowledgePreorderWarningIfVisible(page, 'booking create occupied-slot conflict');
     const conflictResult = await Promise.race([
         conflictResponse,
         page.waitForTimeout(5000).then(() => null)
@@ -1461,6 +1721,7 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
             cancelable: true
         }));
     });
+    await acknowledgePreorderWarningIfVisible(page, 'booking create retry after conflict');
     const createResponse = await createResponsePromise;
     const createBody = await createResponse.json();
     const createdBooking = createBody.booking || createBody.mainBooking;
@@ -1501,6 +1762,7 @@ async function submitActivityFromKitchen(page) {
         document.getElementById('bookingNotes').value = 'Task37 activity browser smoke';
         document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
+    await acknowledgePreorderWarningIfVisible(page, 'source kitchen -> activity');
     const response = await responsePromise;
     const body = await response.json();
     assert.equal(response.ok(), true, 'source kitchen -> activity endpoint returns ok');
@@ -2007,6 +2269,22 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
                 .join('');
             return `${el.tagName?.toLowerCase?.() || 'node'}${id}${classes}`;
         };
+        const isControlledOffCanvasSidebar = (el, rect) => {
+            const sidebar = el?.closest?.('#sidebarNav');
+            if (!sidebar) return false;
+            const sidebarRect = sidebar.getBoundingClientRect?.();
+            const sidebarStyle = getComputedStyle(sidebar);
+            const documentFitsViewport = document.documentElement.scrollWidth <= viewportWidth + 1;
+            const sidebarRailWidth = Math.max(48, Math.min(72, viewportWidth * 0.1));
+            return Boolean(
+                sidebarRect
+                && sidebarRect.width > 0
+                && sidebarRect.right <= sidebarRailWidth
+                && sidebarRect.left < -1
+                && documentFitsViewport
+                && ['fixed', 'absolute', 'sticky'].includes(sidebarStyle.position)
+            );
+        };
         const allOverflowOffenders = Array.from(document.body?.querySelectorAll('*') || [])
             .map(el => {
                 const rect = el.getBoundingClientRect?.();
@@ -2022,16 +2300,20 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
                     width: Math.round(rect.width * 100) / 100,
                     overflowRight,
                     overflowLeft,
-                    controlledTimelineScroll: Boolean(el.closest('.timeline-scroll'))
+                    controlledTimelineScroll: Boolean(el.closest('.timeline-scroll')),
+                    controlledOffCanvasSidebar: isControlledOffCanvasSidebar(el, rect)
                 };
             })
             .filter(Boolean)
             .sort((a, b) => Math.max(b.overflowRight, b.overflowLeft) - Math.max(a.overflowRight, a.overflowLeft));
         const uncontrolledOverflowOffenders = allOverflowOffenders
-            .filter(item => !item.controlledTimelineScroll)
+            .filter(item => !item.controlledTimelineScroll && !item.controlledOffCanvasSidebar)
             .slice(0, 8);
         const controlledTimelineScrollOffenders = allOverflowOffenders
             .filter(item => item.controlledTimelineScroll)
+            .slice(0, 8);
+        const controlledOffCanvasSidebarOffenders = allOverflowOffenders
+            .filter(item => item.controlledOffCanvasSidebar)
             .slice(0, 8);
         const uncontrolledOverflowX = uncontrolledOverflowOffenders.reduce(
             (max, item) => Math.max(max, item.overflowRight, item.overflowLeft),
@@ -2125,6 +2407,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             overflowOffenders: allOverflowOffenders.slice(0, 8),
             uncontrolledOverflowOffenders,
             controlledTimelineScrollOffenders,
+            controlledOffCanvasSidebarOffenders,
             configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
             activeZoom: document.querySelector('.timeline-header-filters .zoom-btn.active')?.dataset.zoom || '',
             headerLeft: headerRect ? Math.round(headerRect.left * 100) / 100 : Number.NaN,
@@ -2229,7 +2512,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
         assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px actions=${metrics.actionsWidth}px`);
         assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, `utility row does not stretch beyond the date and type controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px`);
-        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}`);
+        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(metrics.controlledOffCanvasSidebarOffenders)}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at ${label}: ${metrics.actionsBorderLeftWidth}px`);
@@ -2279,7 +2562,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(openMetrics.viewPanelWidth <= Math.min(1040, openMetrics.viewportWidth) + 2, `open view panel stays shelf-width at ${label}: ${openMetrics.viewPanelWidth}px`);
         assert.ok(openMetrics.viewPanelHeight <= 220, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelRight}px`);
-        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open attached view panel does not create uncontrolled body overflow at ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}`);
+        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open attached view panel does not create uncontrolled body overflow at ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(openMetrics.controlledOffCanvasSidebarOffenders)}`);
         await setTimelineViewPanelOpen(page, false);
     }
 
@@ -2314,7 +2597,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.dateControlsHeight <= 104, `date controls wrap compactly at narrow ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 156, `command center avoids a large empty band at narrow ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96, `closed filters state keeps date row close to timeline at narrow ${label}: ${metrics.closedDateToTimelineGap}px`);
-        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}`);
+        assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(metrics.controlledOffCanvasSidebarOffenders)}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not leak horizontal overflow at narrow ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at narrow ${label}: ${metrics.actionsBorderLeftWidth}px`);
         assert.ok(metrics.headerLeft >= -1 && metrics.headerRight <= metrics.viewportWidth + 1, `timeline header remains within viewport at narrow ${label}: ${metrics.headerLeft}px..${metrics.headerRight}px`);
@@ -2346,7 +2629,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(openMetrics.viewPanelCoversTimeScale, false, `open filter shelf does not cover timeline time labels at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px scale=${openMetrics.timeScaleTop}px`);
         assert.equal(openMetrics.viewPanelCoversTimelineLines, false, `open filter shelf does not cover timeline rows at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px lines=${openMetrics.timelineLinesTop}px`);
         assert.ok(openMetrics.viewPanelHeight <= 320, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
-        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open view panel does not create uncontrolled body overflow at narrow ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}`);
+        assert.ok(openMetrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `open view panel does not create uncontrolled body overflow at narrow ${label}: uncontrolled=${openMetrics.uncontrolledOverflowX}; body=${openMetrics.bodyOverflowX}; pageScroll=${openMetrics.pageScrollableX}; offenders=${JSON.stringify(openMetrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(openMetrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(openMetrics.controlledOffCanvasSidebarOffenders)}`);
         assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside the right viewport edge at narrow ${label}: ${openMetrics.viewPanelRight}px`);
         await setTimelineViewPanelOpen(page, false);
@@ -2448,7 +2731,7 @@ async function run() {
 
         const activityFirstDrawer = await openRoomDrawer(page, date, room, '13:00');
         assertBridgeSelector(activityFirstDrawer, 'activity first -> kitchen');
-        const kitchenFromActivity = await fillKitchenAndSubmit(page, activity.id);
+        const kitchenFromActivity = await fillKitchenAndSubmit(page, activity);
         assert.ok(kitchenFromActivity?.id, 'kitchen booking created from activity source');
         createdBookingIds.push(kitchenFromActivity.id);
         const activitySnapshot = await banquetSnapshot(base, token, activity.id);

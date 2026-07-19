@@ -3040,6 +3040,11 @@ function normalizeBookingCountValue(value) {
     return Number.isFinite(count) && count > 0 ? count : null;
 }
 
+function normalizeBookingNonNegativeCountValue(value) {
+    const count = parseInt(value, 10);
+    return Number.isFinite(count) && count >= 0 ? count : null;
+}
+
 function getBookingChildrenCountInputValue() {
     return normalizeBookingCountValue(document.getElementById('kidsCountInput')?.value);
 }
@@ -11737,7 +11742,7 @@ function buildBookingObject(formData, program) {
     }
 
     obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null;
-    obj.banquetAdults = formData.kitchenEnabled ? normalizeBookingCountValue(document.getElementById('banquetAdults')?.value) : null;
+    obj.banquetAdults = formData.kitchenEnabled ? normalizeBookingNonNegativeCountValue(document.getElementById('banquetAdults')?.value) : null;
     obj.banquetTables = formData.kitchenEnabled ? normalizeBookingCountValue(document.getElementById('banquetTables')?.value) : null;
     obj.banquetMenu = formData.kitchenEnabled
         ? (document.getElementById('banquetMenu')?.value?.trim()

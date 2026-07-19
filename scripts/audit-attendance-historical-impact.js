@@ -169,9 +169,12 @@ function poolConfig(env = process.env) {
         throw new Error(`Set exactly one of ${ALLOWED_CONNECTION_VARIABLES.join(' or ')} before running the audit`);
     }
 
+    const url = new URL(configured[0].value);
+    const isLocal = ['127.0.0.1', 'localhost', '::1'].includes(url.hostname)
+        || url.searchParams.get('sslmode') === 'disable';
     return {
         connectionString: configured[0].value,
-        ssl: { rejectUnauthorized: false },
+        ssl: isLocal ? false : { rejectUnauthorized: false },
         application_name: 'attendance_historical_readonly_audit'
     };
 }
@@ -220,7 +223,13 @@ function auditPlanSourceJoin(recordAlias = 'tr') {
     `;
 }
 
-function baseScopedCte(where) {
+function baseScopedCte(where, { includeHrShifts = false } = {}) {
+    const hrShiftSelect = includeHrShifts ? 'hs.id' : 'NULL::integer';
+    const hrShiftJoin = includeHrShifts
+        ? `LEFT JOIN hr_shifts hs
+                   ON hs.staff_id = tr.staff_id
+                  AND hs.shift_date = tr.record_date`
+        : '';
     return `
         WITH scoped AS (
             SELECT tr.*, to_char(tr.record_date, 'YYYY-MM') AS period_month
@@ -230,11 +239,9 @@ function baseScopedCte(where) {
         audited AS (
             SELECT tr.*,
                    audit.plan_source AS audit_plan_source,
-                   hs.id AS hr_shift_id
+                   ${hrShiftSelect} AS hr_shift_id
             FROM scoped tr
-            LEFT JOIN hr_shifts hs
-                   ON hs.staff_id = tr.staff_id
-                  AND hs.shift_date = tr.record_date
+            ${hrShiftJoin}
             ${auditPlanSourceJoin('tr')}
         )
     `;
@@ -293,7 +300,9 @@ function issueSelects(categories = []) {
 }
 
 function candidateCte(where, categories = []) {
-    return `${baseScopedCte(where)},
+    return `${baseScopedCte(where, {
+        includeHrShifts: categories.includes(CATEGORY_INFERRED_PROFESSION_CARD)
+    })},
         candidates AS (
             ${issueSelects(categories)}
         )`;
@@ -308,9 +317,9 @@ function normalizeSummaryRow(row = {}) {
     };
 }
 
-async function loadMetric(client, options, key, predicateSql) {
+async function loadMetric(client, options, key, predicateSql, { includeHrShifts = false } = {}) {
     const where = scopeWhere(options);
-    const base = baseScopedCte(where);
+    const base = baseScopedCte(where, { includeHrShifts });
     const summary = await client.query(
         `${base}
          SELECT COUNT(*)::int AS affected_rows,
@@ -390,7 +399,7 @@ async function loadAuditSourceBreakdown(client, options) {
 async function loadInferredProfessionBreakdown(client, options) {
     const where = scopeWhere(options);
     const result = await client.query(
-        `${baseScopedCte(where)}
+        `${baseScopedCte(where, { includeHrShifts: true })}
          SELECT COALESCE(NULLIF(audit_plan_source, ''), 'missing') AS audit_plan_source,
                 COUNT(*)::int AS rows
          FROM audited
@@ -633,7 +642,8 @@ async function runAudit(options) {
                 client,
                 options,
                 'inferred_profession_card',
-                'hr_shift_id IS NULL AND planned_start IS NOT NULL AND planned_end IS NOT NULL'
+                'hr_shift_id IS NULL AND planned_start IS NOT NULL AND planned_end IS NOT NULL',
+                { includeHrShifts: true }
             )
         };
         const metrics = [];
@@ -655,7 +665,9 @@ async function runAudit(options) {
             anomalySummary,
             metrics,
             auditPlanSourceBreakdown: await loadAuditSourceBreakdown(client, options),
-            inferredProfessionCardAuditBreakdown: await loadInferredProfessionBreakdown(client, options),
+            inferredProfessionCardAuditBreakdown: options.categories.includes(CATEGORY_INFERRED_PROFESSION_CARD)
+                ? await loadInferredProfessionBreakdown(client, options)
+                : [],
             issueMatrix: await loadIssueMatrix(client, options),
             payrollImpact: {
                 ...payrollImpact,

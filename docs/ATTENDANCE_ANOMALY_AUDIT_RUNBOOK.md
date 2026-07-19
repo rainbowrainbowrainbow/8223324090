@@ -81,3 +81,62 @@ Missing plan source та inferred profession card не підвищують seve
 Scheduler та auto-fix навмисно не входять у цей runbook. Їх додавання потребує
 окремого погодження production config, read-only credential lifecycle,
 notification destination та retention policy.
+
+## Тимчасова read-only роль
+
+Для production audit рекомендовано не видавати постійну роль і не зберігати
+`ATTENDANCE_AUDIT_DATABASE_URL`. Dormant operator helper створює короткоживучу
+роль, запускає audit і гарантовано намагається видалити роль у `finally`:
+
+```powershell
+npm --% run audit:attendance-anomalies:temporary-role -- --from 2026-07-01 --to 2026-07-31 --business-context event_genix --categories late-grace,overtime-grace,legacy-status-conflict,null-zero-negative-late,missing-plan-source --format markdown
+```
+
+Helper читає admin connection тільки з
+`ATTENDANCE_AUDIT_ADMIN_DATABASE_URL`. Цю змінну повинен завантажити в поточний
+operator process затверджений secret manager або локальний захищений secret
+loader. Не вводьте URL безпосередньо в команду, не використовуйте `setx` і не
+зберігайте значення в repository, CI, artifacts або shell history.
+
+Кожний production provisioning потребує окремого operator/admin authorization.
+Helper не змінює Railway secrets або settings.
+
+Тимчасова роль:
+
+- має унікальне ім’я `eg_attendance_audit_<UTC>_<random>`;
+- використовує випадковий пароль, який існує лише в пам’яті parent/child process;
+- передає PostgreSQL SCRAM verifier замість plaintext password у role DDL;
+- має `VALID UNTIL` із default TTL 15 хвилин, максимум 60 хвилин;
+- має `NOINHERIT`, `CONNECTION LIMIT 1`, `default_transaction_read_only=on`;
+- має `statement_timeout=30s` і `lock_timeout=2s`;
+- отримує лише явні `CONNECT`, `USAGE` і `SELECT` на сім таблиць цього audit;
+- перед запуском проходить effective-privilege preflight.
+
+Якщо `--categories` не передано, helper сам додає безпечний anomaly-набір:
+late grace, overtime grace, legacy status conflict, null/zero/negative late і
+missing plan source. Категорія `inferred-profession-card` потребує читання
+`hr_shifts`, якої немає в погодженому seven-table scope, тому temporary-role
+helper блокує її fail-closed. Її можна перевіряти лише окремим read-only
+процесом після явного розширення дозволеного table scope.
+
+`VALID UNTIL` обмежує пароль, але не видаляє PostgreSQL роль. Тому нормальне
+завершення завжди виконує та перевіряє cleanup:
+
+1. `ALTER ROLE ... NOLOGIN`;
+2. terminate sessions тільки exact generated role;
+3. `DROP OWNED BY ... RESTRICT`;
+4. `DROP ROLE`;
+5. повторний count ролі має дорівнювати нулю.
+
+Cleanup виконується також після audit error, `SIGINT` і `SIGTERM`. `SIGKILL`,
+аварія хоста або втрата admin connection можуть перервати `finally`; для цього
+існує exact-name recovery:
+
+```powershell
+npm --% run audit:attendance-anomalies:temporary-role -- --recover-role eg_attendance_audit_20260719t120000z_0123456789
+```
+
+Recovery приймає тільки повне ім’я з generated namespace, не виконує prefix або
+broad cleanup і є repeat-safe. Якщо cleanup не підтверджено, команда завершується
+з ненульовим exit code; audit не можна вважати успішно закритим до recovery та
+перевірки `role count = 0`.

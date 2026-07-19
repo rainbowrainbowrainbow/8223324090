@@ -88,6 +88,12 @@ function createHarness() {
                 resetHistory() { resetCompanyOrgHistory(); },
                 fit() { return fitCompanyOrgToScreen(); },
                 setView(mode) { setCompanyOrgViewMode(mode, { focus: false }); return companyOrgViewMode; },
+                search(value) {
+                    companyOrgSearchQuery = value || '';
+                    reconcileCompanyOrgSearchSelection();
+                    renderCompanyOrgWorkspace();
+                    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+                },
                 state() {
                     return {
                         loaded: companyStructureLoaded,
@@ -158,11 +164,13 @@ function createHarness() {
                     companyStructureUpdatedAt = companyStructureNodes.length ? '2099-05-31T12:00:00Z' : null;
                     companyStructurePermissionDenied = false;
                     resetCompanyOrgHistory();
+                    resetCompanyOrgViewState();
                     bindCompanyStructureEditorControls();
                     document.getElementById('hrOrgAutoLayoutBtn').onclick = autoArrangeCompanyOrgChart;
                     document.getElementById('btnSaveCompanyStructure').onclick = saveCompanyStructure;
                     renderCompanyOrgWorkspace();
                     selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+                    recordCompanyStructureSavedBaseline();
                 },
                 nodes() { return companyStructureNodes; },
                 open: openCompanyOrgNodeEditor,
@@ -1275,6 +1283,78 @@ test('HR org fit and view switching are viewport-only and do not dirty saved coo
 
     assert.deepEqual(api.nodes().map(node => ({ id: node.id, x: node.x, y: node.y, parentId: node.parentId })), before);
     assert.equal(api.state().draftRevision, revision);
+});
+
+test('HR org tree collapse and expand are local viewport state only', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.renderCanvas();
+    api.setView('tree');
+
+    const revision = api.state().draftRevision;
+    click(window, window.document.querySelector('[data-org-tree-toggle="parent"]'));
+
+    assert.equal(api.state().draftRevision, revision);
+    assert.equal(api.state().saveState, 'clean');
+    assert.notEqual(api.nodes().find(node => node.id === 'parent').collapsed, true);
+    assert.equal(window.document.querySelector('[data-org-tree-select="child"]'), null);
+});
+
+test('HR org tree quick actions open action menus instead of dead-focusing inspector controls', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.renderCanvas();
+    api.setView('tree');
+
+    click(window, window.document.querySelector('[data-org-tree-add="parent"]'));
+    const addMenu = window.document.querySelector('[data-org-tree-add-menu="parent"]');
+    assert.equal(addMenu.classList.contains('hidden'), false);
+    assert.match(addMenu.textContent, /Дочірній вузол/);
+    assert.equal(window.document.querySelector('[data-org-tree-add="parent"]').getAttribute('aria-expanded'), 'true');
+
+    click(window, window.document.querySelector('[data-org-tree-more="parent"]'));
+    const moreMenu = window.document.querySelector('[data-org-tree-more-menu="parent"]');
+    assert.equal(addMenu.classList.contains('hidden'), true);
+    assert.equal(moreMenu.classList.contains('hidden'), false);
+    assert.match(moreMenu.textContent, /Перейменувати/);
+});
+
+test('HR org tree search can select by staff name and keeps the inspector on a visible node', () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 1, x: 100, y: 40 },
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 2, x: 100, y: 180 }
+    ]);
+    api.setStaff([{ id: 12, name: 'QA Tree Staff', company_structure_node_id: 'child' }]);
+    api.renderCanvas();
+    api.setView('tree');
+
+    api.search('Tree Staff');
+
+    assert.ok(window.document.querySelector('[data-org-tree-select="child"]'));
+    assert.equal(window.document.querySelector('[data-org-tree-select="child"]').getAttribute('aria-selected'), 'true');
+    assert.equal(window.document.getElementById('hrOrgDetailTitle').textContent, 'Child');
+});
+
+test('HR org inspector CSS resets the legacy two-column grid and dark mode avoids inverted variables', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
+    const lateDetailCss = css.slice(css.indexOf('/* HR company structure workspace */'));
+    const detailRule = lateDetailCss.match(/\.hr-org-detail\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const darkRule = lateDetailCss.match(/body\.dark-mode \.hr-org-search input,[\s\S]*?body\.dark-mode \.hr-org-inspector-field select\s*\{[\s\S]*?\n\}/)?.[0] || '';
+
+    assert.match(detailRule, /display:\s*block/);
+    assert.match(detailRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    assert.doesNotMatch(detailRule, /minmax\(0,\s*1fr\)\s+auto/);
+    assert.match(lateDetailCss, /\.hr-org-detail-meta\s*\{[\s\S]*?repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    assert.match(darkRule, /background:\s*#111827/);
+    assert.match(darkRule, /color:\s*#F8FAFC/);
+    assert.doesNotMatch(darkRule, /background:\s*var\(--gray-900\)/);
 });
 
 test('HR org auto-arrange spreads cards instead of stacking roles on top of each other', async () => {

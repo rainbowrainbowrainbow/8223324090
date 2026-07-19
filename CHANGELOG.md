@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.93 - HR professions active node dropdown
+
+### Release / Versioning / (19.07.2026) [codex]
+- **HR professions active node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.92 - HR structure profession contrast hotfix
 
 ### Release / Versioning / (19.07.2026) [codex]

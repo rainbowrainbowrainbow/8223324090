@@ -4323,6 +4323,20 @@ async function loadProfessions() {
     renderProfessions();
 }
 
+function professionCatalogVisibleStructureNodes() {
+    return sortCompanyStructureNodes((professionCatalogStructureNodes || []).filter(node => (
+        node
+        && node.archived !== true
+        && node.is_archived !== true
+        && node.isArchived !== true
+        && node.active !== false
+        && node.is_active !== false
+        && node.isActive !== false
+        && !node.archived_at
+        && !node.archivedAt
+    )));
+}
+
 function renderProfessionCatalogFilterOptions() {
     const departmentSelect = document.getElementById('professionCatalogDepartment');
     const structureSelect = document.getElementById('professionCatalogStructureNode');
@@ -4335,9 +4349,10 @@ function renderProfessionCatalogFilterOptions() {
     }
     if (structureSelect) {
         const current = professionCatalogFilters.structureNode;
+        const visibleNodes = professionCatalogVisibleStructureNodes();
         structureSelect.innerHTML = '<option value="all">Усі вузли</option><option value="none">Без вузла</option>'
-            + professionCatalogStructureNodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)}</option>`).join('');
-        structureSelect.value = [...professionCatalogStructureNodes.map(node => node.id), 'all', 'none'].includes(current) ? current : 'all';
+            + visibleNodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)}</option>`).join('');
+        structureSelect.value = [...visibleNodes.map(node => node.id), 'all', 'none'].includes(current) ? current : 'all';
         professionCatalogFilters.structureNode = structureSelect.value;
     }
 }

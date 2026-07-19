@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.90",
+  "version": "0.79.91",
   "eventGenix": {
-    "releaseLabel": "Attendance KPI Overtime Guard"
+    "releaseLabel": "Timeline Smoke and QA Cleanup Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

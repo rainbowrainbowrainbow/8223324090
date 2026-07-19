@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.91 - Timeline Smoke and QA Cleanup Hardening
+
+### Timeline / Booking QA / Production cleanup / (19.07.2026) [codex]
+- **Єдине джерело старту бронювання:** browser regression перевіряє зміну `bookingTime` 12:15 → 12:30, незалежний guest arrival, збереження чернетки після 409 та multi-activity shift.
+- **Стабільний timeline smoke:** launcher «Свята / Кімнати», reload, compact/mobile transitions і failure diagnostics захищені від navigation та stale-context races.
+- **Guarded banquet cleanup:** production QA використовує строгий disposable marker, read-only preflight, атомарне скасування групи й бронювань та видалення лише точно пов’язаних finance rows.
+
+---
+
 ## v0.79.90 - Attendance KPI Overtime Guard
 
 ### HR / Attendance KPI / (19.07.2026) [codex]

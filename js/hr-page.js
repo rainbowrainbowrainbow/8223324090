@@ -748,6 +748,56 @@ function normalizeSearchText(value) {
         .trim();
 }
 
+const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLES = Object.freeze([
+    'Керівництво',
+    'Адміністративно-операційний відділ',
+    'Відділ продажів / CRM',
+    'Арт-відділ',
+    'Ігрові зони',
+    'Кухня',
+    'Кондитерський цех',
+    'Технічний відділ',
+    'Бухгалтерія',
+    'HR',
+    'Маркетинг',
+    'IT'
+]);
+
+const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_SET = new Set(
+    APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLES.map(normalizeSearchText)
+);
+
+function companyStructureNodeIsArchivedOrInactive(node = {}) {
+    return node.archived === true
+        || node.is_archived === true
+        || node.isArchived === true
+        || node.active === false
+        || node.is_active === false
+        || node.isActive === false
+        || Boolean(node.archived_at || node.archivedAt);
+}
+
+function isApprovedCompanyStructureSubdivisionNode(node = {}) {
+    const title = normalizeSearchText(node.title || node.label || node.name);
+    return Boolean(
+        title
+        && APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_SET.has(title)
+        && !companyStructureNodeIsArchivedOrInactive(node)
+    );
+}
+
+function visibleCompanyStructureSubdivisionNodes(nodes = []) {
+    const seenTitles = new Set();
+    return sortCompanyStructureNodes((Array.isArray(nodes) ? nodes : [])
+        .filter(isApprovedCompanyStructureSubdivisionNode)
+        .filter(node => {
+            const title = normalizeSearchText(node.title || node.label || node.name);
+            if (!title || seenTitles.has(title)) return false;
+            seenTitles.add(title);
+            return true;
+        }));
+}
+
 function normalizeDepartmentKey(value) {
     const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
     return normalized ? normalized.slice(0, 80) : 'none';
@@ -815,12 +865,13 @@ function departmentLabel(value) {
 
 function companyStructureSelectOptions(current = '') {
     const selected = String(current || '');
-    const options = sortCompanyStructureNodes(companyStructureNodes || []).map(node => ({
+    const visibleNodes = visibleCompanyStructureSubdivisionNodes(companyStructureNodes || []);
+    const options = visibleNodes.map(node => ({
         value: node.id,
         label: `${node.title}${node.meta ? ' - ' + node.meta : ''}`,
         selected: node.id === selected
     }));
-    return [{ value: '', label: 'Без привʼязки', selected: !selected }, ...options];
+    return [{ value: '', label: 'Без привʼязки', selected: !visibleNodes.some(node => node.id === selected) }, ...options];
 }
 
 function renderSelectOptions(options = [], selected = '') {
@@ -4323,41 +4374,6 @@ async function loadProfessions() {
     renderProfessions();
 }
 
-const PROFESSION_CATALOG_DEPARTMENT_NODE_TITLES = new Set([
-    'Керівництво',
-    'Адміністративно-операційний відділ',
-    'Відділ продажів / CRM',
-    'Арт-відділ',
-    'Ігрові зони',
-    'Кухня',
-    'Кондитерський цех',
-    'Технічний відділ',
-    'Бухгалтерія',
-    'HR',
-    'Маркетинг',
-    'IT'
-]);
-
-function isProfessionCatalogDepartmentNode(node = {}) {
-    const title = String(node.title || '').trim();
-    return PROFESSION_CATALOG_DEPARTMENT_NODE_TITLES.has(title);
-}
-
-function professionCatalogVisibleStructureNodes() {
-    return sortCompanyStructureNodes((professionCatalogStructureNodes || []).filter(node => (
-        node
-        && isProfessionCatalogDepartmentNode(node)
-        && node.archived !== true
-        && node.is_archived !== true
-        && node.isArchived !== true
-        && node.active !== false
-        && node.is_active !== false
-        && node.isActive !== false
-        && !node.archived_at
-        && !node.archivedAt
-    )));
-}
-
 function renderProfessionCatalogFilterOptions() {
     const departmentSelect = document.getElementById('professionCatalogDepartment');
     const structureSelect = document.getElementById('professionCatalogStructureNode');
@@ -4370,7 +4386,7 @@ function renderProfessionCatalogFilterOptions() {
     }
     if (structureSelect) {
         const current = professionCatalogFilters.structureNode;
-        const visibleNodes = professionCatalogVisibleStructureNodes();
+        const visibleNodes = visibleCompanyStructureSubdivisionNodes(professionCatalogStructureNodes);
         structureSelect.innerHTML = '<option value="all">Усі вузли</option><option value="none">Без вузла</option>'
             + visibleNodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)}</option>`).join('');
         structureSelect.value = [...visibleNodes.map(node => node.id), 'all', 'none'].includes(current) ? current : 'all';
@@ -4672,7 +4688,7 @@ function professionWorkspaceStructureOptions(selected = '') {
     const nodes = professionCatalogStructureNodes.length
         ? professionCatalogStructureNodes
         : companyStructureNodes.map(node => ({ id: node.id, title: node.title }));
-    return '<option value="">Без вузла</option>' + nodes.map(node => `<option value="${escapeHtml(node.id)}"${node.id === selected ? ' selected' : ''}>${escapeHtml(node.title)}</option>`).join('');
+    return '<option value="">Без вузла</option>' + visibleCompanyStructureSubdivisionNodes(nodes).map(node => `<option value="${escapeHtml(node.id)}"${node.id === selected ? ' selected' : ''}>${escapeHtml(node.title)}</option>`).join('');
 }
 
 function canManageProfessionConditions(data = professionWorkspaceState.data) {
@@ -7958,9 +7974,9 @@ function renderAccountOnboardingStructureOptions() {
     const select = accountOnboardingEl('accountOnboardingStructureNode');
     if (!select) return;
     const current = select.value;
-    const rows = Array.isArray(accountOnboardingOptions?.structureNodes) ? accountOnboardingOptions.structureNodes : [];
-    select.innerHTML = '<option value="">Без вузла</option>' + rows.map(node => `<option value="${escapeHtml(node.id)}" ${node.archived === true ? 'disabled aria-disabled="true"' : ''}>${escapeHtml(`${node.title || node.id}${node.archived === true ? ' · архівний (лише зберегти поточний)' : ''}`)}</option>`).join('');
-    if (Array.from(select.options).some(option => option.value === current)) select.value = current;
+    const rows = visibleCompanyStructureSubdivisionNodes(Array.isArray(accountOnboardingOptions?.structureNodes) ? accountOnboardingOptions.structureNodes : []);
+    select.innerHTML = '<option value="">Без вузла</option>' + rows.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title || node.id)}</option>`).join('');
+    select.value = rows.some(node => node.id === current) ? current : '';
 }
 
 function renderAccountOnboardingAccessControls(options = {}) {
@@ -12468,24 +12484,18 @@ async function saveStaffRates(staffId) {
 // ==========================================
 
 const DEFAULT_COMPANY_STRUCTURE_TEXT = [
-    'Директор',
-    'Заступник директора',
-    'Топ-менеджер',
-    'Менеджер(и)',
+    'Керівництво',
+    'Адміністративно-операційний відділ',
+    'Відділ продажів / CRM',
+    'Арт-відділ',
+    'Ігрові зони',
+    'Кухня',
+    'Кондитерський цех',
+    'Технічний відділ',
+    'Бухгалтерія',
     'HR',
-    'Бухгалтер',
-    'Арт-директор',
-    'Адміністратори',
-    'Аніматори',
-    'Офіціанти',
-    'Бариста',
-    'Рецепція',
-    'Шеф-кухар',
-    'Кухарі',
-    'Мийка',
-    'Шеф-кондитер',
-    'Кондитери',
-    'Технічний персонал'
+    'Маркетинг',
+    'IT'
 ].join('\n');
 
 const ORG_TONE_LABELS = {
@@ -12521,60 +12531,32 @@ const ORG_COLLISION_PADDING_Y = 18;
 const ORG_AUTO_LAYOUT_LANE_RANK = { root: 0, deputy: 1, leadership: 2, operations: 3, support: 4 };
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
     director: { x: 500, y: 20 },
-    deputy_director: { x: 440, y: 140 },
-    accountant: { x: 600, y: 140 },
-    top_manager: { x: 40, y: 260 },
-    hr: { x: 200, y: 260 },
-    art_director: { x: 360, y: 260 },
-    it_specialist: { x: 520, y: 260 },
-    senior_trampoline: { x: 680, y: 260 },
-    chef: { x: 840, y: 260 },
-    technical_staff: { x: 1000, y: 260 },
-    managers: { x: 40, y: 380 },
-    admins: { x: 200, y: 380 },
-    marketer: { x: 360, y: 380 },
-    animators: { x: 520, y: 380 },
-    trampoline_instructors: { x: 680, y: 380 },
-    cooks: { x: 840, y: 380 },
-    dishwash: { x: 1000, y: 380 },
-    pastry_chef: { x: 280, y: 500 },
-    wardrobe: { x: 440, y: 500 },
-    cleaning: { x: 600, y: 500 },
-    facilities: { x: 760, y: 500 },
-    waiters: { x: 200, y: 620 },
-    barista: { x: 360, y: 620 },
-    reception: { x: 520, y: 620 },
-    pastry_team: { x: 680, y: 620 },
-    pastry_wash: { x: 840, y: 620 }
+    top_manager: { x: 40, y: 200 },
+    admins: { x: 200, y: 200 },
+    art_director: { x: 360, y: 200 },
+    senior_trampoline: { x: 520, y: 200 },
+    chef: { x: 680, y: 200 },
+    pastry_chef: { x: 840, y: 200 },
+    technical_staff: { x: 1000, y: 200 },
+    accountant: { x: 200, y: 340 },
+    hr: { x: 360, y: 340 },
+    marketer: { x: 520, y: 340 },
+    it_specialist: { x: 680, y: 340 }
 };
 
 const DEFAULT_COMPANY_STRUCTURE_NODES = [
-    { id: 'director', title: 'Директор', description: 'Фінальне рішення, стратегія, ресурси і правила роботи компанії.', tone: 'gold', lane: 'root', parentId: null, stack: null, order: 10, meta: 'центр рішень' },
-    { id: 'deputy_director', title: 'Заступник директора', description: 'Тримає операційний контур, контролює виконання рішень і синхронізує керівників напрямів.', tone: 'blue', lane: 'deputy', parentId: null, stack: null, order: 20, meta: 'операційне керування' },
-    { id: 'top_manager', title: 'Топ-менеджер', description: 'Веде менеджерський блок, контролює продажі, бронювання і якість сервісного циклу.', tone: 'blue', lane: 'leadership', parentId: null, stack: 'management', order: 30, meta: 'менеджмент' },
-    { id: 'managers', title: 'Менеджер(и)', description: 'Працюють із клієнтами, лідами, бронюваннями і щоденними задачами.', tone: 'blue', lane: 'leadership', parentId: null, stack: 'management', order: 31, meta: 'оператори CRM' },
-    { id: 'hr', title: 'HR', description: 'Набір, структура команди, зміни, onboarding, дисципліна і кадровий контур.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 40, meta: 'люди' },
-    { id: 'accountant', title: 'Бухгалтер', description: 'Фінансові документи, зарплати, звірки і контроль обліку.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 50, meta: 'фінанси' },
-    { id: 'art_director', title: 'Арт-директор', description: 'Керує творчим виробництвом, програмами, костюмами, дизайнами і випускними матеріалами.', tone: 'purple', lane: 'leadership', parentId: null, stack: 'art', order: 60, meta: 'креатив' },
-    { id: 'admins', title: 'Адміністратори', description: 'Підтримують зал, комунікацію з гостями, порядок і операційне закриття змін.', tone: 'purple', lane: 'leadership', parentId: null, stack: 'art', order: 61, meta: 'зал' },
-    { id: 'marketer', title: 'Маркетолог', description: 'Маркетинг, комунікації, контент і кампанії для залучення клієнтів.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 70, meta: 'попит' },
-    { id: 'it_specialist', title: 'IT-спеціаліст', description: 'Підтримує CRM, технічні інтеграції, обладнання і цифрові процеси.', tone: 'violet', lane: 'leadership', parentId: null, stack: null, order: 80, meta: 'системи' },
-    { id: 'senior_trampoline', title: 'Старший батутіст', description: 'Відповідає за батутну зону, інструкторів, безпеку і якість активностей.', tone: 'purple', lane: 'operations', parentId: null, stack: 'trampoline', order: 90, meta: 'батутна зона' },
-    { id: 'trampoline_instructors', title: 'Батутісти-інструктори', description: 'Проводять активності, стежать за безпекою дітей і підтримують правила зони.', tone: 'purple', lane: 'operations', parentId: null, stack: 'trampoline', order: 91, meta: 'інструктори' },
-    { id: 'animators', title: 'Аніматори', description: 'Проводять програми, інтерактиви та дитячі свята згідно зі сценарієм.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 100, meta: 'програми' },
-    { id: 'waiters', title: 'Офіціанти', description: 'Сервіс столів, подача, комунікація з гостями і підтримка банкетів.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 110, meta: 'сервіс' },
-    { id: 'barista', title: 'Бариста', description: 'Кавовий бар, напої, швидкість видачі і якість продукту.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 120, meta: 'бар' },
-    { id: 'reception', title: 'Рецепція', description: 'Перша точка контакту гостей, вхідний потік, оплати і навігація.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 130, meta: 'вхід' },
-    { id: 'chef', title: 'Шеф-кухар', description: 'Керує кухнею, меню, якістю страв, закупками і кухонною дисципліною.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 140, meta: 'кухня' },
-    { id: 'cooks', title: 'Кухарі', description: 'Готують страви, тримають стандарти та швидкість видачі.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 141, meta: 'виробництво' },
-    { id: 'dishwash', title: 'Мийка', description: 'Посуд, чистота кухонного циклу і санітарна підтримка.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 142, meta: 'санітарія' },
-    { id: 'pastry_chef', title: 'Шеф-кондитер', description: 'Керує кондитерським напрямом, виробництвом десертів і стандартами якості.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 150, meta: 'кондитерка' },
-    { id: 'pastry_team', title: 'Кондитери', description: 'Виготовляють десерти, декор і кондитерські позиції для подій.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 151, meta: 'виробництво' },
-    { id: 'pastry_wash', title: 'Мийка цех', description: 'Підтримує чистоту і порядок у кондитерському цеху.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 152, meta: 'санітарія' },
-    { id: 'technical_staff', title: 'Технічний персонал', description: 'Технічна готовність простору, ремонт, обладнання і господарські задачі.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 160, meta: 'інфраструктура' },
-    { id: 'wardrobe', title: 'Гардероб', description: 'Одяг гостей, контроль речей і порядок у гардеробній зоні.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 161, meta: 'гості' },
-    { id: 'cleaning', title: 'Прибирання', description: 'Чистота залу, санвузлів, службових зон і підтримка стандартів протягом дня.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 162, meta: 'чистота' },
-    { id: 'facilities', title: 'Завгосп', description: 'Господарський запас, дрібний ремонт, закупки і побутова підтримка.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 163, meta: 'господарство' }
+    { id: 'director', title: 'Керівництво', description: 'Директор і заступник директора як позиції всередині керівного підрозділу.', tone: 'gold', lane: 'root', parentId: null, stack: null, order: 10, meta: 'центр рішень' },
+    { id: 'admins', title: 'Адміністративно-операційний відділ', description: 'Адміністрування залу, рецепція, бар, сервіс і операційне закриття змін.', tone: 'purple', lane: 'leadership', parentId: 'director', stack: 'operations', order: 20, meta: 'операції' },
+    { id: 'top_manager', title: 'Відділ продажів / CRM', description: 'Ліди, бронювання, клієнтські діалоги, Tasker і якість сервісного циклу.', tone: 'blue', lane: 'leadership', parentId: 'director', stack: 'management', order: 30, meta: 'продажі' },
+    { id: 'art_director', title: 'Арт-відділ', description: 'Творче виробництво, програми, костюми, дизайни, аніматори та випускні матеріали.', tone: 'purple', lane: 'operations', parentId: 'director', stack: 'art', order: 40, meta: 'креатив' },
+    { id: 'senior_trampoline', title: 'Ігрові зони', description: 'Батутна зона, інструктори, безпека дітей і якість активностей.', tone: 'purple', lane: 'operations', parentId: 'director', stack: 'trampoline', order: 50, meta: 'ігровий простір' },
+    { id: 'chef', title: 'Кухня', description: 'Кухонне виробництво, піца, страви, мийка, закупки і санітарний цикл.', tone: 'violet', lane: 'support', parentId: 'director', stack: 'kitchen', order: 60, meta: 'кухня' },
+    { id: 'pastry_chef', title: 'Кондитерський цех', description: 'Кондитерське виробництво, десерти, декор і стандарти якості.', tone: 'violet', lane: 'support', parentId: 'director', stack: 'pastry', order: 70, meta: 'кондитерка' },
+    { id: 'technical_staff', title: 'Технічний відділ', description: 'Технічна готовність простору, ремонт, обладнання, господарські задачі та чистота.', tone: 'violet', lane: 'support', parentId: 'director', stack: 'technical', order: 80, meta: 'інфраструктура' },
+    { id: 'accountant', title: 'Бухгалтерія', description: 'Фінансові документи, зарплати, звірки і контроль обліку.', tone: 'blue', lane: 'leadership', parentId: 'director', stack: null, order: 90, meta: 'фінанси' },
+    { id: 'hr', title: 'HR', description: 'Набір, структура команди, зміни, onboarding, дисципліна і кадровий контур.', tone: 'blue', lane: 'leadership', parentId: 'director', stack: null, order: 100, meta: 'люди' },
+    { id: 'marketer', title: 'Маркетинг', description: 'Маркетинг, комунікації, контент і кампанії для залучення клієнтів.', tone: 'blue', lane: 'leadership', parentId: 'director', stack: null, order: 110, meta: 'попит' },
+    { id: 'it_specialist', title: 'IT', description: 'CRM, технічні інтеграції, обладнання і цифрові процеси.', tone: 'violet', lane: 'leadership', parentId: 'director', stack: null, order: 120, meta: 'системи' }
 ];
 
 let companyStructureNodes = [];
@@ -14120,9 +14102,9 @@ function updateCompanyOrgDetail(node) {
     if (parentSelect) {
         const options = node ? [
             '<option value="">Без батьківського вузла</option>',
-            ...sortCompanyStructureNodes(companyStructureNodes)
+            ...visibleCompanyStructureSubdivisionNodes(companyStructureNodes)
                 .filter(item => item.id !== node.id && !companyOrgWouldCreateCycle(node.id, item.id))
-                .map(item => `<option value="${escapeHtml(item.id)}"${item.id === node.parentId ? ' selected' : ''}>${escapeHtml(item.title)}${item.archived ? ' · архів' : ''}</option>`)
+                .map(item => `<option value="${escapeHtml(item.id)}"${item.id === node.parentId ? ' selected' : ''}>${escapeHtml(item.title)}</option>`)
         ] : ['<option value="">Нічого не вибрано</option>'];
         parentSelect.innerHTML = options.join('');
         parentSelect.disabled = !node || !companyStructureCanMutate();
@@ -14255,7 +14237,7 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
     const displayGroupLabel = companyStructureDisplayGroupLabel(displayGroup) || 'немає';
     const parentOptions = [
         '<option value="">Без батьківського вузла</option>',
-        ...sortCompanyStructureNodes(companyStructureNodes)
+        ...visibleCompanyStructureSubdivisionNodes(companyStructureNodes)
             .filter(item => item.id !== node.id)
             .map(item => `<option value="${escapeHtml(item.id)}"${item.id === node.parentId ? ' selected' : ''}>${escapeHtml(item.title)}</option>`)
     ].join('');

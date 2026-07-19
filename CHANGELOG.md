@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.103 - HR structure dropdown cleanup
+
+### HR / Structure UI / (19.07.2026) [codex]
+- **Dropdown-и і модалки HR-структури** — у виборах вузлів показуються тільки 12 погоджених підрозділів, щоб посади та legacy role-групи не виглядали як відділи.
+- **Професії та staff/account форми** — фільтр застосовано до `Усі вузли`, workspace професії, staff profile, account onboarding, inspector parent і node editor parent.
+- **Default structure template** — дефолтний шаблон більше не відновлює старі посадові вузли; CRM-база та live HR-дані не змінюються цим релізом.
+
+---
+
 ## v0.79.102 - Timeline summary runtime fix
 
 ### Release / Versioning / (19.07.2026) [codex]

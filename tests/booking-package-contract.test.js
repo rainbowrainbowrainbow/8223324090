@@ -1869,6 +1869,27 @@ test('booking time change shifts every multi-activity draft by the same delta', 
 
 test('timeline browser smoke protects edited start payload, conflict durability, and responsive drawer overflow', () => {
     const smoke = read('tests', 'browser', 'timeline-browser-smoke.js');
+    const markerFunctionsSource = smoke.slice(
+        smoke.indexOf('function disposableQaMarker'),
+        smoke.indexOf('function isBookingCreateEndpoint')
+    );
+    const markerApi = Function(
+        'RUN_ID',
+        'QA_CLEANUP_SOURCE',
+        'TEST_CUSTOMER_MARKER',
+        `${markerFunctionsSource}\nreturn { markCreateRequestPayload };`
+    )('task37-contract', 'timeline_browser_smoke', 'timeline_browser_smoke:task37-contract:test_customer');
+    assert.throws(
+        () => markerApi.markCreateRequestPayload({ main: 'truthy-non-object', linked: [{}] }, '/api/bookings/full'),
+        /requires main booking/
+    );
+    assert.match(smoke, /const mainMarked = markNested\('main'/);
+    assert.match(smoke, /QA_CLEANUP_CAPABILITY/);
+    const conflictRouteStart = smoke.indexOf('const routeHandler = async route =>');
+    const conflictRouteBlock = smoke.slice(conflictRouteStart, smoke.indexOf('await page.route(routePattern, routeHandler)', conflictRouteStart));
+    assert.match(conflictRouteBlock, /route\.fallback\(\)/);
+    assert.doesNotMatch(conflictRouteBlock, /route\.continue\(\)/);
+    assert.ok(conflictRouteStart >= 0);
 
     assert.match(smoke, /async function assertBookingTimeCreateDurability/);
     assert.match(smoke, /openBookingPanel\('12:15'/);
@@ -1878,6 +1899,63 @@ test('timeline browser smoke protects edited start payload, conflict durability,
     assert.match(smoke, /server conflict keeps booking drawer open/);
     assert.match(smoke, /booking form has no horizontal overflow/);
     assert.match(smoke, /created booking persisted edited 12:30 start/);
+    assert.match(smoke, /async function clickBookingSubmitButton/);
+    assert.match(smoke, /async function findFullSmokeSchedule/);
+    assert.match(smoke, /const createdBookingDates = new Map\(\)/);
+    assert.match(smoke, /const registerCreatedBooking = \(booking, fallbackDate = ''\)/);
+    assert.match(smoke, /const standaloneIdsByDate = new Map\(\)/);
+    assert.match(smoke, /verifyBanquetGroupNotActiveViaApi/);
+    assert.match(smoke, /discoverRunBookingsFromTimeline/);
+    assert.match(smoke, /isCurrentRunDisposableBooking/);
+    assert.match(smoke, /assertSidebarTimelineLauncherSwitching/);
+    assert.match(smoke, /\[data-sidebar-timeline-mode/);
+    assert.match(smoke, /maskColor: '#111827'/);
+    assert.match(smoke, /QA_CLEANUP_TRANSPORT/);
+    assert.match(smoke, /railway-ssh/);
+    assert.match(smoke, /waitForLegacyTimelineTypeSwitchRemoved/);
+    assert.match(smoke, /animatorLineFitsSlot\(line, '12:15', 60\)/);
+    assert.match(smoke, /animatorLineFitsSlot\(line, '12:30', 60\)/);
+    assert.match(smoke, /timelineView: 'rooms'/);
+    assert.match(smoke, /linkedBookings/);
+    assert.match(smoke, /banquetActivities/);
+    assert.match(smoke, /QA_MARKER_INJECTION_FAILED/);
+    assert.match(smoke, /booking\.skipNotification = true/);
+    assert.match(smoke, /function assertQaCleanupTransportReady/);
+    assert.match(smoke, /BEGIN READ ONLY/);
+    assert.match(smoke, /runQaCleanupDryRun/);
+    assert.match(smoke, /sidebarTimelineLauncher:/);
+    assert.match(smoke, /const cleanupErrors = \[\]/);
+    assert.match(smoke, /new AggregateError\(cleanupErrors/);
+    assert.match(smoke, /single_booking/);
+    assert.doesNotMatch(smoke, /locator\('\[data-timeline-type-selector\]/);
+    assert.match(smoke, /BookingPackageState\.menuPositions = \[\]/);
+    assert.match(smoke, /BookingTickets\.setActive\(false\)/);
+    assert.match(smoke, /timeline_empty_cell_smoke_retry/);
+    assert.match(smoke, /ensureActiveBanquetMemberDrawer/);
+    assert.match(smoke, /clickActiveBanquetMemberSubmit/);
+    assert.match(smoke, /timeline_empty_cell_submit_retry/);
+    assert.match(smoke, /applySelectedCustomerToBookingForm/);
+    assert.match(smoke, /findActiveBanquetEmptyCellSlot/);
+    assert.match(smoke, /const emptyCellSlot = await findActiveBanquetEmptyCellSlot/);
+    assert.match(smoke, /submitVisible/);
+    const emptyCellMemberStart = smoke.indexOf('async function submitActiveBanquetMemberFromEmptyCell');
+    const emptyCellMemberEnd = smoke.indexOf('async function chooseFirstActivityProgram', emptyCellMemberStart);
+    assert.ok(emptyCellMemberStart >= 0 && emptyCellMemberEnd > emptyCellMemberStart, 'empty-cell member smoke block exists');
+    const emptyCellMemberBlock = smoke.slice(emptyCellMemberStart, emptyCellMemberEnd);
+    assert.doesNotMatch(emptyCellMemberBlock, /ensureKitchenTicketQuoteReady/);
+    assert.match(emptyCellMemberBlock, /keep waiting for its original response/);
+    assert.doesNotMatch(emptyCellMemberBlock, /if \(acknowledged && attempt < 3\)/);
+    assert.doesNotMatch(emptyCellMemberBlock, /duplicate submit recovered/);
+    const bookingTimeStart = smoke.indexOf('async function assertBookingTimeCreateDurability');
+    const bookingTimeEnd = smoke.indexOf('async function openActivityFromKitchenSource', bookingTimeStart);
+    assert.ok(bookingTimeStart >= 0 && bookingTimeEnd > bookingTimeStart, 'booking-time durability smoke block exists');
+    const bookingTimeBlock = smoke.slice(bookingTimeStart, bookingTimeEnd);
+    assert.match(bookingTimeBlock, /clickBookingSubmitButton/);
+    assert.doesNotMatch(bookingTimeBlock, /dispatchEvent\(new Event\('submit'/);
+    const cleanupStart = smoke.indexOf('if (CLEANUP)');
+    const discoveryGuard = smoke.indexOf('if (cleanupErrors.length)', cleanupStart);
+    const customerCleanup = smoke.indexOf('for (const id of [...createdCustomerIds]', cleanupStart);
+    assert.ok(discoveryGuard > cleanupStart && discoveryGuard < customerCleanup, 'aggregated cleanup errors keep marker customers for safe recovery');
 });
 
 test('booking time preflight reports a concrete room conflict', async () => {

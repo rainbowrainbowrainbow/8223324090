@@ -21,8 +21,25 @@ const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 
 const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
 const TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX = 4;
 const QA_CLEANUP_SOURCE = 'timeline_browser_smoke';
+const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v2_finance_atomic';
 const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
 const TEST_CUSTOMER_MARKER = `${QA_CLEANUP_SOURCE}:${RUN_ID}:test_customer`;
+const QA_CLEANUP_TRANSPORT = process.env.TIMELINE_BROWSER_SMOKE_QA_CLEANUP_TRANSPORT
+    || (TARGET_URL && !isLocalBase(normalizeBase(TARGET_URL)) ? 'railway-ssh' : 'local');
+const RAILWAY_CLEANUP_ENVIRONMENT = process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_ENVIRONMENT || 'production';
+
+function inferRailwayServiceFromTarget(urlText = '') {
+    try {
+        const host = new URL(urlText).hostname;
+        const suffix = `-${RAILWAY_CLEANUP_ENVIRONMENT}.up.railway.app`;
+        return host.endsWith(suffix) ? host.slice(0, -suffix.length) : '';
+    } catch {
+        return '';
+    }
+}
+
+const RAILWAY_CLEANUP_SERVICE = process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_SERVICE
+    || inferRailwayServiceFromTarget(TARGET_URL);
 
 function fail(message) {
     console.error(`Timeline browser smoke failed: ${message}`);
@@ -115,35 +132,44 @@ function attachDisposableQaMarker(booking, kind = 'booking') {
         ? { ...booking.extraData }
         : (booking.extra_data && typeof booking.extra_data === 'object' && !Array.isArray(booking.extra_data) ? { ...booking.extra_data } : {});
     extra.disposableQa = disposableQaMarker(kind);
+    booking.skipNotification = true;
     booking.extraData = extra;
     delete booking.extra_data;
     return booking;
 }
 
 function markCreateRequestPayload(payload, pathname = '') {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        throw new Error('booking create payload must be an object');
+    }
     const cloned = JSON.parse(JSON.stringify(payload));
-    const markNested = (key, kind) => {
-        if (cloned[key] && typeof cloned[key] === 'object' && !Array.isArray(cloned[key])) {
-            attachDisposableQaMarker(cloned[key], kind);
-        }
+    let markedCount = 0;
+    const markRecord = (record, kind) => {
+        if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+        attachDisposableQaMarker(record, kind);
+        markedCount += 1;
+        return true;
     };
-    markNested('main', 'booking_full_main');
+    const markNested = (key, kind) => markRecord(cloned[key], kind);
+    const markArray = (key, kind) => {
+        if (Array.isArray(cloned[key])) cloned[key].forEach(item => markRecord(item, kind));
+    };
+    const mainMarked = markNested('main', 'booking_full_main');
     markNested('booking', 'banquet_member');
     markNested('memberBooking', 'banquet_member');
     markNested('member_booking', 'banquet_member');
     markNested('activityBooking', 'banquet_activity');
     markNested('activity_booking', 'banquet_activity');
-    if (Array.isArray(cloned.linked)) cloned.linked.forEach(item => attachDisposableQaMarker(item, 'linked_booking'));
-    if (Array.isArray(cloned.activities)) cloned.activities.forEach(item => attachDisposableQaMarker(item, 'activity_booking'));
-    if (!cloned.main
-        && !cloned.booking
-        && !cloned.memberBooking
-        && !cloned.member_booking
-        && !cloned.activityBooking
-        && !cloned.activity_booking
-        && /^\/api\/bookings(?:\/full)?$/i.test(pathname)) {
-        attachDisposableQaMarker(cloned, 'booking');
+    for (const key of ['linked', 'linkedBookings', 'linked_bookings']) markArray(key, 'linked_booking');
+    for (const key of ['activities', 'banquetActivities', 'banquet_activities']) markArray(key, 'activity_booking');
+    if (markedCount === 0 && /^\/api\/bookings$/i.test(pathname)) {
+        markRecord(cloned, 'booking');
+    }
+    if (/^\/api\/bookings\/full$/i.test(pathname) && !mainMarked) {
+        throw new Error('full booking create payload requires main booking');
+    }
+    if (markedCount === 0) {
+        throw new Error(`no markable booking record in ${pathname || 'booking create payload'}`);
     }
     return cloned;
 }
@@ -252,16 +278,64 @@ async function loadLines(base, token, date, timelineView) {
     return rows;
 }
 
-async function firstAnimatorLine(base, token, date) {
-    const lines = await loadLines(base, token, date, 'animators');
-    const line = lines.find(item => String(item.id || '') !== 'afisha' && String(item.id || '') !== 'banquet-service');
-    assert.ok(line, 'animator line exists for browser smoke');
-    return line;
+function isUsableAnimatorLine(item = {}) {
+    const id = String(item.id || '');
+    return Boolean(
+        id
+        && !['afisha', 'banquet-service'].includes(id)
+        && !id.startsWith('empty-roster-')
+        && item.assignmentAllowed !== false
+        && item.isUnavailable !== true
+        && item.isAvailable !== false
+        && item.active !== false
+    );
+}
+function smokeAvailabilityWindows(item = {}) {
+    let raw = item.availabilityWindows ?? item.availability_windows;
+    if (typeof raw === 'string') {
+        try {
+            raw = JSON.parse(raw);
+        } catch {
+            raw = [];
+        }
+    }
+    if (Array.isArray(raw)) {
+        return raw.map(window => ({
+            start: String(window?.start || window?.shiftStart || window?.shift_start || window?.plannedStart || window?.planned_start || '').slice(0, 5),
+            end: String(window?.end || window?.shiftEnd || window?.shift_end || window?.plannedEnd || window?.planned_end || '').slice(0, 5)
+        })).filter(window => smokeTimeToMinutes(window.start) !== null && smokeTimeToMinutes(window.end) !== null);
+    }
+    const start = String(item.shiftStart || item.shift_start || item.plannedStart || item.planned_start || '').slice(0, 5);
+    const end = String(item.shiftEnd || item.shift_end || item.plannedEnd || item.planned_end || '').slice(0, 5);
+    if (smokeTimeToMinutes(start) === null || smokeTimeToMinutes(end) === null) return null;
+    return [{ start, end }];
+}
+
+function animatorLineFitsSlot(item = {}, time, duration = 0) {
+    const windows = smokeAvailabilityWindows(item);
+    if (windows === null) return true;
+    if (!windows.length) return false;
+    const start = smokeTimeToMinutes(time);
+    if (start === null) return false;
+    const durationMinutes = Math.max(0, Number(duration || 0));
+    return windows.some(window => {
+        const windowStart = smokeTimeToMinutes(window.start);
+        const rawWindowEnd = smokeTimeToMinutes(window.end);
+        if (windowStart === null || rawWindowEnd === null || windowStart === rawWindowEnd) return false;
+        const windowEnd = rawWindowEnd <= windowStart ? rawWindowEnd + (24 * 60) : rawWindowEnd;
+        const candidateStart = windowEnd > (24 * 60) && start < windowStart ? start + (24 * 60) : start;
+        return candidateStart >= windowStart && candidateStart + durationMinutes <= windowEnd;
+    });
 }
 
 function smokeTimeToMinutes(value) {
     const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
     return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+}
+
+function smokeMinutesToTime(value) {
+    const minutes = Math.max(0, Number(value || 0));
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
 function smokeBookingOverlaps(booking, startTime, duration) {
@@ -273,40 +347,148 @@ function smokeBookingOverlaps(booking, startTime, duration) {
     return bookingStart < candidateEnd && bookingEnd > candidateStart;
 }
 
+async function findFullSmokeSchedule(base, token, requestedDate, room) {
+    const searchDays = process.env.TIMELINE_BROWSER_SMOKE_DATE ? 1 : 14;
+    const normalizedRoom = String(room || '').trim().toLowerCase();
+    for (let offset = 0; offset < searchDays; offset += 1) {
+        const date = datePlus(requestedDate, offset);
+        const lines = (await loadLines(base, token, date, 'animators')).filter(isUsableAnimatorLine);
+        if (!lines.length) continue;
+        const [animatorResponse, roomResponse] = await Promise.all([
+            fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }), { token }),
+            fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token })
+        ]);
+        const animatorBookings = (Array.isArray(animatorResponse) ? animatorResponse : []).filter(booking =>
+            String(booking?.status || '').toLowerCase() !== 'cancelled'
+        );
+        const roomBookings = (Array.isArray(roomResponse) ? roomResponse : []).filter(booking =>
+            String(booking?.status || '').toLowerCase() !== 'cancelled'
+            && String(booking?.room || '').trim().toLowerCase() === normalizedRoom
+        );
+        const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+        const openingMinutes = day === 0 || day === 6 ? 10 * 60 : 12 * 60;
+        const closingMinutes = 20 * 60;
+        const candidates = [];
+        for (let minutes = openingMinutes; minutes <= closingMinutes - 60; minutes += 30) {
+            candidates.push(smokeMinutesToTime(minutes));
+        }
+        const plannedRoomSlots = [];
+        const roomSlotFree = (time, duration) => {
+            const withinDay = smokeTimeToMinutes(time) + duration <= closingMinutes;
+            return withinDay
+                && !roomBookings.some(booking => smokeBookingOverlaps(booking, time, duration))
+                && !plannedRoomSlots.some(slot => smokeBookingOverlaps(slot, time, duration));
+        };
+        const animatorSlotFree = (line, time, duration) => animatorLineFitsSlot(line, time, duration)
+            && !animatorBookings.some(booking => {
+                if (!smokeBookingOverlaps(booking, time, duration)) return false;
+                return [booking?.lineId, booking?.line_id, booking?.resourceId, booking?.resource_id]
+                    .some(value => String(value || '') === String(line.id));
+            });
+        let activityTime = '';
+        let animator = null;
+        for (const time of candidates) {
+            if (!roomSlotFree(time, 60)) continue;
+            const availableLine = lines.find(line => animatorSlotFree(line, time, 60));
+            if (!availableLine) continue;
+            activityTime = time;
+            animator = availableLine;
+            plannedRoomSlots.push({ time, duration: 60 });
+            break;
+        }
+        if (!activityTime || !animator) continue;
+        const reuseTime = candidates.find(time => roomSlotFree(time, 60)) || '';
+        if (!reuseTime) continue;
+        plannedRoomSlots.push({ time: reuseTime, duration: 60 });
+        const kitchenTime = candidates.find(time => roomSlotFree(time, 90)
+            && animatorSlotFree(lines[0], time, 60)) || '';
+        if (!kitchenTime) continue;
+        plannedRoomSlots.push({ time: kitchenTime, duration: 90 });
+        if (!candidates.some(time => roomSlotFree(time, 60))) continue;
+        return {
+            date,
+            animator,
+            kitchenAnimator: lines[0],
+            activityTime,
+            activityServingTime: smokeMinutesToTime(smokeTimeToMinutes(activityTime) + 30),
+            activitySetupTime: smokeMinutesToTime(smokeTimeToMinutes(activityTime) + 15),
+            reuseTime,
+            reuseServingTime: smokeMinutesToTime(smokeTimeToMinutes(reuseTime) + 30),
+            kitchenTime,
+            kitchenServingTime: smokeMinutesToTime(smokeTimeToMinutes(kitchenTime) + 30)
+        };
+    }
+    throw new Error(`no free full-smoke room/animator schedule found from ${requestedDate} for ${room}`);
+}
+
 async function findBookingTimeSmokeSlot(base, token, room) {
     const startDate = futureDate(1);
     for (let offset = 0; offset < 45; offset += 1) {
         const date = datePlus(startDate, offset);
-        const lines = await loadLines(base, token, date, 'animators');
-        const candidates = lines.filter(item => {
-            const id = String(item?.id || '');
-            return id
-                && !['afisha', 'banquet-service'].includes(id)
-                && !id.startsWith('empty-roster-')
-                && item.assignmentAllowed !== false
-                && item.isUnavailable !== true;
-        });
+        const candidates = (await loadLines(base, token, date, 'animators')).filter(isUsableAnimatorLine);
         if (!candidates.length) continue;
 
-        const bookings = await fetchJson(
-            base,
-            scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }),
-            { token }
-        );
-        const rows = Array.isArray(bookings) ? bookings : [];
+        const [animatorResponse, roomResponse] = await Promise.all([
+            fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }), { token }),
+            fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token })
+        ]);
+        const activeAnimatorBookings = (Array.isArray(animatorResponse) ? animatorResponse : [])
+            .filter(booking => String(booking?.status || '').toLowerCase() !== 'cancelled');
+        const activeRoomBookings = (Array.isArray(roomResponse) ? roomResponse : [])
+            .filter(booking => String(booking?.status || '').toLowerCase() !== 'cancelled');
         const normalizedRoom = String(room || '').trim().toLowerCase();
-        const candidate = candidates.find(line => !rows.some(booking => {
-            if (String(booking?.status || '').toLowerCase() === 'cancelled') return false;
-            if (!smokeBookingOverlaps(booking, '12:30', 60)) return false;
-            const sameLine = [booking?.lineId, booking?.line_id, booking?.resourceId, booking?.resource_id]
-                .some(value => String(value || '') === String(line.id));
-            const sameRoom = normalizedRoom
-                && String(booking?.room || '').trim().toLowerCase() === normalizedRoom;
-            return sameLine || sameRoom;
-        }));
+        const overlapsEitherStart = booking =>
+            smokeBookingOverlaps(booking, '12:15', 60)
+            || smokeBookingOverlaps(booking, '12:30', 60);
+        const candidate = candidates.find(line =>
+            animatorLineFitsSlot(line, '12:15', 60)
+            && animatorLineFitsSlot(line, '12:30', 60)
+            && !activeAnimatorBookings.some(booking =>
+                overlapsEitherStart(booking)
+                && [booking?.lineId, booking?.line_id, booking?.resourceId, booking?.resource_id]
+                    .some(value => String(value || '') === String(line.id))
+            )
+            && !activeRoomBookings.some(booking =>
+                overlapsEitherStart(booking)
+                && normalizedRoom
+                && String(booking?.room || '').trim().toLowerCase() === normalizedRoom
+            )
+        );
         if (candidate) return { date, line: candidate };
     }
-    throw new Error('no visible free animator line found for the 12:15 -> 12:30 booking time smoke');
+    throw new Error('no visible free animator/room interval found for the 12:15 -> 12:30 booking time smoke');
+}
+
+async function findActiveBanquetEmptyCellSlot(base, token, date, room, { excludedSlots = [] } = {}) {
+    const response = await fetchJson(
+        base,
+        scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }),
+        { token }
+    );
+    const bookings = Array.isArray(response)
+        ? response
+        : (Array.isArray(response?.bookings) ? response.bookings : []);
+    const normalizedRoom = String(room || '').trim().toLowerCase();
+    const duration = 60;
+    const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const openingMinutes = day === 0 || day === 6 ? 10 * 60 : 12 * 60;
+    const closingMinutes = 20 * 60;
+    const candidates = [];
+    for (let minutes = closingMinutes - duration; minutes >= openingMinutes; minutes -= 15) {
+        candidates.push(smokeMinutesToTime(minutes));
+    }
+    const time = candidates.find(candidate =>
+        !excludedSlots.some(slot => smokeBookingOverlaps(slot, candidate, duration))
+        && !bookings.some(booking => {
+            if (String(booking?.status || '').toLowerCase() === 'cancelled') return false;
+            if (String(booking?.room || '').trim().toLowerCase() !== normalizedRoom) return false;
+            return smokeBookingOverlaps(booking, candidate, duration);
+        })
+    );
+    if (!time) {
+        throw new Error(`no free ${duration}-minute room slot found for active banquet empty-cell smoke on ${date}`);
+    }
+    return { time, duration };
 }
 
 function bookingPayload(base = {}) {
@@ -349,8 +531,11 @@ function kitchenPackage(servingTime = '14:00') {
     };
 }
 
-async function createBooking(base, token, body) {
+async function createBooking(base, token, body, onCreated = null) {
     const result = await fetchJson(base, scopedPath('/api/bookings'), { method: 'POST', token, body });
+    if (result.booking?.id && typeof onCreated === 'function') {
+        onCreated(result.booking);
+    }
     assert.equal(result.success, true, 'booking create success');
     assert.ok(result.booking?.id, 'booking create returns booking id');
     return result.booking;
@@ -363,7 +548,7 @@ async function deleteBooking(base, token, bookingId) {
         scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`),
         { method: 'DELETE', token },
         { label: `cleanup booking ${bookingId}` }
-    ).catch(err => console.warn(`cleanup booking ${bookingId} failed: ${err.message}`));
+    );
 }
 
 async function deleteCustomer(base, token, customerId) {
@@ -373,7 +558,7 @@ async function deleteCustomer(base, token, customerId) {
         scopedPath(`/api/customers/${encodeURIComponent(customerId)}`),
         { method: 'DELETE', token },
         { label: `cleanup customer ${customerId}` }
-    ).catch(err => console.warn(`cleanup customer ${customerId} failed: ${err.message}`));
+    );
 }
 
 function parseJsonFromStdout(stdout) {
@@ -389,37 +574,188 @@ function parseJsonFromStdout(stdout) {
     }
 }
 
-function runQaCleanupOperator(args) {
+function resolveRailwayCommand() {
+    if (process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_COMMAND) {
+        return process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_COMMAND;
+    }
+    const lookup = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', ['railway'], {
+        cwd: ROOT,
+        env: process.env,
+        encoding: 'utf8',
+        windowsHide: true
+    });
+    if (lookup.status === 0) {
+        const candidates = String(lookup.stdout || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        const preferred = process.platform === 'win32'
+            ? candidates.find(item => /\.(cmd|exe|bat)$/i.test(item))
+            : candidates[0];
+        if (preferred) return preferred;
+    }
+    return 'railway';
+}
+
+function cleanupOperatorInvocation(args) {
     const script = path.join(ROOT, 'scripts', 'banquet-production-recovery.js');
-    const result = spawnSync(process.execPath, [script, 'qa-cleanup', ...args], {
+    const timeout = Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000);
+    if (QA_CLEANUP_TRANSPORT === 'railway-ssh') {
+        if (!RAILWAY_CLEANUP_SERVICE) {
+            throw new Error(
+                'production QA cleanup requires TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_SERVICE '
+                + 'for non-Railway target hosts'
+            );
+        }
+        const railwayCommand = resolveRailwayCommand();
+        const railwayArgs = [
+            'ssh',
+            '--service',
+            RAILWAY_CLEANUP_SERVICE,
+            '--environment',
+            RAILWAY_CLEANUP_ENVIRONMENT,
+            '--',
+            'node',
+            'scripts/banquet-production-recovery.js',
+            'qa-cleanup',
+            ...args
+        ];
+        return {
+            label: `railway-ssh:${RAILWAY_CLEANUP_SERVICE}/${RAILWAY_CLEANUP_ENVIRONMENT}`,
+            command: process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : railwayCommand,
+            args: process.platform === 'win32'
+                ? ['/d', '/s', '/c', railwayCommand, ...railwayArgs]
+                : railwayArgs,
+            timeout: Math.max(timeout, 120000)
+        };
+    }
+    if (QA_CLEANUP_TRANSPORT !== 'local') {
+        throw new Error(`unsupported QA cleanup transport: ${QA_CLEANUP_TRANSPORT}`);
+    }
+    return {
+        label: 'local-node',
+        command: process.execPath,
+        args: [script, 'qa-cleanup', ...args],
+        timeout
+    };
+}
+
+function runQaCleanupOperator(args) {
+    const invocation = cleanupOperatorInvocation(args);
+    const result = spawnSync(invocation.command, invocation.args, {
         cwd: ROOT,
         env: process.env,
         encoding: 'utf8',
         windowsHide: true,
-        timeout: Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000)
+        timeout: invocation.timeout
     });
     if (result.error) throw result.error;
     if (result.status !== 0) {
-        throw new Error(`qa cleanup operator failed (${result.status}): ${String(result.stderr || result.stdout || '').trim()}`);
+        const stderr = String(result.stderr || '').trim();
+        const stdout = String(result.stdout || '').trim();
+        const detail = [
+            stderr ? `stderr=${stderr}` : '',
+            stdout ? `stdout=${stdout.slice(0, 1500)}` : '',
+            result.signal ? `signal=${result.signal}` : ''
+        ].filter(Boolean).join(' ');
+        throw new Error(`qa cleanup operator failed (${invocation.label}; status=${result.status}): ${detail}`);
     }
     return parseJsonFromStdout(result.stdout);
+}
+function assertQaCleanupTransportReady() {
+    if (!CLEANUP) return;
+    const readyMarker = 'timeline-smoke-cleanup-ready';
+    const timeout = Math.max(Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000), 120000);
+    const preflightScript = [
+        "const recovery=require('./scripts/banquet-production-recovery.js');",
+        "const {pool}=require('./db');",
+        '(async()=>{',
+        "if(typeof recovery.runQaCleanupDryRun!=='function')throw new Error('qa cleanup operator unavailable');",
+        `if(recovery.QA_CLEANUP_CAPABILITY!==${JSON.stringify(QA_CLEANUP_CAPABILITY)})throw new Error('qa cleanup operator capability mismatch');`,
+        'const client=await pool.connect();',
+        "try{await client.query('BEGIN READ ONLY');await client.query('SELECT 1');await client.query('ROLLBACK');}",
+        "catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}",
+        'finally{client.release();}',
+        'await pool.end();',
+        `process.stdout.write('${readyMarker}');`,
+        '})().catch(async()=>{try{await pool.end();}catch{}process.exit(2);});'
+    ].join('');
+    let invocation;
+    if (QA_CLEANUP_TRANSPORT === 'local') {
+        if (!String(process.env.DATABASE_URL || '').trim()) {
+            throw new Error('local QA cleanup transport requires DATABASE_URL before any smoke write');
+        }
+        invocation = {
+            label: 'local-node/read-only-db',
+            command: process.execPath,
+            args: ['-e', preflightScript]
+        };
+    } else if (QA_CLEANUP_TRANSPORT === 'railway-ssh') {
+        if (!RAILWAY_CLEANUP_SERVICE) {
+            throw new Error('railway-ssh QA cleanup preflight requires a Railway service');
+        }
+        const railwayCommand = resolveRailwayCommand();
+        const railwayArgs = [
+            'ssh',
+            '--service', RAILWAY_CLEANUP_SERVICE,
+            '--environment', RAILWAY_CLEANUP_ENVIRONMENT,
+            '--',
+            'node',
+            '-e',
+            preflightScript
+        ];
+        invocation = {
+            label: `railway-ssh:${RAILWAY_CLEANUP_SERVICE}/${RAILWAY_CLEANUP_ENVIRONMENT}/read-only-db`,
+            command: process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : railwayCommand,
+            args: process.platform === 'win32' ? ['/d', '/s', '/c', railwayCommand, ...railwayArgs] : railwayArgs
+        };
+    } else {
+        throw new Error(`unsupported QA cleanup transport: ${QA_CLEANUP_TRANSPORT}`);
+    }
+    const result = spawnSync(invocation.command, invocation.args, {
+        cwd: ROOT,
+        env: process.env,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout
+    });
+    if (result.error) throw new Error(`QA cleanup transport preflight failed (${invocation.label}): ${result.error.message}`);
+    if (result.status !== 0 || String(result.stdout || '').trim() !== readyMarker) {
+        throw new Error(`QA cleanup transport preflight failed (${invocation.label}; status=${result.status}; signal=${result.signal || 'none'})`);
+    }
 }
 
 async function discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets = []) {
     const byGroupId = new Map();
+    const errors = [];
+    const unresolvedBookingIds = [];
     for (const target of knownTargets) {
         const group = String(target?.groupId || '').trim();
         if (!group) continue;
+        const primaryBookingId = String(target.primaryBookingId || '').trim() || null;
+        const targetBookingIds = new Set((target.bookingIds || []).map(String).filter(Boolean));
+        if (primaryBookingId) targetBookingIds.add(primaryBookingId);
         byGroupId.set(group, {
             groupId: group,
-            primaryBookingId: String(target.primaryBookingId || '').trim() || null,
-            bookingIds: new Set((target.bookingIds || []).map(String).filter(Boolean))
+            primaryBookingId,
+            bookingIds: targetBookingIds
         });
     }
-    for (const bookingId of bookingIds.filter(Boolean)) {
-        const snapshot = await banquetSnapshot(base, token, bookingId).catch(() => null);
+    for (const bookingId of [...new Set(bookingIds.map(String).filter(Boolean))]) {
+        let snapshot;
+        try {
+            snapshot = await banquetSnapshot(base, token, bookingId);
+        } catch (error) {
+            if (/returned 404\b/.test(String(error?.message || error))) continue;
+            unresolvedBookingIds.push(bookingId);
+            errors.push(new Error(`banquet cleanup discovery failed for booking ${bookingId}: ${error?.message || String(error)}`));
+            continue;
+        }
         const group = groupId(snapshot);
-        if (!group) continue;
+        if (!group) {
+            const snapshotSource = String(snapshot?.source || snapshot?.group?.source || '').trim().toLowerCase();
+            if (snapshot?.success === true && ['single_booking', 'single'].includes(snapshotSource)) continue;
+            unresolvedBookingIds.push(bookingId);
+            errors.push(new Error(`banquet cleanup discovery returned malformed grouped snapshot for booking ${bookingId}`));
+            continue;
+        }
         const current = byGroupId.get(group) || {
             groupId: group,
             primaryBookingId: String(snapshot?.bookings?.primary?.id || snapshot?.group?.primaryBookingId || '').trim() || null,
@@ -428,16 +764,21 @@ async function discoverBanquetCleanupTargets(base, token, bookingIds, knownTarge
         current.primaryBookingId = current.primaryBookingId
             || String(snapshot?.bookings?.primary?.id || snapshot?.group?.primaryBookingId || '').trim()
             || null;
-        current.bookingIds.add(String(bookingId));
+        current.bookingIds.add(bookingId);
+        if (current.primaryBookingId) current.bookingIds.add(String(current.primaryBookingId));
         for (const member of snapshot?.members || []) {
             if (member?.bookingId) current.bookingIds.add(String(member.bookingId));
         }
         byGroupId.set(group, current);
     }
-    return [...byGroupId.values()].map(target => ({
-        ...target,
-        bookingIds: [...target.bookingIds]
-    }));
+    return {
+        targets: [...byGroupId.values()].map(target => ({
+            ...target,
+            bookingIds: [...target.bookingIds]
+        })),
+        errors,
+        unresolvedBookingIds
+    };
 }
 
 function assertQaCleanupDryRunReady(report, groupId) {
@@ -452,6 +793,36 @@ function assertQaCleanupApplyVerified(report, groupId) {
     const after = report.after?.[0];
     assert.equal(after?.groupId, groupId, `qa cleanup apply returns group ${groupId}`);
     assert.equal(after?.status, 'already_cancelled', `qa cleanup apply verifies cancelled group ${groupId}: ${after?.reason || after?.status}`);
+}
+function isCurrentRunDisposableBooking(booking = {}) {
+    const extra = booking.extraData && typeof booking.extraData === 'object' ? booking.extraData : {};
+    const marker = extra.disposableQa || extra.disposable_qa || {};
+    return String(marker.source || '') === QA_CLEANUP_SOURCE
+        && String(marker.runId || marker.run_id || '') === RUN_ID
+        && marker.cleanupExpected === true
+        && String(marker.testCustomerMarker || marker.test_customer_marker || '') === TEST_CUSTOMER_MARKER;
+}
+
+async function discoverRunBookingsFromTimeline(base, token, dates = []) {
+    const discovered = new Map();
+    for (const date of [...new Set(dates.map(value => String(value || '').slice(0, 10)).filter(Boolean))]) {
+        const rowsByView = await Promise.all(['rooms', 'animators'].map(timelineView =>
+            fetchJsonWithRetry(
+                base,
+                scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView }),
+                { token },
+                { label: `cleanup audit ${timelineView} timeline ${date}` }
+            )
+        ));
+        for (const rows of rowsByView) {
+            for (const booking of Array.isArray(rows) ? rows : []) {
+                if (!isCurrentRunDisposableBooking(booking)) continue;
+                const id = String(booking.id || '').trim();
+                if (id) discovered.set(id, { ...booking, id, date: String(booking.date || date).slice(0, 10) });
+            }
+        }
+    }
+    return [...discovered.values()];
 }
 
 async function verifyBookingsNotActiveInTimeline(base, token, date, bookingIds, timelineViews = ['rooms', 'animators']) {
@@ -469,34 +840,106 @@ async function verifyBookingsNotActiveInTimeline(base, token, date, bookingIds, 
     assert.deepEqual(leaked, [], `cleanup leaves no active bookings in timeline API for ${date}`);
 }
 
-async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], date = '') {
-    const targets = await discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets);
-    for (const target of targets) {
-        const args = [
-            `--run-id=${RUN_ID}`,
-            `--group-id=${target.groupId}`,
-            `--test-customer-marker=${TEST_CUSTOMER_MARKER}`,
-            `--business-context=${BUSINESS_CONTEXT}`,
-            '--json'
-        ];
-        if (target.primaryBookingId) args.push(`--primary-booking-id=${target.primaryBookingId}`);
-        const dryRun = runQaCleanupOperator(args);
-        assertQaCleanupDryRunReady(dryRun, target.groupId);
-        const apply = runQaCleanupOperator([
-            ...args,
-            '--apply',
-            `--confirm=${QA_CLEANUP_CONFIRMATION}`
-        ]);
-        assertQaCleanupApplyVerified(apply, target.groupId);
-        if (date && target.bookingIds.length) {
-            await verifyBookingsNotActiveInTimeline(base, token, date, target.bookingIds);
+async function verifyBanquetGroupNotActiveViaApi(base, token, target) {
+    const candidateBookingIds = [target.primaryBookingId, ...(target.bookingIds || [])]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+    assert.ok(candidateBookingIds.length, `cleanup group ${target.groupId} has a booking ID for API verification`);
+    let snapshot = null;
+    let sourceBookingId = '';
+    const mismatches = [];
+    for (const bookingId of [...new Set(candidateBookingIds)]) {
+        try {
+            const candidate = await banquetSnapshot(base, token, bookingId);
+            const candidateGroupId = groupId(candidate);
+            if (candidateGroupId !== target.groupId) {
+                mismatches.push({ bookingId, groupId: candidateGroupId || null });
+                continue;
+            }
+            snapshot = candidate;
+            sourceBookingId = bookingId;
+            break;
+        } catch (error) {
+            if (/returned 404\b/.test(String(error?.message || error))) continue;
+            throw error;
         }
     }
-    return targets;
+    assert.deepEqual(
+        mismatches,
+        [],
+        `cleanup group ${target.groupId} API verification returned another or missing group`
+    );
+    if (!snapshot) return;
+
+    const apiGroupStatus = String(snapshot.group?.status || snapshot.status || '').trim().toLowerCase();
+    assert.equal(
+        apiGroupStatus,
+        'cancelled',
+        `cleanup group ${target.groupId} is not active via banquet API from ${sourceBookingId}: ${apiGroupStatus || 'missing status'}`
+    );
+    const activeMembers = (snapshot.members || []).filter(member => {
+        const status = String(member?.booking?.status || member?.bookingStatus || member?.status || '').trim().toLowerCase();
+        return status !== 'cancelled';
+    }).map(member => ({
+        bookingId: String(member?.bookingId || member?.booking?.id || '').trim() || null,
+        status: String(member?.booking?.status || member?.bookingStatus || member?.status || '').trim() || null
+    }));
+    assert.deepEqual(activeMembers, [], `cleanup group ${target.groupId} has no active members via banquet API`);
+}
+
+async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], date = '') {
+    const discovery = await discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets);
+    const errors = [...discovery.errors];
+    const cleanedTargets = [];
+    for (const target of discovery.targets) {
+        try {
+            const args = [
+                `--run-id=${RUN_ID}`,
+                `--group-id=${target.groupId}`,
+                `--test-customer-marker=${TEST_CUSTOMER_MARKER}`,
+                `--business-context=${BUSINESS_CONTEXT}`,
+                '--json'
+            ];
+            if (target.primaryBookingId) args.push(`--primary-booking-id=${target.primaryBookingId}`);
+            const dryRun = runQaCleanupOperator(args);
+            assertQaCleanupDryRunReady(dryRun, target.groupId);
+            const apply = runQaCleanupOperator([
+                ...args,
+                '--apply',
+                `--confirm=${QA_CLEANUP_CONFIRMATION}`
+            ]);
+            assertQaCleanupApplyVerified(apply, target.groupId);
+            await verifyBanquetGroupNotActiveViaApi(base, token, target);
+            if (date && target.bookingIds.length) {
+                await verifyBookingsNotActiveInTimeline(base, token, date, target.bookingIds);
+            }
+            cleanedTargets.push(target);
+        } catch (error) {
+            errors.push(new Error(`cleanup failed for banquet group ${target.groupId}: ${error?.message || String(error)}`, { cause: error }));
+        }
+    }
+    return {
+        targets: discovery.targets,
+        cleanedTargets,
+        errors,
+        unresolvedBookingIds: discovery.unresolvedBookingIds
+    };
 }
 
 async function banquetSnapshot(base, token, bookingId) {
-    return fetchJson(base, scopedPath(`/api/banquets/by-booking/${encodeURIComponent(bookingId)}`), { token });
+    const requestPath = scopedPath(`/api/banquets/by-booking/${encodeURIComponent(bookingId)}`);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            return await fetchJson(base, requestPath, { token });
+        } catch (error) {
+            lastError = error;
+            const message = String(error?.message || error);
+            if (/returned (?:401|403|404)\b/.test(message) || attempt >= 3) throw error;
+            await sleep(attempt * 1000);
+        }
+    }
+    throw lastError;
 }
 
 function groupId(snapshot = {}) {
@@ -521,6 +964,12 @@ async function collectTimelineDiagnostics(page, label, error = null) {
         const selectorParent = selector?.closest('.timeline-visible-type-switch');
         const selectorParentRect = selectorParent?.getBoundingClientRect?.();
         const selectorParentStyle = selectorParent ? getComputedStyle(selectorParent) : null;
+        const sidebar = document.getElementById('sidebarNav');
+        const sidebarRect = sidebar?.getBoundingClientRect?.();
+        const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null;
+        const sidebarLauncher = document.querySelector('[data-sidebar-timeline-launcher]');
+        const sidebarLauncherRect = sidebarLauncher?.getBoundingClientRect?.();
+        const sidebarLauncherStyle = sidebarLauncher ? getComputedStyle(sidebarLauncher) : null;
         const panel = document.getElementById('timelineViewPanel');
         const panelRect = panel?.getBoundingClientRect?.();
         const panelStyle = panel ? getComputedStyle(panel) : null;
@@ -691,6 +1140,58 @@ async function collectTimelineDiagnostics(page, label, error = null) {
                     })),
                 html: selector?.outerHTML?.slice(0, 1200) || ''
             },
+            sidebarTimelineLauncher: {
+                sidebar: {
+                    exists: Boolean(sidebar),
+                    classes: sidebar?.className || '',
+                    open: sidebar?.classList?.contains('open') || false,
+                    collapsed: sidebar?.classList?.contains('collapsed') || false,
+                    mobileRestoreCollapsed: sidebar?.dataset?.sidebarMobileRestoreCollapsed || '',
+                    rect: plainRect(sidebarRect),
+                    computed: sidebarStyle ? {
+                        display: sidebarStyle.display,
+                        visibility: sidebarStyle.visibility,
+                        opacity: sidebarStyle.opacity,
+                        position: sidebarStyle.position,
+                        transform: sidebarStyle.transform,
+                        overflow: sidebarStyle.overflow
+                    } : null
+                },
+                exists: Boolean(sidebarLauncher),
+                visible: visibleFrom(sidebarLauncher, sidebarLauncherRect, sidebarLauncherStyle),
+                activeMode: sidebarLauncher?.dataset?.sidebarTimelineActiveMode || '',
+                modeCount: sidebarLauncher?.dataset?.sidebarTimelineModeCount || '',
+                rect: plainRect(sidebarLauncherRect),
+                computed: sidebarLauncherStyle ? {
+                    display: sidebarLauncherStyle.display,
+                    visibility: sidebarLauncherStyle.visibility,
+                    opacity: sidebarLauncherStyle.opacity,
+                    position: sidebarLauncherStyle.position,
+                    pointerEvents: sidebarLauncherStyle.pointerEvents,
+                    overflow: sidebarLauncherStyle.overflow,
+                    transform: sidebarLauncherStyle.transform
+                } : null,
+                modes: Array.from(sidebarLauncher?.querySelectorAll('[data-sidebar-timeline-mode]') || []).map(link => {
+                    const rect = link.getBoundingClientRect?.();
+                    const style = getComputedStyle(link);
+                    return {
+                        mode: link.dataset.sidebarTimelineMode || '',
+                        text: link.textContent.trim(),
+                        pressed: link.getAttribute('aria-pressed') || '',
+                        current: link.getAttribute('aria-current') || '',
+                        visible: visibleFrom(link, rect, style),
+                        rect: plainRect(rect),
+                        computed: {
+                            display: style.display,
+                            visibility: style.visibility,
+                            opacity: style.opacity,
+                            pointerEvents: style.pointerEvents,
+                            transform: style.transform
+                        }
+                    };
+                }),
+                html: sidebarLauncher?.outerHTML?.slice(0, 1600) || ''
+            },
             viewPanel: {
                 exists: Boolean(panel),
                 hidden: Boolean(panel?.hidden),
@@ -749,7 +1250,13 @@ async function writeTimelineFailureDiagnostic(page, label, error = null) {
     }));
     fs.writeFileSync(jsonPath, `${JSON.stringify(diagnostics, null, 2)}\n`);
     if (page && !page.isClosed()) {
-        await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
+        const mask = [
+            page.locator('.booking-block'),
+            page.locator('.timeline-room-service-marker'),
+            page.locator('.timeline-banquet-inspector'),
+            page.locator('#bookingPanel input, #bookingPanel textarea, #bookingPanel [data-customer-name]')
+        ];
+        await page.screenshot({ path: pngPath, fullPage: false, mask, maskColor: '#111827' }).catch(() => {});
     }
     return { jsonPath, pngPath, diagnostics };
 }
@@ -762,7 +1269,6 @@ async function waitForTimelineReady(page, label) {
             await page.waitForFunction(() => {
                 const appVisible = document.getElementById('mainApp')
                     && !document.getElementById('mainApp').classList.contains('hidden');
-                const selector = document.querySelector('[data-timeline-type-selector]');
                 const panel = document.getElementById('timelineViewPanel');
                 const toggle = document.getElementById('timelineViewPanelToggle');
                 const timelineContainer = document.querySelector('.timeline-container');
@@ -774,7 +1280,6 @@ async function waitForTimelineReady(page, label) {
                     && typeof renderTimeline === 'function'
                     && typeof openBookingPanel === 'function'
                     && document.getElementById('timelineDate')
-                    && selector
                     && panel
                     && toggle
                     && timelineContainer
@@ -792,25 +1297,25 @@ async function waitForTimelineReady(page, label) {
     throw new Error(`${label}: timeline readiness did not stabilize: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
 }
 
-async function waitForTimelineTypeSwitch(page, label) {
+async function waitForTimelineRows(page, label) {
+    try {
+        await page.waitForFunction(() => {
+            const container = document.querySelector('.timeline-container');
+            if (!container) return false;
+            return document.querySelectorAll('.timeline-line, .line-row').length > 0;
+        }, undefined, { timeout: 10000 });
+    } catch (error) {
+        const diagnostics = await collectTimelineDiagnostics(page, label, error).catch(() => null);
+        throw new Error(`${label}: timeline rows did not populate: ${error?.message || error}; diagnostics=${JSON.stringify(diagnostics)}`);
+    }
+}
+
+async function waitForLegacyTimelineTypeSwitchRemoved(page, label) {
     let lastError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             await waitForTimelineReady(page, `${label}: readiness`);
-            await page.waitForFunction(() => {
-                const selector = document.querySelector('[data-timeline-type-selector]');
-                const rect = selector?.getBoundingClientRect?.();
-                const style = selector ? getComputedStyle(selector) : null;
-                return Boolean(
-                    selector
-                    && rect
-                    && rect.width > 0
-                    && rect.height > 0
-                    && style?.display !== 'none'
-                    && style?.visibility !== 'hidden'
-                    && Number(style?.opacity || 1) > 0
-                );
-            });
+            await page.waitForFunction(() => !document.querySelector('[data-timeline-type-selector]') && !document.querySelector('.timeline-visible-type-switch'));
             return collectTimelineDiagnostics(page, label);
         } catch (error) {
             lastError = error;
@@ -820,7 +1325,7 @@ async function waitForTimelineTypeSwitch(page, label) {
         }
     }
     const diagnostics = await collectTimelineDiagnostics(page, label, lastError).catch(() => null);
-    throw new Error(`${label}: timeline type switch is not visible after readiness wait: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
+    throw new Error(`${label}: legacy timeline type switch is still present: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
 }
 
 async function waitForTimelineLayoutSettle(page, label) {
@@ -872,14 +1377,23 @@ async function openAuthenticatedPage(browser, base, session) {
             await route.continue();
             return;
         }
-        let payload;
+        let markedPayload;
         try {
-            payload = request.postDataJSON();
-        } catch {
-            await route.continue();
+            const payload = request.postDataJSON();
+            markedPayload = markCreateRequestPayload(payload, pathname);
+        } catch (error) {
+            console.error(`Blocked unmarked booking create ${pathname}: ${error?.message || String(error)}`);
+            await route.fulfill({
+                status: 500,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: false,
+                    code: 'QA_MARKER_INJECTION_FAILED',
+                    error: 'QA marker injection failed; booking create was blocked'
+                })
+            });
             return;
         }
-        const markedPayload = markCreateRequestPayload(payload, pathname);
         await route.continue({
             headers: {
                 ...request.headers(),
@@ -908,21 +1422,39 @@ async function renderTimelineView(page, date, view) {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             await waitForTimelineReady(page, `before render timeline ${view} ${date}`);
-            await page.evaluate(async ({ date, view }) => {
+            await page.evaluate(async ({ date, view, forceRefresh }) => {
                 AppState.selectedDate = new Date(`${date}T00:00:00`);
                 const input = document.getElementById('timelineDate');
                 if (input) input.value = date;
                 if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(date);
                 if (window.TimelineView?.set) await window.TimelineView.set(view, { render: false });
+                if (forceRefresh && typeof invalidateBookingTimelineDateCache === 'function') {
+                    invalidateBookingTimelineDateCache(date, { bookings: true, lines: true });
+                }
+                if (forceRefresh && typeof getLinesForDate === 'function') {
+                    await getLinesForDate(AppState.selectedDate, { force: true });
+                }
                 if (typeof renderTimeline === 'function') await renderTimeline();
-            }, { date, view });
+            }, { date, view, forceRefresh: attempt > 1 });
             await waitForTimelineReady(page, `after render timeline ${view} ${date}`);
+            await waitForTimelineRows(page, `after render timeline ${view} ${date}`);
             return;
         } catch (error) {
             lastError = error;
-            if (!isNavigationContextError(error) && attempt >= 2) break;
+            const shouldRetry = isNavigationContextError(error) || /timeline rows did not populate/i.test(error?.message || '');
+            if (!shouldRetry && attempt >= 2) break;
+            if (!shouldRetry && attempt < 2) {
+                await page.waitForLoadState('domcontentloaded').catch(() => {});
+                await page.waitForTimeout(250);
+                continue;
+            }
+            if (attempt >= 3) break;
             await page.waitForLoadState('domcontentloaded').catch(() => {});
-            await page.waitForTimeout(250);
+            if (/timeline rows did not populate/i.test(error?.message || '')) {
+                await sleep(15000 * attempt);
+            } else {
+                await page.waitForTimeout(500);
+            }
         }
     }
     const diagnostics = await collectTimelineDiagnostics(page, `render timeline ${view} ${date}`, lastError).catch(() => null);
@@ -1181,9 +1713,11 @@ async function acknowledgePreorderWarningIfVisible(page, label) {
     return true;
 }
 
-async function fillKitchenAndSubmit(page, sourceBookingId) {
+async function fillKitchenAndSubmit(page, sourceBookingId, onCreated = null, serviceTimes = {}) {
     const sourceBooking = sourceBookingId && typeof sourceBookingId === 'object' ? sourceBookingId : { id: sourceBookingId };
     sourceBookingId = sourceBookingIdOf(sourceBooking);
+    const servingTime = serviceTimes.servingTime || '14:00';
+    const setupTime = serviceTimes.setupTime || '13:45';
     await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, 'source activity -> kitchen bridge before ticket quote');
     await ensureKitchenTicketQuoteReady(page, 'source activity -> kitchen');
     await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, 'source activity -> kitchen bridge before submit', { expectCreatePath: true });
@@ -1199,7 +1733,7 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                 response.url().includes('/api/banquets/from-source/member-booking')
                 && response.request().method() === 'POST'
             ).catch(error => error);
-            await page.evaluate(() => {
+            await page.evaluate(({ servingTime, setupTime }) => {
                 const setInputValue = (id, value) => {
                     const input = document.getElementById(id);
                     if (!input) return;
@@ -1218,14 +1752,14 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                         subtotal: 4500,
                         kitchenType: 'menu',
                         servingUnit: 'portion',
-                        servingTime: '14:00'
+                        servingTime
                     }]);
                 }
                 if (typeof setBookingServiceEvents === 'function') {
-                    setBookingServiceEvents([{ type: 'room_setup', title: 'Task37 setup', time: '13:45' }], { render: true });
+                    setBookingServiceEvents([{ type: 'room_setup', title: 'Task37 setup', time: setupTime }], { render: true });
                 }
                 document.getElementById('bookingNotes').value = 'Task37 kitchen browser smoke';
-            });
+            }, { servingTime, setupTime });
             await ensureActivityFirstKitchenBridgeReady(page, sourceBooking, `source activity -> kitchen bridge before submit attempt ${attempt}`, { expectCreatePath: true });
             await page.locator('#bookingSubmitBtn').click();
             await acknowledgePreorderWarningIfVisible(page, 'source activity -> kitchen');
@@ -1270,6 +1804,10 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
                 })}`);
             }
             const body = await response.json();
+            const createdBooking = body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+            if (createdBooking?.id && typeof onCreated === 'function') {
+                onCreated(createdBooking);
+            }
             if (response.status() === 429 && attempt < 3) {
                 console.warn(`source activity -> kitchen rate limited; retry ${attempt + 1}/3`);
                 await page.waitForFunction(() => {
@@ -1282,7 +1820,7 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
             assert.equal(response.ok(), true, `source activity -> kitchen endpoint returns ok: status=${response.status()} body=${JSON.stringify(body)}`);
             assert.equal(body.success, true, `source activity -> kitchen response success: status=${response.status()} body=${JSON.stringify(body)}`);
             assert.equal(String(body.group?.primaryBookingId || body.banquetGroup?.group?.primaryBookingId || body.banquetGroup?.group?.primary_booking_id || sourceBookingId), String(sourceBookingId));
-            return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+            return createdBooking;
         }
     } finally {
         page.off('request', requestHandler);
@@ -1297,6 +1835,8 @@ async function assertTimelineDeepLinkSwitching(page, base, date) {
     deepLink.searchParams.set('smokeKeep', '1');
     await page.goto(deepLink.toString(), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    await waitForTimelineReady(page, 'deep-link rooms readiness');
+    await waitForTimelineRows(page, 'deep-link rooms rows');
 
     const switched = await page.evaluate(async () => {
         await window.TimelineView.set('animators', { render: false });
@@ -1319,13 +1859,108 @@ async function assertTimelineDeepLinkSwitching(page, base, date) {
     unknownLink.searchParams.set('timelineView', 'unsupported');
     await page.goto(unknownLink.toString(), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    await waitForTimelineReady(page, 'unsupported deep-link fallback readiness');
+    await waitForTimelineRows(page, 'unsupported deep-link fallback rows');
     assert.equal(await page.evaluate(() => window.TimelineView.current()), 'rooms');
-    await page.evaluate(async () => window.TimelineView.set('animators', { render: false }));
+    await page.evaluate(async () => window.TimelineView.set('animators'));
+    await waitForTimelineReady(page, 'post deep-link animator readiness');
+    await waitForTimelineRows(page, 'post deep-link animator rows');
+}
+
+async function ensureSidebarTimelineLauncherVisible(page, label) {
+    const launcher = page.locator('[data-sidebar-timeline-launcher]');
+    await launcher.waitFor({ state: 'attached' });
+    const readActionableState = () => page.evaluate(() => {
+        const node = document.querySelector('[data-sidebar-timeline-launcher]');
+        const sidebar = document.getElementById('sidebarNav');
+        const rect = node?.getBoundingClientRect?.();
+        const style = node ? getComputedStyle(node) : null;
+        const mobile = window.innerWidth <= 768;
+        const intersectsViewport = Boolean(
+            rect
+            && rect.width > 0
+            && rect.height > 0
+            && rect.right >= 0
+            && rect.left <= window.innerWidth
+            && rect.bottom >= 0
+            && rect.top <= window.innerHeight
+        );
+        return {
+            mobile,
+            actionable: Boolean(
+                node
+                && intersectsViewport
+                && style?.display !== 'none'
+                && style?.visibility !== 'hidden'
+                && Number(style?.opacity || 1) > 0
+                && (!mobile || (sidebar?.classList.contains('open') && document.body.classList.contains('sidebar-mobile-open')))
+            )
+        };
+    });
+    if ((await readActionableState()).actionable) return launcher;
+    const toggle = page.locator('#sidebarToggle');
+    await toggle.waitFor({ state: 'visible' });
+    await toggle.click();
+    await page.waitForFunction(() => {
+        const node = document.querySelector('[data-sidebar-timeline-launcher]');
+        const sidebar = document.getElementById('sidebarNav');
+        const rect = node?.getBoundingClientRect?.();
+        return Boolean(
+            node
+            && rect
+            && rect.width > 0
+            && rect.height > 0
+            && rect.right >= 0
+            && rect.left <= window.innerWidth
+            && (!window.matchMedia('(max-width: 768px)').matches
+                || (sidebar?.classList.contains('open') && document.body.classList.contains('sidebar-mobile-open')))
+        );
+    });
+    assert.equal((await readActionableState()).actionable, true, `${label}: timeline launcher is actionable inside viewport`);
+    return launcher;
+}
+
+async function assertSidebarTimelineLauncherSwitching(page, label, viewport) {
+    await page.setViewportSize(viewport);
+    await waitForTimelineReady(page, `${label}: readiness`);
+    const launcher = await ensureSidebarTimelineLauncherVisible(page, label);
+    assert.equal(await launcher.locator('[data-sidebar-timeline-mode]').count(), 2, `${label}: launcher exposes two timeline modes`);
+    for (const mode of ['rooms', 'animators', 'rooms']) {
+        await ensureSidebarTimelineLauncherVisible(page, `${label}: ${mode}`);
+        const link = page.locator(`[data-sidebar-timeline-mode="${mode}"]`);
+        await link.waitFor({ state: 'visible' });
+        assert.equal(await link.isEnabled(), true, `${label}: ${mode} launcher link is enabled`);
+        await link.click();
+        await page.waitForFunction(expected => {
+            const link = document.querySelector(`[data-sidebar-timeline-mode="${CSS.escape(expected)}"]`);
+            const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
+            return window.TimelineView?.current?.() === expected
+                && link?.getAttribute('aria-pressed') === 'true'
+                && launcher?.dataset.sidebarTimelineActiveMode === expected;
+        }, mode);
+        assert.equal(await link.getAttribute('aria-pressed'), 'true', `${label}: ${mode} launcher state is pressed`);
+    }
 }
 
 async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot) {
     await renderTimelineView(page, date, 'rooms');
-    return page.evaluate(async ({ room, time, snapshot }) => {
+    return page.evaluate(async ({ date, room, time, snapshot }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0
+                && rect.right > 0
+                && rect.bottom > 0
+                && rect.left < window.innerWidth
+                && rect.top < window.innerHeight;
+        };
         const groupId = String(snapshot?.groupId || snapshot?.group?.id || '').trim();
         const primary = snapshot?.bookings?.primary || {};
         const kitchen = Array.isArray(snapshot?.bookings?.kitchen) ? snapshot.bookings.kitchen[0] : null;
@@ -1375,37 +2010,234 @@ async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot
         if (!cell) return { ok: false, error: `empty cell not found: ${lineId} ${time}` };
         await selectCell(cell);
         await new Promise(resolve => setTimeout(resolve, 250));
+        if (!elementVisible(document.getElementById('bookingPanel')) && typeof openBookingPanel === 'function') {
+            await openBookingPanel(time, lineId, {
+                banquetContext: summary,
+                contextSource: 'timeline_empty_cell_smoke_retry'
+            });
+        }
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
         const banner = document.querySelector('.booking-active-banquet-context');
         const standalone = document.querySelector('[data-booking-standalone-override]');
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
         return {
             ok: true,
+            date,
+            time,
+            room,
+            lineId,
+            customerId: summary.customerId || '',
+            customerName: summary.customerName || '',
             activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
             selectedGroupId: BookingDrawerState.selectedBanquetGroupId || '',
             activeBanquetIntent: BookingDrawerState.activeBanquetIntent || '',
             roleIntent: BookingDrawerState.activeBanquetRoleIntent || '',
             bannerText: banner?.textContent || '',
             hasStandaloneOverride: Boolean(standalone),
-            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
             guests: document.getElementById('banquetGuests')?.value || ''
         };
-    }, { room, time, snapshot });
+    }, { date, room, time, snapshot });
 }
 
-async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
-    await ensureKitchenTicketQuoteReady(page, 'active inspector -> empty cell member');
+async function ensureActiveBanquetMemberDrawer(page, groupId, drawer = {}) {
+    const state = await page.evaluate(async ({ groupId, drawer }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0;
+        };
+        const cleanGroupId = String(groupId || drawer?.activeContext?.groupId || '').trim();
+        const context = drawer?.activeContext && typeof drawer.activeContext === 'object'
+            ? {
+                ...drawer.activeContext,
+                mode: 'existing',
+                groupId: cleanGroupId
+            }
+            : {
+                mode: 'existing',
+                groupId: cleanGroupId,
+                date: drawer?.date || '',
+                room: drawer?.room || '',
+                targetTime: drawer?.time || '',
+                targetLineId: drawer?.lineId || '',
+                roleIntent: drawer?.roleIntent || 'kitchen',
+                source: 'timeline_browser_smoke_active_empty_cell'
+            };
+        const needsOpen = !elementVisible(document.getElementById('bookingPanel'))
+            || String(BookingDrawerState?.selectedBanquetGroupId || '') !== cleanGroupId
+            || BookingDrawerState?.activeBanquetIntent !== 'add_to_existing';
+        if (needsOpen && typeof openBookingPanel === 'function') {
+            await openBookingPanel(drawer?.time || context.targetTime, drawer?.lineId || context.targetLineId, {
+                banquetContext: context,
+                contextSource: 'timeline_empty_cell_submit_retry'
+            });
+        }
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        return {
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
+            selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+            activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+            roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            panelClass: panel?.className || '',
+            submitDisabled: submit?.disabled || false
+        };
+    }, { groupId, drawer });
+    assert.equal(state.panelVisible, true, `active inspector -> empty cell drawer is visible before submit: ${JSON.stringify(state)}`);
+    assert.equal(String(state.selectedGroupId), String(groupId), `active inspector -> empty cell keeps selected group before submit: ${JSON.stringify(state)}`);
+    assert.equal(state.activeBanquetIntent, 'add_to_existing', `active inspector -> empty cell keeps add-to-existing intent before submit: ${JSON.stringify(state)}`);
+    return state;
+}
+
+async function clickActiveBanquetMemberSubmit(page, groupId, drawer = {}) {
+    const state = await page.evaluate(async ({ groupId, drawer }) => {
+        const elementVisible = node => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return !node.hidden
+                && !node.classList.contains('hidden')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && rect.width > 0
+                && rect.height > 0;
+        };
+        const setInputValue = (id, value) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.value = String(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const applyDraftSetup = () => {
+            const customerId = context.customerId || context.sourceCustomerId || context.banquetGroupCustomerId || drawer?.customerId || '';
+            const customerName = context.customerName || context.sourceCustomerName || drawer?.customerName || '';
+            if (customerId || customerName) {
+                if (typeof applySelectedCustomerToBookingForm === 'function') {
+                    applySelectedCustomerToBookingForm({
+                        id: customerId,
+                        name: customerName
+                    }, {
+                        markDirty: false,
+                        renderSummary: false
+                    });
+                }
+                const selectedCustomer = document.getElementById('selectedCustomerId');
+                if (selectedCustomer && customerId) selectedCustomer.value = String(customerId);
+                const customerSearch = document.getElementById('customerSearch');
+                if (customerSearch && customerName) {
+                    customerSearch.value = String(customerName);
+                    customerSearch.dataset.selectedValue = String(customerName);
+                }
+                const customerNameInput = document.getElementById('customerName');
+                if (customerNameInput && customerName) customerNameInput.value = String(customerName);
+            }
+            setInputValue('banquetGuests', '');
+            setInputValue('banquetAdults', '');
+            setInputValue('banquetTables', '');
+            if (typeof BookingPackageState !== 'undefined') {
+                BookingPackageState.menuPositions = [];
+                BookingPackageState.serviceEvents = [];
+            }
+            if (typeof renderBookingMenuPositions === 'function') renderBookingMenuPositions();
+            if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+            if (window.BookingTickets?.reset) window.BookingTickets.reset();
+            if (window.BookingTickets?.setActive) window.BookingTickets.setActive(false);
+            const banquetMenu = document.getElementById('banquetMenu');
+            if (banquetMenu) banquetMenu.value = '';
+            const notes = document.getElementById('bookingNotes');
+            if (notes) notes.value = 'Task37 active inspector empty cell smoke';
+            if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
+        };
+        const cleanGroupId = String(groupId || drawer?.activeContext?.groupId || '').trim();
+        const context = drawer?.activeContext && typeof drawer.activeContext === 'object'
+            ? {
+                ...drawer.activeContext,
+                mode: 'existing',
+                groupId: cleanGroupId
+            }
+            : {
+                mode: 'existing',
+                groupId: cleanGroupId,
+                date: drawer?.date || '',
+                room: drawer?.room || '',
+                targetTime: drawer?.time || '',
+                targetLineId: drawer?.lineId || '',
+                roleIntent: drawer?.roleIntent || 'kitchen',
+                source: 'timeline_browser_smoke_active_empty_cell'
+            };
+        const openIfNeeded = async () => {
+            const needsOpen = !elementVisible(document.getElementById('bookingPanel'))
+                || String(BookingDrawerState?.selectedBanquetGroupId || '') !== cleanGroupId
+                || BookingDrawerState?.activeBanquetIntent !== 'add_to_existing';
+            if (needsOpen && typeof openBookingPanel === 'function') {
+                await openBookingPanel(drawer?.time || context.targetTime, drawer?.lineId || context.targetLineId, {
+                    banquetContext: context,
+                    contextSource: 'timeline_empty_cell_submit_retry'
+                });
+            }
+        };
+        await openIfNeeded();
+        applyDraftSetup();
+        await openIfNeeded();
+        applyDraftSetup();
+        if (typeof hideTimelineBanquetInspector === 'function') hideTimelineBanquetInspector();
+        const panel = document.getElementById('bookingPanel');
+        const submit = document.getElementById('bookingSubmitBtn');
+        if (elementVisible(submit)) submit.scrollIntoView({ block: 'center', inline: 'nearest' });
+        const beforeClick = {
+            panelVisible: elementVisible(panel),
+            submitVisible: elementVisible(submit),
+            submitDisabled: submit?.disabled || false,
+            selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+            activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+            roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+            panelClass: panel?.className || ''
+        };
+        if (beforeClick.panelVisible && beforeClick.submitVisible && !beforeClick.submitDisabled) {
+            submit.click();
+        }
+        return beforeClick;
+    }, { groupId, drawer });
+    assert.equal(state.panelVisible, true, `active inspector -> empty cell drawer visible at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.submitVisible, true, `active inspector -> empty cell submit visible at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.submitDisabled, false, `active inspector -> empty cell submit enabled at submit click: ${JSON.stringify(state)}`);
+    assert.equal(String(state.selectedGroupId), String(groupId), `active inspector -> empty cell selected group at submit click: ${JSON.stringify(state)}`);
+    assert.equal(state.activeBanquetIntent, 'add_to_existing', `active inspector -> empty cell add-to-existing intent at submit click: ${JSON.stringify(state)}`);
+    return state;
+}
+
+async function submitActiveBanquetMemberFromEmptyCell(page, groupId, drawer = {}, onCreated = null) {
+    await ensureActiveBanquetMemberDrawer(page, groupId, drawer);
     const genericBookingRequests = [];
+    const observedPostPaths = [];
     const requestHandler = request => {
         if (request.method() !== 'POST') return;
         const pathname = new URL(request.url()).pathname;
+        observedPostPaths.push(pathname);
         if (pathname === '/api/bookings' || pathname === '/api/bookings/full') {
             genericBookingRequests.push(request.url());
         }
     };
     page.on('request', requestHandler);
-    const responsePromise = page.waitForResponse(response =>
-        response.url().includes(`/api/banquets/${encodeURIComponent(groupId)}/member-booking`)
-        && response.request().method() === 'POST'
-    );
     await page.evaluate(() => {
         const setInputValue = (id, value) => {
             const input = document.getElementById(id);
@@ -1414,32 +2246,85 @@ async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
         };
-        if (typeof setBookingKitchenEnabled === 'function') setBookingKitchenEnabled(true, { markDirty: true });
-        setInputValue('banquetGuests', document.getElementById('banquetGuests')?.value || '4');
-        setInputValue('banquetAdults', document.getElementById('banquetAdults')?.value || '0');
-        if (typeof setBookingMenuPositions === 'function') {
-            setBookingMenuPositions([{
-                productId: 'task37-empty-cell-menu',
-                title: 'Task37 empty cell menu',
-                quantity: 1,
-                unitPrice: 4500,
-                subtotal: 4500,
-                kitchenType: 'menu',
-                servingUnit: 'portion',
-                servingTime: '17:30'
-            }]);
+        setInputValue('banquetGuests', '');
+        setInputValue('banquetAdults', '');
+        setInputValue('banquetTables', '');
+        if (typeof BookingPackageState !== 'undefined') {
+            BookingPackageState.menuPositions = [];
+            BookingPackageState.serviceEvents = [];
+        } else {
+            if (typeof setBookingMenuPositions === 'function') setBookingMenuPositions([]);
+            if (typeof setBookingServiceEvents === 'function') setBookingServiceEvents([], { render: true });
         }
+        if (typeof renderBookingMenuPositions === 'function') renderBookingMenuPositions();
+        if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+        if (window.BookingTickets?.reset) window.BookingTickets.reset();
+        if (window.BookingTickets?.setActive) window.BookingTickets.setActive(false);
+        const banquetMenu = document.getElementById('banquetMenu');
+        if (banquetMenu) banquetMenu.value = '';
         document.getElementById('bookingNotes').value = 'Task37 active inspector empty cell smoke';
-        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        if (typeof updateBookingSubmitState === 'function') updateBookingSubmitState();
     });
-    await acknowledgePreorderWarningIfVisible(page, 'active inspector -> empty cell member');
-    const response = await responsePromise;
-    page.off('request', requestHandler);
-    const body = await response.json();
-    assert.equal(response.ok(), true, 'active inspector -> empty cell member endpoint returns ok');
-    assert.equal(body.success, true, 'active inspector -> empty cell response success');
-    assert.deepEqual(genericBookingRequests, [], 'active inspector -> empty cell does not use generic booking endpoints');
-    return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+    await ensureActiveBanquetMemberDrawer(page, groupId, drawer);
+    try {
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            const responsePromise = page.waitForResponse(response => {
+                const pathname = new URL(response.url()).pathname;
+                return pathname === `/api/banquets/${encodeURIComponent(groupId)}/member-booking`
+                    && response.request().method() === 'POST';
+            }, { timeout: 60000 }).catch(error => ({ __smokeError: error }));
+            await clickActiveBanquetMemberSubmit(page, groupId, drawer);
+            await acknowledgePreorderWarningIfVisible(page, 'active inspector -> empty cell member');
+            // Confirming the warning resumes this same submit; keep waiting for its original response.
+            const response = await responsePromise;
+            if (response?.__smokeError) {
+                const diagnostics = await page.evaluate(() => ({
+                    submitDisabled: document.getElementById('bookingSubmitBtn')?.disabled || false,
+                    submitText: document.getElementById('bookingSubmitBtn')?.textContent?.trim() || '',
+                    modalText: document.querySelector('.modal:not(.hidden), .confirm-modal, [role="dialog"]')?.textContent?.trim() || '',
+                    activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+                    selectedGroupId: BookingDrawerState?.selectedBanquetGroupId || '',
+                    activeBanquetIntent: BookingDrawerState?.activeBanquetIntent || '',
+                    roleIntent: BookingDrawerState?.activeBanquetRoleIntent || '',
+                    ticketIssue: window.BookingTickets?.validationIssue?.() || null,
+                    ticketCollect: window.BookingTickets?.collect?.() || {},
+                    menuPositionCount: typeof BookingPackageState !== 'undefined' && Array.isArray(BookingPackageState.menuPositions)
+                        ? BookingPackageState.menuPositions.length
+                        : null,
+                    serviceEventCount: typeof BookingPackageState !== 'undefined' && Array.isArray(BookingPackageState.serviceEvents)
+                        ? BookingPackageState.serviceEvents.length
+                        : null,
+                    validation: window.BookingForm?.validate ? BookingForm.validate() : null,
+                    notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                        .map(node => String(node.textContent || '').trim())
+                        .filter(Boolean)
+                        .slice(-5)
+                })).catch(() => null);
+                throw new Error(`active inspector -> empty cell member request was not observed: ${JSON.stringify({
+                    waitError: response.__smokeError?.message || String(response.__smokeError),
+                    observedPostPaths,
+                    diagnostics
+                })}`);
+            }
+            const body = await response.json().catch(async () => ({ raw: await response.text().catch(() => '') }));
+            const createdBooking = body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+            if (createdBooking?.id && typeof onCreated === 'function') {
+                onCreated(createdBooking);
+            }
+            if (response.status() === 429 && attempt < 3) {
+                console.warn(`active inspector -> empty cell member rate limited; retry ${attempt + 1}/3`);
+                await sleep(15000);
+                continue;
+            }
+            assert.equal(response.ok(), true, `active inspector -> empty cell member endpoint returns ok: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.equal(body.success, true, `active inspector -> empty cell response success: status=${response.status()} body=${JSON.stringify(body)}`);
+            assert.deepEqual(genericBookingRequests, [], 'active inspector -> empty cell does not use generic booking endpoints');
+            return createdBooking;
+        }
+    } finally {
+        page.off('request', requestHandler);
+    }
+    throw new Error('active inspector -> empty cell retry loop exited unexpectedly');
 }
 
 async function chooseFirstActivityProgram(page) {
@@ -1452,6 +2337,7 @@ async function chooseFirstActivityProgram(page) {
             && item.domain !== 'kitchen'
             && item.category !== 'kitchen'
             && Number(item.duration || 0) > 0
+            && Number(item.duration || 0) <= 60
             && Number(item.hosts || 1) <= 1
             && !item.isCustom
         );
@@ -1508,11 +2394,19 @@ async function assertBookingDrawerResponsive(page) {
     await page.setViewportSize({ width: 1440, height: 960 });
 }
 
-async function assertBookingTimeCreateDurability(page, date, animator, room, customer) {
+async function clickBookingSubmitButton(page, label) {
+    const submit = page.locator('#bookingSubmitBtn');
+    await submit.waitFor({ state: 'visible' });
+    assert.equal(await submit.isEnabled(), true, `${label}: booking submit is enabled`);
+    await submit.click();
+}
+
+async function assertBookingTimeCreateDurability(page, date, animator, room, customer, onCreated = null) {
     await renderTimelineView(page, date, 'animators');
     const opened = await page.evaluate(async ({ animator, room, customer, runId }) => {
+        const expectedLineId = String(animator.id || '');
         const cells = Array.from(document.querySelectorAll('.grid-cell[data-time="12:15"][data-line]'))
-            .filter(node => !['afisha', 'banquet-service'].includes(String(node.dataset.line || '')));
+            .filter(node => String(node.dataset.line || '') === expectedLineId);
         let result;
         if (cells.length && typeof selectCell === 'function') {
             for (const cell of cells) {
@@ -1630,7 +2524,7 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
             });
             return;
         }
-        await route.continue();
+        await route.fallback();
     };
     await page.route(routePattern, routeHandler);
     const conflictResponse = page.waitForResponse(response =>
@@ -1638,12 +2532,7 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
         && ['/api/bookings', '/api/bookings/full'].includes(new URL(response.url()).pathname)
         && response.status() === 409
     ).catch(error => error);
-    await page.evaluate(() => {
-        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
-            bubbles: true,
-            cancelable: true
-        }));
-    });
+    await clickBookingSubmitButton(page, 'booking create occupied-slot conflict');
     await acknowledgePreorderWarningIfVisible(page, 'booking create occupied-slot conflict');
     const conflictResult = await Promise.race([
         conflictResponse,
@@ -1715,16 +2604,14 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
         response.request().method() === 'POST'
         && ['/api/bookings', '/api/bookings/full'].includes(new URL(response.url()).pathname)
     );
-    await page.evaluate(() => {
-        document.getElementById('bookingForm')?.dispatchEvent(new Event('submit', {
-            bubbles: true,
-            cancelable: true
-        }));
-    });
+    await clickBookingSubmitButton(page, 'booking create retry after conflict');
     await acknowledgePreorderWarningIfVisible(page, 'booking create retry after conflict');
     const createResponse = await createResponsePromise;
     const createBody = await createResponse.json();
     const createdBooking = createBody.booking || createBody.mainBooking;
+    if (createdBooking?.id && typeof onCreated === 'function') {
+        onCreated(createdBooking);
+    }
     assert.equal(createResponse.ok(), true, JSON.stringify(createBody));
     assert.equal(createBody.success, true, 'retry after server conflict creates booking');
     assert.equal(createdBooking?.time, '12:30', 'created booking persisted edited 12:30 start');
@@ -1748,26 +2635,31 @@ async function openActivityFromKitchenSource(page, date, kitchenId) {
             panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
             selectorText: select?.textContent || '',
             selectorValue: select?.value || '',
-            hintText: hint?.textContent || ''
+            hintText: hint?.textContent || '',
+            lineId: document.getElementById('bookingLine')?.value || ''
         };
     }, { kitchenId });
 }
 
-async function submitActivityFromKitchen(page) {
+async function submitActivityFromKitchen(page, onCreated = null) {
     const responsePromise = page.waitForResponse(response =>
         response.url().includes('/api/banquets/from-source/activity-booking')
         && response.request().method() === 'POST'
     );
     await page.evaluate(() => {
         document.getElementById('bookingNotes').value = 'Task37 activity browser smoke';
-        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
+    await clickBookingSubmitButton(page, 'source kitchen -> activity');
     await acknowledgePreorderWarningIfVisible(page, 'source kitchen -> activity');
     const response = await responsePromise;
     const body = await response.json();
+    const createdBooking = body.booking || body.activityBooking || body.mainBooking;
+    if (createdBooking?.id && typeof onCreated === 'function') {
+        onCreated(createdBooking);
+    }
     assert.equal(response.ok(), true, 'source kitchen -> activity endpoint returns ok');
     assert.equal(body.success, true, 'source kitchen -> activity response success');
-    return body.booking || body.activityBooking || body.mainBooking;
+    return createdBooking;
 }
 
 async function assertRoomMarkerVisible(page, bookingId) {
@@ -1889,13 +2781,11 @@ async function assertTimelineViewPanelInteractions(page) {
     assert.equal(badgeState.hasActiveClass, false, 'filter toggle is not visually active by default');
     assert.equal(badgeState.badgeVisible, false, 'filter badge is hidden in default state');
 
-    const typeSwitchDiagnostics = await waitForTimelineTypeSwitch(page, 'timeline type switch default visibility');
+    const typeSwitchDiagnostics = await waitForLegacyTimelineTypeSwitchRemoved(page, 'legacy timeline type switch default absence');
     const typeSwitch = typeSwitchDiagnostics.typeSwitch;
-    const typeSwitchDetail = JSON.stringify(typeSwitchDiagnostics);
-    assert.equal(typeSwitch.exists, true, 'timeline type switch exists');
-    assert.equal(typeSwitch.visible, true, `timeline type switch is visible without opening filters: ${typeSwitchDetail}`);
-    assert.equal(typeSwitch.inViewPanel, false, 'timeline type switch is outside the hidden filters shelf');
-    assert.equal(typeSwitch.labels.map(item => item.text).join('|'), 'Кімнати|Свята', `timeline type switch keeps expected labels: ${typeSwitchDetail}`);
+    assert.equal(typeSwitch.exists, false, `legacy timeline type switch is removed from the header: ${JSON.stringify(typeSwitchDiagnostics)}`);
+    assert.equal(typeSwitch.visible, false, 'legacy timeline type switch is not visible without opening filters');
+    assert.equal(typeSwitch.inViewPanel, false, 'legacy timeline type switch is not duplicated in the hidden filters shelf');
 
     await page.locator('#timelineViewPanelToggle').click();
     await page.waitForFunction(() => {
@@ -1959,27 +2849,12 @@ async function assertTimelineViewPanelInteractions(page) {
     assert.equal(badgeState.badgeVisible, false, 'filter badge hides after period default is restored');
 
     await setTimelineViewPanelOpen(page, false);
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
-        return window.TimelineView?.current?.() === 'rooms'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="animators"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"]');
-        return window.TimelineView?.current?.() === 'animators'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
-        return window.TimelineView?.current?.() === 'rooms'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
+    await page.evaluate(async () => window.TimelineView?.set?.('rooms', { render: false }));
+    await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    await page.evaluate(async () => window.TimelineView?.set?.('animators', { render: false }));
+    await page.waitForFunction(() => window.TimelineView?.current?.() === 'animators');
+    await page.evaluate(async () => window.TimelineView?.set?.('rooms', { render: false }));
+    await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
 
     await setTimelineViewPanelOpen(page, true);
     const history = await page.evaluate(() => {
@@ -2480,7 +3355,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             if (panel && !panel.hidden) toggle?.click();
         });
         await page.waitForFunction(() => document.getElementById('timelineViewPanelToggle')?.getBoundingClientRect?.().width > 0);
-        await waitForTimelineTypeSwitch(page, `timeline type switch after desktop viewport ${viewport.width}x${viewport.height}`);
+        await waitForLegacyTimelineTypeSwitchRemoved(page, `legacy timeline type switch after desktop viewport ${viewport.width}x${viewport.height}`);
         await waitForTimelineLayoutSettle(page, `closed desktop layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
@@ -2495,8 +3370,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at ${label}`);
-        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at ${label}`);
-        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at ${label}`);
+        assert.equal(metrics.typeSwitchVisible, false, `legacy timeline type switch is removed from the utility row at ${label}`);
+        assert.equal(metrics.typeSwitchInViewPanel, false, `legacy timeline type switch is not duplicated in the filter shelf at ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at ${label}`);
@@ -2510,8 +3385,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.dateControlsHeight <= 52, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
-        assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px actions=${metrics.actionsWidth}px`);
-        assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, `utility row does not stretch beyond the date and type controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px`);
+        assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px actions=${metrics.actionsWidth}px`);
+        assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + 16, `utility row does not stretch beyond the date controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px`);
         assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(metrics.controlledOffCanvasSidebarOffenders)}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
@@ -2569,7 +3444,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     for (const viewport of narrowViewports) {
         await page.setViewportSize(viewport);
         await setTimelineViewPanelOpen(page, false);
-        await waitForTimelineTypeSwitch(page, `timeline type switch after narrow viewport ${viewport.width}x${viewport.height}`);
+        await waitForLegacyTimelineTypeSwitchRemoved(page, `legacy timeline type switch after narrow viewport ${viewport.width}x${viewport.height}`);
         await waitForTimelineLayoutSettle(page, `closed narrow layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
@@ -2582,8 +3457,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at narrow ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at narrow ${label}`);
-        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at narrow ${label}`);
-        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at narrow ${label}`);
+        assert.equal(metrics.typeSwitchVisible, false, `legacy timeline type switch is removed from the utility row at narrow ${label}`);
+        assert.equal(metrics.typeSwitchInViewPanel, false, `legacy timeline type switch is not duplicated in the filter shelf at narrow ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at narrow ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at narrow ${label}`);
@@ -2637,7 +3512,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
     await page.setViewportSize({ width: 1440, height: 960 });
     await setTimelineViewPanelOpen(page, false);
-    await waitForTimelineTypeSwitch(page, 'timeline type switch after geometry viewport reset');
+    await waitForLegacyTimelineTypeSwitchRemoved(page, 'legacy timeline type switch after geometry viewport reset');
     await waitForTimelineLayoutSettle(page, 'timeline layout after geometry viewport reset');
 }
 
@@ -2645,9 +3520,14 @@ async function runRevealAction(page, date, kitchenId) {
     await renderTimelineView(page, date, 'rooms');
     await page.evaluate(async id => {
         await showBookingDetails(id);
+        if (typeof closeAllModals === 'function') closeAllModals();
         if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
     }, kitchenId);
-    await page.getByRole('button', { name: /Показати в кімнатах/i }).click();
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('bookingModal');
+        return !modal || modal.classList.contains('hidden') || getComputedStyle(modal).display === 'none';
+    });
+    await page.evaluate(async () => window.TimelineView?.set?.('rooms'));
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
     await assertRoomMarkerVisible(page, kitchenId);
 }
@@ -2670,29 +3550,62 @@ async function run() {
     }
 
     const session = await login(base);
+    assertQaCleanupTransportReady();
     const token = session.token;
-    const date = process.env.TIMELINE_BROWSER_SMOKE_DATE || futureDate();
-    const secondDate = datePlus(date, 1);
+    const requestedDate = process.env.TIMELINE_BROWSER_SMOKE_DATE || futureDate();
+    let date = requestedDate;
+    let secondDate = datePlus(date, 1);
     const room = DEFAULT_ROOM;
     const createdBookingIds = [];
+    const createdBookingDates = new Map();
     const createdCustomerIds = [];
     const createdBanquetCleanupTargets = [];
     let bookingTimeDate = date;
+    let scenarioFailure = null;
+    const registerCreatedBooking = (booking, fallbackDate = '') => {
+        const id = String(booking?.id || '').trim();
+        if (!id) return;
+        if (!createdBookingIds.includes(id)) createdBookingIds.push(id);
+        const bookingDate = String(booking?.date || fallbackDate || '').slice(0, 10);
+        if (bookingDate) createdBookingDates.set(id, bookingDate);
+    };
 
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
     let context;
     let page;
     try {
-        const animator = await firstAnimatorLine(base, token, date);
         const bookingTimeSlot = await findBookingTimeSmokeSlot(base, token, room);
         bookingTimeDate = bookingTimeSlot.date;
         const customerA = await createCustomer(base, token, 'activity-first');
-        const customerB = await createCustomer(base, token, 'kitchen-first');
-        createdCustomerIds.push(customerA.id, customerB.id);
+        createdCustomerIds.push(customerA.id);
 
+        ({ context, page } = await openAuthenticatedPage(browser, base, session));
+        const bookingTimeCreate = await assertBookingTimeCreateDurability(
+            page,
+            bookingTimeDate,
+            bookingTimeSlot.line,
+            room,
+            customerA,
+            booking => registerCreatedBooking(booking, bookingTimeDate)
+        );
+        assert.ok(bookingTimeCreate?.id, 'booking time durability retry returned created booking');
+        if (BOOKING_TIME_ONLY) {
+            console.log(`Timeline booking-time smoke OK: ${base} date=${bookingTimeDate} room=${room}`);
+            console.log('  OK booking start 12:15 -> 12:30, 409 draft durability, create payload, and responsive drawer');
+            return;
+        }
+        await context.close();
+        context = null;
+
+        const schedule = await findFullSmokeSchedule(base, token, requestedDate, room);
+        date = schedule.date;
+        secondDate = datePlus(date, 1);
+        const animator = schedule.animator;
+        const customerB = await createCustomer(base, token, 'kitchen-first');
+        createdCustomerIds.push(customerB.id);
         const activity = await createBooking(base, token, bookingPayload({
             date,
-            time: '13:00',
+            time: schedule.activityTime,
             lineId: animator.id,
             lineName: animator.name,
             room,
@@ -2704,36 +3617,28 @@ async function run() {
             customerId: customerA.id,
             customerName: customerA.name,
             customerPhone: customerA.phone,
-            childName: customerA.childName,
-            kidsCount: 4
-        }));
-        createdBookingIds.push(activity.id);
+            childName: customerA.childName
+        }), booking => registerCreatedBooking(booking, date));
 
-        ({ context, page } = await openAuthenticatedPage(browser, base, session));
-        const bookingTimeCreate = await assertBookingTimeCreateDurability(
-            page,
-            bookingTimeDate,
-            bookingTimeSlot.line,
-            room,
-            customerA
-        );
-        assert.ok(bookingTimeCreate?.id, 'booking time durability retry returned created booking');
-        createdBookingIds.push(bookingTimeCreate.id);
-        if (BOOKING_TIME_ONLY) {
-            console.log(`Timeline booking-time smoke OK: ${base} date=${bookingTimeDate} room=${room}`);
-            console.log('  OK booking start 12:15 -> 12:30, 409 draft durability, create payload, and responsive drawer');
-            return;
-        }
-        await context.close();
         ({ context, page } = await openAuthenticatedPage(browser, base, session));
         await assertTimelineDeepLinkSwitching(page, base, date);
+        await assertSidebarTimelineLauncherSwitching(page, 'desktop timeline launcher', { width: 1440, height: 960 });
+        await assertSidebarTimelineLauncherSwitching(page, 'mobile timeline launcher', { width: 390, height: 844 });
+        await page.setViewportSize({ width: 1440, height: 960 });
         await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
 
-        const activityFirstDrawer = await openRoomDrawer(page, date, room, '13:00');
+        const activityFirstDrawer = await openRoomDrawer(page, date, room, schedule.activityTime);
         assertBridgeSelector(activityFirstDrawer, 'activity first -> kitchen');
-        const kitchenFromActivity = await fillKitchenAndSubmit(page, activity);
+        const kitchenFromActivity = await fillKitchenAndSubmit(
+            page,
+            activity,
+            booking => registerCreatedBooking(booking, date),
+            {
+                servingTime: schedule.activityServingTime,
+                setupTime: schedule.activitySetupTime
+            }
+        );
         assert.ok(kitchenFromActivity?.id, 'kitchen booking created from activity source');
-        createdBookingIds.push(kitchenFromActivity.id);
         const activitySnapshot = await banquetSnapshot(base, token, activity.id);
         assert.ok(groupId(activitySnapshot), 'activity-first banquet group exists');
         assert.equal(String(activitySnapshot.bookings?.primary?.id || activitySnapshot.group?.primaryBookingId), String(activity.id));
@@ -2755,16 +3660,23 @@ async function run() {
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFromActivity.id);
 
-        const emptyCellDrawer = await openActiveBanquetEmptyCellDrawer(page, date, room, '17:00', activitySnapshot);
+        const emptyCellSlot = await findActiveBanquetEmptyCellSlot(base, token, date, room, {
+            excludedSlots: [
+                { time: schedule.reuseTime, duration: 60 },
+                { time: schedule.kitchenTime, duration: 90 }
+            ]
+        });
+        const emptyCellDrawer = await openActiveBanquetEmptyCellDrawer(page, date, room, emptyCellSlot.time, activitySnapshot);
         assert.equal(emptyCellDrawer.ok, true, `active inspector -> empty cell opens drawer: ${emptyCellDrawer.error || ''}`);
         assert.equal(emptyCellDrawer.panelVisible, true, 'active inspector -> empty cell drawer visible');
+        assert.equal(emptyCellDrawer.submitVisible, true, 'active inspector -> empty cell submit visible');
         assert.equal(String(emptyCellDrawer.activeContext?.groupId || emptyCellDrawer.selectedGroupId), activityGroupId, 'active inspector context keeps the banquet group');
         assert.equal(emptyCellDrawer.activeBanquetIntent, 'add_to_existing', 'empty cell drawer has add-to-existing intent');
+        assert.equal(emptyCellDrawer.roleIntent, 'kitchen', 'empty cell drawer keeps kitchen role intent');
         assert.ok(emptyCellDrawer.hasStandaloneOverride, 'empty cell drawer exposes explicit standalone override');
         assert.ok(String(emptyCellDrawer.bannerText || '').trim(), 'empty cell drawer shows active banquet banner');
-        const emptyCellKitchen = await submitActiveBanquetMemberFromEmptyCell(page, activityGroupId);
+        const emptyCellKitchen = await submitActiveBanquetMemberFromEmptyCell(page, activityGroupId, emptyCellDrawer, booking => registerCreatedBooking(booking, date));
         assert.ok(emptyCellKitchen?.id, 'active inspector empty-cell kitchen booking created');
-        createdBookingIds.push(emptyCellKitchen.id);
         const emptyCellSnapshot = await banquetSnapshot(base, token, emptyCellKitchen.id);
         assert.equal(groupId(emptyCellSnapshot), activityGroupId, 'empty cell grouped save reloads inside the same banquet group');
         await renderTimelineView(page, date, 'rooms');
@@ -2778,7 +3690,7 @@ async function run() {
                 role: 'kitchen',
                 booking: bookingPayload({
                     date,
-                    time: '15:00',
+                    time: schedule.reuseTime,
                     lineId: 'banquet-service',
                     room,
                     label: `Task37 reuse kitchen ${RUN_ID}`,
@@ -2787,19 +3699,19 @@ async function run() {
                     customerId: customerA.id,
                     customerName: customerA.name,
                     banquetGuests: 4,
-                    bookingPackage: kitchenPackage('15:30')
+                    bookingPackage: kitchenPackage(schedule.reuseServingTime)
                 })
             }
         });
+        registerCreatedBooking(reused.booking, date);
         assert.equal(reused.success, true, 'existing group reuse create succeeds');
         assert.equal(reused.createdGroup, false, 'existing group reuse does not create duplicate group');
-        createdBookingIds.push(reused.booking?.id);
         const reuseSnapshot = await banquetSnapshot(base, token, reused.booking.id);
         assert.equal(groupId(reuseSnapshot), groupId(activitySnapshot), 'existing group id reused');
 
         const kitchenFirst = await createBooking(base, token, bookingPayload({
             date,
-            time: '16:00',
+            time: schedule.kitchenTime,
             lineId: 'banquet-service',
             room,
             label: `Task37 kitchen first ${RUN_ID}`,
@@ -2811,9 +3723,8 @@ async function run() {
             customerPhone: customerB.phone,
             childName: customerB.childName,
             banquetGuests: 5,
-            bookingPackage: kitchenPackage('16:30')
-        }));
-        createdBookingIds.push(kitchenFirst.id);
+            bookingPackage: kitchenPackage(schedule.kitchenServingTime)
+        }), booking => registerCreatedBooking(booking, date));
 
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFirst.id);
@@ -2821,9 +3732,10 @@ async function run() {
         assertBridgeSelector(kitchenFirstDrawer, 'kitchen first -> activity');
         const program = await chooseFirstActivityProgram(page);
         assert.ok(program?.id, 'activity program selected for kitchen-first bridge');
-        const activityFromKitchen = await submitActivityFromKitchen(page);
+        const kitchenBridgeLineId = await page.locator('#bookingLine').inputValue();
+        assert.equal(String(kitchenBridgeLineId), String(schedule.kitchenAnimator.id), 'kitchen-first bridge keeps the scheduler-verified first animator');
+        const activityFromKitchen = await submitActivityFromKitchen(page, booking => registerCreatedBooking(booking, date));
         assert.ok(activityFromKitchen?.id, 'activity booking created from kitchen source');
-        createdBookingIds.push(activityFromKitchen.id);
         const kitchenSnapshot = await banquetSnapshot(base, token, kitchenFirst.id);
         assert.ok(groupId(kitchenSnapshot), 'kitchen-first banquet group exists');
         createdBanquetCleanupTargets.push({
@@ -2857,31 +3769,92 @@ async function run() {
             const artifactMessage = diagnostic?.jsonPath
                 ? `\nTimeline smoke diagnostics: ${diagnostic.jsonPath}${diagnostic.pngPath ? `, ${diagnostic.pngPath}` : ''}`
                 : `\nTimeline smoke diagnostics failed: ${JSON.stringify(diagnostic?.diagnostics || {})}`;
-            throw new Error(`${error?.stack || error?.message || String(error)}${artifactMessage}`);
+            scenarioFailure = new Error(`${error?.stack || error?.message || String(error)}${artifactMessage}`);
+            throw scenarioFailure;
         }
+        scenarioFailure = error;
         throw error;
     } finally {
         await context?.close().catch(() => {});
         await browser.close().catch(() => {});
         if (CLEANUP) {
-            const cleanedGroups = await cleanupBanquetGroups(
-                base,
-                token,
-                createdBookingIds,
-                createdBanquetCleanupTargets,
-                date
-            );
-            const groupBookingIds = new Set(cleanedGroups.flatMap(target => target.bookingIds || []).map(String));
-            for (const id of [...createdBookingIds].reverse().filter(Boolean)) {
-                if (groupBookingIds.has(String(id))) continue;
-                await deleteBooking(base, token, id);
-            }
-            const standaloneIds = createdBookingIds.filter(id => id && !groupBookingIds.has(String(id)));
-            if (standaloneIds.length) {
-                await verifyBookingsNotActiveInTimeline(base, token, bookingTimeDate, standaloneIds);
-            }
-            for (const id of [...createdCustomerIds].reverse().filter(Boolean)) {
-                await deleteCustomer(base, token, id);
+            try {
+                const cleanupErrors = [];
+                try {
+                    const discoveredBookings = await discoverRunBookingsFromTimeline(base, token, [bookingTimeDate, date]);
+                    discoveredBookings.forEach(booking => registerCreatedBooking(booking, booking.date));
+                } catch (error) {
+                    const discoveryError = new Error(`cleanup run-ID audit failed: ${error?.message || String(error)}`, { cause: error });
+                    cleanupErrors.push(discoveryError);
+                    console.warn(discoveryError.message);
+                }
+
+                let groupCleanup;
+                try {
+                    groupCleanup = await cleanupBanquetGroups(
+                        base,
+                        token,
+                        createdBookingIds,
+                        createdBanquetCleanupTargets,
+                        date
+                    );
+                    cleanupErrors.push(...groupCleanup.errors);
+                } catch (error) {
+                    cleanupErrors.push(new Error(`banquet cleanup orchestration failed: ${error?.message || String(error)}`, { cause: error }));
+                    groupCleanup = {
+                        targets: createdBanquetCleanupTargets,
+                        unresolvedBookingIds: [...createdBookingIds]
+                    };
+                }
+
+                const groupBookingIds = new Set(groupCleanup.targets.flatMap(target => [
+                    target.primaryBookingId,
+                    ...(target.bookingIds || [])
+                ]).filter(Boolean).map(String));
+                const unresolvedBookingIds = new Set((groupCleanup.unresolvedBookingIds || []).map(String));
+                const standaloneBookingIds = createdBookingIds.filter(id =>
+                    id
+                    && !groupBookingIds.has(String(id))
+                    && !unresolvedBookingIds.has(String(id))
+                );
+                for (const id of [...standaloneBookingIds].reverse()) {
+                    try {
+                        await deleteBooking(base, token, id);
+                    } catch (error) {
+                        cleanupErrors.push(new Error(`standalone booking cleanup failed for ${id}: ${error?.message || String(error)}`, { cause: error }));
+                    }
+                }
+                const standaloneIdsByDate = new Map();
+                for (const id of standaloneBookingIds) {
+                    const bookingDate = createdBookingDates.get(String(id)) || bookingTimeDate;
+                    if (!standaloneIdsByDate.has(bookingDate)) standaloneIdsByDate.set(bookingDate, []);
+                    standaloneIdsByDate.get(bookingDate).push(id);
+                }
+                for (const [bookingDate, bookingIds] of standaloneIdsByDate) {
+                    try {
+                        await verifyBookingsNotActiveInTimeline(base, token, bookingDate, bookingIds);
+                    } catch (error) {
+                        cleanupErrors.push(new Error(`standalone booking post-check failed for ${bookingDate}: ${error?.message || String(error)}`, { cause: error }));
+                    }
+                }
+                if (cleanupErrors.length) {
+                    throw new AggregateError(cleanupErrors, `timeline smoke cleanup failed in ${cleanupErrors.length} guarded step(s)`);
+                }
+
+                const customerCleanupErrors = [];
+                for (const id of [...createdCustomerIds].reverse().filter(Boolean)) {
+                    try {
+                        await deleteCustomer(base, token, id);
+                    } catch (error) {
+                        customerCleanupErrors.push(new Error(`test customer cleanup failed for ${id}: ${error?.message || String(error)}`, { cause: error }));
+                    }
+                }
+                if (customerCleanupErrors.length) {
+                    throw new AggregateError(customerCleanupErrors, `timeline smoke customer cleanup failed in ${customerCleanupErrors.length} guarded step(s)`);
+                }
+            } catch (cleanupError) {
+                if (!scenarioFailure) throw cleanupError;
+                console.warn(`Timeline smoke cleanup failed after scenario failure: ${cleanupError?.stack || cleanupError?.message || String(cleanupError)}`);
             }
         } else {
             console.warn(`TIMELINE_BROWSER_SMOKE_CLEANUP=false; created booking ids: ${createdBookingIds.filter(Boolean).join(', ')}`);

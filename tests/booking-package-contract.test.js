@@ -1921,8 +1921,8 @@ test('timeline browser smoke protects edited start payload, conflict durability,
     assert.match(smoke, /QA_MARKER_INJECTION_FAILED/);
     assert.match(smoke, /booking\.skipNotification = true/);
     assert.match(smoke, /function assertQaCleanupTransportReady/);
-    assert.match(smoke, /BEGIN READ ONLY/);
-    assert.match(smoke, /runQaCleanupDryRun/);
+    assert.match(smoke, /qa-cleanup-preflight/);
+    assert.match(smoke, /banquet-production-recovery\.js/);
     assert.match(smoke, /sidebarTimelineLauncher:/);
     assert.match(smoke, /const cleanupErrors = \[\]/);
     assert.match(smoke, /new AggregateError\(cleanupErrors/);

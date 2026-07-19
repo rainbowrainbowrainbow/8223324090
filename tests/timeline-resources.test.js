@@ -4530,7 +4530,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /refusing production timeline smoke with TIMELINE_BROWSER_SMOKE_CLEANUP=false/);
     assert.match(smoke, /DISPOSABLE_QA_SOURCE: QA_CLEANUP_SOURCE/);
     assert.match(smoke, /attachSharedDisposableQaMarker/);
-    assert.match(smoke, /expected-bookings/);
+    assert.match(smoke, /expected-booking/);
     assert.match(smoke, /function cleanupBanquetGroups/);
     assert.match(smoke, /banquet-production-recovery\.js/);
     assert.match(smoke, /--confirm=\$\{QA_CLEANUP_CONFIRMATION\}/);
@@ -4560,7 +4560,8 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
-    assert.match(smoke, /getByRole\('button', \{ name: \/Показати в кімнатах\/i \}\)/);
+    assert.match(smoke, /ensureSidebarTimelineLauncherVisible\(page, 'reveal action rooms'\)/);
+    assert.match(smoke, /page\.locator\('\[data-sidebar-timeline-mode="rooms"\]'\)/);
     assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
     assert.match(smoke, /assertKitchenHiddenFromAnimator/);
     assert.match(smoke, /assertRoomMarkerVisible/);

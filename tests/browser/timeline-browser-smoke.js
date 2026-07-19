@@ -838,7 +838,7 @@ async function cleanupBanquetGroups(base, token, bookingIds, knownTargets = [], 
         const args = [
             `--run-id=${RUN_ID}`,
             `--group-id=${target.groupId}`,
-            `--expected-bookings=${expectedBookingIds.join(',')}`,
+            ...expectedBookingIds.map(id => `--expected-booking=${id}`),
             `--test-customer-marker=${TEST_CUSTOMER_MARKER}`,
             `--business-context=${BUSINESS_CONTEXT}`,
             '--json'
@@ -3101,7 +3101,10 @@ async function runRevealAction(page, date, kitchenId) {
         await showBookingDetails(id);
         if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
     }, kitchenId);
-    await page.getByRole('button', { name: /Показати в кімнатах/i }).click();
+    await ensureSidebarTimelineLauncherVisible(page, 'reveal action rooms');
+    const roomsLink = page.locator('[data-sidebar-timeline-mode="rooms"]');
+    await roomsLink.waitFor({ state: 'visible' });
+    await roomsLink.click();
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
     await assertRoomMarkerVisible(page, kitchenId);
 }

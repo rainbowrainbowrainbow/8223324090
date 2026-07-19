@@ -52,6 +52,20 @@ function argValue(args, name, fallback = null) {
     return fallback;
 }
 
+function argValues(args, name) {
+    const values = [];
+    for (let index = 0; index < args.length; index += 1) {
+        const arg = args[index];
+        if (arg.startsWith(`${name}=`)) {
+            values.push(arg.slice(name.length + 1));
+        } else if (arg === name && args[index + 1] && !args[index + 1].startsWith('--')) {
+            values.push(args[index + 1]);
+            index += 1;
+        }
+    }
+    return values;
+}
+
 function normalizeBusinessContext(value) {
     const normalized = String(value || DEFAULT_BUSINESS_CONTEXT).trim().toLowerCase();
     return ['park_zakrevsky', 'park', 'pzp'].includes(normalized)
@@ -203,9 +217,10 @@ function parseQaCleanupOptions(argv = []) {
     const testCustomerMarker = String(
         argValue(argv, '--test-customer-marker', argValue(argv, '--testCustomerMarker', '')) || ''
     ).trim();
-    const expectedBookingIdsValue = String(
-        argValue(argv, '--expected-bookings', argValue(argv, '--expectedBookingIds', '')) || ''
-    ).trim();
+    const expectedBookingIdsValue = [
+        ...argValues(argv, '--expected-booking'),
+        argValue(argv, '--expected-bookings', argValue(argv, '--expectedBookingIds', ''))
+    ].map(value => String(value || '').trim()).filter(Boolean).join(',');
     const markerSource = String(argValue(argv, '--source', QA_CLEANUP_SOURCE) || '').trim() || QA_CLEANUP_SOURCE;
     if (markerSource !== QA_CLEANUP_SOURCE) {
         throw new Error(`QA cleanup source must be exactly ${QA_CLEANUP_SOURCE}`);

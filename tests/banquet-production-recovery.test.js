@@ -454,6 +454,18 @@ test('detach and qa-cleanup arguments are allowlisted and confirmation guarded',
             expectedBookingIds: ['BK-1']
         }
     );
+    assert.deepEqual(
+        parseArgs([
+            'qa-cleanup',
+            '--run-id=task37-1',
+            '--group-id=BQ-1',
+            '--primary-booking-id=BK-1',
+            '--expected-booking=BK-2',
+            '--expected-booking=BK-1',
+            '--test-customer-marker=timeline_browser_smoke:task37-1:test_customer'
+        ]).expectedBookingIds,
+        ['BK-1', 'BK-2']
+    );
 });
 
 test('group state reconciliation arguments require exact scope and guarded apply approval', () => {

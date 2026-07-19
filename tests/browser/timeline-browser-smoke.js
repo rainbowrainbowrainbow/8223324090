@@ -663,20 +663,6 @@ function assertQaCleanupTransportReady() {
     if (!CLEANUP) return;
     const readyMarker = 'timeline-smoke-cleanup-ready';
     const timeout = Math.max(Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000), 120000);
-    const preflightScript = [
-        "const recovery=require('./scripts/banquet-production-recovery.js');",
-        "const {pool}=require('./db');",
-        '(async()=>{',
-        "if(typeof recovery.runQaCleanupDryRun!=='function')throw new Error('qa cleanup operator unavailable');",
-        `if(recovery.QA_CLEANUP_CAPABILITY!==${JSON.stringify(QA_CLEANUP_CAPABILITY)})throw new Error('qa cleanup operator capability mismatch');`,
-        'const client=await pool.connect();',
-        "try{await client.query('BEGIN READ ONLY');await client.query('SELECT 1');await client.query('ROLLBACK');}",
-        "catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}",
-        'finally{client.release();}',
-        'await pool.end();',
-        `process.stdout.write('${readyMarker}');`,
-        '})().catch(async()=>{try{await pool.end();}catch{}process.exit(2);});'
-    ].join('');
     let invocation;
     if (QA_CLEANUP_TRANSPORT === 'local') {
         if (!String(process.env.DATABASE_URL || '').trim()) {
@@ -685,7 +671,7 @@ function assertQaCleanupTransportReady() {
         invocation = {
             label: 'local-node/read-only-db',
             command: process.execPath,
-            args: ['-e', preflightScript]
+            args: [path.join(ROOT, 'scripts', 'banquet-production-recovery.js'), 'qa-cleanup-preflight']
         };
     } else if (QA_CLEANUP_TRANSPORT === 'railway-ssh') {
         if (!RAILWAY_CLEANUP_SERVICE) {
@@ -698,8 +684,8 @@ function assertQaCleanupTransportReady() {
             '--environment', RAILWAY_CLEANUP_ENVIRONMENT,
             '--',
             'node',
-            '-e',
-            preflightScript
+            'scripts/banquet-production-recovery.js',
+            'qa-cleanup-preflight'
         ];
         invocation = {
             label: `railway-ssh:${RAILWAY_CLEANUP_SERVICE}/${RAILWAY_CLEANUP_ENVIRONMENT}/read-only-db`,

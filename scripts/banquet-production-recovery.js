@@ -252,13 +252,23 @@ function parseQaCleanupOptions(argv = []) {
     };
 }
 
+function parseQaCleanupPreflightOptions(argv = []) {
+    if (argv.some(arg => String(arg || '').startsWith('--'))) {
+        throw new Error('QA cleanup preflight does not accept arguments');
+    }
+    return {
+        command: 'qa-cleanup-preflight'
+    };
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
     const command = String(argv[0] || '').trim().toLowerCase();
     if (command === 'audit') return parseAuditOptions(argv.slice(1));
     if (command === 'recover') return parseRecoveryOptions(argv.slice(1));
     if (command === 'detach' || command === 'rollback') return parseDetachOptions(argv.slice(1));
     if (command === 'qa-cleanup') return parseQaCleanupOptions(argv.slice(1));
-    throw new Error('First argument must be audit, recover, detach, or qa-cleanup');
+    if (command === 'qa-cleanup-preflight') return parseQaCleanupPreflightOptions(argv.slice(1));
+    throw new Error('First argument must be audit, recover, detach, qa-cleanup, or qa-cleanup-preflight');
 }
 
 function matchFingerprint(row = {}) {
@@ -2086,6 +2096,16 @@ function printQaCleanupReport(report) {
     console.log('dry-run only: no bookings, groups, links, or deposits were deleted.');
 }
 
+async function runQaCleanupPreflight(db) {
+    await db.query('BEGIN READ ONLY');
+    try {
+        await db.query('SELECT 1');
+        return { mode: 'qa-cleanup-preflight', capability: QA_CLEANUP_CAPABILITY, ready: true };
+    } finally {
+        await db.query('ROLLBACK').catch(() => {});
+    }
+}
+
 async function main(argv = process.argv.slice(2)) {
     loadEnvFile();
     const options = parseArgs(argv);
@@ -2093,6 +2113,9 @@ async function main(argv = process.argv.slice(2)) {
     const client = await pool.connect();
     try {
         let report;
+        if (options.command === 'qa-cleanup-preflight') {
+            report = await runQaCleanupPreflight(client);
+        } else
         if (options.command === 'audit') {
             report = await runAudit(client, options);
         } else if (options.command === 'recover') {
@@ -2108,7 +2131,8 @@ async function main(argv = process.argv.slice(2)) {
                 ? await runQaCleanupApply(client, options)
                 : await runQaCleanupDryRun(client, options);
         }
-        if (options.json) console.log(JSON.stringify(report, null, 2));
+        if (options.command === 'qa-cleanup-preflight') console.log('timeline-smoke-cleanup-ready');
+        else if (options.json) console.log(JSON.stringify(report, null, 2));
         else if (options.command === 'audit') printAuditReport(report);
         else if (options.command === 'recover') printRecoveryReport(report);
         else if (options.command === 'detach') printDetachReport(report);
@@ -2195,6 +2219,7 @@ module.exports = {
     runQaCleanupApply,
     runQaCleanupDryRun,
     runQaCleanupGroupDryRun,
+    runQaCleanupPreflight,
     runRecoveryApply,
     runRecoveryDryRun
 };

@@ -763,9 +763,28 @@ const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLES = Object.freeze([
     'IT'
 ]);
 
-const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_SET = new Set(
+const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS = Object.freeze(
     APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLES.map(normalizeSearchText)
 );
+
+const APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_SET = new Set(
+    APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS
+);
+
+function approvedCompanyStructureSubdivisionOrder(node = {}) {
+    const title = normalizeSearchText(node.title || node.label || node.name);
+    const index = APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS.indexOf(title);
+    return index >= 0 ? index : APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS.length;
+}
+
+function sortApprovedCompanyStructureSubdivisionNodes(nodes = []) {
+    return [...(nodes || [])].sort((a, b) => {
+        const approvedDelta = approvedCompanyStructureSubdivisionOrder(a) - approvedCompanyStructureSubdivisionOrder(b);
+        if (approvedDelta) return approvedDelta;
+        return (Number(a?.order) || 0) - (Number(b?.order) || 0)
+            || String(a?.title || '').localeCompare(String(b?.title || ''), 'uk');
+    });
+}
 
 function companyStructureNodeIsArchivedOrInactive(node = {}) {
     return node.archived === true
@@ -788,7 +807,7 @@ function isApprovedCompanyStructureSubdivisionNode(node = {}) {
 
 function visibleCompanyStructureSubdivisionNodes(nodes = []) {
     const seenTitles = new Set();
-    return sortCompanyStructureNodes((Array.isArray(nodes) ? nodes : [])
+    return sortApprovedCompanyStructureSubdivisionNodes((Array.isArray(nodes) ? nodes : [])
         .filter(isApprovedCompanyStructureSubdivisionNode)
         .filter(node => {
             const title = normalizeSearchText(node.title || node.label || node.name);

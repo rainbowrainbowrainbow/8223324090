@@ -734,6 +734,12 @@ test('HR staff profile structure dropdown keeps current approved node when loade
         options.some(option => option.value === 'art_director' && /Арт-відділ/.test(option.text)),
         'staff card must keep the current Арт-відділ node visible even when the loaded node list is partial'
     );
+    assert.ok(
+        options.some(option => option.value === 'admins' && /Адміністративно-операційний відділ/.test(option.text)),
+        'staff card must include the approved Адміністративно-операційний відділ node from the fallback list'
+    );
+    assert.equal(options[1]?.value, 'director');
+    assert.equal(options[2]?.value, 'admins');
 });
 
 test('HR staff profile ignores stale history responses after rapid profile switches', async () => {

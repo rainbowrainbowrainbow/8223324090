@@ -4,7 +4,14 @@
 
 ---
 
-## v0.79.110 - Staff node dropdown fix
+## v0.79.111 - Staff node dropdown approved order
+
+### Release / Versioning / (20.07.2026) [codex]
+- **Staff node dropdown approved order** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+## v0.79.110 - Staff node dropdown approved order
 
 ### Release / Versioning / (19.07.2026) [codex]
 - **Staff node dropdown fix** - release marker, cache tags and visible version metadata were prepared automatically.

@@ -2594,7 +2594,7 @@ body.timeline-dashboard-page .schedule-command-center .working-hours {
     white-space: nowrap;
 }
 
-body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn, .timeline-type-btn),
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
 body.timeline-dashboard-page .schedule-command-center :where(.btn-nav, .btn-today, .toggle-mini, .timeline-overlay-toggle, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
     height: 30px !important;
     min-height: 30px !important;
@@ -4628,53 +4628,7 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--vi
     gap: 2px !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-selector {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex: 0 0 auto !important;
-    min-width: 166px !important;
-    border-radius: 14px !important;
-    background: rgba(30, 41, 59, 0.58) !important;
-    border: 1px solid rgba(148, 163, 184, 0.10) !important;
-    padding: 2px !important;
-    gap: 2px !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn {
-    flex: 1 1 0 !important;
-    min-width: 76px !important;
-    border-color: transparent !important;
-    background: transparent !important;
-    color: rgba(226, 232, 240, 0.64) !important;
-    box-shadow: none !important;
-    white-space: nowrap !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn:focus-visible:not(.active) {
-    color: rgba(236, 254, 255, 0.90) !important;
-    background: rgba(148, 163, 184, 0.08) !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn.active,
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"] {
-    background: var(--toolbar-active-bg, linear-gradient(135deg, #18c7b6, #0ea5a3)) !important;
-    border-color: rgba(45, 212, 191, 0.38) !important;
-    color: #ecfeff !important;
-    box-shadow: 0 10px 22px rgba(14, 165, 163, 0.16) !important;
-}
-
 @media (max-width: 430px) {
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-selector {
-        min-width: 146px !important;
-    }
-
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn {
-        min-width: 66px !important;
-        padding: 0 8px !important;
-        font-size: 11.5px !important;
-    }
 }
 
 /* Toolbar filter row: status + period + timeline type on top, date navigation in utility row. */
@@ -4790,7 +4744,7 @@ body.timeline-dashboard-page .schedule-command-center :is(#timelineHolidaysToggl
     display: none !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn) {
     box-sizing: border-box !important;
     height: 28px !important;
     min-height: 28px !important;
@@ -4803,7 +4757,7 @@ body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn,
     transform: none !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):where(:hover, :focus, :focus-visible, :active) {
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn):where(:hover, :focus, :focus-visible, :active) {
     transform: none !important;
 }
 
@@ -4882,44 +4836,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--vi
     box-shadow: none !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(70px, 1fr)) !important;
-    flex: 0 0 auto !important;
-    min-width: 150px !important;
-    width: max-content !important;
-    padding: 2px !important;
-    border-radius: 12px !important;
-    background: rgba(30, 41, 59, 0.58) !important;
-    border: 1px solid rgba(148, 163, 184, 0.12) !important;
-    gap: 2px !important;
-    box-shadow: none !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn {
-    min-width: 70px !important;
-    border-color: transparent !important;
-    background: transparent !important;
-    color: rgba(226, 232, 240, 0.64) !important;
-    box-shadow: none !important;
-    white-space: nowrap !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:hover:not(:disabled):not(.active),
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:focus-visible:not(.active) {
-    border-color: rgba(45, 212, 191, 0.22) !important;
-    background: rgba(45, 212, 191, 0.07) !important;
-    color: rgba(236, 254, 255, 0.90) !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn.active,
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn[aria-pressed="true"] {
-    background: linear-gradient(135deg, #18c7b6, #0ea5a3) !important;
-    border-color: rgba(45, 212, 191, 0.40) !important;
-    color: #ecfeff !important;
-    box-shadow: 0 8px 18px rgba(14, 165, 163, 0.18) !important;
-}
-
 body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
     display: flex !important;
     align-items: center !important;
@@ -4963,11 +4879,6 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons {
         min-width: 216px !important;
         grid-template-columns: minmax(42px, auto) minmax(78px, auto) minmax(76px, auto) !important;
     }
-
-    body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
-        min-width: 146px !important;
-        grid-template-columns: repeat(2, minmax(68px, 1fr)) !important;
-    }
 }
 
 @media (max-width: 768px) {
@@ -4989,7 +4900,7 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons {
 }
 
 @media (max-width: 430px) {
-    body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+    body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn) {
         height: 28px !important;
         min-height: 28px !important;
         padding: 0 8px !important;
@@ -5004,15 +4915,6 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons {
     body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-selector {
         min-width: 126px !important;
         grid-template-columns: repeat(2, minmax(58px, 1fr)) !important;
-    }
-
-    body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
-        min-width: 134px !important;
-        grid-template-columns: repeat(2, minmax(62px, 1fr)) !important;
-    }
-
-    body.timeline-dashboard-page .schedule-command-center .timeline-type-btn {
-        min-width: 62px !important;
     }
 }
 
@@ -5035,8 +4937,8 @@ html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.t
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 12px 30px rgba(15, 23, 42, 0.06) !important;
 }
 
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector, .timeline-type-selector),
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector, .timeline-type-selector),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector),
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .view-mode-controls,
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .view-mode-controls {
     background: rgba(255, 255, 255, 0.88) !important;
@@ -5057,11 +4959,7 @@ html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.t
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .segmentedItem,
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .segmentedItem,
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible),
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible),
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn,
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn,
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-type-btn,
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-type-btn {
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible) {
     background: transparent !important;
     border-color: transparent !important;
     color: var(--toolbar-inactive-text) !important;
@@ -5071,8 +4969,6 @@ body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarCon
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem):hover:not(:disabled):not([aria-disabled="true"]):not(.active),
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton:hover,
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton:hover,
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .btn-menu-toggle[aria-expanded="true"],
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .btn-menu-toggle[aria-expanded="true"] {
     background: var(--toolbar-hover-bg) !important;
@@ -5084,11 +4980,7 @@ html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.t
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedItem.active, .segmentedItem[aria-pressed="true"], .toolbarToggleChip.active, .toolbarToggleChip:has(input:checked), .toolbarToggleChip[aria-pressed="true"]),
 html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedItem.active, .segmentedItem[aria-pressed="true"], .toolbarToggleChip.active, .toolbarToggleChip:has(input:checked), .toolbarToggleChip[aria-pressed="true"]),
 body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn.active,
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn.active,
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn.active,
-body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"],
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn.active,
-html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"] {
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn.active {
     background: var(--toolbar-active-bg) !important;
     border-color: rgba(20, 184, 166, 0.42) !important;
     color: var(--toolbar-active-text) !important;
@@ -5666,7 +5558,7 @@ body.timeline-dashboard-page .timeline-view-panel-label {
     text-transform: uppercase;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-controls, .period-selector, .timeline-type-selector, .zoom-controls) {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-controls, .period-selector, .zoom-controls) {
     box-sizing: border-box;
     display: grid !important;
     align-items: center !important;
@@ -5690,15 +5582,11 @@ body.timeline-dashboard-page .timeline-header-filters .period-selector {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-}
-
 body.timeline-dashboard-page .timeline-header-filters .zoom-controls {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn) {
     box-sizing: border-box !important;
     width: 100% !important;
     height: var(--timeline-view-panel-segment-h) !important;
@@ -5721,14 +5609,14 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn,
     transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):hover:not(:disabled):not(.active),
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):focus-visible:not(.active) {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn):hover:not(:disabled):not(.active),
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn):focus-visible:not(.active) {
     border-color: var(--timeline-header-filter-border) !important;
     background: var(--timeline-header-filter-hover-bg) !important;
     color: var(--timeline-header-filter-strong) !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):focus-visible {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn):focus-visible {
     outline: none !important;
     box-shadow: 0 0 0 3px var(--timeline-header-filter-focus) !important;
 }
@@ -5740,8 +5628,8 @@ body.timeline-dashboard-page .timeline-header-filters :where(.segmentedItem.acti
     box-shadow: none !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):disabled,
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn)[aria-disabled="true"] {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn):disabled,
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn)[aria-disabled="true"] {
     cursor: not-allowed !important;
     opacity: 0.4 !important;
     pointer-events: none !important;
@@ -5954,7 +5842,7 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
         padding-left: 8px;
     }
 
-    body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+    body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .zoom-btn) {
         height: 32px !important;
         min-height: 32px !important;
         padding: 0 8px !important;
@@ -6044,30 +5932,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
     border-radius: 14px !important;
     background: var(--eg-panel-bg-soft, rgba(15, 23, 42, 0.18)) !important;
     box-shadow: none !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .timeline-visible-type-switch {
-    box-sizing: border-box !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    overflow: visible !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .timeline-visible-type-switch .timeline-type-selector {
-    flex: 0 0 auto !important;
-    min-width: 150px !important;
-    width: max-content !important;
-    max-width: 100% !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center .schedule-command-row--actions {
@@ -6214,17 +6078,6 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
         overflow-x: hidden !important;
     }
 
-    body.timeline-dashboard-page .schedule-command-center .timeline-visible-type-switch {
-        width: 100% !important;
-        flex: 1 1 100% !important;
-    }
-
-    body.timeline-dashboard-page .schedule-command-center .timeline-visible-type-switch .timeline-type-selector {
-        width: 100% !important;
-        min-width: 0 !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open {
         width: 100% !important;
         align-items: flex-start !important;
@@ -6278,9 +6131,7 @@ html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.t
 
 body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem):hover:not(:disabled):not([aria-disabled="true"]):not(.active):not(:focus-visible),
 body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem:hover:not(.active):not(:disabled):not(:focus-visible),
-body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip):hover:not(.active):not(:disabled):not(:focus-visible),
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:hover:not(:disabled):not(.active):not(:focus-visible),
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active):not(:focus-visible) {
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip):hover:not(.active):not(:disabled):not(:focus-visible) {
     border-color: rgba(148, 163, 184, 0.22) !important;
     background: var(--toolbar-hover-bg, rgba(71, 85, 105, 0.16)) !important;
     color: var(--toolbar-hover-text, #E2E8F0) !important;
@@ -6309,10 +6160,6 @@ body.timeline-dashboard-page .schedule-command-center .segmentedControl .segment
 body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip.active,
 body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip[aria-pressed="true"],
 body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip:has(input:checked),
-body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn.active,
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn.active,
-body.timeline-dashboard-page .schedule-command-center .timeline-type-btn[aria-pressed="true"],
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn.active,
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"] {
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn.active {
     box-shadow: none !important;
 }

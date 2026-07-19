@@ -14318,6 +14318,28 @@ function setCompanyOrgBackgroundInert(inert) {
     });
 }
 
+function syncCompanyOrgInspectorViewportBounds(inspector, mobile, visible) {
+    if (!inspector) return;
+    if (!mobile) {
+        inspector.style.removeProperty('left');
+        inspector.style.removeProperty('right');
+        inspector.style.removeProperty('width');
+        inspector.style.removeProperty('max-width');
+        return;
+    }
+
+    inspector.style.left = '0px';
+    inspector.style.right = 'auto';
+    inspector.style.width = '100vw';
+    inspector.style.maxWidth = '100vw';
+
+    if (!visible) return;
+    const rect = inspector.getBoundingClientRect();
+    if (Number.isFinite(rect.left) && Math.abs(rect.left) > 0.5) {
+        inspector.style.left = `${-rect.left}px`;
+    }
+}
+
 function bindCompanyOrgResponsiveState() {
     if (companyOrgResponsiveBound) return;
     companyOrgResponsiveBound = true;
@@ -14517,6 +14539,7 @@ function setCompanyOrgInspectorOpen(open) {
     inspector.inert = !visible;
     setCompanyOrgBackgroundInert(mobile && visible);
     document.body.classList.toggle('hr-org-inspector-lock', mobile && visible);
+    syncCompanyOrgInspectorViewportBounds(inspector, mobile, visible);
     if (mobile && visible && !wasOpen) document.getElementById('hrOrgDetailTitle')?.focus?.({ preventScroll: true });
 }
 

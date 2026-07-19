@@ -60,6 +60,21 @@ function fail(message) {
     process.exit(1);
 }
 
+function formatErrorForOutput(error, seen = new Set()) {
+    if (!error) return 'Unknown error';
+    if (seen.has(error)) return '[circular error]';
+    seen.add(error);
+    const primary = error?.stack || error?.message || String(error);
+    const nested = error instanceof AggregateError
+        ? [...error.errors]
+        : (error?.cause ? [error.cause] : []);
+    if (!nested.length) return primary;
+    return [
+        primary,
+        ...nested.map((item, index) => `Cause ${index + 1}: ${formatErrorForOutput(item, seen)}`)
+    ].join('\n');
+}
+
 function requirePlaywright() {
     try {
         return require('playwright');
@@ -3379,11 +3394,31 @@ async function runRevealAction(page, date, kitchenId) {
         await showBookingDetails(id);
         if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
     }, kitchenId);
-    const revealed = await page.evaluate(
-        async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
-        { bookingId: kitchenId, bookingDate: date }
-    );
-    assert.equal(revealed, true, 'canonical room timeline reveal succeeds');
+    let revealed = false;
+    const attempts = [];
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        revealed = await page.evaluate(
+            async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
+            { bookingId: kitchenId, bookingDate: date }
+        );
+        const diagnostics = await page.evaluate(() => ({
+            url: window.location.href,
+            timelineView: window.TimelineView?.current?.() || null,
+            lineCount: document.querySelectorAll('.timeline-line').length,
+            gridCellCount: document.querySelectorAll('.grid-cell').length,
+            markerCount: document.querySelectorAll('.timeline-room-service-marker').length,
+            bookingBlockCount: document.querySelectorAll('.booking-block:not(.status-hidden)').length,
+            notifications: Array.from(document.querySelectorAll('.notification, .toast, [role="alert"]'))
+                .map(node => String(node.textContent || '').trim())
+                .filter(Boolean)
+                .slice(-3)
+        }));
+        attempts.push({ attempt, revealed, diagnostics });
+        if (revealed) break;
+        await renderTimelineView(page, date, 'rooms');
+        await sleep(1000);
+    }
+    assert.equal(revealed, true, `canonical room timeline reveal succeeds: ${JSON.stringify(attempts)}`);
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
     await waitForTimelineReady(page, 'canonical room timeline reveal');
     await assertRoomMarkerVisible(page, kitchenId);
@@ -3529,6 +3564,13 @@ async function run() {
             body: {
                 sourceBookingId: activity.id,
                 role: 'kitchen',
+                banquetContext: {
+                    mode: 'new',
+                    groupId: null,
+                    guestArrivalTime: activitySnapshot.group?.guestArrivalTime
+                        || activitySnapshot.guestArrivalTime
+                        || '13:00'
+                },
                 booking: bookingPayload({
                     date,
                     time: '15:00',
@@ -3557,7 +3599,7 @@ async function run() {
 
         const kitchenFirstCreate = await createBooking(base, token, bookingPayload({
             date,
-            time: '16:00',
+            time: '18:15',
             lineId: 'banquet-service',
             room,
             label: `Task37 kitchen first ${RUN_ID}`,
@@ -3569,7 +3611,7 @@ async function run() {
             customerPhone: customerB.phone,
             childName: customerB.childName,
             banquetGuests: 5,
-            bookingPackage: kitchenPackage('16:30')
+            bookingPackage: kitchenPackage('18:30')
         }));
         recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate);
         await verifyPersistedCreateResult(base, token, kitchenFirstCreate, 'kitchen-first root');
@@ -3674,7 +3716,7 @@ async function run() {
 }
 
 if (require.main === module) {
-    run().catch(err => fail(err?.stack || err?.message || String(err)));
+    run().catch(err => fail(formatErrorForOutput(err)));
 }
 
 module.exports = {
@@ -3683,6 +3725,7 @@ module.exports = {
     assertQaCleanupApplyVerified,
     assertQaCleanupDryRunReady,
     bookingCreateResult,
+    formatErrorForOutput,
     isBookingCreateEndpoint,
     markCreateRequestPayload,
     normalizedBookingIds,

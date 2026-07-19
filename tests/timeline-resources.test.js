@@ -4540,6 +4540,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /TIMELINE_BROWSER_SMOKE_RATE_LIMIT_RETRY_MS \|\| 65000/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
     assert.match(smoke, /function writeTimelineFailureDiagnostic/);
+    assert.match(smoke, /canonical room timeline reveal succeeds: \$\{JSON\.stringify\(attempts\)\}/);
     assert.match(smoke, /function ensureKitchenTicketQuoteReady/);
     assert.match(smoke, /BookingTickets\?\.quoteNow/);
     assert.match(smoke, /BookingTickets\?\.collect/);
@@ -4555,6 +4556,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /typeSwitch/);
     assert.match(smoke, /function assertTimelineViewPanelInteractions/);
     assert.match(smoke, /\/api\/banquets\/from-source\/member-booking/);
+    assert.match(smoke, /banquetContext:\s*\{\s*mode: 'new',\s*groupId: null,\s*guestArrivalTime: activitySnapshot\.group\?\.guestArrivalTime/);
     assert.match(smoke, /\/api\/banquets\/from-source\/activity-booking/);
     assert.match(smoke, /function openActiveBanquetEmptyCellDrawer/);
     assert.match(smoke, /page\.evaluate\(async \(\{ date, room, time, snapshot \}\) =>/);

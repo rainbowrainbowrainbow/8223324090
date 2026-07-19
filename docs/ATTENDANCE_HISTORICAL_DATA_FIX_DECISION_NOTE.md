@@ -1,6 +1,7 @@
 # Historical attendance data-fix decision note
 
-Status: deferred pending a read-only production audit. Write-mode apply is not allowed.
+Status: completed as a no-op after a read-only production audit. Write-mode apply is
+not required and remains disallowed for this reviewed scope because the candidate count is zero.
 
 ## Approved owner scope
 
@@ -223,25 +224,29 @@ No rollback should be run from memory or from a manually edited list of IDs.
 
 | Item | Result |
 | --- | --- |
-| Tooling branch baseline | Synced with `origin/codex/performance-hardening` v`0.79.85` on `2026-07-19`; no production data was changed during sync. |
+| Tooling branch baseline | Dry-run executed from the merged tooling commit `4099c513f`; the closure note was prepared from `origin/codex/production` at `fda715add` / v`0.79.103`. Later production commits did not change the scoped attendance/payroll tooling files. |
 | Approved date range | `2026-07-01` through `2026-07-18` |
 | Approved categories | `late-grace`, `overtime-grace` only |
 | Excluded categories | `missing plan source`, `inferred profession card` |
 | Additional read-only bucket | `null-zero-negative-late`; not writable without separate owner approval |
 | Tooling guard update | v3 narrows late candidates to `late_minutes 1..5`, refuses write/generic DB URLs for dry-run, adds `--max-records`, compare-and-set updates, canonical approval manifest, serializable apply, payroll table locks, read-back verification, durable checksumed backups, operation audit, and rollback CLI. |
-| Read-only dry-run | **Blocked**: no approved read-only production database connection was available. |
-| Dry-run candidate counts | Not measured. |
-| Dry-run `planHash` | Not produced. |
-| Protected payroll overlap | Not measured; therefore apply must fail closed. |
-| Apply | Not run. |
+| Read-only dry-run | Completed on `2026-07-19` through a short-lived, least-privilege role with `default_transaction_read_only=on`; the role and its grants were removed after the audit. |
+| Tooling identity | Git SHA `4099c513f12c5e2ab2e276948de6d70d6afcef30`; script SHA-256 `67d6fd9b93abd908ed40898f90758a80ac993300acb3a1d152f8dd638eb29e2c`. |
+| Database fingerprint | `d5e1efbedf9ffa67b9710c5cd30f02a25ff1a2a72f19463b049568660988dbfd` (credential-free hash). |
+| Dry-run candidate counts | Late `1..5`: `0`; overtime `1..15`: `0`; overlap: `0`; unique records: `0`; distinct staff: `0`. |
+| Additional read-only bucket result | `null-zero-negative-late`: `0`. |
+| Dry-run `planHash` | `18142c71aec056b675f06e0d469f0e14fd3d054e419894f877b5bed5ef983570`. |
+| Operation ID | `attendance-grace-2026-07-01-2026-07-18-18142c71aec0`. |
+| Payroll impact | `none_detected`; no candidate payroll months and no open, locked, reviewed, approved, paid, committed, or finance-linked overlap. |
+| Apply | Not run and not needed: the decision gate requires a positive candidate count. |
 | Changed attendance records | 0. |
 | Backup reference | None; apply did not start. |
 | Rollback | Not applicable; no production data was changed. |
 
-The prepared script and its tests are reviewable tooling only. It was not connected to a
-production database during this work. A second owner confirmation is impossible until a
-fresh dry-run provides an exact `planHash`, aggregate counts, and zero protected payroll
-overlap.
+The aggregate dry-run artifact is stored outside the repository in the restricted local
+operator artifact directory. The repository intentionally records only aggregate counts,
+hashes, and the no-op decision; it does not contain credentials, attendance IDs, staff IDs,
+or a production data export.
 
 ### Disposable overtime UI QA
 
@@ -261,6 +266,8 @@ No employee identifiers, credentials, or production data exports are recorded he
 
 ## Current decision
 
-Keep the historical correction deferred. The next required owner-facing input is an
-approved read-only production database connection for the scoped dry-run. After that,
-review the measured counts and `planHash` before requesting the separate apply confirmation.
+Close the approved historical correction as **no-op**. No matching rows exist in the
+approved date range and categories, so there is nothing to update and no second apply
+approval, backup, temporary write role, maintenance window, or rollback operation is
+required. Any future historical correction must start with a new read-only dry-run and a
+new manifest; this expired/zero-candidate plan must never be reused for write mode.

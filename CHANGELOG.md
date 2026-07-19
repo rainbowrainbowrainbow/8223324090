@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.108 - HR structure mobile inspector bounds
+
+### HR / Structure tree / Mobile QA / (19.07.2026) [codex]
+- **Mobile inspector bounds** — sheet картки вузла тепер жорстко прив’язаний до viewport через `left: 0`, `width: 100vw` і `max-width: 100vw`, щоб після resize/search/quick-actions він не виходив праворуч навіть на 390px.
+- **Read-only live QA** — сценарій перевіряє light/dark, search, collapse, quick actions без Save, keyboard, desktop/tablet/mobile і блокує HR structure mutation requests.
+- **Release hygiene** — оновлено version metadata, changelog і cache markers для фінального production rollout.
+
+---
+
 ## v0.79.107 - HR structure mobile inspector fix
 
 ### HR / Structure tree / Mobile QA / (19.07.2026) [codex]

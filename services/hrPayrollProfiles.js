@@ -3,7 +3,8 @@
 const { pool } = require('../db');
 const {
     normalizeProfessionKey,
-    staffProfessionKeys
+    staffProfessionKeys,
+    isHiddenProfessionKey
 } = require('./professions');
 const {
     OVERTIME_MULTIPLIER,
@@ -495,6 +496,9 @@ async function assertProfessionExists(db, professionKey, options = {}) {
     const profession = safeRows(result)[0];
     if (!profession) {
         throw payrollProfileError('profession not found', 404, 'PAYROLL_PROFILE_PROFESSION_NOT_FOUND');
+    }
+    if (profession.is_active === false || isHiddenProfessionKey(profession.key)) {
+        throw payrollProfileError('profession is not available for payroll profiles', 409, 'PAYROLL_PROFILE_PROFESSION_UNAVAILABLE');
     }
     return profession;
 }

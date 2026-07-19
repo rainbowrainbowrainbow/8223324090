@@ -50,7 +50,7 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.79.106">✨ 0.79.106</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.79.106 — HR structure mobile inspector fix</p>
+                <p class="tagline">AI First CRM v0.79.106 — ZP KPI profession cleanup</p>
             </div>
             <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.79.106</button>
             <form id="loginForm" class="login-form">
@@ -1802,11 +1802,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.79.106 — HR structure mobile inspector fix</h4>
+                    <h4>v0.79.106 — ZP KPI profession cleanup</h4>
                     <ul>
-                        <li><b>Mobile inspector</b> — виправлено overflow sheet на вузьких екранах: картка вузла більше не виходить праворуч за viewport.</li>
-                        <li><b>Live QA</b> — regression знайдено на production-smoke 390px і закрито перед фінальною передачею власнику.</li>
-                        <li><b>Release hygiene</b> — оновлено version metadata, changelog і cache markers для повторного production rollout.</li>
+                        <li><b>ЗП/KPI професії</b> — fallback-список основної професії тепер показує тільки затверджені ролі.</li>
+                        <li><b>Legacy-дублі</b> — зайві професії приховані від нових ЗП/KPI поверхонь без зміни live staff/payroll даних.</li>
+                        <li><b>Payroll guard</b> — нові payroll profiles блокуються для hidden або inactive професій.</li>
                     </ul>
                 </div>
 <div class="changelog-section">

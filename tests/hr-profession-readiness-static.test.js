@@ -26,6 +26,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const checklistService = readRepoFile('services', 'professionChecklists.js');
     const hrRoute = readRepoFile('routes', 'hr.js');
     const hrOnboardingService = readRepoFile('services', 'hrOnboarding.js');
+    const payrollProfileService = readRepoFile('services', 'hrPayrollProfiles.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const shiftSegmentsService = readRepoFile('services', 'hrShiftSegments.js');
     const staffScheduleMutations = readRepoFile('services', 'staffScheduleMutations.js');
@@ -69,7 +70,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
             { id: 6, key: 'cleaner', title: 'Прибиральник', department: 'Чистота', sort_order: 6, is_active: true },
             { id: 7, key: 'technician', title: 'Технік', department: 'Техніка', sort_order: 7, is_active: true },
             { id: 8, key: 'maintenance', title: 'Технік', department: 'Техніка', sort_order: 8, is_active: true },
-            { id: 9, key: 'head_cook', title: 'Шеф-кухар', department: 'Кухня', sort_order: 9, is_active: true }
+            { id: 9, key: 'head_cook', title: 'Шеф-кухар', department: 'Кухня', sort_order: 9, is_active: true },
+            { id: 10, key: 'intern', title: 'Стажер', department: 'Навчання', sort_order: 10, is_active: true }
         ]);
         const byKey = new Map(catalog.map(row => [row.key, row]));
 
@@ -79,7 +81,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.equal(byKey.has('cleaning'), false);
         assert.equal(byKey.has('technician'), false);
         assert.equal(byKey.has('head_cook'), false);
-        ['bartender', 'hr_manager', 'instructor', 'head_cook', 'head_chef', 'cleaning', 'technician']
+        assert.equal(byKey.has('intern'), false);
+        ['bartender', 'hr_manager', 'instructor', 'head_cook', 'head_chef', 'cleaning', 'technician', 'intern']
             .forEach(key => assert.equal(isHiddenProfessionKey(key), true));
         assert.equal(isHiddenProfessionKey('pizzaiolo'), false);
         assert.equal(byKey.get('senior_instructor')?.title, 'Адміністратор ігрових зон');
@@ -91,6 +94,13 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         const activeKeys = professionCatalogActiveKeySet(catalog);
         assert.equal(activeKeys.has('pizzaiolo'), true);
         assert.equal(activeKeys.has('bartender'), false);
+        assert.equal(activeKeys.has('intern'), false);
+    });
+
+    it('blocks hidden or archived professions from new payroll profile surfaces', () => {
+        assert.match(payrollProfileService, /isHiddenProfessionKey/);
+        assert.match(payrollProfileService, /PAYROLL_PROFILE_PROFESSION_UNAVAILABLE/);
+        assert.match(payrollProfileService, /profession\.is_active === false \|\| isHiddenProfessionKey\(profession\.key\)/);
     });
 
     it('keeps adjacent UI role labels on canonical profession names', () => {

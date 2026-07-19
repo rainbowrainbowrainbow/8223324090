@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.85",
+  "version": "0.79.86",
   "eventGenix": {
-    "releaseLabel": "Banquet Recovery Safety Gate"
+    "releaseLabel": "Timeline Launcher"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

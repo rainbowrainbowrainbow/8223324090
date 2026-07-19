@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.86 - Timeline Launcher
+
+### Sidebar / Timeline / Accessibility / Regression gate / (19.07.2026) [codex]
+- **У Park з’явився швидкий launcher таймлайна:** «Свята» і «Кімнати» відкривають відповідний режим без перезавантаження, а головна зона картки зберігає системний або останній вигляд.
+- **Однорежимні бізнес-контексти не ускладнено:** вони отримують звичайну картку з прямим deep link у єдиний доступний режим, без порожнього segmented control.
+- **Aurora-візуал і доступність збережено:** 38px touch-зони, 170ms transition, check-state, keyboard focus, `aria-pressed`/`aria-current` та `prefers-reduced-motion`.
+- **Delivery gate розширено:** focused, static і read-only browser smoke перевіряють URL, sibling links, синхронізацію `timeline:view-changed`, mobile close та перейменування «Банкети» на «Кімнати».
+
+---
+
 ## v0.79.85 - Banquet Recovery Safety Gate
 
 ### Backend / Recovery / CI / (19.07.2026) [codex]

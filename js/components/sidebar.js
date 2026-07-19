@@ -2175,7 +2175,7 @@ const Sidebar = (() => {
         if (!model) return;
         const token = `${model.businessContext || ''}|${model.viewMode}|${model.date}|${model.status}|${model.text}`;
         document.querySelectorAll('[data-sidebar-timeline-summary]').forEach(el => {
-            if (el.textContent === model.text || _prefersReducedMotion()) {
+            if (el.textContent === model.text || _motionReduced()) {
                 _applySidebarTimelineSummaryElement(el, model);
                 el.classList.remove('is-summary-changing');
                 return;

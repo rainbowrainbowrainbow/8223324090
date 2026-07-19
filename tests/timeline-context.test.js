@@ -467,6 +467,8 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.doesNotMatch(miniLinkBlock, /data-sidebar-timeline-mode/);
     assert.match(sidebarCode, /sidebar\.addEventListener\('click', _handleSidebarTimelineModeClick\)/);
     assert.match(sidebarCode, /sidebar\.addEventListener\('keydown', _handleSidebarTimelineModeKeydown\)/);
+    assert.match(sidebarCode, /_motionReduced\(\)/);
+    assert.doesNotMatch(sidebarCode, /_prefersReducedMotion/);
     assert.match(sidebarCode, /\[data-sidebar-rail-item\], \[data-sidebar-timeline-mode\]/);
     assert.match(sidebarCode, /const link = e\.target\.closest\([\s\S]*?\[data-sidebar-timeline-mode\][\s\S]*?if \(!link\) return;[\s\S]*?if \(isMobileSidebar\(\)\) setMobileSidebarOpen\(false\);/);
     assert.match(sidebarRhythmCss, /--eg-timeline-launcher-duration:\s*170ms/);

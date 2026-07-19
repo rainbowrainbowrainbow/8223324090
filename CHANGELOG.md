@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.102 - Timeline summary runtime fix
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Timeline summary runtime fix** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.101 - Timeline launcher visual guard
 
 ### Release / Versioning / (19.07.2026) [codex]

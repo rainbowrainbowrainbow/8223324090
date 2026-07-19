@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.111",
+  "version": "0.79.112",
   "eventGenix": {
-    "releaseLabel": "Staff node dropdown approved order"
+    "releaseLabel": "Deployment Commit Metadata"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -58,7 +58,7 @@
     "repair:banquet-pinatas": "node scripts/banquet-production-recovery.js recover",
     "test:banquet-arrival-migrations": "node --test tests/banquet-guest-arrival-migrations.test.js",
     "test:backup-recovery": "node --test tests/backup-artifact.test.js tests/backup-recovery-contract.test.js tests/backup-inventory-contract.test.js",
-    "test:version-tooling": "node --test tests/version-sync-tooling.test.js",
+    "test:version-tooling": "node --test tests/version-sync-tooling.test.js tests/release-metadata.test.js",
     "test:api:account-access": "node --test tests/api-account-access.test.js",
     "test:hr-release-b": "node --test tests/hr-profession-conditions.test.js tests/hr-profession-checklist-migration.test.js tests/hr-profession-checklists.test.js tests/hr-onboarding-checklist-sync.test.js tests/profile-hr-professions-foundation.test.js tests/hr-profession-readiness-static.test.js tests/training-course-progress.test.js tests/payroll-profiles-migration.test.js tests/hr-payroll-profiles-service.test.js",
     "test:unit:hr-org-tree": "node --test tests/hr-org-tree-regressions.test.js",

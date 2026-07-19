@@ -4235,12 +4235,32 @@ describe('route-level API safety smoke', () => {
     });
 
     it('keeps version, light health, readiness, and deep health public through the actual settings router', async () => {
-        const version = await request('GET', '/api/version');
-        assert.equal(version.status, 200, JSON.stringify(version.data));
-        assert.equal(version.data.success, true);
-        assert.equal(version.data.version, pkg.version);
-        assert.equal(version.data.releaseLabel, pkg.eventGenix.releaseLabel);
-        assert.equal(version.data.name, 'Event Genix');
+        const previousCommitSha = process.env.RAILWAY_GIT_COMMIT_SHA;
+        const previousSourceBranch = process.env.RAILWAY_GIT_BRANCH;
+        try {
+            delete process.env.RAILWAY_GIT_COMMIT_SHA;
+            delete process.env.RAILWAY_GIT_BRANCH;
+            const version = await request('GET', '/api/version');
+            assert.equal(version.status, 200, JSON.stringify(version.data));
+            assert.equal(version.data.success, true);
+            assert.equal(version.data.version, pkg.version);
+            assert.equal(version.data.releaseLabel, pkg.eventGenix.releaseLabel);
+            assert.equal(version.data.name, 'Event Genix');
+            assert.equal(version.data.commitSha, null);
+            assert.equal(version.data.sourceBranch, null);
+
+            process.env.RAILWAY_GIT_COMMIT_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
+            process.env.RAILWAY_GIT_BRANCH = 'codex/production';
+            const deployedVersion = await request('GET', '/api/version');
+            assert.equal(deployedVersion.status, 200, JSON.stringify(deployedVersion.data));
+            assert.equal(deployedVersion.data.commitSha, process.env.RAILWAY_GIT_COMMIT_SHA);
+            assert.equal(deployedVersion.data.sourceBranch, process.env.RAILWAY_GIT_BRANCH);
+        } finally {
+            if (previousCommitSha === undefined) delete process.env.RAILWAY_GIT_COMMIT_SHA;
+            else process.env.RAILWAY_GIT_COMMIT_SHA = previousCommitSha;
+            if (previousSourceBranch === undefined) delete process.env.RAILWAY_GIT_BRANCH;
+            else process.env.RAILWAY_GIT_BRANCH = previousSourceBranch;
+        }
 
         const health = await request('GET', '/api/health');
         assert.equal(health.status, 200, JSON.stringify(health.data));

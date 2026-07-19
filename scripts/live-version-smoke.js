@@ -12,6 +12,7 @@ const pkg = require('../package.json');
 const target = process.argv[2] || process.env.VERSION_SMOKE_URL || process.env.TEST_URL;
 const expectedVersion = pkg.version;
 const expectedLabel = String(pkg.eventGenix?.releaseLabel || pkg.releaseLabel || '').trim();
+const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 function fail(message) {
     console.error(`Version smoke failed: ${message}`);
@@ -41,6 +42,27 @@ async function fetchText(url) {
     return res.text();
 }
 
+function assertDeploymentMetadata(versionJson) {
+    if (!Object.prototype.hasOwnProperty.call(versionJson, 'commitSha')) {
+        throw new Error('/api/version response is missing commitSha');
+    }
+    if (!Object.prototype.hasOwnProperty.call(versionJson, 'sourceBranch')) {
+        throw new Error('/api/version response is missing sourceBranch');
+    }
+    if (versionJson.commitSha !== null
+        && (typeof versionJson.commitSha !== 'string'
+            || !FULL_COMMIT_SHA_PATTERN.test(versionJson.commitSha))) {
+        throw new Error(`/api/version commitSha has invalid format: "${versionJson.commitSha}"`);
+    }
+    if (versionJson.sourceBranch !== null
+        && (typeof versionJson.sourceBranch !== 'string'
+            || !versionJson.sourceBranch.trim()
+            || versionJson.sourceBranch.length > 255
+            || /[\u0000-\u001f\u007f]/.test(versionJson.sourceBranch))) {
+        throw new Error('/api/version sourceBranch has invalid format');
+    }
+}
+
 async function main() {
     if (!target) {
         fail('provide a URL as an argument or VERSION_SMOKE_URL/TEST_URL');
@@ -61,6 +83,7 @@ async function main() {
     if (expectedLabel && versionJson.releaseLabel !== expectedLabel) {
         fail(`/api/version releaseLabel is "${versionJson.releaseLabel}", expected "${expectedLabel}"`);
     }
+    assertDeploymentMetadata(versionJson);
 
     const html = await fetchText(`${base}/`);
     if (!html.includes(`v${expectedVersion}`) && !html.includes(`?v=${expectedVersion}`)) {
@@ -70,7 +93,18 @@ async function main() {
         fail(`login HTML does not expose release label "${expectedLabel}"`);
     }
 
-    console.log(`Version smoke OK: ${base} -> v${expectedVersion}${expectedLabel ? ` — ${expectedLabel}` : ''}`);
+    const deployedSource = versionJson.commitSha
+        ? ` @ ${versionJson.commitSha.slice(0, 12)}${versionJson.sourceBranch ? ` (${versionJson.sourceBranch})` : ''}`
+        : ' @ commit metadata unavailable';
+    console.log(`Version smoke OK: ${base} -> v${expectedVersion}${expectedLabel ? ` — ${expectedLabel}` : ''}${deployedSource}`);
 }
 
-main().catch(err => fail(err.message || String(err)));
+if (require.main === module) {
+    main().catch(err => fail(err.message || String(err)));
+}
+
+module.exports = {
+    FULL_COMMIT_SHA_PATTERN,
+    assertDeploymentMetadata,
+    main
+};

@@ -9606,6 +9606,7 @@ body.dark-mode .hr-org-chart-card {
 .hr-org-detail {
     position: sticky;
     display: block;
+    box-sizing: border-box;
     grid-template-columns: none;
     gap: 0;
     top: 10px;

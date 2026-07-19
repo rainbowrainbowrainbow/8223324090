@@ -330,6 +330,35 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         assert.equal(approval.status, 200, JSON.stringify(approval.data));
         assert.equal(approval.data.report.status, 'approved');
 
+        const approvedRegeneration = await authRequest(
+            'POST',
+            `/api/payroll/generate?month=${MONTH}`,
+            { month: MONTH }
+        );
+        assert.equal(approvedRegeneration.status, 200, JSON.stringify(approvedRegeneration.data));
+        assert.equal(
+            approvedRegeneration.data.reports.some(row => Number(row.staff_id) === staffId),
+            false
+        );
+        assert.deepEqual(
+            approvedRegeneration.data.skipped.find(row => Number(row.staffId) === staffId),
+            { staffId, status: 'approved' },
+            'approved regeneration must skip immutable report'
+        );
+        const approvedStoredReport = await pool.query(
+            `SELECT status, gross_amount, net_amount, breakdown_json
+             FROM payroll_reports
+             WHERE period_month = $1 AND staff_id = $2`,
+            [MONTH, staffId]
+        );
+        assert.equal(approvedStoredReport.rows[0].status, 'approved');
+        assert.equal(Number(approvedStoredReport.rows[0].gross_amount), 2600);
+        assert.equal(Number(approvedStoredReport.rows[0].net_amount), 2600);
+        assert.equal(
+            jsonValue(approvedStoredReport.rows[0].breakdown_json).transparency.additionalAmount,
+            1700
+        );
+
         const commit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
         assert.equal(commit.status, 200, JSON.stringify(commit.data));
         const committedFixture = commit.data.transactions.find(row => Number(row.staffId) === staffId);
@@ -353,6 +382,35 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         assert.equal(paidBreakdown.transparency.additionalRoleHours, 8.5);
         assert.equal(
             paidBreakdown.lines.find(line => line.lineType === 'simultaneous_additional').amount,
+            1700
+        );
+
+        const paidRegeneration = await authRequest(
+            'POST',
+            `/api/payroll/generate?month=${MONTH}`,
+            { month: MONTH }
+        );
+        assert.equal(paidRegeneration.status, 200, JSON.stringify(paidRegeneration.data));
+        assert.equal(
+            paidRegeneration.data.reports.some(row => Number(row.staff_id) === staffId),
+            false
+        );
+        assert.deepEqual(
+            paidRegeneration.data.skipped.find(row => Number(row.staffId) === staffId),
+            { staffId, status: 'paid' },
+            'paid regeneration must skip immutable report'
+        );
+        const paidStoredReport = await pool.query(
+            `SELECT status, gross_amount, net_amount, breakdown_json
+             FROM payroll_reports
+             WHERE period_month = $1 AND staff_id = $2`,
+            [MONTH, staffId]
+        );
+        assert.equal(paidStoredReport.rows[0].status, 'paid');
+        assert.equal(Number(paidStoredReport.rows[0].gross_amount), 2600);
+        assert.equal(Number(paidStoredReport.rows[0].net_amount), 2600);
+        assert.equal(
+            jsonValue(paidStoredReport.rows[0].breakdown_json).transparency.additionalAmount,
             1700
         );
 

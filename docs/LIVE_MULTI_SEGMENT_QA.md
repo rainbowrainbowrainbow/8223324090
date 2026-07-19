@@ -3,7 +3,13 @@
 `npm run qa:live:multi-segment -- https://<crm-host>` is the controlled end-to-end acceptance runner for the normalized HR day plan.
 
 The runner verifies the active `simultaneous-profession-pay-v1` contract with
-`effectiveFrom = 2026-07-18`.
+`effectiveFrom = 2026-07-18` and `payMultiplier = 1.0`.
+
+The production payroll matrix is:
+
+- supported: `hourly`, `per_shift`, `monthly_fixed`;
+- fail-closed with `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`:
+  `hybrid`, `percent`, `manual`.
 
 ## Safety contract
 
@@ -50,6 +56,24 @@ Single-scheme mode creates one disposable staff member with an explicit active p
 - supported schemes (`hourly`, `per_shift`, `monthly_fixed`) show separate role amounts calculated from the explicit primary scheme and additional profession snapshot rate;
 - unsupported schemes (`hybrid`, `percent`, `manual`) show `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED` with 510 unresolved additional minutes and no successful additional-pay line;
 - Reports-compatible planned hours equal 9 physical Staff Schedule hours.
+
+## Pre-release regression verification
+
+This documentation task does not run live acceptance. Before the final release task, verify the
+same contract locally and against disposable PostgreSQL:
+
+```powershell
+node --test tests/hr-attendance-segments.test.js tests/payroll-profession-allocation.test.js tests/live-multi-segment-qa.test.js
+npm run test:integration:payroll-profiles:isolated
+npm run test:integration:live-multi-segment-qa:isolated
+npm run test:browser:staff-schedule
+npm test
+```
+
+The canonical scenario matrix and exact test ownership are maintained in
+[`HR_SIMULTANEOUS_PROFESSION_PAY_POLICY.md`](HR_SIMULTANEOUS_PROFESSION_PAY_POLICY.md#17-regression-matrix).
+Disposable tests may create and remove synthetic records only inside their isolated PostgreSQL
+database. They do not authorize production backfill or production payroll writes.
 
 ## Cleanup
 

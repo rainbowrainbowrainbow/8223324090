@@ -60,6 +60,21 @@ function fail(message) {
     process.exit(1);
 }
 
+function formatErrorForOutput(error, seen = new Set()) {
+    if (!error) return 'Unknown error';
+    if (seen.has(error)) return '[circular error]';
+    seen.add(error);
+    const primary = error?.stack || error?.message || String(error);
+    const nested = error instanceof AggregateError
+        ? [...error.errors]
+        : (error?.cause ? [error.cause] : []);
+    if (!nested.length) return primary;
+    return [
+        primary,
+        ...nested.map((item, index) => `Cause ${index + 1}: ${formatErrorForOutput(item, seen)}`)
+    ].join('\n');
+}
+
 function requirePlaywright() {
     try {
         return require('playwright');
@@ -3701,7 +3716,7 @@ async function run() {
 }
 
 if (require.main === module) {
-    run().catch(err => fail(err?.stack || err?.message || String(err)));
+    run().catch(err => fail(formatErrorForOutput(err)));
 }
 
 module.exports = {
@@ -3710,6 +3725,7 @@ module.exports = {
     assertQaCleanupApplyVerified,
     assertQaCleanupDryRunReady,
     bookingCreateResult,
+    formatErrorForOutput,
     isBookingCreateEndpoint,
     markCreateRequestPayload,
     normalizedBookingIds,

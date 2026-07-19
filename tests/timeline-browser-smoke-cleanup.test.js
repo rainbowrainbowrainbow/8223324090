@@ -196,6 +196,19 @@ test('cleanup apply assertion proves cancellation, finance cleanup and repeated 
     );
 });
 
+test('aggregate failure output preserves both scenario and cleanup causes', () => {
+    const scenario = new Error('room marker wait failed for BK-QA');
+    const cleanup = new Error('guarded cleanup preflight blocked');
+    const output = smoke.formatErrorForOutput(new AggregateError(
+        [scenario, cleanup],
+        'scenario and cleanup failed'
+    ));
+
+    assert.match(output, /scenario and cleanup failed/);
+    assert.match(output, /room marker wait failed for BK-QA/);
+    assert.match(output, /guarded cleanup preflight blocked/);
+});
+
 test('cleanup diagnostics retain only allowlisted technical classification fields', () => {
     assert.deepEqual(smoke.safeCleanupClassification({
         status: 'marker_mismatch',

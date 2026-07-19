@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.88 - Безпечний recovery банкетів
+
+### Backend / Recovery / Operator safety / (19.07.2026) [codex]
+- **Deposit review більше не маскує зламаний стан групи:** active banquet group зі скасованим primary booking класифікується як `groupStateIntegrityIssues`, а не як відсутній canonical deposit.
+- **QA cleanup став fail-closed для linked children:** apply скасовує лише записи з підтвердженими disposable marker-и одного runId, customer і business context; unmarked або чужі child bookings блокують усю транзакцію.
+- **Production audit має безпечний operator summary:** `audit --summary-only` показує тільки aggregate counters без booking/group IDs, room, raw fingerprints або PII.
+- **Stale banquet reconciliation поки тільки read-only:** `reconcile-group-state` підтримує bounded dry-run для `active_group_cancelled_primary`; production apply не реалізований і потребує окремого погодження.
+
+---
+
 ## v0.79.87 - Timeline Smoke Durability
 
 ### Release / Versioning / (19.07.2026) [codex]

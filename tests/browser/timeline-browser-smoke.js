@@ -463,6 +463,37 @@ async function findBookingTimeSmokeSlot(base, token, room) {
     throw new Error('no visible free animator line found for the 12:15 -> 12:30 booking time smoke');
 }
 
+async function findKitchenFirstSmokeDate(base, token, room, startDate, excludedDates = []) {
+    const excluded = new Set(excludedDates.filter(Boolean));
+    for (let offset = 0; offset < 45; offset += 1) {
+        const date = datePlus(startDate, offset);
+        if (excluded.has(date)) continue;
+        const line = await firstAnimatorLine(base, token, date);
+        const bookings = await fetchJsonWithRetry(
+            base,
+            scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'animators' }),
+            { token },
+            {
+                attempts: 3,
+                delayMs: RATE_LIMIT_RETRY_MS,
+                label: `kitchen-first availability ${date}`
+            }
+        );
+        const normalizedRoom = String(room || '').trim().toLowerCase();
+        const conflict = (Array.isArray(bookings) ? bookings : []).some(booking => {
+            if (String(booking?.status || '').toLowerCase() === 'cancelled') return false;
+            if (!smokeBookingOverlaps(booking, '13:00', 90)) return false;
+            const sameLine = [booking?.lineId, booking?.line_id, booking?.resourceId, booking?.resource_id]
+                .some(value => String(value || '') === String(line.id));
+            const sameRoom = normalizedRoom
+                && String(booking?.room || '').trim().toLowerCase() === normalizedRoom;
+            return sameLine || sameRoom;
+        });
+        if (!conflict) return date;
+    }
+    throw new Error('no free room and first animator line found for kitchen-first smoke');
+}
+
 function bookingPayload(base = {}) {
     const payload = {
         businessContext: BUSINESS_CONTEXT,
@@ -1416,7 +1447,7 @@ async function openRoomDrawer(page, date, room, time) {
 }
 
 function assertBridgeSelector(result, label) {
-    assert.equal(result.ok, true, `${label}: drawer opens`);
+    assert.equal(result.ok, true, `${label}: drawer opens; result=${JSON.stringify(result)}`);
     assert.equal(result.panelVisible, true, `${label}: drawer visible`);
     const combined = `${result.selectorText || ''} ${result.hintText || ''}`.replace(/\s+/g, ' ').trim();
     assert.ok(!/^Без прив.?язки$/i.test(combined), `${label}: selector is not only "Без прив'язки"`);
@@ -3496,6 +3527,7 @@ async function run() {
     const createdBanquetCleanupTargets = [];
     const bookingCapture = createBookingResponseCapture(createdBookingIds);
     let bookingTimeDate = date;
+    let kitchenFirstDate = secondDate;
     let scenarioFailure = null;
 
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
@@ -3505,6 +3537,13 @@ async function run() {
         const animator = await firstAnimatorLine(base, token, date);
         const bookingTimeSlot = await findBookingTimeSmokeSlot(base, token, room);
         bookingTimeDate = bookingTimeSlot.date;
+        kitchenFirstDate = await findKitchenFirstSmokeDate(
+            base,
+            token,
+            room,
+            secondDate,
+            [date, bookingTimeDate]
+        );
         const customerA = await createCustomer(base, token, 'activity-first');
         createdCustomerIds.push(customerA.id);
         const customerB = await createCustomer(base, token, 'kitchen-first');
@@ -3642,7 +3681,7 @@ async function run() {
         );
 
         const kitchenFirstCreate = await createBooking(base, token, bookingPayload({
-            date: secondDate,
+            date: kitchenFirstDate,
             time: '13:00',
             lineId: 'banquet-service',
             room,
@@ -3661,9 +3700,9 @@ async function run() {
         await verifyPersistedCreateResult(base, token, kitchenFirstCreate, 'kitchen-first root');
         const kitchenFirst = kitchenFirstCreate.booking;
 
-        await renderTimelineView(page, secondDate, 'rooms', { forceBookings: true });
+        await renderTimelineView(page, kitchenFirstDate, 'rooms', { forceBookings: true });
         await assertRoomMarkerVisible(page, kitchenFirst.id);
-        const kitchenFirstDrawer = await openActivityFromKitchenSource(page, secondDate, kitchenFirst.id);
+        const kitchenFirstDrawer = await openActivityFromKitchenSource(page, kitchenFirstDate, kitchenFirst.id);
         assertBridgeSelector(kitchenFirstDrawer, 'kitchen first -> activity');
         const program = await chooseFirstActivityProgram(page);
         assert.ok(program?.id, 'activity program selected for kitchen-first bridge');
@@ -3677,9 +3716,9 @@ async function run() {
             ...activityFromKitchen.bookingIds
         ]);
 
-        await renderTimelineView(page, secondDate, 'rooms');
+        await renderTimelineView(page, kitchenFirstDate, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFirst.id);
-        await renderTimelineView(page, secondDate, 'animators');
+        await renderTimelineView(page, kitchenFirstDate, 'animators');
         await assertBookingBlockVisible(page, activityFromKitchen.booking.id);
         const kitchenFirstAnimatorVisible = await page.evaluate(id => {
             const escaped = CSS.escape(String(id));

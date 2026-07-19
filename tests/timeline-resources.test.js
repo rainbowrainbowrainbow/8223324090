@@ -4576,9 +4576,10 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /does not use generic booking endpoints/);
     assert.match(smoke, /activity first -> kitchen/);
     assert.match(smoke, /kitchen first -> activity/);
-    assert.match(smoke, /date: secondDate,\s*time: '13:00'/);
+    assert.match(smoke, /date: kitchenFirstDate,\s*time: '13:00'/);
     assert.doesNotMatch(smoke, /time: '18:15'/);
-    assert.match(smoke, /secondDate, 'rooms', \{ forceBookings: true \}/);
+    assert.match(smoke, /kitchenFirstDate, 'rooms', \{ forceBookings: true \}/);
+    assert.match(smoke, /findKitchenFirstSmokeDate/);
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);

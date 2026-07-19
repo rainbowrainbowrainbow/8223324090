@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.87 - Timeline Smoke Durability
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Timeline Smoke Durability** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.86 - Timeline Launcher
 
 ### Sidebar / Timeline / Accessibility / Regression gate / (19.07.2026) [codex]

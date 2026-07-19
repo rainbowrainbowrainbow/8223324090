@@ -25,7 +25,12 @@ const Sidebar = (() => {
         businessSettingsOpen: false,
         businessSettingsDocumentBound: false,
         businessProfileHydrationContext: '',
-        businessProfileHydrationPromise: null
+        businessProfileHydrationPromise: null,
+        timelineSummaryCache: new Map(),
+        timelineSummaryCurrent: null,
+        timelineSummaryRequestSeq: 0,
+        timelineSummaryPromiseKey: '',
+        timelineSummaryPromise: null
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/', '/staff', '/chat', '/certificates'];
@@ -113,6 +118,8 @@ const Sidebar = (() => {
         Object.freeze({ key: 'animators', label: 'Свята' }),
         Object.freeze({ key: 'rooms', label: 'Кімнати' })
     ]);
+    const SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL = 60 * 1000;
+    const SIDEBAR_TIMELINE_MONTHS_SHORT = Object.freeze(['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -1019,9 +1026,12 @@ const Sidebar = (() => {
         const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
         const badgeType = _badgeTypeFor(item);
         const badgeClass = badgeType === 'alerts' ? ' sidebar-design-extra-badge alert' : ' sidebar-design-extra-badge';
+        const timelineSummary = _isSidebarTimelineItem(item) ? _sidebarTimelineSummaryModelForItem(item) : null;
         const description = item.statusKey
             ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusToneAttr}${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
-            : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`;
+            : (timelineSummary
+                ? `<small data-sidebar-timeline-summary="true" data-sidebar-summary-status="${_escAttr(timelineSummary.status)}" data-sidebar-summary-date="${_escAttr(timelineSummary.date)}" data-sidebar-summary-view-mode="${_escAttr(timelineSummary.viewMode)}" aria-live="off" aria-label="${_escAttr(`Статус таймлайна: ${timelineSummary.text}`)}">${_escAttr(timelineSummary.text)}</small>`
+                : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`);
         const body = `
             ${_renderIcon(item.icon, 'sidebar-design-extra-icon')}
             <span class="sidebar-design-extra-copy">
@@ -1046,7 +1056,9 @@ const Sidebar = (() => {
             <a class="sidebar-design-extra-link sidebar-design-timeline-main${isActive ? ' active' : ''}" href="${_escAttr(timelineCard.href)}">
                 ${_renderExtraMenuLinkBody(item)}
             </a>
-            ${modeLinks}
+            <div class="sidebar-design-timeline-inset" role="group" aria-label="Режим таймлайна">
+                ${modeLinks}
+            </div>
         </div>`;
     }
 
@@ -1455,6 +1467,7 @@ const Sidebar = (() => {
         _initRipple();
         _initMagnetic();
         if (options.refreshOperational !== false) _refreshSidebarOperationalWidgets();
+        _refreshSidebarTimelineSummary();
         _queueActiveIndicatorUpdate();
     }
 
@@ -1795,7 +1808,9 @@ const Sidebar = (() => {
             const result = window.TimelineView.set(mode);
             if (result && typeof result.then === 'function') {
                 result
-                    .then(nextMode => _syncSidebarTimelineLauncherState(nextMode))
+                    .then(nextMode => {
+                        _syncSidebarTimelineLauncherState(nextMode);
+                    })
                     .catch(error => {
                         console.error('[Sidebar] Timeline view switch failed', error);
                         _navigateSidebarTimelineModeFallback(link);
@@ -1989,6 +2004,292 @@ const Sidebar = (() => {
         }).formatToParts(new Date());
         const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
         return `${map.year}-${map.month}-${map.day}`;
+    }
+
+
+    function _sidebarDateFromKey(dateKey) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return null;
+        const [year, month, day] = String(dateKey).split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function _sidebarDateKey(value) {
+        if (!value) return _sidebarKyivToday();
+        if (typeof formatDate === 'function' && value instanceof Date && !Number.isNaN(value.getTime())) {
+            return formatDate(value);
+        }
+        return _sidebarTaskDateOnly(value);
+    }
+
+    function _sidebarTimelineIsTimelineSurface() {
+        const path = String(window.location?.pathname || '/').replace(/\.html$/i, '').replace(/\/+$/, '') || '/';
+        return path === '/' || path === '/index';
+    }
+
+    function _sidebarTimelineCurrentDate() {
+        if (_sidebarTimelineIsTimelineSurface() && typeof AppState !== 'undefined' && AppState.selectedDate) {
+            return _sidebarDateKey(AppState.selectedDate);
+        }
+        return _sidebarKyivToday();
+    }
+
+    function _sidebarTimelineCurrentViewMode() {
+        if (_sidebarTimelineIsTimelineSurface() && typeof AppState !== 'undefined' && AppState.multiDayMode) return 'week';
+        return 'day';
+    }
+
+    function _sidebarTimelineContextValue() {
+        const user = _getCurrentSidebarUser();
+        return window.CrmBusinessContext?.current?.(user) || 'event_genix';
+    }
+
+    function _sidebarTimelineSummaryCacheKey(model = {}) {
+        return `${model.businessContext || _sidebarTimelineContextValue()}|${model.viewMode || 'day'}|${model.date || _sidebarTimelineCurrentDate()}`;
+    }
+
+    function _sidebarTimelineDateLabel(dateKey) {
+        const key = _sidebarDateKey(dateKey);
+        if (key === _sidebarKyivToday()) return 'Сьогодні';
+        const date = _sidebarDateFromKey(key);
+        if (!date) return key;
+        return `${date.getDate()} ${SIDEBAR_TIMELINE_MONTHS_SHORT[date.getMonth()] || ''}`.trim();
+    }
+
+    function _sidebarTimelineWeekRangeLabel(dateKey) {
+        const start = _sidebarDateFromKey(_sidebarDateKey(dateKey));
+        if (!start) return _sidebarTimelineDateLabel(dateKey);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        const startMonth = SIDEBAR_TIMELINE_MONTHS_SHORT[start.getMonth()] || '';
+        const endMonth = SIDEBAR_TIMELINE_MONTHS_SHORT[end.getMonth()] || '';
+        if (start.getMonth() === end.getMonth()) return `${start.getDate()}–${end.getDate()} ${endMonth}`.trim();
+        return `${start.getDate()} ${startMonth} – ${end.getDate()} ${endMonth}`.trim();
+    }
+
+    function _sidebarTimelineBookingPlural(count) {
+        const safe = Math.max(0, Math.floor(Number(count) || 0));
+        const mod10 = safe % 10;
+        const mod100 = safe % 100;
+        if (mod10 === 1 && mod100 !== 11) return `${safe} запис`;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${safe} записи`;
+        return `${safe} записів`;
+    }
+
+    function _sidebarTimelineBookingCanonicalId(booking = {}) {
+        const candidates = [
+            booking.canonicalBookingId,
+            booking.canonical_booking_id,
+            booking.primaryBookingId,
+            booking.primary_booking_id,
+            booking.rootBookingId,
+            booking.root_booking_id,
+            booking.parentBookingId,
+            booking.parent_booking_id,
+            booking.linkedTo,
+            booking.linked_to,
+            booking.sourceBookingId,
+            booking.source_booking_id,
+            booking.bookingId,
+            booking.booking_id,
+            booking.id
+        ];
+        const value = candidates.find(item => item !== undefined && item !== null && String(item).trim());
+        return value === undefined || value === null ? '' : String(value).trim();
+    }
+
+    function _sidebarTimelineBookingsFromPayload(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.bookings)) return payload.bookings;
+        if (Array.isArray(payload?.data?.bookings)) return payload.data.bookings;
+        if (Array.isArray(payload?.data)) return payload.data;
+        return [];
+    }
+
+    function _sidebarTimelineCountBookings(payload) {
+        const seen = new Set();
+        return _sidebarTimelineBookingsFromPayload(payload).reduce((count, booking) => {
+            if (!booking || typeof booking !== 'object') return count;
+            if (String(booking.status || '').toLowerCase() === 'cancelled') return count;
+            const canonicalId = _sidebarTimelineBookingCanonicalId(booking);
+            if (canonicalId) {
+                if (seen.has(canonicalId)) return count;
+                seen.add(canonicalId);
+            }
+            return count + 1;
+        }, 0);
+    }
+
+    function _sidebarTimelineSummaryText(model = {}) {
+        const dateLabel = model.dateLabel || _sidebarTimelineDateLabel(model.date);
+        if (model.viewMode === 'week') return `✓ Тиждень · ${_sidebarTimelineWeekRangeLabel(model.date)}`;
+        if (model.status === 'loading') return `Завантаження · ${dateLabel}`;
+        if (model.status === 'error') return `Не оновлено · ${dateLabel}`;
+        return `${_sidebarTimelineBookingPlural(model.count)} · ${dateLabel}`;
+    }
+
+    function _sidebarTimelineBuildSummary(input = {}) {
+        const date = _sidebarDateKey(input.date || _sidebarTimelineCurrentDate());
+        const viewMode = input.viewMode === 'week' ? 'week' : 'day';
+        const status = input.status || (viewMode === 'week' ? 'ready' : 'loading');
+        const count = Number.isFinite(Number(input.count)) ? Math.max(0, Math.floor(Number(input.count))) : 0;
+        const model = {
+            date,
+            viewMode,
+            dateLabel: viewMode === 'week' ? _sidebarTimelineWeekRangeLabel(date) : _sidebarTimelineDateLabel(date),
+            count,
+            status,
+            businessContext: input.businessContext || _sidebarTimelineContextValue()
+        };
+        model.text = input.text || _sidebarTimelineSummaryText(model);
+        return model;
+    }
+
+    function _sidebarTimelineSummaryModelForItem(item = {}) {
+        if (!_isSidebarTimelineItem(item)) return null;
+        const current = _state.timelineSummaryCurrent;
+        const requested = {
+            date: _sidebarTimelineCurrentDate(),
+            viewMode: _sidebarTimelineCurrentViewMode(),
+            businessContext: _sidebarTimelineContextValue()
+        };
+        if (current
+            && current.date === requested.date
+            && current.viewMode === requested.viewMode
+            && current.businessContext === requested.businessContext) {
+            return current;
+        }
+        return _sidebarTimelineBuildSummary(requested);
+    }
+
+    function _applySidebarTimelineSummaryElement(el, model) {
+        el.textContent = model.text;
+        el.dataset.sidebarSummaryStatus = model.status;
+        el.dataset.sidebarSummaryDate = model.date;
+        el.dataset.sidebarSummaryViewMode = model.viewMode;
+        el.setAttribute('aria-label', 'Статус таймлайна: ' + model.text);
+        el.setAttribute('aria-live', 'off');
+    }
+
+    function _syncSidebarTimelineSummaryDom(model = _state.timelineSummaryCurrent) {
+        if (!model) return;
+        const token = `${model.businessContext || ''}|${model.viewMode}|${model.date}|${model.status}|${model.text}`;
+        document.querySelectorAll('[data-sidebar-timeline-summary]').forEach(el => {
+            if (el.textContent === model.text || _prefersReducedMotion()) {
+                _applySidebarTimelineSummaryElement(el, model);
+                el.classList.remove('is-summary-changing');
+                return;
+            }
+            el.dataset.sidebarSummaryToken = token;
+            el.classList.add('is-summary-changing');
+            window.setTimeout(() => {
+                if (el.dataset.sidebarSummaryToken !== token) return;
+                _applySidebarTimelineSummaryElement(el, model);
+                window.requestAnimationFrame?.(() => el.classList.remove('is-summary-changing'))
+                    || el.classList.remove('is-summary-changing');
+            }, 70);
+        });
+    }
+
+    function _setSidebarTimelineSummary(model = {}) {
+        const next = _sidebarTimelineBuildSummary(model);
+        _state.timelineSummaryCurrent = next;
+        if (next.status === 'ready') {
+            _state.timelineSummaryCache.set(_sidebarTimelineSummaryCacheKey(next), {
+                model: next,
+                cachedAt: Date.now()
+            });
+        }
+        _syncSidebarTimelineSummaryDom(next);
+        return next;
+    }
+
+    async function _fetchSidebarTimelineSummary(requested, options = {}) {
+        const model = _sidebarTimelineBuildSummary({ ...requested, status: 'loading' });
+        const key = _sidebarTimelineSummaryCacheKey(model);
+        if (!options.force) {
+            const cached = _state.timelineSummaryCache.get(key);
+            if (cached && Date.now() - cached.cachedAt < SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL) {
+                return _setSidebarTimelineSummary(cached.model);
+            }
+        }
+        if (_state.timelineSummaryPromise && _state.timelineSummaryPromiseKey === key) return _state.timelineSummaryPromise;
+        const seq = ++_state.timelineSummaryRequestSeq;
+        _setSidebarTimelineSummary(model);
+        const url = _sidebarScopedApiUrl(`/api/bookings/${encodeURIComponent(model.date)}`);
+        const request = fetch(url, { headers: _sidebarAuthHeaders() })
+            .then(response => {
+                if (!response.ok) throw new Error(`bookings summary ${response.status}`);
+                return response.json();
+            })
+            .then(payload => {
+                if (seq !== _state.timelineSummaryRequestSeq) return null;
+                return _setSidebarTimelineSummary({
+                    ...model,
+                    count: _sidebarTimelineCountBookings(payload),
+                    status: 'ready'
+                });
+            })
+            .catch(error => {
+                if (seq !== _state.timelineSummaryRequestSeq) return null;
+                console.warn('[Sidebar] Timeline summary failed', error);
+                return _setSidebarTimelineSummary({ ...model, status: 'error' });
+            })
+            .finally(() => {
+                if (_state.timelineSummaryPromise === request) {
+                    _state.timelineSummaryPromise = null;
+                    _state.timelineSummaryPromiseKey = '';
+                }
+            });
+        _state.timelineSummaryPromise = request;
+        _state.timelineSummaryPromiseKey = key;
+        return request;
+    }
+
+    function _refreshSidebarTimelineSummary(options = {}) {
+        if (options.clearCache) _state.timelineSummaryCache.clear();
+        const requested = {
+            date: _sidebarTimelineCurrentDate(),
+            viewMode: _sidebarTimelineCurrentViewMode(),
+            businessContext: _sidebarTimelineContextValue()
+        };
+        if (requested.viewMode === 'week') {
+            _state.timelineSummaryRequestSeq++;
+            _setSidebarTimelineSummary({ ...requested, status: 'ready' });
+            return;
+        }
+        if (_sidebarTimelineIsTimelineSurface() && !options.allowTimelinePageFetch) {
+            const current = _state.timelineSummaryCurrent;
+            const matchesCurrent = current
+                && current.date === requested.date
+                && current.viewMode === requested.viewMode
+                && current.businessContext === requested.businessContext;
+            if (matchesCurrent && (current.status === 'ready' || current.status === 'error')) {
+                _syncSidebarTimelineSummaryDom(current);
+                return;
+            }
+            _state.timelineSummaryRequestSeq++;
+            _setSidebarTimelineSummary({ ...requested, status: 'loading' });
+            return;
+        }
+        void _fetchSidebarTimelineSummary(requested, options);
+    }
+
+    function _handleTimelineSummaryChanged(event) {
+        const detail = event?.detail || {};
+        const viewMode = detail.viewMode === 'week' ? 'week' : 'day';
+        const date = _sidebarDateKey(detail.date || _sidebarTimelineCurrentDate());
+        const businessContext = detail.businessContext || _sidebarTimelineContextValue();
+        if (viewMode === 'week') {
+            _state.timelineSummaryRequestSeq++;
+            _setSidebarTimelineSummary({ date, viewMode, businessContext, status: 'ready' });
+            return;
+        }
+        const count = Number.isFinite(Number(detail.count))
+            ? Math.max(0, Math.floor(Number(detail.count)))
+            : _sidebarTimelineCountBookings(detail.bookings || detail);
+        _state.timelineSummaryRequestSeq++;
+        _setSidebarTimelineSummary({ date, viewMode, businessContext, count, status: detail.status || 'ready' });
     }
 
     function _sidebarTaskDateOnly(value) {
@@ -2609,8 +2910,11 @@ const Sidebar = (() => {
 
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
-        const extraItems = _getExtraMenuItems(role);
+        const selectedExtraItems = _getExtraMenuItems(role);
         const selectableExtraItems = _getSelectableExtraMenuItems(role);
+        const timelineExtraItem = selectableExtraItems.find(item => _isSidebarTimelineItem(item)) || null;
+        const extraItems = selectedExtraItems.filter(item => !_isSidebarTimelineItem(item));
+        const editableExtraItems = selectableExtraItems.filter(item => !_isSidebarTimelineItem(item));
         const selectedExtraHrefs = _getSelectedExtraMenuHrefs(role);
         const extraEditorOpen = _isExtraMenuEditorOpen();
         const extraCollapsed = _isExtraMenuCollapsed();
@@ -2637,10 +2941,11 @@ const Sidebar = (() => {
                         <span class="sidebar-design-extras-manage-text">${extraEditorOpen ? 'Готово' : 'Редагувати'}</span>
                     </button>
                 </div>
+                ${timelineExtraItem ? `<div class="sidebar-design-timeline-slot">${_renderExtraMenuLink(timelineExtraItem, currentPath, currentHash)}</div>` : ''}
                 <div class="sidebar-design-extra-list"${extraListHidden ? ' hidden' : ''}>
                     ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
                 </div>
-                ${extraEditorOpen ? _renderExtraMenuEditor(selectableExtraItems, selectedExtraHrefs) : ''}`;
+                ${extraEditorOpen ? _renderExtraMenuEditor(editableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
 
         let productivity = document.getElementById('sidebarProductivityQuick');
@@ -3871,6 +4176,16 @@ const Sidebar = (() => {
         const setMobileSidebarOpen = (open) => {
             if (!sidebar) return;
             const nextOpen = Boolean(open);
+            if (nextOpen && isMobileSidebar()) {
+                if (sidebar.dataset.sidebarMobileRestoreCollapsed === undefined) {
+                    sidebar.dataset.sidebarMobileRestoreCollapsed = sidebar.classList.contains('collapsed') ? 'true' : 'false';
+                }
+                sidebar.classList.remove('collapsed');
+            } else if (!nextOpen && sidebar.dataset.sidebarMobileRestoreCollapsed !== undefined) {
+                const restoreCollapsed = sidebar.dataset.sidebarMobileRestoreCollapsed === 'true';
+                delete sidebar.dataset.sidebarMobileRestoreCollapsed;
+                sidebar.classList.toggle('collapsed', restoreCollapsed);
+            }
             sidebar.classList.toggle('open', nextOpen);
             if (overlay) {
                 overlay.classList.toggle('hidden', !nextOpen);
@@ -4121,6 +4436,7 @@ const Sidebar = (() => {
         if (c?.id) render('#' + c.id, { refreshOperational: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
+        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
     });
     window.addEventListener('crmBusinessContextHydrated', () => {
         _state.businessSwitching = false;
@@ -4128,15 +4444,22 @@ const Sidebar = (() => {
         if (c?.id) render('#' + c.id, { refreshOperational: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
+        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
     });
     window.addEventListener('crmBusinessProfileChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c?.id) render('#' + c.id);
         initUserCard();
+        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
     });
     window.addEventListener('timeline:view-changed', event => {
         _syncSidebarTimelineLauncherState(event?.detail?.view || '');
     });
+    window.addEventListener('timeline:schedule-view-mode-changed', () => {
+        const expectedViewMode = _sidebarTimelineCurrentViewMode();
+        if (_state.timelineSummaryCurrent?.viewMode !== expectedViewMode) _refreshSidebarTimelineSummary({ force: true });
+    });
+    window.addEventListener('timeline:summary-changed', _handleTimelineSummaryChanged);
 
     // ─── Sidebar action helpers ──────────────────────────────────
     // On timeline (index.html) — open modal directly

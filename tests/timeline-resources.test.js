@@ -974,8 +974,9 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /data-schedule-view-mode="day"/);
     assert.match(html, /data-schedule-view-mode="week"/);
     assert.doesNotMatch(html, /id="periodSelector"[\s\S]*data-schedule-view-mode="rooms"/);
-    assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="rooms"[\s\S]*>Кімнати<\/button>/);
-    assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="animators"[\s\S]*>Свята<\/button>/);
+    assert.doesNotMatch(html, /data-timeline-type-selector/);
+    assert.doesNotMatch(html, /id="timelineTypeSelector"/);
+    assert.doesNotMatch(html, /timeline-visible-type-switch/);
     assert.doesNotMatch(html, /id="timelineHolidaysToggle"[^>]*data-timeline-holidays-toggle/);
     assert.match(html, /<option value="rooms" selected>Кімнати<\/option>/);
     assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
@@ -4499,6 +4500,24 @@ test('animator timeline keeps banquet teaser surfaces out of park animator view'
     assert.doesNotMatch(timeline, /data-banquet-service-marker/);
 });
 
+test('timeline summary exits loading state on booking fetch and render failures', () => {
+    const timeline = read('js/timeline.js');
+    const bookingFailureStart = timeline.indexOf('if (bookingFetchError && !Array.isArray(bookingsResult))');
+    const criticalFetchStart = timeline.indexOf("console.error('[Timeline] Critical fetch error:', err)");
+    const outerRenderStart = timeline.indexOf("console.error('[Timeline] CRITICAL renderTimeline error:', outerErr)");
+    const bookingFailure = timeline.slice(bookingFailureStart, timeline.indexOf('bookings = normalizeTimelineBookingsForContext', bookingFailureStart));
+    const criticalFetch = timeline.slice(criticalFetchStart, timeline.indexOf('// v7.0:', criticalFetchStart));
+    const outerRenderFailure = timeline.slice(outerRenderStart, timeline.indexOf('// v8.6:', outerRenderStart));
+
+    for (const block of [bookingFailure, criticalFetch, outerRenderFailure]) {
+        assert.match(block, /dispatchTimelineSummaryChanged\(\{/);
+        assert.match(block, /status: 'error'/);
+        assert.match(block, /return false/);
+    }
+    assert.match(criticalFetch, /renderTimelineDataError\(container, err, selectedDate\)/);
+});
+
+
 test('timeline browser smoke runner covers two-way banquet bridge regressions', () => {
     const packageJson = JSON.parse(read('package.json'));
     const smoke = read('tests/browser/timeline-browser-smoke.js');
@@ -4518,7 +4537,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /refusing non-local browser smoke/);
     assert.match(smoke, /function requirePlaywright/);
     assert.match(smoke, /function waitForTimelineReady/);
-    assert.match(smoke, /function waitForTimelineTypeSwitch/);
+    assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
     assert.match(smoke, /function writeTimelineFailureDiagnostic/);
     assert.match(smoke, /function ensureKitchenTicketQuoteReady/);
     assert.match(smoke, /BookingTickets\?\.quoteNow/);
@@ -4540,12 +4559,14 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /kitchen first -> activity/);
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
-    assert.match(smoke, /Показати в кімнатах/);
+    assert.doesNotMatch(smoke, /Показати в кімнатах/);
     assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
     assert.match(smoke, /assertKitchenHiddenFromAnimator/);
     assert.match(smoke, /assertRoomMarkerVisible/);
     assert.match(smoke, /async function runRevealAction/);
     assert.match(smoke, /await showBookingDetails\(id\)/);
+    assert.match(smoke, /if \(typeof closeAllModals === 'function'\) closeAllModals\(\)/);
+    assert.match(smoke, /window\.TimelineView\?\.set\?\.\('rooms'\)/);
     assert.match(smoke, /window\.TimelineView\?\.set\)\s*await window\.TimelineView\.set\('animators', \{ render: false \}\)/);
 });
 

@@ -703,16 +703,6 @@ function initTimelineListeners() {
             applyTimelinePeriod(button.dataset.period, root);
         }, true);
     }
-    if (!window.__timelineTypeViewDelegatedBound) {
-        window.__timelineTypeViewDelegatedBound = true;
-        document.addEventListener('click', event => {
-            const button = event.target?.closest?.('[data-timeline-type-selector] [data-timeline-view]');
-            if (!button || !window.TimelineView?.set) return;
-            event.preventDefault();
-            event.stopPropagation();
-            window.TimelineView.set(button.dataset.timelineView);
-        }, true);
-    }
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
     initTimelineViewPanel();

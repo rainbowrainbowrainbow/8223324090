@@ -632,15 +632,23 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   line-height: 1.12 !important;
 }
 
-/* Timeline launcher: keeps the Aurora card rhythm while exposing both views. */
+/* Timeline launcher: compact Aurora card with an inset view selector. */
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-slot {
+  display: block;
+  min-width: 0;
+  margin: 4px 0 6px;
+}
+
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher {
   --eg-timeline-launcher-duration: 170ms;
   position: relative;
   isolation: isolate;
   min-width: 0;
   display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
   overflow: hidden;
+  padding: 0 0 7px;
   border: 1px solid var(--sb-enterprise-border);
   border-radius: var(--eg-sidebar-control-radius);
   background: var(--sb-enterprise-surface);
@@ -656,54 +664,24 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   box-shadow: inset 3px 0 0 var(--sb-enterprise-accent);
 }
 
-.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  left: 4px;
-  bottom: 3px;
-  width: calc(50% - 4px);
-  height: 32px;
-  border-radius: calc(var(--eg-sidebar-control-radius) - 2px);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--sb-enterprise-accent) 72%, var(--sb-enterprise-surface-2)),
-    color-mix(in srgb, var(--sb-enterprise-info) 48%, var(--sb-enterprise-surface-2))
-  );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-enterprise-accent) 24%, transparent);
-  opacity: 0;
-  transform: translateX(0);
-  pointer-events: none;
-  transition:
-    transform var(--eg-timeline-launcher-duration) cubic-bezier(0.2, 0.7, 0.2, 1),
-    opacity var(--eg-timeline-launcher-duration) ease;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="animators"]::after {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="rooms"]::after {
-  opacity: 1;
-  transform: translateX(100%);
-}
-
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main,
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main.active,
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:hover,
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:focus-visible {
   position: relative;
   z-index: 2;
-  grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
-  min-height: 40px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  transform: none;
+  min-height: 44px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main {
+  padding: 7px 9px 0 10px !important;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main:focus-visible {
@@ -716,56 +694,121 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   border-color: var(--sb-enterprise-border-strong);
 }
 
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-main [data-sidebar-timeline-summary] {
+  color: color-mix(in srgb, var(--sb-enterprise-text) 68%, var(--sb-enterprise-muted));
+  font-size: 10.4px;
+  font-weight: 760;
+  line-height: 1.16;
+  letter-spacing: 0.005em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  opacity: 1;
+  transition: opacity var(--eg-timeline-launcher-duration) ease, color var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-main [data-sidebar-timeline-summary].is-summary-changing {
+  opacity: 0.42;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-inset {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0 7px 0 10px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 82%, transparent);
+  border-radius: calc(var(--eg-sidebar-control-radius) - 2px);
+  background: color-mix(in srgb, var(--sb-enterprise-surface-2) 78%, #020617);
+  overflow: hidden;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-inset::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 2px;
+  top: 2px;
+  width: calc((100% - 6px) / 2);
+  height: calc(100% - 4px);
+  border-radius: calc(var(--eg-sidebar-control-radius) - 4px);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--sb-enterprise-accent) 18%, var(--sb-enterprise-surface-2)),
+    color-mix(in srgb, var(--sb-enterprise-info) 16%, var(--sb-enterprise-surface-2))
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-enterprise-accent) 22%, transparent);
+  opacity: 0;
+  transform: translateX(0);
+  pointer-events: none;
+  transition:
+    transform var(--eg-timeline-launcher-duration) cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity var(--eg-timeline-launcher-duration) ease;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="animators"] .sidebar-design-timeline-inset::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher[data-sidebar-timeline-active-mode="rooms"] .sidebar-design-timeline-inset::before {
+  opacity: 1;
+  transform: translateX(calc(100% + 2px));
+}
+
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   min-width: 0;
-  min-height: 38px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   padding: 0 8px;
-  border-top: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 88%, transparent);
-  color: var(--sb-enterprise-muted);
+  border: 0;
+  border-radius: calc(var(--eg-sidebar-control-radius) - 4px);
+  color: color-mix(in srgb, var(--sb-enterprise-text) 58%, var(--sb-enterprise-muted));
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 820;
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   text-decoration: none;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition:
     color var(--eg-timeline-launcher-duration) ease,
-    opacity var(--eg-timeline-launcher-duration) ease;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment[data-sidebar-timeline-mode="rooms"] {
-  border-left: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 72%, transparent);
+    opacity var(--eg-timeline-launcher-duration) ease,
+    background-color var(--eg-timeline-launcher-duration) ease;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment:hover {
   color: var(--sb-enterprise-text);
+  background: color-mix(in srgb, var(--sb-enterprise-text) 5%, transparent);
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment:focus-visible {
   z-index: 3;
   color: var(--sb-enterprise-text);
   outline: 2px solid color-mix(in srgb, var(--sb-enterprise-accent) 82%, var(--sb-enterprise-text));
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active {
-  color: var(--sb-enterprise-text);
+  color: #fff;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check {
   position: relative;
-  width: 11px;
-  height: 11px;
-  flex: 0 0 11px;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
   opacity: 0;
-  transform: scale(0.72);
+  transform: translateY(1px) scale(0.82);
   transition:
     opacity var(--eg-timeline-launcher-duration) ease,
     transform var(--eg-timeline-launcher-duration) ease;
@@ -777,7 +820,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   left: 3px;
   top: 0;
   width: 4px;
-  height: 8px;
+  height: 7px;
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: rotate(45deg);
@@ -785,14 +828,14 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment.active .sidebar-design-timeline-segment-check {
   opacity: 1;
-  transform: scale(1);
+  transform: translateY(0) scale(1);
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: clip;
-  opacity: 0.74;
+  opacity: 0.78;
   transition: opacity var(--eg-timeline-launcher-duration) ease;
 }
 
@@ -802,6 +845,11 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 
 .sidebar-nav.collapsed .sidebar-design-timeline-launcher {
   display: none;
+}
+
+.sidebar-nav.collapsed .sidebar-design-timeline-inset,
+.sidebar-nav.collapsed [data-sidebar-timeline-summary] {
+  display: none !important;
 }
 
 @media (max-width: 768px) {
@@ -840,17 +888,18 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher,
-  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-inset::before,
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment,
   .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-check,
-  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label,
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-main [data-sidebar-timeline-summary] {
     scroll-behavior: auto;
     transition-duration: 0.01ms;
   }
 }
 
 @media (forced-colors: active) {
-  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher::after {
+  .sidebar-nav:not(.collapsed) .sidebar-design-timeline-inset::before {
     border: 1px solid Highlight;
     background: Highlight;
   }

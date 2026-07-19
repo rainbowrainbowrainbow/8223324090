@@ -200,8 +200,9 @@ async function readLauncher(page) {
         const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
         if (!launcher) return null;
         const directLinks = Array.from(launcher.children).filter(child => child.matches('a[href]'));
-        const modes = directLinks
-            .filter(link => link.matches('[data-sidebar-timeline-mode]'))
+        const inset = launcher.querySelector(':scope > .sidebar-design-timeline-inset');
+        const modeLinks = inset ? Array.from(inset.children).filter(child => child.matches('a[href][data-sidebar-timeline-mode]')) : [];
+        const modes = modeLinks
             .map(link => {
                 const url = new URL(link.href, location.origin);
                 return {
@@ -219,9 +220,13 @@ async function readLauncher(page) {
             modeCount: Number(launcher.dataset.sidebarTimelineModeCount),
             activeMode: launcher.dataset.sidebarTimelineActiveMode || '',
             directLinkCount: directLinks.length,
+            insetModeLinkCount: modeLinks.length,
+            modeLinksShareInset: Boolean(inset) && modeLinks.every(link => link.parentElement === inset),
             nestedInteractiveCount: launcher.querySelectorAll('a a, a button, button a, button button').length,
             mainPathname: mainUrl?.pathname || '',
             mainSearch: mainUrl?.search || '',
+            summaryText: launcher.querySelector('[data-sidebar-timeline-summary]')?.textContent?.trim() || '',
+            summaryLive: launcher.querySelector('[data-sidebar-timeline-summary]')?.getAttribute('aria-live') || '',
             modes
         };
     });
@@ -234,7 +239,9 @@ async function assertParkLauncher(page, base) {
     const launcher = await readLauncher(page);
     assert.ok(launcher, 'Park renders the timeline launcher');
     assert.equal(launcher.modeCount, 2);
-    assert.equal(launcher.directLinkCount, 3, 'main link and two mode links are direct siblings');
+    assert.equal(launcher.directLinkCount, 1, 'only the main timeline link is a direct launcher link');
+    assert.equal(launcher.insetModeLinkCount, 2, 'two mode links are siblings inside the inset selector');
+    assert.equal(launcher.modeLinksShareInset, true, 'mode links share one inset parent');
     assert.equal(launcher.nestedInteractiveCount, 0, 'launcher has no nested interactive elements');
     assert.equal(launcher.mainPathname, '/');
     assert.equal(launcher.mainSearch, '', 'main Park link keeps the system/last-view URL');
@@ -245,18 +252,8 @@ async function assertParkLauncher(page, base) {
             ['rooms', 'Кімнати', 'rooms']
         ]
     );
-
-    const topSwitch = await page.evaluate(() => Array.from(
-        document.querySelectorAll('[data-timeline-type-selector] [data-timeline-view]')
-    ).map(button => ({
-        key: button.dataset.timelineView,
-        label: button.textContent.trim(),
-        ariaLabel: button.getAttribute('aria-label')
-    })));
-    assert.deepEqual(topSwitch, [
-        { key: 'rooms', label: 'Кімнати', ariaLabel: 'Кімнати' },
-        { key: 'animators', label: 'Свята', ariaLabel: 'Свята' }
-    ]);
+    const topSwitch = await page.evaluate(() => document.querySelectorAll('[data-timeline-type-selector], #timelineTypeSelector, .timeline-visible-type-switch').length);
+    assert.equal(topSwitch, 0, 'legacy header timeline type selector is removed');
 
     const timeOrigin = await page.evaluate(() => {
         window.__sidebarTimelineViewChangedCount = 0;
@@ -292,6 +289,8 @@ async function assertParkLauncher(page, base) {
     await page.locator('[data-sidebar-timeline-mode="animators"]').click();
     await page.waitForFunction(() => (
         window.TimelineView?.current?.() === 'animators'
+        && document.querySelector('[data-sidebar-timeline-mode="animators"]')?.getAttribute('aria-pressed') === 'true'
+        && document.querySelector('[data-sidebar-timeline-launcher]')?.dataset.sidebarTimelineActiveMode === 'animators'
         && !document.getElementById('sidebarNav')?.classList.contains('open')
         && !document.body.classList.contains('sidebar-mobile-open')
     ));
@@ -301,10 +300,62 @@ async function assertParkLauncher(page, base) {
     await page.waitForFunction(() => document.getElementById('sidebarNav')?.classList.contains('open'));
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.getElementById('sidebarNav')?.classList.contains('open'));
+    await page.evaluate(() => localStorage.setItem('pzp_sidebar_collapsed', 'true'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    await page.waitForFunction(() => document.getElementById('sidebarNav')?.classList.contains('collapsed'));
+    await page.locator('#sidebarToggle').click();
+    await page.waitForFunction(() => {
+        const sidebar = document.getElementById('sidebarNav');
+        const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
+        const rect = launcher?.getBoundingClientRect?.();
+        return Boolean(
+            sidebar?.classList.contains('open')
+            && !sidebar.classList.contains('collapsed')
+            && document.body.classList.contains('sidebar-mobile-open')
+            && rect
+            && rect.width > 0
+            && rect.right >= 0
+            && rect.left <= window.innerWidth
+        );
+    });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => {
+        const sidebar = document.getElementById('sidebarNav');
+        return !sidebar?.classList.contains('open') && sidebar?.classList.contains('collapsed');
+    });
+
+    await page.evaluate(() => {
+        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify([{
+            id: 'smoke_staff_only',
+            label: 'Staff only',
+            href: '/staff',
+            hidden: false,
+            custom: true
+        }]));
+    });
     await page.setViewportSize({ width: 1440, height: 960 });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+    assert.equal(
+        await page.locator('[data-sidebar-timeline-launcher]').count(),
+        1,
+        'timeline launcher survives a saved Favorites selection without the timeline href'
+    );
+    await page.evaluate(() => localStorage.removeItem('eg_sidebar_extra_menu_items_v3'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
 
     await page.goto(`${base}/leads?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
     await waitForSidebar(page);
+    await page.waitForFunction(() => {
+        const profile = window.CrmBusinessContext?.profileFor?.('event_genix') || null;
+        return profile?.timeline?.mode === 'park'
+            && profile?.timeline?.roomTimelineEnabled === true
+            && Boolean(document.querySelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]'));
+    });
     const crossPagePath = new URL(page.url()).pathname;
     const crossPageLauncher = await page.evaluate(() => {
         const profile = window.CrmBusinessContext?.profileFor?.('event_genix') || null;
@@ -435,15 +486,12 @@ async function run() {
     try {
         await assertParkLauncher(page, base);
         if (singleContext) await assertSingleModeCard(page, base, singleContext);
+        assert.deepEqual(blockedMutations, [], 'read-only launcher smoke attempted no non-read API requests');
         console.log(`Sidebar timeline launcher smoke OK: ${base}`);
         console.log(`  OK Park two-mode launcher, local switching, mobile close, keyboard, direct URLs and Back/Forward`);
         if (singleContext) console.log(`  OK ${singleContext} one-mode direct card`);
         else console.log('  SKIP one-mode direct card: test account has no Dar/Maysternya context');
-        if (blockedMutations.length) {
-            console.log(`  Safety gate blocked ${blockedMutations.length} non-read API request(s)`);
-        } else {
-            console.log('  Safety gate observed no non-read API requests');
-        }
+        console.log('  Safety gate observed no non-read API requests');
     } finally {
         await context.close().catch(() => {});
         await browser.close().catch(() => {});

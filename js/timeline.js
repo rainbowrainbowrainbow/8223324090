@@ -623,10 +623,6 @@ function updateTimelineViewControls() {
     document.querySelectorAll('[data-timeline-view]').forEach(btn => {
         const active = normalizeTimelineViewMode(btn.dataset.timelineView) === current;
         btn.dataset.timelineViewActive = active ? 'true' : 'false';
-        if (btn.closest('[data-timeline-type-selector]')) {
-            btn.classList.toggle('active', active);
-            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-        }
     });
     if (typeof syncTimelinePeriodSelector === 'function') syncTimelinePeriodSelector();
 }
@@ -3942,6 +3938,22 @@ function queueTimelineRenderAfterAuthenticatedRuntimeReady() {
     }, { once: true });
 }
 
+
+function dispatchTimelineSummaryChanged(detail = {}) {
+    if (typeof window === 'undefined') return;
+    const selectedDate = detail.date || (typeof formatDate === 'function' ? formatDate(AppState.selectedDate) : '');
+    window.dispatchEvent(new CustomEvent('timeline:summary-changed', {
+        detail: {
+            date: selectedDate,
+            viewMode: detail.viewMode || (AppState.multiDayMode ? 'week' : 'day'),
+            timelineView: typeof timelineCurrentView === 'function' ? timelineCurrentView() : '',
+            businessContext: typeof timelineBusinessContextValue === 'function' ? timelineBusinessContextValue() : '',
+            bookings: Array.isArray(detail.bookings) ? detail.bookings : undefined,
+            count: Number.isFinite(Number(detail.count)) ? Number(detail.count) : undefined,
+            status: detail.status || 'ready'
+        }
+    }));
+}
 async function renderTimeline() {
     if (typeof window.isAuthenticatedRuntimeReady === 'function' && !window.isAuthenticatedRuntimeReady()) {
         queueTimelineRenderAfterAuthenticatedRuntimeReady();
@@ -3977,6 +3989,7 @@ async function renderTimeline() {
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-complete');
         }
+        dispatchTimelineSummaryChanged({ date: formatDate(selectedDate), viewMode: 'week' });
         return true;
     }
 
@@ -4025,7 +4038,12 @@ async function renderTimeline() {
             if (typeof normalizeTimelineToolbarTransientState === 'function') {
                 normalizeTimelineToolbarTransientState('render-error');
             }
-            return;
+            dispatchTimelineSummaryChanged({
+                date: formatDate(selectedDate),
+                viewMode: 'day',
+                status: 'error'
+            });
+            return false;
         }
         bookings = normalizeTimelineBookingsForContext(Array.isArray(bookingsResult) ? bookingsResult : []);
         afishaEvents = Array.isArray(afishaResult) ? afishaResult : [];
@@ -4034,6 +4052,16 @@ async function renderTimeline() {
         AppState.linesByDate[formatDate(selectedDate)] = lines;
     } catch (err) {
         console.error('[Timeline] Critical fetch error:', err);
+        renderTimelineDataError(container, err, selectedDate);
+        if (typeof normalizeTimelineToolbarTransientState === 'function') {
+            normalizeTimelineToolbarTransientState('render-error');
+        }
+        dispatchTimelineSummaryChanged({
+            date: formatDate(selectedDate),
+            viewMode: 'day',
+            status: 'error'
+        });
+        return false;
     }
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
@@ -4243,6 +4271,7 @@ async function renderTimeline() {
         normalizeTimelineToolbarTransientState('render-complete');
     }
 
+    dispatchTimelineSummaryChanged({ date: formatDate(selectedDate), viewMode: 'day', bookings });
     return true;
 
     } catch (outerErr) {
@@ -4251,6 +4280,11 @@ async function renderTimeline() {
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-error');
         }
+        dispatchTimelineSummaryChanged({
+            date: formatDate(selectedDate),
+            viewMode: AppState.multiDayMode ? 'week' : 'day',
+            status: 'error'
+        });
         // Show error to user so we can diagnose
         const container = document.getElementById('timelineLines');
         if (container) {

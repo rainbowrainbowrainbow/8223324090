@@ -1053,7 +1053,7 @@ const Sidebar = (() => {
             </a>`;
         }).join('');
         return `<div class="sidebar-design-timeline-launcher${isActive ? ' active' : ''}" data-sidebar-timeline-launcher data-sidebar-timeline-mode-count="${timelineCard.modeCount}" data-sidebar-timeline-active-mode="${_escAttr(activeMode)}" role="group" aria-label="Швидкий вибір таймлайна">
-            <a class="sidebar-design-extra-link sidebar-design-timeline-main${isActive ? ' active' : ''}" href="${_escAttr(timelineCard.href)}">
+            <a class="sidebar-design-timeline-main${isActive ? ' active' : ''}" href="${_escAttr(timelineCard.href)}">
                 ${_renderExtraMenuLinkBody(item)}
             </a>
             <div class="sidebar-design-timeline-inset" role="group" aria-label="Режим таймлайна">

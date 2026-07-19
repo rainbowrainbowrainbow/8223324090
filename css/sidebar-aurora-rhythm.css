@@ -673,10 +673,16 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   width: 100%;
   min-width: 0;
   min-height: 44px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  color: var(--sb-enterprise-text);
+  text-decoration: none;
   transform: none;
 }
 

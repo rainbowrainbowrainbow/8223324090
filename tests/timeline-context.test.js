@@ -617,7 +617,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.equal(api.cardModel(rootItem).href, '/');
     const launcherHtml = api.renderExtraLink(rootItem, '/', '');
     assert.match(launcherHtml, /^<div class="sidebar-design-timeline-launcher active"/);
-    assert.match(launcherHtml, /class="sidebar-design-extra-link sidebar-design-timeline-main active" href="\/"/);
+    assert.match(launcherHtml, /class="sidebar-design-timeline-main active" href="\/"/);
     assert.match(launcherHtml, /data-sidebar-timeline-active-mode="rooms"/);
     assert.match(launcherHtml, /href="\/\?timelineView=animators" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
     assert.match(launcherHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);

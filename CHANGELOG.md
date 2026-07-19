@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.92 - Timeline launcher CI guard
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Timeline launcher CI guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.91 - Timeline Smoke and QA Cleanup Hardening
 
 ### Timeline / Booking QA / Production cleanup / (19.07.2026) [codex]

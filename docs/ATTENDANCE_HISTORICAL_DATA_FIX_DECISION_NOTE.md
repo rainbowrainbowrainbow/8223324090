@@ -136,7 +136,7 @@ No rollback should be run from memory or from a manually edited list of IDs.
 
 | Item | Result |
 | --- | --- |
-| Tooling branch baseline | Synced with `origin/codex/performance-hardening` v`0.79.84` on `2026-07-19`; no production data was changed during sync. |
+| Tooling branch baseline | Synced with `origin/codex/performance-hardening` v`0.79.85` on `2026-07-19`; no production data was changed during sync. |
 | Approved date range | `2026-07-01` through `2026-07-18` |
 | Approved categories | `late-grace`, `overtime-grace` only |
 | Excluded categories | `missing plan source`, `inferred profession card` |

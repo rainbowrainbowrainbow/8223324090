@@ -1162,6 +1162,10 @@ async function collectTimelineDiagnostics(page, label, error = null) {
                 bookingBlockCount: document.querySelectorAll('.booking-block').length,
                 lineCount: document.querySelectorAll('.timeline-line, .line-row, .line-grid').length
             },
+            timelineDataError: (() => {
+                const node = document.querySelector('.timeline-data-error');
+                return node ? String(node.textContent || '').replace(/\s+/g, ' ').trim() : '';
+            })(),
             typeSwitch: {
                 exists: Boolean(selector),
                 visible: visibleFrom(selector, selectorRect, selectorStyle),
@@ -1400,7 +1404,7 @@ async function renderTimelineView(page, date, view, { forceBookings = false } = 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             await waitForTimelineReady(page, `before render timeline ${view} ${date}`);
-            await page.evaluate(async ({ date, view, forceBookings }) => {
+            const renderState = await page.evaluate(async ({ date, view, forceBookings }) => {
                 AppState.selectedDate = new Date(`${date}T00:00:00`);
                 const input = document.getElementById('timelineDate');
                 if (input) input.value = date;
@@ -1409,12 +1413,29 @@ async function renderTimelineView(page, date, view, { forceBookings = false } = 
                 if (forceBookings && typeof invalidateTimelineDateCache === 'function') {
                     invalidateTimelineDateCache(date, { lines: false, bookings: true });
                 }
-                if (typeof renderTimeline === 'function') await renderTimeline();
+                const rendered = typeof renderTimeline === 'function' ? await renderTimeline() : false;
+                const errorNode = document.querySelector('.timeline-data-error');
+                return {
+                    rendered,
+                    errorText: errorNode
+                        ? String(errorNode.textContent || '').replace(/\s+/g, ' ').trim()
+                        : ''
+                };
             }, { date, view, forceBookings });
+            if (renderState.errorText) {
+                throw new Error(`timeline render error: ${renderState.errorText}`);
+            }
             await waitForTimelineReady(page, `after render timeline ${view} ${date}`);
             return;
         } catch (error) {
             lastError = error;
+            if (isRateLimitError(error) && attempt < 3) {
+                console.warn(`render timeline ${view} ${date}: HTTP 429, retrying after ${RATE_LIMIT_RETRY_MS}ms`);
+                await sleep(RATE_LIMIT_RETRY_MS);
+                await page.reload({ waitUntil: 'domcontentloaded' });
+                await waitForTimelineReady(page, `rate-limit reload timeline ${view} ${date}`);
+                continue;
+            }
             if (!isNavigationContextError(error) && attempt >= 2) break;
             await page.waitForLoadState('domcontentloaded').catch(() => {});
             await page.waitForTimeout(250);

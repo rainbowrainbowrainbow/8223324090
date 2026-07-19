@@ -4587,6 +4587,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /kitchenFirstDate, 'rooms', \{ forceBookings: true \}/);
     assert.match(smoke, /findKitchenFirstSmokeDate/);
     assert.match(smoke, /source kitchen -> activity endpoint returns ok: \$\{responseDiagnostic\}/);
+    assert.match(smoke, /timeline render error: \$\{renderState\.errorText\}/);
     const kitchenFirstCreateStart = smoke.indexOf('const kitchenFirstCreate = await createBooking');
     const kitchenFirstCreateEnd = smoke.indexOf('recordCreatedBookingIds(createdBookingIds, kitchenFirstCreate)', kitchenFirstCreateStart);
     assert.doesNotMatch(

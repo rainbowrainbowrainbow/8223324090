@@ -96,6 +96,27 @@ Migration 299 activates this policy from `2026-07-18`. The non-destructive rollb
 documented in
 [`PAYROLL_SIMULTANEOUS_ADDITIONAL_ROLLBACK.md`](PAYROLL_SIMULTANEOUS_ADDITIONAL_ROLLBACK.md).
 
+Current production contract:
+
+| Field | Value |
+| --- | --- |
+| Status | Active in production |
+| Policy version | `simultaneous-profession-pay-v1` |
+| Effective date | `2026-07-18` by Kyiv `record_date` |
+| Multiplier | `1.0` |
+| Supported base schemes | `hourly`, `per_shift`, `monthly_fixed` |
+| Fail-closed schemes | `hybrid`, `percent`, `manual` |
+
+Clock-in snapshots the normalized physical segments, base allocations, paid simultaneous roles,
+policy version, multiplier, explicit profession hourly rate and rate source. Clock-out finalizes
+physical and compensation allocations in the same transaction from the actual interval. Later
+schedule or rate edits do not rewrite a finalized snapshot or an approved/paid payroll report.
+
+For a pre-policy or otherwise legacy attendance row without a compensation snapshot, payroll uses
+the historical base-only path and emits reconciliation context. It must not infer a paid role from
+current schedule data, `additionalProfessionKeys`, or a current profession rate. No automatic
+backfill or retroactive additional salary is authorized by this contract.
+
 All downstream schedule payloads expose `countsAsPhysicalTime = true` and
 `physicalTimeSource = segment` on the segment, and `countsAsPhysicalTime = false` on each simultaneous
 additional role. Consumers may display or group profession keys, but must not sum additional-role

@@ -2,11 +2,12 @@
 
 | Поле | Значення |
 | --- | --- |
-| Статус | Активна production policy v1; implementation і migration 299 розгорнуті |
+| Статус | Активна у production; migration 299 і runtime enforcement розгорнуті |
 | Версія політики | `simultaneous-profession-pay-v1` |
 | Дата фіксації проєкту | `2026-07-18` |
 | Production impact | yes |
 | `effectiveFrom` | `2026-07-18` за `record_date` у `Europe/Kyiv` |
+| `payMultiplier` | `1.0` для policy v1 |
 
 ## 1. Мета
 
@@ -541,3 +542,37 @@ Task 1 погоджує цей приклад як `9` фізичних годи
 2. v1 застосовується лише для `record_date >= 2026-07-18`;
 3. `hybrid`, `percent` і `manual` не отримують додаткове нарахування без окремої погодженої
    формули.
+
+## 17. Regression matrix
+
+Ця таблиця є картою executable regression coverage, а не окремою реалізацією бізнес-логіки.
+Якщо production-код змінює один із наведених інваріантів, одночасно оновлюються policy,
+відповідний поведінковий тест і ця карта.
+
+| Сценарій | Очікуваний інваріант | Канонічне покриття |
+| --- | --- | --- |
+| Exact `11:00–20:00` + paid `11:30–20:00` | `540` physical, `540` base, `510` additional minutes | `tests/hr-attendance-segments.test.js`; `tests/payroll-profession-allocation.test.js`; `tests/integration/live-multi-segment-qa.integration.test.js` |
+| Перерва | Фізичний час зменшується один раз; compensation кожної активної ролі зменшується один раз | `tests/hr-attendance-segments.test.js` — `a segment break is deducted only from that segment`, `break, late arrival and early leave reduce every compensation role...` |
+| Запізнення | Фактичний перетин зменшує тільки ролі, активні у пропущений час | `tests/hr-attendance-segments.test.js`; `tests/payroll-profession-allocation.test.js` |
+| Ранній вихід | Фактичний перетин зменшує тільки ролі, активні після фактичного виходу | `tests/hr-attendance-segments.test.js`; `tests/payroll-profession-allocation.test.js` |
+| Overtime | Не збільшує simultaneous line; належить основній професії один раз | `tests/payroll-profession-allocation.test.js` — `overtime is excluded from segment base and multiplied once on the primary profession` |
+| `hourly` | Base без змін + окрема additional hourly line | `tests/payroll-profession-allocation.test.js`; `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| `per_shift` | Shift amount без змін + окрема additional hourly line | `tests/payroll-profession-allocation.test.js`; `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| `monthly_fixed` | Monthly amount без змін + окрема additional hourly line | `tests/payroll-profession-allocation.test.js`; `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| `hybrid`, `percent`, `manual` | Preview показує `8.5` additional role-hours і blocker; generation/commit не створюють некоректний report | `tests/payroll-profession-allocation.test.js`; `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| Відсутня ставка | Немає fallback на base/staff rate; generation/commit fail closed | `tests/hr-attendance-segments.test.js`; `tests/payroll-profession-allocation.test.js` |
+| Відсутній snapshot | Post-effective attendance блокує payroll; legacy pre-policy record лишається base-only | `tests/payroll-profession-allocation.test.js` — `payroll blocks post-activation attendance without immutable compensation snapshot`, `legacy compensation snapshot stays base-only...` |
+| Draft regeneration | Той самий draft ID і immutable snapshot rate; additional line не дублюється | `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| Approved/paid immutability | Повторна generation пропускає report зі status `approved` або `paid` і не переписує breakdown/amount | `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| Reversal | Сторнується повна base + additional сума; друге reversal неможливе | `tests/integration/payroll-simultaneous-additional.integration.test.js` |
+| CSV/XLSX | Export line і blocker fields відповідають `breakdown_json` | `tests/payroll-reporting-routes.contract.js`, виконується через `tests/payroll-profession-allocation.test.js` |
+
+Команди release-candidate перевірки:
+
+```text
+node --test tests/hr-attendance-segments.test.js tests/payroll-profession-allocation.test.js tests/live-multi-segment-qa.test.js
+npm run test:integration:payroll-profiles:isolated
+npm run test:integration:live-multi-segment-qa:isolated
+npm run test:browser:staff-schedule
+npm test
+```

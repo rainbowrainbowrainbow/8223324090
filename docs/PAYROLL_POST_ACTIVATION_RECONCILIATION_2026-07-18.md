@@ -102,17 +102,30 @@ post-activation simultaneous-pay reconciliation:
 Цей висновок описує production snapshot на момент аудиту. Він не гарантує
 готовність після появи нової `paid_hourly` ролі.
 
-## Окремі follow-up задачі
+## Статус follow-up після production-релізів
 
-1. Завершити й окремо доставити fail-closed blocker
-   `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`. У production `v0.79.66`
-   цього guard ще немає; поточний нульовий результат пояснюється відсутністю paid
-   rows.
-2. Read-only відтворити джерело 14 post-effective attendance records без
-   compensation snapshot. Не виконувати backfill без окремого погодження.
-3. Узгодити поведінку HR salary view для 10 freelance May drafts: показувати їх у
-   reconciliation view або явно винести в окремий агрегований warning. Не
-   перегенеровувати й не видаляти reports у межах цієї задачі.
+Початкові findings вище залишаються історичним snapshot `v0.79.66`. Вони не є
+описом поточного runtime. Усі три follow-up закриті окремими additive змінами:
+
+| Finding | Поточний production-контракт |
+| --- | --- |
+| Непідтримувані payroll-схеми могли виглядати як `0` | Закрито: `hybrid`, `percent`, `manual` повертають `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`; generation і commit fail closed |
+| 14 post-effective attendance records не мали snapshot | Джерело встановлено: старий Hermes direct-insert path. Supported writers переведені на canonical snapshot flow; автоматичного payroll backfill не погоджено |
+| 10 freelance May drafts не були видимі в active-staff rows | Закрито: вони залишаються окремими від active staff і відображаються агрегованим warning `PAYROLL_FREELANCE_DRAFTS_EXCLUDED_FROM_ACTIVE_STAFF` |
+
+Чинна payroll matrix:
+
+| Scheme | Simultaneous additional pay |
+| --- | --- |
+| `hourly` | Base без змін + explicit snapshot hourly line |
+| `per_shift` | Shift amount без змін + explicit snapshot hourly line |
+| `monthly_fixed` | Monthly amount без змін + explicit snapshot hourly line |
+| `hybrid`, `percent`, `manual` | Fail closed; blocker замість валідної нульової суми |
+
+Policy `simultaneous-profession-pay-v1` активна від `2026-07-18` за Kyiv
+`record_date`; multiplier `1.0`. Finalized attendance snapshot є джерелом
+additional minutes і ставки. Legacy rows без snapshot використовують лише
+base-only fallback і не отримують ретроактивну доплату.
 
 ## Follow-up: freelance draft reporting
 

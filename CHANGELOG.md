@@ -4,6 +4,17 @@
 
 ---
 
+## v0.79.84 - Simultaneous Pay Final Acceptance
+
+### Release / Versioning / (19.07.2026) [codex]
+- **Подвійну професію зафіксовано наскрізно:** фізичний час рахується один раз, а одночасна додаткова професія формує окремі оплачувані хвилини.
+- **Підтримано три payroll-схеми:** `hourly`, `per_shift` і `monthly_fixed` зберігають базову формулу та додають окрему погодинну line за професійною ставкою зі snapshot.
+- **Непогоджені схеми закриті безпечно:** `hybrid`, `percent` і `manual` повертають явний blocker замість мовчазної доплати `0 грн`.
+- **Історія захищена snapshot-контрактом:** нові attendance-потоки фіксують compensation snapshot, а legacy-записи не отримують ретроактивної доплати.
+- **Regression-контракт завершено:** exact-сценарій `540 physical / 540 base / 510 additional`, exports, immutable reports, cleanup і rollback описані та покриті перевірками.
+
+---
+
 ## v0.79.83 - Admission Tickets Working Hours Gate
 
 ### Release / Versioning / (19.07.2026) [codex]

@@ -246,21 +246,59 @@ test('live runner models the screenshot case as nine physical hours plus an 8.5-
 
 test('policy, QA documentation, PostgreSQL fixture, and CI share the active v1 contract', () => {
     const policy = read('docs', 'HR_SIMULTANEOUS_PROFESSION_PAY_POLICY.md');
+    const operations = read('docs', 'HR_SHIFT_SEGMENTS_OPERATIONS.md');
     const qaDoc = read('docs', 'LIVE_MULTI_SEGMENT_QA.md');
+    const reconciliation = read('docs', 'PAYROLL_POST_ACTIVATION_RECONCILIATION_2026-07-18.md');
     const integration = read('tests', 'integration', 'live-multi-segment-qa.integration.test.js');
+    const payrollIntegration = read('tests', 'integration', 'payroll-simultaneous-additional.integration.test.js');
     const workflow = read('.github', 'workflows', 'ci.yml');
 
-    assert.match(policy, /Статус \| Активна production policy v1/);
+    assert.match(policy, /Статус \| Активна у production/);
     assert.match(policy, /`effectiveFrom` \| `2026-07-18`/);
+    assert.match(policy, /`payMultiplier` \| `1\.0`/);
     assert.match(policy, /Pre-activation read-only production audit — історичний snapshot/);
+    assert.match(policy, /## 17\. Regression matrix/);
+    for (const scenario of [
+        'Exact `11:00–20:00` + paid `11:30–20:00`',
+        'Перерва',
+        'Запізнення',
+        'Ранній вихід',
+        'Overtime',
+        '`hourly`',
+        '`per_shift`',
+        '`monthly_fixed`',
+        '`hybrid`, `percent`, `manual`',
+        'Відсутня ставка',
+        'Відсутній snapshot',
+        'Draft regeneration',
+        'Approved/paid immutability',
+        'Reversal',
+        'CSV/XLSX'
+    ]) {
+        assert.match(policy, new RegExp(scenario.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
     assert.doesNotMatch(policy, /implementation та production activation не авторизовані/);
     assert.doesNotMatch(policy, /Task 1 не встановлює дату production activation/);
     assert.doesNotMatch(policy, /Цей документ сам по собі не авторизує schema migration/);
 
+    assert.match(operations, /Status \| Active in production/);
+    assert.match(operations, /Policy version \| `simultaneous-profession-pay-v1`/);
+    assert.match(operations, /Effective date \| `2026-07-18`/);
+    assert.match(operations, /Multiplier \| `1\.0`/);
+    assert.match(operations, /legacy attendance row without a compensation snapshot[\s\S]*historical base-only path/);
+
     assert.match(qaDoc, /active `simultaneous-profession-pay-v1` contract/);
+    assert.match(qaDoc, /`effectiveFrom = 2026-07-18` and `payMultiplier = 1\.0`/);
     assert.match(qaDoc, /`11:00-20:00 wardrobe` plus\s+`11:30-20:00 cleaner`/);
     assert.match(qaDoc, /540 non-overlapping physical minutes/);
     assert.match(qaDoc, /510 paid cleaner minutes/);
+    assert.match(qaDoc, /npm run test:integration:payroll-profiles:isolated/);
+    assert.match(qaDoc, /npm run test:browser:staff-schedule/);
+
+    assert.match(reconciliation, /Статус follow-up після production-релізів/);
+    assert.match(reconciliation, /`hybrid`, `percent`, `manual` повертають `PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED`/);
+    assert.match(reconciliation, /Legacy rows без snapshot використовують лише\s+base-only fallback/);
+    assert.doesNotMatch(reconciliation, /У production `v0\.79\.66`\s+цього guard ще немає/);
 
     assert.match(integration, /shiftStart: '11:00'[\s\S]*shiftEnd: '11:30'/);
     assert.match(integration, /shiftStart: '11:30'[\s\S]*shiftEnd: '20:00'/);
@@ -269,7 +307,34 @@ test('policy, QA documentation, PostgreSQL fixture, and CI share the active v1 c
     assert.match(integration, /physicalMinutes\), 540/);
     assert.match(integration, /paidAllocation\.actualMinutes \?\? paidAllocation\.actual_minutes\), 510/);
 
+    assert.match(payrollIntegration, /approved regeneration must skip immutable report/);
+    assert.match(payrollIntegration, /paid regeneration must skip immutable report/);
+    assert.match(payrollIntegration, /schemeType: 'per_shift'/);
+    assert.match(payrollIntegration, /schemeType: 'monthly_fixed'/);
+    assert.match(payrollIntegration, /schemeType: 'hybrid'/);
+    assert.match(payrollIntegration, /schemeType: 'percent'/);
+    assert.match(payrollIntegration, /schemeType: 'manual'/);
+
     assert.match(workflow, /hr-payroll-postgres:/);
     assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
     assert.doesNotMatch(workflow, /name: HR onboarding PostgreSQL integration/);
+});
+
+test('QA and reconciliation documentation contains no production PII, identifiers, rates, or credentials', () => {
+    const qaDoc = read('docs', 'LIVE_MULTI_SEGMENT_QA.md');
+    const reconciliation = read('docs', 'PAYROLL_POST_ACTIVATION_RECONCILIATION_2026-07-18.md');
+    const sensitiveDocs = `${qaDoc}\n${reconciliation}`;
+
+    assert.doesNotMatch(sensitiveDocs, /\b(?:staff|employee)(?:_id|Id| ID)\s*(?:[:=#]|=)\s*\d+\b/i);
+    assert.doesNotMatch(sensitiveDocs, /(?:ПІБ|staff name)\s*[:=]\s*[^\s|]+/i);
+    assert.doesNotMatch(sensitiveDocs, /(?:hourly_rate|rate|ставк\w*)\s*[:=]\s*\d+(?:[.,]\d+)?/i);
+    assert.doesNotMatch(sensitiveDocs, /Bearer\s+[A-Za-z0-9._-]{20,}/i);
+    assert.doesNotMatch(sensitiveDocs, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    assert.doesNotMatch(sensitiveDocs, /\+380\d{9}\b/);
+    assert.doesNotMatch(
+        sensitiveDocs,
+        /(?:PASS|PASSWORD|TOKEN|SECRET)\s*=\s*['"](?!<(?:loaded-locally|redacted)>)[^'"]+['"]/i
+    );
+    assert.match(qaDoc, /LIVE_MULTI_SEGMENT_QA_USER = '<loaded-locally>'/);
+    assert.match(qaDoc, /LIVE_MULTI_SEGMENT_QA_PASS = '<loaded-locally>'/);
 });

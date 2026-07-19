@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.96 - Безпечний recovery банкетів
+
+### Backend / Recovery / Operator safety / (19.07.2026) [codex]
+- **Audit більше не маскує зламаний стан групи як депозитний борг:** активна banquet-група зі скасованим primary booking тепер потрапляє у `groupStateIntegrityIssues`, а не в `depositsForManualReview`.
+- **Routine production audit має безпечний режим:** `audit --summary-only` показує тільки aggregate counters без booking/group IDs, rooms, fingerprints або PII.
+- **Stale banquet reconciliation поки тільки read-only:** додано `reconcile-group-state` dry-run для `active_group_cancelled_primary` зі strategy `cancel-stale-group`; production apply навмисно не реалізований у цьому релізі.
+- **QA cleanup safety не відкотилась:** нові service-based disposable marker guards з `v0.79.94` і HR release `v0.79.95` збережені, а recovery tests покривають state-integrity та rollback сценарії.
+
+---
+
 ## v0.79.95 - HR leadership node dropdown
 
 ### Release / Versioning / (19.07.2026) [codex]

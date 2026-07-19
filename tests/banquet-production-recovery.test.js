@@ -10,13 +10,16 @@ const {
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
     buildAuditReport,
+    buildAuditSummaryOnlyReport,
     classifyDetachInspection,
+    classifyReconcileGroupStateTarget,
     classifyRecoveryInspection,
     inspectQaCleanupGroupRows,
     loadQaCleanupGroupState,
     loadQaCleanupRootBookings,
     parseArgs,
     parseRecoveryPairs,
+    printAuditSummaryOnlyReport,
     persistDetachPair,
     persistRecoveryPair,
     runAudit,
@@ -24,6 +27,7 @@ const {
     runDetachDryRun,
     runQaCleanupApply,
     runQaCleanupDryRun,
+    runReconcileGroupStateDryRun,
     runRecoveryApply,
     runRecoveryDryRun
 } = require('../scripts/banquet-production-recovery');
@@ -177,7 +181,8 @@ test('banquet recovery audit separates exact, ambiguous, standalone, deposit-rev
         ambiguousPinatas: 1,
         standalonePinatas: 1,
         groupsMissingCanonicalDeposit: 1,
-        pinataIntegrityIssues: 1
+        pinataIntegrityIssues: 1,
+        groupStateIntegrityIssues: 0
     });
     assert.equal(report.pinatas.exactMatches[0].candidateGroupId, 'BQ-EXACT');
     assert.deepEqual(report.pinatas.ambiguous[0].candidateGroupIds, ['BQ-A', 'BQ-B']);
@@ -186,6 +191,126 @@ test('banquet recovery audit separates exact, ambiguous, standalone, deposit-rev
     assert.deepEqual(report.integrityIssues[0].groupIds, ['BQ-X', 'BQ-Y']);
     assert.equal(JSON.stringify(report).includes('customerId'), false);
     assert.equal(JSON.stringify(report).includes('customer_id'), false);
+});
+
+test('banquet recovery audit reports active group with cancelled primary as state integrity, not deposit review', () => {
+    const options = {
+        businessContext: 'event_genix',
+        from: '2099-08-01',
+        to: '2099-08-31'
+    };
+    const groupStateRows = [
+        {
+            group_id: 'BQ-CANCELLED-PRIMARY',
+            primary_booking_id: 'BK-PRIMARY-CANCELLED',
+            business_context: 'event_genix',
+            date: '2099-08-24',
+            room: 'Kitchen Line',
+            customer_id: 705,
+            group_status: 'active',
+            primary_status: 'cancelled',
+            member_count: 2,
+            active_member_count: 1,
+            cancelled_member_count: 1,
+            primary_membership_count: 1,
+            issue_code: 'active_group_cancelled_primary'
+        },
+        {
+            group_id: 'BQ-CANCELLED-PRIMARY',
+            primary_booking_id: 'BK-PRIMARY-CANCELLED',
+            business_context: 'event_genix',
+            date: '2099-08-24',
+            room: 'Kitchen Line',
+            customer_id: 705,
+            group_status: 'active',
+            primary_status: 'cancelled',
+            member_count: 2,
+            active_member_count: 1,
+            cancelled_member_count: 1,
+            primary_membership_count: 1,
+            issue_code: 'member_status_mismatch'
+        }
+    ];
+
+    const report = buildAuditReport([], [], [], groupStateRows, options);
+
+    assert.equal(report.summary.groupsMissingCanonicalDeposit, 0);
+    assert.equal(report.summary.groupStateIntegrityIssues, 2);
+    assert.deepEqual(
+        report.groupStateIntegrityIssues.map(item => item.issueCode).sort(),
+        ['active_group_cancelled_primary', 'member_status_mismatch']
+    );
+    assert.equal(report.groupStateIntegrityIssues[0].groupId, 'BQ-CANCELLED-PRIMARY');
+    assert.equal(report.groupStateIntegrityIssues[0].primaryStatus, 'cancelled');
+    assert.equal(report.groupStateIntegrityIssues[0].activeMemberCount, 1);
+    assert.equal(JSON.stringify(report).includes('customerId'), false);
+    assert.equal(JSON.stringify(report).includes('customer_id'), false);
+});
+
+test('banquet recovery audit summary-only omits technical ids, rooms, fingerprints, and customer fields', () => {
+    const report = buildAuditReport(
+        [{
+            pinata_booking_id: 'BK-SENSITIVE-PINATA',
+            business_context: 'event_genix',
+            date: '2099-08-20',
+            room: 'Sensitive Room',
+            customer_id: 701,
+            candidate_group_id: 'BQ-SENSITIVE-GROUP'
+        }],
+        [{
+            group_id: 'BQ-NO-DEPOSIT',
+            primary_booking_id: 'BK-PRIMARY-NO-DEPOSIT',
+            business_context: 'event_genix',
+            date: '2099-08-21',
+            room: 'Deposit Room',
+            customer_id: 702
+        }],
+        [{
+            pinata_booking_id: 'BK-BROKEN',
+            group_ids: ['BQ-BROKEN'],
+            membership_count: 1,
+            role_mismatch: true,
+            exact_key_mismatch: false
+        }],
+        [{
+            group_id: 'BQ-STATE',
+            primary_booking_id: 'BK-STATE-PRIMARY',
+            business_context: 'event_genix',
+            date: '2099-08-22',
+            room: 'State Room',
+            customer_id: 703,
+            group_status: 'active',
+            primary_status: 'cancelled',
+            member_count: 2,
+            active_member_count: 1,
+            cancelled_member_count: 1,
+            primary_membership_count: 1,
+            issue_code: 'active_group_cancelled_primary'
+        }],
+        {
+            businessContext: 'event_genix',
+            from: '2099-08-01',
+            to: '2099-08-31'
+        }
+    );
+    const summaryOnly = buildAuditSummaryOnlyReport(report);
+    assert.deepEqual(Object.keys(summaryOnly), ['readOnly', 'businessContext', 'range', 'summary']);
+
+    const lines = [];
+    const originalLog = console.log;
+    try {
+        console.log = line => lines.push(String(line));
+        printAuditSummaryOnlyReport(report);
+    } finally {
+        console.log = originalLog;
+    }
+    const output = lines.join('\n');
+
+    assert.match(output, /audit summary \(read-only\)/);
+    assert.match(output, /groupStateIntegrityIssues=1/);
+    assert.doesNotMatch(output, /\b(?:BK|BQ)-[A-Z0-9-]+\b/);
+    assert.doesNotMatch(output, /Sensitive Room|Deposit Room|State Room/);
+    assert.doesNotMatch(output, /fingerprint|customer_id|customerId|phone|notes/i);
 });
 
 test('banquet recovery audit uses a read-only transaction and never writes', async () => {
@@ -197,6 +322,7 @@ test('banquet recovery audit uses a read-only transaction and never writes', asy
             if (/WITH ungrouped_pinatas AS/i.test(sql)) return { rows: [] };
             if (/FROM banquet_groups bg/i.test(sql) && /FROM banquet_deposits deposit/i.test(sql)) return { rows: [] };
             if (/ARRAY_AGG\(membership\.group_id/i.test(sql)) return { rows: [] };
+            if (/WITH group_state AS/i.test(sql)) return { rows: [] };
             return { rows: [] };
         }
     };
@@ -215,13 +341,14 @@ test('banquet recovery audit uses a read-only transaction and never writes', asy
 
 test('banquet recovery arguments require bounded audit dates and explicit recovery pairs', () => {
     assert.deepEqual(
-        parseArgs(['audit', '--from=2099-08-01']),
+        parseArgs(['audit', '--from=2099-08-01', '--summary-only']),
         {
             command: 'audit',
             from: '2099-08-01',
             to: '2099-08-01',
             businessContext: 'event_genix',
             json: false,
+            summaryOnly: true,
             strict: false
         }
     );
@@ -323,6 +450,54 @@ test('detach and qa-cleanup arguments are allowlisted and confirmation guarded',
             source: 'timeline_browser_smoke',
             testCustomerMarker: 'timeline_browser_smoke:task37-1:test_customer',
             expectedBookingIds: ['BK-1']
+        }
+    );
+});
+
+test('group state reconciliation arguments require exact scope and keep apply disabled in phase A', () => {
+    assert.throws(
+        () => parseArgs(['reconcile-group-state']),
+        /--group-id/
+    );
+    assert.throws(
+        () => parseArgs(['reconcile-group-state', '--group-id=BQ-1', '--expected-classification=active_group_cancelled_primary']),
+        /--strategy=/
+    );
+    assert.throws(
+        () => parseArgs(['reconcile-group-state', '--group-id=BQ-1', '--strategy=restore-primary', '--expected-classification=active_group_cancelled_primary']),
+        /--strategy=/
+    );
+    assert.throws(
+        () => parseArgs(['reconcile-group-state', '--group-id=BQ-1', '--strategy=cancel-stale-group']),
+        /--expected-classification=/
+    );
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-1',
+            '--strategy=cancel-stale-group',
+            '--expected-classification=active_group_cancelled_primary',
+            '--apply'
+        ]),
+        /apply is not implemented in this phase/
+    );
+    assert.deepEqual(
+        parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-1',
+            '--strategy=cancel-stale-group',
+            '--expected-classification=active_group_cancelled_primary',
+            '--business-context=event_genix',
+            '--json'
+        ]),
+        {
+            command: 'reconcile-group-state',
+            apply: false,
+            json: true,
+            businessContext: 'event_genix',
+            groupId: 'BQ-1',
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary'
         }
     );
 });
@@ -437,7 +612,10 @@ function qaCleanupRow(overrides = {}) {
         group_status: 'active',
         group_source: 'activity_first_kitchen_bridge',
         guest_arrival_time: '11:45',
+        record_kind: 'member',
+        parent_booking_id: null,
         booking_id: 'BK-QA-PRIMARY',
+        booking_business_context: 'event_genix',
         role: 'primary',
         booking_status: 'confirmed',
         linked_to: null,
@@ -460,7 +638,6 @@ function qaCleanupRow(overrides = {}) {
             }
         },
         customer_marker_ok: true,
-        active_child_booking_count: 0,
         active_deposit_count: 0,
         banquet_link_count: 1,
         ...overrides
@@ -494,10 +671,20 @@ test('qa cleanup group preflight requires disposable marker and marked test cust
             booking_id: 'BK-QA-KITCHEN',
             role: 'kitchen',
             booking_status: 'confirmed'
+        }),
+        qaCleanupRow({
+            record_kind: 'linked_child',
+            parent_booking_id: 'BK-QA-PRIMARY',
+            booking_id: 'BK-QA-LINKED',
+            role: null,
+            linked_to: 'BK-QA-PRIMARY',
+            booking_status: 'confirmed'
         })
     ], qaCleanupOptions);
     assert.equal(ready.status, 'ready');
-    assert.deepEqual(ready.activeBookingIds, ['BK-QA-PRIMARY', 'BK-QA-KITCHEN']);
+    assert.deepEqual(ready.activeBookingIds, ['BK-QA-KITCHEN', 'BK-QA-LINKED', 'BK-QA-PRIMARY']);
+    assert.deepEqual(ready.activeChildBookingIds, ['BK-QA-LINKED']);
+    assert.deepEqual(ready.cancellableBookingIds, ['BK-QA-KITCHEN', 'BK-QA-LINKED', 'BK-QA-PRIMARY']);
 
     const noMarker = inspectQaCleanupGroupRows([
         qaCleanupRow({ extra_data: {} })
@@ -655,6 +842,38 @@ test('qa cleanup group inventory reads every dependency surface without write qu
     assert.equal(queries.some(sql => /\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql)), false);
 });
 
+test('qa cleanup group preflight blocks unverified linked children', () => {
+    const unmarkedChild = inspectQaCleanupGroupRows([
+        qaCleanupRow(),
+        qaCleanupRow({
+            record_kind: 'linked_child',
+            parent_booking_id: 'BK-QA-PRIMARY',
+            booking_id: 'BK-QA-LINKED',
+            role: null,
+            linked_to: 'BK-QA-PRIMARY',
+            extra_data: {}
+        })
+    ], qaCleanupOptions);
+    assert.equal(unmarkedChild.status, 'blocked');
+    assert.match(unmarkedChild.reason, /booking_marker_BK-QA-LINKED:missing_marker/);
+
+    const foreignChild = inspectQaCleanupGroupRows([
+        qaCleanupRow(),
+        qaCleanupRow({
+            record_kind: 'linked_child',
+            parent_booking_id: 'BK-QA-PRIMARY',
+            booking_id: 'BK-QA-FOREIGN',
+            booking_business_context: 'other_context',
+            booking_customer_id: 9002,
+            role: null,
+            linked_to: 'BK-QA-PRIMARY'
+        })
+    ], qaCleanupOptions);
+    assert.equal(foreignChild.status, 'blocked');
+    assert.match(foreignChild.reason, /booking_business_context_mismatch:BK-QA-FOREIGN/);
+    assert.match(foreignChild.reason, /booking_customer_mismatch:BK-QA-FOREIGN/);
+});
+
 test('qa cleanup marker dry-run uses read-only transaction and reports exact group scope', async () => {
     const queries = [];
     const db = {
@@ -684,8 +903,7 @@ test('qa cleanup apply is transactional, verifies cancellation, and reruns as no
     const cancelled = inspectQaCleanupGroupRows([
         qaCleanupRow({
             group_status: 'cancelled',
-            booking_status: 'cancelled',
-            active_child_booking_count: 0
+            booking_status: 'cancelled'
         })
     ], singleQaCleanupOptions);
     const db = {
@@ -724,6 +942,7 @@ test('qa cleanup apply is transactional, verifies cancellation, and reruns as no
     assert.equal(queries[0], 'BEGIN ISOLATION LEVEL SERIALIZABLE');
     assert.equal(queries.at(-1), 'COMMIT');
     assert.ok(queries.some(sql => /^UPDATE bookings/i.test(sql)));
+    assert.equal(queries.some(sql => /linked_to = ANY/i.test(sql)), false);
     assert.ok(queries.some(sql => /^UPDATE banquet_groups/i.test(sql)));
     assert.ok(queries.some(sql => /^INSERT INTO history/i.test(sql)));
 
@@ -766,6 +985,91 @@ test('qa cleanup apply rolls back when preflight finds real customer or missing 
         'SELECT pg_advisory_xact_lock( hashtextextended($1::text, 0) )',
         'ROLLBACK'
     ]);
+});
+
+function staleGroupStateRow(overrides = {}) {
+    return {
+        group_id: 'BQ-STALE-1',
+        business_context: 'event_genix',
+        primary_booking_id: 'BK-STALE-PRIMARY',
+        customer_id: 9101,
+        date: '2099-08-20',
+        room: 'Room Stale',
+        group_status: 'active',
+        primary_status: 'cancelled',
+        member_count: 2,
+        active_member_count: 1,
+        active_non_primary_member_count: 1,
+        cancelled_member_count: 1,
+        primary_membership_count: 1,
+        active_member_ids: ['BK-STALE-KITCHEN'],
+        active_non_primary_member_ids: ['BK-STALE-KITCHEN'],
+        active_deposit_count: 0,
+        ticket_snapshot_member_count: 0,
+        priced_active_member_count: 0,
+        ...overrides
+    };
+}
+
+const reconcileOptions = {
+    command: 'reconcile-group-state',
+    apply: false,
+    json: false,
+    businessContext: 'event_genix',
+    groupId: 'BQ-STALE-1',
+    strategy: 'cancel-stale-group',
+    expectedClassification: 'active_group_cancelled_primary'
+};
+
+test('group state reconciliation classifies stale active group with cancelled primary', () => {
+    const ready = classifyReconcileGroupStateTarget(staleGroupStateRow(), reconcileOptions);
+    assert.equal(ready.status, 'ready');
+    assert.equal(ready.classification, 'active_group_cancelled_primary');
+    assert.deepEqual(ready.activeNonPrimaryMemberIds, ['BK-STALE-KITCHEN']);
+    assert.equal(JSON.stringify(ready).includes('customerId'), false);
+    assert.equal(JSON.stringify(ready).includes('customer_id'), false);
+
+    const depositBlocked = classifyReconcileGroupStateTarget(
+        staleGroupStateRow({ active_deposit_count: 1 }),
+        reconcileOptions
+    );
+    assert.equal(depositBlocked.status, 'blocked');
+    assert.match(depositBlocked.reason, /active_deposit_rows_present/);
+
+    const ticketBlocked = classifyReconcileGroupStateTarget(
+        staleGroupStateRow({ ticket_snapshot_member_count: 1 }),
+        reconcileOptions
+    );
+    assert.equal(ticketBlocked.status, 'blocked');
+    assert.match(ticketBlocked.reason, /ticket_ownership_conflict/);
+
+    const financialBlocked = classifyReconcileGroupStateTarget(
+        staleGroupStateRow({ priced_active_member_count: 1 }),
+        reconcileOptions
+    );
+    assert.equal(financialBlocked.status, 'blocked');
+    assert.match(financialBlocked.reason, /member_financial_fields_present/);
+});
+
+test('group state reconciliation dry-run is read-only and never writes', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    const report = await runReconcileGroupStateDryRun(db, reconcileOptions, {
+        loadReconcileGroupStateTarget: async () => staleGroupStateRow()
+    });
+
+    assert.equal(report.mode, 'reconcile-group-state-dry-run');
+    assert.equal(report.readOnly, true);
+    assert.equal(report.summary.ready, 1);
+    assert.equal(report.summary.activeNonPrimaryMembers, 1);
+    assert.equal(report.result.status, 'ready');
+    assert.deepEqual(queries, ['BEGIN TRANSACTION READ ONLY', 'ROLLBACK']);
+    assert.equal(queries.some(sql => /\bINSERT\b|\bUPDATE\b|\bDELETE\b|\bCOMMIT\b/i.test(sql)), false);
 });
 
 test('detach inspection allows only pinata activity membership and is idempotent when already absent', () => {

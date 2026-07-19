@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.96",
+  "version": "0.79.97",
   "eventGenix": {
-    "releaseLabel": "Безпечний recovery банкетів"
+    "releaseLabel": "Attendance KPI Overtime Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

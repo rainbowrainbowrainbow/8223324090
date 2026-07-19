@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.97 - Attendance KPI Overtime Guard
+
+### HR / Reports / (19.07.2026) [codex]
+- **KPI понаднормового часу** - HR KPI більше не рахує історичні attendance `overtime_minutes` у межах 1-15 хвилин як понаднормові події.
+- **Контракт 15/16 хвилин** - 15 хвилин overtime показуються як 0, а 16+ хвилин рахуються повністю відповідно до attendance-правил.
+- **Release hygiene** - оновлено version metadata, cache tags і видимий номер релізу.
+
+---
+
 ## v0.79.96 - Безпечний recovery банкетів
 
 ### Backend / Recovery / Operator safety / (19.07.2026) [codex]

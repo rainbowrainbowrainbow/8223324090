@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.98 - Захищене закриття stale банкетів
+
+### Backend / Recovery / Operator safety / (19.07.2026) [codex]
+- **Guarded apply для stale banquet group:** `reconcile-group-state --apply` тепер існує, але запускається тільки з exact group ID, business context, `active_group_cancelled_primary`, strategy `cancel-stale-group`, exact `--allowlist` і confirmation token `RECONCILE_STALE_BANQUET_GROUP`.
+- **Fail-closed preflight:** apply блокується, якщо група вже не active, primary не cancelled, змінився member set, є active deposit, ticket ownership snapshot, priced active member або finance transaction на primary/member booking.
+- **Transactional safety:** real apply працює в serializable transaction із row locks, скасовує тільки allowlisted active non-primary members і саму групу, не видаляє customer/bookings/deposits/history/links фізично та пише technical history тільки після успішної зміни.
+- **Regression coverage:** додано unit та isolated PostgreSQL сценарії для ready apply, changed member blocker, rollback після history failure та idempotent rerun. Production apply у цьому релізі не запускався.
+
+---
 ## v0.79.97 - Attendance KPI Overtime Guard
 
 ### HR / Reports / (19.07.2026) [codex]

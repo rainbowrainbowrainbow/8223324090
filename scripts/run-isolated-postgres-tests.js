@@ -27,6 +27,7 @@ const MODES = {
         'tests/integration/full-backup-recovery.integration.test.js'
     ],
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
+    'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
@@ -49,7 +50,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|recovery|hr|payroll|admission|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|recovery|banquet-recovery|hr|payroll|admission|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -269,6 +270,7 @@ async function runSuite(testDb, testFile) {
         RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION: testFile.includes('hr-attendance-document-automation-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
+        RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION: testFile.includes('banquet-production-recovery.integration') ? 'true' : 'false',
         RUN_PAYROLL_PROFILES_INTEGRATION: testFile.includes('payroll-profiles') ? 'true' : 'false',
         RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION: testFile.includes('payroll-simultaneous-additional') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
@@ -347,7 +349,7 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'recovery', 'hr', 'payroll', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'recovery', 'banquet-recovery', 'hr', 'payroll', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
         ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.payroll, ...MODES.admission, ...MODES.onboarding, ...MODES.backfill]

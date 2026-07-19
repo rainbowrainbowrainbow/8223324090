@@ -87,6 +87,7 @@
     "test:integration:attendance-lock:isolated": "node scripts/run-isolated-postgres-tests.js attendance",
     "test:integration:room-lock": "node --test tests/integration/room-lock-concurrency.integration.test.js",
     "test:integration:backup-recovery:isolated": "node scripts/run-isolated-postgres-tests.js recovery",
+    "test:integration:banquet-recovery:isolated": "node scripts/run-isolated-postgres-tests.js banquet-recovery",
     "test:integration:hr-disposable": "node --test tests/integration/hr-disposable.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",

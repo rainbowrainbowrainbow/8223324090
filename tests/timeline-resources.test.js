@@ -4560,8 +4560,8 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
     assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
-    assert.match(smoke, /ensureSidebarTimelineLauncherVisible\(page, 'reveal action rooms'\)/);
-    assert.match(smoke, /page\.locator\('\[data-sidebar-timeline-mode="rooms"\]'\)/);
+    assert.match(smoke, /showBookingInRoomTimeline\(bookingId, bookingDate\)/);
+    assert.match(smoke, /cancelled group is absent from active banquet API/);
     assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
     assert.match(smoke, /assertKitchenHiddenFromAnimator/);
     assert.match(smoke, /assertRoomMarkerVisible/);

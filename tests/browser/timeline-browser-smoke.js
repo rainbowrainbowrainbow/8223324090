@@ -811,7 +811,17 @@ function writeQaCleanupFailureDiagnostic(target = {}, classification = {}, error
 async function verifyCancelledBanquetSnapshot(base, token, target) {
     const anchorId = target.primaryBookingId || target.bookingIds?.[0];
     assert.ok(anchorId, `cancelled snapshot anchor exists for ${target.groupId}`);
-    const snapshot = await banquetSnapshot(base, token, anchorId);
+    let snapshot;
+    try {
+        snapshot = await banquetSnapshot(base, token, anchorId);
+    } catch (error) {
+        assert.match(
+            String(error?.message || error),
+            /returned 404/,
+            `cancelled group is absent from active banquet API for ${target.groupId}`
+        );
+        return { notFound: true };
+    }
     assert.equal(groupId(snapshot), target.groupId, `cancelled snapshot keeps group ${target.groupId}`);
     assert.equal(
         String(snapshot.group?.status || '').trim().toLowerCase(),
@@ -3101,11 +3111,13 @@ async function runRevealAction(page, date, kitchenId) {
         await showBookingDetails(id);
         if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
     }, kitchenId);
-    await ensureSidebarTimelineLauncherVisible(page, 'reveal action rooms');
-    const roomsLink = page.locator('[data-sidebar-timeline-mode="rooms"]');
-    await roomsLink.waitFor({ state: 'visible' });
-    await roomsLink.click();
+    const revealed = await page.evaluate(
+        async ({ bookingId, bookingDate }) => showBookingInRoomTimeline(bookingId, bookingDate),
+        { bookingId: kitchenId, bookingDate: date }
+    );
+    assert.equal(revealed, true, 'canonical room timeline reveal succeeds');
     await page.waitForFunction(() => window.TimelineView?.current?.() === 'rooms');
+    await waitForTimelineReady(page, 'canonical room timeline reveal');
     await assertRoomMarkerVisible(page, kitchenId);
 }
 

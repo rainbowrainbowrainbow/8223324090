@@ -2287,6 +2287,11 @@ describe('Version', () => {
         assert.equal(res.status, 200);
         assert.ok(res.data.version, 'Should return version');
         assert.ok(res.data.name, 'Should return app name');
+        assert.ok(Object.prototype.hasOwnProperty.call(res.data, 'commitSha'), 'Should return commitSha');
+        assert.ok(Object.prototype.hasOwnProperty.call(res.data, 'sourceBranch'), 'Should return sourceBranch');
+        if (res.data.commitSha !== null) {
+            assert.match(res.data.commitSha, /^[0-9a-f]{40}$/, 'commitSha should be a full immutable Git SHA');
+        }
     });
 
     it('GET /api/version — does not require auth', async () => {

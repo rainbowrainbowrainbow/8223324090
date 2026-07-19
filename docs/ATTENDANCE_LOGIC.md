@@ -178,6 +178,9 @@ confirmed afterwards, and the failure was classified as a test-script issue rath
 ## Known limitations
 
 - Historical attendance and payroll records are not recalculated automatically.
+- New grace/status anomalies can be checked manually with
+  `npm run audit:attendance-anomalies`; the safe read-only procedure and severity
+  contract are documented in `docs/ATTENDANCE_ANOMALY_AUDIT_RUNBOOK.md`.
 - A legacy row with `status = late` and `late_minutes <= 5` is not counted as late in current reports.
 - Reports keep their documented historical inference fallback: a row without a stored plan source may infer `profession_card` from its planned-time snapshot when no dated HR shift can be loaded. Mutation responses for old rows use neutral `attendance_snapshot` instead.
 - Break windows are not stored separately. Segment break minutes use the documented deterministic MVP allocation policy.

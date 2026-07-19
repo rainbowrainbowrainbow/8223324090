@@ -4559,14 +4559,14 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /kitchen first -> activity/);
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
     assert.match(smoke, /Без прив.?язки/);
-    assert.doesNotMatch(smoke, /Показати в кімнатах/);
+    assert.match(smoke, /function waitForLegacyTimelineTypeSwitchRemoved/);
+    assert.match(smoke, /getByRole\('button', \{ name: \/Показати в кімнатах\/i \}\)/);
     assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
     assert.match(smoke, /assertKitchenHiddenFromAnimator/);
     assert.match(smoke, /assertRoomMarkerVisible/);
     assert.match(smoke, /async function runRevealAction/);
     assert.match(smoke, /await showBookingDetails\(id\)/);
-    assert.match(smoke, /if \(typeof closeAllModals === 'function'\) closeAllModals\(\)/);
-    assert.match(smoke, /window\.TimelineView\?\.set\?\.\('rooms'\)/);
+    assert.match(smoke, /window\.TimelineView\?\.set\?\.\('rooms', \{ render: false \}\)/);
     assert.match(smoke, /window\.TimelineView\?\.set\)\s*await window\.TimelineView\.set\('animators', \{ render: false \}\)/);
 });
 

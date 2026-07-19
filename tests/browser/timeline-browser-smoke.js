@@ -25,11 +25,12 @@ const CLEANUP = process.env.TIMELINE_BROWSER_SMOKE_CLEANUP !== 'false';
 const ALLOW_NON_LOCAL = process.env.TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true';
 const BOOKING_TIME_ONLY = process.env.TIMELINE_BROWSER_SMOKE_BOOKING_TIME_ONLY === 'true';
 const TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX = 4;
+const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v3_shared_finance_atomic';
 const QA_CLEANUP_CONFIRMATION = 'CANCEL_DISPOSABLE_QA_BANQUET';
 const TEST_CUSTOMER_MARKER = `${QA_CLEANUP_SOURCE}:${RUN_ID}:test_customer`;
 const BOOKING_CREATE_ROUTE_PATTERN = /\/api\/(?:bookings(?:\/full)?|banquets\/(?:from-source|[^/?#]+)\/(?:member-booking|activity-booking))(?:[?#]|$)/i;
 const QA_CLEANUP_TRANSPORT = process.env.TIMELINE_BROWSER_SMOKE_QA_CLEANUP_TRANSPORT
-    || (ALLOW_NON_LOCAL && !process.env.DATABASE_URL ? 'railway-ssh' : 'local');
+    || (TARGET_URL && !isLocalBase(normalizeBase(TARGET_URL)) ? 'railway-ssh' : 'local');
 const RAILWAY_CLEANUP_ENVIRONMENT = process.env.TIMELINE_BROWSER_SMOKE_RAILWAY_CLEANUP_ENVIRONMENT || 'production';
 
 function inferRailwayServiceFromTarget(urlText = '') {
@@ -119,12 +120,14 @@ function scopedPath(path, params = {}) {
 }
 
 function attachDisposableQaMarker(booking, kind = 'booking') {
-    return attachSharedDisposableQaMarker(booking, {
+    const marked = attachSharedDisposableQaMarker(booking, {
         runId: RUN_ID,
         source: QA_CLEANUP_SOURCE,
         testCustomerMarker: TEST_CUSTOMER_MARKER,
         kind
     });
+    if (marked && typeof marked === 'object' && !Array.isArray(marked)) marked.skipNotification = true;
+    return marked;
 }
 
 function markerKindForMemberPayload(payload = {}, pathname = '') {
@@ -137,41 +140,25 @@ function markerKindForMemberPayload(payload = {}, pathname = '') {
 }
 
 function markCreateRequestPayload(payload, pathname = '') {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('booking create payload must be an object');
     const cloned = JSON.parse(JSON.stringify(payload));
-    const markNested = (key, kind) => {
-        if (cloned[key] && typeof cloned[key] === 'object' && !Array.isArray(cloned[key])) {
-            attachDisposableQaMarker(cloned[key], kind);
-        }
+    let markedCount = 0;
+    const markRecord = (record, kind) => {
+        if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+        attachDisposableQaMarker(record, kind); markedCount += 1; return true;
     };
-    const markArray = (key, kind) => {
-        if (!Array.isArray(cloned[key])) return;
-        cloned[key].forEach(item => attachDisposableQaMarker(item, kind));
-    };
+    const markNested = (key, kind) => markRecord(cloned[key], kind);
+    const markArray = (key, kind) => { if (Array.isArray(cloned[key])) cloned[key].forEach(item => markRecord(item, kind)); };
     const memberKind = markerKindForMemberPayload(cloned, pathname);
-    markNested('main', 'booking_full_main');
-    markNested('rootBooking', 'booking_root');
-    markNested('root_booking', 'booking_root');
-    markNested('booking', memberKind);
-    markNested('memberBooking', memberKind);
-    markNested('member_booking', memberKind);
-    markNested('activityBooking', 'banquet_activity');
-    markNested('activity_booking', 'banquet_activity');
-    markArray('linked', 'linked_technical_child');
-    markArray('linkedBookings', 'linked_technical_child');
-    markArray('linked_bookings', 'linked_technical_child');
-    markArray('activities', 'banquet_activity');
-    if (!cloned.main
-        && !cloned.rootBooking
-        && !cloned.root_booking
-        && !cloned.booking
-        && !cloned.memberBooking
-        && !cloned.member_booking
-        && !cloned.activityBooking
-        && !cloned.activity_booking
-        && /^\/api\/bookings(?:\/full)?$/i.test(pathname)) {
-        attachDisposableQaMarker(cloned, 'booking');
-    }
+    const mainMarked = markNested('main', 'booking_full_main');
+    markNested('rootBooking', 'booking_root'); markNested('root_booking', 'booking_root');
+    markNested('booking', memberKind); markNested('memberBooking', memberKind); markNested('member_booking', memberKind);
+    markNested('activityBooking', 'banquet_activity'); markNested('activity_booking', 'banquet_activity');
+    for (const key of ['linked', 'linkedBookings', 'linked_bookings']) markArray(key, 'linked_technical_child');
+    for (const key of ['activities', 'banquetActivities', 'banquet_activities']) markArray(key, 'banquet_activity');
+    if (markedCount === 0 && /^\/api\/bookings$/i.test(pathname)) markRecord(cloned, 'booking');
+    if (/^\/api\/bookings\/full$/i.test(pathname) && !mainMarked) throw new Error('full booking create payload requires main booking');
+    if (markedCount === 0) throw new Error('no markable booking record in ' + (pathname || 'booking create payload'));
     return cloned;
 }
 
@@ -613,6 +600,69 @@ function runQaCleanupOperator(args) {
         throw new Error(`qa cleanup operator failed (${invocation.label}; status=${result.status}): ${detail}`);
     }
     return parseJsonFromStdout(result.stdout);
+}
+
+function assertQaCleanupTransportReady() {
+    if (!CLEANUP) return;
+    const readyMarker = 'timeline-smoke-cleanup-ready';
+    const timeout = Math.max(Number(process.env.TIMELINE_BROWSER_SMOKE_CLEANUP_TIMEOUT_MS || 45000), 120000);
+    const preflightScript = [
+        "const recovery=require('./scripts/banquet-production-recovery.js');",
+        "const {pool}=require('./db');",
+        '(async()=>{',
+        "if(typeof recovery.runQaCleanupDryRun!=='function')throw new Error('qa cleanup operator unavailable');",
+        `if(recovery.QA_CLEANUP_CAPABILITY!==${JSON.stringify(QA_CLEANUP_CAPABILITY)})throw new Error('qa cleanup operator capability mismatch');`,
+        'const client=await pool.connect();',
+        "try{await client.query('BEGIN READ ONLY');await client.query('SELECT 1');await client.query('ROLLBACK');}",
+        "catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}",
+        'finally{client.release();}',
+        'await pool.end();',
+        `process.stdout.write('${readyMarker}');`,
+        '})().catch(async()=>{try{await pool.end();}catch{}process.exit(2);});'
+    ].join('');
+    let invocation;
+    if (QA_CLEANUP_TRANSPORT === 'local') {
+        if (!String(process.env.DATABASE_URL || '').trim()) {
+            throw new Error('local QA cleanup transport requires DATABASE_URL before any smoke write');
+        }
+        invocation = {
+            label: 'local-node/read-only-db',
+            command: process.execPath,
+            args: ['-e', preflightScript]
+        };
+    } else if (QA_CLEANUP_TRANSPORT === 'railway-ssh') {
+        if (!RAILWAY_CLEANUP_SERVICE) {
+            throw new Error('railway-ssh QA cleanup preflight requires a Railway service');
+        }
+        const railwayCommand = resolveRailwayCommand();
+        const railwayArgs = [
+            'ssh',
+            '--service', RAILWAY_CLEANUP_SERVICE,
+            '--environment', RAILWAY_CLEANUP_ENVIRONMENT,
+            '--',
+            'node',
+            '-e',
+            preflightScript
+        ];
+        invocation = {
+            label: `railway-ssh:${RAILWAY_CLEANUP_SERVICE}/${RAILWAY_CLEANUP_ENVIRONMENT}/read-only-db`,
+            command: process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : railwayCommand,
+            args: process.platform === 'win32' ? ['/d', '/s', '/c', railwayCommand, ...railwayArgs] : railwayArgs
+        };
+    } else {
+        throw new Error(`unsupported QA cleanup transport: ${QA_CLEANUP_TRANSPORT}`);
+    }
+    const result = spawnSync(invocation.command, invocation.args, {
+        cwd: ROOT,
+        env: process.env,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout
+    });
+    if (result.error) throw new Error(`QA cleanup transport preflight failed (${invocation.label}): ${result.error.message}`);
+    if (result.status !== 0 || String(result.stdout || '').trim() !== readyMarker) {
+        throw new Error(`QA cleanup transport preflight failed (${invocation.label}; status=${result.status}; signal=${result.signal || 'none'})`);
+    }
 }
 
 async function discoverBanquetCleanupTargets(base, token, bookingIds, knownTargets = []) {
@@ -1140,7 +1190,6 @@ async function waitForTimelineReady(page, label) {
             await page.waitForFunction(() => {
                 const appVisible = document.getElementById('mainApp')
                     && !document.getElementById('mainApp').classList.contains('hidden');
-                const selector = document.querySelector('[data-timeline-type-selector]');
                 const panel = document.getElementById('timelineViewPanel');
                 const toggle = document.getElementById('timelineViewPanelToggle');
                 const timelineContainer = document.querySelector('.timeline-container');
@@ -1152,7 +1201,6 @@ async function waitForTimelineReady(page, label) {
                     && typeof renderTimeline === 'function'
                     && typeof openBookingPanel === 'function'
                     && document.getElementById('timelineDate')
-                    && selector
                     && panel
                     && toggle
                     && timelineContainer
@@ -1170,25 +1218,13 @@ async function waitForTimelineReady(page, label) {
     throw new Error(`${label}: timeline readiness did not stabilize: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
 }
 
-async function waitForTimelineTypeSwitch(page, label) {
+async function waitForLegacyTimelineTypeSwitchRemoved(page, label) {
     let lastError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
             await waitForTimelineReady(page, `${label}: readiness`);
-            await page.waitForFunction(() => {
-                const selector = document.querySelector('[data-timeline-type-selector]');
-                const rect = selector?.getBoundingClientRect?.();
-                const style = selector ? getComputedStyle(selector) : null;
-                return Boolean(
-                    selector
-                    && rect
-                    && rect.width > 0
-                    && rect.height > 0
-                    && style?.display !== 'none'
-                    && style?.visibility !== 'hidden'
-                    && Number(style?.opacity || 1) > 0
-                );
-            });
+            await page.waitForFunction(() => !document.querySelector('[data-timeline-type-selector]')
+                && !document.querySelector('.timeline-visible-type-switch'));
             return collectTimelineDiagnostics(page, label);
         } catch (error) {
             lastError = error;
@@ -1198,7 +1234,7 @@ async function waitForTimelineTypeSwitch(page, label) {
         }
     }
     const diagnostics = await collectTimelineDiagnostics(page, label, lastError).catch(() => null);
-    throw new Error(`${label}: timeline type switch is not visible after readiness wait: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
+    throw new Error(`${label}: legacy timeline type switch is still present: ${lastError?.message || lastError}; diagnostics=${JSON.stringify(diagnostics)}`);
 }
 
 async function waitForTimelineLayoutSettle(page, label) {
@@ -1250,14 +1286,15 @@ async function openAuthenticatedPage(browser, base, session, bookingCapture = nu
             await route.continue();
             return;
         }
-        let payload;
+        let markedPayload;
         try {
-            payload = request.postDataJSON();
-        } catch {
-            await route.continue();
+            const payload = request.postDataJSON();
+            markedPayload = markCreateRequestPayload(payload, pathname);
+        } catch (error) {
+            console.error('Blocked unmarked booking create ' + pathname + ': ' + (error?.message || String(error)));
+            await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, code: 'QA_MARKER_INJECTION_FAILED' }) });
             return;
         }
-        const markedPayload = markCreateRequestPayload(payload, pathname);
         await route.continue({
             headers: {
                 ...request.headers(),
@@ -1702,6 +1739,81 @@ async function assertTimelineDeepLinkSwitching(page, base, date) {
     await page.evaluate(async () => window.TimelineView.set('animators', { render: false }));
 }
 
+async function ensureSidebarTimelineLauncherVisible(page, label) {
+    const launcher = page.locator('[data-sidebar-timeline-launcher]');
+    await launcher.waitFor({ state: 'attached' });
+    const readActionableState = () => page.evaluate(() => {
+        const node = document.querySelector('[data-sidebar-timeline-launcher]');
+        const sidebar = document.getElementById('sidebarNav');
+        const rect = node?.getBoundingClientRect?.();
+        const style = node ? getComputedStyle(node) : null;
+        const mobile = window.innerWidth <= 768;
+        const intersectsViewport = Boolean(
+            rect
+            && rect.width > 0
+            && rect.height > 0
+            && rect.right >= 0
+            && rect.left <= window.innerWidth
+            && rect.bottom >= 0
+            && rect.top <= window.innerHeight
+        );
+        return {
+            mobile,
+            actionable: Boolean(
+                node
+                && intersectsViewport
+                && style?.display !== 'none'
+                && style?.visibility !== 'hidden'
+                && Number(style?.opacity || 1) > 0
+                && (!mobile || (sidebar?.classList.contains('open') && document.body.classList.contains('sidebar-mobile-open')))
+            )
+        };
+    });
+    if ((await readActionableState()).actionable) return launcher;
+    const toggle = page.locator('#sidebarToggle');
+    await toggle.waitFor({ state: 'visible' });
+    await toggle.click();
+    await page.waitForFunction(() => {
+        const node = document.querySelector('[data-sidebar-timeline-launcher]');
+        const sidebar = document.getElementById('sidebarNav');
+        const rect = node?.getBoundingClientRect?.();
+        return Boolean(
+            node
+            && rect
+            && rect.width > 0
+            && rect.height > 0
+            && rect.right >= 0
+            && rect.left <= window.innerWidth
+            && (!window.matchMedia('(max-width: 768px)').matches
+                || (sidebar?.classList.contains('open') && document.body.classList.contains('sidebar-mobile-open')))
+        );
+    });
+    assert.equal((await readActionableState()).actionable, true, `${label}: timeline launcher is actionable inside viewport`);
+    return launcher;
+}
+
+async function assertSidebarTimelineLauncherSwitching(page, label, viewport) {
+    await page.setViewportSize(viewport);
+    await waitForTimelineReady(page, `${label}: readiness`);
+    const launcher = await ensureSidebarTimelineLauncherVisible(page, label);
+    assert.equal(await launcher.locator('[data-sidebar-timeline-mode]').count(), 2, `${label}: launcher exposes two timeline modes`);
+    for (const mode of ['rooms', 'animators', 'rooms']) {
+        await ensureSidebarTimelineLauncherVisible(page, `${label}: ${mode}`);
+        const link = page.locator(`[data-sidebar-timeline-mode="${mode}"]`);
+        await link.waitFor({ state: 'visible' });
+        assert.equal(await link.isEnabled(), true, `${label}: ${mode} launcher link is enabled`);
+        await link.click();
+        await page.waitForFunction(expected => {
+            const link = document.querySelector(`[data-sidebar-timeline-mode="${CSS.escape(expected)}"]`);
+            const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
+            return window.TimelineView?.current?.() === expected
+                && link?.getAttribute('aria-pressed') === 'true'
+                && launcher?.dataset.sidebarTimelineActiveMode === expected;
+        }, mode);
+        assert.equal(await link.getAttribute('aria-pressed'), 'true', `${label}: ${mode} launcher state is pressed`);
+    }
+}
+
 async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot) {
     await renderTimelineView(page, date, 'rooms');
     return page.evaluate(async ({ room, time, snapshot }) => {
@@ -2009,7 +2121,7 @@ async function assertBookingTimeCreateDurability(page, date, animator, room, cus
             });
             return;
         }
-        await route.continue();
+        await route.fallback();
     };
     await page.route(routePattern, routeHandler);
     const conflictResponse = page.waitForResponse(response =>
@@ -2268,13 +2380,7 @@ async function assertTimelineViewPanelInteractions(page) {
     assert.equal(badgeState.hasActiveClass, false, 'filter toggle is not visually active by default');
     assert.equal(badgeState.badgeVisible, false, 'filter badge is hidden in default state');
 
-    const typeSwitchDiagnostics = await waitForTimelineTypeSwitch(page, 'timeline type switch default visibility');
-    const typeSwitch = typeSwitchDiagnostics.typeSwitch;
-    const typeSwitchDetail = JSON.stringify(typeSwitchDiagnostics);
-    assert.equal(typeSwitch.exists, true, 'timeline type switch exists');
-    assert.equal(typeSwitch.visible, true, `timeline type switch is visible without opening filters: ${typeSwitchDetail}`);
-    assert.equal(typeSwitch.inViewPanel, false, 'timeline type switch is outside the hidden filters shelf');
-    assert.equal(typeSwitch.labels.map(item => item.text).join('|'), 'Кімнати|Свята', `timeline type switch keeps expected labels: ${typeSwitchDetail}`);
+    await waitForLegacyTimelineTypeSwitchRemoved(page, 'legacy timeline type switch default absence');
 
     await page.locator('#timelineViewPanelToggle').click();
     await page.waitForFunction(() => {
@@ -2338,27 +2444,7 @@ async function assertTimelineViewPanelInteractions(page) {
     assert.equal(badgeState.badgeVisible, false, 'filter badge hides after period default is restored');
 
     await setTimelineViewPanelOpen(page, false);
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
-        return window.TimelineView?.current?.() === 'rooms'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="animators"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"]');
-        return window.TimelineView?.current?.() === 'animators'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
-    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
-    await page.waitForFunction(() => {
-        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
-        return window.TimelineView?.current?.() === 'rooms'
-            && btn?.classList.contains('active')
-            && btn?.getAttribute('aria-pressed') === 'true';
-    });
+    await page.evaluate(async () => window.TimelineView?.set?.('rooms', { render: false }));
 
     await setTimelineViewPanelOpen(page, true);
     const history = await page.evaluate(() => {
@@ -2859,7 +2945,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             if (panel && !panel.hidden) toggle?.click();
         });
         await page.waitForFunction(() => document.getElementById('timelineViewPanelToggle')?.getBoundingClientRect?.().width > 0);
-        await waitForTimelineTypeSwitch(page, `timeline type switch after desktop viewport ${viewport.width}x${viewport.height}`);
+        await waitForLegacyTimelineTypeSwitchRemoved(page, `timeline type switch after desktop viewport ${viewport.width}x${viewport.height}`);
         await waitForTimelineLayoutSettle(page, `closed desktop layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
@@ -2874,8 +2960,6 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at ${label}`);
-        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at ${label}`);
-        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at ${label}`);
@@ -2889,8 +2973,6 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.dateControlsHeight <= 52, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
-        assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px actions=${metrics.actionsWidth}px`);
-        assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, `utility row does not stretch beyond the date and type controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px`);
         assert.ok(metrics.uncontrolledOverflowX <= TIMELINE_SHELL_OVERFLOW_TOLERANCE_PX, `timeline page does not create uncontrolled horizontal overflow at ${label}: uncontrolled=${metrics.uncontrolledOverflowX}; body=${metrics.bodyOverflowX}; pageScroll=${metrics.pageScrollableX}; offenders=${JSON.stringify(metrics.uncontrolledOverflowOffenders)}; controlledTimelineScroll=${JSON.stringify(metrics.controlledTimelineScrollOffenders)}; controlledOffCanvasSidebar=${JSON.stringify(metrics.controlledOffCanvasSidebarOffenders)}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
@@ -2948,7 +3030,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     for (const viewport of narrowViewports) {
         await page.setViewportSize(viewport);
         await setTimelineViewPanelOpen(page, false);
-        await waitForTimelineTypeSwitch(page, `timeline type switch after narrow viewport ${viewport.width}x${viewport.height}`);
+        await waitForLegacyTimelineTypeSwitchRemoved(page, `timeline type switch after narrow viewport ${viewport.width}x${viewport.height}`);
         await waitForTimelineLayoutSettle(page, `closed narrow layout ${viewport.width}x${viewport.height}`);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
@@ -2961,8 +3043,6 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at narrow ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at narrow ${label}`);
-        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at narrow ${label}`);
-        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at narrow ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at narrow ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at narrow ${label}`);
@@ -3016,7 +3096,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
     await page.setViewportSize({ width: 1440, height: 960 });
     await setTimelineViewPanelOpen(page, false);
-    await waitForTimelineTypeSwitch(page, 'timeline type switch after geometry viewport reset');
+    await waitForLegacyTimelineTypeSwitchRemoved(page, 'timeline type switch after geometry viewport reset');
     await waitForTimelineLayoutSettle(page, 'timeline layout after geometry viewport reset');
 }
 
@@ -3049,6 +3129,7 @@ async function run() {
     }
 
     const session = await login(base);
+    assertQaCleanupTransportReady();
     const token = session.token;
     const date = process.env.TIMELINE_BROWSER_SMOKE_DATE || futureDate();
     const secondDate = datePlus(date, 1);
@@ -3112,6 +3193,9 @@ async function run() {
         await context.close();
         ({ context, page } = await openAuthenticatedPage(browser, base, session, bookingCapture));
         await assertTimelineDeepLinkSwitching(page, base, date);
+        await assertSidebarTimelineLauncherSwitching(page, 'desktop timeline launcher', { width: 1440, height: 960 });
+        await assertSidebarTimelineLauncherSwitching(page, 'mobile timeline launcher', { width: 390, height: 844 });
+        await page.setViewportSize({ width: 1440, height: 960 });
         await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
 
         const activityFirstDrawer = await openRoomDrawer(page, date, room, '13:00');

@@ -17,6 +17,7 @@ const {
     QA_CLEANUP_ACTOR,
     QA_CLEANUP_CONFIRMATION
 } = qaCancellationService;
+const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v3_shared_finance_atomic';
 const RECONCILE_GROUP_STATE_CONFIRMATION = 'RECONCILE_STALE_BANQUET_GROUP';
 const RECONCILE_GROUP_STATE_STRATEGIES = Object.freeze(['cancel-stale-group']);
 const RECONCILE_GROUP_STATE_CLASSIFICATIONS = Object.freeze(['active_group_cancelled_primary']);
@@ -2423,6 +2424,7 @@ module.exports = {
     APPLY_CONFIRMATION,
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
+    QA_CLEANUP_CAPABILITY,
     RECONCILE_GROUP_STATE_CONFIRMATION,
     RECOVERY_ACTOR,
     QA_CLEANUP_ACTOR,

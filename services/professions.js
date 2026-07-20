@@ -1,5 +1,6 @@
 'use strict';
 
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 const { normalizeStaffCompanyStructurePayload } = require('./staffDisplayGroups');
 
 function parseJsonArray(value, fallback = []) {
@@ -633,8 +634,12 @@ async function saveStaffProfessionCondition(db, staffId, professionKey, payload 
     return { before, after };
 }
 
-async function loadProfessionWorkspaceCatalog(db) {
+async function loadProfessionWorkspaceCatalog(db, options = {}) {
     if (!db || typeof db.query !== 'function') throw new TypeError('Profession workspace requires a database client');
+    const includeInactivePeople = options.includeInactivePeople === true
+        || options.includeInactive === true
+        || options.include_inactive === true;
+    const peopleWhereClause = includeInactivePeople ? '' : `WHERE ${scheduleableStaffWhere('s')}`;
     const [professionResult, peopleResult, preferenceResult, progressResult, checklistItemResult, trainingResult, structureResult] = await Promise.all([
         db.query(
             `SELECT id, key, title, department, short_info, responsibilities, checklist,
@@ -671,6 +676,7 @@ async function loadProfessionWorkspaceCatalog(db) {
                     ON spr.staff_id = s.id AND spr.profession_key = pa.profession_key
              LEFT JOIN staff_role_assignments sra
                     ON sra.staff_id = s.id AND sra.profession_key = pa.profession_key
+             ${peopleWhereClause}
              ORDER BY pa.profession_key, s.id, pa.is_primary DESC`
         ),
         db.query(
@@ -877,8 +883,8 @@ async function loadProfessionWorkspaceCatalog(db) {
     };
 }
 
-async function loadProfessionWorkspace(db, identity = {}) {
-    const catalog = await loadProfessionWorkspaceCatalog(db);
+async function loadProfessionWorkspace(db, identity = {}, options = {}) {
+    const catalog = await loadProfessionWorkspaceCatalog(db, options);
     const profession = catalog.items.find(item => professionWorkspaceIdentityMatches(item, identity));
     if (!profession) return null;
     return {

@@ -435,14 +435,12 @@ async function fetchStaffList(month) {
         const result = await readStaff();
         return result.rows.map(mapStaff);
     } catch (err) {
-        if (!isMissingTableError(err)) log.warn('payroll staff query failed:', err.message);
-        const fallback = await pool.query(`
-            SELECT id, name, department, position, role_type, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit
-            FROM staff
-            WHERE is_active = true
-            ORDER BY name
-        `);
-        return fallback.rows.map(mapStaff);
+        const reason = isMissingTableError(err)
+            ? 'payroll staff current-core query unavailable'
+            : 'payroll staff current-core query failed';
+        log.warn(`${reason}:`, err.message);
+        // Fail closed: never resurrect reserve/blacklisted/freelance staff through an active-only fallback.
+        throw err;
     }
 }
 

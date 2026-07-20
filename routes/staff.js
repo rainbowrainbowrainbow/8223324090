@@ -2870,9 +2870,19 @@ router.get('/payroll', requireRole(...STAFF_PAYROLL_READ_ROLES), async (req, res
     try {
         const month = req.query.month || new Date().toISOString().slice(0, 7);
         const mFrom = req.query.from || `${month}-01`;
-        const mTo = req.query.to || `${month}-31`;
+        const monthMatch = String(month).match(/^(\d{4})-(\d{2})$/);
+        const defaultMonthEnd = monthMatch
+            ? new Date(Date.UTC(Number(monthMatch[1]), Number(monthMatch[2]), 0)).toISOString().slice(0, 10)
+            : `${month}-31`;
+        const mTo = req.query.to || defaultMonthEnd;
 
-        const staff = await pool.query('SELECT * FROM staff WHERE is_active = true ORDER BY department, name LIMIT 1000');
+        const staff = await pool.query(`
+            SELECT s.*
+            FROM staff s
+            WHERE ${activeScheduleStaffWhere('s', '$1::date')}
+            ORDER BY s.department, s.name
+            LIMIT 1000
+        `, [mTo]);
         const payroll = [];
 
         for (const s of staff.rows) {

@@ -2971,12 +2971,17 @@ function sendHrShiftPlanError(res, error, extra = {}) {
 
 router.get('/professions', async (req, res) => {
     try {
-        const catalog = await loadProfessionWorkspaceCatalog(pool);
+        const includeInactivePeople = req.query.include_inactive === 'true'
+            || req.query.includeInactive === 'true'
+            || req.query.include_inactive_people === 'true'
+            || req.query.includeInactivePeople === 'true';
+        const catalog = await loadProfessionWorkspaceCatalog(pool, { includeInactivePeople });
         res.json({
             success: true,
             data: catalog.items,
             structureNodes: catalog.structureNodes,
-            inventory: catalog.inventory
+            inventory: catalog.inventory,
+            peopleScope: includeInactivePeople ? 'all' : 'current_core'
         });
     } catch (err) {
         log.error('GET /hr/professions error', err);
@@ -3448,7 +3453,11 @@ router.get('/professions/workspace/:identity', async (req, res) => {
         const identity = /^\d+$/.test(rawIdentity)
             ? { id: Number(rawIdentity) }
             : { key: rawIdentity };
-        const workspace = await loadProfessionWorkspace(pool, identity);
+        const includeInactivePeople = req.query.include_inactive === 'true'
+            || req.query.includeInactive === 'true'
+            || req.query.include_inactive_people === 'true'
+            || req.query.includeInactivePeople === 'true';
+        const workspace = await loadProfessionWorkspace(pool, identity, { includeInactivePeople });
         if (!workspace) return res.status(404).json({ success: false, error: 'Професію не знайдено' });
         res.json({ success: true, data: workspace });
     } catch (err) {

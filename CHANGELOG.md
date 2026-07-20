@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.115 - ЗП KPI актуальний список
+
+### Release / Versioning / (20.07.2026) [codex]
+- **ЗП KPI актуальний список** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.114 - Безпечне закриття порожніх банкетних груп
 
 ### Banquet recovery / Production safety / (20.07.2026) [codex]

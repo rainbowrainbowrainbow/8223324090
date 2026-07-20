@@ -3,6 +3,7 @@ const { createLogger } = require('../utils/logger');
 const { attendanceFactMinutes, hydrateAttendanceRecords } = require('./hrAttendance');
 const { buildPayrollRateUnitWarnings, buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
 const { normalizeProfessionKey } = require('./professions');
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const log = createLogger('Payroll');
 const OVERTIME_MULTIPLIER = 1.5;
@@ -421,54 +422,17 @@ function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = []
 
 async function fetchStaffList(month) {
     const bounds = getMonthBounds(month);
-    const readStaff = async (withStatusFilter = true) => {
-        const statusFilter = withStatusFilter ? "AND COALESCE(sa.status, 'applied') = 'applied'" : '';
+    const readStaff = async () => {
         return pool.query(`
             SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit
             FROM staff s
-            WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
-              AND (
-                  s.is_active = true
-                  OR EXISTS (
-                      SELECT 1
-                      FROM hr_time_records tr
-                      WHERE tr.staff_id = s.id
-                        AND tr.record_date >= $2 AND tr.record_date <= $3
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM hr_shifts hs
-                      WHERE hs.staff_id = s.id
-                        AND hs.shift_date >= $2 AND hs.shift_date <= $3
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM salary_adjustments sa
-                      WHERE sa.staff_id = s.id
-                        AND sa.month = $1
-                        ${statusFilter}
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM payroll_reports pr
-                      WHERE pr.staff_id = s.id
-                        AND pr.period_month = $1
-                        AND pr.voided_at IS NULL
-                        AND pr.status <> 'draft'
-                  )
-              )
+            WHERE ${scheduleableStaffWhere('s', { dateExpression: '$1' })}
             ORDER BY s.name
-        `, [month, bounds.from, bounds.to]);
+        `, [bounds.to]);
     };
 
     try {
-        let result;
-        try {
-            result = await readStaff(true);
-        } catch (err) {
-            if (err.code !== '42703') throw err;
-            result = await readStaff(false);
-        }
+        const result = await readStaff();
         return result.rows.map(mapStaff);
     } catch (err) {
         if (!isMissingTableError(err)) log.warn('payroll staff query failed:', err.message);

@@ -1377,24 +1377,39 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
     }
 });
 
-test('HR payroll keeps worked inactive staff and ignores unapplied salary adjustments', () => {
+test('HR payroll uses current active core staff only and does not resurrect inactive workers', () => {
+    const routeStart = HR_ROUTE.indexOf('active_staff AS (');
+    const routeEnd = HR_ROUTE.indexOf('time_segments AS', routeStart);
+    const activeStaffCte = routeStart >= 0 && routeEnd > routeStart
+        ? HR_ROUTE.slice(routeStart, routeEnd)
+        : '';
+
+    assert.match(activeStaffCte, /scheduleableStaffWhere\('s', \{ dateExpression: 'p\.date_to' \}\)/);
     for (const token of [
         'FROM hr_time_records tr',
         'FROM hr_shifts hs',
-        'FROM payroll_reports pr',
-        "WHERE COALESCE(sa.status, 'applied') = 'applied'"
+        'FROM salary_adjustments sa',
+        'FROM payroll_reports pr'
     ]) {
-        assert.ok(HR_ROUTE.includes(token), `missing route payroll token ${token}`);
+        assert.ok(!activeStaffCte.includes(token), `legacy roster resurrection token remains in HR salary CTE ${token}`);
     }
 
+    const serviceStart = PAYROLL_SERVICE.indexOf('async function fetchStaffList(month)');
+    const serviceEnd = PAYROLL_SERVICE.indexOf('function payrollMetricBucket', serviceStart);
+    const fetchStaffListSource = serviceStart >= 0 && serviceEnd > serviceStart
+        ? PAYROLL_SERVICE.slice(serviceStart, serviceEnd)
+        : '';
+
+    assert.match(fetchStaffListSource, /scheduleableStaffWhere\('s', \{ dateExpression: '\$1' \}\)/);
+    assert.ok(fetchStaffListSource.includes('fetchStaffList(month)'), 'shared payroll service still owns staff discovery');
     for (const token of [
-        'async function fetchStaffList(month)',
-        "AND COALESCE(sa.status, 'applied') = 'applied'",
         'FROM hr_time_records tr',
+        'FROM hr_shifts hs',
+        'FROM salary_adjustments sa',
         'FROM payroll_reports pr',
-        'fetchStaffList(normalizedMonth)'
+        "AND COALESCE(sa.status, 'applied') = 'applied'"
     ]) {
-        assert.ok(PAYROLL_SERVICE.includes(token), `missing payroll service token ${token}`);
+        assert.ok(!fetchStaffListSource.includes(token), `legacy roster resurrection token remains in payroll service ${token}`);
     }
 });
 

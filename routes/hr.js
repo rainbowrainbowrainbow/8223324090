@@ -2321,37 +2321,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit, s.department
             FROM staff s
             CROSS JOIN params p
-            WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
-              AND (
-                  s.is_active = true
-                  OR EXISTS (
-                      SELECT 1
-                      FROM hr_time_records tr
-                      WHERE tr.staff_id = s.id
-                        AND tr.record_date >= p.date_from AND tr.record_date <= p.date_to
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM hr_shifts hs
-                      WHERE hs.staff_id = s.id
-                        AND hs.shift_date >= p.date_from AND hs.shift_date <= p.date_to
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM salary_adjustments sa
-                      WHERE sa.staff_id = s.id
-                        AND sa.month >= p.month_from AND sa.month <= p.month_to
-                        AND COALESCE(sa.status, 'applied') = 'applied'
-                  )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM payroll_reports pr
-                      WHERE pr.staff_id = s.id
-                        AND pr.period_month >= p.month_from AND pr.period_month <= p.month_to
-                        AND pr.voided_at IS NULL
-                        AND pr.status <> 'draft'
-                  )
-              )
+            WHERE ${scheduleableStaffWhere('s', { dateExpression: 'p.date_to' })}
         ),
         time_segments AS (
             SELECT s.id AS staff_id,

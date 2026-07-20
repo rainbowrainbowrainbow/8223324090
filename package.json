@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.114",
+  "version": "0.79.115",
   "eventGenix": {
-    "releaseLabel": "Безпечне закриття порожніх банкетних груп"
+    "releaseLabel": "ЗП KPI актуальний список"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

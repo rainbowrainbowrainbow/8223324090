@@ -19,6 +19,7 @@ const {
     assertPayrollPeriodOpen,
     payrollMonthRange
 } = require('./hrPayrollPeriod');
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const PROFILE_KINDS = new Set(['shared', 'personal']);
 const PROFILE_STATUSES = new Set(['draft', 'active', 'archived']);
@@ -660,7 +661,7 @@ async function listPayrollProfiles(filters = {}, options = {}) {
                  WHERE sra.staff_id = s.id
                    AND COALESCE(sra.status, 'active') = 'active'
              ) assignments
-             WHERE COALESCE(s.is_active, true) = true
+             WHERE ${scheduleableStaffWhere('s', { dateExpression: asOfDateParam })}
                AND NULLIF(BTRIM(assignments.profession_key), '') IS NOT NULL
          ),
          active_assignments AS (
@@ -1867,7 +1868,7 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
     };
 }
 
-function activeStaffProfessionCte() {
+function activeStaffProfessionCte(dateExpression = 'CURRENT_DATE') {
     return `profession_staff AS (
         SELECT DISTINCT
                s.id AS staff_id,
@@ -1887,17 +1888,18 @@ function activeStaffProfessionCte() {
             WHERE sra.staff_id = s.id
               AND COALESCE(sra.status, 'active') = 'active'
         ) assignments
-        WHERE COALESCE(s.is_active, true) = true
+        WHERE ${scheduleableStaffWhere('s', { dateExpression })}
           AND NULLIF(BTRIM(assignments.profession_key), '') IS NOT NULL
     )`;
 }
 
-async function loadActiveStaffProfessionRows(db) {
+async function loadActiveStaffProfessionRows(db, asOfDate = todayKyivDate()) {
     const result = await db.query(
-        `WITH ${activeStaffProfessionCte()}
+        `WITH ${activeStaffProfessionCte('$1')}
          SELECT staff_id, staff_name, role_type, department, profession_key
          FROM profession_staff
-         ORDER BY staff_name, staff_id, profession_key`
+         ORDER BY staff_name, staff_id, profession_key`,
+        [asOfDate]
     );
     return safeRows(result).map(row => ({
         staff_id: Number(row.staff_id),
@@ -1940,7 +1942,7 @@ async function diagnosePayrollProfiles(options = {}, serviceOptions = {}) {
     const db = serviceOptions.db || pool;
     const asOfDate = normalizeDate(options.asOfDate || options.as_of_date || todayKyivDate(), 'asOfDate', { required: true });
     const issues = [];
-    const staffProfessionRows = await loadActiveStaffProfessionRows(db);
+    const staffProfessionRows = await loadActiveStaffProfessionRows(db, asOfDate);
     const staffIds = [...new Set(staffProfessionRows.map(row => row.staffId))];
     const [profileContext, professionRateMap, schemeMap] = await Promise.all([
         loadPayrollProfileContext(staffIds, { from: asOfDate, to: asOfDate }, db),
@@ -2141,7 +2143,7 @@ async function loadAffectedStaffForProfile(db, profile, asOfDate) {
     const professionKey = normalizeProfessionKey(profile.professionKey || profile.profession_key);
     const isDefault = Boolean(profile.isDefaultForProfession || profile.is_default_for_profession);
     const result = await db.query(
-        `WITH ${activeStaffProfessionCte()},
+        `WITH ${activeStaffProfessionCte('$2')},
          active_assignments AS (
              SELECT staff_id, profession_key, profile_id, assignment_kind
              FROM staff_payroll_profile_assignments

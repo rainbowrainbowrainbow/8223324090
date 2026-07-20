@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.120 - HR друк: кондитерський цех і піцейола
+
+### Release / Versioning / (20.07.2026) [codex]
+- **HR друк: кондитерський цех і піцейола** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.119 - 'HR друк: кондитерський цех і піцейола'
 
 ### Release / Versioning / (20.07.2026) [codex]

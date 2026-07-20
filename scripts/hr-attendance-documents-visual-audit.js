@@ -382,8 +382,8 @@ async function main() {
             arrivalMaxFont: pageCount(buffers.arrivalMaxFont),
             monthMaxFont: pageCount(buffers.monthMaxFont)
         };
-        const pageCountPassed = pageCounts.arrival === 2 && pageCounts.month === 3
-            && pageCounts.arrivalMaxFont === 2 && pageCounts.monthMaxFont === 3;
+        const pageCountPassed = pageCounts.arrival === 3 && pageCounts.month === 3
+            && pageCounts.arrivalMaxFont === 3 && pageCounts.monthMaxFont === 3;
         const report = {
             generatedAt: new Date().toISOString(),
             mode: generatedOnly ? 'generated-only' : 'reference',

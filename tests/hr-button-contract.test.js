@@ -210,6 +210,8 @@ test('HR print modal uses page button components without leaking its open-state 
 
     assert.match(HR_JS, /class="btn-page-primary" data-hr-print-operation="(?:run-automation|preview-job)"/);
     assert.match(HR_JS, /class="btn-page-toolbar" data-hr-print-operation="(?:edit-automation|requeue-job)"/);
+    assert.match(HR_JS, /id: 'pastry_shop'[\s\S]*label: 'Кондитерський цех'[\s\S]*pastry_chef[\s\S]*confectioner[\s\S]*pastry_assistant/);
+    assert.match(HR_JS, /id: 'pizzaiolo'[\s\S]*label: 'Піцейола'[\s\S]*pizzaiolo/);
 });
 
 test('HR Today metrics expose people lists and count only open shifts as on shift', () => {

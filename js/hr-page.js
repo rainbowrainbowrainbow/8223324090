@@ -55,6 +55,8 @@ const HR_PRINT_CATEGORIES = Object.freeze([
     { id: 'sales_manager', label: 'Менеджери з продажу', professionKeys: ['manager'] },
     { id: 'top_manager', label: 'Топ-менеджер', professionKeys: ['senior_manager'] },
     { id: 'cook', label: 'Кухарі', professionKeys: ['cook', 'head_cook', 'head_chef'] },
+    { id: 'pastry_shop', label: 'Кондитерський цех', professionKeys: ['pastry_chef', 'confectioner', 'pastry_assistant', 'head_pastry'] },
+    { id: 'pizzaiolo', label: 'Піцейола', professionKeys: ['pizzaiolo'] },
     { id: 'waiter', label: 'Офіціанти', professionKeys: ['waiter'] },
     { id: 'dishwasher', label: 'Мийниця', professionKeys: ['dishwasher'] },
     { id: 'security', label: 'Охорона', professionKeys: ['security', 'maintenance'] }

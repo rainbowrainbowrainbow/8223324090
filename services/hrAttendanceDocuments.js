@@ -79,9 +79,11 @@ const PRINT_CATEGORY_DEFINITIONS = Object.freeze([
     category('sales_manager', 'Менеджер з продажу', ['manager'], 130, 2, 2),
     category('top_manager', 'Топ-менеджер', ['senior_manager'], 140, 1, 3),
     category('cook', 'Кухар', ['cook', 'head_cook', 'head_chef'], 150, 2, 3),
+    category('pastry_shop', 'Кондитерський цех', ['pastry_chef', 'confectioner', 'pastry_assistant', 'head_pastry'], 155, 2, 4),
+    category('pizzaiolo', 'Піцейола', ['pizzaiolo'], 156, 2, 5),
     category('waiter', 'Офіціант', ['waiter'], 160, 1, 4),
     category('dishwasher', 'Мийниця', ['dishwasher'], 170, 3, 5),
-    category('security', 'Охоронець', ['security', 'maintenance'], 180, 2, 5, {
+    category('security', 'Охоронець', ['security', 'maintenance'], 180, 2, 6, {
         discriminator: /охорон/i,
         discriminatorKeys: ['maintenance']
     })

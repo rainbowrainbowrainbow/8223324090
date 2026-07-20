@@ -91,10 +91,10 @@ test('explicit legacy text remains unchanged outside the automation compatibilit
     assert.equal(normalized.texts.footerNote, legacy.footerNote);
 });
 
-test('anonymized 41-person snapshot is immutable, deduplicated and preserves v27 category counts', () => {
+test('anonymized 44-person snapshot is immutable, deduplicated and preserves v27 category counts', () => {
     const snapshot = referenceSnapshot('arrival_inout');
-    assert.equal(snapshot.employeeCount, 41);
-    assert.equal(snapshot.categoryCount, 18);
+    assert.equal(snapshot.employeeCount, 44);
+    assert.equal(snapshot.categoryCount, 20);
     assert.equal(Object.isFrozen(snapshot), true);
     assert.equal(Object.isFrozen(snapshot.categories[0].employees), true);
     assert.deepEqual(
@@ -172,6 +172,35 @@ test('roster selection excludes inactive, freelance, non-core and terminated sta
         { cook: [7], waiter: [8, 1, 5] }
     );
     assert.equal(snapshot.categories.flatMap(category => category.employees).filter(employee => employee.staffIds[0] === 8).length, 1);
+});
+
+test('print documents expose pastry shop and pizzaiolo categories end-to-end', () => {
+    const settings = normalizeDocumentRequest(request('arrival_inout', {
+        categoryIds: ['pastry_shop', 'pizzaiolo']
+    }));
+    const base = {
+        display_name: null,
+        secondary_professions: [],
+        position: '',
+        excel_department: '',
+        is_active: true,
+        hr_pool_status: 'core',
+        is_freelance: false,
+        termination_date: null,
+        user_id: null
+    };
+    const snapshot = buildHrAttendanceDocumentSnapshotFromRows(settings, {
+        staffRows: [
+            { ...base, id: 21, name: 'Кондитер Тест', role_type: 'confectioner', unique_person_key: 'pastry-one' },
+            { ...base, id: 22, name: 'Шеф Кондитер', role_type: 'pastry_chef', unique_person_key: 'pastry-two' },
+            { ...base, id: 23, name: 'Помічник Кондитера', role_type: 'pastry_assistant', unique_person_key: 'pastry-three' },
+            { ...base, id: 24, name: 'Піцейола Тест', role_type: 'pizzaiolo', unique_person_key: 'pizzaiolo-one' }
+        ],
+        assignmentRows: []
+    });
+    assert.deepEqual(snapshot.categories.map(item => item.id), ['pastry_shop', 'pizzaiolo']);
+    assert.deepEqual(snapshot.categories.map(item => item.label), ['Кондитерський цех', 'Піцейола']);
+    assert.deepEqual(snapshot.categories.map(item => item.count), [3, 1]);
 });
 
 test('actual-time mode prefers canonical attendance, formats Kyiv time and keeps missing values blank', () => {
@@ -294,13 +323,14 @@ test('conflicting canonical attendance across duplicate records blocks actual-ti
     );
 });
 
-test('v27 pagination produces two portrait and three landscape pages', () => {
+test('v27 pagination produces three portrait and three landscape pages', () => {
     const dailyPages = paginateHrAttendanceDocument(referenceSnapshot('arrival_inout'));
     const monthPages = paginateHrAttendanceDocument(referenceSnapshot('month_grid'));
-    assert.equal(dailyPages.length, 2);
+    assert.equal(dailyPages.length, 3);
     assert.equal(monthPages.length, 3);
     assert.equal(dailyPages[0].segments.at(-1).category.id, 'tech_director');
     assert.equal(dailyPages[1].segments[0].category.id, 'hr');
+    assert.equal(dailyPages[2].segments[0].category.id, 'dishwasher');
     assert.deepEqual(monthPages.map(page => page.lane), [1, 2, 3]);
 });
 
@@ -367,7 +397,7 @@ test('PDFKit renderer creates real v27 PDFs with expected page counts and filena
     ]);
     assert.equal(dailyBuffer.subarray(0, 4).toString('ascii'), '%PDF');
     assert.equal(monthlyBuffer.subarray(0, 4).toString('ascii'), '%PDF');
-    assert.equal(pdfPageCount(dailyBuffer), 2);
+    assert.equal(pdfPageCount(dailyBuffer), 3);
     assert.equal(pdfPageCount(monthlyBuffer), 3);
     assert.equal(hrAttendanceDocumentPdfFilename(daily), 'arrival_inout_2026-07-16.pdf');
     assert.equal(hrAttendanceDocumentPdfFilename(monthly), 'month_grid_2026-07.pdf');
@@ -381,7 +411,7 @@ test('minimum and maximum allowed font presets render without clipping or page-c
             buildHrAttendanceDocumentPdfBuffer(referenceSnapshot('arrival_inout', { fontPreset: fontPresetAt(boundary) })),
             buildHrAttendanceDocumentPdfBuffer(referenceSnapshot('month_grid', { fontPreset: fontPresetAt(boundary) }))
         ]);
-        assert.equal(pdfPageCount(daily), 2, `${boundary} daily font preset page count`);
+        assert.equal(pdfPageCount(daily), 3, `${boundary} daily font preset page count`);
         assert.equal(pdfPageCount(monthly), 3, `${boundary} monthly font preset page count`);
         assert.match(daily.toString('latin1'), /\/MediaBox\s*\[0 0 595\.28 841\.89\]/);
         assert.match(monthly.toString('latin1'), /\/MediaBox\s*\[0 0 841\.89 595\.28\]/);

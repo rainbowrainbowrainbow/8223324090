@@ -22,6 +22,8 @@ const REFERENCE_COUNTS = Object.freeze({
     sales_manager: 2,
     top_manager: 1,
     cook: 5,
+    pastry_shop: 2,
+    pizzaiolo: 1,
     waiter: 5,
     dishwasher: 1,
     security: 1
@@ -43,6 +45,8 @@ const FIXTURE_ROLE = Object.freeze({
     sales_manager: ['manager', 'Менеджер з продажу'],
     top_manager: ['senior_manager', 'Топ-менеджер'],
     cook: ['cook', 'Кухар'],
+    pastry_shop: ['pastry_chef', 'Кондитерський цех'],
+    pizzaiolo: ['pizzaiolo', 'Піцейола'],
     waiter: ['waiter', 'Офіціант'],
     dishwasher: ['dishwasher', 'Мийниця'],
     security: ['security', 'Охоронець']

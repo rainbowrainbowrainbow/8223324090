@@ -45,8 +45,10 @@ RELEASE_DEPLOY_BRANCH=codex/production
 
 `npm run version:smoke` and `npm run release:timeline-proof` must fail when
 production `/api/version` reports unavailable or partial deployment metadata.
-Use `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` only for local/dev checks, never
-for release acceptance.
+Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
+`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
+against the exact intended SHA. Use `VERSION_SMOKE_ALLOW_MISSING_METADATA=true`
+only for local/dev checks, never for release acceptance.
 
 Команда перевіряє:
 - `/api/version` збігається з `package.json`;

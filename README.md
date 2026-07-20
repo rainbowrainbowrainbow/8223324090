@@ -248,8 +248,10 @@ the repository.
   valid Railway git metadata or explicit `RELEASE_DEPLOY_COMMIT=<exact-sha>` and
   `RELEASE_DEPLOY_BRANCH=<branch>` runtime metadata. `npm run version:smoke` and
   `npm run release:timeline-proof` must fail if production commit/branch metadata
-  is unavailable. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is local/dev only,
-  not a release gate override.
+  is unavailable. Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
+  `RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
+  against the exact intended SHA. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is
+  local/dev only, not a release gate override.
 - Push release/rollback commits only to the confirmed active Railway branch.
 - Always pass the confirmed branch explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release proof notes; do not rely on a script fallback.
 - Treat `codex/timeline-leads-hardening` and `deployed` as historical deploy sources unless the owner explicitly confirms a Railway reconfiguration.

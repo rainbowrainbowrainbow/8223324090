@@ -18,8 +18,10 @@ RELEASE_DEPLOY_BRANCH=codex/production
 
 `npm run version:smoke` and `npm run release:timeline-proof` must be fail-closed
 for production release acceptance when this metadata is unavailable, partial, or
-conflicting. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is allowed only for
-local/dev diagnostics.
+conflicting. Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
+`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
+against the exact intended SHA. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is
+allowed only for local/dev diagnostics.
 
 Остання фактично перевірена production-гілка Railway (20.07.2026):
 `codex/production`.

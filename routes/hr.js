@@ -3922,7 +3922,7 @@ router.get('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
 router.get('/role-assignments/report', async (req, res) => {
     try {
         const includeInactive = req.query.include_inactive === 'true';
-        const whereSql = includeInactive ? '' : 'WHERE COALESCE(s.is_active, true) = true';
+        const whereSql = includeInactive ? '' : `WHERE ${scheduleableStaffWhere('s')}`;
         const summary = await pool.query(
             `SELECT
                 COUNT(DISTINCT s.id)::int AS staff_count,

@@ -214,6 +214,17 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.doesNotMatch(checklistService, /\$5::boolean OR search_member\.is_active = true/);
     });
 
+    it('limits the visible role/admission report to current core staff by default', () => {
+        const start = hrRoute.indexOf("router.get('/role-assignments/report'");
+        const end = hrRoute.indexOf("\nrouter.put('/staff/:id/role-assignments'", start);
+        assert.notEqual(start, -1);
+        assert.notEqual(end, -1);
+        const roleReportBlock = hrRoute.slice(start, end);
+        assert.match(roleReportBlock, /includeInactive\s*=\s*req\.query\.include_inactive === 'true'/);
+        assert.match(roleReportBlock, /scheduleableStaffWhere\('s'\)/);
+        assert.doesNotMatch(roleReportBlock, /COALESCE\(s\.is_active, true\) = true/);
+    });
+
     it('exposes HR APIs for readiness, checklist progress, schedule gating, and audit history', () => {
         assert.match(hrRoute, /const HR_VIEW_ROLES = \[[^\]]*'security'/);
         assert.match(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'hr'[^\]]*'admin'[^\]]*\]/);

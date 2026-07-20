@@ -15674,11 +15674,29 @@ function payrollRowSearchHaystack(view, row = {}) {
         roleKey,
         ROLE_LABELS[roleKey],
         roleKey ? professionTitle(roleKey) : '',
+        row.staff_department_label,
+        row.staffDepartmentLabel,
+        row.structure_node_title,
+        row.structureNodeTitle,
+        row.company_structure_node_id,
+        row.companyStructureNodeId,
         department,
         departmentLabel(department)
     ];
     if (view === 'salary') parts.push(...payrollProfessionSearchParts(row));
     return normalizeSearchText(parts.filter(Boolean).join(' '));
+}
+
+function payrollStaffDepartmentSubtitle(row = {}) {
+    const directLabel = String(
+        row.staff_department_label
+        || row.staffDepartmentLabel
+        || row.structure_node_title
+        || row.structureNodeTitle
+        || ''
+    ).trim();
+    if (directLabel) return directLabel;
+    return departmentLabel(row.department);
 }
 
 function payrollDepartmentOptions(view) {
@@ -16352,8 +16370,7 @@ function renderSalaryAdditionalRoleDetails(row = {}) {
 }
 
 function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
-    const roleLabel = ROLE_LABELS[s.role_type] || s.role_type || '';
-    const department = departmentLabel(s.department);
+    const staffDepartment = payrollStaffDepartmentSubtitle(s);
     const daysWorked = Number(s.days_worked || 0);
     const hoursWorked = Number(s.hours_worked || 0);
     const baseSalary = Number(s.base_salary || 0);
@@ -16370,7 +16387,7 @@ function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
         <div class="hr-payroll-item-summary hr-payroll-salary-summary">
             <div class="hr-payroll-identity">
                 <strong>${escapeHtml(s.staff_name || 'Без імені')}</strong>
-                <span>${escapeHtml([roleLabel, department].filter(Boolean).join(' · '))}</span>
+                <span>${escapeHtml(staffDepartment)}</span>
             </div>
             <div class="hr-payroll-primary-metric">
                 <span class="hr-payroll-field-label">Час</span>
@@ -17892,7 +17909,7 @@ function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
     const contribution = row.contribution_kpi || {};
     const development = row.development_kpi || {};
     const kpiScore = num(row.kpi_score);
-    const roleLabel = ROLE_LABELS[row.role_type] || row.role_type || '';
+    const staffDepartment = payrollStaffDepartmentSubtitle(row);
     const detailId = `payroll-kpi-detail-${groupIndex}-${itemIndex}`;
     const attendance = attendanceRate !== null
         ? `${kpiSignal(`${attendanceRate}%`, toneForPercent(attendanceRate))}<span class="kpi-muted">${num(row.days_worked)}/${num(row.days_scheduled)} змін</span>`
@@ -17902,7 +17919,7 @@ function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
         <div class="hr-payroll-item-summary hr-payroll-kpi-summary">
             <div class="hr-payroll-identity">
             <strong>${escapeHtml(row.staff_name)}</strong>
-                <span>${escapeHtml([roleLabel, departmentLabel(row.department)].filter(Boolean).join(' · '))}</span>
+                <span>${escapeHtml(staffDepartment)}</span>
             </div>
             <div class="hr-payroll-primary-metric">
                 <span class="hr-payroll-field-label">Загальний бал</span>

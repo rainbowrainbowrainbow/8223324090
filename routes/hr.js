@@ -2306,6 +2306,19 @@ function applyHrPayrollSnapshot(row, reportRow = {}) {
 
 // Payroll period range, lock, event, and reconciliation helpers live in services/hrPayrollPeriod.js.
 
+function payrollStaffStructurePayload(row = {}, structureNodeById = new Map()) {
+    const nodeId = String(row.company_structure_node_id || row.companyStructureNodeId || '').trim();
+    const node = nodeId && structureNodeById && typeof structureNodeById.get === 'function'
+        ? structureNodeById.get(nodeId)
+        : null;
+    const title = String(node?.title || node?.label || node?.name || '').trim();
+    return {
+        company_structure_node_id: nodeId || null,
+        structure_node_title: title || null,
+        staff_department_label: title || null
+    };
+}
+
 async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {}) {
     const month = normalizePayrollMonth(monthValue);
     const period = payrollPeriodRange(month, periodOptions.from, periodOptions.to);
@@ -2318,7 +2331,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                    $5::varchar(7) AS month_to
         ),
         active_staff AS (
-            SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit, s.department
+            SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit, s.department, s.company_structure_node_id
             FROM staff s
             CROSS JOIN params p
             WHERE ${scheduleableStaffWhere('s', { dateExpression: 'p.date_to' })}
@@ -2401,6 +2414,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                s.name AS staff_name,
                s.role_type,
                s.department,
+               s.company_structure_node_id,
                COALESCE(s.hourly_rate, 0)::numeric AS hourly_rate,
                COALESCE(s.rate_unit, 'hour') AS rate_unit,
                COALESCE(tt.profession_rates, '[]'::jsonb) AS profession_rate_summary,
@@ -2429,12 +2443,14 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         ORDER BY s.name
     `, [month, period.from, period.to, period.month_from, period.month_to]);
     const staffIds = result.rows.map(row => Number(row.staff_id)).filter(Number.isInteger);
-    const [attendanceMetrics, professionRateMap, activeSchemeMap, payrollProfileContext] = await Promise.all([
+    const [attendanceMetrics, professionRateMap, activeSchemeMap, payrollProfileContext, staffDisplayGroupContext] = await Promise.all([
         loadPayrollAttendanceMetrics({ from: period.from, to: period.to, staffIds }, db),
         loadProfessionRateMap(staffIds, db),
         loadActivePayrollSchemeMap(staffIds, month, db),
-        loadPayrollProfileContext(staffIds, { from: period.from, to: period.to }, db)
+        loadPayrollProfileContext(staffIds, { from: period.from, to: period.to }, db),
+        loadStaffDisplayGroupContext(db)
     ]);
+    const structureNodeById = staffDisplayGroupContext?.structureNodeById || new Map();
     const emptyMetrics = () => ({
         physicalMinutes: 0,
         totalMinutes: 0,
@@ -2487,6 +2503,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             staff_name: row.staff_name,
             role_type: row.role_type,
             department: row.department,
+            ...payrollStaffStructurePayload(row, structureNodeById),
             hourly_rate: Number(row.hourly_rate || 0),
             rate_unit: payrollRateUnit,
             profession_rate_summary: professionPay.professionRateSummary,
@@ -2554,7 +2571,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
         ),
         active_staff AS (
-            SELECT s.id, s.name, s.department, s.role_type, s.color, s.photo_url,
+            SELECT s.id, s.name, s.department, s.company_structure_node_id, s.role_type, s.color, s.photo_url,
                    COALESCE(s.avg_rating, 0)::numeric AS avg_rating,
                    COALESCE(s.total_ratings, 0)::int AS total_ratings
             FROM staff s
@@ -2624,6 +2641,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
             SELECT s.id AS staff_id,
                    s.name AS staff_name,
                    s.department,
+                   s.company_structure_node_id,
                    s.role_type,
                    s.color,
                    s.photo_url,
@@ -2674,10 +2692,13 @@ async function loadKpiSnapshot(monthValue, db = pool) {
         FROM scored
         ORDER BY kpi_score DESC, staff_name
     `, [month]);
+    const staffDisplayGroupContext = await loadStaffDisplayGroupContext(db);
+    const structureNodeById = staffDisplayGroupContext?.structureNodeById || new Map();
     const data = result.rows.map(row => ({
         staff_id: Number(row.staff_id),
         staff_name: row.staff_name,
         department: row.department,
+        ...payrollStaffStructurePayload(row, structureNodeById),
         role_type: row.role_type,
         color: row.color,
         photo_url: row.photo_url,

@@ -1163,13 +1163,14 @@ test('HR Salary and KPI use compact accessible master-detail lists', () => {
     const salaryContext = vm.createContext({
         ROLE_LABELS: { animator: 'Аніматор' },
         departmentLabel: value => value === 'animators' ? 'Аніматори' : 'Без відділу',
+        payrollStaffDepartmentSubtitle: row => row.staff_department_label || row.structure_node_title || (row.department === 'animators' ? 'Аніматори' : 'Без відділу'),
         escapeHtml: value => String(value ?? ''),
         fmtMoney: value => `${Number(value)} ₴`,
         renderSalaryRateSummary: row => `MULTI_RATE:${row.profession_rate_summary.map(item => `${item.profession_key}/${item.rate_unit}/${item.amount}/${item.kind}/${item.allocation_source}`).join('|')}`
     });
     vm.runInContext(salaryBlock, salaryContext);
     const salaryHtml = vm.runInContext(`renderSalaryEmployeeItem({
-        staff_name: 'Працівник без attendance', role_type: 'animator', department: 'animators',
+        staff_name: 'Працівник без attendance', role_type: 'animator', department: 'animators', staff_department_label: 'Кухня',
         days_worked: 0, hours_worked: 0, base_salary: 0, total_salary: 0,
         overtime_pay: 0, bonuses: 0, tips: 0, deductions: 0, penalties: 0, advances: 0,
         profession_rate_summary: [
@@ -1178,6 +1179,8 @@ test('HR Salary and KPI use compact accessible master-detail lists', () => {
         ]
     }, 0, 0)`, salaryContext);
     assert.ok(salaryHtml.includes('Працівник без attendance'));
+    assert.ok(salaryHtml.includes('Кухня'));
+    assert.ok(!salaryHtml.includes('Аніматор · Аніматори'));
     assert.ok(salaryHtml.includes('0 дн · 0 год'));
     assert.ok(salaryHtml.includes('MULTI_RATE:host/hour/1200/base/schedule|actor/day/800/overtime/manual'));
     for (const label of ['Переробки', 'Бонуси та чайові', 'Утримання та штрафи', 'ЗРС']) {
@@ -1188,13 +1191,16 @@ test('HR Salary and KPI use compact accessible master-detail lists', () => {
     const kpiContext = vm.createContext({
         ROLE_LABELS: { manager: 'Менеджер' },
         departmentLabel: () => 'Адміністрація',
+        payrollStaffDepartmentSubtitle: row => row.staff_department_label || row.structure_node_title || 'Адміністрація',
         escapeHtml: value => String(value ?? ''),
         num: value => Number(value || 0),
         kpiSignal: value => `<span>${value}</span>`,
         toneForPercent: () => 'good'
     });
     vm.runInContext(kpiBlock, kpiContext);
-    const kpiHtml = vm.runInContext("renderKpiEmployeeItem({ staff_name: 'KPI Zero', role_type: 'manager', days_scheduled: 0, kpi_score: 0 }, 0, 0)", kpiContext);
+    const kpiHtml = vm.runInContext("renderKpiEmployeeItem({ staff_name: 'KPI Zero', role_type: 'manager', department: 'admin', staff_department_label: 'Відділ продажів / CRM', days_scheduled: 0, kpi_score: 0 }, 0, 0)", kpiContext);
+    assert.ok(kpiHtml.includes('Відділ продажів / CRM'));
+    assert.ok(!kpiHtml.includes('Менеджер · Адміністрація'));
     assert.ok(kpiHtml.includes('даних ще немає'));
     for (const label of ['Загальний бал', 'Присутність', 'Надійність', 'Задачі', 'Внесок', 'Розвиток']) {
         assert.ok(kpiHtml.includes(label), `KPI master-detail must include ${label}`);

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.118 - ЗП KPI підпис відділу
+
+### Release / Versioning / (20.07.2026) [codex]
+- **ЗП KPI підпис відділу** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.117 - Безпечне закриття quoted-primary банкетної групи
 
 ### Banquet recovery / Production safety / (20.07.2026) [codex]

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.117 - Безпечне закриття quoted-primary банкетної групи
+
+### Banquet recovery / Production safety / (20.07.2026) [codex]
+- **Окрема guarded strategy** — дозволяє обробити порожню stale group лише тоді, коли її єдиний cancelled primary має quoted price, а активних учасників немає.
+- **Фінансові та ticket guards** — apply блокується за наявності депозиту, ticket ownership, finance transaction, додаткового membership або зміни exact allowlist.
+- **Без побічних змін** — транзакція скасовує тільки banquet group; primary booking, quoted price, customer, deposits, memberships і links залишаються незмінними.
+- **Regression coverage** — unit та isolated PostgreSQL тести перевіряють rollback, row locking, history і idempotent rerun.
+
+---
+
 ## v0.79.116 - HR графік: повний список аніматорів
 
 ### Release / Versioning / (20.07.2026) [codex]

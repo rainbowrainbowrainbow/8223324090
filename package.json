@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.116",
+  "version": "0.79.117",
   "eventGenix": {
-    "releaseLabel": "HR графік: повний список аніматорів"
+    "releaseLabel": "Безпечне закриття quoted-primary банкетної групи"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

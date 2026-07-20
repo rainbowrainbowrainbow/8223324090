@@ -10,6 +10,7 @@ const {
     DETACH_CONFIRMATION,
     QA_CLEANUP_CONFIRMATION,
     RECONCILE_GROUP_STATE_CONFIRMATION,
+    CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
     buildAuditReport,
     buildAuditSummaryOnlyReport,
     classifyDetachInspection,
@@ -550,6 +551,62 @@ test('group state reconciliation arguments require exact scope and guarded apply
             allowlist: ['BK-1', 'BK-2']
         }
     );
+
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group',
+            '--business-context=event_genix',
+            '--expected-classification=active_group_cancelled_primary'
+        ]),
+        /requires --expected-classification=active_group_without_active_members/
+    );
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group',
+            '--expected-classification=active_group_without_active_members'
+        ]),
+        /requires --business-context=/
+    );
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group',
+            '--expected-classification=active_group_without_active_members',
+            '--business-context=event_genix',
+            '--allowlist=BK-EMPTY-PRIMARY',
+            '--apply',
+            `--confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`
+        ]),
+        /--confirm=CANCEL_EMPTY_STALE_BANQUET_GROUP/
+    );
+    assert.deepEqual(
+        parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group',
+            '--expected-classification=active_group_without_active_members',
+            '--business-context=event_genix',
+            '--allowlist=BK-EMPTY-PRIMARY',
+            '--apply',
+            `--confirm=${CANCEL_EMPTY_STALE_GROUP_CONFIRMATION}`
+        ]),
+        {
+            command: 'reconcile-group-state',
+            apply: true,
+            json: false,
+            businessContext: 'event_genix',
+            confirmation: CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+            groupId: 'BQ-EMPTY-1',
+            strategy: 'cancel-empty-stale-group',
+            expectedClassification: 'active_group_without_active_members',
+            allowlist: ['BK-EMPTY-PRIMARY']
+        }
+    );
 });
 
 test('recovery inspection requires one exact group and is idempotent for an existing activity membership', () => {
@@ -1077,6 +1134,34 @@ const reconcileOptions = {
     expectedClassification: 'active_group_cancelled_primary'
 };
 
+function emptyStaleGroupStateRow(overrides = {}) {
+    return staleGroupStateRow({
+        group_id: 'BQ-EMPTY-1',
+        primary_booking_id: 'BK-EMPTY-PRIMARY',
+        member_count: 1,
+        active_member_count: 0,
+        active_non_primary_member_count: 0,
+        cancelled_member_count: 1,
+        primary_membership_count: 1,
+        member_ids: ['BK-EMPTY-PRIMARY'],
+        non_primary_member_ids: [],
+        active_member_ids: [],
+        active_non_primary_member_ids: [],
+        cancelled_non_primary_member_ids: [],
+        ...overrides
+    });
+}
+
+const emptyReconcileOptions = {
+    command: 'reconcile-group-state',
+    apply: false,
+    json: false,
+    businessContext: 'event_genix',
+    groupId: 'BQ-EMPTY-1',
+    strategy: 'cancel-empty-stale-group',
+    expectedClassification: 'active_group_without_active_members'
+};
+
 test('group state reconciliation classifies stale active group with cancelled primary', () => {
     const ready = classifyReconcileGroupStateTarget(staleGroupStateRow(), reconcileOptions);
     assert.equal(ready.status, 'ready');
@@ -1134,6 +1219,130 @@ test('group state reconciliation classifies stale active group with cancelled pr
     );
     assert.equal(alreadyApplied.status, 'already_applied');
     assert.equal(alreadyApplied.reason, null);
+});
+
+test('empty stale group reconciliation requires zero active members and an exact full membership allowlist', () => {
+    const ready = classifyReconcileGroupStateTarget(emptyStaleGroupStateRow(), emptyReconcileOptions);
+    assert.equal(ready.status, 'ready');
+    assert.equal(ready.classification, 'active_group_without_active_members');
+    assert.deepEqual(ready.memberIds, ['BK-EMPTY-PRIMARY']);
+
+    const activeMemberBlocked = classifyReconcileGroupStateTarget(
+        emptyStaleGroupStateRow({
+            member_count: 2,
+            active_member_count: 1,
+            active_non_primary_member_count: 1,
+            member_ids: ['BK-EMPTY-KITCHEN', 'BK-EMPTY-PRIMARY'],
+            non_primary_member_ids: ['BK-EMPTY-KITCHEN'],
+            active_member_ids: ['BK-EMPTY-KITCHEN'],
+            active_non_primary_member_ids: ['BK-EMPTY-KITCHEN']
+        }),
+        emptyReconcileOptions
+    );
+    assert.equal(activeMemberBlocked.status, 'blocked');
+    assert.match(activeMemberBlocked.reason, /active_members_present/);
+
+    for (const [field, blocker] of [
+        ['active_deposit_count', 'active_deposit_rows_present'],
+        ['any_member_ticket_snapshot_count', 'ticket_ownership_conflict'],
+        ['priced_member_count', 'member_financial_fields_present'],
+        ['finance_transaction_count', 'finance_transaction_conflict']
+    ]) {
+        const blocked = classifyReconcileGroupStateTarget(
+            emptyStaleGroupStateRow({ [field]: 1 }),
+            emptyReconcileOptions
+        );
+        assert.equal(blocked.status, 'blocked');
+        assert.match(blocked.reason, new RegExp(blocker));
+    }
+
+    const primaryMembershipBlocked = classifyReconcileGroupStateTarget(
+        emptyStaleGroupStateRow({ primary_membership_count: 0 }),
+        emptyReconcileOptions
+    );
+    assert.match(primaryMembershipBlocked.reason, /primary_membership_mismatch/);
+
+    const missingBookingBlocked = classifyReconcileGroupStateTarget(
+        emptyStaleGroupStateRow({ member_count: 2 }),
+        emptyReconcileOptions
+    );
+    assert.match(missingBookingBlocked.reason, /membership_booking_mismatch/);
+
+    const allowlistMismatch = classifyReconcileGroupStateTarget(
+        emptyStaleGroupStateRow(),
+        { ...emptyReconcileOptions, allowlist: ['BK-OTHER'] }
+    );
+    assert.match(allowlistMismatch.reason, /allowlist_member_set_mismatch/);
+
+    const alreadyApplied = classifyReconcileGroupStateTarget(
+        emptyStaleGroupStateRow({ group_status: 'cancelled' }),
+        { ...emptyReconcileOptions, allowlist: ['BK-EMPTY-PRIMARY'] }
+    );
+    assert.equal(alreadyApplied.status, 'already_applied');
+});
+
+test('empty stale group apply changes only the group and verifies an idempotent after-state', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    let loadCalls = 0;
+    const report = await runReconcileGroupStateApply(db, {
+        ...emptyReconcileOptions,
+        apply: true,
+        confirmation: CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+        allowlist: ['BK-EMPTY-PRIMARY']
+    }, {
+        loadReconcileGroupStateTarget: async () => {
+            loadCalls += 1;
+            return emptyStaleGroupStateRow({ group_status: loadCalls === 1 ? 'active' : 'cancelled' });
+        },
+        persistReconcileGroupStateCancellation: async (_db, result) => ({
+            groupId: result.groupId,
+            primaryBookingId: result.primaryBookingId,
+            cancelledMemberBookingIds: [],
+            cancelledBookings: 0,
+            cancelledGroups: 1,
+            status: 'applied',
+            matchFingerprint: result.matchFingerprint
+        })
+    });
+
+    assert.equal(report.summary.applied, 1);
+    assert.equal(report.summary.cancelledBookings, 0);
+    assert.equal(report.summary.cancelledGroups, 1);
+    assert.equal(report.after.status, 'already_applied');
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT']);
+});
+
+test('empty stale group apply rolls back when post-verification does not observe cancellation', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+
+    await assert.rejects(
+        runReconcileGroupStateApply(db, {
+            ...emptyReconcileOptions,
+            apply: true,
+            confirmation: CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+            allowlist: ['BK-EMPTY-PRIMARY']
+        }, {
+            loadReconcileGroupStateTarget: async () => emptyStaleGroupStateRow(),
+            persistReconcileGroupStateCancellation: async () => ({
+                cancelledBookings: 0,
+                cancelledGroups: 1
+            })
+        }),
+        /Post-reconciliation verification failed/
+    );
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
 });
 
 test('group state reconciliation apply uses serializable transaction and rolls back blocked targets', async () => {

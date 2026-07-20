@@ -19,8 +19,23 @@ const {
 } = qaCancellationService;
 const QA_CLEANUP_CAPABILITY = 'timeline_browser_smoke_cleanup_v3_shared_finance_atomic';
 const RECONCILE_GROUP_STATE_CONFIRMATION = 'RECONCILE_STALE_BANQUET_GROUP';
-const RECONCILE_GROUP_STATE_STRATEGIES = Object.freeze(['cancel-stale-group']);
-const RECONCILE_GROUP_STATE_CLASSIFICATIONS = Object.freeze(['active_group_cancelled_primary']);
+const CANCEL_EMPTY_STALE_GROUP_CONFIRMATION = 'CANCEL_EMPTY_STALE_BANQUET_GROUP';
+const RECONCILE_GROUP_STATE_STRATEGY_CONFIG = Object.freeze({
+    'cancel-stale-group': Object.freeze({
+        expectedClassification: 'active_group_cancelled_primary',
+        confirmation: RECONCILE_GROUP_STATE_CONFIRMATION,
+        allowlistScope: 'active_non_primary_members'
+    }),
+    'cancel-empty-stale-group': Object.freeze({
+        expectedClassification: 'active_group_without_active_members',
+        confirmation: CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+        allowlistScope: 'all_members'
+    })
+});
+const RECONCILE_GROUP_STATE_STRATEGIES = Object.freeze(Object.keys(RECONCILE_GROUP_STATE_STRATEGY_CONFIG));
+const RECONCILE_GROUP_STATE_CLASSIFICATIONS = Object.freeze(
+    [...new Set(Object.values(RECONCILE_GROUP_STATE_STRATEGY_CONFIG).map(config => config.expectedClassification))]
+);
 const BANQUET_RELATION_TYPE = 'banquet_activity';
 const SAFE_QA_CLEANUP_BOOKING_IDS = Object.freeze(
     Array.from({ length: 7 }, (_, index) => `BK-2026-${String(662 + index).padStart(4, '0')}`)
@@ -286,6 +301,9 @@ function parseReconcileGroupStateOptions(argv = []) {
     const apply = argv.includes('--apply');
     const groupId = String(argValue(argv, '--group-id', argValue(argv, '--group', '')) || '').trim();
     const strategy = String(argValue(argv, '--strategy', '') || '').trim();
+    const businessContextValue = String(
+        argValue(argv, '--business-context', argValue(argv, '--context', '')) || ''
+    ).trim();
     const expectedClassification = String(
         argValue(argv, '--expected-classification', argValue(argv, '--classification', '')) || ''
     ).trim();
@@ -302,11 +320,21 @@ function parseReconcileGroupStateOptions(argv = []) {
             `Group state reconciliation requires --expected-classification=${RECONCILE_GROUP_STATE_CLASSIFICATIONS.join('|')}`
         );
     }
-    if (apply && confirmation !== RECONCILE_GROUP_STATE_CONFIRMATION) {
-        throw new Error(`Group state reconciliation apply requires --apply --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`);
+    const strategyConfig = RECONCILE_GROUP_STATE_STRATEGY_CONFIG[strategy];
+    if (strategy === 'cancel-empty-stale-group' && !businessContextValue) {
+        throw new Error('Empty group state reconciliation requires --business-context=<exact business context>');
+    }
+    if (expectedClassification !== strategyConfig.expectedClassification) {
+        throw new Error(
+            `Group state reconciliation strategy ${strategy} requires `
+            + `--expected-classification=${strategyConfig.expectedClassification}`
+        );
+    }
+    if (apply && confirmation !== strategyConfig.confirmation) {
+        throw new Error(`Group state reconciliation apply requires --apply --confirm=${strategyConfig.confirmation}`);
     }
     if (apply && !allowlistValue) {
-        throw new Error('Group state reconciliation apply requires --allowlist=<exact active non-primary booking ids>');
+        throw new Error('Group state reconciliation apply requires --allowlist=<exact expected member booking ids>');
     }
     if (!apply && confirmation) {
         throw new Error('Group state reconciliation dry-run does not accept --confirm');
@@ -315,9 +343,7 @@ function parseReconcileGroupStateOptions(argv = []) {
         command: 'reconcile-group-state',
         apply,
         json: argv.includes('--json'),
-        businessContext: normalizeBusinessContext(
-            argValue(argv, '--business-context', argValue(argv, '--context', DEFAULT_BUSINESS_CONTEXT))
-        ),
+        businessContext: normalizeBusinessContext(businessContextValue || DEFAULT_BUSINESS_CONTEXT),
         confirmation,
         groupId: cleanTechnicalId(groupId, 'banquet group id'),
         strategy,
@@ -879,9 +905,22 @@ async function loadReconcileGroupStateTarget(db, options, { forUpdate = false } 
                       )
                 )::integer AS ticket_snapshot_member_count,
                 COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE member_booking.id IS NOT NULL
+                      AND (
+                          COALESCE(member_booking.extra_data::text, '') ILIKE '%ticketLines%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticket_lines%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticketQuote%'
+                          OR COALESCE(member_booking.extra_data::text, '') ILIKE '%ticket_quote%'
+                      )
+                )::integer AS any_member_ticket_snapshot_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
                     WHERE ${activeSql('member_booking')}
                       AND COALESCE(member_booking.price, 0) > 0
                 )::integer AS priced_active_member_count,
+                COUNT(DISTINCT member_booking.id) FILTER (
+                    WHERE member_booking.id IS NOT NULL
+                      AND COALESCE(member_booking.price, 0) > 0
+                )::integer AS priced_member_count,
                 COUNT(DISTINCT finance.id) FILTER (WHERE finance.id IS NOT NULL)::integer AS finance_transaction_count
            FROM banquet_groups bg
            LEFT JOIN bookings primary_booking
@@ -926,6 +965,7 @@ function sameTechnicalIdSet(left = [], right = []) {
 
 function classifyReconcileGroupStateTarget(row = null, options = {}) {
     const allowlist = normalizedTechnicalArray(options.allowlist || []);
+    const strategyConfig = RECONCILE_GROUP_STATE_STRATEGY_CONFIG[options.strategy] || null;
     if (!row) {
         return {
             groupId: options.groupId,
@@ -945,10 +985,21 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
     }
     const groupStatus = String(row.group_status || '').trim().toLowerCase();
     const primaryStatus = String(row.primary_status || '').trim().toLowerCase();
+    const memberCount = Number(row.member_count || 0);
+    const activeMemberCount = Number(row.active_member_count || 0);
     const activeNonPrimaryMemberCount = Number(row.active_non_primary_member_count || 0);
+    const isEmptyGroupStrategy = options.strategy === 'cancel-empty-stale-group';
     const activeDepositCount = Number(row.active_deposit_count || 0);
-    const ticketSnapshotMemberCount = Number(row.ticket_snapshot_member_count || 0);
-    const pricedActiveMemberCount = Number(row.priced_active_member_count || 0);
+    const ticketSnapshotMemberCount = Number(
+        isEmptyGroupStrategy
+            ? (row.any_member_ticket_snapshot_count || 0)
+            : (row.ticket_snapshot_member_count || 0)
+    );
+    const pricedActiveMemberCount = Number(
+        isEmptyGroupStrategy
+            ? (row.priced_member_count || 0)
+            : (row.priced_active_member_count || 0)
+    );
     const financeTransactionCount = Number(row.finance_transaction_count || 0);
     const memberIds = normalizedTechnicalArray(row.member_ids);
     const nonPrimaryMemberIds = normalizedTechnicalArray(row.non_primary_member_ids);
@@ -957,27 +1008,47 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
     const cancelledNonPrimaryMemberIds = normalizedTechnicalArray(row.cancelled_non_primary_member_ids);
     const alreadyApplied = groupStatus === 'cancelled'
         && primaryStatus === 'cancelled'
-        && activeNonPrimaryMemberCount === 0;
-    const classification = (alreadyApplied || (
+        && (isEmptyGroupStrategy ? activeMemberCount === 0 : activeNonPrimaryMemberCount === 0);
+    let classification = 'unsupported_group_state';
+    if (isEmptyGroupStrategy) {
+        if (alreadyApplied || (
+            groupStatus === 'active'
+            && primaryStatus === 'cancelled'
+            && activeMemberCount === 0
+        )) {
+            classification = 'active_group_without_active_members';
+        }
+    } else if (alreadyApplied || (
         groupStatus === 'active'
         && primaryStatus === 'cancelled'
         && activeNonPrimaryMemberCount > 0
-    ))
-        ? 'active_group_cancelled_primary'
-        : 'unsupported_group_state';
+    )) {
+        classification = 'active_group_cancelled_primary';
+    }
     const blockers = [];
+    if (!strategyConfig) blockers.push('unsupported_strategy');
     if (classification !== options.expectedClassification) blockers.push('expected_classification_mismatch');
     if (!alreadyApplied) {
         if (groupStatus !== 'active') blockers.push('group_not_active');
-        if (activeNonPrimaryMemberCount <= 0) blockers.push('no_active_non_primary_members');
+        if (isEmptyGroupStrategy) {
+            if (activeMemberCount > 0) blockers.push('active_members_present');
+        } else if (activeNonPrimaryMemberCount <= 0) {
+            blockers.push('no_active_non_primary_members');
+        }
     }
     if (primaryStatus !== 'cancelled') blockers.push('primary_not_cancelled');
+    if (isEmptyGroupStrategy) {
+        if (Number(row.primary_membership_count || 0) !== 1) blockers.push('primary_membership_mismatch');
+        if (memberCount !== memberIds.length) blockers.push('membership_booking_mismatch');
+    }
     if (activeDepositCount > 0) blockers.push('active_deposit_rows_present');
     if (ticketSnapshotMemberCount > 0) blockers.push('ticket_ownership_conflict');
     if (pricedActiveMemberCount > 0) blockers.push('member_financial_fields_present');
     if (financeTransactionCount > 0) blockers.push('finance_transaction_conflict');
     if (allowlist.length) {
-        const expectedMembers = alreadyApplied ? nonPrimaryMemberIds : activeNonPrimaryMemberIds;
+        const expectedMembers = strategyConfig?.allowlistScope === 'all_members'
+            ? memberIds
+            : (alreadyApplied ? nonPrimaryMemberIds : activeNonPrimaryMemberIds);
         if (!sameTechnicalIdSet(allowlist, expectedMembers)) blockers.push('allowlist_member_set_mismatch');
     }
     const uniqueBlockers = [...new Set(blockers)];
@@ -995,8 +1066,8 @@ function classifyReconcileGroupStateTarget(row = null, options = {}) {
         blockers: uniqueBlockers,
         groupStatus,
         primaryStatus,
-        memberCount: Number(row.member_count || 0),
-        activeMemberCount: Number(row.active_member_count || 0),
+        memberCount,
+        activeMemberCount,
         activeNonPrimaryMemberCount,
         cancelledMemberCount: Number(row.cancelled_member_count || 0),
         primaryMembershipCount: Number(row.primary_membership_count || 0),
@@ -1050,32 +1121,39 @@ async function runReconcileGroupStateDryRun(db, options, dependencies = {}) {
 }
 
 async function persistReconcileGroupStateCancellation(db, result, options) {
-    if (options.strategy !== 'cancel-stale-group') {
+    if (!RECONCILE_GROUP_STATE_STRATEGY_CONFIG[options.strategy]) {
         throw new Error(`Unsupported group state reconciliation strategy: ${options.strategy || '-'}`);
     }
     if (result.status !== 'ready') {
         throw new Error(`Group state reconciliation target is not ready: ${result.groupId}:${result.reason || result.status}`);
     }
-    if (!sameTechnicalIdSet(options.allowlist, result.activeNonPrimaryMemberIds)) {
+    const isEmptyGroupStrategy = options.strategy === 'cancel-empty-stale-group';
+    const expectedAllowlist = isEmptyGroupStrategy ? result.memberIds : result.activeNonPrimaryMemberIds;
+    if (!sameTechnicalIdSet(options.allowlist, expectedAllowlist)) {
         throw new Error(`Group state reconciliation allowlist changed for ${result.groupId}`);
     }
     const memberIds = normalizedTechnicalArray(result.activeNonPrimaryMemberIds);
-    if (!memberIds.length) {
+    if (!isEmptyGroupStrategy && !memberIds.length) {
         throw new Error(`Group state reconciliation has no active non-primary members: ${result.groupId}`);
     }
-    const cancelledBookings = await db.query(
-        `UPDATE bookings
-            SET status = 'cancelled',
-                updated_at = NOW()
-          WHERE id = ANY($1::text[])
-            AND ${contextSql('bookings', '$2')}
-            AND ${activeSql('bookings')}
-          RETURNING id`,
-        [memberIds, options.businessContext]
-    );
-    const cancelledBookingIds = normalizedTechnicalArray((cancelledBookings.rows || []).map(row => row.id));
-    if (!sameTechnicalIdSet(cancelledBookingIds, memberIds)) {
-        throw new Error(`Group state reconciliation cancelled ${cancelledBookingIds.length} of ${memberIds.length} allowlisted members`);
+    if (isEmptyGroupStrategy && result.activeMemberCount !== 0) {
+        throw new Error(`Empty group state reconciliation found active members: ${result.groupId}`);
+    }
+    if (!isEmptyGroupStrategy) {
+        const cancelledBookings = await db.query(
+            `UPDATE bookings
+                SET status = 'cancelled',
+                    updated_at = NOW()
+              WHERE id = ANY($1::text[])
+                AND ${contextSql('bookings', '$2')}
+                AND ${activeSql('bookings')}
+              RETURNING id`,
+            [memberIds, options.businessContext]
+        );
+        const cancelledBookingIds = normalizedTechnicalArray((cancelledBookings.rows || []).map(row => row.id));
+        if (!sameTechnicalIdSet(cancelledBookingIds, memberIds)) {
+            throw new Error(`Group state reconciliation cancelled ${cancelledBookingIds.length} of ${memberIds.length} allowlisted members`);
+        }
     }
 
     const cancelledGroup = await db.query(
@@ -1098,12 +1176,15 @@ async function persistReconcileGroupStateCancellation(db, result, options) {
          VALUES ($1, $2, $3, $4::jsonb)`,
         [
             options.businessContext,
-            'banquet_group_state_reconciled_cancel_stale_group',
+            isEmptyGroupStrategy
+                ? 'banquet_group_state_reconciled_cancel_empty_stale_group'
+                : 'banquet_group_state_reconciled_cancel_stale_group',
             RECOVERY_ACTOR,
             JSON.stringify({
                 group_id: result.groupId,
                 primary_booking_id: result.primaryBookingId,
                 cancelled_member_booking_ids: memberIds,
+                expected_member_booking_ids: isEmptyGroupStrategy ? result.memberIds : undefined,
                 strategy: options.strategy,
                 expected_classification: options.expectedClassification,
                 match_fingerprint: result.matchFingerprint,
@@ -1123,14 +1204,18 @@ async function persistReconcileGroupStateCancellation(db, result, options) {
 }
 
 async function runReconcileGroupStateApply(db, options, dependencies = {}) {
-    if (!options.apply || options.confirmation !== RECONCILE_GROUP_STATE_CONFIRMATION) {
-        throw new Error(`Group state reconciliation apply requires --apply --confirm=${RECONCILE_GROUP_STATE_CONFIRMATION}`);
-    }
-    if (options.strategy !== 'cancel-stale-group') {
+    const strategyConfig = RECONCILE_GROUP_STATE_STRATEGY_CONFIG[options.strategy];
+    if (!strategyConfig) {
         throw new Error(`Unsupported group state reconciliation strategy: ${options.strategy || '-'}`);
     }
-    if (options.expectedClassification !== 'active_group_cancelled_primary') {
-        throw new Error('Group state reconciliation apply requires --expected-classification=active_group_cancelled_primary');
+    if (!options.apply || options.confirmation !== strategyConfig.confirmation) {
+        throw new Error(`Group state reconciliation apply requires --apply --confirm=${strategyConfig.confirmation}`);
+    }
+    if (options.expectedClassification !== strategyConfig.expectedClassification) {
+        throw new Error(
+            `Group state reconciliation apply requires `
+            + `--expected-classification=${strategyConfig.expectedClassification}`
+        );
     }
     const allowlist = normalizedTechnicalArray(options.allowlist || []);
     if (!allowlist.length) throw new Error('Group state reconciliation apply requires a non-empty exact allowlist');
@@ -2359,7 +2444,7 @@ function printReconcileGroupStateReport(report) {
         `context=${report.businessContext} strategy=${report.strategy} `
         + `expected=${report.expectedClassification} group=${report.groupId}`
     );
-    const item = report.result || {};
+    const item = report.result || report.after || report.before || {};
     console.log(
         `status=${item.status || '-'} classification=${item.classification || '-'} `
         + `reason=${item.reason || '-'} primary=${item.primaryBookingId || '-'}`
@@ -2377,7 +2462,10 @@ function printReconcileGroupStateReport(report) {
     if (Array.isArray(item.activeNonPrimaryMemberIds) && item.activeNonPrimaryMemberIds.length) {
         console.log(`activeNonPrimaryMemberIds=${item.activeNonPrimaryMemberIds.join(',')}`);
     }
-    console.log(report.readOnly ? 'dry-run only: no bookings or groups were changed.' : 'apply completed: only allowlisted active non-primary members and the group were cancelled.');
+    const applyDescription = report.strategy === 'cancel-empty-stale-group'
+        ? 'apply completed: only the empty stale group was cancelled; bookings were unchanged.'
+        : 'apply completed: only allowlisted active non-primary members and the group were cancelled.';
+    console.log(report.readOnly ? 'dry-run only: no bookings or groups were changed.' : applyDescription);
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -2441,6 +2529,7 @@ module.exports = {
     QA_CLEANUP_CONFIRMATION,
     QA_CLEANUP_CAPABILITY,
     RECONCILE_GROUP_STATE_CONFIRMATION,
+    CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
     RECOVERY_ACTOR,
     QA_CLEANUP_ACTOR,
     QA_CLEANUP_SOURCE,

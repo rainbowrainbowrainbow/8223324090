@@ -296,16 +296,17 @@ cancel production records from this audit.
 
 ## Stale Group Reconciliation Dry-Run
 
-Use this only for the specific integrity class:
+Use reconciliation only for one of these exact integrity classes:
 
 ```text
 active group + cancelled primary booking + active non-primary members
+active group + cancelled primary booking + zero active members
 ```
 
-The only supported strategy is `cancel-stale-group`. It is not a restore path.
-Do not directly restore a cancelled primary booking. If the business decision is
-to keep the banquet, create a replacement through the canonical booking-set
-workflow instead of using this strategy.
+The corresponding strategies are `cancel-stale-group` and
+`cancel-empty-stale-group`. Neither is a restore path. Do not directly restore a
+cancelled primary booking. If the business decision is to keep the banquet,
+create a replacement through the canonical booking-set workflow instead.
 
 Read-only dry-run:
 
@@ -313,12 +314,18 @@ Read-only dry-run:
 node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_cancelled_primary --strategy=cancel-stale-group --json
 ```
 
+Empty stale group dry-run:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_without_active_members --strategy=cancel-empty-stale-group --json
+```
+
 The dry-run requires exact group scope and returns technical state only:
 
 - current group status;
 - primary booking status;
 - active/cancelled member counts;
-- active non-primary member IDs;
+- active non-primary and complete membership booking IDs;
 - active deposit count;
 - ticket ownership conflict count;
 - active priced-member conflict count.
@@ -329,10 +336,16 @@ active non-primary members, an active canonical deposit exists, ticket snapshot
 ownership exists, active members carry priced financial fields, or related
 finance transactions already exist for the primary/member bookings.
 
+`cancel-empty-stale-group` additionally requires zero active members, exactly one
+canonical primary membership, and no membership that points to a missing or
+cross-context booking. Ticket snapshots and priced financial fields on any
+historical member block the empty-group strategy. This is intentionally stricter
+than checking only active members.
+
 ## Stale Group Reconciliation Guarded Apply
 
 Apply exists only for the explicit business decision `CANCEL GROUP` and only for
-strategy `cancel-stale-group`. It must not be used to keep or restore a banquet.
+the two strategies above. It must not be used to keep or restore a banquet.
 If the decision is `KEEP BOOKING`, do not run this command; create a replacement
 through the canonical manager booking-set workflow.
 
@@ -343,7 +356,7 @@ approval must include:
 - exact command;
 - dry-run summary;
 - rollback/compensation plan;
-- confirmation token `RECONCILE_STALE_BANQUET_GROUP`.
+- confirmation token `RECONCILE_STALE_BANQUET_GROUP` for `cancel-stale-group`.
 
 Guarded apply command shape:
 
@@ -354,26 +367,44 @@ node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_
 The `--allowlist` must exactly match the active non-primary member IDs from the
 fresh dry-run. If the member set changed, apply blocks before mutation.
 
+For an empty stale group, production approval must instead name confirmation
+token `CANCEL_EMPTY_STALE_BANQUET_GROUP`. The operator-side allowlist must contain
+the complete current membership booking ID set from the fresh dry-run, including
+the cancelled primary booking. Raw IDs remain in the bounded operator command and
+must not be copied into chat or the repository:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_without_active_members --strategy=cancel-empty-stale-group --allowlist=EXACT_MEMBER_BOOKING_ID[,MORE_IDS] --apply --confirm=CANCEL_EMPTY_STALE_BANQUET_GROUP --json
+```
+
+For `cancel-empty-stale-group`, apply changes only the active banquet group to
+`cancelled`. It does not update any booking status. A changed membership set,
+active member, active deposit, ticket snapshot, priced member, finance
+transaction, missing canonical primary membership, or business-context mismatch
+blocks the transaction.
+
 Apply guards:
 
 - exact group ID and exact business context are required;
-- only `expected-classification=active_group_cancelled_primary` is accepted;
-- only `strategy=cancel-stale-group` is accepted;
+- the expected classification must match the selected strategy exactly;
+- each strategy requires its dedicated confirmation token;
 - active deposits block apply;
 - ticket ownership snapshots block apply;
 - priced active members block apply;
 - finance transactions on the primary or member bookings block apply;
 - group/member/booking/deposit/finance state is locked and revalidated inside a
   serializable transaction;
-- only allowlisted active non-primary member bookings are cancelled;
-- the group is cancelled after member cancellation;
+- `cancel-stale-group` cancels only allowlisted active non-primary members before
+  cancelling the group;
+- `cancel-empty-stale-group` cancels only the group and leaves bookings unchanged;
 - customer rows, primary booking, deposits, history, memberships, and links are
   not physically deleted;
 - technical history is written only after the booking/group updates succeed;
-- post-apply verification requires group `cancelled` and active non-primary
-  members `0`;
+- post-apply verification requires group `cancelled` and the strategy-specific
+  active member count `0`;
 - repeated apply is idempotent and reports `already_applied` when the group is
-  already cancelled and the allowlist still matches the non-primary members.
+  already cancelled and the allowlist still matches the strategy-specific member
+  set.
 
 After apply, run verification in this order:
 

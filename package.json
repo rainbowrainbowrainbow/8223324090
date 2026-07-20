@@ -109,6 +109,7 @@
     "release:gate": "node scripts/release-gate.js",
     "release:staff-schedule:verify": "node scripts/staff-schedule-release-verify.js",
     "smoke:live": "node scripts/live-smoke.js",
+    "smoke:hr-structure": "npx --yes --package playwright node tests/browser/live-hr-structure-smoke.js",
     "smoke:lead-kanban": "node scripts/live-lead-kanban-smoke.js",
     "smoke:lead-conversion": "npx --yes --package playwright node scripts/live-lead-conversion-smoke.js",
     "smoke:booking-customer-context": "npx --yes --package playwright node scripts/live-booking-customer-context-smoke.js",

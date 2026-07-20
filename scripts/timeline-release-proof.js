@@ -8,6 +8,7 @@
  */
 
 const pkg = require('../package.json');
+const { assertDeploymentMetadata } = require('./live-version-smoke');
 
 const TIMELINE_CONTEXTS = [
     { key: 'event_genix', path: '/', label: 'Event Genix timeline' },
@@ -115,7 +116,7 @@ function staleVersionMatches(text, expectedVersion, label) {
     }
 }
 
-async function proveApiVersion(base, release) {
+async function proveApiVersion(base, release, options = {}) {
     const { text } = await fetchText(`${base}/api/version`, 'application/json');
     let json;
     try {
@@ -129,6 +130,10 @@ async function proveApiVersion(base, release) {
     if (release.releaseLabel && json.releaseLabel !== release.releaseLabel) {
         throw new Error(`/api/version releaseLabel is "${json.releaseLabel}", expected "${release.releaseLabel}"`);
     }
+    assertDeploymentMetadata(json, {
+        expectedBranch: options.deployBranch,
+        expectedCommit: options.expectedCommit
+    });
     return json;
 }
 
@@ -177,7 +182,10 @@ async function runTimelineReleaseProof(target, options = {}) {
     const release = expectedRelease(options);
     const base = normalizeBase(target);
     const deployBranch = options.deployBranch || configuredDeployBranch();
-    const apiVersion = await proveApiVersion(base, release);
+    const apiVersion = await proveApiVersion(base, release, {
+        deployBranch,
+        expectedCommit: options.expectedCommit || process.env.RELEASE_DEPLOY_COMMIT || process.env.VERSION_SMOKE_EXPECT_COMMIT || null
+    });
     const contexts = [];
     for (const context of TIMELINE_CONTEXTS) {
         contexts.push(await proveContextHtml(base, context, release));

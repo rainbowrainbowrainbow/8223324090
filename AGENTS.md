@@ -114,6 +114,7 @@ Preferred workflow for normal product work:
 - Last verified Railway production source branch (2026-07-20): `codex/production`.
 - Production deployment policy (2026-07-20): Railway GitHub auto-deploy is disabled for the production app service. Production deploy must be promoted manually only after the required GitHub CI checks are green for the exact release SHA.
 - Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
+- Manual Railway deploys must expose deploy evidence through `/api/version`: either valid Railway `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` metadata or explicit runtime `RELEASE_DEPLOY_COMMIT=<exact-sha>` and `RELEASE_DEPLOY_BRANCH=<branch>`. `npm run version:smoke` and `npm run release:timeline-proof` are expected to fail if production commit/branch metadata is unavailable.
 - Historical docs mention `codex/timeline-leads-hardening` and `deployed`; neither is the active deploy source unless the user explicitly says Railway was reconfigured.
 - Never upload files through the GitHub UI.
 - If the current user task explicitly asks for deploy, use the active workflow and do not ask for a second deploy confirmation.
@@ -132,7 +133,7 @@ Preferred workflow for normal product work:
   - run `node scripts/version-sync.js` to check current state;
   - use `npm run version:sync` only when you intend to update generated version references;
   - use `npm run version:bump -- patch --label "Release Label"` for the canonical patch-release flow when starting a release bump;
-  - after deploy, use `npm run version:smoke -- https://<live-crm-host>` to verify live `/api/version` and login HTML match `package.json`;
+  - after deploy, use `npm run version:smoke -- https://<live-crm-host>` to verify live `/api/version`, deployment commit/branch metadata, and login HTML match `package.json`;
   - add/update the `index.html` changelog modal entry;
   - update `CHANGELOG.md` if the change is release-relevant.
 - User-facing release notes must be written in Ukrainian.

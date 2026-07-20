@@ -4237,9 +4237,13 @@ describe('route-level API safety smoke', () => {
     it('keeps version, light health, readiness, and deep health public through the actual settings router', async () => {
         const previousCommitSha = process.env.RAILWAY_GIT_COMMIT_SHA;
         const previousSourceBranch = process.env.RAILWAY_GIT_BRANCH;
+        const previousReleaseCommit = process.env.RELEASE_DEPLOY_COMMIT;
+        const previousReleaseBranch = process.env.RELEASE_DEPLOY_BRANCH;
         try {
             delete process.env.RAILWAY_GIT_COMMIT_SHA;
             delete process.env.RAILWAY_GIT_BRANCH;
+            delete process.env.RELEASE_DEPLOY_COMMIT;
+            delete process.env.RELEASE_DEPLOY_BRANCH;
             const version = await request('GET', '/api/version');
             assert.equal(version.status, 200, JSON.stringify(version.data));
             assert.equal(version.data.success, true);
@@ -4248,6 +4252,8 @@ describe('route-level API safety smoke', () => {
             assert.equal(version.data.name, 'Event Genix');
             assert.equal(version.data.commitSha, null);
             assert.equal(version.data.sourceBranch, null);
+            assert.equal(version.data.deploymentMetadata.status, 'unavailable');
+            assert.equal(version.data.deploymentMetadata.complete, false);
 
             process.env.RAILWAY_GIT_COMMIT_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
             process.env.RAILWAY_GIT_BRANCH = 'codex/production';
@@ -4255,11 +4261,17 @@ describe('route-level API safety smoke', () => {
             assert.equal(deployedVersion.status, 200, JSON.stringify(deployedVersion.data));
             assert.equal(deployedVersion.data.commitSha, process.env.RAILWAY_GIT_COMMIT_SHA);
             assert.equal(deployedVersion.data.sourceBranch, process.env.RAILWAY_GIT_BRANCH);
+            assert.equal(deployedVersion.data.deploymentMetadata.status, 'railway');
+            assert.equal(deployedVersion.data.deploymentMetadata.complete, true);
         } finally {
             if (previousCommitSha === undefined) delete process.env.RAILWAY_GIT_COMMIT_SHA;
             else process.env.RAILWAY_GIT_COMMIT_SHA = previousCommitSha;
             if (previousSourceBranch === undefined) delete process.env.RAILWAY_GIT_BRANCH;
             else process.env.RAILWAY_GIT_BRANCH = previousSourceBranch;
+            if (previousReleaseCommit === undefined) delete process.env.RELEASE_DEPLOY_COMMIT;
+            else process.env.RELEASE_DEPLOY_COMMIT = previousReleaseCommit;
+            if (previousReleaseBranch === undefined) delete process.env.RELEASE_DEPLOY_BRANCH;
+            else process.env.RELEASE_DEPLOY_BRANCH = previousReleaseBranch;
         }
 
         const health = await request('GET', '/api/health');

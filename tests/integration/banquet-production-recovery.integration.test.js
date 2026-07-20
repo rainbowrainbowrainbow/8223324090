@@ -17,6 +17,7 @@ const {
     QA_CLEANUP_CONFIRMATION,
     RECONCILE_GROUP_STATE_CONFIRMATION,
     CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+    CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
     persistDetachPair,
     runAudit,
     runDetachApply,
@@ -37,6 +38,8 @@ const BUSINESS_CONTEXT = 'event_genix';
 const RELATION_TYPE = 'banquet_activity';
 const RECONCILE_HISTORY_ACTION = 'banquet_group_state_reconciled_cancel_stale_group';
 const EMPTY_RECONCILE_HISTORY_ACTION = 'banquet_group_state_reconciled_cancel_empty_stale_group';
+const PRICED_EMPTY_RECONCILE_HISTORY_ACTION =
+    'banquet_group_state_reconciled_cancel_empty_quoted_primary';
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION=true');
@@ -371,6 +374,19 @@ async function seedEmptyActiveGroupWithCancelledPrimary(pool, suffix) {
             AND business_context = $2
             AND booking_id = $3`,
         [target.groupId, BUSINESS_CONTEXT, target.kitchenId]
+    );
+    return target;
+}
+
+async function seedPricedEmptyActiveGroupWithCancelledPrimary(pool, suffix) {
+    const target = await seedEmptyActiveGroupWithCancelledPrimary(pool, suffix);
+    await pool.query(
+        `UPDATE bookings
+            SET price = 350,
+                updated_at = NOW()
+          WHERE id = $1
+            AND business_context = $2`,
+        [target.primaryId, BUSINESS_CONTEXT]
     );
     return target;
 }
@@ -920,6 +936,273 @@ describe('banquet production recovery on isolated PostgreSQL', {
             target,
             [],
             EMPTY_RECONCILE_HISTORY_ACTION
+        );
+        assert.equal(state.group_status, 'active');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.history_count, 0);
+    });
+
+    test('dry-runs quoted-primary empty stale group only when the sole member is the priced cancelled primary', async () => {
+        const target = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_dry_run`
+        );
+        const report = await withClient(pool, client => runReconcileGroupStateDryRun(client, {
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-empty-stale-group-with-quoted-primary',
+            expectedClassification: 'active_group_without_active_members'
+        }));
+
+        assert.equal(report.readOnly, true);
+        assert.equal(report.result.status, 'ready');
+        assert.equal(report.result.activeMemberCount, 0);
+        assert.equal(report.result.activeDepositCount, 0);
+        assert.equal(report.result.ticketSnapshotMemberCount, 0);
+        assert.equal(report.result.financeTransactionCount, 0);
+        assert.equal(report.result.pricedActiveMemberCount, 1);
+        assert.deepEqual(report.result.memberIds, [target.primaryId]);
+        assert.deepEqual(report.result.pricedMemberIds, [target.primaryId]);
+
+        const state = await readReconcileApplyState(
+            pool,
+            target,
+            [],
+            PRICED_EMPTY_RECONCILE_HISTORY_ACTION
+        );
+        assert.equal(state.group_status, 'active');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[target.kitchenId], 'cancelled');
+        assert.equal(state.history_count, 0);
+    });
+
+    test('guarded quoted-primary empty stale group apply changes only the group and reruns idempotently', async () => {
+        const target = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_apply`
+        );
+        const options = {
+            apply: true,
+            confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-empty-stale-group-with-quoted-primary',
+            expectedClassification: 'active_group_without_active_members',
+            allowlist: [target.primaryId]
+        };
+
+        const apply = await withClient(pool, client => runReconcileGroupStateApply(client, options));
+        assert.equal(apply.summary.applied, 1);
+        assert.equal(apply.summary.cancelledBookings, 0);
+        assert.equal(apply.summary.cancelledGroups, 1);
+        assert.equal(apply.after.status, 'already_applied');
+
+        const state = await readReconcileApplyState(
+            pool,
+            target,
+            [],
+            PRICED_EMPTY_RECONCILE_HISTORY_ACTION
+        );
+        assert.equal(state.group_status, 'cancelled');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[target.kitchenId], 'cancelled');
+        assert.equal(state.active_non_primary_members, 0);
+        assert.equal(state.history_count, 1);
+
+        const rerun = await withClient(pool, client => runReconcileGroupStateApply(client, options));
+        assert.equal(rerun.summary.applied, 0);
+        assert.equal(rerun.summary.alreadyApplied, 1);
+
+        const afterRerun = await readReconcileApplyState(
+            pool,
+            target,
+            [],
+            PRICED_EMPTY_RECONCILE_HISTORY_ACTION
+        );
+        assert.equal(afterRerun.history_count, 1);
+    });
+
+    test('quoted-primary empty stale group dry-run blocks missing quote and all ownership conflicts', async () => {
+        const optionsFor = target => ({
+            businessContext: BUSINESS_CONTEXT,
+            groupId: target.groupId,
+            strategy: 'cancel-empty-stale-group-with-quoted-primary',
+            expectedClassification: 'active_group_without_active_members'
+        });
+
+        const noPriceTarget = await seedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_missing_quote`
+        );
+        const noPrice = await withClient(
+            pool,
+            client => runReconcileGroupStateDryRun(client, optionsFor(noPriceTarget))
+        );
+        assert.match(noPrice.result.reason, /quoted_primary_price_missing/);
+
+        const depositTarget = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_deposit`
+        );
+        await insertBanquetDeposit(pool, depositTarget);
+        const deposit = await withClient(
+            pool,
+            client => runReconcileGroupStateDryRun(client, optionsFor(depositTarget))
+        );
+        assert.match(deposit.result.reason, /active_deposit_rows_present/);
+
+        const ticketTarget = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_ticket`
+        );
+        await pool.query(
+            `UPDATE bookings
+                SET extra_data = $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1`,
+            [ticketTarget.primaryId, JSON.stringify({ ticketLines: [{ id: 'fixture-ticket' }] })]
+        );
+        const ticket = await withClient(
+            pool,
+            client => runReconcileGroupStateDryRun(client, optionsFor(ticketTarget))
+        );
+        assert.match(ticket.result.reason, /ticket_ownership_conflict/);
+
+        const financeTarget = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_finance`
+        );
+        await pool.query(
+            `INSERT INTO finance_transactions
+                (business_context, type, amount, description, date, booking_id, created_by)
+             VALUES ($1, 'income', 350, 'Quoted primary blocker fixture', '2099-08-20', $2,
+                     'banquet-recovery-integration')`,
+            [BUSINESS_CONTEXT, financeTarget.primaryId]
+        );
+        const finance = await withClient(
+            pool,
+            client => runReconcileGroupStateDryRun(client, optionsFor(financeTarget))
+        );
+        assert.match(finance.result.reason, /finance_transaction_conflict/);
+
+        const activeTarget = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_active`
+        );
+        await pool.query(
+            `UPDATE bookings SET status = 'confirmed', updated_at = NOW() WHERE id = $1`,
+            [activeTarget.kitchenId]
+        );
+        await pool.query(
+            `INSERT INTO banquet_group_bookings
+                (group_id, business_context, booking_id, role, sort_order, created_by)
+             VALUES ($1, $2, $3, 'kitchen', 20, 'banquet-recovery-integration')`,
+            [activeTarget.groupId, BUSINESS_CONTEXT, activeTarget.kitchenId]
+        );
+        const active = await withClient(
+            pool,
+            client => runReconcileGroupStateDryRun(client, optionsFor(activeTarget))
+        );
+        assert.match(active.result.reason, /active_members_present/);
+    });
+
+    test('quoted-primary empty stale group apply blocks membership drift without writes', async () => {
+        const target = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_member_drift`
+        );
+        const extraId = compactId('bpr-priced-empty-extra', `${suffix}_priced_empty_member_drift`);
+        await insertBooking(pool, extraId, {
+            customerId: target.customerId,
+            lineId: 'banquet-service-extra',
+            programId: null,
+            programCode: 'SERVICE',
+            label: 'Quoted primary extra cancelled member',
+            programName: 'Quoted primary extra cancelled member',
+            category: 'banquet',
+            status: 'cancelled'
+        });
+        await pool.query(
+            `INSERT INTO banquet_group_bookings
+                (group_id, business_context, booking_id, role, sort_order, created_by)
+             VALUES ($1, $2, $3, 'service', 30, 'banquet-recovery-integration')`,
+            [target.groupId, BUSINESS_CONTEXT, extraId]
+        );
+
+        await assert.rejects(
+            withClient(pool, client => runReconcileGroupStateApply(client, {
+                apply: true,
+                confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+                businessContext: BUSINESS_CONTEXT,
+                groupId: target.groupId,
+                strategy: 'cancel-empty-stale-group-with-quoted-primary',
+                expectedClassification: 'active_group_without_active_members',
+                allowlist: [target.primaryId]
+            })),
+            /quoted_primary_member_scope_mismatch|allowlist_member_set_mismatch/
+        );
+
+        const state = await readReconcileApplyState(
+            pool,
+            target,
+            [extraId],
+            PRICED_EMPTY_RECONCILE_HISTORY_ACTION
+        );
+        assert.equal(state.group_status, 'active');
+        assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+        assert.equal(state.booking_statuses[extraId], 'cancelled');
+        assert.equal(state.history_count, 0);
+    });
+
+    test('quoted-primary empty stale group apply rolls back when history insert fails', async () => {
+        const target = await seedPricedEmptyActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_priced_empty_history_rollback`
+        );
+        await pool.query(`DROP TRIGGER IF EXISTS bpr_fail_priced_empty_history_insert ON history`);
+        await pool.query(`DROP FUNCTION IF EXISTS bpr_fail_priced_empty_history_insert()`);
+        await pool.query(`
+            CREATE FUNCTION bpr_fail_priced_empty_history_insert()
+            RETURNS trigger
+            LANGUAGE plpgsql
+            AS $$
+            BEGIN
+                IF NEW.action = '${PRICED_EMPTY_RECONCILE_HISTORY_ACTION}' THEN
+                    RAISE EXCEPTION 'forced quoted-primary history insert failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$
+        `);
+        await pool.query(`
+            CREATE TRIGGER bpr_fail_priced_empty_history_insert
+            BEFORE INSERT ON history
+            FOR EACH ROW
+            EXECUTE FUNCTION bpr_fail_priced_empty_history_insert()
+        `);
+        try {
+            await assert.rejects(
+                withClient(pool, client => runReconcileGroupStateApply(client, {
+                    apply: true,
+                    confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+                    businessContext: BUSINESS_CONTEXT,
+                    groupId: target.groupId,
+                    strategy: 'cancel-empty-stale-group-with-quoted-primary',
+                    expectedClassification: 'active_group_without_active_members',
+                    allowlist: [target.primaryId]
+                })),
+                /forced quoted-primary history insert failure/
+            );
+        } finally {
+            await pool.query(`DROP TRIGGER IF EXISTS bpr_fail_priced_empty_history_insert ON history`);
+            await pool.query(`DROP FUNCTION IF EXISTS bpr_fail_priced_empty_history_insert()`);
+        }
+
+        const state = await readReconcileApplyState(
+            pool,
+            target,
+            [],
+            PRICED_EMPTY_RECONCILE_HISTORY_ACTION
         );
         assert.equal(state.group_status, 'active');
         assert.equal(state.booking_statuses[target.primaryId], 'cancelled');

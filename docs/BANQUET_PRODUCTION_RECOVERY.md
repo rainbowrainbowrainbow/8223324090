@@ -340,10 +340,14 @@ active group + cancelled primary booking + active non-primary members
 active group + cancelled primary booking + zero active members
 ```
 
-The corresponding strategies are `cancel-stale-group` and
-`cancel-empty-stale-group`. Neither is a restore path. Do not directly restore a
-cancelled primary booking. If the business decision is to keep the banquet,
-create a replacement through the canonical booking-set workflow instead.
+The general strategies are `cancel-stale-group` and
+`cancel-empty-stale-group`. A third, deliberately narrow strategy,
+`cancel-empty-stale-group-with-quoted-primary`, exists only for an empty stale
+group whose single cancelled primary membership still carries a quoted price but
+has no deposit, ticket ownership, or finance transaction. None of these
+strategies is a restore path. Do not directly restore a cancelled primary
+booking. If the business decision is to keep the banquet, create a replacement
+through the canonical booking-set workflow instead.
 
 Read-only dry-run:
 
@@ -355,6 +359,12 @@ Empty stale group dry-run:
 
 ```powershell
 node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_without_active_members --strategy=cancel-empty-stale-group --json
+```
+
+Quoted-primary empty stale group dry-run:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_without_active_members --strategy=cancel-empty-stale-group-with-quoted-primary --json
 ```
 
 The dry-run requires exact group scope and returns technical state only:
@@ -376,13 +386,31 @@ finance transactions already exist for the primary/member bookings.
 `cancel-empty-stale-group` additionally requires zero active members, exactly one
 canonical primary membership, and no membership that points to a missing or
 cross-context booking. Ticket snapshots and priced financial fields on any
-historical member block the empty-group strategy. This is intentionally stricter
-than checking only active members.
+historical member block the general empty-group strategy. This is intentionally
+stricter than checking only active members.
+
+`cancel-empty-stale-group-with-quoted-primary` does not weaken that general
+strategy. It permits exactly one priced membership only when all of these
+conditions hold simultaneously:
+
+- the group has zero active members;
+- the complete membership set contains exactly one booking;
+- that one membership is the canonical primary;
+- the primary booking is cancelled;
+- the primary is the only booking with a non-zero quoted price;
+- active deposits, ticket ownership snapshots, and finance transactions are all
+  zero;
+- the exact full membership allowlist and business context match the fresh
+  dry-run.
+
+A quoted booking price is not proof that money was collected. Any actual deposit,
+ticket ownership, finance transaction, second membership, or active member blocks
+this strategy.
 
 ## Stale Group Reconciliation Guarded Apply
 
 Apply exists only for the explicit business decision `CANCEL GROUP` and only for
-the two strategies above. It must not be used to keep or restore a banquet.
+the strategies above. It must not be used to keep or restore a banquet.
 If the decision is `KEEP BOOKING`, do not run this command; create a replacement
 through the canonical manager booking-set workflow.
 
@@ -420,6 +448,19 @@ active member, active deposit, ticket snapshot, priced member, finance
 transaction, missing canonical primary membership, or business-context mismatch
 blocks the transaction.
 
+For the quoted-primary exception, production approval must name the dedicated
+token `CANCEL_EMPTY_STALE_BANQUET_GROUP_WITH_QUOTED_PRIMARY`. Raw IDs remain only
+in the bounded operator command:
+
+```powershell
+node scripts/banquet-production-recovery.js reconcile-group-state --group-id=BQ_ID --business-context=event_genix --expected-classification=active_group_without_active_members --strategy=cancel-empty-stale-group-with-quoted-primary --allowlist=EXACT_PRIMARY_BOOKING_ID --apply --confirm=CANCEL_EMPTY_STALE_BANQUET_GROUP_WITH_QUOTED_PRIMARY --json
+```
+
+This apply also changes only the banquet group status. It never clears the quoted
+price or updates the cancelled primary booking. Before production use, obtain a
+fresh dry-run and a separate exact production-write approval that names this
+strategy and token. Shipping the strategy does not authorize running it.
+
 Apply guards:
 
 - exact group ID and exact business context are required;
@@ -434,6 +475,8 @@ Apply guards:
 - `cancel-stale-group` cancels only allowlisted active non-primary members before
   cancelling the group;
 - `cancel-empty-stale-group` cancels only the group and leaves bookings unchanged;
+- `cancel-empty-stale-group-with-quoted-primary` also cancels only the group and
+  requires the sole quoted primary to remain unchanged;
 - customer rows, primary booking, deposits, history, memberships, and links are
   not physically deleted;
 - technical history is written only after the booking/group updates succeed;

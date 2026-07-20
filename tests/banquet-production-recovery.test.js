@@ -11,6 +11,7 @@ const {
     QA_CLEANUP_CONFIRMATION,
     RECONCILE_GROUP_STATE_CONFIRMATION,
     CANCEL_EMPTY_STALE_GROUP_CONFIRMATION,
+    CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
     buildAuditReport,
     buildAuditSummaryOnlyReport,
     classifyDetachInspection,
@@ -607,6 +608,52 @@ test('group state reconciliation arguments require exact scope and guarded apply
             allowlist: ['BK-EMPTY-PRIMARY']
         }
     );
+
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group-with-quoted-primary',
+            '--expected-classification=active_group_without_active_members'
+        ]),
+        /requires --business-context=/
+    );
+    assert.throws(
+        () => parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group-with-quoted-primary',
+            '--expected-classification=active_group_without_active_members',
+            '--business-context=event_genix',
+            '--allowlist=BK-EMPTY-PRIMARY',
+            '--apply',
+            `--confirm=${CANCEL_EMPTY_STALE_GROUP_CONFIRMATION}`
+        ]),
+        /--confirm=CANCEL_EMPTY_STALE_BANQUET_GROUP_WITH_QUOTED_PRIMARY/
+    );
+    assert.deepEqual(
+        parseArgs([
+            'reconcile-group-state',
+            '--group-id=BQ-EMPTY-1',
+            '--strategy=cancel-empty-stale-group-with-quoted-primary',
+            '--expected-classification=active_group_without_active_members',
+            '--business-context=event_genix',
+            '--allowlist=BK-EMPTY-PRIMARY',
+            '--apply',
+            `--confirm=${CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION}`
+        ]),
+        {
+            command: 'reconcile-group-state',
+            apply: true,
+            json: false,
+            businessContext: 'event_genix',
+            confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+            groupId: 'BQ-EMPTY-1',
+            strategy: 'cancel-empty-stale-group-with-quoted-primary',
+            expectedClassification: 'active_group_without_active_members',
+            allowlist: ['BK-EMPTY-PRIMARY']
+        }
+    );
 });
 
 test('recovery inspection requires one exact group and is idempotent for an existing activity membership', () => {
@@ -1162,6 +1209,19 @@ const emptyReconcileOptions = {
     expectedClassification: 'active_group_without_active_members'
 };
 
+function quotedPrimaryEmptyStaleGroupStateRow(overrides = {}) {
+    return emptyStaleGroupStateRow({
+        priced_member_count: 1,
+        priced_member_ids: ['BK-EMPTY-PRIMARY'],
+        ...overrides
+    });
+}
+
+const quotedPrimaryEmptyReconcileOptions = {
+    ...emptyReconcileOptions,
+    strategy: 'cancel-empty-stale-group-with-quoted-primary'
+};
+
 test('group state reconciliation classifies stale active group with cancelled primary', () => {
     const ready = classifyReconcileGroupStateTarget(staleGroupStateRow(), reconcileOptions);
     assert.equal(ready.status, 'ready');
@@ -1341,6 +1401,154 @@ test('empty stale group apply rolls back when post-verification does not observe
             })
         }),
         /Post-reconciliation verification failed/
+    );
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+});
+
+test('quoted-primary empty stale group strategy requires exactly one priced cancelled primary', () => {
+    const ready = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow(),
+        quotedPrimaryEmptyReconcileOptions
+    );
+    assert.equal(ready.status, 'ready');
+    assert.equal(ready.classification, 'active_group_without_active_members');
+    assert.deepEqual(ready.pricedMemberIds, ['BK-EMPTY-PRIMARY']);
+
+    const missingPrice = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow({
+            priced_member_count: 0,
+            priced_member_ids: []
+        }),
+        quotedPrimaryEmptyReconcileOptions
+    );
+    assert.match(missingPrice.reason, /quoted_primary_price_missing/);
+
+    const wrongPricedMember = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow({
+            priced_member_ids: ['BK-OTHER']
+        }),
+        quotedPrimaryEmptyReconcileOptions
+    );
+    assert.match(wrongPricedMember.reason, /quoted_primary_price_scope_mismatch/);
+
+    const extraPricedMember = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow({
+            member_count: 2,
+            primary_membership_count: 1,
+            member_ids: ['BK-EMPTY-EXTRA', 'BK-EMPTY-PRIMARY'],
+            non_primary_member_ids: ['BK-EMPTY-EXTRA'],
+            cancelled_non_primary_member_ids: ['BK-EMPTY-EXTRA'],
+            priced_member_count: 2,
+            priced_member_ids: ['BK-EMPTY-EXTRA', 'BK-EMPTY-PRIMARY']
+        }),
+        quotedPrimaryEmptyReconcileOptions
+    );
+    assert.match(extraPricedMember.reason, /quoted_primary_price_scope_mismatch/);
+    assert.match(extraPricedMember.reason, /quoted_primary_member_scope_mismatch/);
+
+    const extraUnpricedMember = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow({
+            member_count: 2,
+            primary_membership_count: 1,
+            member_ids: ['BK-EMPTY-EXTRA', 'BK-EMPTY-PRIMARY'],
+            non_primary_member_ids: ['BK-EMPTY-EXTRA'],
+            cancelled_non_primary_member_ids: ['BK-EMPTY-EXTRA']
+        }),
+        quotedPrimaryEmptyReconcileOptions
+    );
+    assert.match(extraUnpricedMember.reason, /quoted_primary_member_scope_mismatch/);
+
+    for (const [overrides, blocker] of [
+        [{ active_deposit_count: 1 }, 'active_deposit_rows_present'],
+        [{ any_member_ticket_snapshot_count: 1 }, 'ticket_ownership_conflict'],
+        [{ finance_transaction_count: 1 }, 'finance_transaction_conflict'],
+        [{
+            member_count: 2,
+            active_member_count: 1,
+            active_non_primary_member_count: 1,
+            member_ids: ['BK-EMPTY-KITCHEN', 'BK-EMPTY-PRIMARY'],
+            non_primary_member_ids: ['BK-EMPTY-KITCHEN'],
+            active_member_ids: ['BK-EMPTY-KITCHEN'],
+            active_non_primary_member_ids: ['BK-EMPTY-KITCHEN']
+        }, 'active_members_present']
+    ]) {
+        const blocked = classifyReconcileGroupStateTarget(
+            quotedPrimaryEmptyStaleGroupStateRow(overrides),
+            quotedPrimaryEmptyReconcileOptions
+        );
+        assert.match(blocked.reason, new RegExp(blocker));
+    }
+
+    const allowlistMismatch = classifyReconcileGroupStateTarget(
+        quotedPrimaryEmptyStaleGroupStateRow(),
+        { ...quotedPrimaryEmptyReconcileOptions, allowlist: ['BK-OTHER'] }
+    );
+    assert.match(allowlistMismatch.reason, /allowlist_member_set_mismatch/);
+});
+
+test('quoted-primary empty stale group apply changes only the group and remains idempotent', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+    let loadCalls = 0;
+    const report = await runReconcileGroupStateApply(db, {
+        ...quotedPrimaryEmptyReconcileOptions,
+        apply: true,
+        confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+        allowlist: ['BK-EMPTY-PRIMARY']
+    }, {
+        loadReconcileGroupStateTarget: async () => {
+            loadCalls += 1;
+            return quotedPrimaryEmptyStaleGroupStateRow({
+                group_status: loadCalls === 1 ? 'active' : 'cancelled'
+            });
+        },
+        persistReconcileGroupStateCancellation: async (_db, result) => ({
+            groupId: result.groupId,
+            primaryBookingId: result.primaryBookingId,
+            cancelledMemberBookingIds: [],
+            cancelledBookings: 0,
+            cancelledGroups: 1,
+            status: 'applied',
+            matchFingerprint: result.matchFingerprint
+        })
+    });
+
+    assert.equal(report.summary.applied, 1);
+    assert.equal(report.summary.cancelledBookings, 0);
+    assert.equal(report.summary.cancelledGroups, 1);
+    assert.equal(report.after.status, 'already_applied');
+    assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT']);
+});
+
+test('quoted-primary empty stale group apply rolls back if the locked target stops matching', async () => {
+    const queries = [];
+    const db = {
+        query: async text => {
+            queries.push(String(text).replace(/\s+/g, ' ').trim());
+            return { rows: [] };
+        }
+    };
+
+    await assert.rejects(
+        runReconcileGroupStateApply(db, {
+            ...quotedPrimaryEmptyReconcileOptions,
+            apply: true,
+            confirmation: CANCEL_PRICED_EMPTY_STALE_GROUP_CONFIRMATION,
+            allowlist: ['BK-EMPTY-PRIMARY']
+        }, {
+            loadReconcileGroupStateTarget: async () => quotedPrimaryEmptyStaleGroupStateRow({
+                finance_transaction_count: 1
+            }),
+            persistReconcileGroupStateCancellation: async () => {
+                throw new Error('must not persist');
+            }
+        }),
+        /blocked by preflight.*finance_transaction_conflict/
     );
     assert.deepEqual(queries, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
 });

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.79.114 - Безпечне закриття порожніх банкетних груп
+
+### Banquet recovery / Production safety / (20.07.2026) [codex]
+- **Окрема guarded strategy** — стан `active group + cancelled primary + 0 active members` тепер має точний read-only dry-run і окремий confirmation token.
+- **Захист від побічних змін** — apply змінює лише статус порожньої banquet group та блокується при deposits, ticket/finance conflicts або зміні membership set.
+- **Транзакційна надійність** — PostgreSQL regression coverage підтверджує row locks, rollback, post-verification та idempotent rerun.
+
+---
+
 ## v0.79.113 - Timeline smoke and guarded banquet QA
 
 ### Timeline / Бронювання / Production QA / (20.07.2026) [codex]

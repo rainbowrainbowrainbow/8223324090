@@ -111,7 +111,8 @@ Preferred workflow for normal product work:
 
 ## Deploy And Branch Boundaries
 
-- Last verified Railway production source branch (2026-07-13): `codex/performance-hardening`.
+- Last verified Railway production source branch (2026-07-20): `codex/production`.
+- Production deployment policy (2026-07-20): Railway GitHub auto-deploy is disabled for the production app service. Production deploy must be promoted manually only after the required GitHub CI checks are green for the exact release SHA.
 - Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
 - Historical docs mention `codex/timeline-leads-hardening` and `deployed`; neither is the active deploy source unless the user explicitly says Railway was reconfigured.
 - Never upload files through the GitHub UI.

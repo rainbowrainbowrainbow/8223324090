@@ -6,14 +6,23 @@
 
 ## Production Branch
 
-Остання фактично перевірена production-гілка Railway (13.07.2026):
-`codex/performance-hardening`.
+Остання фактично перевірена production-гілка Railway (20.07.2026):
+`codex/production`.
 
 Перед кожним release або rollback треба read-only перевіркою підтвердити активну
 Railway source branch і явно передати її в командах через
 `RELEASE_DEPLOY_BRANCH=<branch>`. Не покладатися на fallback у release-proof
 скрипті. `codex/timeline-leads-hardening` і `deployed` є історичними deploy
 sources, доки власник окремо не підтвердить переналаштування Railway.
+
+Production deploy policy з 20.07.2026: Railway GitHub auto-deploy вимкнений
+для production app service. Production deploy має запускатися вручну тільки
+після зелених required GitHub CI checks на точному release SHA. Деплоїти треба
+саме перевірений SHA, а не випадковий стан локальної директорії.
+
+Якщо Railway знову стартує deploy одразу після push і раніше завершення CI, це
+process drift: release не закривати як доставлений, доки CI не зелений і live
+version/health smoke не підтверджені.
 
 ## Production Branch Rule Exception
 

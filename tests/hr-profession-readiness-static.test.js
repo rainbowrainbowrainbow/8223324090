@@ -204,6 +204,16 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.doesNotMatch(checklistService, /checklistKeyForIndex/);
     });
 
+    it('limits the checklist dashboard to current core staff by default', () => {
+        assert.match(checklistService, /require\('\.\/staffOperationalFilters'\)/);
+        assert.match(checklistService, /const \{ scheduleableStaffWhere \}/);
+        assert.match(checklistService, /includeInactiveStaff:[\s\S]*filters\.includeInactiveStaff \?\? filters\.include_inactive_staff,[\s\S]*false/);
+        assert.equal((checklistService.match(/scheduleableStaffWhere\('member'\)/g) || []).length, 7);
+        assert.equal((checklistService.match(/scheduleableStaffWhere\('search_member'\)/g) || []).length, 1);
+        assert.doesNotMatch(checklistService, /\$5::boolean OR member\.is_active = true/);
+        assert.doesNotMatch(checklistService, /\$5::boolean OR search_member\.is_active = true/);
+    });
+
     it('exposes HR APIs for readiness, checklist progress, schedule gating, and audit history', () => {
         assert.match(hrRoute, /const HR_VIEW_ROLES = \[[^\]]*'security'/);
         assert.match(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'hr'[^\]]*'admin'[^\]]*\]/);

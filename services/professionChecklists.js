@@ -2,6 +2,8 @@
 
 const { createHash, randomUUID } = require('node:crypto');
 
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
+
 const CHECKLIST_ITEM_TITLE_MAX_LENGTH = 500;
 const CHECKLIST_NOTES_MAX_LENGTH = 1000;
 const CHECKLIST_PROGRESS_ACTOR_MAX_LENGTH = 80;
@@ -435,7 +437,7 @@ function normalizeDashboardFilters(filters = {}) {
         ),
         includeInactiveStaff: normalizeOptionalBoolean(
             filters.includeInactiveStaff ?? filters.include_inactive_staff,
-            true
+            false
         ),
         search,
         searchPattern: search ? `%${search}%` : null,
@@ -1438,7 +1440,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
              FROM staff_role_assignments assignment
              JOIN staff member ON member.id = assignment.staff_id
              WHERE ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
-               AND ($5::boolean OR member.is_active = true)
+               AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
                AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
              GROUP BY assignment.profession_key
          ), orphan_counts AS (
@@ -1448,7 +1450,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
              JOIN staff member ON member.id = progress.staff_id
              WHERE progress.checklist_item_id IS NULL
                AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
-               AND ($5::boolean OR member.is_active = true)
+               AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
              GROUP BY progress.profession_key
          )
          SELECT profession.id,
@@ -1483,7 +1485,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                    WHERE search_assignment.profession_key = profession.key
                      AND search_member.name ILIKE $7
                      AND ($3::integer[] IS NULL OR search_member.id = ANY($3::integer[]))
-                     AND ($5::boolean OR search_member.is_active = true)
+                     AND ($5::boolean OR (${scheduleableStaffWhere('search_member')}))
                      AND ($6::text[] IS NULL OR search_assignment.status = ANY($6::text[]))
                )
            )
@@ -1526,7 +1528,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                AND ($2::text[] IS NULL OR profession.department = ANY($2::text[]))
                AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
                AND ($4::boolean OR profession.is_active = true)
-               AND ($5::boolean OR member.is_active = true)
+               AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
                AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
                AND (
                    $7::text IS NULL
@@ -1623,7 +1625,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                AND ($2::text[] IS NULL OR profession.department = ANY($2::text[]))
                AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
                AND ($4::boolean OR profession.is_active = true)
-               AND ($5::boolean OR member.is_active = true)
+               AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
                AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
                AND ($8::text[] IS NULL OR 'archived' = ANY($8::text[]))
                AND (
@@ -1664,7 +1666,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
            AND ($2::text[] IS NULL OR profession.department = ANY($2::text[]))
            AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
            AND ($4::boolean OR profession.is_active = true)
-           AND ($5::boolean OR member.is_active = true)
+           AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
            AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
            AND (
                $7::text IS NULL
@@ -1717,7 +1719,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                AND ($2::text[] IS NULL OR profession.department = ANY($2::text[]))
                AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
                AND ($4::boolean OR profession.id IS NULL OR profession.is_active = true)
-               AND ($5::boolean OR member.is_active = true)
+               AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
                AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
                AND ($8::text[] IS NULL OR 'orphaned' = ANY($8::text[]))
                AND (
@@ -1762,7 +1764,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
            AND ($2::text[] IS NULL OR profession.department = ANY($2::text[]))
            AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
            AND ($4::boolean OR profession.id IS NULL OR profession.is_active = true)
-           AND ($5::boolean OR member.is_active = true)
+           AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
            AND ($6::text[] IS NULL OR assignment.status = ANY($6::text[]))
            AND (
                $7::text IS NULL

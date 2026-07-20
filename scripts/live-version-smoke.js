@@ -13,6 +13,14 @@ const target = process.argv[2] || process.env.VERSION_SMOKE_URL || process.env.T
 const expectedVersion = pkg.version;
 const expectedLabel = String(pkg.eventGenix?.releaseLabel || pkg.releaseLabel || '').trim();
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const VALID_METADATA_STATUSES = new Set([
+    'configured',
+    'railway',
+    'mixed',
+    'partial',
+    'unavailable',
+    'conflict'
+]);
 
 function fail(message) {
     console.error(`Version smoke failed: ${message}`);
@@ -42,7 +50,13 @@ async function fetchText(url) {
     return res.text();
 }
 
-function assertDeploymentMetadata(versionJson) {
+function assertDeploymentMetadata(versionJson, options = {}) {
+    const {
+        requireComplete = true,
+        expectedCommit = null,
+        expectedBranch = null
+    } = options;
+
     if (!Object.prototype.hasOwnProperty.call(versionJson, 'commitSha')) {
         throw new Error('/api/version response is missing commitSha');
     }
@@ -60,6 +74,51 @@ function assertDeploymentMetadata(versionJson) {
             || versionJson.sourceBranch.length > 255
             || /[\u0000-\u001f\u007f]/.test(versionJson.sourceBranch))) {
         throw new Error('/api/version sourceBranch has invalid format');
+    }
+    if (Object.prototype.hasOwnProperty.call(versionJson, 'deploymentMetadata')) {
+        const meta = versionJson.deploymentMetadata;
+        if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+            throw new Error('/api/version deploymentMetadata has invalid format');
+        }
+        if (!VALID_METADATA_STATUSES.has(meta.status)) {
+            throw new Error(`/api/version deploymentMetadata has invalid status: "${meta.status}"`);
+        }
+        if (typeof meta.complete !== 'boolean') {
+            throw new Error('/api/version deploymentMetadata.complete has invalid format');
+        }
+        for (const field of ['commitShaSource', 'sourceBranchSource']) {
+            if (meta[field] !== null
+                && (typeof meta[field] !== 'string'
+                    || !meta[field].trim()
+                    || meta[field].length > 255
+                    || /[\u0000-\u001f\u007f]/.test(meta[field]))) {
+                throw new Error(`/api/version deploymentMetadata.${field} has invalid format`);
+            }
+        }
+        for (const field of ['invalidSources', 'warnings']) {
+            if (!Array.isArray(meta[field])
+                || meta[field].some(item => typeof item !== 'string'
+                    || !item.trim()
+                    || item.length > 255
+                    || /[\u0000-\u001f\u007f]/.test(item))) {
+                throw new Error(`/api/version deploymentMetadata.${field} has invalid format`);
+            }
+        }
+        if (requireComplete && (!meta.complete || ['partial', 'unavailable', 'conflict'].includes(meta.status))) {
+            throw new Error(`/api/version deployment metadata is not complete: ${meta.status}`);
+        }
+    }
+    if (requireComplete && !versionJson.commitSha) {
+        throw new Error('/api/version commitSha is required for release smoke');
+    }
+    if (requireComplete && !versionJson.sourceBranch) {
+        throw new Error('/api/version sourceBranch is required for release smoke');
+    }
+    if (expectedCommit && versionJson.commitSha !== String(expectedCommit).trim().toLowerCase()) {
+        throw new Error(`/api/version commitSha is "${versionJson.commitSha}", expected "${expectedCommit}"`);
+    }
+    if (expectedBranch && versionJson.sourceBranch !== String(expectedBranch).trim()) {
+        throw new Error(`/api/version sourceBranch is "${versionJson.sourceBranch}", expected "${expectedBranch}"`);
     }
 }
 
@@ -83,7 +142,11 @@ async function main() {
     if (expectedLabel && versionJson.releaseLabel !== expectedLabel) {
         fail(`/api/version releaseLabel is "${versionJson.releaseLabel}", expected "${expectedLabel}"`);
     }
-    assertDeploymentMetadata(versionJson);
+    assertDeploymentMetadata(versionJson, {
+        requireComplete: process.env.VERSION_SMOKE_ALLOW_MISSING_METADATA !== 'true',
+        expectedCommit: process.env.VERSION_SMOKE_EXPECT_COMMIT || process.env.RELEASE_DEPLOY_COMMIT || null,
+        expectedBranch: process.env.VERSION_SMOKE_EXPECT_BRANCH || process.env.RELEASE_DEPLOY_BRANCH || null
+    });
 
     const html = await fetchText(`${base}/`);
     if (!html.includes(`v${expectedVersion}`) && !html.includes(`?v=${expectedVersion}`)) {
@@ -93,8 +156,11 @@ async function main() {
         fail(`login HTML does not expose release label "${expectedLabel}"`);
     }
 
+    const metadataStatus = versionJson.deploymentMetadata?.status
+        ? ` [metadata:${versionJson.deploymentMetadata.status}]`
+        : '';
     const deployedSource = versionJson.commitSha
-        ? ` @ ${versionJson.commitSha.slice(0, 12)}${versionJson.sourceBranch ? ` (${versionJson.sourceBranch})` : ''}`
+        ? ` @ ${versionJson.commitSha.slice(0, 12)} (${versionJson.sourceBranch})${metadataStatus}`
         : ' @ commit metadata unavailable';
     console.log(`Version smoke OK: ${base} -> v${expectedVersion}${expectedLabel ? ` — ${expectedLabel}` : ''}${deployedSource}`);
 }
@@ -105,6 +171,7 @@ if (require.main === module) {
 
 module.exports = {
     FULL_COMMIT_SHA_PATTERN,
+    VALID_METADATA_STATUSES,
     assertDeploymentMetadata,
     main
 };

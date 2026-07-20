@@ -34,6 +34,22 @@ production-гілкою станом на 20.07.2026 — `codex/production`. П�
 RELEASE_DEPLOY_BRANCH=codex/production npm run release:timeline-proof -- <live-url>
 ```
 
+Manual Railway deploys must also expose commit evidence in `/api/version`.
+For release gates, provide either Railway git metadata or explicit runtime
+metadata:
+
+```bash
+RELEASE_DEPLOY_COMMIT=<exact-release-sha>
+RELEASE_DEPLOY_BRANCH=codex/production
+```
+
+`npm run version:smoke` and `npm run release:timeline-proof` must fail when
+production `/api/version` reports unavailable or partial deployment metadata.
+Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
+`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
+against the exact intended SHA. Use `VERSION_SMOKE_ALLOW_MISSING_METADATA=true`
+only for local/dev checks, never for release acceptance.
+
 Команда перевіряє:
 - `/api/version` збігається з `package.json`;
 - `/` містить release text і timeline assets з поточним `?v=`;

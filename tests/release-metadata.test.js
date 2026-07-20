@@ -30,9 +30,42 @@ test('release metadata exposes normalized Railway commit and source branch', () 
         name: 'Event Genix',
         testMode: true,
         commitSha: commitSha.toLowerCase(),
-        sourceBranch: 'codex/production'
+        sourceBranch: 'codex/production',
+        deploymentMetadata: {
+            status: 'railway',
+            complete: true,
+            commitShaSource: 'RAILWAY_GIT_COMMIT_SHA',
+            sourceBranchSource: 'RAILWAY_GIT_BRANCH',
+            invalidSources: [],
+            warnings: []
+        }
     });
     assert.doesNotThrow(() => assertDeploymentMetadata(metadata));
+});
+
+test('release metadata prefers configured manual deploy commit and branch over Railway branch drift', () => {
+    const commitSha = '1111111111111111111111111111111111111111';
+    const metadata = getReleaseMetadata({
+        RELEASE_DEPLOY_COMMIT: commitSha.toUpperCase(),
+        RELEASE_DEPLOY_BRANCH: 'codex/production',
+        RAILWAY_GIT_COMMIT_SHA: commitSha,
+        RAILWAY_GIT_BRANCH: 'main'
+    });
+
+    assert.equal(metadata.commitSha, commitSha);
+    assert.equal(metadata.sourceBranch, 'codex/production');
+    assert.deepEqual(metadata.deploymentMetadata, {
+        status: 'configured',
+        complete: true,
+        commitShaSource: 'RELEASE_DEPLOY_COMMIT',
+        sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
+        invalidSources: [],
+        warnings: ['release_branch_overrides_railway_branch']
+    });
+    assert.doesNotThrow(() => assertDeploymentMetadata(metadata, {
+        expectedCommit: commitSha,
+        expectedBranch: 'codex/production'
+    }));
 });
 
 test('release metadata returns null when Railway git metadata is unavailable', () => {
@@ -44,7 +77,19 @@ test('release metadata returns null when Railway git metadata is unavailable', (
 
     assert.equal(metadata.commitSha, null);
     assert.equal(metadata.sourceBranch, null);
-    assert.doesNotThrow(() => assertDeploymentMetadata(metadata));
+    assert.deepEqual(metadata.deploymentMetadata, {
+        status: 'unavailable',
+        complete: false,
+        commitShaSource: null,
+        sourceBranchSource: null,
+        invalidSources: [],
+        warnings: []
+    });
+    assert.throws(
+        () => assertDeploymentMetadata(metadata),
+        /deployment metadata is not complete: unavailable/
+    );
+    assert.doesNotThrow(() => assertDeploymentMetadata(metadata, { requireComplete: false }));
 });
 
 test('release metadata rejects malformed SHA and unsafe branch values', () => {
@@ -60,9 +105,13 @@ test('release metadata rejects malformed SHA and unsafe branch values', () => {
     });
     assert.equal(metadata.commitSha, null);
     assert.equal(metadata.sourceBranch, null);
+    assert.deepEqual(metadata.deploymentMetadata.invalidSources, [
+        'RAILWAY_GIT_COMMIT_SHA',
+        'RAILWAY_GIT_BRANCH'
+    ]);
 });
 
-test('version smoke requires stable metadata fields and validates SHA format when present', () => {
+test('version smoke requires stable complete metadata by default', () => {
     assert.throws(
         () => assertDeploymentMetadata({ sourceBranch: null }),
         /missing commitSha/
@@ -81,6 +130,39 @@ test('version smoke requires stable metadata fields and validates SHA format whe
             sourceBranch: 'codex/production\nSECRET=value'
         }),
         /sourceBranch has invalid format/
+    );
+    assert.throws(
+        () => assertDeploymentMetadata({
+            commitSha: 'a'.repeat(40),
+            sourceBranch: 'codex/production',
+            deploymentMetadata: {
+                status: 'conflict',
+                complete: false,
+                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
+                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
+                invalidSources: [],
+                warnings: ['release_commit_overrides_railway_commit']
+            }
+        }),
+        /deployment metadata is not complete: conflict/
+    );
+    assert.throws(
+        () => assertDeploymentMetadata({
+            commitSha: 'a'.repeat(40),
+            sourceBranch: 'codex/production',
+            deploymentMetadata: {
+                status: 'configured',
+                complete: true,
+                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
+                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
+                invalidSources: [],
+                warnings: []
+            }
+        }, {
+            expectedCommit: 'b'.repeat(40),
+            expectedBranch: 'codex/production'
+        }),
+        /expected/
     );
 });
 

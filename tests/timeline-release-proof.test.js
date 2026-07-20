@@ -26,12 +26,25 @@ function createProofServer(options = {}) {
         const url = new URL(req.url, 'http://127.0.0.1');
         if (url.pathname === '/api/version') {
             const version = options.staleApiVersion ? '0.0.0' : pkg.version;
-            serveText(res, 200, 'application/json; charset=utf-8', JSON.stringify({
+            const payload = {
                 success: true,
                 version,
                 releaseLabel: pkg.eventGenix.releaseLabel,
                 name: pkg.name
-            }));
+            };
+            if (!options.omitDeploymentMetadata) {
+                payload.commitSha = 'abcdef0123456789abcdef0123456789abcdef01';
+                payload.sourceBranch = 'codex/production';
+                payload.deploymentMetadata = {
+                    status: 'railway',
+                    complete: true,
+                    commitShaSource: 'RAILWAY_GIT_COMMIT_SHA',
+                    sourceBranchSource: 'RAILWAY_GIT_BRANCH',
+                    invalidSources: [],
+                    warnings: []
+                };
+            }
+            serveText(res, 200, 'application/json; charset=utf-8', JSON.stringify(payload));
             return;
         }
 
@@ -97,6 +110,18 @@ test('timeline release proof rejects stale timeline asset tags in Maysternya Dol
         await assert.rejects(
             () => runTimelineReleaseProof(app.baseUrl),
             /\/maysternya-doli HTML missing "js\/timeline\.js\?v=/
+        );
+    } finally {
+        await app.close();
+    }
+});
+
+test('timeline release proof rejects release without deployment metadata', async () => {
+    const app = await createProofServer({ omitDeploymentMetadata: true });
+    try {
+        await assert.rejects(
+            () => runTimelineReleaseProof(app.baseUrl),
+            /missing commitSha/
         );
     } finally {
         await app.close();

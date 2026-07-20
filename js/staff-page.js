@@ -4346,7 +4346,8 @@ function renderSchedule() {
 
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered, {
-        department: StaffState.activeDept
+        department: StaffState.activeDept,
+        grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'
     });
 
     let bodyHtml = '';
@@ -7666,7 +7667,8 @@ function buildScheduleWorkbookModel() {
     const dates = getScheduleDates();
     const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
     const grouped = groupStaffByScheduleDepartment(exportStaff, {
-        department: StaffState.activeDept
+        department: StaffState.activeDept,
+        grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'
     });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);

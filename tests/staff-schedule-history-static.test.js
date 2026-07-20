@@ -1379,7 +1379,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /visible staffIds\[\]/);
     });
 
-    it('renders unique canonical staff in All while selected sections keep qualification membership', () => {
+    it('renders membership-complete staff in All while selected sections stay unique', () => {
         const normalizeIdBlock = namedFunctionBlock(staffPage, 'normalizeScheduleStaffId');
         const uniqueStaffBlock = namedFunctionBlock(staffPage, 'uniqueScheduleStaffById');
         const canonicalGroupBlock = namedFunctionBlock(staffPage, 'scheduleCanonicalDisplayGroupKey');
@@ -1418,7 +1418,7 @@ describe('staff schedule safety guards', () => {
         assert.match(groupingKeysBlock, /staffMatchesScheduleDepartment\(staff, activeDepartment\) \? \[activeDepartment\] : \[\]/);
         assert.match(groupingKeysBlock, /return \[scheduleCanonicalDisplayGroupKey\(staff\)\]/);
         assert.match(groupingKeysBlock, /options\.grouping === 'membership'/);
-        assert.doesNotMatch(renderBlock, /grouping: 'membership'/);
+        assert.match(renderBlock, /grouping:\s*StaffState\.activeDept === 'all' \? 'membership' : 'canonical'/);
         assert.match(renderBlock, /department: dept/);
         assert.match(professionContextBlock, /scheduleSubGroupProfessionCandidates\(staff, normalizedDepartment\)/);
         assert.match(openCellBlock, /professionKey: cell\.dataset\.scheduleProfession/);
@@ -1441,7 +1441,7 @@ describe('staff schedule safety guards', () => {
         assert.match(displayNameBlock, /staff\.display_name \|\| staff\.displayName \|\| staff\.name/);
         assert.match(workbookBlock, /data-schedule-export-staff-id=/);
         assert.match(workbookBlock, /data-schedule-export-department=/);
-        assert.doesNotMatch(workbookModelBlock, /grouping: 'membership'/);
+        assert.match(workbookModelBlock, /grouping:\s*StaffState\.activeDept === 'all' \? 'membership' : 'canonical'/);
         assert.match(workbookModelBlock, /scheduleStaffDisplayName\(emp\)/);
 
         assert.match(staffScheduleBrowserSmoke, /const STAFF_API_ROWS\s*=/);
@@ -1475,13 +1475,13 @@ describe('staff schedule safety guards', () => {
         assert.match(liveStaffScheduleSmoke, /captureDepartmentScheduleSurfaces/);
         assert.doesNotMatch(staffScheduleBrowserSmoke, /fullPage:\s*true/);
         assert.doesNotMatch(liveStaffScheduleSmoke, /fullPage:\s*true/);
-        assert.match(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.ids\)/);
+        assert.match(liveStaffScheduleSmoke, /staffIdsAreUnique\(allState\.uniqueIds\)/);
         assert.match(liveStaffScheduleSmoke, /const sharedStaffIds = sharedSectionStates\.animators\.ids/);
         assert.match(liveStaffScheduleSmoke, /for \(const sharedStaffId of sharedStaffIds\)/);
         assert.doesNotMatch(liveStaffScheduleSmoke, /qualification filters expose a shared animator\/reception staff member/);
     });
 
-    it('keeps All unique, section membership complete, and table/export placement parity exact', () => {
+    it('keeps All membership complete, section rows unique, and table/export placement parity exact', () => {
         const api = loadStaffScheduleBehaviorApi();
         const common = {
             is_active: true,
@@ -1585,8 +1585,8 @@ describe('staff schedule safety guards', () => {
         );
 
         const allVisibleIds = Array.from(api.visibleStaffIds());
-        assert.equal(allVisibleIds.join(','), '101,102,103,104,105', 'All count is the unique staff ID set');
-        assert.equal(allVisibleIds.length, 5, 'All totals count Vitalina once even though she belongs to two sections');
+        assert.equal(allVisibleIds.join(','), '101,102,103,104,105', 'All count is still the unique staff ID set');
+        assert.equal(allVisibleIds.length, 5, 'All totals count Vitalina once even though the table has membership placements');
         const allGrouped = JSON.parse(JSON.stringify(api.groupedStaffIds(staff, { grouping: 'membership' })));
         assert.deepEqual(allGrouped, {
             animators: [101],
@@ -1608,11 +1608,7 @@ describe('staff schedule safety guards', () => {
             cafe: [102, 105],
             admin: [104]
         });
-        assert.equal(
-            Object.values(canonicalGrouped).flat().length,
-            allVisibleIds.length,
-            'All renders each physical staff member exactly once'
-        );
+        assert.equal(Object.values(canonicalGrouped).flat().length, allVisibleIds.length);
         assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'animators'), 'animator');
         assert.equal(api.scheduleProfessionKeyForDepartment(staff[0], 'reception'), 'senior_manager');
 
@@ -1629,17 +1625,19 @@ describe('staff schedule safety guards', () => {
         const workbookRows = allWorkbookPayload.sheets.flatMap(sheet => sheet.rows);
         const workbookIds = workbookRows.map(row => Number(row.staffId));
         const printIds = exportedIds(allPrintHtml);
-        const expectedPlacements = Object.entries(canonicalGrouped)
+        const expectedMembershipPlacements = Object.entries(allGrouped)
             .flatMap(([department, ids]) => ids.map(id => `${department}:${id}`))
             .sort();
-        assert.deepEqual(allWorkbookPayload.sheets.map(sheet => sheet.name), ['Reception', 'Admin', 'Cafe']);
+        assert.deepEqual(allWorkbookPayload.sheets.map(sheet => sheet.name), ['Animators', 'Trampoline', 'Reception', 'Admin', 'Cafe']);
         assert.deepEqual(
             workbookRows.map(row => `${row.department}:${Number(row.staffId)}`).sort(),
-            expectedPlacements
+            expectedMembershipPlacements
         );
-        assert.deepEqual(exportedPlacements(allPrintHtml), expectedPlacements);
+        assert.deepEqual(exportedPlacements(allPrintHtml), expectedMembershipPlacements);
         assert.equal(new Set(workbookIds).size, allVisibleIds.length, 'workbook still contains the unique visible staff set');
         assert.equal(new Set(printIds).size, allVisibleIds.length, 'print still contains the unique visible staff set');
+        assert.ok(workbookIds.length > allVisibleIds.length, 'All workbook mirrors membership placements, so row count can exceed unique people');
+        assert.ok(printIds.length > allVisibleIds.length, 'All print mirrors membership placements, so row count can exceed unique people');
 
         api.setState({ activeDept: 'reception', searchQuery: 'віталіна' });
         const receptionVisibleIds = Array.from(api.visibleStaffIds());

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.116 - HR графік: повний список аніматорів
+
+### Release / Versioning / (20.07.2026) [codex]
+- **HR графік: повний список аніматорів** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.115 - ЗП KPI актуальний список
 
 ### Release / Versioning / (20.07.2026) [codex]

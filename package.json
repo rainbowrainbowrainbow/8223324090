@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.115",
+  "version": "0.79.116",
   "eventGenix": {
-    "releaseLabel": "ЗП KPI актуальний список"
+    "releaseLabel": "HR графік: повний список аніматорів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

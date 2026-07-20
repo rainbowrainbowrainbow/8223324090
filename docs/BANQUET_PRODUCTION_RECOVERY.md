@@ -148,6 +148,43 @@ Never put customer names, phone numbers, social handles, credentials, tokens,
 request headers, arbitrary API bodies, or browser form payloads into cleanup
 artifacts, terminal logs, tickets, commits, or release notes.
 
+### 1.5 Production acceptance evidence - 2026-07-20
+
+TASK 7 production acceptance was completed against:
+
+- Production URL: `https://8223324090-production.up.railway.app`;
+- version: `0.79.114`;
+- release label: `Безпечне закриття порожніх банкетних груп`;
+- release SHA: `c5469f4dbce80009c168d0edf59f6e32557fd1f6`;
+- source branch: `codex/production`.
+
+Acceptance scope:
+
+- `runId`: `task7-prod-1784545548168-3kwn2n`;
+- group ID: `BQ-MRT4C45S-24B1C1D0`;
+- booking ID count: `2`;
+- marker source: `timeline_browser_smoke`;
+- dependencies intentionally absent: deposits, receipts, certificates, stock
+  dependencies, payment references, and finance rows.
+
+Results:
+
+- marker-scoped dry-run returned `ready` with zero blockers;
+- exact booking set matched expected and actual sets;
+- first apply cancelled `2` bookings and `1` banquet group;
+- post-apply classification returned `already_cancelled_clean`;
+- repeated apply returned `already_cancelled_clean` with `0` cancelled bookings
+  and `0` cancelled groups;
+- live timeline API verification found `0` active rows for the disposable
+  booking set;
+- disposable customer cleanup through the standard customer endpoint succeeded;
+- read-only DB verification found bookings total `2`, active bookings `0`,
+  group total `1`, active groups `0`, finance rows `0`, deposit rows `0`,
+  disposable customer rows `0`, and cleanup history events `1`.
+
+This evidence intentionally omits customer PII, credentials, request headers,
+raw API payloads, and payment details.
+
 ## 2. Read-only recovery audit after deploy
 
 Use an explicit bounded date range:

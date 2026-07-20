@@ -57,7 +57,7 @@ function configuredDeployBranch() {
     return process.env.RELEASE_DEPLOY_BRANCH
         || process.env.RAILWAY_DEPLOY_BRANCH
         || process.env.DEPLOY_BRANCH
-        || 'codex/performance-hardening';
+        || 'codex/production';
 }
 
 function fail(message) {

@@ -234,12 +234,16 @@ If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone 
 
 ## Deploy And Branch Policy
 
-The last verified production source branch for Railway (2026-07-13) is
-`codex/performance-hardening`. Confirm the active Railway source branch before
+The last verified production source branch for Railway (2026-07-20) is
+`codex/production`. Confirm the active Railway source branch before
 every release or rollback because the attachment can change independently of
 the repository.
 
 - Do not deploy unless explicitly asked.
+- Railway GitHub auto-deploy is disabled for the production app service.
+  Production deploys must be promoted manually only after the required GitHub
+  CI checks are green for the exact release SHA. Deploy the exact validated SHA;
+  do not rely on an implicit local-directory upload for production release.
 - Push release/rollback commits only to the confirmed active Railway branch.
 - Always pass the confirmed branch explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release proof notes; do not rely on a script fallback.
 - Treat `codex/timeline-leads-hardening` and `deployed` as historical deploy sources unless the owner explicitly confirms a Railway reconfiguration.

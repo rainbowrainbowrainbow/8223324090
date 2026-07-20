@@ -82,8 +82,8 @@ test('timeline release proof validates both shared contexts, assets, and service
         assert.ok(report.assets.some(item => item.path === 'js/booking-banquet-selector.js'));
         assert.ok(report.assets.some(item => item.path === 'js/booking-save-path.js'));
         assert.equal(report.serviceWorker.cacheName, `event-genix-v${pkg.version}`);
-        assert.equal(report.rollback.deployBranch, 'codex/performance-hardening');
-        assert.match(report.rollback.identifyLiveCommit, /codex\/performance-hardening/);
+        assert.equal(report.rollback.deployBranch, 'codex/production');
+        assert.match(report.rollback.identifyLiveCommit, /codex\/production/);
         assert.match(report.rollback.fallback, /git revert/);
         assert.doesNotMatch(report.rollback.fallback, /HEAD:deployed/);
     } finally {
@@ -111,7 +111,7 @@ test('timeline release guardrails are documented and exposed as a repo command',
     assert.equal(packageJson.scripts['release:timeline-proof'], 'node scripts/timeline-release-proof.js');
     assert.match(readme, /release:timeline-proof/);
     assert.match(docs, /npm run release:timeline-proof -- <live-url>/);
-    assert.match(docs, /RELEASE_DEPLOY_BRANCH=codex\/performance-hardening/);
+    assert.match(docs, /RELEASE_DEPLOY_BRANCH=codex\/production/);
     assert.match(docs, /git revert <bad-release-commit>/);
     assert.doesNotMatch(docs, /HEAD:deployed/);
 });

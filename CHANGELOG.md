@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.121 - HR картка: вузол структури
+
+### Release / Versioning / (21.07.2026) [codex]
+- **HR staff node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.120 - HR друк: кондитерський цех і піцейола
 
 ### Release / Versioning / (20.07.2026) [codex]

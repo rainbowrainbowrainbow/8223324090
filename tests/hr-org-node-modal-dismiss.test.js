@@ -707,11 +707,17 @@ test('HR staff profile opens from fresh data and marks clean only after hydratio
     assert.equal(api.modal().style.display, 'flex');
 });
 
-test('HR staff profile structure dropdown keeps current approved node when loaded structure is partial', async () => {
+test('HR staff profile structure dropdown keeps current approved node and full approved order when loaded structure is partial', async () => {
     const { window, api } = createStaffProfileHarness();
     api.setCompanyStructureNodes([
         { id: 'director', title: 'Керівництво', description: 'Leadership.', tone: 'gold', lane: 'root', parentId: null, order: 10 },
-        { id: 'hr', title: 'HR', description: 'People.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 20 }
+        { id: 'hr', title: 'HR', description: 'People.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 20 },
+        { id: 'accountant', title: 'Бухгалтерія', description: 'Accounting.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 30 },
+        { id: 'marketer', title: 'Маркетинг', description: 'Demand.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 40 },
+        { id: 'it_specialist', title: 'IT', description: 'Systems.', tone: 'violet', lane: 'leadership', parentId: 'director', order: 50 },
+        { id: 'senior_trampoline', title: 'Ігрові зони', description: 'Play zones.', tone: 'purple', lane: 'operations', parentId: 'director', order: 55 },
+        { id: 'chef', title: 'Кухня', description: 'Kitchen.', tone: 'violet', lane: 'support', parentId: 'director', order: 60 },
+        { id: 'admins', title: 'Адміністративно-операційний відділ', description: 'Operations.', tone: 'purple', lane: 'leadership', parentId: 'director', order: 61 }
     ]);
     api.setProfile(3, {
         id: 3,
@@ -730,6 +736,22 @@ test('HR staff profile structure dropdown keeps current approved node when loade
     const select = window.document.getElementById('editCompanyStructureNode');
     const options = api.structureOptions();
     assert.equal(select.value, 'art_director');
+    const optionValues = Array.from(options, option => option.value);
+    assert.deepEqual(optionValues, [
+        '',
+        'director',
+        'admins',
+        'top_manager',
+        'art_director',
+        'senior_trampoline',
+        'chef',
+        'pastry_chef',
+        'technical_staff',
+        'accountant',
+        'hr',
+        'marketer',
+        'it_specialist'
+    ]);
     assert.ok(
         options.some(option => option.value === 'art_director' && /Арт-відділ/.test(option.text)),
         'staff card must keep the current Арт-відділ node visible even when the loaded node list is partial'
@@ -738,8 +760,10 @@ test('HR staff profile structure dropdown keeps current approved node when loade
         options.some(option => option.value === 'admins' && /Адміністративно-операційний відділ/.test(option.text)),
         'staff card must include the approved Адміністративно-операційний відділ node from the fallback list'
     );
-    assert.equal(options[1]?.value, 'director');
-    assert.equal(options[2]?.value, 'admins');
+    assert.ok(
+        options.some(option => option.value === 'top_manager' && /Відділ продажів \/ CRM/.test(option.text)),
+        'staff card must include the approved Відділ продажів / CRM node from the fallback list'
+    );
 });
 
 test('HR staff profile ignores stale history responses after rapid profile switches', async () => {

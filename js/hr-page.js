@@ -888,23 +888,44 @@ function companyStructureApprovedFallbackNode(nodeId = '') {
     const selected = String(nodeId || '').trim();
     if (!selected) return null;
     const fromLoaded = companyStructureNodeById(selected);
-    if (fromLoaded) return fromLoaded;
+    if (fromLoaded && isApprovedCompanyStructureSubdivisionNode(fromLoaded)) return fromLoaded;
     return DEFAULT_COMPANY_STRUCTURE_NODES.find(node => String(node.id || '') === selected) || null;
+}
+
+function staffCardApprovedCompanyStructureSelectNodes() {
+    const byTitle = new Map();
+    visibleCompanyStructureSubdivisionNodes(DEFAULT_COMPANY_STRUCTURE_NODES)
+        .forEach(node => {
+            const title = normalizeSearchText(node.title || node.label || node.name);
+            if (title) byTitle.set(title, node);
+        });
+    visibleCompanyStructureSubdivisionNodes(companyStructureNodes || [])
+        .forEach(node => {
+            const title = normalizeSearchText(node.title || node.label || node.name);
+            if (!title || !APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_SET.has(title)) return;
+            const fallback = byTitle.get(title) || {};
+            byTitle.set(title, {
+                ...fallback,
+                ...node,
+                title: node.title || fallback.title,
+                meta: node.meta ?? fallback.meta ?? null
+            });
+        });
+    return APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS
+        .map(title => byTitle.get(title))
+        .filter(Boolean);
 }
 
 function staffCardCompanyStructureSelectNodes(current = '') {
     const selected = String(current || '').trim();
-    const candidates = [
-        ...visibleCompanyStructureSubdivisionNodes(companyStructureNodes || []),
-        ...visibleCompanyStructureSubdivisionNodes(DEFAULT_COMPANY_STRUCTURE_NODES)
-    ];
+    const candidates = [...staffCardApprovedCompanyStructureSelectNodes()];
     const currentNode = companyStructureApprovedFallbackNode(selected);
     if (currentNode && !candidates.some(node => String(node.id || '') === selected)) {
         candidates.push(currentNode);
     }
     const seenIds = new Set();
     const seenTitles = new Set();
-    return sortCompanyStructureNodes(candidates.filter(node => {
+    return sortApprovedCompanyStructureSubdivisionNodes(candidates.filter(node => {
         const id = String(node.id || '').trim();
         const title = normalizeSearchText(node.title || node.label || node.name);
         if (!id || !title) return false;

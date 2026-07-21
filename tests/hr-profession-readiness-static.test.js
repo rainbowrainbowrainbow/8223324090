@@ -339,6 +339,37 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
     });
 
+    it('renders a complete approved subdivision list in every HR staff card structure dropdown', () => {
+        const approvedTitles = [
+            'Керівництво',
+            'Адміністративно-операційний відділ',
+            'Відділ продажів / CRM',
+            'Арт-відділ',
+            'Ігрові зони',
+            'Кухня',
+            'Кондитерський цех',
+            'Технічний відділ',
+            'Бухгалтерія',
+            'HR',
+            'Маркетинг',
+            'IT'
+        ];
+        const helperStart = hrPage.indexOf('function staffCardApprovedCompanyStructureSelectNodes');
+        const selectStart = hrPage.indexOf('function staffCardCompanyStructureSelectNodes');
+        const selectEnd = hrPage.indexOf('\nfunction companyStructureSelectOptions', selectStart);
+        assert.notEqual(helperStart, -1);
+        assert.notEqual(selectStart, -1);
+        assert.notEqual(selectEnd, -1);
+        const selectBlock = hrPage.slice(helperStart, selectEnd);
+        approvedTitles.forEach(title => assert.match(hrPage, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+        assert.match(selectBlock, /visibleCompanyStructureSubdivisionNodes\(DEFAULT_COMPANY_STRUCTURE_NODES\)/);
+        assert.match(selectBlock, /visibleCompanyStructureSubdivisionNodes\(companyStructureNodes \|\| \[\]\)/);
+        assert.match(selectBlock, /APPROVED_COMPANY_STRUCTURE_SUBDIVISION_TITLE_KEYS\s*\n\s*\.map\(title => byTitle\.get\(title\)\)/);
+        assert.match(selectBlock, /sortApprovedCompanyStructureSubdivisionNodes\(candidates\.filter/);
+        assert.doesNotMatch(selectBlock, /return sortCompanyStructureNodes\(candidates\.filter/);
+        assert.match(hrPage, /select\.innerHTML = renderSelectOptions\(companyStructureSelectOptions\(current\), current\)/);
+    });
+
     it('keeps corporate and profession onboarding as independent UI scopes', () => {
         assert.match(hrPage, /function renderStaffOnboardingScopeCard/);
         assert.match(hrPage, /\/staff\/\$\{staffId\}\/onboarding-processes/);

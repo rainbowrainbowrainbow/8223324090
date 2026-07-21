@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.120",
+  "version": "0.79.121",
   "eventGenix": {
-    "releaseLabel": "HR друк: кондитерський цех і піцейола"
+    "releaseLabel": "HR картка: вузол структури"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

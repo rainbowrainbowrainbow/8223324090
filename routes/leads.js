@@ -2702,7 +2702,12 @@ router.post('/', async (req, res) => {
         }
 
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
-        const response = { success: true, lead: attachLeadEventPreference(lead) };
+        const responseLead = attachLeadEventPreference(lead);
+        if (dealCustomerLink?.customer?.id) {
+            responseLead.customer_id = dealCustomerLink.customer.id;
+            responseLead.customerId = dealCustomerLink.customer.id;
+        }
+        const response = { success: true, lead: responseLead };
         if (dealCustomerLink?.customer) {
             response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
             response.customerLinkMode = dealCustomerLink.mode;
@@ -3965,22 +3970,53 @@ router.delete('/mailing/:id', async (req, res) => {
 
 // DELETE /api/leads/:id
 router.delete('/:id', requireMinRole('manager'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const result = await pool.query(
+        await client.query('BEGIN');
+        await client.query(
+            `UPDATE customers
+             SET lead_id = NULL, updated_at = NOW()
+             WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [req.params.id, businessContext]
+        );
+        await client.query(
+            `UPDATE customer_children
+             SET lead_id = NULL, updated_at = NOW()
+             WHERE lead_id = $1 AND business_context = $2`,
+            [req.params.id, businessContext]
+        );
+        await client.query(
+            `DELETE FROM lead_customer_links
+             WHERE lead_id = $1 AND business_context = $2`,
+            [req.params.id, businessContext]
+        );
+        await client.query(
+            `DELETE FROM lead_event_preferences
+             WHERE lead_id = $1 AND business_context = $2`,
+            [req.params.id, businessContext]
+        );
+        await client.query('DELETE FROM customer_cards WHERE lead_id = $1', [req.params.id]);
+        await client.query('DELETE FROM lead_interactions WHERE lead_id = $1', [req.params.id]);
+        const result = await client.query(
             `DELETE FROM leads
              WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              RETURNING id`,
             [req.params.id, businessContext]
         );
         if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK');
         log.error('DELETE /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка видалення' });
+    } finally {
+        client.release();
     }
 });
 

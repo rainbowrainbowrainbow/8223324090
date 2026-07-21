@@ -6761,12 +6761,26 @@ test('Sales funnel lead create deep link uses createStage booking handoff contra
     assert.ok(leadsJs.includes('body.customerId = sourceCustomerId'));
     assert.ok(leadsJs.includes('responseCustomerId !== sourceCustomerId'));
     assert.ok(leadsRoute.includes('requestedCreateCustomerId'));
+    assert.ok(leadsRoute.includes('responseLead.customer_id = dealCustomerLink.customer.id'));
+    assert.ok(leadsRoute.includes('responseLead.customerId = dealCustomerLink.customer.id'));
     assert.ok(leadsRoute.includes("source: 'leads.post_requested_customer'"));
     assert.ok(leadsJs.includes("handoffApi.sendCreated(request, 'lead.created', payload)"));
     assert.ok(leadsJs.includes('payload.customerId = normalizedCustomerId'));
     assert.ok(leadsJs.includes('completeLeadCreateHandoff(savedLeadId'));
     assert.ok(leadsJs.includes('url.searchParams.delete(key)'));
     assert.ok(!leadsJs.includes("params.get('pipeline_stage') || params.get('createStage')"));
+});
+
+test('Lead and customer delete routes clean up canonical handoff dependencies', () => {
+    const leadsRoute = read('routes/leads.js');
+    const customersRoute = read('routes/customers.js');
+
+    assert.match(leadsRoute, /DELETE FROM lead_customer_links[\s\S]*WHERE lead_id = \$1 AND business_context = \$2/);
+    assert.match(leadsRoute, /DELETE FROM lead_event_preferences[\s\S]*WHERE lead_id = \$1 AND business_context = \$2/);
+    assert.match(leadsRoute, /DELETE FROM lead_interactions WHERE lead_id = \$1/);
+    assert.match(leadsRoute, /UPDATE customer_children[\s\S]*SET lead_id = NULL[\s\S]*WHERE lead_id = \$1 AND business_context = \$2/);
+    assert.match(customersRoute, /DELETE FROM customer_children[\s\S]*WHERE customer_id = \$1 AND business_context = \$2/);
+    assert.match(customersRoute, /DELETE FROM lead_customer_links[\s\S]*WHERE customer_id = \$1 AND business_context = \$2/);
 });
 
 test('Customers create deep link uses canonical modal and customer handoff contract', () => {

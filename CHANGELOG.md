@@ -4,6 +4,14 @@
 
 ---
 
+## v0.79.127 - CRM Booking Handoff Cleanup
+
+### CRM / Booking handoff / (22.07.2026) [codex]
+- **Handoff ліда повертає клієнта явно** - `POST /api/leads` додає `customerId/customer_id` у відповідь, коли deal-лід створений через booking workflow з канонічним customer link.
+- **Безпечний cleanup тестових CRM-залежностей** - delete ліда/клієнта прибирає handoff/customer-child/interactions-звʼязки перед основним записом, щоб live QA не залишав disposable записи через FK-помилки.
+
+---
+
 ## v0.79.126 - CRM Booking Handoff
 
 ### CRM / Booking handoff / (22.07.2026) [codex]

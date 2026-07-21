@@ -2518,7 +2518,16 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
         try {
             await client.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
         } catch { /* certificates may not have customer_id yet */ }
-
+        await client.query(
+            `DELETE FROM customer_children
+             WHERE customer_id = $1 AND business_context = $2`,
+            [numId, businessContext]
+        );
+        await client.query(
+            `DELETE FROM lead_customer_links
+             WHERE customer_id = $1 AND business_context = $2`,
+            [numId, businessContext]
+        );
 
         const result = await client.query(
             `DELETE FROM customers

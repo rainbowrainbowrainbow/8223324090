@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.126",
+  "version": "0.79.127",
   "eventGenix": {
-    "releaseLabel": "CRM Booking Handoff"
+    "releaseLabel": "CRM Booking Handoff Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1,6 +1,7 @@
 'use strict';
 
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
+const { transitionLeadStage } = require('./leadStageTransition');
 
 function parseLeadId(value) {
   const n = Number.parseInt(value, 10);
@@ -31,27 +32,27 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
     return { attached: false, reason: 'missing_context' };
   }
   const stage = bookingLeadStage({ status: bookingStatus || 'confirmed' });
-  const status = bookingLeadStatus(stage);
+  const allowedFromStages = new Set(['new', 'contacted', 'info_sent', 'deal', 'waiting']);
 
-  const leadResult = await client.query(
-    `UPDATE leads
-     SET booking_id = $1,
-         pipeline_stage = CASE
-           WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal','waiting') THEN $4
-           ELSE pipeline_stage
-         END,
-         status = CASE
-           WHEN COALESCE(status, 'new') IN ('new','contact','proposal') THEN $5
-           ELSE status
-         END,
-         booked_at = COALESCE(booked_at, NOW())
-     WHERE id = $2
-       AND COALESCE(business_context, $3) = $3
-     RETURNING id, booking_id, pipeline_stage, status`,
-    [resolvedBookingId, parsedLeadId, context, stage, status]
-  );
+  let transition;
+  try {
+    transition = await transitionLeadStage(client, {
+      leadId: parsedLeadId,
+      businessContext: context,
+      targetStage: stage,
+      bookingId: resolvedBookingId,
+      allowedFromStages,
+      source: 'leadBookingLink.attach'
+    });
+  } catch (err) {
+    if (err?.code === 'lead_not_found' || err?.statusCode === 404) {
+      return { attached: false, reason: 'lead_not_found', leadId: parsedLeadId };
+    }
+    throw err;
+  }
+  const updatedLead = transition.updatedLead;
 
-  if (!leadResult.rows.length) {
+  if (!updatedLead?.id) {
     return { attached: false, reason: 'lead_not_found', leadId: parsedLeadId };
   }
 
@@ -81,8 +82,10 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
     attached: true,
     leadId: parsedLeadId,
     bookingId: resolvedBookingId,
-    pipelineStage: leadResult.rows[0]?.pipeline_stage || stage,
-    status: leadResult.rows[0]?.status || status,
+    pipelineStage: updatedLead.pipeline_stage || stage,
+    status: updatedLead.status || bookingLeadStatus(updatedLead.pipeline_stage || stage),
+    stageChanged: Boolean(transition.changed),
+    enteredDepositStage: Boolean(transition.enteredDepositStage),
     customerId: Number.isInteger(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null,
     customerLinked,
   };

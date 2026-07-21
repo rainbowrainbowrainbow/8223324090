@@ -2947,7 +2947,7 @@ function createFakePool() {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
             if (/SELECT \* FROM leads WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR UPDATE/i.test(text)) {
-                if (Number(params[0]) === 507) {
+                if ([504, 507].includes(Number(params[0]))) {
                     const err = new Error('canceling statement due to lock timeout');
                     err.code = '55P03';
                     throw err;
@@ -3000,9 +3000,15 @@ function createFakePool() {
                     const match = text.match(new RegExp(`${column} = \\$(\\d+)`, 'i'));
                     return match ? params[Number(match[1]) - 1] : undefined;
                 };
+                const whereParamFor = pattern => {
+                    const match = text.match(pattern);
+                    return match ? params[Number(match[1]) - 1] : undefined;
+                };
+                const updateId = whereParamFor(/WHERE id = \$(\d+)/i) || params[params.length - 2] || params[params.length - 1];
+                const updateBusinessContext = whereParamFor(/COALESCE\(business_context, 'event_genix'\) = \$(\d+)/i) || params[params.length - 1] || 'event_genix';
                 const row = {
-                    id: params[params.length - 2] || params[params.length - 1],
-                    business_context: params[params.length - 1] || 'event_genix',
+                    id: updateId,
+                    business_context: updateBusinessContext,
                     client_name: 'Lead Smoke',
                     phone: '+380000000009',
                     instagram: 'lead_smoke',
@@ -3033,11 +3039,20 @@ function createFakePool() {
                 const pipelineStage = paramFor('pipeline_stage');
                 const status = paramFor('status');
                 const leadType = paramFor('lead_type');
+                const previousLeadType = queries.slice(0, -1).reverse().map(query => {
+                    if (!/UPDATE leads SET/i.test(query.text) || !/lead_type = \$\d+/i.test(query.text)) return undefined;
+                    const queryIdMatch = query.text.match(/WHERE id = \$(\d+)/i);
+                    const queryId = queryIdMatch ? query.params[Number(queryIdMatch[1]) - 1] : undefined;
+                    if (String(queryId) !== String(updateId)) return undefined;
+                    const leadTypeMatch = query.text.match(/lead_type = \$(\d+)/i);
+                    return leadTypeMatch ? query.params[Number(leadTypeMatch[1]) - 1] : undefined;
+                }).find(value => value !== undefined);
                 const lostReason = paramFor('lost_reason');
                 if (assignedTo !== undefined) row.assigned_to = assignedTo;
                 if (pipelineStage !== undefined) row.pipeline_stage = pipelineStage;
                 if (status !== undefined) row.status = status;
                 if (leadType !== undefined) row.lead_type = leadType;
+                else if (previousLeadType !== undefined) row.lead_type = previousLeadType;
                 if (lostReason !== undefined) row.lost_reason = lostReason;
                 return {
                     rows: [row]
@@ -5586,7 +5601,7 @@ describe('route-level API safety smoke', () => {
 
     it('rolls back a lead stage change when the interaction audit cannot be written', async () => {
         queries.length = 0;
-        const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'lost' }, withAuth({}, 'manager'));
+        const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'lost', lost_reason: 'Audit failure smoke' }, withAuth({}, 'manager'));
         assert.equal(res.status, 500, JSON.stringify(res.data));
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
@@ -5605,7 +5620,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.lead.pipeline_stage, 'deal');
         assert.equal(res.data.customer, undefined);
 
-        const updateIndex = queries.findIndex(q => /UPDATE leads SET pipeline_stage = \$1, status = \$2, updated_at = NOW\(\)/i.test(q.text));
+        const updateIndex = queries.findIndex(q => /UPDATE leads SET .*pipeline_stage = \$\d+.*status = \$\d+.*updated_at = NOW\(\)/i.test(q.text));
         const auditIndex = queries.findIndex(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text));
         const firstCommitIndex = queries.findIndex(q => /^COMMIT$/i.test(q.text));
         const customerInsertIndex = queries.findIndex(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text));
@@ -5653,11 +5668,12 @@ describe('route-level API safety smoke', () => {
         queries.length = 0;
         const res = await request('PATCH', '/api/leads/501/stage', {
             pipeline_stage: 'lost',
+            lost_reason: 'Audit failure smoke',
             updated_at: '2099-05-02T10:00:00.000Z'
         }, withAuth({}, 'manager'));
         assert.equal(res.status, 500, JSON.stringify(res.data));
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
-        assert.ok(queries.some(q => /UPDATE leads SET pipeline_stage = \$1, status = \$2, updated_at = NOW\(\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE leads SET .*pipeline_stage = \$\d+.*status = \$\d+.*updated_at = NOW\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
         assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
         assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
@@ -5721,7 +5737,7 @@ describe('route-level API safety smoke', () => {
             requestId: 'route-smoke-lead-lock'
         });
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
-        assert.ok(queries.some(q => /SELECT id, pipeline_stage, status FROM leads/i.test(q.text) && /FOR UPDATE/i.test(q.text)));
+        assert.ok(queries.some(q => /SELECT \* FROM leads/i.test(q.text) && /FOR UPDATE/i.test(q.text)));
         assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
         assert.ok(!queries.some(q => /UPDATE leads SET/i.test(q.text)));
         assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));

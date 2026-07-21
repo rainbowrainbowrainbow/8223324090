@@ -12,6 +12,24 @@
 // STATE
 // ==========================================
 
+const CUSTOMER_MANAGE_ROLES = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager']);
+const CUSTOMER_CREATE_ROLES = Object.freeze([
+    ...CUSTOMER_MANAGE_ROLES,
+    'accountant',
+    'art_director',
+    'marketer',
+    'it_specialist',
+    'hr',
+    'admin',
+    'reception'
+]);
+
+const CUSTOMER_CREATE_ACTION_PARAM = 'action';
+const CUSTOMER_CREATE_ORIGIN_PARAM = 'origin';
+const CUSTOMER_CREATE_HANDOFF_PARAM = 'handoff';
+const CUSTOMER_BOOKING_CREATE_ORIGIN = 'booking';
+
+let activeCustomerCreateHandoffRequest = null;
 const CrmState = {
     customers: [],
     tags: [],
@@ -266,6 +284,32 @@ function customerBusinessContext() {
     return window.CrmBusinessContext?.normalize?.(CrmState.businessContext) || CrmState.businessContext || 'event_genix';
 }
 
+
+function currentCustomerUser() {
+    return typeof AppState !== 'undefined' ? AppState.currentUser : null;
+}
+
+function customerUserRoles(user = currentCustomerUser()) {
+    const roles = [];
+    if (user?.role) roles.push(user.role);
+    if (Array.isArray(user?.roles)) roles.push(...user.roles);
+    if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+    if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+    return Array.from(new Set(roles.filter(Boolean).map(String)));
+}
+
+function customerUserHasAnyRole(user, allowedRoles = []) {
+    const roles = customerUserRoles(user);
+    return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
+}
+
+function canCreateCustomer(user = currentCustomerUser()) {
+    return customerUserHasAnyRole(user, CUSTOMER_CREATE_ROLES);
+}
+
+function canManageCustomerActions(user = currentCustomerUser()) {
+    return customerUserHasAnyRole(user, CUSTOMER_MANAGE_ROLES);
+}
 function customerApiUrl(url) {
     return window.CrmBusinessContext?.apiUrl
         ? window.CrmBusinessContext.apiUrl(url, customerBusinessContext())
@@ -1161,11 +1205,11 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
         <div class="entity-card-actions customer-hero-actions" aria-label="Дії клієнта">
             <div class="customer-hero-action-group">
                 ${omniButton}
-                <button type="button" class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
+                ${canManageCustomerActions() ? `<button type="button" class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>` : ''}
             </div>
-            <div class="customer-hero-action-group customer-hero-danger-group">
+            ${canManageCustomerActions() ? `<div class="customer-hero-action-group customer-hero-danger-group">
                 <button type="button" class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
-            </div>
+            </div>` : ''}
         </div>
     </div>`;
 }
@@ -1439,6 +1483,69 @@ function openCustomerDeepLink() {
     requestAnimationFrame(() => highlightCustomerRow(customerId));
 }
 
+
+function customerCreateHandoffRequestFromUrl(params = new URLSearchParams()) {
+    const api = window.CrmCreateHandoff;
+    if (!api) return null;
+    const currentRequest = api.readRequestFromUrl?.(window.location.href);
+    if (currentRequest?.entity === 'customer') return currentRequest;
+
+    const token = String(params.get(CUSTOMER_CREATE_HANDOFF_PARAM) || '').trim();
+    if (!token) return null;
+    try {
+        return api.createRequest({
+            entity: 'customer',
+            businessContext: customerBusinessContext(),
+            token,
+            returnPath: params.get(api.RETURN_PARAM) || ''
+        });
+    } catch (err) {
+        console.warn('Invalid customer create handoff request', err);
+        return null;
+    }
+}
+
+function readCustomerCreateDeepLinkOptions() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(CUSTOMER_CREATE_ACTION_PARAM) !== 'create') return null;
+    return {
+        origin: String(params.get(CUSTOMER_CREATE_ORIGIN_PARAM) || '').trim(),
+        handoffRequest: customerCreateHandoffRequestFromUrl(params)
+    };
+}
+
+function clearCustomerCreateUrlParams() {
+    if (!window.history || !window.location) return;
+    const url = new URL(window.location.href);
+    const before = url.search;
+    [CUSTOMER_CREATE_ACTION_PARAM, CUSTOMER_CREATE_ORIGIN_PARAM, CUSTOMER_CREATE_HANDOFF_PARAM].forEach(key => {
+        url.searchParams.delete(key);
+    });
+    const handoffApi = window.CrmCreateHandoff;
+    [
+        handoffApi?.HANDOFF_PARAM,
+        handoffApi?.TOKEN_PARAM,
+        handoffApi?.CONTEXT_PARAM,
+        handoffApi?.ENTITY_PARAM,
+        handoffApi?.RETURN_PARAM
+    ].filter(Boolean).forEach(key => url.searchParams.delete(key));
+    if (url.search === before) return;
+    const previousState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+    window.history.replaceState({ ...previousState, customerCreateDeepLinkConsumed: true }, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function maybeOpenCustomerCreateFromUrl() {
+    const options = readCustomerCreateDeepLinkOptions();
+    if (!options) return false;
+    if (!canCreateCustomer()) {
+        if (typeof showNotification === 'function') showNotification('Немає прав створювати клієнтів.', 'error');
+        clearCustomerCreateUrlParams();
+        return true;
+    }
+    openEditModal(null, options);
+    clearCustomerCreateUrlParams();
+    return true;
+}
 function getCustomerLifecycleSegment(segmentId) {
     return CUSTOMER_LIFECYCLE_SEGMENTS.find(segment => segment.id === segmentId) || null;
 }
@@ -2354,8 +2461,9 @@ function isCustomerEditDirty() {
     return getCustomerEditState() !== _customerEditInitialState;
 }
 
-function openEditModal(customer) {
+function openEditModal(customer, options = {}) {
     CrmState.editingId = customer ? customer.id : null;
+    activeCustomerCreateHandoffRequest = customer ? null : (options.handoffRequest || null);
     const maysternyaMode = isMaysternyaCustomerContext();
     document.getElementById('customerEditTitle').textContent = customer
         ? (maysternyaMode ? 'Редагувати клієнта Майстерні' : 'Редагувати клієнта')
@@ -2378,10 +2486,32 @@ function openEditModal(customer) {
     syncCustomerEditBusinessFields();
 
     const modal = document.getElementById('customerEditModal');
+    if (modal) modal.dataset.origin = customer ? '' : (options.origin || '');
     _customerEditInitialState = getCustomerEditState();
     modal?.classList.remove('hidden');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
     document.getElementById('editName')?.focus();
+}
+
+function completeCustomerCreateHandoff(customerId) {
+    const request = activeCustomerCreateHandoffRequest;
+    const handoffApi = window.CrmCreateHandoff;
+    const normalizedCustomerId = Number(customerId);
+    if (!request || !handoffApi || !Number.isSafeInteger(normalizedCustomerId) || normalizedCustomerId <= 0) return false;
+
+    const result = handoffApi.sendCreated(request, 'customer.created', { customerId: normalizedCustomerId });
+    if (!result?.ok) {
+        if (typeof showNotification === 'function') showNotification('Клієнта створено, але бронювання не отримало handoff. Поверніться до бронювання вручну.', 'warning');
+        return false;
+    }
+
+    handoffApi.completeChildAfterSend?.(result, { close: true });
+    if (result.returnPath) {
+        window.setTimeout(() => {
+            window.location.assign(result.returnPath);
+        }, 150);
+    }
+    return true;
 }
 
 async function closeEditModal(force = false) {
@@ -2389,6 +2519,8 @@ async function closeEditModal(force = false) {
     const closeNow = () => {
         modal?.classList.add('hidden');
         CrmState.editingId = null;
+        activeCustomerCreateHandoffRequest = null;
+        if (modal) delete modal.dataset.origin;
         setCustomerEditingTags([]);
         setCustomerEditingChildren([]);
         closeCustomerEditTagDropdown();
@@ -2410,7 +2542,16 @@ async function closeEditModal(force = false) {
 }
 
 async function handleSave() {
-    if (!guardCustomerWrite(CrmState.editingId ? 'редагувати клієнтів' : 'створювати клієнтів')) return;
+    const isEditing = Boolean(CrmState.editingId);
+    if (isEditing && !canManageCustomerActions()) {
+        showNotification('Немає прав редагувати клієнтів.', 'error');
+        return;
+    }
+    if (!isEditing && !canCreateCustomer()) {
+        showNotification('Немає прав створювати клієнтів.', 'error');
+        return;
+    }
+    if (!guardCustomerWrite(isEditing ? 'редагувати клієнтів' : 'створювати клієнтів')) return;
     const name = document.getElementById('editName')?.value.trim();
     if (!name) {
         showNotification("Ім'я клієнта обов'язкове", 'error');
@@ -2463,8 +2604,10 @@ async function handleSave() {
             showNotification(result.error, 'error');
             return;
         }
+        const handoffSent = !wasEditing && result?.id ? completeCustomerCreateHandoff(result.id) : false;
         await closeEditModal(true);
         showNotification(wasEditing ? 'Клієнта оновлено' : 'Клієнта створено');
+        if (handoffSent) return;
         await refreshData();
         if (result?.id) {
             await showCustomerDetail(result.id);
@@ -2481,6 +2624,10 @@ async function handleSave() {
 
 // Global function called from detail modal
 window.editCustomer = async function(id) {
+    if (!canManageCustomerActions()) {
+        showNotification('Немає прав редагувати клієнтів.', 'error');
+        return;
+    }
     if (!guardCustomerWrite('редагувати клієнтів')) return;
     const customer = await fetchCustomerDetail(id);
     closeCustomerDetailModal();
@@ -2488,6 +2635,10 @@ window.editCustomer = async function(id) {
 };
 
 window.confirmDeleteCustomer = async function(id) {
+    if (!canManageCustomerActions()) {
+        showNotification('Немає прав видаляти клієнтів.', 'error');
+        return;
+    }
     if (!guardCustomerWrite('видаляти клієнтів')) return;
     if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
@@ -3121,10 +3272,10 @@ async function initPage() {
     initCustomerBusinessContext(user);
     const initialTab = applyInitialCustomerQueryParams();
 
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    const canManage = MANAGE_ROLES.includes(user.role);
+    const canManage = canManageCustomerActions(user);
+    const canCreate = canCreateCustomer(user);
     const canReviewChildren = canManage || user.role === 'admin';
-    document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('addCustomerBtn').style.display = canCreate ? '' : 'none';
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
@@ -3179,6 +3330,10 @@ async function initPage() {
 
     // Add customer
     document.getElementById('addCustomerBtn')?.addEventListener('click', () => {
+        if (!canCreateCustomer()) {
+            showNotification('Немає прав створювати клієнтів.', 'error');
+            return;
+        }
         if (!guardCustomerWrite('створювати клієнтів')) return;
         openEditModal(null);
     });
@@ -3237,7 +3392,7 @@ async function initPage() {
     // Load initial data
     await refreshData();
     if (initialTab && initialTab !== 'list') switchTab(initialTab);
-    openCustomerDeepLink();
+    if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();
 }
 
 document.addEventListener('DOMContentLoaded', initPage);

@@ -51,6 +51,9 @@ function isPinataProgram(program) {
 
 const CLIENT_PINATA_FILLER_VALUE = 'client_filler';
 const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
+const BOOKING_LEAD_ACCESS_ROLES = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer']);
+let activeBookingCustomerHandoffReceiver = null;
+let activeBookingLeadHandoffReceiver = null;
 
 function bookingPinataNumbersHelper() {
     return (typeof window !== 'undefined' && window.PinataNumbers)
@@ -1741,8 +1744,12 @@ function resetBookingLeadDetails() {
     if (section) section.open = false;
 }
 
+function bookingInlineCustomerCreationEnabled() {
+    return typeof isParkTimelineBookingMode === 'function' ? !isParkTimelineBookingMode() : false;
+}
 function setBookingClientMode(mode = 'search', options = {}) {
-    const nextMode = mode === 'existing' || mode === 'new' ? mode : 'search';
+    const inlineCustomerCreation = bookingInlineCustomerCreationEnabled();
+    const nextMode = mode === 'existing' ? 'existing' : (mode === 'new' && inlineCustomerCreation ? 'new' : 'search');
     BookingDrawerState.clientMode = nextMode;
     const selectedCard = document.getElementById('bookingSelectedCustomerCard');
     const newCustomerForm = document.getElementById('bookingNewCustomerForm');
@@ -1770,13 +1777,14 @@ function setBookingClientMode(mode = 'search', options = {}) {
     if (createBtn) {
         createBtn.classList.toggle('hidden', nextMode === 'existing');
         createBtn.textContent = isNew ? 'До пошуку' : 'Новий клієнт';
-        createBtn.setAttribute('aria-expanded', String(isNew));
     }
     if (changeBtn) changeBtn.classList.toggle('hidden', nextMode !== 'existing' || !hasSelected);
     if (modeLabel) {
         if (nextMode === 'existing') modeLabel.textContent = 'Прикріплено існуючу картку клієнта.';
         else if (isNew) modeLabel.textContent = 'Введіть дані нового клієнта.';
-        else modeLabel.textContent = 'Знайдіть і виберіть існуючу картку клієнта.';
+        else modeLabel.textContent = inlineCustomerCreation
+            ? 'Знайдіть і виберіть існуючу картку клієнта.'
+            : 'Знайдіть і виберіть існуючу картку клієнта або створіть нову через CRM.';
     }
     if (customerSearch) customerSearch.setAttribute('aria-expanded', nextMode === 'search' ? 'true' : 'false');
     if (isNew && customerName && !customerName.value.trim()) {
@@ -1784,9 +1792,7 @@ function setBookingClientMode(mode = 'search', options = {}) {
     }
     if (options.focusSearch) customerSearch?.focus();
     if (options.focusNew) customerName?.focus();
-}
-
-function bookingCustomerCleanText(value) {
+}function bookingCustomerCleanText(value) {
     if (value === undefined || value === null) return '';
     return String(value).trim();
 }
@@ -2323,7 +2329,6 @@ function bookingCustomerPayloadFromDraft(draft = bookingCustomerDraftFromForm())
     if (draft.source) customer.source = draft.source;
     return customer;
 }
-
 function addBookingValidationIssue(state, key, message, fields = []) {
     if (!state || !message) return;
     const issue = {
@@ -2401,6 +2406,7 @@ function getSmartBookingValidationState() {
     const hasSelectedCustomer = Boolean(document.getElementById('selectedCustomerId')?.value);
     const customerDraft = bookingCustomerDraftFromForm();
     const hasNewCustomer = !hasSelectedCustomer
+        && bookingInlineCustomerCreationEnabled()
         && BookingDrawerState.clientMode === 'new'
         && bookingNewCustomerDraftIsValid(customerDraft);
     const hasClient = hasSelectedCustomer || hasNewCustomer;
@@ -7231,6 +7237,7 @@ async function openBookingPanel(time, lineId, options = {}) {
         room: line?.name || ''
     });
     resetBookingDrawerStateForOpen(options.drawerMode || inferBookingDrawerModeForOpen());
+    BookingDrawerState.leadHandoffContext = null;
     nextBookingTimeChangeToken();
     clearBookingTimePreflightState({ updateSubmit: false });
     setBookingTimeContextIssue('', { updateSubmit: false });
@@ -7347,6 +7354,7 @@ async function openBookingPanel(time, lineId, options = {}) {
     const panel = document.getElementById('bookingPanel');
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.remember(panel);
     if (window.BookingForm?.markClean) BookingForm.markClean();
+    syncBookingLeadCreateButtonAccess();
     requestBookingEntryPriceRulesPreview();
     return true;
 }
@@ -8176,13 +8184,253 @@ const debouncedBookingDuplicateCheck = debounce(async () => {
     }
 }, 350);
 
+function bookingCustomerHandoffBusinessContext() {
+    return window.CrmCreateHandoff?.normalizeBusinessContext?.(
+        window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+            || window.TimelineBusinessContext?.current?.()?.apiValue
+            || 'event_genix'
+    ) || 'event_genix';
+}
+
+function bookingCustomerHandoffReturnPath() {
+    try {
+        return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    } catch {
+        return '/index.html';
+    }
+}
+
+function disposeActiveBookingCustomerHandoff() {
+    activeBookingCustomerHandoffReceiver?.dispose?.();
+    activeBookingCustomerHandoffReceiver = null;
+}
+
+function disposeActiveBookingLeadHandoff() {
+    activeBookingLeadHandoffReceiver?.dispose?.();
+    activeBookingLeadHandoffReceiver = null;
+}
+
+function disposeActiveBookingCreateHandoffs() {
+    disposeActiveBookingCustomerHandoff();
+    disposeActiveBookingLeadHandoff();
+}
+
+function bookingPositiveIntegerId(value) {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function bookingSelectedCustomerIdForWorkflow() {
+    return bookingPositiveIntegerId(document.getElementById('selectedCustomerId')?.value);
+}
+
+function bookingCurrentUserRoles(user = AppState.currentUser) {
+    const roles = [];
+    try {
+        if (typeof getUserRoles === 'function') roles.push(...getUserRoles());
+    } catch {}
+    try {
+        const effectiveRole = window.WorkingRole?.getEffectiveRole?.(user);
+        if (effectiveRole) roles.push(effectiveRole);
+    } catch {}
+    if (user?.role) roles.push(user.role);
+    if (Array.isArray(user?.roles)) roles.push(...user.roles);
+    if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+    if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+    return Array.from(new Set(roles.map(role => String(role || '').trim()).filter(Boolean)));
+}
+
+function canOpenBookingLeadCreateWorkflow(user = AppState.currentUser) {
+    try {
+        if (typeof canAccessPage === 'function') return canAccessPage('/sales-funnel');
+    } catch {}
+    return bookingCurrentUserRoles(user).some(role => BOOKING_LEAD_ACCESS_ROLES.includes(role));
+}
+
+function syncBookingLeadCreateButtonAccess() {
+    const button = document.getElementById('bookingCreateLeadBtn');
+    if (!button) return false;
+    const canCreateLead = canOpenBookingLeadCreateWorkflow();
+    button.classList.toggle('hidden', !canCreateLead);
+    button.disabled = !canCreateLead;
+    button.setAttribute('aria-hidden', String(!canCreateLead));
+    return canCreateLead;
+}
+
+function bookingCustomerCreateWorkflowUrl(receiver) {
+    const baseUrl = receiver?.urlFor?.('/customers', { returnPath: bookingCustomerHandoffReturnPath() })
+        || new URL('/customers', window.location.origin || 'http://localhost');
+    baseUrl.searchParams.set('action', 'create');
+    baseUrl.searchParams.set('origin', 'booking');
+    if (receiver?.token) baseUrl.searchParams.set('handoff', receiver.token);
+    return baseUrl;
+}
+
+function bookingLeadCreateWorkflowUrl(receiver) {
+    const baseUrl = receiver?.urlFor?.('/sales-funnel', { returnPath: bookingCustomerHandoffReturnPath() })
+        || new URL('/sales-funnel', window.location.origin || 'http://localhost');
+    baseUrl.searchParams.set('action', 'create');
+    baseUrl.searchParams.set('createStage', 'deal');
+    baseUrl.searchParams.set('origin', 'booking');
+    if (receiver?.token) baseUrl.searchParams.set('handoff', receiver.token);
+    const selectedCustomerId = bookingSelectedCustomerIdForWorkflow();
+    if (selectedCustomerId) baseUrl.searchParams.set('customerId', String(selectedCustomerId));
+    return baseUrl;
+}
+
+async function applyBookingCustomerHandoffIdToForm(customerId, messages = {}) {
+    const normalizedCustomerId = bookingPositiveIntegerId(customerId);
+    if (!normalizedCustomerId) {
+        renderBookingCustomerSearchState(messages.invalid || 'CRM повернула некоректний ID клієнта. Поверніться до пошуку вручну.');
+        return null;
+    }
+
+    let customer = null;
+    try {
+        customer = typeof apiGetCustomer === 'function' ? await apiGetCustomer(normalizedCustomerId) : null;
+    } catch (err) {
+        console.warn('Failed to load created customer after CRM handoff', err);
+    }
+
+    applySelectedCustomerToBookingForm(customer?.id ? customer : { id: normalizedCustomerId, name: `Клієнт #${normalizedCustomerId}` }, { markDirty: true });
+    renderBookingCustomerSearchState(customer?.id
+        ? (messages.loaded || 'Клієнта створено в CRM і додано до бронювання.')
+        : (messages.fallback || 'Клієнта створено в CRM і додано до бронювання. Деталі картки не вдалося завантажити автоматично.'));
+    renderBookingPackageSummary();
+    return customer?.id ? customer : { id: normalizedCustomerId };
+}
+
+async function handleBookingCustomerHandoffCreated(payload = {}) {
+    activeBookingCustomerHandoffReceiver = null;
+    const customerId = payload.customerId ?? payload.customer_id ?? payload.id;
+    await applyBookingCustomerHandoffIdToForm(customerId);
+}
+
+async function handleBookingLeadHandoffCreated(payload = {}) {
+    activeBookingLeadHandoffReceiver = null;
+    const leadId = bookingPositiveIntegerId(payload.leadId ?? payload.lead_id ?? payload.id);
+    const returnedCustomerId = bookingPositiveIntegerId(payload.customerId ?? payload.customer_id);
+    const selectedCustomerId = bookingSelectedCustomerIdForWorkflow();
+    const linkedCustomerId = returnedCustomerId || selectedCustomerId || null;
+
+    if (!leadId) {
+        renderBookingCustomerSearchState('CRM повернула некоректний ID ліда. Бронювання не змінено; створіть або виберіть лід вручну.');
+        return;
+    }
+
+    AppState.leadConversionContext = {
+        ...(AppState.leadConversionContext || {}),
+        leadId,
+        customerId: linkedCustomerId,
+        pipelineStage: 'deal',
+        source: 'booking_drawer_handoff'
+    };
+    BookingDrawerState.leadHandoffContext = {
+        leadId,
+        customerId: linkedCustomerId,
+        pipelineStage: 'deal',
+        source: 'booking_drawer_handoff'
+    };
+    setBookingLeadDetails({
+        source: 'lead',
+        status: 'deal',
+        notes: `Лід #${leadId} створено з бронювання.`
+    });
+
+    if (returnedCustomerId) {
+        await applyBookingCustomerHandoffIdToForm(returnedCustomerId, {
+            loaded: 'Лід створено в CRM на етапі «Угода», клієнта додано до бронювання.',
+            fallback: 'Лід створено в CRM на етапі «Угода», клієнта додано до бронювання. Деталі картки не вдалося завантажити автоматично.'
+        });
+    } else if (selectedCustomerId) {
+        renderBookingCustomerSearchState('Лід створено в CRM на етапі «Угода» і прив’язано до вибраного клієнта бронювання.');
+    } else {
+        renderBookingCustomerSearchState('Лід створено в CRM на етапі «Угода», але CRM не повернула customerId. Виберіть клієнта перед збереженням бронювання.');
+    }
+
+    if (window.BookingForm) BookingForm._dirty = true;
+    renderBookingPackageSummary();
+}
+
+function openBookingCustomerCreateWorkflow() {
+    const handoffApi = window.CrmCreateHandoff;
+    if (!handoffApi?.createReceiver) {
+        const fallbackUrl = new URL('/customers', window.location.origin || 'http://localhost');
+        fallbackUrl.searchParams.set('action', 'create');
+        fallbackUrl.searchParams.set('origin', 'booking');
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(fallbackUrl.href);
+        else window.open(fallbackUrl.href, '_blank', 'noopener,noreferrer');
+        renderBookingCustomerSearchState('Відкрито створення клієнта в CRM. Після збереження поверніться до бронювання та виберіть клієнта через пошук.');
+        return false;
+    }
+
+    disposeActiveBookingCustomerHandoff();
+    const receiver = handoffApi.createReceiver({
+        entity: 'customer',
+        businessContext: bookingCustomerHandoffBusinessContext(),
+        returnPath: bookingCustomerHandoffReturnPath(),
+        onCreated: handleBookingCustomerHandoffCreated,
+        onTimeout: () => {
+            if (activeBookingCustomerHandoffReceiver === receiver) activeBookingCustomerHandoffReceiver = null;
+            renderBookingCustomerSearchState('Створення клієнта не завершено або вкладку закрито. Бронювання не змінено; можна повторити або вибрати клієнта вручну.');
+        }
+    });
+    activeBookingCustomerHandoffReceiver = receiver;
+    const url = bookingCustomerCreateWorkflowUrl(receiver);
+    if (typeof openSafeNewTab === 'function') openSafeNewTab(url.href);
+    else window.open(url.href, '_blank', 'noopener,noreferrer');
+    renderBookingCustomerSearchState('Відкрито створення клієнта в CRM. Після збереження картка повернеться в це бронювання автоматично.');
+    return true;
+}
+
+function openBookingLeadCreateWorkflow() {
+    if (!canOpenBookingLeadCreateWorkflow()) {
+        renderBookingCustomerSearchState('Немає доступу до воронки лідів. Створення ліда з бронювання недоступне для цієї ролі.');
+        return false;
+    }
+
+    const handoffApi = window.CrmCreateHandoff;
+    if (!handoffApi?.createReceiver) {
+        const fallbackUrl = bookingLeadCreateWorkflowUrl(null);
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(fallbackUrl.href);
+        else window.open(fallbackUrl.href, '_blank', 'noopener,noreferrer');
+        renderBookingCustomerSearchState('Відкрито створення ліда в CRM. Після збереження поверніться до бронювання та виберіть клієнта через пошук, якщо він не підтягнувся автоматично.');
+        return false;
+    }
+
+    disposeActiveBookingLeadHandoff();
+    const receiver = handoffApi.createReceiver({
+        entity: 'lead',
+        businessContext: bookingCustomerHandoffBusinessContext(),
+        returnPath: bookingCustomerHandoffReturnPath(),
+        onCreated: handleBookingLeadHandoffCreated,
+        onTimeout: () => {
+            if (activeBookingLeadHandoffReceiver === receiver) activeBookingLeadHandoffReceiver = null;
+            renderBookingCustomerSearchState('Створення ліда не завершено або вкладку закрито. Бронювання не змінено; можна повторити або продовжити без ліда.');
+        }
+    });
+    activeBookingLeadHandoffReceiver = receiver;
+    const url = bookingLeadCreateWorkflowUrl(receiver);
+    if (typeof openSafeNewTab === 'function') openSafeNewTab(url.href);
+    else window.open(url.href, '_blank', 'noopener,noreferrer');
+    renderBookingCustomerSearchState('Відкрито створення ліда в CRM. Після збереження лід і клієнт повернуться в це бронювання автоматично.');
+    return true;
+}
 // Toggle + autocomplete listeners (called once on page load)
 function initCustomerCRM() {
     document.getElementById('bookingCreateCustomerBtn')?.addEventListener('click', () => {
+        if (!bookingInlineCustomerCreationEnabled()) return openBookingCustomerCreateWorkflow();
         const nextMode = BookingDrawerState.clientMode === 'new' ? 'search' : 'new';
         setBookingClientMode(nextMode, nextMode === 'new' ? { focusNew: true } : { focusSearch: true });
         renderBookingPackageSummary();
+        return true;
     });
+    document.getElementById('bookingCreateLeadBtn')?.addEventListener('click', () => {
+        openBookingLeadCreateWorkflow();
+    });
+    syncBookingLeadCreateButtonAccess();
+    window.addEventListener?.('workingRoleChanged', syncBookingLeadCreateButtonAccess);
+    window.addEventListener?.('rolePreviewChanged', syncBookingLeadCreateButtonAccess);
     document.getElementById('bookingChangeCustomerBtn')?.addEventListener('click', () => {
         clearSelectedCustomerLink();
         document.getElementById('customerSearch')?.focus();
@@ -8393,6 +8641,7 @@ async function openBookingChat(bookingId) {
 
 async function closeBookingPanel(force = false) {
     const panel = document.getElementById('bookingPanel');
+    if (force) disposeActiveBookingCreateHandoffs();
     if (!force && panel && window.UnsafeDismissGuard) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(panel, () => closeBookingPanel(true), {
             force,
@@ -8403,6 +8652,7 @@ async function closeBookingPanel(force = false) {
             markClean: false
         });
     }
+    disposeActiveBookingCreateHandoffs();
     document.getElementById('bookingPanel')?.classList.add('hidden');
     document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first', 'booking-panel--time-overrun');
     document.querySelector('.main-content').classList.remove('panel-open');
@@ -11879,7 +12129,7 @@ function buildBookingObject(formData, program) {
     const existingId = document.getElementById('selectedCustomerId')?.value;
     if (existingId) {
         obj.customerId = parseInt(existingId, 10);
-    } else if (BookingDrawerState.clientMode === 'new') {
+    } else if (bookingInlineCustomerCreationEnabled() && BookingDrawerState.clientMode === 'new') {
         const customer = bookingCustomerPayloadFromDraft();
         if (customer) obj.customer = customer;
     }

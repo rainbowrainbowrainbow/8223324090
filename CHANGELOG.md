@@ -4,6 +4,16 @@
 
 ---
 
+## v0.79.93 - CRM Booking Handoff
+
+### CRM / Booking handoff / (21.07.2026) [codex]
+- **Канонічне створення клієнтів і лідів із бронювання** - drawer відкриває основні workflow `Customers` і `Sales Funnel` у новій вкладці через одноразовий same-origin handoff без PII у URL.
+- **Новий лід із бронювання стартує як угода** - booking deep link фіксує етап `deal`, повертає `leadId/customerId` назад у незакритий drawer і не скидає чернетку бронювання.
+- **Lifecycle етапів ліда уніфіковано** - `POST /api/leads` і stage update проходять через спільний dispatcher з whitelist-валідацією, `lost_reason`, customer link/children sync і deposit hooks без дублювання side effects.
+- **Регресійні guards оновлено** - UI/route/booking/lead тести покривають create deep links, handoff token, role gate, `.codex-temp` version-scan exclude і старі compact booking сценарії.
+
+---
+
 ## v0.79.92 - Timeline launcher CI guard
 
 ### Release / Versioning / (19.07.2026) [codex]

@@ -57,7 +57,7 @@ test('booking create payload supports existing and new customer flows', () => {
     const validationBlock = bookingJs.slice(validationStart, validationEnd);
     assert.match(validationBlock, /const hasSelectedCustomer = Boolean\(document\.getElementById\('selectedCustomerId'\)\?\.value\);/);
     assert.match(validationBlock, /const customerDraft = bookingCustomerDraftFromForm\(\);/);
-    assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer\s*&& BookingDrawerState\.clientMode === 'new'\s*&& bookingNewCustomerDraftIsValid\(customerDraft\);/);
+    assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer\s*&& bookingInlineCustomerCreationEnabled\(\)\s*&& BookingDrawerState\.clientMode === 'new'\s*&& bookingNewCustomerDraftIsValid\(customerDraft\);/);
     assert.match(validationBlock, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
     assert.match(validationBlock, /const hasSearchOnly = Boolean\(customerDraft\.search && !customerDraft\.name\);/);
     assert.ok(
@@ -71,7 +71,7 @@ test('booking create payload supports existing and new customer flows', () => {
     assert.ok(payloadStart >= 0 && payloadEnd > payloadStart, 'booking payload block exists');
     const payloadBlock = bookingJs.slice(payloadStart, payloadEnd);
     assert.match(payloadBlock, /const existingId = document\.getElementById\('selectedCustomerId'\)\?\.value;/);
-    assert.match(payloadBlock, /if \(existingId\) \{[\s\S]*obj\.customerId = parseInt\(existingId, 10\);[\s\S]*\} else if \(BookingDrawerState\.clientMode === 'new'\) \{[\s\S]*const customer = bookingCustomerPayloadFromDraft\(\);[\s\S]*if \(customer\) obj\.customer = customer;[\s\S]*\}/);
+    assert.match(payloadBlock, /if \(existingId\) \{[\s\S]*obj\.customerId = parseInt\(existingId, 10\);[\s\S]*\} else if \(bookingInlineCustomerCreationEnabled\(\) && BookingDrawerState\.clientMode === 'new'\) \{[\s\S]*const customer = bookingCustomerPayloadFromDraft\(\);[\s\S]*if \(customer\) obj\.customer = customer;[\s\S]*\}/);
 });
 
 test('booking customer validation and payload distinguish existing, new, search-only, and empty states', () => {
@@ -110,7 +110,8 @@ test('booking customer validation and payload distinguish existing, new, search-
         getBookingFormData: () => ({ time: '12:00', room: 'Room A', programId: 'bubble' }),
         bookingBoundaryWarningsForFormData: () => [],
         isOptionalTimelineRoomBookingMode: () => false,
-        getBookingWorkspaceHasEvent: () => true
+        getBookingWorkspaceHasEvent: () => true,
+        bookingInlineCustomerCreationEnabled: () => true
     };
     vm.createContext(context);
     vm.runInContext(`
@@ -726,7 +727,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(bookingPanelHtml, /bookingModeSelector/);
     assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
     assert.match(html, /bookingCreateCustomerBtn/);
-    assert.match(html, /Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання/);
+    assert.match(html, /bookingCreateLeadBtn/);
+    assert.match(html, /Знайдіть існуючу картку або створіть нового клієнта через CRM перед збереженням бронювання/);
     assert.match(bookingPanelHtml, /id="bookingCustomerContextPanel" class="booking-customer-context-panel"/);
     assert.match(bookingPanelHtml, /id="bookingSelectedCustomerCard" class="booking-selected-customer hidden"/);
     assert.ok(

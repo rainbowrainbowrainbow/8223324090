@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.92",
+  "version": "0.79.93",
   "eventGenix": {
-    "releaseLabel": "Timeline launcher CI guard"
+    "releaseLabel": "CRM Booking Handoff"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

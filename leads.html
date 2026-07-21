@@ -11,15 +11,15 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.79.92">
-    <link rel="stylesheet" href="css/layout.css?v=0.79.92">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.92">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.92">
-    <link rel="stylesheet" href="css/pages-leads.css?v=0.79.92">
-    <link rel="stylesheet" href="css/modals.css?v=0.79.92">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.79.92">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.92">
-    <link rel="stylesheet" href="css/responsive.css?v=0.79.92">
+    <link rel="stylesheet" href="css/base.css?v=0.79.93">
+    <link rel="stylesheet" href="css/layout.css?v=0.79.93">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.79.93">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.79.93">
+    <link rel="stylesheet" href="css/pages-leads.css?v=0.79.93">
+    <link rel="stylesheet" href="css/modals.css?v=0.79.93">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.79.93">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.79.93">
+    <link rel="stylesheet" href="css/responsive.css?v=0.79.93">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -647,6 +647,8 @@
 
         /* Two-column form row */
         .lead-modal .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+        .lead-stage-hint { margin: 6px 0 0; color: #64748B; font-size: 12px; line-height: 1.4; }
+        .lead-stage-hint.is-locked { color: #047857; font-weight: 750; }
         @media (hover: none) and (pointer: coarse) {
             .lead-modal .form-row { grid-template-columns: 1fr; }
         }
@@ -669,6 +671,8 @@
         body.dark-mode .lead-modal label { color: #9CA3AF; }
         body.dark-mode .lead-modal input, body.dark-mode .lead-modal textarea { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
         body.dark-mode .lead-modal select { background: #252540; border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
+        body.dark-mode .lead-stage-hint { color: #CBD5E1; }
+        body.dark-mode .lead-stage-hint.is-locked { color: #A7F3D0; }
         body.dark-mode .lead-customer-link-hint { color: #CBD5E1; }
         body.dark-mode .lead-customer-link-preview {
             background: rgba(16,185,129,0.10);
@@ -1073,33 +1077,32 @@
                     </div>
                 </div>
             </div>
-            <!-- Pipeline & Type (shown only when editing) -->
-            <div id="leadStageGroup" style="display:none;">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Етап воронки</label>
-                        <select id="leadPipelineStage">
-                            <option value="new">🔵 Новий лід</option>
-                            <option value="contacted">📞 Контакт</option>
-                            <option value="info_sent">📋 Надання інфо</option>
-                            <option value="deal">🤝 Угода</option>
-                            <option value="deposit_received">💰 Завдаток</option>
-                            <option value="waiting">⏳ В очікуванні</option>
-                            <option value="completed">✅ Проведено</option>
-                            <option value="closed">💚 Закрито</option>
-                            <option value="lost">❌ Провалено</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Тип ліда</label>
-                        <select id="leadLeadType">
-                            <option value="quality">🟢 Якісний</option>
-                            <option value="spam">🔴 Спам</option>
-                            <option value="collaboration">🤝 Співпраця</option>
-                            <option value="informational">📩 Інформаційний</option>
-                            <option value="low_quality">⬇️ Неякісний</option>
-                        </select>
-                    </div>
+            <!-- Pipeline stage and lead type use separate containers: create flow may show/lock only stage. -->
+            <div class="form-row">
+                <div class="form-group" id="leadStageGroup">
+                    <label for="leadPipelineStage">Етап воронки</label>
+                    <select id="leadPipelineStage" aria-describedby="leadStageHint">
+                        <option value="new">🔵 Новий лід</option>
+                        <option value="contacted">📞 Контакт</option>
+                        <option value="info_sent">📋 Надання інфо</option>
+                        <option value="deal">🤝 Угода</option>
+                        <option value="deposit_received">💰 Завдаток</option>
+                        <option value="waiting">⏳ В очікуванні</option>
+                        <option value="completed">✅ Проведено</option>
+                        <option value="closed">💚 Закрито</option>
+                        <option value="lost">❌ Провалено</option>
+                    </select>
+                    <p class="lead-stage-hint" id="leadStageHint" hidden></p>
+                </div>
+                <div class="form-group" id="leadTypeGroup">
+                    <label for="leadLeadType">Тип ліда</label>
+                    <select id="leadLeadType">
+                        <option value="quality">🟢 Якісний</option>
+                        <option value="spam">🔴 Спам</option>
+                        <option value="collaboration">🤝 Співпраця</option>
+                        <option value="informational">📩 Інформаційний</option>
+                        <option value="low_quality">⬇️ Неякісний</option>
+                    </select>
                 </div>
             </div>
             <div class="form-group">
@@ -1324,14 +1327,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.79.92"></script>
-    <script src="js/notification.js?v=0.79.92"></script>
-    <script src="js/api.js?v=0.79.92"></script>
-    <script src="js/auth.js?v=0.79.92"></script>
-    <script src="js/components/sidebar.js?v=0.79.92"></script>
+    <script src="js/config.js?v=0.79.93"></script>
+    <script src="js/notification.js?v=0.79.93"></script>
+    <script src="js/api.js?v=0.79.93"></script>
+    <script src="js/auth.js?v=0.79.93"></script>
+    <script src="js/crm-create-handoff.js?v=0.79.93"></script>
+    <script src="js/components/sidebar.js?v=0.79.93"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.79.92"></script>
-    <script src="js/ui.js?v=0.79.92"></script>
-    <script src="js/alerts.js?v=0.79.92"></script>
+    <script src="js/leads-page.js?v=0.79.93"></script>
+    <script src="js/ui.js?v=0.79.93"></script>
+    <script src="js/alerts.js?v=0.79.93"></script>
 </body>
 </html>

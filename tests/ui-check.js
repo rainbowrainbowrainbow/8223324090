@@ -263,7 +263,8 @@ checkPage('index.html', (doc, html) => {
         && responsiveCss.includes('grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(48px, auto)')
         && responsiveCss.includes('min-height: 44px')
         && darkModeCss.includes('body.dark-mode .booking-time-select'));
-    check('Booking customer UI reads canonical children and writes new-customer payload from the form draft', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && bookingCode.includes('function bookingCustomerPayloadFromDraft') && bookingCode.includes('if (customer) obj.customer = customer;'));
+    check('Booking customer UI uses canonical park workflow while preserving compact inline compatibility', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('bookingCustomerChildLine') && bookingCode.includes('function openBookingCustomerCreateWorkflow') && bookingCode.includes('function bookingCustomerCreateWorkflowUrl') && bookingCode.includes("baseUrl.searchParams.set('action', 'create')") && bookingCode.includes("baseUrl.searchParams.set('origin', 'booking')") && bookingCode.includes("baseUrl.searchParams.set('handoff', receiver.token)") && bookingCode.includes('function handleBookingCustomerHandoffCreated') && bookingCode.includes('apiGetCustomer(normalizedCustomerId)') && bookingCode.includes('applySelectedCustomerToBookingForm') && bookingCode.includes('handoffApi.createReceiver') && bookingCode.includes("entity: 'customer'") && bookingCode.includes('function bookingInlineCustomerCreationEnabled') && bookingCode.includes('function bookingCustomerPayloadFromDraft') && bookingCode.includes("bookingInlineCustomerCreationEnabled() && BookingDrawerState.clientMode === 'new'") && bookingCode.includes('if (customer) obj.customer = customer') && htmlContains('index.html', 'bookingNewCustomerForm'));
+    check('Booking lead UI opens canonical sales funnel deal handoff', htmlContains('index.html', 'bookingCreateLeadBtn') && bookingCode.includes('const BOOKING_LEAD_ACCESS_ROLES') && bookingCode.includes('function canOpenBookingLeadCreateWorkflow') && bookingCode.includes("canAccessPage('/sales-funnel')") && bookingCode.includes('function openBookingLeadCreateWorkflow') && bookingCode.includes('function bookingLeadCreateWorkflowUrl') && bookingCode.includes("baseUrl.searchParams.set('createStage', 'deal')") && bookingCode.includes("baseUrl.searchParams.set('origin', 'booking')") && bookingCode.includes("baseUrl.searchParams.set('customerId', String(selectedCustomerId))") && bookingCode.includes("entity: 'lead'") && bookingCode.includes('function handleBookingLeadHandoffCreated') && bookingCode.includes('AppState.leadConversionContext') && bookingCode.includes('BookingDrawerState.leadHandoffContext') && bookingCode.includes('obj.leadId = AppState.leadConversionContext.leadId'));
     check('Timeline period and timeline type controls are split',
         !!doc.querySelector('#periodSelector[data-schedule-view-mode-selector]')
         && !!doc.querySelector('[data-schedule-view-mode="day"][data-period="1"]')
@@ -1888,8 +1889,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.79.92')
-        && html.includes('js/hr-pulse-switcher.js?v=0.79.92')
+        && html.includes('js/staff-schedule-shell.js?v=0.79.93')
+        && html.includes('js/hr-pulse-switcher.js?v=0.79.93')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -4413,6 +4414,7 @@ const prefillLeadFromCustomerFallbackBlock = sourceBlock(leadsCode, 'function pr
 const openLeadFromCustomerFallbackBlock = sourceBlock(leadsCode, 'function openLeadFromCustomerFallback', 'function editLead');
 const linkSavedLeadToFallbackCustomerBlock = sourceBlock(leadsCode, 'async function linkSavedLeadToFallbackCustomer', 'async function saveLead');
 const saveLeadBlock = sourceBlock(leadsCode, 'async function saveLead', 'async function deleteLead');
+const leadDomReadyBlock = sourceBlock(leadsCode, "document.addEventListener('DOMContentLoaded'", 'async function checkTestMode');
 const leadCustomerSearchEndpointCount = (leadsCode.match(/\/api\/customers\/search/g) || []).length;
 const legacyLeadPatchRouteBlock = sourceBlock(leadsRouteCode, "router.patch('/:id', async", "// POST /api/leads/:id/collaboration-task");
 check('Lead deal stage refreshes kanban even when customer card prompt is dismissed',
@@ -4504,14 +4506,39 @@ check('Lead customer fallback links the saved lead only after explicit save',
     && linkSavedLeadToFallbackCustomerBlock.includes("apiFetch(`/api/leads/${normalizedLeadId}/link-customer`")
     && linkSavedLeadToFallbackCustomerBlock.includes("method: 'POST'")
     && linkSavedLeadToFallbackCustomerBlock.includes('customerId: normalizedCustomerId')
-    && linkSavedLeadToFallbackCustomerBlock.includes('return false;')
+    && linkSavedLeadToFallbackCustomerBlock.includes('return null;')
     && saveLeadBlock.includes('const sourceCustomerId = editId ? null : leadModalSourceCustomerId();')
     && saveLeadBlock.includes('const savedLeadId = editId || data.lead?.id;')
-    && saveLeadBlock.includes('if (!editId && sourceCustomerId && savedLeadId)')
+    && saveLeadBlock.includes('if (!editId && sourceCustomerId && savedLeadId && responseCustomerId !== sourceCustomerId)')
     && saveLeadBlock.includes('await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);')
     && saveLeadBlock.indexOf('const data = await res.json();') < saveLeadBlock.indexOf('await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);')
     && saveLeadBlock.indexOf('await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);') < saveLeadBlock.indexOf('closeLeadModal(true);')
     && leadsCode.includes('delete modal.dataset.sourceCustomerId;'));
+check('Lead create modal supports canonical stage selector and booking handoff deep link',
+    htmlContains('leads.html', 'id="leadStageGroup"')
+    && htmlContains('leads.html', 'id="leadTypeGroup"')
+    && htmlContains('leads.html', 'id="leadStageHint"')
+    && leadsCode.includes("const LEAD_CREATE_STAGE_PARAM = 'createStage'")
+    && leadsCode.includes("if (params.get(LEAD_CREATE_ACTION_PARAM) !== 'create') return null;")
+    && leadsCode.includes("const createStage = fromBooking ? 'deal'")
+    && leadsCode.includes('lockStage: fromBooking')
+    && leadsCode.includes('sourceCustomerId: readLeadCreateCustomerId(params)')
+    && leadsCode.includes('handoffRequest: leadCreateHandoffRequestFromUrl(params)')
+    && leadsCode.includes('maybeOpenLeadCreateFromUrl();')
+    && leadDomReadyBlock.indexOf('await loadUsers();') < leadDomReadyBlock.indexOf('maybeOpenLeadCreateFromUrl();')
+    && leadDomReadyBlock.indexOf('maybeOpenLeadCreateFromUrl();') < leadDomReadyBlock.indexOf('await loadLeads();')
+    && leadsCode.includes('configureLeadStageControls({')
+    && leadsCode.includes("if (typeGroup) typeGroup.style.display = editing ? '' : 'none';")
+    && leadsCode.includes('prepareCreateStagePayload')
+    && saveLeadBlock.includes('Object.assign(body, stagePayload);')
+    && saveLeadBlock.includes('body.customerId = sourceCustomerId')
+    && saveLeadBlock.includes('responseCustomerId !== sourceCustomerId')
+    && leadsRouteCode.includes('requestedCreateCustomerId')
+    && leadsRouteCode.includes("source: 'leads.post_requested_customer'")
+    && leadsCode.includes("handoffApi.sendCreated(request, 'lead.created', payload)")
+    && leadsCode.includes('completeLeadCreateHandoff(savedLeadId')
+    && leadsCode.includes('url.searchParams.delete(key)')
+    && !leadsCode.includes("params.get('pipeline_stage') || params.get('createStage')"));
 check('Lead customer stages auto-create or link a SQL customer card',
     leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set')
     && leadsRouteCode.includes("'deposit_received'")
@@ -4591,6 +4618,32 @@ const taskPaginationCode = fs.readFileSync(path.join(ROOT, 'services/taskPaginat
 const centerCode = fs.readFileSync(path.join(ROOT, 'js/center-page.js'), 'utf8');
 const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
 const pagesCss = cssTextWithImports('css/pages.css');
+check('Customers page supports canonical create deep link handoff without broadening manage actions',
+    customersCode.includes("const CUSTOMER_CREATE_ACTION_PARAM = 'action'")
+    && customersCode.includes("const CUSTOMER_CREATE_HANDOFF_PARAM = 'handoff'")
+    && customersCode.includes("'reception'")
+    && customersCode.includes('function canCreateCustomer')
+    && customersCode.includes('function canManageCustomerActions')
+    && customersCode.includes('const canCreate = canCreateCustomer(user);')
+    && customersCode.includes("document.getElementById('addCustomerBtn').style.display = canCreate ? '' : 'none';")
+    && customersCode.includes("document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';")
+    && customersCode.includes("document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';")
+    && customersCode.includes('function maybeOpenCustomerCreateFromUrl')
+    && customersCode.includes('openEditModal(null, options);')
+    && customersCode.includes('if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();')
+    && customersCode.indexOf('await refreshData();') < customersCode.indexOf('if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();')
+    && customersCode.includes("handoffApi.sendCreated(request, 'customer.created', { customerId: normalizedCustomerId })")
+    && customersCode.includes('completeCustomerCreateHandoff(result.id)')
+    && customersCode.includes('activeCustomerCreateHandoffRequest = null')
+    && !customersCode.includes("params.get('pipeline_stage') || params.get('createStage')"));
+check('Reception create permission does not expose customer edit delete import or export UI',
+    customersCode.includes('CUSTOMER_MANAGE_ROLES = Object.freeze')
+    && customersCode.includes('CUSTOMER_CREATE_ROLES = Object.freeze')
+    && customersCode.includes('if (isEditing && !canManageCustomerActions())')
+    && customersCode.includes('window.editCustomer = async function(id)')
+    && customersCode.includes('if (!canManageCustomerActions())')
+    && customersCode.includes('${canManageCustomerActions() ? `<button type="button" class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})"')
+    && customersCode.includes("document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';"));
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
 check('Customers ignore stale list responses before changing CRM state', customersCode.includes('let customersRequestController = null') && customersCode.includes('let customersRequestSeq = 0') && customersCode.includes('customersRequestController?.abort();') && customersCode.includes('signal: customersRequestController?.signal') && customersCode.includes('if (requestSeq !== customersRequestSeq) return false;') && customersCode.includes("err?.name === 'AbortError'"));
 check('Center defers section data and upgrades section headers to accessible buttons', centerCode.includes('const centerSectionState = new Map()') && centerCode.includes('await loadInitiallyVisibleCenterSections();') && centerCode.includes("const defaultOpen = ['kpiSection'];") && !centerCode.includes('await Promise.all([\n        loadOverview(),') && centerCode.includes('function loadInitiallyVisibleCenterSections') && centerCode.includes('function isInitiallyVisibleCenterSection') && centerCode.includes('function loadCenterSection') && centerCode.includes('function centerSectionRetry') && centerCode.includes('function clearCenterSectionRetry') && centerCode.includes('function enhanceCenterSectionHeaders') && centerCode.includes("toggle.setAttribute('aria-controls'") && centerCode.includes("toggle.setAttribute('aria-expanded'") && htmlContains('center.html', '.center-section-toggle') && htmlContains('center.html', '.center-section-toggle:focus-visible'));
@@ -5536,20 +5589,36 @@ check('Booking detail modal renders full banquet group details with controlled m
     && timelineConstructorCss.includes('.booking-banquet-candidate-role')
     && timelineConstructorCss.includes('.booking-banquet-warning')
     && globalModalsCss.includes('.booking-customer-block--priority'));
-check('Timeline booking accepts an existing customer card or a valid new customer draft',
-    htmlContains('index.html', 'Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання.')
-    && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')
-    && htmlContains('index.html', 'bookingCreateCustomerBtn')
-    && bookingCode.includes("const nextMode = mode === 'existing' || mode === 'new' ? mode : 'search';")
+check('Timeline booking accepts an existing customer card, canonical CRM-created handoff, or compact inline compatibility payload',
+    htmlContains('index.html', 'bookingCreateCustomerBtn')
+    && htmlContains('index.html', 'bookingCreateLeadBtn')
+    && htmlContains('index.html', 'bookingNewCustomerForm')
+    && bookingCode.includes('const inlineCustomerCreation = bookingInlineCustomerCreationEnabled();') && bookingCode.includes("const nextMode = mode === 'existing' ? 'existing' : (mode === 'new' && inlineCustomerCreation ? 'new' : 'search');")
     && bookingCode.includes('function bookingCustomerDraftFromForm()')
-    && bookingCode.includes('function bookingCustomerPayloadFromDraft')
-    && bookingCode.includes("BookingDrawerState.clientMode === 'new'")
+    && bookingCode.includes('function openBookingCustomerCreateWorkflow')
+    && bookingCode.includes('function bookingCustomerCreateWorkflowUrl')
+    && bookingCode.includes("baseUrl.searchParams.set('action', 'create')")
+    && bookingCode.includes("baseUrl.searchParams.set('origin', 'booking')")
+    && bookingCode.includes("baseUrl.searchParams.set('handoff', receiver.token)")
+    && bookingCode.includes('function handleBookingCustomerHandoffCreated')
+    && bookingCode.includes('apiGetCustomer(normalizedCustomerId)')
+    && bookingCode.includes('applySelectedCustomerToBookingForm')
+    && bookingCode.includes('function openBookingLeadCreateWorkflow')
+    && bookingCode.includes('function bookingLeadCreateWorkflowUrl')
+    && bookingCode.includes("baseUrl.searchParams.set('createStage', 'deal')")
+    && bookingCode.includes("entity: 'lead'")
+    && bookingCode.includes('function handleBookingLeadHandoffCreated')
+    && bookingCode.includes('BookingDrawerState.leadHandoffContext')
+    && bookingCode.includes('obj.leadId = AppState.leadConversionContext.leadId')
+    && bookingCode.includes('handoffApi.createReceiver')
+    && bookingCode.includes("entity: 'customer'")
     && bookingCode.includes('const hasClient = hasSelectedCustomer || hasNewCustomer;')
     && bookingCode.includes('customerDraft.search && !customerDraft.name')
     && bookingCode.includes('obj.customerId = parseInt(existingId, 10);')
-    && bookingCode.includes('if (customer) obj.customer = customer;')
-    && bookingCode.includes("setBookingClientMode(nextMode, nextMode === 'new'")
-    && bookingCode.includes('bookingCreateCustomerBtn')
+    && bookingCode.includes('function bookingInlineCustomerCreationEnabled')
+    && bookingCode.includes('function bookingCustomerPayloadFromDraft')
+    && bookingCode.includes("bookingInlineCustomerCreationEnabled() && BookingDrawerState.clientMode === 'new'")
+    && bookingCode.includes('if (customer) obj.customer = customer')
     && !bookingCode.includes('isValidNewBookingClient'));
 check('Timeline booking workspace keeps default program-only mode and enables room-first banquet workspace explicitly',
     htmlContains('index.html', 'id="bookingHasEventToggle" checked hidden aria-hidden="true"')
@@ -6089,7 +6158,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.79.92')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.79.93')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -6098,8 +6167,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.92')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.79.92')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.93')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.79.93')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -6756,7 +6825,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('hr-team-delete') && hrCode.includes('hr-team-menu-section--danger') && hrCode.includes('тільки для дубля') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.92') && htmlContains('hr.html', 'js/staff-page.js?v=0.79.92') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.79.93') && htmlContains('hr.html', 'js/staff-page.js?v=0.79.93') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR Salary and KPI expose accessible local employee filters without changing summary snapshots', htmlContains('hr.html', 'id="salarySearch"') && htmlContains('hr.html', 'id="salaryFilterInfo"') && htmlContains('hr.html', 'id="salaryFilterReset"') && htmlContains('hr.html', 'id="salaryDepartmentFilters"') && htmlContains('hr.html', 'id="kpiSearch"') && htmlContains('hr.html', 'id="kpiFilterInfo"') && htmlContains('hr.html', 'id="kpiFilterReset"') && htmlContains('hr.html', 'id="kpiDepartmentFilters"') && htmlContains('hr.html', 'aria-live="polite"') && hrCode.includes('const payrollViewState =') && hrCode.includes('function payrollFilteredRows') && hrCode.includes('normalizeSearchText(parts.filter(Boolean).join') && hrCode.includes('data-payroll-department=') && hrCode.includes('aria-pressed=') && hrCode.includes('renderKpiSources({ rows: allRows, sources })') && hrCode.includes('const totals = allRows.reduce') && hrPageCss.includes('#tab-salary .hr-payroll-filters') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-filters') && hrPageCss.includes('#tab-salary .hr-payroll-empty-state') && hrPageCss.includes('@media (max-width: 480px)'));
 check('HR Salary and KPI group visible rows with persistent native-button toggles', hrCode.includes("storageKey: 'pzp_hr_payroll_salary_expanded_groups'") && hrCode.includes("storageKey: 'pzp_hr_payroll_kpi_expanded_groups'") && hrCode.includes("hydratePayrollExpandedGroups('salary')") && hrCode.includes("hydratePayrollExpandedGroups('kpi')") && hrCode.includes('function payrollGroupedRows') && hrCode.includes('function persistPayrollExpandedGroups') && hrCode.includes('function payrollSearchAutoExpandsGroups') && hrCode.includes('type="button" class="hr-payroll-group-toggle"') && hrCode.includes('data-payroll-group-toggle=') && hrCode.includes('aria-expanded=') && hrCode.includes("renderPayrollGroupedList('salary'") && hrCode.includes("renderPayrollGroupedList('kpi'") && hrPageCss.includes('#tab-salary .hr-payroll-group-header') && hrPageCss.includes('#tab-kpi .hr-payroll-group-toggle:focus-visible') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-group-header'));

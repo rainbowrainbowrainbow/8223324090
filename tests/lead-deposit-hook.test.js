@@ -77,6 +77,14 @@ function createPoolFixture({
                 || /^SET LOCAL (lock_timeout|statement_timeout|idle_in_transaction_session_timeout) = /i.test(sql.trim())) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/SELECT \*\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
+                if (leadPatchLockTimeout) {
+                    const err = new Error('canceling statement due to lock timeout');
+                    err.code = '55P03';
+                    throw err;
+                }
+                return { rows: [{ ...state.lead }] };
+            }
             if (/SELECT id, pipeline_stage, status\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
                 if (leadPatchLockTimeout) {
                     const err = new Error('canceling statement due to lock timeout');
@@ -91,7 +99,7 @@ function createPoolFixture({
                     }]
                 };
             }
-            if (/UPDATE leads SET/i.test(sql) && /RETURNING \*/i.test(sql)) {
+            if (/UPDATE leads\s+SET/i.test(sql) && /RETURNING \*/i.test(sql)) {
                 const paramFor = column => {
                     const match = sql.match(new RegExp(`${column} = \\$(\\d+)`, 'i'));
                     return match ? params[Number(match[1]) - 1] : undefined;
@@ -560,9 +568,9 @@ test('lead stage lock timeout returns retryable conflict without committing stag
         assert.match(res.data.error, /оновлюється/i);
 
         assert.ok(queries.some(query => /^BEGIN$/i.test(query.text)));
-        assert.ok(queries.some(query => /SELECT id, pipeline_stage, status\s+FROM leads/i.test(query.text) && /FOR UPDATE/i.test(query.text)));
+        assert.ok(queries.some(query => /SELECT (?:id, pipeline_stage, status|\*)\s+FROM leads/i.test(query.text) && /FOR UPDATE/i.test(query.text)));
         assert.ok(queries.some(query => /^ROLLBACK$/i.test(query.text)));
-        assert.ok(!queries.some(query => /UPDATE leads SET/i.test(query.text)));
+        assert.ok(!queries.some(query => /UPDATE leads\s+SET/i.test(query.text)));
         assert.ok(!queries.some(query => /^COMMIT$/i.test(query.text)));
         assert.equal(state.lead.pipeline_stage, 'info_sent');
     });

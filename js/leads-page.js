@@ -245,6 +245,15 @@ let kanbanBookingConversionTriggerOpenedAt = 0;
 let kanbanBookingConversionTriggerOpenedLeadId = 0;
 let activeKanbanBookingConversionPopover = null;
 let leadTypeReasonRequest = null;
+let leadCreateStageReasonRequest = null;
+let activeLeadCreateHandoffRequest = null;
+
+const LEAD_CREATE_ACTION_PARAM = 'action';
+const LEAD_CREATE_STAGE_PARAM = 'createStage';
+const LEAD_CREATE_ORIGIN_PARAM = 'origin';
+const LEAD_CREATE_HANDOFF_PARAM = 'handoff';
+const LEAD_CREATE_CUSTOMER_PARAMS = ['customerId', 'customer_id', 'selectedCustomerId'];
+const LEAD_BOOKING_CREATE_ORIGIN = 'booking';
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -766,6 +775,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindKanbanBookingConversionMenuEvents();
     applyLeadQueryParams();
     await loadUsers();
+    maybeOpenLeadCreateFromUrl();
     await loadLeads();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -1151,6 +1161,89 @@ function leadDateFilterLabel(value) {
 
 function leadPipelineStageLabel(value) {
     return PIPELINE_STAGES.find(stage => stage.key === value)?.label || value;
+}
+
+function normalizeLeadCreateStage(value, fallback = 'new') {
+    const raw = String(value || '').trim();
+    const matched = PIPELINE_STAGES.some(stage => stage.key === raw) ? raw : '';
+    return matched || fallback;
+}
+
+function positiveLeadQueryId(value) {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function readLeadCreateCustomerId(params = new URLSearchParams()) {
+    for (const key of LEAD_CREATE_CUSTOMER_PARAMS) {
+        const id = positiveLeadQueryId(params.get(key));
+        if (id) return id;
+    }
+    return null;
+}
+
+function leadCreateHandoffRequestFromUrl(params = new URLSearchParams()) {
+    const api = window.CrmCreateHandoff;
+    if (!api) return null;
+    const currentRequest = api.readRequestFromUrl?.(window.location.href);
+    if (currentRequest?.entity === 'lead') return currentRequest;
+
+    const token = String(params.get(LEAD_CREATE_HANDOFF_PARAM) || '').trim();
+    if (!token) return null;
+    try {
+        return api.createRequest({
+            entity: 'lead',
+            businessContext: leadBusinessContext(),
+            token,
+            returnPath: params.get(api.RETURN_PARAM) || ''
+        });
+    } catch (err) {
+        console.warn('Invalid lead create handoff request', err);
+        return null;
+    }
+}
+
+function readLeadCreateDeepLinkOptions() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(LEAD_CREATE_ACTION_PARAM) !== 'create') return null;
+    const origin = String(params.get(LEAD_CREATE_ORIGIN_PARAM) || '').trim();
+    const fromBooking = origin === LEAD_BOOKING_CREATE_ORIGIN;
+    const createStage = fromBooking ? 'deal' : normalizeLeadCreateStage(params.get(LEAD_CREATE_STAGE_PARAM), 'new');
+    return {
+        createStage,
+        origin,
+        lockStage: fromBooking,
+        sourceCustomerId: readLeadCreateCustomerId(params),
+        handoffRequest: leadCreateHandoffRequestFromUrl(params)
+    };
+}
+
+function clearLeadCreateUrlParams() {
+    if (!window.history || !window.location) return;
+    const url = new URL(window.location.href);
+    const before = url.search;
+    [LEAD_CREATE_ACTION_PARAM, LEAD_CREATE_STAGE_PARAM, LEAD_CREATE_ORIGIN_PARAM, LEAD_CREATE_HANDOFF_PARAM, ...LEAD_CREATE_CUSTOMER_PARAMS].forEach(key => {
+        url.searchParams.delete(key);
+    });
+    const handoffApi = window.CrmCreateHandoff;
+    [
+        handoffApi?.HANDOFF_PARAM,
+        handoffApi?.TOKEN_PARAM,
+        handoffApi?.CONTEXT_PARAM,
+        handoffApi?.ENTITY_PARAM,
+        handoffApi?.RETURN_PARAM
+    ].filter(Boolean).forEach(key => url.searchParams.delete(key));
+    if (url.search === before) return;
+    const previousState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+    window.history.replaceState({ ...previousState, leadCreateDeepLinkConsumed: true }, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function maybeOpenLeadCreateFromUrl() {
+    const options = readLeadCreateDeepLinkOptions();
+    if (!options) return false;
+    openAddModal(options);
+    clearLeadCreateUrlParams();
+    return true;
 }
 
 function normalizeLeadCanonicalRoute() {
@@ -3092,6 +3185,48 @@ function requestLeadTypeReason(leadId, type) {
     });
 }
 
+function resetLeadCreateStageReasonRequest(value = null) {
+    const request = leadCreateStageReasonRequest;
+    leadCreateStageReasonRequest = null;
+    if (request?.resolve) request.resolve(value);
+}
+
+function requestLeadCreateStageLostReason() {
+    if (!guardLeadWrite('створювати втрачений лід')) return Promise.resolve(null);
+    resetLeadCreateStageReasonRequest(null);
+
+    return new Promise(resolve => {
+        leadCreateStageReasonRequest = { resolve };
+        const opened = openLostReasonSurface({
+            leadId: 0,
+            stage: 'lost',
+            reasonMode: 'create_stage',
+            title: 'Причина втрати нового ліда',
+            options: LOSS_REASONS,
+            detailsMode: 'always'
+        });
+        if (!opened) resetLeadCreateStageReasonRequest(null);
+    });
+}
+
+async function prepareCreateStagePayload(stage) {
+    const normalizedStage = normalizeLeadCreateStage(stage, 'new');
+    if (normalizedStage === 'deposit_received') {
+        const confirmed = await confirmLeadUiAction('Створити лід одразу на етапі “Завдаток”? Це запустить чинні завдаткові hooks після збереження.', {
+            type: 'warning',
+            okText: 'Так, створити із завдатком',
+            cancelText: 'Скасувати'
+        });
+        if (!confirmed) return null;
+        return { pipeline_stage: normalizedStage };
+    }
+    if (normalizedStage === 'lost') {
+        const lostReason = await requestLeadCreateStageLostReason();
+        if (!lostReason) return null;
+        return { pipeline_stage: normalizedStage, lost_reason: lostReason };
+    }
+    return { pipeline_stage: normalizedStage };
+}
 async function leadTypePatchOptions(leadId, type) {
     if (type === 'collaboration') {
         const collaborationTaskPayload = await requestCollaborationLeadTaskPayload(leadId);
@@ -3642,12 +3777,12 @@ async function closeLeadSecondaryModal(modalId, force = false) {
 
 async function closeLostReasonModal(force = false) {
     const overlay = document.getElementById('lostReasonModal');
-    const wasLeadTypeReason = overlay?.dataset.reasonMode === 'lead_type';
+    const reasonMode = overlay?.dataset.reasonMode || '';
     const closed = await closeLeadSecondaryModal('lostReasonModal', force);
-    if (closed && wasLeadTypeReason) resetLeadTypeReasonRequest(null);
+    if (closed && reasonMode === 'lead_type') resetLeadTypeReasonRequest(null);
+    if (closed && reasonMode === 'create_stage') resetLeadCreateStageReasonRequest(null);
     return closed;
 }
-
 function closeAddMailingModal(force = false) {
     return closeLeadSecondaryModal('addMailingModal', force);
 }
@@ -3890,6 +4025,14 @@ async function saveLostReason() {
         if (request?.resolve) request.resolve(lostReason);
         return;
     }
+    if (overlay.dataset.reasonMode === 'create_stage') {
+        const request = leadCreateStageReasonRequest;
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+        await closeLeadSecondaryModal('lostReasonModal', true);
+        leadCreateStageReasonRequest = null;
+        if (request?.resolve) request.resolve(lostReason);
+        return;
+    }
 
     await updateLeadStage(leadId, 'lost', {
         updated_at: overlay.dataset.leadUpdatedAt || leadUpdatedAtForStageMove(leadId),
@@ -4128,6 +4271,7 @@ function setupEvents() {
         document.getElementById(id)?.addEventListener('input', syncLeadGuestsTotal);
     });
     document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);
+    document.getElementById('leadPipelineStage')?.addEventListener('change', syncLeadStageCreateHint);
 
     // Close modals on overlay click
     document.querySelectorAll('.lead-modal-overlay').forEach(overlay => {
@@ -4184,8 +4328,77 @@ function setupEvents() {
     });
 }
 
-function openAddModal() {
+function syncLeadStageCreateHint() {
+    const modal = document.getElementById('leadModal');
+    const hint = document.getElementById('leadStageHint');
+    const select = document.getElementById('leadPipelineStage');
+    if (!hint || !select) return;
+    const isCreate = !document.getElementById('leadEditId')?.value;
+    const locked = modal?.dataset.stageLocked === 'true';
+    const stage = normalizeLeadCreateStage(select.value, 'new');
+    hint.classList.toggle('is-locked', locked);
+    if (locked && modal?.dataset.origin === LEAD_BOOKING_CREATE_ORIGIN) {
+        hint.hidden = false;
+        hint.textContent = 'Створення з бронювання: етап зафіксовано як “Угода”, щоб бронювання отримало готовий lead/customer handoff.';
+        return;
+    }
+    if (isCreate && stage === 'deposit_received') {
+        hint.hidden = false;
+        hint.textContent = 'Етап “Завдаток” запустить завдаткові hooks після створення. Перед збереженням буде підтвердження.';
+        return;
+    }
+    if (isCreate && stage === 'lost') {
+        hint.hidden = false;
+        hint.textContent = 'Для етапу “Втрачено” потрібно буде вказати причину втрати перед збереженням.';
+        return;
+    }
+    hint.hidden = true;
+    hint.textContent = '';
+}
+
+function configureLeadStageControls({ editing = false, stage = 'new', leadType = 'quality', locked = false, origin = '' } = {}) {
+    const stageGroup = document.getElementById('leadStageGroup');
+    const typeGroup = document.getElementById('leadTypeGroup');
+    const stageEl = document.getElementById('leadPipelineStage');
+    const typeEl = document.getElementById('leadLeadType');
+    const normalizedStage = normalizeLeadCreateStage(stage, 'new');
+    if (stageGroup) stageGroup.style.display = '';
+    if (typeGroup) typeGroup.style.display = editing ? '' : 'none';
+    if (stageEl) {
+        stageEl.value = normalizedStage;
+        stageEl.disabled = Boolean(locked);
+        stageEl.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    }
+    if (typeEl) {
+        typeEl.value = LEAD_TYPE_MAP[leadType] ? leadType : 'quality';
+        typeEl.disabled = !editing;
+    }
+    const modal = document.getElementById('leadModal');
+    if (modal) {
+        modal.dataset.origin = origin || '';
+        modal.dataset.createStage = normalizedStage;
+        modal.dataset.stageLocked = locked ? 'true' : 'false';
+    }
+    syncLeadStageCreateHint();
+}
+
+function resetLeadCreateHandoffState() {
+    activeLeadCreateHandoffRequest = null;
+    const modal = document.getElementById('leadModal');
+    if (!modal) return;
+    delete modal.dataset.sourceCustomerId;
+    delete modal.dataset.origin;
+    delete modal.dataset.createStage;
+    delete modal.dataset.stageLocked;
+}
+
+function openAddModal(options = {}) {
     if (!guardLeadWrite('створювати ліди')) return;
+    const fromBooking = options.origin === LEAD_BOOKING_CREATE_ORIGIN;
+    const createStage = fromBooking ? 'deal' : normalizeLeadCreateStage(options.createStage, 'new');
+    const sourceCustomerId = positiveLeadQueryId(options.sourceCustomerId);
+    activeLeadCreateHandoffRequest = options.handoffRequest || null;
+
     document.getElementById('leadModalTitle').textContent = isMaysternyaLeadContext() ? 'Нова заявка' : 'Новий лід';
     document.getElementById('leadEditId').value = '';
     document.getElementById('leadName').value = '';
@@ -4201,18 +4414,23 @@ function openAddModal() {
     applyDefaultLeadAssignee({ force: true });
     syncLeadModalBusinessFields();
     syncLeadEventDetailsVisibility({ clearWhenHidden: true });
-
-    // Hide pipeline/type fields for new lead
-    const stageGroup = document.getElementById('leadStageGroup');
-    if (stageGroup) stageGroup.style.display = 'none';
+    configureLeadStageControls({
+        editing: false,
+        stage: createStage,
+        leadType: 'quality',
+        locked: Boolean(options.lockStage || fromBooking),
+        origin: options.origin || ''
+    });
 
     const modal = document.getElementById('leadModal');
-    if (modal) delete modal.dataset.sourceCustomerId;
+    if (modal) {
+        delete modal.dataset.sourceCustomerId;
+        if (sourceCustomerId) modal.dataset.sourceCustomerId = String(sourceCustomerId);
+    }
     modalInitialState = getModalState();
     modal?.classList.add('active');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
 }
-
 function customerFallbackLeadNote(customer = {}) {
     const parts = [
         `Клієнт у базі #${customer.id}: ${customer.name || 'без імені'}.`,
@@ -4270,16 +4488,16 @@ function editLead(id) {
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
     syncLeadEventDetailsVisibility();
 
-    // Show pipeline/type fields for existing lead
-    const stageGroup = document.getElementById('leadStageGroup');
-    if (stageGroup) {
-        stageGroup.style.display = '';
-        document.getElementById('leadPipelineStage').value = lead.pipeline_stage || 'new';
-        document.getElementById('leadLeadType').value = lead.lead_type || 'quality';
-    }
+    configureLeadStageControls({
+        editing: true,
+        stage: lead.pipeline_stage || 'new',
+        leadType: lead.lead_type || 'quality',
+        locked: false,
+        origin: ''
+    });
 
     const modal = document.getElementById('leadModal');
-    if (modal) delete modal.dataset.sourceCustomerId;
+    if (modal) resetLeadCreateHandoffState();
     modalInitialState = getModalState();
     modal?.classList.add('active');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
@@ -4302,7 +4520,7 @@ async function closeLeadModal(force = false) {
     if (window.UnsafeDismissGuard && modal) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, () => {
             modal.classList.remove('active');
-            delete modal.dataset.sourceCustomerId;
+            resetLeadCreateHandoffState();
             modalInitialState = getModalState();
         }, {
             force,
@@ -4320,7 +4538,7 @@ async function closeLeadModal(force = false) {
     }
     const leadModal = document.getElementById('leadModal');
     leadModal?.classList.remove('active');
-    if (leadModal) delete leadModal.dataset.sourceCustomerId;
+    resetLeadCreateHandoffState();
 }
 
 function leadModalSourceCustomerId() {
@@ -4332,7 +4550,7 @@ async function linkSavedLeadToFallbackCustomer(leadId, customerId) {
     const normalizedLeadId = Number(leadId);
     const normalizedCustomerId = Number(customerId);
     if (!Number.isInteger(normalizedLeadId) || normalizedLeadId <= 0 || !Number.isInteger(normalizedCustomerId) || normalizedCustomerId <= 0) {
-        return false;
+        return null;
     }
     try {
         const res = await apiFetch(`/api/leads/${normalizedLeadId}/link-customer`, {
@@ -4343,24 +4561,51 @@ async function linkSavedLeadToFallbackCustomer(leadId, customerId) {
         });
         if (!res) {
             if (typeof showNotification === 'function') showNotification('Лід створено, але клієнта не привʼязано.', 'warning');
-            return false;
+            return null;
         }
         const data = await res.json();
         if (!data.success) {
             if (typeof showNotification === 'function') {
                 showNotification(data.error || 'Лід створено, але клієнта не привʼязано.', 'warning');
             }
-            return false;
+            return null;
         }
         if (typeof showNotification === 'function') showNotification('Лід створено і привʼязано до клієнта.', 'success');
-        return true;
+        return {
+            customerId: positiveLeadQueryId(data.customer?.id) || normalizedCustomerId,
+            data
+        };
     } catch (err) {
         console.warn('Link saved lead to fallback customer failed', err);
         if (typeof showNotification === 'function') showNotification('Лід створено, але клієнта не привʼязано.', 'warning');
-        return false;
+        return null;
     }
 }
 
+function completeLeadCreateHandoff(leadId, customerId = null) {
+    const request = activeLeadCreateHandoffRequest;
+    const handoffApi = window.CrmCreateHandoff;
+    const normalizedLeadId = positiveLeadQueryId(leadId);
+    if (!request || !handoffApi || !normalizedLeadId) return false;
+
+    const payload = { leadId: normalizedLeadId };
+    const normalizedCustomerId = positiveLeadQueryId(customerId);
+    if (normalizedCustomerId) payload.customerId = normalizedCustomerId;
+
+    const result = handoffApi.sendCreated(request, 'lead.created', payload);
+    if (!result?.ok) {
+        if (typeof showNotification === 'function') showNotification('Лід створено, але бронювання не отримало handoff. Поверніться до бронювання вручну.', 'warning');
+        return false;
+    }
+
+    handoffApi.completeChildAfterSend?.(result, { close: true });
+    if (result.returnPath) {
+        window.setTimeout(() => {
+            window.location.assign(result.returnPath);
+        }, 150);
+    }
+    return true;
+}
 async function saveLead() {
     if (!guardLeadWrite('редагувати ліди')) return;
     const editId = document.getElementById('leadEditId')?.value;
@@ -4396,7 +4641,6 @@ async function saveLead() {
     };
     if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants;
 
-    // Add pipeline/type if editing
     if (editId) {
         const stageEl = document.getElementById('leadPipelineStage');
         const typeEl = document.getElementById('leadLeadType');
@@ -4422,10 +4666,15 @@ async function saveLead() {
                 delete body.pipeline_stage;
             }
         }
+    } else {
+        const stagePayload = await prepareCreateStagePayload(document.getElementById('leadPipelineStage')?.value || 'new');
+        if (!stagePayload) return;
+        Object.assign(body, stagePayload);
     }
 
     const saveBtn = document.getElementById('leadModalSave');
     const sourceCustomerId = editId ? null : leadModalSourceCustomerId();
+    if (!editId && sourceCustomerId) body.customerId = sourceCustomerId;
     try {
         leadSaveInFlight = true;
         if (saveBtn) {
@@ -4441,8 +4690,13 @@ async function saveLead() {
         const data = await res.json();
         if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
         const savedLeadId = editId || data.lead?.id;
-        if (!editId && sourceCustomerId && savedLeadId) {
-            await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);
+        let linkedCustomerResult = null;
+        const responseCustomerId = positiveLeadQueryId(data.customer?.id);
+        if (!editId && sourceCustomerId && savedLeadId && responseCustomerId !== sourceCustomerId) {
+            linkedCustomerResult = await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);
+        }
+        if (!editId && savedLeadId) {
+            completeLeadCreateHandoff(savedLeadId, linkedCustomerResult?.customerId || responseCustomerId || sourceCustomerId || null);
         }
         closeLeadModal(true);
         await loadLeads();

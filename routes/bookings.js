@@ -5040,7 +5040,11 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             && String(banquetMembership.role || '').trim().toLowerCase() === 'primary'
             && String(banquetMembership.primary_booking_id || '').trim() === String(id);
         let banquetCancellationPreflight = null;
-        if (activeBanquetMembership && !activePrimaryBanquetMembership) {
+        if (
+            activeBanquetMembership
+            && !activePrimaryBanquetMembership
+            && hasBookingTicketDependency(booking)
+        ) {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
@@ -5052,7 +5056,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
                 }
             });
         }
-        if (activePrimaryBanquetMembership) {
+        if (activeBanquetMembership) {
             banquetCancellationPreflight = await preflightActiveBanquetPrimaryCancellation(client, {
                 membership: banquetMembership,
                 bookingId: id,

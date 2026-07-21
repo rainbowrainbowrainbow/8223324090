@@ -2670,7 +2670,7 @@ function timelineBanquetMenuPreviewHtml(summary = {}, options = {}) {
     const listId = String(options.listId || TIMELINE_BANQUET_MENU_LIST_ID);
     const items = expanded ? allItems : allItems.slice(0, TIMELINE_BANQUET_MENU_COLLAPSED_LIMIT);
     if (!items.length) {
-        return '<div class="timeline-banquet-inspector-empty">Меню не додано</div>';
+        return '<div class="timeline-banquet-inspector-empty">Щоб додати меню, натисніть будь-який вільний часовий слот.</div>';
     }
     const hiddenCount = Math.max(0, allItems.length - items.length);
     const hasOverflow = allItems.length > TIMELINE_BANQUET_MENU_COLLAPSED_LIMIT;

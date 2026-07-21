@@ -295,10 +295,21 @@ function timelineBanquetReliableCustomerName(snapshot = {}, bookings = []) {
     return identityIsReliable ? [...customerNames][0] : null;
 }
 
+const TIMELINE_BANQUET_WARNING_TEXT_BY_CODE = Object.freeze({
+    guest_arrival_missing: 'Не вказано коректний час приходу гостей для банкету.',
+    primary_booking_missing: 'Основну бронь банкету не визначено.',
+    kitchen_booking_missing: 'Для цього банкету ще немає окремого бронювання кухні / меню.',
+    multiple_kitchen_bookings: 'Знайдено кілька бронювань кухні / меню. Перед друком або редагуванням перевірте основне бронювання пакета.',
+    hidden_members_omitted: 'Частину бронювань приховано правилами доступу.'
+});
 function timelineBanquetSnapshotWarningText(warning) {
     const code = String(warning?.code || '').trim();
     const text = String(warning?.message || warning?.text || warning || '').trim();
-    if (code && TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES.has(code)) return '';
+    const hiddenWarningCodes = typeof TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES === 'undefined'
+        ? null
+        : TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES;
+    if (code && hiddenWarningCodes?.has?.(code)) return '';
+    if (code && TIMELINE_BANQUET_WARNING_TEXT_BY_CODE[code]) return TIMELINE_BANQUET_WARNING_TEXT_BY_CODE[code];
     const normalized = text.toLowerCase();
     const looksTechnicalBanquetWarning = (
         (normalized.includes('attached') && normalized.includes('banquet group'))

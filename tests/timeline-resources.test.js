@@ -4018,6 +4018,58 @@ test('room timeline banquet inspector and service markers use clear menu quantit
     assert.doesNotMatch(markers.map(marker => marker.titleAttr).join('\n'), /x5|5 100г|5 100 г/);
 });
 
+test('room timeline banquet inspector empty menu uses an actionable hint and localized warning', () => {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const emptyMenuHtml = ctx.timelineBanquetMenuPreviewHtml({ menuPreviewItems: [] });
+
+    assert.match(emptyMenuHtml, /Щоб додати меню, натисніть будь-який вільний часовий слот\./);
+    assert.doesNotMatch(emptyMenuHtml, /Меню не додано/);
+
+    const primaryBooking = {
+        id: 'BK-PRIMARY',
+        date: '2099-06-18',
+        time: '15:00',
+        duration: 60,
+        room: 'Room A',
+        category: 'banquet',
+        status: 'confirmed'
+    };
+    const summary = ctx.timelineBanquetSnapshotSummary({
+        success: true,
+        source: 'group',
+        group: {
+            id: 'BG-EMPTY-MENU',
+            date: '2099-06-18',
+            room: 'Room A',
+            status: 'active'
+        },
+        bookings: {
+            primary: primaryBooking,
+            kitchen: [],
+            activities: [],
+            services: [],
+            manual: []
+        },
+        members: [
+            {
+                bookingId: primaryBooking.id,
+                role: 'primary',
+                isPrimary: true,
+                booking: primaryBooking
+            }
+        ],
+        warnings: [
+            {
+                code: 'kitchen_booking_missing',
+                message: 'No kitchen/menu booking was detected for this banquet.'
+            }
+        ]
+    });
+
+    assert.deepEqual(summary.warnings, [
+        'Для цього банкету ще немає окремого бронювання кухні / меню.'
+    ]);
+});
 test('room timeline banquet inspector expands and collapses hidden menu positions by click, Enter, and Space', () => {
     const menuPositions = Array.from({ length: 11 }, (_, index) => ({
         id: `menu-${index + 1}`,

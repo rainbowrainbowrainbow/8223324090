@@ -656,14 +656,16 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.equal(api.summaryCount({ bookings: [{ id: 'A' }, { id: 'B' }] }), 2);
     assert.equal(api.summaryCount({ bookings: [{ id: 'A' }, { id: 'A' }, { id: 'B', status: 'cancelled' }, { id: 'C', linkedTo: 'A' }] }), 1);
     assert.equal(api.summaryBuild({ date: api.kyivToday(), viewMode: 'day', count: 1, status: 'ready' }).text, '1 запис · Сьогодні');
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', count: 0, status: 'ready' }).text, '0 записів · 22 лип.');
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', count: 1, status: 'ready' }).text, '1 запис · 22 лип.');
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', count: 2, status: 'ready' }).text, '2 записи · 22 лип.');
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', count: 5, status: 'ready' }).text, '5 записів · 22 лип.');
+    const stableSummaryDate = api.kyivToday() === '2026-07-22' ? '2026-08-22' : '2026-07-22';
+    const stableSummaryDateLabel = stableSummaryDate === '2026-08-22' ? '22 серп.' : '22 лип.';
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 0, status: 'ready' }).text, `0 записів · ${stableSummaryDateLabel}`);
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 1, status: 'ready' }).text, `1 запис · ${stableSummaryDateLabel}`);
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 2, status: 'ready' }).text, `2 записи · ${stableSummaryDateLabel}`);
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 5, status: 'ready' }).text, `5 записів · ${stableSummaryDateLabel}`);
     assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'week', status: 'ready' }).text, '✓ Тиждень · 22–28 лип.');
     assert.doesNotMatch(api.summaryBuild({ date: '2026-07-22', viewMode: 'week', count: 5, status: 'ready' }).text, /запис/);
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', status: 'loading' }).text, 'Завантаження · 22 лип.');
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', status: 'error' }).text, 'Не оновлено · 22 лип.');
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', status: 'loading' }).text, `Завантаження · ${stableSummaryDateLabel}`);
+    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', status: 'error' }).text, `Не оновлено · ${stableSummaryDateLabel}`);
     sandbox.AppState.multiDayMode = false;
     sandbox.AppState.selectedDate = '2026-07-22';
     api.handleSummaryChanged({

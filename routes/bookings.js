@@ -5036,8 +5036,23 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
         const activeBanquetMembership = banquetMembership
             && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
+        const activePrimaryBanquetMembership = activeBanquetMembership
+            && String(banquetMembership.role || '').trim().toLowerCase() === 'primary'
+            && String(banquetMembership.primary_booking_id || '').trim() === String(id);
         let banquetCancellationPreflight = null;
-        if (activeBanquetMembership) {
+        if (activeBanquetMembership && !activePrimaryBanquetMembership) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Active banquet members must be changed through the atomic banquet booking-set endpoint',
+                details: {
+                    groupId: banquetMembership.group_id || null,
+                    bookingId: id
+                }
+            });
+        }
+        if (activePrimaryBanquetMembership) {
             banquetCancellationPreflight = await preflightActiveBanquetPrimaryCancellation(client, {
                 membership: banquetMembership,
                 bookingId: id,

@@ -199,7 +199,7 @@ function syncCssImportVersions(file, version) {
     }
 }
 
-const GENERATED_ASSET_SCAN_DIRS = new Set(['.git', 'node_modules', 'output', 'test-results', 'tmp']);
+const GENERATED_ASSET_SCAN_DIRS = new Set(['.codex-temp', '.git', 'node_modules', 'output', 'test-results', 'tmp']);
 
 function shouldSkipVersionedAssetDir(entryName) {
     return GENERATED_ASSET_SCAN_DIRS.has(entryName);

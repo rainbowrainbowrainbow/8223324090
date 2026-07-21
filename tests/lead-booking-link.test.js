@@ -1,6 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLeadId, attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
+const { LeadStageTransitionError, transitionLeadStage } = require('../services/leadStageTransition');
 
 function isCustomerLeadUpdate(text) {
     return /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text);
@@ -18,14 +19,20 @@ describe('lead booking link repair', () => {
         assert.equal(parseLeadId('bad'), null);
     });
 
-    it('writes leads.booking_id and preserves customer lead linkage through existing fields', async () => {
+    it('writes leads.booking_id through the canonical stage dispatcher and preserves customer lead linkage', async () => {
         const queries = [];
         const client = {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
-                if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
-                    return { rows: [{ id: params[1], booking_id: params[0], pipeline_stage: params[3], status: params[4] }], rowCount: 1 };
+                if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
+                    return { rows: [{ id: params[0], booking_id: null, pipeline_stage: 'new', status: 'new' }], rowCount: 1 };
+                }
+                if (/UPDATE leads SET pipeline_stage = \$3/i.test(text)) {
+                    return { rows: [{ id: params[0], booking_id: params[4], pipeline_stage: params[2], status: params[3] }], rowCount: 1 };
+                }
+                if (/INSERT INTO lead_interactions/i.test(text)) {
+                    return { rows: [], rowCount: 1 };
                 }
                 if (isCustomerLeadUpdate(text)) {
                     return { rows: [], rowCount: 1 };
@@ -48,16 +55,18 @@ describe('lead booking link repair', () => {
         assert.equal(result.bookingId, 'BK-2099-0001');
         assert.equal(result.pipelineStage, 'deposit_received');
         assert.equal(result.status, 'booked');
+        assert.equal(result.stageChanged, true);
+        assert.equal(result.enteredDepositStage, true);
         assert.equal(result.customerLinked, true);
-        assert.ok(queries.some(q =>
-            /UPDATE leads SET booking_id = \$1/i.test(q.text)
-            && q.params[0] === 'BK-2099-0001'
-            && q.params[2] === 'event_genix'
-            && q.params[3] === 'deposit_received'
-            && q.params[4] === 'booked'
-        ));
-        const leadUpdate = queries.find(q => /UPDATE leads SET booking_id = \$1/i.test(q.text));
-        assert.doesNotMatch(leadUpdate.text, /updated_at/i);
+        const leadUpdate = queries.find(q => /UPDATE leads SET pipeline_stage = \$3/i.test(q.text));
+        assert.ok(leadUpdate, 'lead stage update should use shared dispatcher SQL');
+        assert.equal(leadUpdate.params[0], 501);
+        assert.equal(leadUpdate.params[1], 'event_genix');
+        assert.equal(leadUpdate.params[2], 'deposit_received');
+        assert.equal(leadUpdate.params[3], 'booked');
+        assert.equal(leadUpdate.params[4], 'BK-2099-0001');
+        assert.match(leadUpdate.text, /updated_at = NOW\(\)/i);
+        assert.ok(queries.some(q => /INSERT INTO lead_interactions/i.test(q.text)), 'stage transition should be audited');
         assert.ok(queries.some(q =>
             isCustomerLeadUpdate(q.text)
             && q.params[0] === 501
@@ -70,7 +79,6 @@ describe('lead booking link repair', () => {
             && q.params[2] === 701
         ));
     });
-
     it('does not touch bookings created without lead context', async () => {
         const client = {
             query: async () => {
@@ -88,9 +96,13 @@ describe('lead booking link repair', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
-                if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
-                    return { rows: [{ id: params[1], booking_id: params[0], pipeline_stage: params[3], status: params[4] }], rowCount: 1 };
+                if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
+                    return { rows: [{ id: params[0], booking_id: null, pipeline_stage: 'deal', status: 'proposal' }], rowCount: 1 };
                 }
+                if (/UPDATE leads SET pipeline_stage = \$3/i.test(text)) {
+                    return { rows: [{ id: params[0], booking_id: params[4], pipeline_stage: params[2], status: params[3] }], rowCount: 1 };
+                }
+                if (/INSERT INTO lead_interactions/i.test(text)) return { rows: [], rowCount: 1 };
                 return { rows: [], rowCount: 1 };
             }
         };
@@ -103,12 +115,12 @@ describe('lead booking link repair', () => {
             bookingStatus: 'preliminary'
         });
 
-        assert.equal(queries.length, 3);
-        assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
-        assert.equal(queries[0].params[3], 'waiting');
-        assert.equal(queries[0].params[4], 'booked');
+        assert.equal(queries.length, 5);
+        assert.ok(queries.every(q => q.params.includes('maysternya_doli') || /INSERT INTO lead_interactions/i.test(q.text)));
+        const stageUpdate = queries.find(q => /UPDATE leads SET pipeline_stage = \$3/i.test(q.text));
+        assert.equal(stageUpdate.params[2], 'waiting');
+        assert.equal(stageUpdate.params[3], 'booked');
     });
-
     it('creates a scoped lead for non-park booking CRM handoff', async () => {
         const queries = [];
         const client = {
@@ -351,5 +363,78 @@ describe('lead booking link repair', () => {
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
         assert.equal(insert.params[13], 'new');
         assert.equal(insert.params[14], 'new');
+    });
+});
+
+describe('lead stage transition dispatcher', () => {
+    it('rejects invalid stages before any database write', async () => {
+        const client = {
+            query: async () => {
+                throw new Error('database should not be touched for invalid stage');
+            }
+        };
+        await assert.rejects(
+            () => transitionLeadStage(client, {
+                leadId: 1,
+                businessContext: 'event_genix',
+                targetStage: 'bad_stage'
+            }),
+            err => err instanceof LeadStageTransitionError && err.code === 'invalid_pipeline_stage'
+        );
+    });
+
+    it('requires lost_reason before moving a lead to lost', async () => {
+        const client = {
+            query: async () => {
+                throw new Error('database should not be touched without lost_reason');
+            }
+        };
+        await assert.rejects(
+            () => transitionLeadStage(client, {
+                leadId: 1,
+                businessContext: 'event_genix',
+                targetStage: 'lost'
+            }),
+            err => err instanceof LeadStageTransitionError && err.code === 'lost_reason_required'
+        );
+    });
+
+    it('updates stage status timestamps and writes lead_interactions in one dispatcher call', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
+                    return { rows: [{ id: params[0], pipeline_stage: 'info_sent', status: 'contact' }], rowCount: 1 };
+                }
+                if (/UPDATE leads SET pipeline_stage = \$3/i.test(text)) {
+                    return { rows: [{ id: params[0], pipeline_stage: params[2], status: params[3] }], rowCount: 1 };
+                }
+                if (/INSERT INTO lead_interactions/i.test(text)) return { rows: [], rowCount: 1 };
+                throw new Error(`Unexpected query: ${text}`);
+            }
+        };
+
+        const result = await transitionLeadStage(client, {
+            leadId: 77,
+            businessContext: 'event_genix',
+            targetStage: 'deal',
+            userId: 5,
+            source: 'test.dispatcher'
+        });
+
+        assert.equal(result.changed, true);
+        assert.equal(result.oldStage, 'info_sent');
+        assert.equal(result.newStage, 'deal');
+        const update = queries.find(q => /UPDATE leads SET pipeline_stage = \$3/i.test(q.text));
+        assert.equal(update.params[2], 'deal');
+        assert.equal(update.params[3], 'proposal');
+        assert.ok(!/booked_at/i.test(update.text));
+        const interaction = queries.find(q => /INSERT INTO lead_interactions/i.test(q.text));
+        assert.ok(interaction);
+        assert.equal(interaction.params[0], 77);
+        assert.equal(interaction.params[1], 5);
+        assert.match(interaction.params[3], /test\.dispatcher/);
     });
 });

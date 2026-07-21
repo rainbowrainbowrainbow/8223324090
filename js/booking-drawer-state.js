@@ -3,6 +3,7 @@ var BookingDrawerState = window.BookingDrawerState || {
     drawerGenerationId: 0,
     clientMode: 'search',
     selectedCustomerContext: null,
+    leadHandoffContext: null,
     selectedProgramCategory: 'all',
     selectedActivityProgramIds: [],
     selectedActivityBookingFields: {},

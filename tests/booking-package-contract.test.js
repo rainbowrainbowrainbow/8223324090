@@ -3940,56 +3940,46 @@ test('booking activity image fallback swaps broken image for emoji media slot', 
     assert.equal(media.querySelector('.icon')?.textContent, '🎪');
 });
 
-test('booking client mode exposes and restores the new customer form', () => {
+test('booking client mode keeps customer creation in the canonical CRM workflow', () => {
     const bookingJs = read('js', 'booking.js');
     const dom = new JSDOM(`
         <div id="bookingSelectedCustomerCard" class="hidden"></div>
-        <div id="bookingNewCustomerForm" class="hidden" hidden aria-hidden="true"></div>
         <div id="bookingCustomerSearchState"></div>
         <div id="customerSearchResults"></div>
-        <button id="bookingCreateCustomerBtn" aria-expanded="false">Новий клієнт</button>
+        <button id="bookingCreateCustomerBtn">Новий клієнт</button>
         <button id="bookingChangeCustomerBtn" class="hidden">Змінити</button>
         <span id="bookingCustomerModeLabel"></span>
         <input id="customerSearch" value="Олена">
-        <input id="customerName" value="">
         <input id="selectedCustomerId" value="">
     `);
     const sandbox = {
         document: dom.window.document,
         BookingDrawerState: { clientMode: 'search' }
     };
-    const functionStart = bookingJs.indexOf('function setBookingClientMode');
+    const functionStart = bookingJs.indexOf('function bookingInlineCustomerCreationEnabled');
     const functionEnd = bookingJs.indexOf('function bookingCustomerCleanText', functionStart);
     assert.notEqual(functionStart, -1);
     assert.notEqual(functionEnd, -1);
-    const source = `${bookingJs.slice(functionStart, functionEnd)}\nthis.__setBookingClientMode = setBookingClientMode;`;
+    const source = `${bookingJs.slice(functionStart, functionEnd)}
+this.__setBookingClientMode = setBookingClientMode;`;
 
     vm.runInNewContext(source, sandbox);
-    sandbox.__setBookingClientMode('new', { focusNew: true });
+    sandbox.__setBookingClientMode('new', { focusSearch: true });
 
-    const newCustomerForm = dom.window.document.getElementById('bookingNewCustomerForm');
     const createButton = dom.window.document.getElementById('bookingCreateCustomerBtn');
-    assert.equal(sandbox.BookingDrawerState.clientMode, 'new');
-    assert.equal(newCustomerForm.hidden, false);
-    assert.equal(newCustomerForm.classList.contains('hidden'), false);
-    assert.equal(newCustomerForm.getAttribute('aria-hidden'), 'false');
-    assert.equal(createButton.textContent, 'До пошуку');
-    assert.equal(createButton.getAttribute('aria-expanded'), 'true');
-    assert.equal(dom.window.document.getElementById('customerName').value, 'Олена');
-    assert.equal(dom.window.document.activeElement.id, 'customerName');
-    assert.equal(dom.window.document.getElementById('customerSearchResults').classList.contains('hidden'), true);
-
-    sandbox.__setBookingClientMode('search', { focusSearch: true });
-
     assert.equal(sandbox.BookingDrawerState.clientMode, 'search');
-    assert.equal(newCustomerForm.hidden, true);
-    assert.equal(newCustomerForm.classList.contains('hidden'), true);
-    assert.equal(newCustomerForm.getAttribute('aria-hidden'), 'true');
+    assert.equal(createButton.classList.contains('hidden'), false);
     assert.equal(createButton.textContent, 'Новий клієнт');
-    assert.equal(createButton.getAttribute('aria-expanded'), 'false');
+    assert.equal(createButton.hasAttribute('aria-expanded'), false);
     assert.equal(dom.window.document.activeElement.id, 'customerSearch');
-});
 
+    dom.window.document.getElementById('selectedCustomerId').value = '42';
+    sandbox.__setBookingClientMode('existing');
+
+    assert.equal(sandbox.BookingDrawerState.clientMode, 'existing');
+    assert.equal(createButton.classList.contains('hidden'), true);
+    assert.equal(dom.window.document.getElementById('bookingChangeCustomerBtn').classList.contains('hidden'), false);
+});
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
@@ -4046,8 +4036,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingStickyFooter/);
     assert.match(html, /id="bookingForm" class="booking-form" novalidate/);
     assert.match(html, /bookingCreateCustomerBtn/);
-    assert.match(html, /Знайдіть існуючу картку або створіть нового клієнта перед збереженням бронювання/);
-    assert.match(html, /bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"/);
+    assert.match(html, /bookingCreateLeadBtn/);
+    assert.match(html, /CRM/);
+    assert.match(html, /bookingNewCustomerForm/);
     assert.match(html, /bookingChangeCustomerBtn/);
     assert.match(html, /programCategoryChips/);
     assert.match(html, /selectedActivitiesList/);
@@ -4244,12 +4235,13 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
     assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);
     assert.match(bookingJs, /customer-search-state/);
-    assert.match(bookingJs, /const nextMode = mode === 'existing' \|\| mode === 'new' \? mode : 'search';/);
+    assert.ok(bookingJs.includes("const nextMode = mode === 'existing' ? 'existing' : (mode === 'new' && inlineCustomerCreation ? 'new' : 'search');"));
     assert.match(bookingJs, /function bookingCustomerDraftFromForm\(\)/);
+    assert.match(bookingJs, /function bookingInlineCustomerCreationEnabled/);
     assert.match(bookingJs, /function bookingNewCustomerDraftIsValid/);
     assert.match(bookingJs, /function bookingCustomerPayloadFromDraft/);
-    assert.match(bookingJs, /BookingDrawerState\.clientMode === 'new'/);
-    assert.match(bookingJs, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
+    assert.ok(bookingJs.includes("bookingInlineCustomerCreationEnabled() && BookingDrawerState.clientMode === 'new'"));
+    assert.ok(bookingJs.includes('const hasClient = hasSelectedCustomer || hasNewCustomer;'));
     assert.match(bookingJs, /customerDraft\.search && !customerDraft\.name/);
     assert.match(bookingJs, /function addBookingValidationIssue/);
     assert.match(bookingJs, /function selectedActivityScheduleValidationBlockers/);
@@ -4268,7 +4260,27 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /obj\.customerId = parseInt\(existingId, 10\)/);
     assert.match(bookingJs, /if \(customer\) obj\.customer = customer;/);
     assert.match(bookingJs, /bookingCreateCustomerBtn/);
-    assert.match(bookingJs, /setBookingClientMode\(nextMode, nextMode === 'new'/);
+    assert.match(bookingJs, /function openBookingCustomerCreateWorkflow/);
+    assert.match(bookingJs, /function bookingCustomerCreateWorkflowUrl/);
+    assert.match(bookingJs, /baseUrl\.searchParams\.set\('action', 'create'\)/);
+    assert.match(bookingJs, /baseUrl\.searchParams\.set\('origin', 'booking'\)/);
+    assert.match(bookingJs, /baseUrl\.searchParams\.set\('handoff', receiver\.token\)/);
+    assert.match(bookingJs, /function handleBookingCustomerHandoffCreated/);
+    assert.match(bookingJs, /apiGetCustomer\(normalizedCustomerId\)/);
+    assert.match(bookingJs, /applySelectedCustomerToBookingForm/);
+    assert.match(bookingJs, /bookingCreateLeadBtn/);
+    assert.match(bookingJs, /const BOOKING_LEAD_ACCESS_ROLES/);
+    assert.match(bookingJs, /function canOpenBookingLeadCreateWorkflow/);
+    assert.match(bookingJs, /canAccessPage\('\/sales-funnel'\)/);
+    assert.match(bookingJs, /function bookingLeadCreateWorkflowUrl/);
+    assert.match(bookingJs, /baseUrl\.searchParams\.set\('createStage', 'deal'\)/);
+    assert.match(bookingJs, /baseUrl\.searchParams\.set\('customerId', String\(selectedCustomerId\)\)/);
+    assert.match(bookingJs, /entity:\s*'lead'/);
+    assert.match(bookingJs, /function handleBookingLeadHandoffCreated/);
+    assert.match(bookingJs, /AppState\.leadConversionContext =/);
+    assert.match(bookingJs, /BookingDrawerState\.leadHandoffContext =/);
+    assert.match(bookingJs, /obj\.leadId = AppState\.leadConversionContext\.leadId/);
+    assert.match(bookingDrawerStateJs, /leadHandoffContext: null/);
     assert.match(bookingJs, /role="button" tabindex="0"/);
 
     assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));
@@ -6589,4 +6601,189 @@ test('booking detail combines menu and canonical ticket-only owner once with a c
         document.querySelector('.booking-detail-package-money--total').textContent.replace(/\D/g, ''),
         '1050'
     );
+});
+
+test('CRM create handoff exchanges created entity IDs only', async () => {
+    const handoff = require('../js/crm-create-handoff');
+    const channels = new Map();
+
+    class FakeBroadcastChannel {
+        constructor(name) {
+            this.name = name;
+            this.listeners = new Set();
+            if (!channels.has(name)) channels.set(name, new Set());
+            channels.get(name).add(this);
+        }
+
+        addEventListener(type, listener) {
+            if (type === 'message') this.listeners.add(listener);
+        }
+
+        removeEventListener(type, listener) {
+            if (type === 'message') this.listeners.delete(listener);
+        }
+
+        postMessage(message) {
+            const peers = channels.get(this.name) || new Set();
+            for (const peer of peers) {
+                if (peer === this) continue;
+                queueMicrotask(() => {
+                    for (const listener of peer.listeners) listener({ data: message });
+                });
+            }
+        }
+
+        close() {
+            channels.get(this.name)?.delete(this);
+        }
+    }
+
+    const windowListeners = new Map();
+    const openerWindow = {
+        location: { origin: 'https://crm.test' },
+        BroadcastChannel: FakeBroadcastChannel,
+        addEventListener(type, listener) { windowListeners.set(listener, type); },
+        removeEventListener(type, listener) { windowListeners.delete(listener); }
+    };
+    const childWindow = {
+        location: { origin: 'https://crm.test' },
+        BroadcastChannel: FakeBroadcastChannel,
+        opener: { postMessage() {} },
+        close() { this.closed = true; }
+    };
+
+    const created = new Promise((resolve, reject) => {
+        const receiver = handoff.createReceiver({
+            entity: 'lead',
+            businessContext: 'eventgenix',
+            token: 'a'.repeat(32),
+            returnPath: '/index.html?view=timeline',
+            timeoutMs: 5000,
+            windowRef: openerWindow,
+            onCreated: resolve,
+            onTimeout: () => reject(new Error('handoff timed out'))
+        });
+
+        const createUrl = receiver.urlFor('/sales-funnel');
+        assert.equal(createUrl.searchParams.get('crm_handoff'), '1');
+        assert.equal(createUrl.searchParams.get('crm_handoff_token'), 'a'.repeat(32));
+        assert.equal(createUrl.searchParams.get('crm_handoff_context'), 'eventgenix');
+        assert.equal(createUrl.searchParams.get('crm_handoff_entity'), 'lead');
+        assert.equal(createUrl.searchParams.get('name'), null);
+        assert.equal(createUrl.searchParams.get('phone'), null);
+
+        const request = handoff.readRequestFromUrl(createUrl.href, { windowRef: childWindow });
+        const result = handoff.sendCreated(request, 'lead.created', {
+            id: 44,
+            customerId: 22,
+            client_name: 'Sensitive Name',
+            phone: '+380000000000'
+        }, { windowRef: childWindow });
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(result.envelope.payload, { leadId: 44, customerId: 22 });
+        assert.equal(result.envelope.payload.client_name, undefined);
+        assert.equal(result.envelope.payload.phone, undefined);
+    });
+
+    assert.deepEqual(await created, { leadId: 44, customerId: 22 });
+});
+
+test('CRM create handoff rejects mismatched token context and entity type', () => {
+    const handoff = require('../js/crm-create-handoff');
+    const request = handoff.createRequest({
+        entity: 'customer',
+        businessContext: 'eventgenix',
+        token: 'b'.repeat(32),
+        windowRef: { location: { origin: 'https://crm.test' } }
+    });
+
+    assert.equal(handoff.validateEnvelope({
+        app: handoff.CONTRACT_APP,
+        version: handoff.CONTRACT_VERSION,
+        type: 'customer.created',
+        token: 'c'.repeat(32),
+        businessContext: 'eventgenix',
+        payload: { id: 1 }
+    }, request).reason, 'token_mismatch');
+
+    assert.equal(handoff.validateEnvelope({
+        app: handoff.CONTRACT_APP,
+        version: handoff.CONTRACT_VERSION,
+        type: 'customer.created',
+        token: request.token,
+        businessContext: 'other',
+        payload: { id: 1 }
+    }, request).reason, 'business_context_mismatch');
+
+    assert.equal(handoff.validateEnvelope({
+        app: handoff.CONTRACT_APP,
+        version: handoff.CONTRACT_VERSION,
+        type: 'lead.created',
+        token: request.token,
+        businessContext: 'eventgenix',
+        payload: { id: 1 }
+    }, request).reason, 'entity_mismatch');
+});
+
+test('CRM create handoff helper loads before booking customer and lead page controllers', () => {
+    const indexHtml = read('index.html');
+    const customersHtml = read('customers.html');
+    const leadsHtml = read('leads.html');
+
+    assert.ok(indexHtml.includes('js/crm-create-handoff.js?v='));
+    assert.ok(customersHtml.includes('js/crm-create-handoff.js?v='));
+    assert.ok(leadsHtml.includes('js/crm-create-handoff.js?v='));
+    assert.ok(indexHtml.indexOf('js/crm-create-handoff.js') < indexHtml.indexOf('js/booking.js'));
+    assert.ok(customersHtml.indexOf('js/crm-create-handoff.js') < customersHtml.indexOf('js/customers-page.js'));
+    assert.ok(leadsHtml.indexOf('js/crm-create-handoff.js') < leadsHtml.indexOf('js/leads-page.js'));
+});
+
+test('Sales funnel lead create deep link uses createStage booking handoff contract', () => {
+    const leadsHtml = read('leads.html');
+    const leadsJs = read('js/leads-page.js');
+    const leadsRoute = read('routes/leads.js');
+
+    assert.ok(leadsHtml.includes('id="leadStageGroup"'));
+    assert.ok(leadsHtml.includes('id="leadTypeGroup"'));
+    const initStart = leadsJs.indexOf("document.addEventListener('DOMContentLoaded'");
+    const initBlock = leadsJs.slice(initStart, leadsJs.indexOf('async function checkTestMode', initStart));
+
+    assert.ok(leadsJs.includes("const LEAD_CREATE_STAGE_PARAM = 'createStage'"));
+    assert.ok(leadsJs.includes("if (params.get(LEAD_CREATE_ACTION_PARAM) !== 'create') return null;"));
+    assert.ok(leadsJs.includes("const createStage = fromBooking ? 'deal'"));
+    assert.ok(leadsJs.includes('lockStage: fromBooking'));
+    assert.ok(leadsJs.includes('sourceCustomerId: readLeadCreateCustomerId(params)'));
+    assert.ok(leadsJs.includes('handoffRequest: leadCreateHandoffRequestFromUrl(params)'));
+    assert.ok(initBlock.indexOf('await loadUsers();') < initBlock.indexOf('maybeOpenLeadCreateFromUrl();'));
+    assert.ok(initBlock.indexOf('maybeOpenLeadCreateFromUrl();') < initBlock.indexOf('await loadLeads();'));
+    assert.ok(leadsJs.includes('Object.assign(body, stagePayload);'));
+    assert.ok(leadsJs.includes('body.customerId = sourceCustomerId'));
+    assert.ok(leadsJs.includes('responseCustomerId !== sourceCustomerId'));
+    assert.ok(leadsRoute.includes('requestedCreateCustomerId'));
+    assert.ok(leadsRoute.includes("source: 'leads.post_requested_customer'"));
+    assert.ok(leadsJs.includes("handoffApi.sendCreated(request, 'lead.created', payload)"));
+    assert.ok(leadsJs.includes('payload.customerId = normalizedCustomerId'));
+    assert.ok(leadsJs.includes('completeLeadCreateHandoff(savedLeadId'));
+    assert.ok(leadsJs.includes('url.searchParams.delete(key)'));
+    assert.ok(!leadsJs.includes("params.get('pipeline_stage') || params.get('createStage')"));
+});
+
+test('Customers create deep link uses canonical modal and customer handoff contract', () => {
+    const customersHtml = read('customers.html');
+    const customersJs = read('js/customers-page.js');
+
+    assert.ok(customersHtml.includes('id="customerEditModal"'));
+    assert.ok(customersHtml.includes('js/crm-create-handoff.js?v='));
+    assert.ok(customersHtml.indexOf('js/crm-create-handoff.js') < customersHtml.indexOf('js/customers-page.js'));
+    assert.ok(customersJs.includes("const CUSTOMER_CREATE_ACTION_PARAM = 'action'"));
+    assert.ok(customersJs.includes("const CUSTOMER_CREATE_HANDOFF_PARAM = 'handoff'"));
+    assert.ok(customersJs.includes('function maybeOpenCustomerCreateFromUrl'));
+    assert.ok(customersJs.includes('openEditModal(null, options);'));
+    assert.ok(customersJs.includes('if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();'));
+    assert.ok(customersJs.indexOf('await refreshData();') < customersJs.indexOf('if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();'));
+    assert.ok(customersJs.includes("handoffApi.sendCreated(request, 'customer.created', { customerId: normalizedCustomerId })"));
+    assert.ok(customersJs.includes('completeCustomerCreateHandoff(result.id)'));
+    assert.ok(customersJs.includes("'reception'"));
+    assert.ok(customersJs.includes("document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';"));
 });

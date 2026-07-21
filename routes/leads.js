@@ -59,6 +59,10 @@ const {
     customerChildrenBirthdayDisplay,
     isCustomerChildrenStorageMissing
 } = require('../services/customerChildren');
+const {
+    LeadStageTransitionError,
+    transitionLeadStage
+} = require('../services/leadStageTransition');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 function getBanquetDeposits() { return require('../services/banquetDeposits'); }
@@ -2537,7 +2541,13 @@ router.post('/', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const { client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants } = req.body;
+        const { client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants, pipeline_stage, lost_reason } = req.body;
+        const requestedCreateCustomerId = req.body?.customerId ?? req.body?.customer_id;
+        const hasRequestedCreateCustomer = requestedCreateCustomerId !== undefined && requestedCreateCustomerId !== null && String(requestedCreateCustomerId).trim() !== '';
+        const createCustomerId = hasRequestedCreateCustomer ? parseInt(requestedCreateCustomerId, 10) : null;
+        if (hasRequestedCreateCustomer && (!Number.isInteger(createCustomerId) || createCustomerId <= 0)) {
+            return res.status(400).json({ success: false, error: 'customerId має бути додатним числом' });
+        }
         if (!client_name) {
             return res.status(400).json({ success: false, error: "Ім'я клієнта обов'язкове" });
         }
@@ -2547,6 +2557,15 @@ router.post('/', async (req, res) => {
         }
         if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
+        }
+        const createStageStatus = pipeline_stage !== undefined
+            ? normalizeLeadPatchStageStatus({ pipelineStage: pipeline_stage, status: undefined })
+            : { stageProvided: false };
+        if (createStageStatus.error) {
+            return res.status(400).json({ success: false, error: createStageStatus.error });
+        }
+        if (createStageStatus.stage === 'lost' && !cleanText(lost_reason)) {
+            return res.status(400).json({ success: false, error: 'Для етапу lost потрібна причина втрати' });
         }
         const eventPreferenceInput = normalizeLeadEventPreferenceInput(req.body);
         if (eventPreferenceInput.error) {
@@ -2559,9 +2578,25 @@ router.post('/', async (req, res) => {
             : (children_count || null);
         const leadNotes = eventPreferenceInput.provided ? stripLeadGuestSummaryNote(notes) : (notes || null);
         const normalizedCelebrants = normalizeCelebrants(celebrants);
+        let lead;
+        let dealCustomerLink = null;
+        let stageTransition = null;
+        let requestedCustomer = null;
         client = await pool.connect();
         await client.query('BEGIN');
         transactionStarted = true;
+        if (createCustomerId) {
+            const existingCustomer = await client.query(
+                `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 LIMIT 1`,
+                [createCustomerId, businessContext]
+            );
+            if (!existingCustomer.rows.length) {
+                await client.query('ROLLBACK');
+                transactionStarted = false;
+                return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
+            }
+            requestedCustomer = existingCustomer.rows[0];
+        }
         const result = await client.query(`
             INSERT INTO leads (business_context, client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
@@ -2572,7 +2607,7 @@ router.post('/', async (req, res) => {
             assignedTo.provided ? assignedTo.value : null,
             JSON.stringify(normalizedCelebrants)]);
 
-        const lead = result.rows[0];
+        lead = result.rows[0];
         if (eventPreferenceInput.provided) {
             const savedPreference = await saveLeadEventPreference(client, {
                 leadId: lead.id,
@@ -2582,13 +2617,102 @@ router.post('/', async (req, res) => {
             lead.event_preference = savedPreference;
             lead.eventPreference = savedPreference;
         }
+        if (createStageStatus.stageProvided) {
+            stageTransition = await transitionLeadStage(client, {
+                leadId: lead.id,
+                businessContext,
+                targetStage: createStageStatus.stage,
+                lostReason: lost_reason,
+                userId: req.user?.id,
+                source: 'leads.post'
+            });
+            lead = {
+                ...stageTransition.updatedLead,
+                event_preference: lead.event_preference,
+                eventPreference: lead.eventPreference
+            };
+            if (CUSTOMER_CARD_PIPELINE_STAGES.has(stageTransition.newStage)) {
+                if (requestedCustomer) {
+                    const linkNotes = appendUniqueLeadCustomerNote(requestedCustomer.notes, buildLeadCustomerNotes(lead), lead.id);
+                    const updatedCustomer = await client.query(
+                        `UPDATE customers
+                         SET lead_id = CASE WHEN lead_id IS NULL OR lead_id = $1 THEN $1 ELSE lead_id END,
+                             phone = COALESCE(NULLIF(phone, ''), $2),
+                             instagram = COALESCE(NULLIF(instagram, ''), $3),
+                             source = COALESCE(NULLIF(source, ''), $4),
+                             child_name = COALESCE(NULLIF(child_name, ''), $5),
+                             notes = $6,
+                             social_identities = $7::jsonb,
+                             updated_at = NOW()
+                         WHERE id = $8
+                           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9
+                         RETURNING *`,
+                        [
+                            lead.id,
+                            cleanText(lead.phone),
+                            normalizeInstagram(lead.instagram) || null,
+                            leadCustomerSource(lead),
+                            leadCustomerChildName(lead),
+                            linkNotes,
+                            JSON.stringify(mergeLeadSocialIdentities(requestedCustomer.social_identities, lead)),
+                            requestedCustomer.id,
+                            businessContext
+                        ]
+                    );
+                    let customer = updatedCustomer.rows[0] || requestedCustomer;
+                    await linkLeadCustomer(client, {
+                        businessContext,
+                        leadId: lead.id,
+                        customerId: customer.id,
+                        linkType: 'deal_customer',
+                        source: 'leads.post_requested_customer',
+                        userId: req.user?.id,
+                        metadata: { requestedCustomerId: customer.id }
+                    });
+                    const childSync = await syncLeadCelebrantsToCustomerChildren(client, lead, customer, businessContext);
+                    customer = childSync.customer || customer;
+                    dealCustomerLink = { customer, mode: 'linked_existing' };
+                } else {
+                    dealCustomerLink = await ensureDealCustomerForLead(client, lead, businessContext, {
+                        userId: req.user?.id,
+                        source: 'leads.post',
+                        linkType: 'deal_customer'
+                    });
+                }
+            }
+        }
         await client.query('COMMIT');
         transactionStarted = false;
 
+        const newStage = lead.pipeline_stage || createStageStatus.stage || 'new';
+        if (stageTransition?.enteredDepositStage) {
+            onDepositReceived(lead, req.user, {
+                businessContext,
+                oldStage: stageTransition.oldStage || null,
+                newStage,
+                enteredDepositStage: true
+            }).catch(e =>
+                log.error('onDepositReceived error (non-blocking)', e)
+            );
+        }
+        if (shouldAddLeadToMailing(lead, newStage)) {
+            addToMailingIfNeeded(lead).catch(e =>
+                log.error('addToMailing error (non-blocking)', e)
+            );
+        }
+
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
-        res.json({ success: true, lead: attachLeadEventPreference(lead) });
+        const response = { success: true, lead: attachLeadEventPreference(lead) };
+        if (dealCustomerLink?.customer) {
+            response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
+            response.customerLinkMode = dealCustomerLink.mode;
+        }
+        res.json(response);
     } catch (err) {
         if (transactionStarted && client) await client.query('ROLLBACK').catch(() => {});
+        if (err instanceof LeadStageTransitionError) {
+            return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
+        }
         log.error('POST /leads error', err);
         res.status(500).json({ success: false, error: 'Помилка створення ліду' });
     } finally {
@@ -2647,42 +2771,15 @@ router.patch('/:id/stage', async (req, res) => {
                 throw makeLeadVersionConflictError(previousLead);
             }
 
-            const updates = [
-                'pipeline_stage = $1',
-                'status = $2',
-                'updated_at = NOW()'
-            ];
-            if (stageStatus.status === 'booked') updates.push('booked_at = COALESCE(booked_at, NOW())');
-            if (stageStatus.status === 'contact') updates.push('last_contact_at = COALESCE(last_contact_at, NOW())');
-
-            const result = await client.query(
-                `UPDATE leads SET ${updates.join(', ')}
-                 WHERE id = $3
-                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
-                 RETURNING *`,
-                [stageStatus.stage, stageStatus.status, leadId, businessContext]
-            );
-            if (result.rows.length === 0) {
-                const notFound = new Error('Lead not found');
-                notFound.statusCode = 404;
-                throw notFound;
-            }
-
-            updatedLead = result.rows[0];
-            const oldStage = previousLead?.pipeline_stage || 'new';
-            const newStage = updatedLead.pipeline_stage || stageStatus.stage || 'new';
-            stageTransition = { oldStage, newStage };
-            if (oldStage !== newStage) {
-                await logStageChange(client, {
-                    leadId: updatedLead.id,
-                    oldStage,
-                    newStage,
-                    oldStatus: previousLead?.status || STAGE_TO_STATUS[oldStage] || 'new',
-                    newStatus: updatedLead.status || STAGE_TO_STATUS[newStage] || 'new',
-                    userId: req.user?.id,
-                    source: 'leads.stage_patch'
-                });
-            }
+            stageTransition = await transitionLeadStage(client, {
+                leadId,
+                businessContext,
+                targetStage: stageStatus.stage,
+                lostReason: req.body?.lost_reason,
+                userId: req.user?.id,
+                source: 'leads.stage_patch'
+            });
+            updatedLead = stageTransition.updatedLead;
         });
 
         let dealCustomerLink = null;
@@ -2766,7 +2863,7 @@ router.patch('/:id/stage', async (req, res) => {
             });
         }
 
-        if (newStage === 'deposit_received') {
+        if (stageTransition?.enteredDepositStage) {
             onDepositReceived(updatedLead, req.user, {
                 businessContext,
                 oldStage: stageTransition?.oldStage || null,
@@ -2803,6 +2900,9 @@ router.patch('/:id/stage', async (req, res) => {
                 currentUpdatedAt: err.currentLead?.updated_at || null
             });
             return res.status(409).json(leadVersionConflictPayload(err, req, res));
+        }
+        if (err instanceof LeadStageTransitionError) {
+            return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
         }
         const mappedError = mapLeadPatchError(err, req, res);
         if (mappedError) {
@@ -2868,13 +2968,6 @@ router.patch('/:id', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
 
-        if (stageStatus.stageProvided) {
-            params.push(stageStatus.stage);
-            updates.push(`pipeline_stage = $${params.length}`);
-            params.push(stageStatus.status);
-            updates.push(`status = $${params.length}`);
-            if (stageStatus.status === 'booked') updates.push(`booked_at = COALESCE(booked_at, NOW())`);
-        }
         if (notes !== undefined) {
             params.push(eventPreferenceInput.provided ? stripLeadGuestSummaryNote(notes) : notes);
             updates.push(`notes = $${params.length}`);
@@ -2925,16 +3018,18 @@ router.patch('/:id', async (req, res) => {
             updates.push(`last_contact_at = COALESCE(last_contact_at, NOW())`);
         }
 
-        if (updates.length === 0) {
+        if (updates.length === 0 && !stageStatus.stageProvided) {
             return res.status(400).json({ success: false, error: 'Немає полів для оновлення' });
         }
 
-        params.push(leadId);
-        params.push(businessContext);
+        if (updates.length > 0) {
+            params.push(leadId);
+            params.push(businessContext);
+        }
         let updatedLead;
         let dealCustomerLink = null;
-        let previousLead = null;
         let stageTransition = null;
+        let savedEventPreference = undefined;
         const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
         const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage);
         const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureCustomerCard;
@@ -2946,57 +3041,59 @@ router.patch('/:id', async (req, res) => {
                 await applyLeadPatchTransactionGuards(updateClient);
             }
             const queryable = updateClient || pool;
-            if (stageStatus.stageProvided) {
-                const previousResult = await queryable.query(
-                    `SELECT id, pipeline_stage, status
-                     FROM leads
-                     WHERE id = $1
-                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
-                     FOR UPDATE`,
-                    [leadId, businessContext]
+            if (updates.length > 0) {
+                const result = await queryable.query(
+                    `UPDATE leads SET ${updates.join(', ')}
+                     WHERE id = $${params.length - 1}
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}
+                     RETURNING *`,
+                    params
                 );
-                if (previousResult.rows.length === 0) {
+                if (result.rows.length === 0) {
                     if (updateClient) await updateClient.query('ROLLBACK');
-                    return res.status(404).json({ success: false, error: 'Lead not found' });
+                    return res.status(404).json({ success: false, error: 'Лід не знайдено' });
                 }
-                previousLead = previousResult.rows[0];
+                updatedLead = result.rows[0];
             }
-            const result = await queryable.query(
-                `UPDATE leads SET ${updates.join(', ')}
-                 WHERE id = $${params.length - 1}
-                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}
-                 RETURNING *`,
-                params
-            );
-            if (result.rows.length === 0) {
-                if (updateClient) await updateClient.query('ROLLBACK');
-                return res.status(404).json({ success: false, error: 'Лід не знайдено' });
-            }
-
-            updatedLead = result.rows[0];
             if (shouldPersistEventPreference) {
-                const savedPreference = await saveLeadEventPreference(queryable, {
-                    leadId: updatedLead.id,
+                savedEventPreference = await saveLeadEventPreference(queryable, {
+                    leadId,
                     businessContext,
                     preference: eventPreferenceInput.preference
                 });
-                updatedLead.event_preference = savedPreference;
-                updatedLead.eventPreference = savedPreference;
+                if (updatedLead) {
+                    updatedLead.event_preference = savedEventPreference;
+                    updatedLead.eventPreference = savedEventPreference;
+                }
             }
             if (stageStatus.stageProvided) {
-                const oldStage = previousLead?.pipeline_stage || 'new';
-                const newStage = updatedLead.pipeline_stage || effectivePipelineStage || 'new';
-                stageTransition = { oldStage, newStage };
-                if (oldStage !== newStage) {
-                    await logStageChange(queryable, {
-                        leadId: updatedLead.id,
-                        oldStage,
-                        newStage,
-                        oldStatus: previousLead?.status || STAGE_TO_STATUS[oldStage] || 'new',
-                        newStatus: updatedLead.status || STAGE_TO_STATUS[newStage] || 'new',
-                        userId: req.user?.id
-                    });
+                stageTransition = await transitionLeadStage(queryable, {
+                    leadId,
+                    businessContext,
+                    targetStage: stageStatus.stage,
+                    lostReason: lost_reason !== undefined ? lost_reason : leadTypeRule?.lostReason,
+                    userId: req.user?.id,
+                    source: 'leads.patch'
+                });
+                updatedLead = stageTransition.updatedLead;
+                if (shouldPersistEventPreference && updatedLead) {
+                    updatedLead.event_preference = savedEventPreference ?? null;
+                    updatedLead.eventPreference = savedEventPreference ?? null;
                 }
+            }
+            if (!updatedLead) {
+                const currentLead = await queryable.query(
+                    `SELECT * FROM leads
+                     WHERE id = $1
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                     LIMIT 1`,
+                    [leadId, businessContext]
+                );
+                if (currentLead.rows.length === 0) {
+                    if (updateClient) await updateClient.query('ROLLBACK');
+                    return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+                }
+                updatedLead = currentLead.rows[0];
             }
             if (updateClient) await updateClient.query('COMMIT');
         } catch (err) {
@@ -3101,7 +3198,7 @@ router.patch('/:id', async (req, res) => {
         }
 
         // v29.1: Pipeline stage hooks (fire-and-forget)
-        if (newStage === 'deposit_received') {
+        if (stageTransition?.enteredDepositStage) {
             onDepositReceived(updatedLead, req.user, {
                 businessContext,
                 oldStage: stageTransition?.oldStage || null,
@@ -3131,6 +3228,9 @@ router.patch('/:id', async (req, res) => {
         if (warnings.length) response.warnings = warnings;
         res.json(response);
     } catch (err) {
+        if (err instanceof LeadStageTransitionError) {
+            return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
+        }
         const mappedError = mapLeadPatchError(err, req, res);
         if (mappedError) {
             log.warn('PATCH /leads/:id retryable write conflict', {

@@ -22,6 +22,7 @@ test('version asset scanner skips generated dirs and inaccessible directories', 
         'tmp/pymupdf/bin',
         'output/playwright',
         'test-results/run',
+        '.codex-temp/release-copy',
         'node_modules/pkg',
         '.git/hooks',
         'locked'
@@ -35,6 +36,7 @@ test('version asset scanner skips generated dirs and inaccessible directories', 
     fs.writeFileSync(path.join(root, 'tmp/pymupdf/bin/stale.html'), `<script src="${versionedAsset('old.js', '0.0.1')}"></script>`);
     fs.writeFileSync(path.join(root, 'output/playwright/harness.html'), `<script src="${versionedAsset('old.js', '0.0.1')}"></script>`);
     fs.writeFileSync(path.join(root, 'test-results/run/harness.html'), `<script src="${versionedAsset('old.js', '0.0.1')}"></script>`);
+    fs.writeFileSync(path.join(root, '.codex-temp/release-copy/index.html'), `<script src="${versionedAsset('old.js', '0.0.1')}"></script>`);
     fs.writeFileSync(path.join(root, 'node_modules/pkg/index.js'), 'module.exports = "ignored";');
     fs.writeFileSync(path.join(root, '.git/hooks/pre-commit.js'), 'module.exports = "ignored";');
 
@@ -55,6 +57,7 @@ test('version asset scanner skips generated dirs and inaccessible directories', 
     assert.equal(shouldSkipVersionedAssetDir('tmp'), true);
     assert.equal(shouldSkipVersionedAssetDir('output'), true);
     assert.equal(shouldSkipVersionedAssetDir('test-results'), true);
+    assert.equal(shouldSkipVersionedAssetDir('.codex-temp'), true);
     assert.equal(shouldSkipVersionedAssetDir('public'), false);
 
     assert.deepEqual(

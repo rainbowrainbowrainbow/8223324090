@@ -1811,6 +1811,15 @@ body.dark-mode #bookingModal .booking-actions.modal-footer-sticky.booking-action
     color: var(--gray-900);
 }
 
+body.dark-mode .booking-legacy-integrity-guard {
+    border-color: var(--warning);
+    background: var(--gray-100);
+}
+
+body.dark-mode .booking-legacy-integrity-guard strong {
+    color: var(--warning);
+}
+
 body.dark-mode .booking-detail-more-actions__panel {
     background: var(--white);
     border-color: var(--gray-300);

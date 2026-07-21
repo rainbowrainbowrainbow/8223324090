@@ -27,6 +27,29 @@ groups that have no canonical deposit record.
   is for controlled operator review only and must not be committed, pasted into
   public tickets, or stored in the repository.
 
+## Current release data boundary
+
+Owner decision recorded on 2026-07-21: the current compatibility release must
+not mutate the remaining production audit records. The bounded inventory is two
+stale banquet groups, four missing-deposit manual-review records, and seven
+standalone pinata records. These records remain in place for later manager
+review; their presence in the audit is not authorization to treat them as
+disposable QA data.
+
+For this release:
+
+- do not run any reconciliation or QA-cleanup apply command for these records;
+- do not create or update deposits automatically;
+- do not attach standalone pinatas automatically;
+- do not physically delete bookings, groups, memberships, links, deposits, or
+  history;
+- keep normal manager cancellation available for a later, separately reviewed
+  action through the canonical booking workflow.
+
+Any later production mutation requires a fresh read-only inspection, an exact
+target scope, and a new explicit owner approval. This release boundary does not
+weaken or bypass any apply guard documented below.
+
 ## 1. Disposable QA cleanup after browser smoke
 
 ### 1.1 Legacy read-only inventory

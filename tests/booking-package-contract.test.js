@@ -4588,7 +4588,7 @@ test('activity-first kitchen room open initializes source context after programm
     );
 
     assert.match(openPanelBlock, /await loadBookingRoomResourcesForSelect\(\{ selectedRoom: line\.name \}\);[\s\S]*ensureTimelineRoomOption\(line\.name,\s*\{[\s\S]*resourceId:[\s\S]*resourceType:[\s\S]*document\.getElementById\('roomSelect'\)\.value = line\.name;/);
-    assert.match(openPanelBlock, /await refreshBookingRoomAvailabilityForSelectedDate\(\);\s*if \(!appliedExplicitBanquetContext\) \{\s*await initializeRoomFirstBookingSourceContext\(\);\s*\}/);
+    assert.match(openPanelBlock, /await refreshBookingRoomAvailabilityForSelectedDate\(\);\s*if \(!appliedExplicitBanquetContext && !BookingDrawerState\.legacyReplacementMode\) \{\s*await initializeRoomFirstBookingSourceContext\(\);\s*\}/);
     assert.match(initBlock, /handleBookingRoomSelectionContextChange\(\)/);
     assert.match(initBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
     assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
@@ -4970,7 +4970,11 @@ test('booking drawer accepts explicit timeline banquet context and exposes stand
     assert.match(createFlowBlock, /createPath\.kind === 'existing_group_member'[\s\S]*apiCreateBanquetMemberBooking\(/, 'kitchen/member add-to-existing should call banquet member endpoint');
     assert.match(createFlowBlock, /const finalCreatePath = resolveBookingCreatePath[\s\S]*if \(finalCreatePath\.blocked\)[\s\S]*return;/, 'second create path resolve should also respect blocked active context');
     assert.match(createFlowBlock, /if \(createPath\.blocked\)[\s\S]*return;/, 'blocked active context should stop before API create');
-    assert.equal((bookingJs.match(/standaloneBookingOverride\s*=\s*true/g) || []).length, 1, 'standalone override should only be set by the explicit standalone action');
+    const standaloneAssignments = bookingJs.match(/standaloneBookingOverride\s*=\s*true/g) || [];
+    assert.equal(standaloneAssignments.length, 4, 'standalone override should be limited to the explicit action and guarded legacy replacement flow');
+    assert.match(openPanelBlock, /if \(BookingDrawerState\.legacyReplacementMode\) \{\s*BookingDrawerState\.standaloneBookingOverride = true;/);
+    assert.match(bookingJs, /data-booking-standalone-override[\s\S]*BookingDrawerState\.standaloneBookingOverride = true/);
+    assert.match(bookingJs, /async function createLegacyBanquetReplacement[\s\S]*BookingDrawerState\.standaloneBookingOverride = true/);
 });
 
 test('active banquet context cannot silently fall back to normal booking create', () => {

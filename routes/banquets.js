@@ -32,6 +32,7 @@ const { AdmissionTicketError } = require('../services/admissionTickets');
 const {
     getDepositProjectionForBooking,
     getDepositProjectionForGroup,
+    getDepositProjectionForKnownContext,
     resolveDepositContextFromBooking
 } = require('../services/banquetDeposits');
 const { createLogger } = require('../utils/logger');
@@ -161,7 +162,7 @@ function anchorVisible(snapshot, user) {
     });
 }
 
-function sendReadResult(req, res, snapshot) {
+async function sendReadResult(req, res, snapshot) {
     if (!snapshot) return res.status(404).json({ success: false, error: 'Banquet group not found' });
     if (!anchorVisible(snapshot, req.user)) {
         return res.status(404).json(bookingAccessDeniedPayload());
@@ -170,7 +171,19 @@ function sendReadResult(req, res, snapshot) {
     if (!visible?.members?.length) {
         return res.status(404).json(bookingAccessDeniedPayload());
     }
-    return res.json(visible);
+    const groupId = visible.groupId || visible.group?.id || null;
+    const primaryBookingId = visible.bookings?.primary?.id || visible.group?.primaryBookingId || null;
+    const deposit = await getDepositProjectionForKnownContext({
+        businessContext: visible.businessContext,
+        primaryBookingId,
+        banquetGroupId: groupId,
+        customerId: visible.customer?.id || visible.group?.customerId || null,
+        eventDate: visible.group?.date || null,
+        clientName: visible.customer?.name || null,
+        banquetNumber: visible.group?.groupName || null,
+        needsBookingLink: !primaryBookingId
+    });
+    return res.json({ ...visible, deposit });
 }
 
 function sendWriteError(res, err) {
@@ -482,7 +495,7 @@ router.get('/by-booking/:bookingId', async (req, res) => {
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         const snapshot = await loadBanquetGroupByBookingId({ bookingId, businessContext });
-        return sendReadResult(req, res, snapshot);
+        return await sendReadResult(req, res, snapshot);
     } catch (err) {
         log.error('GET /banquets/by-booking/:bookingId error', err);
         return res.status(500).json({ success: false, error: 'Internal server error' });
@@ -561,7 +574,7 @@ router.get('/:groupId', async (req, res) => {
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         const snapshot = await loadBanquetGroupById({ groupId, businessContext });
-        return sendReadResult(req, res, snapshot);
+        return await sendReadResult(req, res, snapshot);
     } catch (err) {
         log.error('GET /banquets/:groupId error', err);
         return res.status(500).json({ success: false, error: 'Internal server error' });

@@ -3589,6 +3589,59 @@ test('banquet edit path resolves only to the atomic booking-set endpoint when sn
     assert.match(incomplete.error, /expectedGroupUpdatedAt/);
 });
 
+test('legacy banquet integrity guard blocks mutation and opens only a clean canonical replacement form', () => {
+    const bookingJs = read('js', 'booking.js');
+    const selectorJs = read('js', 'booking-banquet-selector.js');
+    const drawerStateJs = read('js', 'booking-drawer-state.js');
+    const timelineCss = read('css', 'timeline.css');
+    const darkModeCss = read('css', 'dark-mode.css');
+    const detailsBlock = bookingJs.slice(
+        bookingJs.indexOf('async function showBookingDetails'),
+        bookingJs.indexOf('async function createLegacyBanquetReplacement')
+    );
+    const replacementBlock = bookingJs.slice(
+        bookingJs.indexOf('async function createLegacyBanquetReplacement'),
+        bookingJs.indexOf('async function editBooking')
+    );
+    const editBlock = bookingJs.slice(
+        bookingJs.indexOf('async function editBooking'),
+        bookingJs.indexOf('// ==========================================\n// DUPLICATE BOOKING')
+    );
+
+    assert.match(bookingJs, /const INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE = 'incomplete_historical_banquet_record'/);
+    assert.match(bookingJs, /function banquetSnapshotEditIntegrityIssue/);
+    assert.match(bookingJs, /groupStatus === 'active'/);
+    assert.match(bookingJs, /primaryStatus === 'cancelled'/);
+    assert.match(detailsBlock, /renderLegacyBanquetEditIntegrityGuard\(banquetEditIntegrityIssue\)/);
+    assert.match(bookingJs, /role="alert"/);
+    assert.match(bookingJs, /tabindex="-1"/);
+    assert.match(bookingJs, /aria-describedby="bookingLegacyBanquetEditGuardMessage"/);
+    assert.match(detailsBlock, /canEditTimelineBooking\(\) && !banquetEditIntegrityIssue/);
+    assert.match(detailsBlock, /banquetEditIntegrityIssue[\s\S]*createLegacyBanquetReplacement/);
+    assert.match(editBlock, /banquetSnapshotEditIntegrityIssue\(banquetSnapshot \|\| \{\}\)/);
+    assert.ok(
+        editBlock.indexOf('banquetSnapshotEditIntegrityIssue') < editBlock.indexOf('shouldEditBookingInAnimatorView'),
+        'fresh integrity guard must run before any edit-mode redirect'
+    );
+    assert.match(editBlock, /focusIntegrityGuard: true/);
+
+    assert.match(replacementBlock, /apiGetBanquetByBooking\(cleanBookingId\)/);
+    assert.match(replacementBlock, /legacyReplacementMode: true/);
+    assert.match(replacementBlock, /drawerMode: BOOKING_DRAWER_MODES\.CREATE_KITCHEN/);
+    assert.match(replacementBlock, /BookingDrawerState\.standaloneBookingOverride = true/);
+    assert.match(replacementBlock, /Клієнт і завдаток не перенесені/);
+    assert.doesNotMatch(replacementBlock, /duplicateBooking|apiUpdateBooking|apiUpdateBanquetBookingSet|apiCreateBanquetMemberBooking/);
+    assert.match(bookingJs, /if \(!BookingDrawerState\.legacyReplacementMode\) \{\s*applyLeadConversionContextToBookingForm\(\)/);
+    assert.match(bookingJs, /!appliedExplicitBanquetContext && !BookingDrawerState\.legacyReplacementMode/);
+    assert.match(bookingJs, /if \(BookingDrawerState\.legacyReplacementMode\) \{[\s\S]*clearAutoFilledBanquetFromRoomSelection\(\)/);
+    assert.match(selectorJs, /if \(BookingDrawerState\.legacyReplacementMode\) return ''/);
+    assert.match(selectorJs, /!BookingDrawerState\.legacyReplacementMode/);
+    assert.match(drawerStateJs, /legacyReplacementMode: false/);
+    assert.match(timelineCss, /\.booking-legacy-integrity-guard:focus-visible/);
+    assert.match(timelineCss, /@media \(max-width: 640px\)[\s\S]*booking-actions--legacy-replacement/);
+    assert.match(darkModeCss, /body\.dark-mode \.booking-legacy-integrity-guard/);
+});
+
 test('banquet edit frontend hydrates membership snapshot and keeps optimistic conflicts inside the form', () => {
     const bookingJs = read('js', 'booking.js');
     const apiJs = read('js', 'api.js');

@@ -1685,6 +1685,26 @@ async function getDepositProjectionForGroup(groupIdInput, businessContextInput, 
     });
 }
 
+async function getDepositProjectionForKnownContext(input = {}, options = {}) {
+    const context = {
+        businessContext: normalizeBusinessContext(input.businessContext || input.business_context),
+        primaryBookingId: cleanText(
+            input.primaryBookingId || input.primary_booking_id || input.bookingId || input.booking_id,
+            50
+        ),
+        bookingId: cleanText(input.bookingId || input.booking_id, 50),
+        banquetGroupId: cleanText(input.banquetGroupId || input.banquet_group_id, 50),
+        customerId: positiveInteger(input.customerId || input.customer_id, 'customerId'),
+        eventDate: normalizeDateOnly(input.eventDate || input.event_date),
+        clientName: cleanText(input.clientName || input.client_name, 200) || null,
+        banquetNumber: cleanText(input.banquetNumber || input.banquet_number, 100) || null,
+        needsBookingLink: input.needsBookingLink === true
+    };
+    const db = queryable(options);
+    const row = await findDepositForContext(db, context, { includeCancelled: true });
+    return depositProjection(row, context);
+}
+
 async function getDepositProjectionById(depositIdInput, businessContextInput, options = {}) {
     const depositId = positiveInteger(
         typeof depositIdInput === 'object' && depositIdInput !== null
@@ -1733,6 +1753,7 @@ module.exports = {
     getDepositProjectionById,
     getDepositProjectionForBooking,
     getDepositProjectionForGroup,
+    getDepositProjectionForKnownContext,
     listDepositsForAccounting,
     markDepositReviewStarted,
     patchDeposit,

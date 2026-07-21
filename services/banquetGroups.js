@@ -653,6 +653,7 @@ function mapGroupRow(row = null) {
         businessContext: row.business_context || DEFAULT_TIMELINE_CONTEXT,
         primaryBookingId: row.primary_booking_id || null,
         customerId: row.customer_id || null,
+        customerName: row.resolved_customer_name || null,
         date: row.date || null,
         room: row.room || null,
         roomResourceId: row.room_resource_id || null,
@@ -879,8 +880,11 @@ async function findGroupForBooking(db, bookingId, businessContext) {
 async function getGroupById(db, groupId, businessContext) {
     try {
         const result = await db.query(
-            `SELECT bg.*
+            `SELECT bg.*, c.name AS resolved_customer_name
                FROM banquet_groups bg
+               LEFT JOIN customers c
+                 ON c.id = bg.customer_id
+                AND ${bookingContextSql('c', '$2')}
               WHERE bg.id = $1
                 AND ${bookingContextSql('bg', '$2')}
               LIMIT 1`,
@@ -988,17 +992,22 @@ async function getMembershipRowsForUpdate(db, groupId, businessContext) {
     return result.rows || [];
 }
 
-async function getBookingsByIds(db, ids, businessContext) {
+async function getBookingsByIds(db, ids, businessContext, { includeCancelledIds = [] } = {}) {
     const uniqueIds = [...new Set((ids || []).map(cleanId).filter(Boolean))];
     if (!uniqueIds.length) return [];
+    const allowedCancelledIds = [...new Set((includeCancelledIds || []).map(cleanId).filter(Boolean))]
+        .filter(id => uniqueIds.includes(id));
     const result = await db.query(
         `SELECT b.*
            FROM bookings b
            WHERE b.id = ANY($1::text[])
              AND ${bookingContextSql('b', '$2')}
-             AND ${bookingActiveStatusSql('b')}
+             AND (
+                    ${bookingActiveStatusSql('b')}
+                 OR b.id = ANY($3::text[])
+             )
            ORDER BY b.date ASC, b.time ASC, b.id ASC`,
-        [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
+        [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT, allowedCancelledIds]
     );
     return result.rows || [];
 }
@@ -2217,6 +2226,12 @@ function normalizeBookingSetRoot(existingRow, patch, {
     booking.createdBy = normalizeActivityText(existingRow?.created_by || merged.createdBy || actorName(user), 100);
     booking.status = normalizeBookingStatus(merged.status, existingRow?.status || primaryBooking?.status || 'confirmed');
     if (String(booking.status || '').toLowerCase() === 'cancelled') {
+        if (role === 'primary') {
+            throw new BanquetGroupError('Primary banquet cancellation must use the canonical booking cancellation flow', {
+                status: 409,
+                code: 'BANQUET_PRIMARY_CANCELLATION_REQUIRES_DELETE'
+            });
+        }
         throw new BanquetGroupError('Cancelled bookings must be omitted from the desired activity set', {
             status: 400,
             code: 'BANQUET_BOOKING_SET_CANCELLED_MEMBER'
@@ -2975,6 +2990,9 @@ function buildSnapshot({
     const memberships = membershipRows.map(mapMembershipRow);
     const membershipByBookingId = new Map(memberships.map(item => [String(item.bookingId), item]));
     const rootRows = bookingRows.filter(isRootBooking);
+    const declaredPrimaryRow = group?.primaryBookingId
+        ? rootRows.find(row => String(row.id) === String(group.primaryBookingId)) || null
+        : null;
     const primaryRow = inferPrimaryBooking(rootRows, memberships, group, anchorBookingId);
     const primaryId = primaryRow?.id || group?.primaryBookingId || null;
     const childrenByParent = new Map();
@@ -3019,6 +3037,17 @@ function buildSnapshot({
         message: 'Banquet group has no valid persisted guest arrival time.'
     });
     if (!roleBuckets.primary) warnings.push({ code: 'primary_booking_missing', message: 'Primary banquet booking could not be determined.' });
+    if (
+        group
+        && String(group.status || 'active').trim().toLowerCase() === 'active'
+        && group.primaryBookingId
+        && (!declaredPrimaryRow || !isActiveBookingRow(declaredPrimaryRow))
+    ) {
+        warnings.push({
+            code: 'incomplete_historical_banquet_record',
+            message: 'Неповний історичний банкетний запис'
+        });
+    }
     if (!roleBuckets.kitchen.length) warnings.push({ code: 'kitchen_booking_missing', message: 'No kitchen/menu booking was detected for this banquet.' });
     if (roleBuckets.kitchen.length > 1) {
         warnings.push({
@@ -3073,7 +3102,15 @@ async function loadBanquetGroupById({ db = defaultPool, groupId, businessContext
         });
     }
     const membershipRows = await getMembershipRows(db, groupResult.group.id, businessContext);
-    const bookingRows = await getBookingsByIds(db, membershipRows.map(row => row.booking_id), businessContext);
+    const bookingRows = await getBookingsByIds(
+        db,
+        [
+            ...membershipRows.map(row => row.booking_id),
+            groupResult.group.primary_booking_id
+        ],
+        businessContext,
+        { includeCancelledIds: [groupResult.group.primary_booking_id] }
+    );
     const rootIds = bookingRows.filter(isRootBooking).map(row => row.id);
     const technicalRows = await getTechnicalChildren(db, rootIds, businessContext);
     return buildSnapshot({

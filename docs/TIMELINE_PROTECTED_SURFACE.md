@@ -61,6 +61,7 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-07-21, `booking-detail-identity` and `booking-detail-safe-open`: explicit product-owner Task 4 approval. Active banquet groups with a cancelled or missing primary remain readable, but canonical detail/edit flow suppresses mutation controls and can open only a clean standard replacement form without restoring the primary or transferring customer, deposit, or membership data.
 - 2026-07-17, `route-project-timeline-identity` and `service-booking-row-map`: explicit product-owner approval for room identity Task 3. `room_resource_id` is now the first room projection identity and is exposed by the canonical booking row mapper; legacy room text remains a recovery/display snapshot.
 - 2026-07-13, `booking-detail-safe-open`: explicit product-owner approval for the arrival consistency task. Canonical banquet detail now reads guest arrival from the banquet group snapshot and never relabels the opened kitchen/activity member time as arrival.
 - 2026-07-13, `route-project-timeline-identity`: explicit product-owner approval for Task 5. Room timeline projection now resolves active rooms to durable resource IDs, preserves legacy room text separately, and sends unmatched or inactive room identities to a non-assignable quarantine lane instead of the takeaway row.

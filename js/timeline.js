@@ -2169,18 +2169,59 @@ async function loadTimelineBanquetSnapshotForBooking(booking = {}) {
     const promise = apiGetBanquetByBooking(bookingId)
         .then(result => {
             if (!result?.success || !Array.isArray(result.members) || !result.members.length) {
-                TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { failed: true, ts: Date.now() });
+                TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, {
+                    failed: true,
+                    state: 'empty',
+                    ts: Date.now()
+                });
                 return null;
             }
             return cacheTimelineBanquetSnapshot(result, bookingId);
         })
         .catch(error => {
             console.warn('[Timeline] Banquet snapshot unavailable:', error);
-            TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { failed: true, ts: Date.now() });
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, {
+                failed: true,
+                state: 'error',
+                ts: Date.now()
+            });
             return null;
         });
-    TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { promise, ts: Date.now() });
+    TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { promise, state: 'loading', ts: Date.now() });
     return promise;
+}
+
+function timelineBookingSupportsBanquetInspector(booking = {}) {
+    const category = String(booking?.category || '').trim().toLowerCase();
+    const lineId = String(booking?.lineId || booking?.line_id || '').trim();
+    return Boolean(
+        timelineBanquetGroupIdFromSource(booking)
+        || booking?.isBanquetGroupMember
+        || booking?.is_banquet_group_member
+        || category === 'banquet'
+        || category === 'kitchen'
+        || lineId === TIMELINE_BANQUET_SERVICE_LINE_ID
+    );
+}
+
+function timelineBanquetSnapshotStateForBooking(booking = {}) {
+    const bookingId = String(booking?.id || '').trim();
+    if (!bookingId) return 'empty';
+    const record = TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.get(timelineBanquetCacheKey(bookingId));
+    return ['loading', 'empty', 'error'].includes(record?.state) ? record.state : 'empty';
+}
+
+function timelineBanquetProvisionalRoleForBooking(booking = {}) {
+    const explicitRole = normalizeTimelineBanquetPreviewRole(
+        booking?.banquetGroupRole
+        || booking?.banquet_group_role
+        || timelineBanquetPreviewEmbeddedRole(booking)
+    );
+    if (explicitRole) return explicitRole;
+    const category = String(booking?.category || '').trim().toLowerCase();
+    if (category === 'banquet') return 'banquet';
+    if (category === 'kitchen') return 'kitchen';
+    return '';
 }
 
 function timelineBanquetVisibleBlockById(bookingId) {
@@ -2465,6 +2506,21 @@ function timelineCanEditBanquetArrival(summary = {}) {
     const groupId = String(summary.groupId || timelineBanquetSnapshotGroupId(summary.snapshot) || '').trim();
     const status = String(summary.snapshot?.group?.status || '').trim().toLowerCase();
     if (!groupId || (status && status !== 'active')) return false;
+    const primary = summary.primaryBooking || summary.snapshot?.bookings?.primary || null;
+    const primaryStatus = String(primary?.status || '').trim().toLowerCase();
+    const warningCodes = new Set(
+        (summary.snapshot?.warnings || [])
+            .map(warning => String(warning?.code || '').trim())
+            .filter(Boolean)
+    );
+    if (
+        status === 'active'
+        && (
+            !primary
+            || primaryStatus === 'cancelled'
+            || warningCodes.has('incomplete_historical_banquet_record')
+        )
+    ) return false;
     try {
         return typeof canAccess === 'function' && canAccess('edit_booking');
     } catch {
@@ -2492,6 +2548,7 @@ function hideTimelineBanquetInspector() {
     if (inspector) {
         inspector.classList.add('hidden');
         delete inspector._timelineBanquetMenuExpanded;
+        delete inspector._timelineBanquetTrigger;
     }
     clearTimelineActiveBanquetContext('inspector_closed');
     document.body.classList.remove('timeline-banquet-inspector-open');
@@ -2711,11 +2768,61 @@ function timelineBanquetCommentsHtml(summary = {}) {
     `;
 }
 
-function showTimelineBanquetInspector(event, summary, trigger) {
-    if (!summary) return;
+function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
+    const state = String(options.state || (summary ? 'ready' : 'empty')).trim().toLowerCase();
+    if (!summary && !['loading', 'empty', 'error'].includes(state)) return;
     if (typeof hideTooltip === 'function') hideTooltip();
     const inspector = ensureTimelineBanquetInspector();
+    inspector._timelineBanquetTrigger = trigger || null;
     inspector._timelineBanquetMenuExpanded = false;
+    if (!summary) {
+        clearTimelineActiveBanquetContext(`inspector_${state}`);
+        const stateCopy = {
+            loading: {
+                title: 'Завантаження банкету',
+                text: 'Отримуємо склад групи, кухню та час приходу гостей.'
+            },
+            empty: {
+                title: 'Дані банкету відсутні',
+                text: 'Відповідь банкетної групи не містить доступних учасників.'
+            },
+            error: {
+                title: 'Не вдалося завантажити банкет',
+                text: 'Оновіть таймлайн і повторіть спробу.'
+            }
+        }[state];
+        inspector.innerHTML = `
+            <div class="timeline-banquet-inspector-head">
+                <div>
+                    <div class="timeline-banquet-inspector-kicker">Банкет</div>
+                    <div class="timeline-banquet-inspector-title">${escapeHtml(stateCopy.title)}</div>
+                </div>
+                <button type="button" class="timeline-banquet-inspector-close" data-banquet-inspector-close aria-label="Закрити">×</button>
+            </div>
+            <div class="timeline-banquet-inspector-body">
+                <div class="timeline-banquet-inspector-state timeline-banquet-inspector-state--${escapeHtml(state)}" role="${state === 'error' ? 'alert' : 'status'}">
+                    <span class="timeline-banquet-inspector-state-indicator" aria-hidden="true"></span>
+                    <strong>${escapeHtml(stateCopy.title)}</strong>
+                    <span>${escapeHtml(stateCopy.text)}</span>
+                </div>
+            </div>
+        `;
+        inspector.querySelector('[data-banquet-inspector-close]')?.addEventListener('click', clickEvent => {
+            clickEvent.preventDefault();
+            clickEvent.stopPropagation();
+            hideTimelineBanquetInspector();
+        });
+        inspector.classList.remove('hidden');
+        inspector.dataset.banquetGroupId = '';
+        inspector.dataset.activeBanquetContext = '0';
+        inspector.dataset.state = state;
+        inspector.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+        document.body.classList.add('timeline-banquet-inspector-open');
+        inspector.focus?.({ preventScroll: true });
+        return;
+    }
+    inspector.dataset.state = 'ready';
+    inspector.setAttribute('aria-busy', 'false');
     const triggerBookingId = String(trigger?.dataset?.bookingId || '').trim();
     const activeContext = setTimelineActiveBanquetContext(summary, {
         source: 'timeline_banquet_inspector',
@@ -3516,12 +3623,31 @@ function applyTimelineBanquetBadges(snapshot = {}) {
 function hydrateTimelineBanquetPreview(block, booking = {}) {
     if (!isRoomTimelineView() || !block || !booking?.id || booking.linkedTo || booking.linked_to || block.classList.contains('status-hidden')) return;
     if (!String(booking.room || '').trim()) return;
+    if (!timelineBookingSupportsBanquetInspector(booking)) return;
+    const provisionalRole = timelineBanquetProvisionalRoleForBooking(booking);
+    if (provisionalRole) setTimelineBanquetPreviewRole(block, provisionalRole);
+    block._timelineBanquetInspectorState = 'loading';
     const hydrationContext = timelineBanquetPreviewHydrationContext(block, booking);
     const run = () => {
         if (!timelineBanquetPreviewHydrationIsFresh(hydrationContext, block)) return;
         loadTimelineBanquetSnapshotForBooking(booking).then(snapshot => {
-            if (!snapshot) return;
-            applyTimelineBanquetPreview(snapshot, { context: hydrationContext, block });
+            if (!timelineBanquetPreviewHydrationIsFresh(hydrationContext, block)) return;
+            if (snapshot) {
+                delete block._timelineBanquetInspectorState;
+                applyTimelineBanquetPreview(snapshot, { context: hydrationContext, block });
+            } else {
+                block._timelineBanquetInspectorState = timelineBanquetSnapshotStateForBooking(booking);
+            }
+            const inspector = document.getElementById('timelineBanquetInspector');
+            if (!inspector?.classList.contains('hidden') && inspector._timelineBanquetTrigger === block) {
+                if (block._timelineBanquetSummary) {
+                    showTimelineBanquetInspector(null, block._timelineBanquetSummary, block);
+                } else {
+                    showTimelineBanquetInspector(null, null, block, {
+                        state: block._timelineBanquetInspectorState || 'empty'
+                    });
+                }
+            }
         });
     };
     if (typeof window.requestIdleCallback === 'function') {
@@ -3536,12 +3662,16 @@ function hydrateTimelineBanquetBadges(block, booking = {}) {
 }
 
 function showTimelineBanquetPreviewFromBlock(event, block) {
-    if (!isRoomTimelineView() || !block?._timelineBanquetSummary) return false;
+    if (!isRoomTimelineView() || !block) return false;
     if (!timelineBanquetBlockCanOpenInspector(block)) return false;
     if (event?.target?.closest?.('[data-banquet-link-handle], .graduation-segment, .graduation-segment-actions')) return false;
+    const state = block._timelineBanquetInspectorState;
+    if (!block._timelineBanquetSummary && !state) return false;
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    showTimelineBanquetInspector(event, block._timelineBanquetSummary, block);
+    showTimelineBanquetInspector(event, block._timelineBanquetSummary || null, block, {
+        state: state || 'ready'
+    });
     return true;
 }
 

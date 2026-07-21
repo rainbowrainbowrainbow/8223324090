@@ -35,6 +35,7 @@ var BookingDrawerState = window.BookingDrawerState || {
     activeBanquetIntent: null,
     activeBanquetRoleIntent: null,
     standaloneBookingOverride: false,
+    legacyReplacementMode: false,
     autoFilledCustomerFromRoom: null,
     autoFilledBanquetFromRoom: null,
     autoFilledBanquetGuestsFromRoom: null,

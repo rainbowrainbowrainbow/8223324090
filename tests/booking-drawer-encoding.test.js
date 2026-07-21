@@ -663,15 +663,48 @@ test('booking detail title removes redundant kitchen prefix only for kitchen boo
 
 test('booking detail summary action is labeled banquet sheet without changing preview route', () => {
     const bookingJs = read('js', 'booking.js');
-    const actionStart = bookingJs.indexOf('const editControls = isViewer() ?');
+    const actionStart = bookingJs.indexOf('const editControls = isViewer()');
     const actionEnd = bookingJs.indexOf('const bookingDetailIdLabel', actionStart);
     assert.ok(actionStart >= 0 && actionEnd > actionStart, 'booking detail action block exists');
     const actionBlock = bookingJs.slice(actionStart, actionEnd);
     assert.match(actionBlock, /summaryPreviewHref/);
     assert.match(actionBlock, /class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист<\/a>/);
+    assert.match(actionBlock, /booking-actions--legacy-replacement/);
+    assert.match(actionBlock, /createLegacyBanquetReplacement/);
     assert.doesNotMatch(actionBlock, /booking-summary-action">Вижимка<\/a>/);
     assert.match(bookingJs, /function bookingSummaryPreviewUrl/);
     assert.match(bookingJs, /\/booking-summary\.html\?/);
+});
+
+test('booking detail keeps canonical stale-banquet deposit visible and blocks ordinary edit controls', () => {
+    const bookingJs = read('js', 'booking.js');
+    const depositStart = bookingJs.indexOf('async function loadBanquetDepositStatusForDetails');
+    const depositEnd = bookingJs.indexOf('function bookingDetailBanquetArrival', depositStart);
+    assert.ok(depositStart >= 0 && depositEnd > depositStart, 'deposit detail loader exists');
+    const depositBlock = bookingJs.slice(depositStart, depositEnd);
+    const canonicalIndex = depositBlock.indexOf('const canonicalProjection = banquetSnapshot?.deposit');
+    const fallbackApiIndex = depositBlock.indexOf('apiGetBanquetDepositByGroup');
+    assert.ok(canonicalIndex >= 0, 'canonical snapshot deposit is inspected');
+    assert.ok(fallbackApiIndex > canonicalIndex, 'separate deposit API remains a fallback only');
+    assert.match(
+        depositBlock,
+        /canonicalProjection[\s\S]*renderBanquetDepositStatusSection[\s\S]*return;/,
+        'canonical deposit renders without being replaced by a second request'
+    );
+
+    const guardStart = bookingJs.indexOf('function banquetSnapshotEditIntegrityIssue');
+    const guardEnd = bookingJs.indexOf('function renderLegacyBanquetEditIntegrityGuard', guardStart);
+    assert.ok(guardStart >= 0 && guardEnd > guardStart, 'stale banquet edit guard exists');
+    const guardBlock = bookingJs.slice(guardStart, guardEnd);
+    assert.match(guardBlock, /groupStatus === 'active'/);
+    assert.match(guardBlock, /primaryStatus === 'cancelled'/);
+    assert.match(guardBlock, /incomplete_historical_banquet_record|INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE/);
+
+    const actionStart = bookingJs.indexOf('const editControls = isViewer()');
+    const actionEnd = bookingJs.indexOf('const bookingDetailIdLabel', actionStart);
+    const actionBlock = bookingJs.slice(actionStart, actionEnd);
+    assert.match(actionBlock, /banquetEditIntegrityIssue[\s\S]*createLegacyBanquetReplacement/);
+    assert.match(actionBlock, /:\s*`[\s\S]*btn-edit-booking/);
 });
 
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {

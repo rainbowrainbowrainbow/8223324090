@@ -202,9 +202,9 @@ async function getFirstLineForDate(date) {
 /**
  * Log a skipped recurring booking instance.
  */
-async function logSkip(templateId, date, reason, details) {
+async function logSkip(templateId, date, reason, details, { queryable = pool, throwOnError = false } = {}) {
     try {
-        await pool.query(
+        await queryable.query(
             `INSERT INTO recurring_booking_skips (template_id, date, reason, details)
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (template_id, date) DO UPDATE SET reason = $3, details = $4`,
@@ -212,6 +212,7 @@ async function logSkip(templateId, date, reason, details) {
         );
     } catch (err) {
         log.error(`Failed to log skip for template ${templateId} date ${date}: ${err.message}`);
+        if (throwOnError) throw err;
     }
 }
 

@@ -264,6 +264,37 @@ function firstTimelineBanquetValue(bookings = [], getter) {
     return null;
 }
 
+function timelineBanquetReliableCustomerName(snapshot = {}, bookings = []) {
+    const group = snapshot?.group || null;
+    const explicitGroupName = String(group?.customerName || group?.customer_name || '').trim();
+    if (explicitGroupName) return explicitGroupName;
+
+    const groupCustomerId = String(group?.customerId || group?.customer_id || '').trim();
+    const groupPrimaryId = String(group?.primaryBookingId || group?.primary_booking_id || '').trim();
+    const primaryBooking = groupPrimaryId
+        ? (bookings || []).find(booking => String(booking?.id || booking?.bookingId || '').trim() === groupPrimaryId) || null
+        : null;
+    const primaryCustomerId = String(primaryBooking?.customerId || primaryBooking?.customer_id || '').trim();
+    const primaryCustomerName = String(primaryBooking?.customerName || primaryBooking?.customer_name || '').trim();
+    if (primaryCustomerName && (!groupCustomerId || primaryCustomerId === groupCustomerId)) {
+        return primaryCustomerName;
+    }
+
+    const candidates = (bookings || [])
+        .map(booking => ({
+            customerId: String(booking?.customerId || booking?.customer_id || '').trim(),
+            customerName: String(booking?.customerName || booking?.customer_name || '').trim()
+        }))
+        .filter(candidate => candidate.customerName)
+        .filter(candidate => !groupCustomerId || candidate.customerId === groupCustomerId);
+    const customerIds = new Set(candidates.map(candidate => candidate.customerId).filter(Boolean));
+    const customerNames = new Set(candidates.map(candidate => candidate.customerName));
+    const identityIsReliable = groupCustomerId
+        ? customerNames.size === 1
+        : customerIds.size === 1 && customerNames.size === 1;
+    return identityIsReliable ? [...customerNames][0] : null;
+}
+
 function timelineBanquetSnapshotWarningText(warning) {
     const code = String(warning?.code || '').trim();
     const text = String(warning?.message || warning?.text || warning || '').trim();
@@ -331,7 +362,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         menuPreviewItems: timelineBanquetMenuPreviewItems(kitchenBookings),
         activityPreviewItems,
         summaryAvailable: true,
-        customerName: firstTimelineBanquetValue(sourceForCounts, booking => booking.customerName || booking.customer_name || booking.groupName || booking.group_name),
+        customerName: timelineBanquetReliableCustomerName(snapshot, sourceForCounts),
         room: arrival?.room || fallbackRoom,
         date,
         time,

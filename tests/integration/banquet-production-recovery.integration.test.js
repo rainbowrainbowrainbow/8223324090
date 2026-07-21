@@ -314,7 +314,7 @@ function assertQaCleanupStateUntouched(state, expectedBookingCount = 2) {
     assert.equal(state.history_count, 0);
 }
 
-async function seedActiveGroupWithCancelledPrimary(pool, suffix) {
+async function seedActiveGroupWithCancelledPrimary(pool, suffix, options = {}) {
     const customerId = await insertCustomer(pool, suffix);
     const primaryId = compactId('bpr-state-primary', suffix);
     const kitchenId = compactId('bpr-state-kitchen', suffix);
@@ -337,6 +337,7 @@ async function seedActiveGroupWithCancelledPrimary(pool, suffix) {
         label: 'State kitchen fixture',
         programName: 'State kitchen fixture',
         category: 'banquet',
+        price: options.kitchenPrice ?? 0,
         status: 'confirmed'
     });
     await pool.query(
@@ -525,6 +526,76 @@ describe('banquet production recovery on isolated PostgreSQL', {
         )));
         assert.equal(JSON.stringify(report).includes('customerId'), false);
         assert.equal(JSON.stringify(report).includes('customer_id'), false);
+    });
+
+    test('reproduces priced stale groups with and without an active deposit without mutating either target', async () => {
+        const withoutDeposit = await seedActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_legacy_no_deposit`,
+            { kitchenPrice: 250 }
+        );
+        const withDeposit = await seedActiveGroupWithCancelledPrimary(
+            pool,
+            `${suffix}_legacy_active_deposit`,
+            { kitchenPrice: 250 }
+        );
+        await insertBanquetDeposit(pool, withDeposit);
+
+        const audit = await withClient(pool, client => runAudit(client, {
+            businessContext: BUSINESS_CONTEXT,
+            from: '2099-08-20',
+            to: '2099-08-20'
+        }));
+        for (const target of [withoutDeposit, withDeposit]) {
+            assert.match(target.groupId, /^bpr-state-group-/);
+            assert.doesNotMatch(target.groupId, /^(?:BQ-|BK-2026-)/);
+            assert.ok(audit.groupStateIntegrityIssues.some(item => (
+                item.groupId === target.groupId
+                && item.issueCode === 'active_group_cancelled_primary'
+                && item.activeMemberCount === 1
+            )));
+            assert.equal(
+                audit.depositsForManualReview.some(item => item.groupId === target.groupId),
+                false
+            );
+        }
+
+        const baseOptions = {
+            businessContext: BUSINESS_CONTEXT,
+            strategy: 'cancel-stale-group',
+            expectedClassification: 'active_group_cancelled_primary'
+        };
+        const noDepositDryRun = await withClient(pool, client => runReconcileGroupStateDryRun(client, {
+            ...baseOptions,
+            groupId: withoutDeposit.groupId
+        }));
+        const activeDepositDryRun = await withClient(pool, client => runReconcileGroupStateDryRun(client, {
+            ...baseOptions,
+            groupId: withDeposit.groupId
+        }));
+
+        assert.equal(noDepositDryRun.readOnly, true);
+        assert.equal(noDepositDryRun.result.status, 'blocked');
+        assert.match(noDepositDryRun.result.reason, /member_financial_fields_present/);
+        assert.doesNotMatch(noDepositDryRun.result.reason, /active_deposit_rows_present/);
+        assert.equal(noDepositDryRun.summary.activeDepositRows, 0);
+        assert.equal(noDepositDryRun.summary.financialFieldConflicts, 1);
+
+        assert.equal(activeDepositDryRun.readOnly, true);
+        assert.equal(activeDepositDryRun.result.status, 'blocked');
+        assert.match(activeDepositDryRun.result.reason, /active_deposit_rows_present/);
+        assert.match(activeDepositDryRun.result.reason, /member_financial_fields_present/);
+        assert.equal(activeDepositDryRun.summary.activeDepositRows, 1);
+        assert.equal(activeDepositDryRun.summary.financialFieldConflicts, 1);
+
+        for (const target of [withoutDeposit, withDeposit]) {
+            const state = await readReconcileApplyState(pool, target);
+            assert.equal(state.group_status, 'active');
+            assert.equal(state.booking_statuses[target.primaryId], 'cancelled');
+            assert.equal(state.booking_statuses[target.kitchenId], 'confirmed');
+            assert.equal(state.active_non_primary_members, 1);
+            assert.equal(state.history_count, 0);
+        }
     });
 
     test('dry-runs stale banquet group reconciliation without mutating records', async () => {

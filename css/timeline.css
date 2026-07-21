@@ -2181,6 +2181,78 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     font-weight: 800;
 }
 
+.timeline-banquet-inspector-state {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-height: 150px;
+    padding: 24px 18px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.48);
+    color: #CBD5E1;
+    text-align: center;
+}
+
+.timeline-banquet-inspector-state strong {
+    color: #F8FAFC;
+    font-size: 13px;
+}
+
+.timeline-banquet-inspector-state > span:last-child {
+    max-width: 280px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.timeline-banquet-inspector-state-indicator {
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(94, 234, 212, 0.24);
+    border-top-color: #5EEAD4;
+    border-radius: 50%;
+}
+
+.timeline-banquet-inspector-state--loading .timeline-banquet-inspector-state-indicator {
+    animation: timeline-banquet-inspector-spin 0.8s linear infinite;
+}
+
+.timeline-banquet-inspector-state--empty .timeline-banquet-inspector-state-indicator,
+.timeline-banquet-inspector-state--error .timeline-banquet-inspector-state-indicator {
+    border: none;
+    border-radius: 0;
+}
+
+.timeline-banquet-inspector-state--empty .timeline-banquet-inspector-state-indicator::before {
+    content: '—';
+    color: #94A3B8;
+    font-size: 24px;
+    font-weight: 900;
+}
+
+.timeline-banquet-inspector-state--error .timeline-banquet-inspector-state-indicator::before {
+    content: '!';
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(248, 113, 113, 0.16);
+    color: #FCA5A5;
+    font-size: 16px;
+    font-weight: 900;
+}
+
+@keyframes timeline-banquet-inspector-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .timeline-banquet-inspector-state--loading .timeline-banquet-inspector-state-indicator {
+        animation: none;
+    }
+}
+
 .timeline-banquet-inspector-actions {
     display: flex;
     flex: 0 0 auto;
@@ -2676,6 +2748,52 @@ body.dark-mode .booking-banquet-unlink-btn {
     font-weight: 800;
 }
 
+.booking-legacy-integrity-guard {
+    display: grid;
+    gap: 7px;
+    margin: 12px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--gray-800);
+}
+
+.booking-legacy-integrity-guard strong {
+    color: #92400e;
+    font-size: 14px;
+    font-weight: 950;
+}
+
+.booking-legacy-integrity-guard p {
+    margin: 0;
+    color: var(--gray-700);
+    font-size: 13px;
+    font-weight: 750;
+    line-height: 1.5;
+}
+
+.booking-legacy-integrity-guard:focus-visible,
+.booking-legacy-replacement-action:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 3px;
+}
+
+#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact.booking-actions--legacy-replacement {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact .booking-legacy-replacement-action {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--white);
+}
+
+#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact .booking-legacy-replacement-action:hover {
+    border-color: var(--primary-dark);
+    background: var(--primary-dark);
+}
+
 .booking-banquet-section,
 .booking-banquet-candidates {
     display: grid;
@@ -3061,6 +3179,15 @@ body.dark-mode .booking-banquet-candidate-role {
 }
 
 @media (max-width: 640px) {
+    #bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact.booking-actions--legacy-replacement {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-actions--legacy-replacement .booking-detail-action {
+        width: 100%;
+        justify-content: center;
+    }
+
     .booking-banquet-full-header,
     .booking-banquet-deposit__main,
     .booking-banquet-member-main,

@@ -94,6 +94,88 @@ test('ticket-capable banquet writes resolve the canonical quote before building 
     }
 });
 
+test('bulk cancellation guard locks active banquet memberships and returns aggregate-only blockers', async () => {
+    const {
+        assertNoActiveBanquetBookingsInCancellationSet,
+        lockBookingCancellationSet
+    } = require('../services/bookingCancellationGuard');
+    const queries = [];
+    const db = {
+        async query(text, params) {
+            queries.push({ text, params });
+            return {
+                rows: [
+                    { booking_id: 'BK-PRIVATE-1', group_id: 'BQ-PRIVATE' },
+                    { booking_id: 'BK-PRIVATE-2', group_id: 'BQ-PRIVATE' }
+                ]
+            };
+        }
+    };
+
+    await assert.rejects(
+        () => assertNoActiveBanquetBookingsInCancellationSet(db, {
+            bookingIds: ['BK-PRIVATE-1', 'BK-PRIVATE-2'],
+            businessContext: 'event_genix',
+            operation: 'education_series_cancel'
+        }),
+        error => {
+            assert.equal(error.code, 'BANQUET_BULK_CANCELLATION_BLOCKED');
+            assert.deepEqual(error.details, {
+                operation: 'education_series_cancel',
+                blockers: ['active_banquet_membership'],
+                activeBanquetBookingCount: 2,
+                activeBanquetGroupCount: 1
+            });
+            assert.doesNotMatch(JSON.stringify(error.details), /BK-PRIVATE|BQ-PRIVATE/);
+            return true;
+        }
+    );
+    assert.match(queries[0].text, /FOR UPDATE OF bg, bgb, b/);
+
+    await assert.rejects(
+        () => lockBookingCancellationSet({
+            query: async () => ({ rows: [{ id: 'BK-ONE' }] })
+        }, ['BK-ONE', 'BK-CONCURRENTLY-REMOVED']),
+        error => {
+            assert.equal(error.code, 'BOOKING_CANCELLATION_SET_CHANGED');
+            assert.deepEqual(error.details, {
+                blockers: ['state_changed'],
+                expectedBookingCount: 2,
+                lockedBookingCount: 1
+            });
+            assert.doesNotMatch(JSON.stringify(error.details), /BK-ONE|BK-CONCURRENTLY-REMOVED/);
+            return true;
+        }
+    );
+});
+
+test('education and recurring bulk cancellation paths use transactional banquet guards before updates', () => {
+    const bookingsSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'bookings.js'), 'utf8');
+    const recurringSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'recurring.js'), 'utf8');
+    const guardSource = fs.readFileSync(path.join(__dirname, '..', 'services', 'bookingCancellationGuard.js'), 'utf8');
+    const educationStart = bookingsSource.indexOf("router.post('/education-series/:seriesId/cancel'");
+    const educationEnd = bookingsSource.indexOf('\nfunction jsonObject', educationStart);
+    const educationBody = bookingsSource.slice(educationStart, educationEnd);
+
+    assert.match(educationBody, /await client\.query\('BEGIN ISOLATION LEVEL SERIALIZABLE'\)/);
+    assert.match(educationBody, /assertNoActiveBanquetBookingsInCancellationSet/);
+    assert.match(educationBody, /lockBookingCancellationSet/);
+    assert.ok(educationBody.indexOf('assertNoActiveBanquetBookingsInCancellationSet') < educationBody.indexOf("SET status = 'cancelled'"));
+    assert.match(educationBody, /await client\.query\('COMMIT'\)/);
+    assert.match(educationBody, /await client\.query\('ROLLBACK'\)/);
+
+    for (const operation of [
+        'recurring_template_delete_future',
+        'recurring_series_cancel_future',
+        'recurring_manual_skip'
+    ]) {
+        assert.match(recurringSource, new RegExp(`operation:\\s*'${operation}'`));
+    }
+    assert.match(recurringSource, /logSkip\([\s\S]*queryable: client, throwOnError: true/);
+    assert.match(guardSource, /FOR UPDATE OF bg, bgb, b/);
+    assert.match(guardSource, /ORDER BY id[\s\S]*FOR UPDATE/);
+});
+
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
     require.cache[id] = { id, filename: id, loaded: true, exports };
@@ -322,6 +404,7 @@ function makeDb(rows, links = [], options = {}) {
         banquetGroups: (Array.isArray(options.banquetGroups) ? options.banquetGroups : []).map(group => ({ ...group })),
         banquetMemberships: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships : []).map(row => ({ ...row })),
         banquetDeposits: (Array.isArray(options.banquetDeposits) ? options.banquetDeposits : []).map(row => ({ ...row })),
+        financeTransactions: (Array.isArray(options.financeTransactions) ? options.financeTransactions : []).map(row => ({ ...row })),
         customers: (Array.isArray(options.customers) ? options.customers : []).map(row => ({ ...row })),
         customerChildren: (Array.isArray(options.customerChildren) ? options.customerChildren : []).map(row => ({ ...row })),
         histories: [],
@@ -351,7 +434,7 @@ function makeDb(rows, links = [], options = {}) {
             }
             return rooms.has(String(row.room || '')) || resourceIds.has(String(row.line_id || ''));
         };
-        if (sql === 'BEGIN') {
+        if (sql === 'BEGIN' || sql === 'BEGIN ISOLATION LEVEL SERIALIZABLE') {
             state.tx.push(sql);
             txSnapshot = {
                 rows: cloneStateValue(state.rows),
@@ -359,6 +442,7 @@ function makeDb(rows, links = [], options = {}) {
                 banquetGroups: cloneStateValue(state.banquetGroups),
                 banquetMemberships: cloneStateValue(state.banquetMemberships),
                 banquetDeposits: cloneStateValue(state.banquetDeposits),
+                financeTransactions: cloneStateValue(state.financeTransactions),
                 customers: cloneStateValue(state.customers),
                 customerChildren: cloneStateValue(state.customerChildren),
                 histories: cloneStateValue(state.histories),
@@ -382,6 +466,7 @@ function makeDb(rows, links = [], options = {}) {
                 state.banquetGroups = cloneStateValue(txSnapshot.banquetGroups);
                 state.banquetMemberships = cloneStateValue(txSnapshot.banquetMemberships);
                 state.banquetDeposits = cloneStateValue(txSnapshot.banquetDeposits);
+                state.financeTransactions = cloneStateValue(txSnapshot.financeTransactions);
                 state.customers = cloneStateValue(txSnapshot.customers);
                 state.customerChildren = cloneStateValue(txSnapshot.customerChildren);
                 state.histories = cloneStateValue(txSnapshot.histories);
@@ -637,12 +722,21 @@ function makeDb(rows, links = [], options = {}) {
                 rowCount: group ? 1 : 0
             };
         }
-        if (/SELECT bg\.\*\s+FROM banquet_groups bg\s+WHERE bg\.id = \$1/i.test(sql)) {
+        if (/SELECT bg\.\*(?:, c\.name AS resolved_customer_name)?\s+FROM banquet_groups bg(?:\s+LEFT JOIN customers c[\s\S]+?)?\s+WHERE bg\.id = \$1/i.test(sql)) {
             const group = state.banquetGroups.find(item =>
                 item.id === params[0]
                 && normalizeContext(item.business_context) === normalizeContext(params[1])
             );
-            return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+            const customer = group
+                ? state.customers.find(item =>
+                    Number(item.id) === Number(group.customer_id)
+                    && normalizeContext(item.business_context || 'event_genix') === normalizeContext(params[1])
+                )
+                : null;
+            return {
+                rows: group ? [{ ...group, resolved_customer_name: customer?.name || null }] : [],
+                rowCount: group ? 1 : 0
+            };
         }
         if (/SELECT bg\.\*\s+FROM banquet_groups bg\s+WHERE bg\.primary_booking_id = \$1/i.test(sql)) {
             const [primaryBookingId, businessContext] = params;
@@ -689,6 +783,15 @@ function makeDb(rows, links = [], options = {}) {
         if (/pg_advisory_xact_lock/i.test(sql)) {
             return { rows: [{ pg_advisory_xact_lock: true }], rowCount: 1 };
         }
+        if (/^SELECT id\s+FROM finance_transactions\s+WHERE booking_id = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const ids = new Set((params[0] || []).map(String));
+            const businessContext = params[1];
+            const row = state.financeTransactions.find(item =>
+                ids.has(String(item.booking_id))
+                && normalizeContext(item.business_context) === normalizeContext(businessContext)
+            );
+            return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+        }
         if (/^SELECT id\s+FROM finance_transactions/i.test(sql)) {
             return { rows: [{ id: 9001 }], rowCount: 1 };
         }
@@ -702,10 +805,11 @@ function makeDb(rows, links = [], options = {}) {
             const ids = new Set((params[0] || []).map(String));
             const businessContext = params[1];
             const activeOnly = /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(sql);
+            const allowedCancelledIds = new Set((params[2] || []).map(String));
             const rows = state.rows.filter(row =>
                 ids.has(String(row.id))
                 && (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext))
-                && (!activeOnly || row.status !== 'cancelled')
+                && (!activeOnly || row.status !== 'cancelled' || allowedCancelledIds.has(String(row.id)))
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
@@ -746,6 +850,35 @@ function makeDb(rows, links = [], options = {}) {
                 !excluded.has(String(row.id))
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT bgb\.booking_id, bgb\.role, b\.\*\s+FROM banquet_group_bookings bgb\s+JOIN bookings b ON b\.id = bgb\.booking_id/i.test(sql)) {
+            const [groupId, businessContext] = params;
+            if (options.addConcurrentActiveMemberOnCancellationPreflight
+                && !state.banquetMemberships.some(item => item.booking_id === 'BK-CONCURRENT')) {
+                state.rows.push(bookingRow({
+                    id: 'BK-CONCURRENT',
+                    category: 'kitchen',
+                    line_id: 'banquet-service',
+                    price: 0
+                }));
+                state.banquetMemberships.push({
+                    id: state.nextBanquetMembershipId++,
+                    group_id: groupId,
+                    business_context: businessContext,
+                    booking_id: 'BK-CONCURRENT',
+                    role: 'kitchen',
+                    sort_order: 30
+                });
+            }
+            const rows = state.banquetMemberships
+                .filter(item => item.group_id === groupId && normalizeContext(item.business_context) === normalizeContext(businessContext))
+                .map(item => {
+                    const booking = state.rows.find(row => String(row.id) === String(item.booking_id));
+                    return booking ? { booking_id: item.booking_id, role: item.role, ...booking } : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => String(a.booking_id).localeCompare(String(b.booking_id)));
+            return { rows, rowCount: rows.length };
         }
         if (/SELECT b\.id\s+FROM banquet_group_bookings bgb\s+JOIN bookings b ON b\.id = bgb\.booking_id\s+WHERE bgb\.group_id = \$1/i.test(sql)) {
             const [groupId, businessContext] = params;
@@ -913,6 +1046,19 @@ function makeDb(rows, links = [], options = {}) {
             group.updated_by = params[3] || group.updated_by;
             group.updated_at = new Date('2099-01-01T00:02:30Z').toISOString();
             return { rows: [], rowCount: 1 };
+        }
+        if (/UPDATE banquet_groups\s+SET status = 'cancelled', updated_at = NOW\(\), updated_by = \$4/i.test(sql)) {
+            const group = state.banquetGroups.find(item =>
+                item.id === params[0]
+                && normalizeContext(item.business_context) === normalizeContext(params[1])
+                && String(item.primary_booking_id) === String(params[2])
+                && String(item.status || 'active').toLowerCase() === 'active'
+            );
+            if (!group || options.failBanquetGroupCancellation) return { rows: [], rowCount: 0 };
+            group.status = 'cancelled';
+            group.updated_by = params[3];
+            group.updated_at = new Date('2099-01-01T00:02:00Z').toISOString();
+            return { rows: [{ id: group.id }], rowCount: 1 };
         }
         if (/UPDATE banquet_groups\s+SET status = 'cancelled', updated_at = NOW\(\), updated_by = \$3/i.test(sql)) {
             const group = state.banquetGroups.find(item =>
@@ -1162,6 +1308,7 @@ function makeDb(rows, links = [], options = {}) {
             }[status] ?? 9);
             const rows = state.banquetDeposits
                 .filter(row => normalizeContext(row.business_context) === normalizeContext(businessContext))
+                .filter(row => !/!= 'cancelled'/i.test(sql) || String(row.status || 'manager_reported').toLowerCase() !== 'cancelled')
                 .filter(row => byGroupOrBooking
                     ? String(row.banquet_group_id) === String(params[1]) || String(row.primary_booking_id) === String(params[2])
                     : String(byGroup ? row.banquet_group_id : row.primary_booking_id) === String(identityValue))
@@ -1975,6 +2122,181 @@ test('GET banquet read endpoints prefer persisted group arrival when primary boo
             booking_id: 'BK-KITCHEN',
             role: 'kitchen',
             sort_order: 30
+        }]
+    });
+});
+
+test('GET banquet inspector read contract keeps a cancelled primary with active kitchen, reliable customer, arrival, and deposit', async () => {
+    const primary = bookingRow({
+        id: 'BK-CANCELLED-PRIMARY',
+        status: 'cancelled',
+        customer_id: 101,
+        label: 'Cancelled banquet primary',
+        program_name: 'Cancelled banquet primary',
+        room: 'Room A'
+    });
+    const kitchen = bookingRow({
+        id: 'BK-ACTIVE-KITCHEN',
+        status: 'confirmed',
+        line_id: 'banquet-service',
+        program_id: null,
+        program_code: 'KITCHEN',
+        label: 'Kitchen order',
+        program_name: 'Kitchen order',
+        category: 'kitchen',
+        customer_id: 101,
+        room: 'Room A',
+        banquet_guests: 14,
+        extra_data: JSON.stringify({
+            bookingPackage: {
+                menuPositions: [{
+                    id: 'pizza',
+                    title: 'Pizza',
+                    quantity: 2,
+                    unitPrice: 250,
+                    subtotal: 500,
+                    servingTime: '13:45'
+                }]
+            }
+        })
+    });
+    const cancelledActivity = bookingRow({
+        id: 'BK-CANCELLED-ACTIVITY',
+        status: 'cancelled',
+        category: 'activity',
+        customer_id: 101,
+        room: 'Room A'
+    });
+
+    await withApp([primary, kitchen, cancelledActivity], [], async ({ baseUrl, state }) => {
+        const inspectorResponse = await fetch(
+            `${baseUrl}/api/banquets/by-booking/${kitchen.id}?businessContext=event_genix`
+        );
+        const inspector = await inspectorResponse.json();
+
+        assert.equal(inspectorResponse.status, 200, JSON.stringify(inspector));
+        assert.equal(inspector.group.id, 'BQ-CANCELLED-PRIMARY');
+        assert.equal(inspector.group.customerId, 101);
+        assert.equal(inspector.group.customerName, 'Synthetic Customer');
+        assert.equal(inspector.group.primaryBookingId, primary.id);
+        assert.equal(inspector.members.length, 2);
+        const primaryMember = inspector.members.find(member => member.bookingId === primary.id);
+        const kitchenMember = inspector.members.find(member => member.bookingId === kitchen.id);
+        assert.ok(primaryMember);
+        assert.equal(primaryMember.isPrimary, true);
+        assert.equal(primaryMember.role, 'primary');
+        assert.equal(primaryMember.booking.status, 'cancelled');
+        assert.ok(kitchenMember);
+        assert.equal(kitchenMember.isPrimary, false);
+        assert.equal(kitchenMember.role, 'kitchen');
+        assert.equal(kitchenMember.booking.customerName, null);
+        assert.equal(inspector.bookings.primary.id, primary.id);
+        assert.deepEqual(inspector.bookings.kitchen.map(row => row.id), [kitchen.id]);
+        assert.deepEqual(inspector.bookings.activities, []);
+        assert.equal(inspector.members.some(member => member.bookingId === cancelledActivity.id), false);
+        assert.equal(inspector.arrival.bookingId, primary.id);
+        assert.equal(inspector.arrival.time, '12:15');
+        assert.equal(
+            inspector.warnings.some(warning =>
+                warning.code === 'incomplete_historical_banquet_record'
+                && warning.message === 'Неповний історичний банкетний запис'
+            ),
+            true
+        );
+        assert.equal(inspector.deposit.state, 'pending');
+        assert.equal(inspector.deposit.banquetGroupId, 'BQ-CANCELLED-PRIMARY');
+        assert.equal(inspector.deposit.deposit.id, 41);
+        assert.equal(inspector.deposit.display.clientName, 'Synthetic Customer');
+
+        const bookingLoad = state.queries.find(item =>
+            /SELECT b\.\*[\s\S]*FROM bookings b[\s\S]*b\.id = ANY/i.test(item.sql)
+        );
+        assert.ok(bookingLoad, 'banquet inspector should load group booking members');
+        assert.match(
+            bookingLoad.sql,
+            /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i
+        );
+        assert.deepEqual(bookingLoad.params[2], [primary.id]);
+
+        const depositResponse = await fetch(
+            `${baseUrl}/api/banquets/by-booking/${kitchen.id}/deposit?businessContext=event_genix`
+        );
+        const deposit = await depositResponse.json();
+        assert.equal(depositResponse.status, 200, JSON.stringify(deposit));
+        assert.equal(deposit.banquetGroupId, 'BQ-CANCELLED-PRIMARY');
+        assert.equal(deposit.deposit.id, 41);
+        assert.equal(deposit.display.clientName, 'Synthetic Customer');
+
+        assert.deepEqual(state.tx, []);
+        assert.equal(state.histories.length, 0);
+        assert.equal(
+            state.queries.some(item => /^(?:INSERT|UPDATE|DELETE)\b/i.test(item.sql)),
+            false,
+            'inspector and deposit contract checks must remain read-only'
+        );
+    }, {
+        customers: [{
+            id: 101,
+            business_context: 'event_genix',
+            name: 'Synthetic Customer',
+            lead_id: null
+        }],
+        banquetGroups: [{
+            id: 'BQ-CANCELLED-PRIMARY',
+            business_context: 'event_genix',
+            primary_booking_id: primary.id,
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            guest_arrival_time: '12:15',
+            group_name: null,
+            status: 'active',
+            source: 'test',
+            meta: {},
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-CANCELLED-PRIMARY',
+            business_context: 'event_genix',
+            booking_id: primary.id,
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-CANCELLED-PRIMARY',
+            business_context: 'event_genix',
+            booking_id: kitchen.id,
+            role: 'kitchen',
+            sort_order: 30
+        }, {
+            id: 3,
+            group_id: 'BQ-CANCELLED-PRIMARY',
+            business_context: 'event_genix',
+            booking_id: cancelledActivity.id,
+            role: 'activity',
+            sort_order: 100
+        }],
+        banquetDeposits: [{
+            id: 41,
+            business_context: 'event_genix',
+            banquet_group_id: 'BQ-CANCELLED-PRIMARY',
+            primary_booking_id: primary.id,
+            customer_id: 101,
+            client_name_snapshot: 'Synthetic Customer',
+            event_date: '2099-06-01',
+            banquet_number_snapshot: 'BQ-CANCELLED-PRIMARY',
+            amount: 500,
+            expected_amount: 500,
+            paid_amount: null,
+            status: 'manager_reported',
+            manager_status: 'Expected payment',
+            accounting_status: 'Pending review',
+            source_kind: 'test_fixture',
+            source_payload: {},
+            meta: {},
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
         }]
     });
 });
@@ -4594,7 +4916,8 @@ test('DELETE booking rejects an active banquet activity and rolls back the entir
         const res = await fetch(`${baseUrl}/api/bookings/BK-ACTIVE?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
         assert.equal(res.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
+        assert.ok(data.details.blockers.includes('non_primary_member'));
         assert.equal(data.details.groupId, 'BQ-ROOT');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'confirmed');
@@ -4606,7 +4929,7 @@ test('DELETE booking rejects an active banquet activity and rolls back the entir
         );
         assert.equal(state.links.length, 2);
         assert.equal(state.histories.length, 0);
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -4673,7 +4996,8 @@ test('DELETE booking rejects the active canonical kitchen package owner and roll
         const res = await fetch(`${baseUrl}/api/bookings/BK-KITCHEN?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
         assert.equal(res.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
+        assert.ok(data.details.blockers.includes('non_primary_member'));
         assert.equal(data.details.groupId, 'BQ-ACTIVITY-FIRST');
         assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVITY-FIRST').status, 'confirmed');
@@ -4683,7 +5007,7 @@ test('DELETE booking rejects the active canonical kitchen package owner and roll
         );
         assert.equal(state.links.length, 1);
         assert.equal(state.histories.length, 0);
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
     }, {
         banquetGroups: [{
             id: 'BQ-ACTIVITY-FIRST',
@@ -4718,25 +5042,44 @@ test('DELETE booking rejects the active canonical kitchen package owner and roll
     });
 });
 
-test('DELETE soft and permanent both reject the sole active primary booking without mutations', async () => {
+test('DELETE soft-cancels a dependency-free primary and its banquet group atomically, while permanent delete stays blocked', async () => {
     await withApp([
-        bookingRow({ id: 'BK-ROOT', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet' })
+        bookingRow({
+            id: 'BK-ROOT',
+            label: 'Banquet root',
+            program_name: 'Banquet root',
+            category: 'banquet',
+            payment_status: 'pending'
+        })
     ], [], async ({ baseUrl, state }) => {
-        for (const permanent of [false, true]) {
-            const suffix = permanent ? '&permanent=true' : '';
-            const res = await fetch(
-                `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix${suffix}`,
-                { method: 'DELETE' }
-            );
-            const data = await res.json();
-            assert.equal(res.status, 409, JSON.stringify(data));
-            assert.equal(data.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
-            assert.equal(data.details.groupId, 'BQ-ROOT');
-        }
+        const softResponse = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const softData = await softResponse.json();
+        assert.equal(softResponse.status, 200, JSON.stringify(softData));
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'cancelled');
+        assert.equal(state.banquetGroups[0].status, 'cancelled');
+
+        state.rows.find(row => row.id === 'BK-ROOT').status = 'confirmed';
+        state.banquetGroups[0].status = 'active';
+        const permanentResponse = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix&permanent=true`,
+            { method: 'DELETE' }
+        );
+        const permanentData = await permanentResponse.json();
+        assert.equal(permanentResponse.status, 409, JSON.stringify(permanentData));
+        assert.equal(permanentData.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
+        assert.deepEqual(permanentData.details.blockers, ['permanent_delete']);
         assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
         assert.equal(state.banquetGroups[0].status, 'active');
-        assert.equal(state.histories.length, 0);
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK']);
+        assert.equal(state.histories.length, 2);
+        assert.deepEqual(state.tx, [
+            'BEGIN ISOLATION LEVEL SERIALIZABLE',
+            'COMMIT',
+            'BEGIN ISOLATION LEVEL SERIALIZABLE',
+            'ROLLBACK'
+        ]);
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT', customer_id: null,
@@ -4744,6 +5087,181 @@ test('DELETE soft and permanent both reject the sole active primary booking with
         }],
         banquetMemberships: [{
             id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary', sort_order: 10
+        }]
+    });
+});
+
+test('DELETE primary reports active banquet members and leaves the entire group unchanged', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', price: 0 }),
+        bookingRow({ id: 'BK-KITCHEN', category: 'kitchen', line_id: 'banquet-service', price: 0 })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const data = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
+        assert.deepEqual(data.details.blockers, ['active_members']);
+        assert.equal(data.details.counts.activeMembers, 1);
+        assert.equal(state.rows.every(row => row.status === 'confirmed'), true);
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
+            status: 'active', meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary'
+        }, {
+            id: 2, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-KITCHEN', role: 'kitchen'
+        }]
+    });
+});
+
+test('DELETE primary reports deposit, financial, finance-transaction, and ticket blockers without mutating them', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            price: 1500,
+            paid_amount: 500,
+            payment_status: 'partial',
+            extra_data: JSON.stringify({ bookingPackage: admissionTicketPackageV3() })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const data = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.deepEqual(data.details.blockers, [
+            'active_deposit',
+            'financial_data',
+            'finance_transactions',
+            'tickets'
+        ]);
+        assert.deepEqual(data.details.counts, {
+            activeMembers: 0,
+            activeDeposits: 1,
+            financialBookings: 1,
+            financeTransactions: 1,
+            ticketBookings: 1
+        });
+        assert.equal(state.rows[0].status, 'confirmed');
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.equal(state.banquetDeposits[0].status, 'manager_reported');
+        assert.equal(state.financeTransactions.length, 1);
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
+            status: 'active', meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary'
+        }],
+        banquetDeposits: [{
+            id: 41, business_context: 'event_genix', banquet_group_id: 'BQ-ROOT',
+            primary_booking_id: 'BK-ROOT', status: 'manager_reported'
+        }],
+        financeTransactions: [{
+            id: 91, business_context: 'event_genix', booking_id: 'BK-ROOT', amount: 1500
+        }]
+    });
+});
+
+test('DELETE primary rolls booking cancellation back when the locked group update loses its precondition', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', price: 0 })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const data = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_CANCELLATION_STATE_CHANGED');
+        assert.equal(state.rows[0].status, 'confirmed');
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+    }, {
+        failBanquetGroupCancellation: true,
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
+            status: 'active', meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary'
+        }]
+    });
+});
+
+test('DELETE primary sees a concurrently added active member during locked preflight and fails closed', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', price: 0 })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/bookings/BK-ROOT?businessContext=event_genix`,
+            { method: 'DELETE' }
+        );
+        const data = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.deepEqual(data.details.blockers, ['active_members']);
+        assert.equal(data.details.counts.activeMembers, 1);
+        assert.equal(state.rows[0].status, 'confirmed');
+        assert.equal(state.rows.some(row => row.id === 'BK-CONCURRENT'), false);
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
+        assert.ok(state.queries.some(item => /FOR UPDATE OF bgb, b/i.test(item.sql)));
+    }, {
+        addConcurrentActiveMemberOnCancellationPreflight: true,
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
+            status: 'active', meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary'
+        }]
+    });
+});
+
+test('PUT banquet booking-set rejects primary status cancellation before any booking or group mutation', async () => {
+    const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', price: 0, updated_at: groupUpdatedAt })
+    ], [], async ({ baseUrl, state }) => {
+        const response = await fetch(
+            `${baseUrl}/api/banquets/BQ-ROOT/booking-set?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    primaryBookingId: 'BK-ROOT',
+                    expectedGroupUpdatedAt: groupUpdatedAt,
+                    primaryPatch: { status: 'cancelled' },
+                    activities: []
+                })
+            }
+        );
+        const data = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_REQUIRES_DELETE');
+        assert.equal(state.rows[0].status, 'confirmed');
+        assert.equal(state.banquetGroups[0].status, 'active');
+        assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
+            status: 'active', meta: {}, updated_at: groupUpdatedAt
+        }],
+        banquetMemberships: [{
+            id: 1, group_id: 'BQ-ROOT', business_context: 'event_genix', booking_id: 'BK-ROOT', role: 'primary'
         }]
     });
 });
@@ -5910,7 +6428,20 @@ test('generic booking PUT rejects every active banquet member under the membersh
         assert.equal(primaryData.code, 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT');
         assert.equal(primaryData.details.bookingId, 'BK-GENERIC-GUARD-PRIMARY');
         assert.equal(JSON.stringify(state.rows), before);
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK']);
+
+        const cancellationResponse = await fetch(
+            `${baseUrl}/api/bookings/BK-GENERIC-GUARD-PRIMARY?businessContext=event_genix`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'cancelled' })
+            }
+        );
+        const cancellationData = await cancellationResponse.json();
+        assert.equal(cancellationResponse.status, 409, JSON.stringify(cancellationData));
+        assert.equal(cancellationData.code, 'BANQUET_CANCELLATION_REQUIRES_DELETE');
+        assert.equal(JSON.stringify(state.rows), before);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK', 'BEGIN', 'ROLLBACK']);
         const membershipLockIndex = state.queries.findIndex(item => (
             /FOR UPDATE OF bgb, bg/i.test(item.sql)
             && item.params[0] === 'BK-GENERIC-GUARD-OWNER'

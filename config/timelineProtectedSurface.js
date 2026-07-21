@@ -13,11 +13,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: 'function bookingDetailTimelineIdentity(booking = {})',
         end: 'function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot = null)',
-        sha256: 'ea1d7e8da88b030afcbd7e43830345c3e7e2b81d4e334e55a44aab4e5fe50941',
+        sha256: '009a4aec5a4a75c28f0eb3b48f68e549f1c60c85cbeef0d93d8d245bbd5a10a7',
         approval: {
-            approvedBy: 'Serhii',
-            approvedOn: '2026-07-03',
-            reason: 'Baseline after canonical booking detail modal hardening.'
+            approvedBy: 'Product owner (explicit Codex Task 4 approval)',
+            approvedOn: '2026-07-21',
+            reason: 'Canonical booking details identify active banquet groups with a cancelled or missing primary before exposing mutation controls.'
         },
         requiredNeedles: [
             'function bookingDetailTimelineIdentity(booking = {})',
@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '0450fdaeed2626110e926d6f18a96d7950f7231cc9898d636d3582acce3cbb0d',
+        sha256: '37fb776b66f3f31cdc936f7c2cb3e24b6e2bd732cdb53f32b557fc124804a347',
         approval: {
-            approvedBy: 'Product owner (explicit Codex task approval)',
-            approvedOn: '2026-07-13',
-            reason: 'Canonical banquet detail now labels arrival only from the banquet group snapshot, so a kitchen or activity member time cannot be presented as guest arrival.'
+            approvedBy: 'Product owner (explicit Codex Task 4 approval)',
+            approvedOn: '2026-07-21',
+            reason: 'Canonical detail flow blocks legacy banquet mutation and offers only a clean standard replacement create flow without customer, deposit, or membership transfer.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

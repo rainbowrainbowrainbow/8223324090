@@ -34,6 +34,12 @@ const { authenticateToken } = require('../middleware/auth');
 const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 const {
+    BookingCancellationGuardError,
+    assertNoActiveBanquetBookingsInCancellationSet,
+    isBookingCancellationConcurrencyError,
+    lockBookingCancellationSet
+} = require('../services/bookingCancellationGuard');
+const {
     hasTicketQuoteInput,
     hasTicketSnapshotFields,
     readAdmissionTicketSnapshot
@@ -90,6 +96,25 @@ function rejectRecurringTicketPayload(res, booking = {}) {
         success: false,
         code: 'TICKET_RECURRING_UNSUPPORTED',
         error: 'Ticket snapshots are not supported for recurring bookings; quote each occurrence separately'
+    });
+    return true;
+}
+
+function sendRecurringCancellationError(res, err) {
+    if (isBookingCancellationConcurrencyError(err)) {
+        res.status(409).json({
+            success: false,
+            code: 'BOOKING_CANCELLATION_CONCURRENT_UPDATE',
+            error: 'Скасування зупинено через одночасну зміну даних. Оновіть сторінку та повторіть дію.'
+        });
+        return true;
+    }
+    if (!(err instanceof BookingCancellationGuardError)) return false;
+    res.status(err.status).json({
+        success: false,
+        code: err.code,
+        error: err.publicMessage,
+        details: err.details
     });
     return true;
 }
@@ -435,33 +460,52 @@ router.put('/:id', async (req, res) => {
  * DELETE /api/recurring/:id — Delete template (soft: deactivate + optionally cancel future bookings)
  */
 router.delete('/:id', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const deleteFuture = req.query.deleteFuture === 'true';
 
-        const existing = await pool.query('SELECT * FROM recurring_templates WHERE id = $1', [id]);
+        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+        const existing = await client.query('SELECT * FROM recurring_templates WHERE id = $1 FOR UPDATE', [id]);
         if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Шаблон не знайдено' });
         }
-
-        // Deactivate template
-        await pool.query('UPDATE recurring_templates SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
 
         let cancelledCount = 0;
         if (deleteFuture) {
             const todayStr = getKyivDateStr();
-            // Cancel all future instances (soft delete)
-            const cancelled = await pool.query(
-                `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
-                 WHERE recurring_template_id = $1 AND date >= $2 AND status != 'cancelled'
-                 RETURNING id`,
+            const candidates = await client.query(
+                `SELECT id FROM bookings
+                  WHERE recurring_template_id = $1 AND date >= $2 AND status != 'cancelled'
+                  ORDER BY id`,
                 [id, todayStr]
             );
-            cancelledCount = cancelled.rowCount;
+            const bookingIds = candidates.rows.map(row => row.id);
+            await assertNoActiveBanquetBookingsInCancellationSet(client, {
+                bookingIds,
+                operation: 'recurring_template_delete_future'
+            });
+            await lockBookingCancellationSet(client, bookingIds);
+            await assertNoActiveBanquetBookingsInCancellationSet(client, {
+                bookingIds,
+                operation: 'recurring_template_delete_future'
+            });
+            if (bookingIds.length) {
+                const cancelled = await client.query(
+                    `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
+                      WHERE id = ANY($1::text[]) AND status != 'cancelled'
+                      RETURNING id`,
+                    [bookingIds]
+                );
+                cancelledCount = cancelled.rowCount;
+            }
         }
 
+        await client.query('UPDATE recurring_templates SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
+
         // Log to history
-        await insertHistory(pool, {
+        await insertHistory(client, {
             action: 'recurring_template_delete',
             username: req.user?.username || 'system',
             data: {
@@ -471,10 +515,16 @@ router.delete('/:id', async (req, res) => {
             }
         }).catch(err => log.error('History log error', err));
 
+        await client.query('COMMIT');
+
         res.json({ success: true, cancelledBookings: cancelledCount });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (sendRecurringCancellationError(res, err)) return;
         log.error('Delete template error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -597,6 +647,7 @@ router.get('/:id/series', async (req, res) => {
  * DELETE /api/recurring/:id/series/future — Delete (cancel) all future instances from a date
  */
 router.delete('/:id/series/future', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const fromDate = req.query.from || getKyivDateStr();
@@ -605,24 +656,45 @@ router.delete('/:id/series/future', async (req, res) => {
             return res.status(400).json({ error: 'Invalid from date' });
         }
 
-        // Cancel main bookings + their linked bookings
-        const mainIds = await pool.query(
+        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+        const mainIds = await client.query(
             `SELECT id FROM bookings
-             WHERE recurring_template_id = $1 AND date >= $2 AND status != 'cancelled' AND linked_to IS NULL`,
+             WHERE recurring_template_id = $1 AND date >= $2 AND status != 'cancelled' AND linked_to IS NULL
+             ORDER BY id`,
             [id, fromDate]
         );
 
-        let cancelledCount = 0;
-        for (const row of mainIds.rows) {
-            const cancelled = await pool.query(
-                "UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE id = $1 OR linked_to = $1 RETURNING id",
-                [row.id]
-            );
-            cancelledCount += cancelled.rowCount;
-        }
+        const rootIds = mainIds.rows.map(row => row.id);
+        const targetRows = rootIds.length
+            ? await client.query(
+                `SELECT id FROM bookings
+                  WHERE id = ANY($1::text[]) OR linked_to = ANY($1::text[])
+                  ORDER BY id`,
+                [rootIds]
+            )
+            : { rows: [] };
+        const bookingIds = targetRows.rows.map(row => row.id);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds,
+            operation: 'recurring_series_cancel_future'
+        });
+        await lockBookingCancellationSet(client, bookingIds);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds,
+            operation: 'recurring_series_cancel_future'
+        });
+        const cancelled = bookingIds.length
+            ? await client.query(
+                `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
+                  WHERE id = ANY($1::text[]) AND status != 'cancelled'
+                  RETURNING id`,
+                [bookingIds]
+            )
+            : { rowCount: 0 };
+        const cancelledCount = cancelled.rowCount;
 
         // Log to history
-        await insertHistory(pool, {
+        await insertHistory(client, {
             action: 'recurring_series_cancel',
             username: req.user?.username || 'system',
             data: {
@@ -630,10 +702,16 @@ router.delete('/:id/series/future', async (req, res) => {
             }
         }).catch(err => log.error('History log error', err));
 
+        await client.query('COMMIT');
+
         res.json({ success: true, cancelledCount });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (sendRecurringCancellationError(res, err)) return;
         log.error('Cancel future series error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -661,6 +739,7 @@ router.get('/:id/skips', async (req, res) => {
  * POST /api/recurring/:id/skips — Manually skip a date
  */
 router.post('/:id/skips', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const { date } = req.body;
@@ -669,26 +748,56 @@ router.post('/:id/skips', async (req, res) => {
             return res.status(400).json({ error: 'Valid date required' });
         }
 
-        // Verify template exists
-        const tpl = await pool.query('SELECT id FROM recurring_templates WHERE id = $1', [id]);
+        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+        const tpl = await client.query('SELECT id FROM recurring_templates WHERE id = $1 FOR UPDATE', [id]);
         if (tpl.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Шаблон не знайдено' });
         }
 
-        await logSkip(parseInt(id), date, 'manual_skip', `Manually skipped by ${req.user?.username || 'system'}`);
-
-        // Also cancel existing booking for this date if it exists
-        const cancelled = await pool.query(
-            `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
-             WHERE recurring_template_id = $1 AND date = $2 AND status != 'cancelled'
-             RETURNING id`,
+        const candidates = await client.query(
+            `SELECT id FROM bookings
+              WHERE recurring_template_id = $1 AND date = $2 AND status != 'cancelled'
+              ORDER BY id`,
             [id, date]
         );
+        const bookingIds = candidates.rows.map(row => row.id);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds,
+            operation: 'recurring_manual_skip'
+        });
+        await lockBookingCancellationSet(client, bookingIds);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds,
+            operation: 'recurring_manual_skip'
+        });
+
+        await logSkip(
+            parseInt(id),
+            date,
+            'manual_skip',
+            `Manually skipped by ${req.user?.username || 'system'}`,
+            { queryable: client, throwOnError: true }
+        );
+
+        // Also cancel existing booking for this date if it exists
+        const cancelled = bookingIds.length ? await client.query(
+            `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
+             WHERE id = ANY($1::text[]) AND status != 'cancelled'
+             RETURNING id`,
+            [bookingIds]
+        ) : { rowCount: 0 };
+
+        await client.query('COMMIT');
 
         res.json({ success: true, cancelledBookings: cancelled.rowCount });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (sendRecurringCancellationError(res, err)) return;
         log.error('Manual skip error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

@@ -6870,6 +6870,7 @@ function renderPinataDetailRows(booking) {
 
 async function initializeRoomFirstBookingSourceContext() {
     if (!isRoomFirstTimelineView() || AppState.editingBookingId) return false;
+    if (BookingDrawerState.legacyReplacementMode) return false;
     if (BookingDrawerState.activeBanquetIntent === 'add_to_existing' && BookingDrawerState.explicitBanquetContext?.groupId) return false;
     const roomName = String(document.getElementById('roomSelect')?.value || '').trim();
     if (!roomName) return false;
@@ -7231,6 +7232,10 @@ async function openBookingPanel(time, lineId, options = {}) {
         room: line?.name || ''
     });
     resetBookingDrawerStateForOpen(options.drawerMode || inferBookingDrawerModeForOpen());
+    BookingDrawerState.legacyReplacementMode = options.legacyReplacementMode === true;
+    if (BookingDrawerState.legacyReplacementMode) {
+        BookingDrawerState.standaloneBookingOverride = true;
+    }
     nextBookingTimeChangeToken();
     clearBookingTimePreflightState({ updateSubmit: false });
     setBookingTimeContextIssue('', { updateSubmit: false });
@@ -7314,7 +7319,9 @@ async function openBookingPanel(time, lineId, options = {}) {
     document.getElementById('customerDataSection')?.classList.remove('hidden');
     resetBookingLeadDetails();
     resetBookingPackageWorkspace();
-    applyLeadConversionContextToBookingForm();
+    if (!BookingDrawerState.legacyReplacementMode) {
+        applyLeadConversionContextToBookingForm();
+    }
     const appliedExplicitBanquetContext = applyExplicitBookingBanquetContext(explicitBanquetContext, {
         contextSource: options.contextSource,
         time,
@@ -7322,7 +7329,7 @@ async function openBookingPanel(time, lineId, options = {}) {
         room: line?.name || ''
     });
     if (isRoomFirstTimelineView()) {
-        if (!appliedExplicitBanquetContext) {
+        if (!appliedExplicitBanquetContext && !BookingDrawerState.legacyReplacementMode) {
             await prefillRoomFirstCustomerFromRoomLine(line.name, time);
         }
     }
@@ -7333,7 +7340,7 @@ async function openBookingPanel(time, lineId, options = {}) {
     }
     updateBookingContextHeaderSummary();
     await refreshBookingRoomAvailabilityForSelectedDate();
-    if (!appliedExplicitBanquetContext) {
+    if (!appliedExplicitBanquetContext && !BookingDrawerState.legacyReplacementMode) {
         await initializeRoomFirstBookingSourceContext();
     }
     syncBookingGuestArrivalField({ reset: true });
@@ -7828,6 +7835,13 @@ function hasManualCustomerConflictWithRoom(sourceBooking = {}) {
 async function handleBookingRoomSelectionContextChange() {
     const token = nextBookingRoomSelectionContextToken();
     if (!isParkTimelineBookingMode() || AppState.editingBookingId) return;
+    if (BookingDrawerState.legacyReplacementMode) {
+        clearAutoFilledBanquetFromRoomSelection();
+        BookingDrawerState.standaloneBookingOverride = true;
+        renderBookingBanquetGroupSelector();
+        renderBookingPackageSummary();
+        return;
+    }
     if (BookingDrawerState.activeBanquetIntent === 'add_to_existing' && BookingDrawerState.explicitBanquetContext?.groupId) {
         renderBookingBanquetGroupSelector();
         renderBookingPackageSummary();
@@ -8439,6 +8453,7 @@ async function closeBookingPanel(force = false) {
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
     BookingDrawerState.roomBookingAnimationBridge = null;
     BookingDrawerState.banquetEditContext = null;
+    BookingDrawerState.legacyReplacementMode = false;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
     resetSelectedActivityScheduleState();
@@ -8452,6 +8467,7 @@ function resetBookingEditStateForCreate() {
     AppState.editingBookingUpdatedAt = null;
     BookingDrawerState.roomBookingAnimationBridge = null;
     BookingDrawerState.banquetEditContext = null;
+    BookingDrawerState.legacyReplacementMode = false;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
     resetSelectedActivityScheduleState();
@@ -14082,6 +14098,49 @@ function banquetSnapshotPrimaryBooking(snapshot, fallbackBooking = null) {
     return primaryMember?.booking || fallbackBooking;
 }
 
+const INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE = 'incomplete_historical_banquet_record';
+
+function banquetSnapshotWarningCodes(snapshot = {}) {
+    return new Set((snapshot?.warnings || []).map(warning => String(warning?.code || warning || '').trim()).filter(Boolean));
+}
+
+function banquetSnapshotEditIntegrityIssue(snapshot = {}) {
+    if (!banquetSnapshotHasGroup(snapshot)) return null;
+    const groupStatus = String(snapshot?.group?.status || '').trim().toLowerCase();
+    const primary = banquetSnapshotPrimaryBooking(snapshot, null);
+    const primaryStatus = String(primary?.status || '').trim().toLowerCase();
+    const warningCodes = banquetSnapshotWarningCodes(snapshot);
+    const inconsistent = groupStatus === 'active' && (
+        warningCodes.has(INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE)
+        || !primary
+        || primaryStatus === 'cancelled'
+    );
+    if (!inconsistent) return null;
+    return {
+        code: INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE,
+        title: 'Неповний історичний банкетний запис',
+        message: 'Основне бронювання цього банкету скасоване або відсутнє, але група ще активна. Звичайне редагування заблоковано, щоб не перезаписати склад, клієнта, кухню чи фінансові дані. Для продовження створіть replacement через стандартну форму: старе бронювання не відновлюється, а завдаток не переноситься.'
+    };
+}
+
+function renderLegacyBanquetEditIntegrityGuard(issue = null) {
+    if (!issue) return '';
+    return `
+        <section
+            id="bookingLegacyBanquetEditGuard"
+            class="booking-legacy-integrity-guard"
+            role="alert"
+            tabindex="-1"
+            aria-labelledby="bookingLegacyBanquetEditGuardTitle"
+            aria-describedby="bookingLegacyBanquetEditGuardMessage"
+            data-booking-legacy-edit-guard="${escapeHtml(issue.code)}"
+        >
+            <strong id="bookingLegacyBanquetEditGuardTitle">${escapeHtml(issue.title)}</strong>
+            <p id="bookingLegacyBanquetEditGuardMessage">${escapeHtml(issue.message)}</p>
+        </section>
+    `;
+}
+
 function banquetSnapshotMemberIds(snapshot) {
     return new Set((snapshot?.members || []).map(member => String(member.bookingId || member.booking?.id || '')).filter(Boolean));
 }
@@ -14740,6 +14799,15 @@ function bookingSummaryPreviewUrl(booking = {}, banquetSnapshot = null) {
 async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot = null) {
     const container = document.getElementById('bookingBanquetDepositStatus');
     if (!container) return;
+    const canonicalProjection = banquetSnapshot?.deposit;
+    if (canonicalProjection && typeof canonicalProjection === 'object') {
+        container.outerHTML = renderBanquetDepositStatusSection(
+            booking,
+            banquetSnapshot,
+            canonicalProjection
+        );
+        return;
+    }
     const groupId = bookingDetailBanquetGroupId(booking, banquetSnapshot);
     const primaryBooking = banquetSnapshotPrimaryBooking(banquetSnapshot, booking) || booking;
     const primaryBookingId = bookingDetailId(primaryBooking) || bookingDetailId(booking);
@@ -14981,6 +15049,7 @@ async function showBookingDetails(bookingId, options = {}) {
             console.warn('Banquet detail snapshot unavailable:', err);
         }
     }
+    const banquetEditIntegrityIssue = banquetSnapshotEditIntegrityIssue(banquetSnapshot || {});
 
     // B2: Per-event invite URL with booking details
     const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';
@@ -15095,16 +15164,28 @@ async function showBookingDetails(bookingId, options = {}) {
             </div>
         </details>
     `;
-    const editControls = isViewer() ? '' : `
-        ${advancedActionsHtml}
-        ${inviteSectionHtml}
-        ${dangerZoneHtml}
-        <div class="booking-actions modal-footer-sticky booking-actions--compact">
-            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="booking-detail-action booking-detail-action--primary btn-edit-booking">Редагувати</button>
-            <a href="${escapeHtml(summaryPreviewHref)}" class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист</a>
-            ${moreActionsHtml}
-        </div>
-    `;
+    const editControls = isViewer()
+        ? ''
+        : (banquetEditIntegrityIssue
+            ? `<div class="booking-actions modal-footer-sticky booking-actions--compact booking-actions--legacy-replacement">
+                <button
+                    type="button"
+                    onclick="createLegacyBanquetReplacement('${escapeHtml(booking.id)}')"
+                    class="booking-detail-action booking-detail-action--primary booking-legacy-replacement-action"
+                    aria-describedby="bookingLegacyBanquetEditGuardMessage"
+                >Створити replacement</button>
+                <a href="${escapeHtml(summaryPreviewHref)}" class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист</a>
+            </div>`
+            : `
+                ${advancedActionsHtml}
+                ${inviteSectionHtml}
+                ${dangerZoneHtml}
+                <div class="booking-actions modal-footer-sticky booking-actions--compact">
+                    <button onclick="editBooking('${escapeHtml(booking.id)}')" class="booking-detail-action booking-detail-action--primary btn-edit-booking">Редагувати</button>
+                    <a href="${escapeHtml(summaryPreviewHref)}" class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист</a>
+                    ${moreActionsHtml}
+                </div>
+            `);
 
     const bookingDetailIdLabel = booking.id ? String(booking.id) : '----';
     const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
@@ -15194,10 +15275,11 @@ async function showBookingDetails(bookingId, options = {}) {
         ${commentDetailHtml}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${fullBanquetDetailHtml}
+        ${renderLegacyBanquetEditIntegrityGuard(banquetEditIntegrityIssue)}
         ${standardCustomerBlockHtml}
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         ${descriptionHtml}
-        ${canEditTimelineBooking() ? `<div class="status-toggle-section">
+        ${canEditTimelineBooking() && !banquetEditIntegrityIssue ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
                 ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
             </button>
@@ -15206,6 +15288,13 @@ async function showBookingDetails(bookingId, options = {}) {
     `;
 
     document.getElementById('bookingModal')?.classList.remove('hidden');
+    if (banquetEditIntegrityIssue && options.focusIntegrityGuard === true) {
+        window.requestAnimationFrame(() => {
+            const guard = document.getElementById('bookingLegacyBanquetEditGuard');
+            guard?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            guard?.focus?.({ preventScroll: true });
+        });
+    }
     loadBanquetDepositStatusForDetails(booking, banquetSnapshot);
 
     // v24.3.1: Copy buttons on detail rows
@@ -15767,19 +15856,125 @@ function bookingEditConflictExcludeIds() {
     return AppState.editingBookingId || null;
 }
 
+async function createLegacyBanquetReplacement(bookingId) {
+    const cleanBookingId = String(bookingId || '').trim();
+    if (!cleanBookingId || typeof apiGetBanquetByBooking !== 'function') {
+        showNotification('Не вдалося перевірити історичний банкет. Оновіть сторінку та спробуйте ще раз.', 'error');
+        return false;
+    }
+
+    const snapshot = await apiGetBanquetByBooking(cleanBookingId);
+    if (!snapshot || snapshot.success === false) {
+        showNotification(snapshot?.error || 'Не вдалося завантажити актуальний стан банкету.', 'error');
+        return false;
+    }
+    const integrityIssue = banquetSnapshotEditIntegrityIssue(snapshot);
+    if (!integrityIssue) {
+        showNotification('Стан банкету змінився. Перевірте деталі ще раз перед будь-якою дією.', 'warning');
+        await showBookingDetails(cleanBookingId, {
+            source: 'legacy_banquet_replacement_state_changed'
+        });
+        return false;
+    }
+
+    const group = snapshot.group || {};
+    const primary = banquetSnapshotPrimaryBooking(snapshot, null) || {};
+    const date = normalizeBookingDateKey(group.date || primary.date || '');
+    const time = normalizeBookingGuestArrivalTime(
+        String(primary.time || snapshot?.arrival?.time || group.guestArrivalTime || '').slice(0, 5)
+    );
+    const roomTarget = String(
+        group.roomResourceId
+        || group.room_resource_id
+        || group.room
+        || primary.roomResourceId
+        || primary.room_resource_id
+        || primary.room
+        || ''
+    ).trim();
+    if (!date || !time || !roomTarget) {
+        showNotification('Replacement не відкрито: у legacy group немає надійної дати, часу або кімнати. Створіть нове бронювання вручну через таймлайн.', 'error');
+        await showBookingDetails(cleanBookingId, {
+            source: 'legacy_banquet_replacement_missing_context',
+            focusIntegrityGuard: true
+        });
+        return false;
+    }
+
+    const closed = typeof closeAllModals === 'function' ? await closeAllModals() : true;
+    if (closed === false) return false;
+    resetBookingEditStateForCreate();
+    setTimelineDateForBookingReveal(date);
+    if (window.TimelineView?.set) {
+        await window.TimelineView.set('rooms', { render: false });
+    }
+    if (typeof renderTimeline === 'function') await renderTimeline();
+
+    const opened = await openBookingPanel(time, roomTarget, {
+        drawerMode: BOOKING_DRAWER_MODES.CREATE_KITCHEN,
+        contextSource: 'legacy_banquet_replacement',
+        legacyReplacementMode: true
+    });
+    if (!opened) {
+        showNotification('Не вдалося відкрити стандартну форму replacement для цієї кімнати.', 'error');
+        return false;
+    }
+
+    BookingDrawerState.legacyReplacementMode = true;
+    BookingDrawerState.activeBanquetIntent = null;
+    BookingDrawerState.activeBanquetRoleIntent = null;
+    BookingDrawerState.selectedBanquetGroupId = '';
+    BookingDrawerState.manualBanquetGroupSelection = false;
+    BookingDrawerState.standaloneBookingOverride = true;
+    const arrivalTime = normalizeBookingGuestArrivalTime(
+        String(group.guestArrivalTime || snapshot?.arrival?.time || '').slice(0, 5)
+    );
+    if (arrivalTime) {
+        BookingDrawerState.arrivalDraft = {
+            guestArrivalTime: arrivalTime,
+            source: 'legacy_banquet_replacement_schedule'
+        };
+        syncBookingGuestArrivalField({ reset: true });
+    }
+    renderBookingBanquetGroupSelector();
+    renderBookingPackageSummary();
+
+    const title = document.querySelector('#bookingPanel .panel-header h3');
+    if (title) title.textContent = 'Створити replacement';
+    const submit = document.querySelector('#bookingForm .btn-submit');
+    if (submit) {
+        submit.textContent = 'Створити новий банкет';
+        submit.dataset.readyText = submit.textContent;
+    }
+    renderBookingCustomerSearchState('Це нове бронювання без зв’язку зі старою групою. Клієнт і завдаток не перенесені — заповніть та перевірте їх вручну.');
+    if (window.BookingForm?.markClean) BookingForm.markClean();
+    window.requestAnimationFrame(() => document.getElementById('customerSearch')?.focus());
+    showNotification('Відкрито чисту стандартну форму replacement. Старе бронювання не відновлюється, завдаток не переноситься.', 'info');
+    return true;
+}
+
 async function editBooking(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const anchorBooking = bookings.find(b => b.id === bookingId);
     if (!anchorBooking) return;
-    if (shouldEditBookingInAnimatorView(anchorBooking)) {
-        return openAnimationBookingInAnimatorView(anchorBooking.id, 'edit');
-    }
     const banquetSnapshot = typeof apiGetBanquetByBooking === 'function'
         ? await apiGetBanquetByBooking(anchorBooking.id)
         : null;
     if (banquetSnapshot?.success === false) {
         showNotification(banquetSnapshot.error || 'Не вдалося перевірити склад банкету. Спробуйте відкрити форму ще раз.', 'error');
         return;
+    }
+    const banquetEditIntegrityIssue = banquetSnapshotEditIntegrityIssue(banquetSnapshot || {});
+    if (banquetEditIntegrityIssue) {
+        await showBookingDetails(anchorBooking.id, {
+            source: 'legacy_banquet_edit_blocked',
+            focusIntegrityGuard: true
+        });
+        showNotification(banquetEditIntegrityIssue.message, 'warning');
+        return false;
+    }
+    if (shouldEditBookingInAnimatorView(anchorBooking)) {
+        return openAnimationBookingInAnimatorView(anchorBooking.id, 'edit');
     }
     const banquetEditContext = banquetSnapshot?.success !== false
         ? createBanquetEditContext(banquetSnapshot || {}, anchorBooking.id)

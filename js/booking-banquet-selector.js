@@ -33,6 +33,7 @@ function bookingBanquetGroupCandidateLabel(candidate = {}) {
 }
 
 function getSelectedBookingBanquetGroupId() {
+    if (BookingDrawerState.legacyReplacementMode) return '';
     const select = document.getElementById('bookingBanquetGroupSelect');
     if (select) {
         const value = String(select.value || '').trim();
@@ -388,6 +389,7 @@ function resetBookingDrawerStateForOpen(mode = inferBookingDrawerModeForOpen()) 
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
     BookingDrawerState.roomBookingAnimationBridge = null;
+    BookingDrawerState.legacyReplacementMode = false;
     resetBookingRoomSourceContext({ render: false });
     resetBanquetSelectorContext({ render: false });
     return BookingDrawerState.drawerGenerationId;
@@ -490,7 +492,9 @@ function renderBookingBanquetGroupSelector(options = {}) {
 
     const customerId = bookingBanquetGroupSelectedCustomerId();
     const date = bookingBanquetGroupDateValue();
-    const visible = isParkTimelineBookingMode() && Boolean(customerId && date);
+    const visible = isParkTimelineBookingMode()
+        && !BookingDrawerState.legacyReplacementMode
+        && Boolean(customerId && date);
     section.classList.toggle('hidden', !visible);
     section.hidden = !visible;
     section.setAttribute('aria-hidden', visible ? 'false' : 'true');
@@ -558,7 +562,13 @@ async function refreshBookingBanquetGroupCandidates(options = {}) {
     const customerId = bookingBanquetGroupSelectedCustomerId();
     const date = bookingBanquetGroupDateValue();
     const preselectGroupId = String(options.preselectGroupId || '').trim();
-    if (!isParkTimelineBookingMode() || !customerId || !date || typeof apiGetBanquetCandidates !== 'function') {
+    if (
+        BookingDrawerState.legacyReplacementMode
+        || !isParkTimelineBookingMode()
+        || !customerId
+        || !date
+        || typeof apiGetBanquetCandidates !== 'function'
+    ) {
         resetBookingBanquetGroupSelector();
         return;
     }

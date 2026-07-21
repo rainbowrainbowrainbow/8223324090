@@ -1154,9 +1154,19 @@ function createFakePool() {
                 const group = hrState.banquetGroups.get(membership.group_id);
                 return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
             }
-            if (/FROM banquet_groups bg WHERE bg\.id = \$1/i.test(text)) {
+            if (/FROM banquet_groups bg(?: LEFT JOIN customers c ON .+)? WHERE bg\.id = \$1/i.test(text)) {
                 const dynamicGroup = hrState.banquetGroups.get(params[0]);
-                if (dynamicGroup) return { rows: [{ ...dynamicGroup }], rowCount: 1 };
+                if (dynamicGroup) {
+                    return {
+                        rows: [{
+                            ...dynamicGroup,
+                            resolved_customer_name: Number(dynamicGroup.customer_id) === 701
+                                ? 'Route Smoke Customer'
+                                : null
+                        }],
+                        rowCount: 1
+                    };
+                }
                 if (params[0] !== 'BQ-SMOKE') return { rows: [], rowCount: 0 };
                 return {
                     rows: [{
@@ -1167,6 +1177,7 @@ function createFakePool() {
                         date: '2099-06-20',
                         room: 'Marvel',
                         group_name: 'Mia birthday',
+                        resolved_customer_name: 'Route Smoke Customer',
                         status: 'active',
                         source: 'route_smoke',
                         meta: {},
@@ -1398,9 +1409,14 @@ function createFakePool() {
             if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(String) : [];
                 const activeOnly = /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(text);
+                const allowedCancelledIds = new Set(Array.isArray(params[2]) ? params[2].map(String) : []);
                 const rows = routeSmokeBookingRows()
                     .filter(row => ids.includes(row.id))
-                    .filter(row => !activeOnly || String(row.status || '').toLowerCase() !== 'cancelled')
+                    .filter(row => (
+                        !activeOnly
+                        || String(row.status || '').toLowerCase() !== 'cancelled'
+                        || allowedCancelledIds.has(String(row.id))
+                    ))
                     .map(row => ({ ...row, business_context: params[1] || row.business_context }));
                 return { rows, rowCount: rows.length };
             }
@@ -3846,7 +3862,11 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.orderRows.some(row => row.bookingId === 'BK-ACTIVITY-CHILD'), false);
         assert.equal(res.data.totals.activitySubtotal, 700);
         assert.equal(res.data.totals.orderTotal, 4400);
-        assert.ok(queries.some(q => /FROM banquet_groups bg WHERE bg\.id = \$1/i.test(q.text)));
+        assert.ok(queries.some(q => (
+            /FROM banquet_groups bg/i.test(q.text)
+            && /LEFT JOIN customers c/i.test(q.text)
+            && /WHERE bg\.id = \$1/i.test(q.text)
+        )));
         const dataWriteQueries = queries.filter(q =>
             /\bINSERT\s+INTO\b|\bUPDATE\b|\bDELETE\b/i.test(q.text)
             && !/^UPDATE employee_profiles SET last_activity_at = NOW\(\) WHERE user_id = \$1$/i.test(q.text)

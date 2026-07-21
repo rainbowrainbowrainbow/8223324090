@@ -47,6 +47,12 @@ const {
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { syncBookingFinanceInTransaction } = require('../services/bookingFinanceSync');
+const {
+    BookingCancellationGuardError,
+    assertNoActiveBanquetBookingsInCancellationSet,
+    isBookingCancellationConcurrencyError,
+    lockBookingCancellationSet
+} = require('../services/bookingCancellationGuard');
 const { broadcastBookingEvent } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
@@ -189,6 +195,182 @@ async function getBanquetMembershipForDelete(queryable, bookingId, businessConte
         if (isMissingBanquetSchemaError(err)) return null;
         throw err;
     }
+}
+
+function isActiveBookingStatus(status) {
+    return String(status || 'confirmed').trim().toLowerCase() !== 'cancelled';
+}
+
+function hasBookingFinancialDependency(booking = {}) {
+    const paymentStatus = String(booking.payment_status || '').trim().toLowerCase();
+    return Number(booking.price || 0) > 0
+        || Number(booking.paid_amount || 0) > 0
+        || Number(booking.discount_amount || 0) > 0
+        || Boolean(booking.payment_method)
+        || booking.fiscal_required === true
+        || Boolean(booking.certificate_id)
+        || Boolean(paymentStatus && !['pending', 'unpaid', 'not_paid', 'none'].includes(paymentStatus));
+}
+
+function hasBookingTicketDependency(booking = {}) {
+    return Boolean(readAdmissionTicketSnapshot(booking));
+}
+
+function banquetCancellationMessage(blockers = []) {
+    const messages = [];
+    if (blockers.includes('permanent_delete')) messages.push('активний банкет не можна видалити фізично');
+    if (blockers.includes('non_primary_member')) messages.push('скасування складової банкету виконується через редактор банкету');
+    if (blockers.includes('active_members')) messages.push('у банкеті залишаються активні складові');
+    if (blockers.includes('active_deposit')) messages.push('для банкету існує активний завдаток');
+    if (blockers.includes('financial_data')) messages.push('у бронюваннях є ціна, оплата або сертифікат');
+    if (blockers.includes('finance_transactions')) messages.push('для бронювань існують фінансові операції');
+    if (blockers.includes('tickets')) messages.push('у бронюваннях є квитки');
+    if (blockers.includes('state_changed')) messages.push('стан банкету змінився під час скасування');
+    return `Скасування заблоковано: ${messages.join('; ') || 'банкет потребує атомарної операції'}.`;
+}
+
+async function preflightActiveBanquetPrimaryCancellation(queryable, {
+    membership,
+    bookingId,
+    businessContext,
+    permanent = false
+}) {
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const groupId = membership?.group_id || null;
+    const primaryBookingId = String(membership?.primary_booking_id || '').trim();
+    const isPrimary = Boolean(primaryBookingId)
+        && primaryBookingId === String(bookingId)
+        && String(membership?.role || '').trim().toLowerCase() === 'primary';
+    const blockers = [];
+    if (permanent) blockers.push('permanent_delete');
+    if (!isPrimary) blockers.push('non_primary_member');
+
+    const memberResult = await queryable.query(
+        `SELECT bgb.booking_id, bgb.role, b.*
+           FROM banquet_group_bookings bgb
+           JOIN bookings b ON b.id = bgb.booking_id
+          WHERE bgb.group_id = $1
+            AND ${bookingContextSql('bgb', '$2')}
+            AND ${bookingContextSql('b', '$2')}
+          ORDER BY bgb.booking_id
+          FOR UPDATE OF bgb, b`,
+        [groupId, context]
+    );
+    const memberRows = memberResult.rows || [];
+    const lockedPrimary = memberRows.find(row => String(row.booking_id) === primaryBookingId);
+    if (!lockedPrimary || !isActiveBookingStatus(lockedPrimary.status)) blockers.push('state_changed');
+
+    const activeNonPrimaryMembers = memberRows.filter(row => (
+        String(row.booking_id) !== primaryBookingId && isActiveBookingStatus(row.status)
+    ));
+    if (activeNonPrimaryMembers.length) blockers.push('active_members');
+
+    const memberIds = [...new Set(memberRows.map(row => String(row.booking_id || '')).filter(Boolean))];
+    const technicalResult = memberIds.length
+        ? await queryable.query(
+            `SELECT b.*
+               FROM bookings b
+              WHERE NULLIF(COALESCE(b.linked_to, ''), '') = ANY($1::text[])
+                AND ${bookingContextSql('b', '$2')}
+              ORDER BY b.id
+              FOR UPDATE OF b`,
+            [memberIds, context]
+        )
+        : { rows: [] };
+    const allBookingRows = [...memberRows, ...(technicalResult.rows || [])];
+    const allBookingIds = [...new Set(allBookingRows.map(row => String(row.id || row.booking_id || '')).filter(Boolean))];
+
+    const depositResult = await queryable.query(
+        `SELECT id
+           FROM banquet_deposits
+          WHERE ${bookingContextSql('', '$1')}
+            AND (banquet_group_id = $2 OR primary_booking_id = $3)
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'manager_reported')) != 'cancelled'
+          ORDER BY id
+          LIMIT 1
+          FOR UPDATE`,
+        [context, groupId, primaryBookingId]
+    );
+    if (depositResult.rows.length) blockers.push('active_deposit');
+
+    const financialBookingCount = allBookingRows.filter(hasBookingFinancialDependency).length;
+    if (financialBookingCount) blockers.push('financial_data');
+
+    const financeResult = allBookingIds.length
+        ? await queryable.query(
+            `SELECT id
+               FROM finance_transactions
+              WHERE booking_id = ANY($1::text[])
+                AND ${bookingContextSql('', '$2')}
+              ORDER BY id
+              LIMIT 1
+              FOR UPDATE`,
+            [allBookingIds, context]
+        )
+        : { rows: [] };
+    if (financeResult.rows.length) blockers.push('finance_transactions');
+
+    const ticketBookingCount = allBookingRows.filter(hasBookingTicketDependency).length;
+    if (ticketBookingCount) blockers.push('tickets');
+
+    const uniqueBlockers = [...new Set(blockers)];
+    return {
+        ready: uniqueBlockers.length === 0,
+        groupId,
+        primaryBookingId,
+        blockers: uniqueBlockers,
+        counts: {
+            activeMembers: activeNonPrimaryMembers.length,
+            activeDeposits: depositResult.rows.length,
+            financialBookings: financialBookingCount,
+            financeTransactions: financeResult.rows.length,
+            ticketBookings: ticketBookingCount
+        }
+    };
+}
+
+function sendBanquetCancellationBlocked(res, preflight) {
+    return res.status(409).json({
+        success: false,
+        code: 'BANQUET_PRIMARY_CANCELLATION_BLOCKED',
+        error: banquetCancellationMessage(preflight.blockers),
+        details: {
+            groupId: preflight.groupId,
+            blockers: preflight.blockers,
+            counts: preflight.counts
+        }
+    });
+}
+
+async function cancelBanquetGroupAfterPrimaryCancellation(queryable, preflight, businessContext, user) {
+    const result = await queryable.query(
+        `UPDATE banquet_groups
+            SET status = 'cancelled', updated_at = NOW(), updated_by = $4
+          WHERE id = $1
+            AND ${bookingContextSql('', '$2')}
+            AND primary_booking_id = $3
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) = 'active'
+          RETURNING id`,
+        [
+            preflight.groupId,
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            preflight.primaryBookingId,
+            user?.username || 'system'
+        ]
+    );
+    if (result.rows.length !== 1) {
+        const error = new Error('Banquet group changed during cancellation');
+        error.status = 409;
+        error.code = 'BANQUET_CANCELLATION_STATE_CHANGED';
+        error.publicMessage = banquetCancellationMessage(['state_changed']);
+        error.details = { groupId: preflight.groupId, blockers: ['state_changed'] };
+        throw error;
+    }
+    await insertScopedHistory(queryable, 'banquet_group_cancelled_with_primary', user?.username, {
+        group_id: preflight.groupId,
+        primary_booking_id: preflight.primaryBookingId,
+        cancelled_via: 'booking_soft_delete'
+    }, businessContext || DEFAULT_TIMELINE_CONTEXT);
 }
 
 async function detachBanquetMembershipOnSoftDelete(queryable, bookingId, businessContext, user) {
@@ -2582,7 +2764,7 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
         const referenceBookingId = req.body?.referenceBookingId ? String(req.body.referenceBookingId).trim() : null;
         let fromDate = validateDate(req.body?.fromDate) ? req.body.fromDate : new Date().toISOString().slice(0, 10);
 
-        await client.query('BEGIN');
+        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
         if (referenceBookingId) {
             const ref = await getScopedBookingById(client, referenceBookingId, businessContext);
             if (ref && !canEditBooking(req.user, ref)) {
@@ -2595,16 +2777,39 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
         const dateFilter = scope === 'future'
             ? `AND b.date::date >= $${params.push(fromDate)}::date`
             : '';
-        const result = await client.query(
-            `UPDATE bookings b
-                SET status = 'cancelled', updated_at = NOW()
+        const candidates = await client.query(
+            `SELECT b.*
+               FROM bookings b
               WHERE ${educationSeriesSql('b', '$1')}
                 AND ${bookingContextSql('b', '$2')}
                 AND ${bookingActiveStatusSql('b')}
                 ${dateFilter}
-              RETURNING b.*`,
+              ORDER BY b.id`,
             params
         );
+        const candidateIds = candidates.rows.map(row => row.id);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds: candidateIds,
+            businessContext,
+            operation: 'education_series_cancel'
+        });
+        await lockBookingCancellationSet(client, candidateIds);
+        await assertNoActiveBanquetBookingsInCancellationSet(client, {
+            bookingIds: candidateIds,
+            businessContext,
+            operation: 'education_series_cancel'
+        });
+        const result = candidateIds.length
+            ? await client.query(
+                `UPDATE bookings b
+                    SET status = 'cancelled', updated_at = NOW()
+                  WHERE b.id = ANY($1::text[])
+                    AND ${bookingContextSql('b', '$2')}
+                    AND ${bookingActiveStatusSql('b')}
+                  RETURNING b.*`,
+                [candidateIds, businessContext]
+            )
+            : { rows: [] };
         const cancelled = result.rows.map(mapBookingRow);
         await insertScopedHistory(client, 'education_series_cancel', req.user?.username, {
                 seriesId,
@@ -2624,6 +2829,21 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
         res.json({ success: true, seriesId, scope, fromDate, cancelledCount: cancelled.length, bookings: cancelled });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (education-series cancel)', rbErr));
+        if (err instanceof BookingCancellationGuardError) {
+            return res.status(err.status).json({
+                success: false,
+                code: err.code,
+                error: err.publicMessage,
+                details: err.details
+            });
+        }
+        if (isBookingCancellationConcurrencyError(err)) {
+            return res.status(409).json({
+                success: false,
+                code: 'BOOKING_CANCELLATION_CONCURRENT_UPDATE',
+                error: 'Скасування зупинено через одночасну зміну даних. Оновіть сторінку та повторіть дію.'
+            });
+        }
         log.error('POST /bookings/education-series/:seriesId/cancel error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     } finally {
@@ -4802,7 +5022,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
 
-        await client.query('BEGIN');
+        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
 
         const banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
         const booking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
@@ -4816,17 +5036,18 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
         const activeBanquetMembership = banquetMembership
             && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
+        let banquetCancellationPreflight = null;
         if (activeBanquetMembership) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                code: 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT',
-                error: 'Active banquet bookings must be changed through the atomic banquet booking-set endpoint',
-                details: {
-                    groupId: banquetMembership.group_id || null,
-                    bookingId: id
-                }
+            banquetCancellationPreflight = await preflightActiveBanquetPrimaryCancellation(client, {
+                membership: banquetMembership,
+                bookingId: id,
+                businessContext,
+                permanent
             });
+            if (!banquetCancellationPreflight.ready) {
+                await client.query('ROLLBACK');
+                return sendBanquetCancellationBlocked(res, banquetCancellationPreflight);
+            }
         }
 
         const action = permanent ? 'permanent_delete' : 'delete';
@@ -4843,8 +5064,17 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
                  WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             );
-            // Keep banquet group read models in sync for cancelled non-primary members.
-            await detachBanquetMembershipOnSoftDelete(client, id, businessContext, req.user);
+            if (banquetCancellationPreflight) {
+                await cancelBanquetGroupAfterPrimaryCancellation(
+                    client,
+                    banquetCancellationPreflight,
+                    businessContext,
+                    req.user
+                );
+            } else {
+                // Keep inactive/legacy banquet read models consistent for old detached members.
+                await detachBanquetMembershipOnSoftDelete(client, id, businessContext, req.user);
+            }
         }
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -4922,7 +5152,19 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (delete)', rbErr));
         log.error('Error deleting booking', err);
-        res.status(500).json({ error: 'Internal server error' });
+        if (isBookingCancellationConcurrencyError(err)) {
+            return res.status(409).json({
+                success: false,
+                code: 'BOOKING_CANCELLATION_CONCURRENT_UPDATE',
+                error: 'Скасування зупинено через одночасну зміну даних. Оновіть сторінку та повторіть дію.'
+            });
+        }
+        res.status(err.status || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            details: err.details || undefined
+        });
     } finally {
         client.release();
     }
@@ -5659,10 +5901,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
         if (activeBanquetMembership) {
             await client.query('ROLLBACK');
+            const cancellationRequested = String(b.status || '').trim().toLowerCase() === 'cancelled';
             return res.status(409).json({
                 success: false,
-                code: 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
-                error: 'Grouped package and ticket bookings must be changed through the atomic banquet booking-set endpoint',
+                code: cancellationRequested
+                    ? 'BANQUET_CANCELLATION_REQUIRES_DELETE'
+                    : 'BANQUET_PACKAGE_OWNER_REQUIRES_ATOMIC_ENDPOINT',
+                error: cancellationRequested
+                    ? 'Скасування активного банкетного бронювання виконується лише через canonical cancellation flow'
+                    : 'Grouped package and ticket bookings must be changed through the atomic banquet booking-set endpoint',
                 details: {
                     groupId: banquetMembership.group_id || null,
                     bookingId: id

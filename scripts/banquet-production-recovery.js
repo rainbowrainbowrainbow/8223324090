@@ -676,14 +676,19 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
         if (item.candidateGroupIds.length === 1) {
             exactMatches.push({
                 ...item,
+                severity: 'manager_review',
                 candidateGroupId: item.candidateGroupIds[0],
                 candidateGroupIds: undefined
             });
         } else if (item.candidateGroupIds.length > 1) {
-            ambiguous.push(item);
+            ambiguous.push({
+                ...item,
+                severity: 'blocking'
+            });
         } else {
             standalone.push({
                 ...item,
+                severity: 'informational',
                 candidateGroupIds: undefined
             });
         }
@@ -696,6 +701,7 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
         date: String(row.date || '').slice(0, 10),
         room: String(row.room || '').trim(),
         matchFingerprint: matchFingerprint(row),
+        severity: 'manager_review',
         reason: 'canonical_deposit_missing_manual_review_required'
     }));
     const integrityIssues = integrityRows.map(row => ({
@@ -703,7 +709,9 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
         groupIds: normalizedGroupIds(row.group_ids),
         membershipCount: Number(row.membership_count || 0),
         roleMismatch: row.role_mismatch === true,
-        exactKeyMismatch: row.exact_key_mismatch === true
+        exactKeyMismatch: row.exact_key_mismatch === true,
+        category: 'integrity_warning',
+        severity: 'blocking'
     }));
     const groupStateIntegrityIssues = groupStateRows.map(row => ({
         groupId: String(row.group_id || '').trim(),
@@ -718,8 +726,22 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
         cancelledMemberCount: Number(row.cancelled_member_count || 0),
         primaryMembershipCount: Number(row.primary_membership_count || 0),
         issueCode: String(row.issue_code || '').trim(),
-        matchFingerprint: matchFingerprint(row)
+        matchFingerprint: matchFingerprint(row),
+        category: 'integrity_warning',
+        severity: 'blocking'
     }));
+    const blockingGroupIds = new Set(
+        groupStateIntegrityIssues
+            .map(item => item.groupId)
+            .filter(Boolean)
+    );
+    const blockingGroupRowsWithoutId = groupStateIntegrityIssues.filter(item => !item.groupId).length;
+    const blocking = ambiguous.length
+        + integrityIssues.length
+        + blockingGroupIds.size
+        + blockingGroupRowsWithoutId;
+    const managerReview = exactMatches.length + depositsForManualReview.length;
+    const informational = standalone.length;
 
     return {
         readOnly: true,
@@ -735,7 +757,10 @@ function buildAuditReport(pinataRows = [], depositRows = [], integrityRows = [],
             standalonePinatas: standalone.length,
             groupsMissingCanonicalDeposit: depositsForManualReview.length,
             pinataIntegrityIssues: integrityIssues.length,
-            groupStateIntegrityIssues: groupStateIntegrityIssues.length
+            groupStateIntegrityIssues: groupStateIntegrityIssues.length,
+            blocking,
+            managerReview,
+            informational
         },
         pinatas: {
             exactMatches,
@@ -2296,6 +2321,10 @@ function printAuditReport(report) {
     console.log('Banquet production recovery audit (read-only)');
     console.log(`context=${report.businessContext} range=${report.range.from}..${report.range.to}`);
     console.log(
+        `blocking=${report.summary.blocking} managerReview=${report.summary.managerReview} `
+        + `informational=${report.summary.informational}`
+    );
+    console.log(
         `ungroupedPinatas=${report.summary.ungroupedPinatas} exact=${report.summary.exactMatchPinatas} `
         + `ambiguous=${report.summary.ambiguousPinatas} standalone=${report.summary.standalonePinatas}`
     );
@@ -2306,38 +2335,38 @@ function printAuditReport(report) {
     );
     for (const item of report.pinatas.exactMatches) {
         console.log(
-            `exact pinata=${item.pinataBookingId} group=${item.candidateGroupId} date=${item.date} `
+            `exact severity=${item.severity} pinata=${item.pinataBookingId} group=${item.candidateGroupId} date=${item.date} `
             + `room=${item.room} fingerprint=${item.matchFingerprint}`
         );
     }
     for (const item of report.pinatas.ambiguous) {
         console.log(
-            `ambiguous pinata=${item.pinataBookingId} groups=${item.candidateGroupIds.join(',')} date=${item.date} `
+            `ambiguous severity=${item.severity} pinata=${item.pinataBookingId} groups=${item.candidateGroupIds.join(',')} date=${item.date} `
             + `room=${item.room} fingerprint=${item.matchFingerprint}`
         );
     }
     for (const item of report.pinatas.standalone) {
         console.log(
-            `standalone pinata=${item.pinataBookingId} date=${item.date} room=${item.room} `
+            `standalone severity=${item.severity} pinata=${item.pinataBookingId} date=${item.date} room=${item.room} `
             + `fingerprint=${item.matchFingerprint}`
         );
     }
     for (const item of report.depositsForManualReview) {
         console.log(
-            `deposit-review group=${item.groupId} primary=${item.primaryBookingId} date=${item.date} `
+            `deposit-review severity=${item.severity} group=${item.groupId} primary=${item.primaryBookingId} date=${item.date} `
             + `room=${item.room} fingerprint=${item.matchFingerprint}`
         );
     }
     for (const item of report.integrityIssues) {
         console.log(
-            `integrity pinata=${item.pinataBookingId} groups=${item.groupIds.join(',') || '-'} `
+            `integrity severity=${item.severity} pinata=${item.pinataBookingId} groups=${item.groupIds.join(',') || '-'} `
             + `memberships=${item.membershipCount} roleMismatch=${item.roleMismatch ? 'yes' : 'no'} `
             + `exactKeyMismatch=${item.exactKeyMismatch ? 'yes' : 'no'}`
         );
     }
     for (const item of report.groupStateIntegrityIssues) {
         console.log(
-            `group-integrity group=${item.groupId} primary=${item.primaryBookingId || '-'} issue=${item.issueCode} `
+            `group-integrity severity=${item.severity} group=${item.groupId} primary=${item.primaryBookingId || '-'} issue=${item.issueCode} `
             + `groupStatus=${item.groupStatus || '-'} primaryStatus=${item.primaryStatus || '-'} `
             + `members=${item.memberCount} activeMembers=${item.activeMemberCount} `
             + `cancelledMembers=${item.cancelledMemberCount} primaryMemberships=${item.primaryMembershipCount} `
@@ -2361,7 +2390,10 @@ function buildAuditSummaryOnlyReport(report = {}) {
             standalonePinatas: Number(report.summary?.standalonePinatas || 0),
             groupsMissingCanonicalDeposit: Number(report.summary?.groupsMissingCanonicalDeposit || 0),
             pinataIntegrityIssues: Number(report.summary?.pinataIntegrityIssues || 0),
-            groupStateIntegrityIssues: Number(report.summary?.groupStateIntegrityIssues || 0)
+            groupStateIntegrityIssues: Number(report.summary?.groupStateIntegrityIssues || 0),
+            blocking: Number(report.summary?.blocking || 0),
+            managerReview: Number(report.summary?.managerReview || 0),
+            informational: Number(report.summary?.informational || 0)
         }
     };
 }
@@ -2374,6 +2406,10 @@ function printAuditSummaryOnlyReport(report, { json = false } = {}) {
     }
     console.log('Banquet production recovery audit summary (read-only)');
     console.log(`context=${summaryReport.businessContext} range=${summaryReport.range.from}..${summaryReport.range.to}`);
+    console.log(
+        `blocking=${summaryReport.summary.blocking} managerReview=${summaryReport.summary.managerReview} `
+        + `informational=${summaryReport.summary.informational}`
+    );
     console.log(
         `ungroupedPinatas=${summaryReport.summary.ungroupedPinatas} `
         + `exact=${summaryReport.summary.exactMatchPinatas} `
@@ -2541,11 +2577,7 @@ async function main(argv = process.argv.slice(2)) {
         else if (options.command === 'detach') printDetachReport(report);
         else if (options.command === 'qa-cleanup') printQaCleanupReport(report);
         else printReconcileGroupStateReport(report);
-        if (options.command === 'audit' && options.strict && (
-            report.summary.ambiguousPinatas > 0
-            || report.summary.pinataIntegrityIssues > 0
-            || report.summary.groupStateIntegrityIssues > 0
-        )) {
+        if (options.command === 'audit' && options.strict && report.summary.blocking > 0) {
             process.exitCode = 1;
         }
         return report;

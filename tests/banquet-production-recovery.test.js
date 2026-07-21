@@ -186,13 +186,21 @@ test('banquet recovery audit separates exact, ambiguous, standalone, deposit-rev
         standalonePinatas: 1,
         groupsMissingCanonicalDeposit: 1,
         pinataIntegrityIssues: 1,
-        groupStateIntegrityIssues: 0
+        groupStateIntegrityIssues: 0,
+        blocking: 2,
+        managerReview: 2,
+        informational: 1
     });
     assert.equal(report.pinatas.exactMatches[0].candidateGroupId, 'BQ-EXACT');
+    assert.equal(report.pinatas.exactMatches[0].severity, 'manager_review');
     assert.deepEqual(report.pinatas.ambiguous[0].candidateGroupIds, ['BQ-A', 'BQ-B']);
+    assert.equal(report.pinatas.ambiguous[0].severity, 'blocking');
     assert.equal(report.pinatas.standalone[0].pinataBookingId, 'BK-STANDALONE');
+    assert.equal(report.pinatas.standalone[0].severity, 'informational');
     assert.equal(report.depositsForManualReview[0].reason, 'canonical_deposit_missing_manual_review_required');
+    assert.equal(report.depositsForManualReview[0].severity, 'manager_review');
     assert.deepEqual(report.integrityIssues[0].groupIds, ['BQ-X', 'BQ-Y']);
+    assert.equal(report.integrityIssues[0].severity, 'blocking');
     assert.equal(JSON.stringify(report).includes('customerId'), false);
     assert.equal(JSON.stringify(report).includes('customer_id'), false);
 });
@@ -247,8 +255,68 @@ test('banquet recovery audit reports active group with cancelled primary as stat
     assert.equal(report.groupStateIntegrityIssues[0].groupId, 'BQ-CANCELLED-PRIMARY');
     assert.equal(report.groupStateIntegrityIssues[0].primaryStatus, 'cancelled');
     assert.equal(report.groupStateIntegrityIssues[0].activeMemberCount, 1);
+    assert.equal(report.groupStateIntegrityIssues[0].category, 'integrity_warning');
+    assert.equal(report.groupStateIntegrityIssues[0].severity, 'blocking');
+    assert.equal(report.summary.blocking, 1);
     assert.equal(JSON.stringify(report).includes('customerId'), false);
     assert.equal(JSON.stringify(report).includes('customer_id'), false);
+});
+
+test('banquet recovery audit separates two blockers, four manager reviews, and seven informational records', () => {
+    const pinataRows = Array.from({ length: 7 }, (_, index) => ({
+        pinata_booking_id: `BK-STANDALONE-${index + 1}`,
+        business_context: 'event_genix',
+        date: '2099-08-20',
+        room: `Room ${index + 1}`,
+        customer_id: 700 + index,
+        candidate_group_id: null
+    }));
+    const depositRows = Array.from({ length: 4 }, (_, index) => ({
+        group_id: `BQ-DEPOSIT-${index + 1}`,
+        primary_booking_id: `BK-DEPOSIT-${index + 1}`,
+        business_context: 'event_genix',
+        date: '2099-08-21',
+        room: `Deposit Room ${index + 1}`,
+        customer_id: 800 + index
+    }));
+    const groupStateRows = Array.from({ length: 2 }, (_, index) => ({
+        group_id: `BQ-STALE-${index + 1}`,
+        primary_booking_id: `BK-STALE-${index + 1}`,
+        business_context: 'event_genix',
+        date: '2099-08-22',
+        room: `Stale Room ${index + 1}`,
+        customer_id: 900 + index,
+        group_status: 'active',
+        primary_status: 'cancelled',
+        member_count: 1,
+        active_member_count: 0,
+        cancelled_member_count: 1,
+        primary_membership_count: 1,
+        issue_code: 'active_group_cancelled_primary'
+    }));
+
+    const report = buildAuditReport(pinataRows, depositRows, [], groupStateRows, {
+        businessContext: 'event_genix',
+        from: '2099-08-01',
+        to: '2099-08-31'
+    });
+
+    assert.equal(report.summary.blocking, 2);
+    assert.equal(report.summary.managerReview, 4);
+    assert.equal(report.summary.informational, 7);
+    assert.equal(report.groupStateIntegrityIssues.every(item => item.category === 'integrity_warning'), true);
+    assert.equal(report.depositsForManualReview.every(item => item.severity === 'manager_review'), true);
+    assert.equal(report.pinatas.standalone.every(item => item.severity === 'informational'), true);
+
+    const summaryOnly = buildAuditSummaryOnlyReport(report);
+    assert.deepEqual(
+        {
+            blocking: summaryOnly.summary.blocking,
+            managerReview: summaryOnly.summary.managerReview,
+            informational: summaryOnly.summary.informational
+        },
+        { blocking: 2, managerReview: 4, informational: 7 }
+    );
 });
 
 test('banquet recovery audit summary-only omits technical ids, rooms, fingerprints, and customer fields', () => {
@@ -312,6 +380,7 @@ test('banquet recovery audit summary-only omits technical ids, rooms, fingerprin
 
     assert.match(output, /audit summary \(read-only\)/);
     assert.match(output, /groupStateIntegrityIssues=1/);
+    assert.match(output, /blocking=2 managerReview=2 informational=0/);
     assert.doesNotMatch(output, /\b(?:BK|BQ)-[A-Z0-9-]+\b/);
     assert.doesNotMatch(output, /Sensitive Room|Deposit Room|State Room/);
     assert.doesNotMatch(output, /fingerprint|customer_id|customerId|phone|notes/i);

@@ -265,6 +265,11 @@ function createTimelineBanquetMarkerHarness() {
         TIMELINE_BANQUET_SERVICE_LINE_ID: 'banquet-service',
         TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES: new Set(['primary', 'root', 'banquet']),
         TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES: new Set(['activity', 'service', 'manual']),
+        TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES: new Set([
+            'banquet_group_not_found',
+            'legacy_banquet_links_fallback',
+            'banquet_group_schema_unavailable'
+        ]),
         AppState: { selectedDate: new Date('2099-06-18T00:00:00') },
         CONFIG: { TIMELINE: { CELL_MINUTES: 30, CELL_WIDTH: 50 } },
         isRoomTimelineView: () => viewState.room,
@@ -539,6 +544,233 @@ test('timeline banquet snapshot summary reads canonical arrival projection', () 
     assert.equal(summary.time, '13:05');
     assert.equal(summary.room, 'Arrival Room');
     assert.equal(summary.banquetArrival.source, 'banquet_group');
+});
+
+test('timeline banquet snapshot keeps active kitchen data visible when the primary booking is cancelled', () => {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const primary = {
+        id: 'FIXTURE-LEGACY-PRIMARY',
+        status: 'cancelled',
+        category: 'banquet',
+        date: '2099-08-20',
+        time: '12:15',
+        room: 'Fixture Room'
+    };
+    const kitchen = {
+        id: 'FIXTURE-LEGACY-KITCHEN',
+        status: 'confirmed',
+        category: 'banquet',
+        date: '2099-08-20',
+        time: '12:15',
+        room: 'Fixture Room',
+        banquetGuests: 14,
+        extraData: {
+            bookingPackage: {
+                menuPositions: [{
+                    title: 'Synthetic menu item',
+                    quantity: 1,
+                    servingTime: '12:15'
+                }]
+            }
+        }
+    };
+    const summary = ctx.timelineBanquetSnapshotSummary({
+        success: true,
+        source: 'group',
+        group: {
+            id: 'FIXTURE-LEGACY-GROUP',
+            status: 'active',
+            date: '2099-08-20',
+            room: 'Fixture Room',
+            primaryBookingId: primary.id
+        },
+        arrival: {
+            bookingId: primary.id,
+            date: '2099-08-20',
+            time: '12:15',
+            room: 'Fixture Room',
+            source: 'banquet_group'
+        },
+        bookings: {
+            primary,
+            kitchen: [kitchen],
+            activities: [],
+            services: [],
+            manual: []
+        },
+        members: [
+            { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary },
+            { bookingId: kitchen.id, role: 'kitchen', booking: kitchen }
+        ]
+    });
+
+    assert.equal(summary.primaryBooking.status, 'cancelled');
+    assert.equal(summary.kitchenBookings.length, 1);
+    assert.equal(summary.kitchenBookings[0].id, kitchen.id);
+    assert.equal(summary.hasMenu, true);
+    assert.equal(summary.menuCount, 1);
+    assert.equal(summary.activityCount, 0);
+    assert.equal(summary.kidsCount, 14);
+    assert.equal(summary.date, '2099-08-20');
+    assert.equal(summary.time, '12:15');
+    assert.equal(summary.room, 'Fixture Room');
+});
+
+test('timeline banquet inspector summary trusts the canonical group customer and keeps cancelled primary plus active kitchen', () => {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const primary = {
+        id: 'FIXTURE-CANCELLED-PRIMARY',
+        status: 'cancelled',
+        category: 'banquet',
+        date: '2099-08-20',
+        time: '12:15',
+        room: 'Fixture Room',
+        customerId: 101,
+        customerName: null
+    };
+    const kitchen = {
+        id: 'FIXTURE-ACTIVE-KITCHEN',
+        status: 'confirmed',
+        category: 'kitchen',
+        date: '2099-08-20',
+        time: '12:15',
+        room: 'Fixture Room',
+        customerId: 202,
+        customerName: 'Unrelated member customer',
+        banquetGuests: 14,
+        extraData: {
+            bookingPackage: {
+                menuPositions: [{
+                    title: 'Synthetic menu item',
+                    quantity: 1,
+                    servingTime: '13:45'
+                }]
+            }
+        }
+    };
+    const summary = ctx.timelineBanquetSnapshotSummary({
+        success: true,
+        source: 'banquet_group',
+        group: {
+            id: 'FIXTURE-HISTORICAL-GROUP',
+            status: 'active',
+            date: '2099-08-20',
+            room: 'Fixture Room',
+            primaryBookingId: primary.id,
+            customerId: 101,
+            customerName: 'Canonical Group Customer'
+        },
+        arrival: {
+            bookingId: primary.id,
+            date: '2099-08-20',
+            time: '12:15',
+            room: 'Fixture Room',
+            source: 'banquet_group'
+        },
+        bookings: {
+            primary,
+            kitchen: [kitchen],
+            activities: [],
+            services: [],
+            manual: []
+        },
+        memberships: [{
+            bookingId: primary.id,
+            role: 'primary'
+        }, {
+            bookingId: kitchen.id,
+            role: 'kitchen'
+        }],
+        members: [{
+            bookingId: primary.id,
+            role: 'primary',
+            membershipRole: 'primary',
+            isPrimary: true,
+            isKitchenCandidate: false,
+            booking: primary
+        }, {
+            bookingId: kitchen.id,
+            role: 'kitchen',
+            membershipRole: 'kitchen',
+            isPrimary: false,
+            isKitchenCandidate: true,
+            booking: kitchen
+        }],
+        warnings: [{
+            code: 'incomplete_historical_banquet_record',
+            message: 'Неповний історичний банкетний запис'
+        }]
+    });
+
+    assert.equal(summary.customerName, 'Canonical Group Customer');
+    assert.equal(summary.activityCount, 0);
+    assert.equal(summary.primaryBooking.id, primary.id);
+    assert.equal(summary.primaryBooking.status, 'cancelled');
+    assert.equal(summary.activityBookings.length, 0);
+    assert.equal(summary.kitchenBookings.length, 1);
+    assert.equal(summary.kitchenBookings[0].id, kitchen.id);
+    assert.equal(summary.hasMenu, true);
+    assert.equal(summary.menuCount, 1);
+    assert.equal(summary.kidsCount, 14);
+    assert.deepEqual(Array.from(summary.warnings), ['Неповний історичний банкетний запис']);
+    ctx.canAccess = permission => permission === 'edit_booking';
+    const servingInfo = ctx.timelineBanquetServingInfo(summary);
+    const inspectorSummary = ctx.timelineBanquetSummaryForInspector(summary, servingInfo, kitchen);
+    ctx.showTimelineBanquetInspector(null, inspectorSummary, null);
+    const inspector = ctx.document.getElementById('timelineBanquetInspector');
+    assert.equal(inspector.dataset.state, 'ready');
+    assert.match(inspector.textContent, /12:15/);
+    assert.match(inspector.textContent, /13:45/);
+    assert.equal(inspector.querySelector('[data-banquet-inspector-edit-arrival]'), null);
+    assert.match(
+        inspector.textContent,
+        /Неповний історичний банкетний запис/
+    );
+
+    const unresolvedCustomerSummary = ctx.timelineBanquetSnapshotSummary({
+        ...summary.snapshot,
+        group: {
+            ...summary.snapshot.group,
+            customerName: null
+        }
+    });
+    assert.equal(
+        unresolvedCustomerSummary.customerName,
+        null,
+        'a differently identified kitchen member must not become the group customer'
+    );
+    const unresolvedServingInfo = ctx.timelineBanquetServingInfo(unresolvedCustomerSummary);
+    const unresolvedInspectorSummary = ctx.timelineBanquetSummaryForInspector(
+        unresolvedCustomerSummary,
+        unresolvedServingInfo,
+        kitchen
+    );
+    ctx.showTimelineBanquetInspector(null, unresolvedInspectorSummary, null);
+    assert.doesNotMatch(inspector.textContent, /Unrelated member customer/);
+
+    const normalPrimary = { ...primary, status: 'confirmed', customerName: 'Canonical Group Customer' };
+    const normalSnapshot = {
+        ...summary.snapshot,
+        group: { ...summary.snapshot.group, status: 'active' },
+        bookings: { ...summary.snapshot.bookings, primary: normalPrimary },
+        members: summary.snapshot.members.map(member => (
+            member.bookingId === primary.id
+                ? { ...member, booking: normalPrimary }
+                : member
+        )),
+        warnings: []
+    };
+    const normalSummary = ctx.timelineBanquetSnapshotSummary(normalSnapshot);
+    assert.equal(normalSummary.primaryBooking.status, 'confirmed');
+    assert.equal(normalSummary.kitchenBookings.length, 1);
+    assert.equal(ctx.timelineCanEditBanquetArrival(normalSummary), true);
+    const normalInspectorSummary = ctx.timelineBanquetSummaryForInspector(
+        normalSummary,
+        ctx.timelineBanquetServingInfo(normalSummary),
+        kitchen
+    );
+    ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
+    assert.ok(inspector.querySelector('[data-banquet-inspector-edit-arrival]'));
 });
 
 function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
@@ -3825,6 +4057,34 @@ test('room timeline banquet inspector expands and collapses hidden menu position
     assert.equal(visibleRows(), 5, 'expanded state resets when the inspector is reopened');
 });
 
+test('canonical timeline banquet inspector owns accessible loading, empty, and error states', () => {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const trigger = ctx.document.createElement('button');
+    trigger.dataset.bookingId = 'BK-INSPECTOR-STATE';
+    ctx.document.body.appendChild(trigger);
+
+    const expectations = [
+        ['loading', 'Завантаження банкету', 'status', 'true'],
+        ['empty', 'Дані банкету відсутні', 'status', 'false'],
+        ['error', 'Не вдалося завантажити банкет', 'alert', 'false']
+    ];
+    for (const [state, title, role, ariaBusy] of expectations) {
+        ctx.showTimelineBanquetInspector(null, null, trigger, { state });
+        const inspector = ctx.document.getElementById('timelineBanquetInspector');
+        const stateNode = inspector.querySelector('.timeline-banquet-inspector-state');
+        assert.equal(ctx.document.querySelectorAll('#timelineBanquetInspector').length, 1);
+        assert.equal(inspector.dataset.state, state);
+        assert.equal(inspector.getAttribute('aria-busy'), ariaBusy);
+        assert.equal(stateNode.getAttribute('role'), role);
+        assert.match(stateNode.textContent, new RegExp(title));
+        assert.equal(inspector._timelineBanquetTrigger, trigger);
+    }
+
+    const css = read('css/timeline.css');
+    assert.match(css, /\.timeline-banquet-inspector-state--loading[\s\S]*animation:\s*timeline-banquet-inspector-spin/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation:\s*none/);
+});
+
 test('room timeline renders room_setup service event as a separate room-grid marker', () => {
     const { ctx, markers, layout } = renderTimelineBanquetRoomGridMarkers({
         menuPositions: [],
@@ -4059,9 +4319,11 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(timeline, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set\(\['activity', 'service', 'manual'\]\)/);
     assert.match(inspectorFunction, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/);
     assert.match(inspectorFunction, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES\.has\(role\)\) return true/);
-    assert.match(previewFunction, /if \(!isRoomTimelineView\(\) \|\| !block\?\._timelineBanquetSummary\) return false/);
+    assert.match(previewFunction, /if \(!isRoomTimelineView\(\) \|\| !block\) return false/);
     assert.match(previewFunction, /if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false/);
-    assert.match(previewFunction, /showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/);
+    assert.match(previewFunction, /const state = block\._timelineBanquetInspectorState/);
+    assert.match(previewFunction, /if \(!block\._timelineBanquetSummary && !state\) return false/);
+    assert.match(previewFunction, /showTimelineBanquetInspector\(event, block\._timelineBanquetSummary \|\| null, block, \{/);
     assert.match(timeline, /const targetRole = timelineBanquetPreviewRoleForTarget\(target, previewRolesByBookingId\)/);
     assert.match(timeline, /setTimelineBanquetPreviewRole\(target\.block, targetRole\)/);
     assert.match(openDetailsFunction, /const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);

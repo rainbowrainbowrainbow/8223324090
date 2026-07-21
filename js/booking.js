@@ -5421,7 +5421,7 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.catalogInsight = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
     window.BookingTickets?.reset();
-    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingDepositExpectedAmount', 'bookingDepositDueDate', 'bookingDepositManagerNote'].forEach(id => {
+    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingDepositExpectedAmount', 'bookingDepositManagerNote'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -5450,7 +5450,6 @@ function normalizeBookingDepositAmount(value) {
 
 const BOOKING_DEPOSIT_FIELD_IDS = [
     'bookingDepositExpectedAmount',
-    'bookingDepositDueDate',
     'bookingDepositManagerStatus',
     'bookingDepositManagerNote'
 ];
@@ -5541,7 +5540,8 @@ function renderBookingDepositHydrationStatus(state = BookingDrawerState.depositH
 function getBookingDepositFormData() {
     const status = document.getElementById('bookingDepositManagerStatus')?.value || '';
     const expectedAmount = normalizeBookingDepositAmount(document.getElementById('bookingDepositExpectedAmount')?.value);
-    const dueDate = document.getElementById('bookingDepositDueDate')?.value || '';
+    const depositHydration = BookingDrawerState.depositHydration || {};
+    const dueDate = depositHydration.dueDate || '';
     const managerNote = document.getElementById('bookingDepositManagerNote')?.value?.trim() || '';
     const provided = expectedAmount !== null
         || Boolean(dueDate)
@@ -5592,12 +5592,14 @@ function setBookingDepositFormData(source = null) {
     renderBookingPackageSummary();
 }
 
-function setBookingDepositHydrationState(bookingId, status, hadDeposit = false, error = null) {
+function setBookingDepositHydrationState(bookingId, status, hadDeposit = false, error = null, details = {}) {
+    const normalizedDetails = details && typeof details === 'object' ? details : {};
     const state = {
         bookingId: String(bookingId || ''),
         status: String(status || 'idle'),
         hadDeposit: Boolean(hadDeposit),
-        error: error ? String(error) : null
+        error: error ? String(error) : null,
+        dueDate: normalizedDetails.dueDate || null
     };
     BookingDrawerState.depositHydration = state;
     renderBookingDepositHydrationStatus(state);
@@ -5620,8 +5622,11 @@ async function hydrateBookingDepositFromServer(bookingId) {
             throw new Error(projection.error || 'Deposit projection is unavailable');
         }
         const hadDeposit = Boolean(projection?.deposit);
+        const deposit = hadDeposit ? bookingDepositFromProjection(projection) : null;
         setBookingDepositFormData(hadDeposit ? projection : null);
-        return setBookingDepositHydrationState(cleanBookingId, 'loaded', hadDeposit);
+        return setBookingDepositHydrationState(cleanBookingId, 'loaded', hadDeposit, null, {
+            dueDate: deposit?.dueDate || null
+        });
     } catch (err) {
         setBookingDepositHydrationState(cleanBookingId, 'failed', false, err?.message || err);
         console.warn('Booking deposit hydrate skipped', err);
@@ -6771,7 +6776,7 @@ function initBookingPackageWorkspace() {
     });
     ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
      'secondAnimatorSelect', 'extraHostToggle', 'extraHostAnimatorSelect', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
-     'bookingDepositExpectedAmount', 'bookingDepositDueDate', 'bookingDepositManagerStatus', 'bookingDepositManagerNote',
+     'bookingDepositExpectedAmount', 'bookingDepositManagerStatus', 'bookingDepositManagerNote',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',

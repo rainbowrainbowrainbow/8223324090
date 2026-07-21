@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.122",
+  "version": "0.79.123",
   "eventGenix": {
-    "releaseLabel": "Сумісність історичних банкетів"
+    "releaseLabel": "Завдаток без менеджерського дедлайну"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

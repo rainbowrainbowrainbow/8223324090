@@ -2873,6 +2873,8 @@ test('room timeline banquet preview hydration is guarded against stale async mut
     assert.match(timeline, /function timelineBanquetPreviewHydrationIsFresh\(context = \{\}, block = null, snapshot = null\)[\s\S]*timelineBanquetSnapshotContainsBooking\(snapshot, context\.bookingId\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview\(snapshot = \{\}, options = \{\}\)[\s\S]*timelineBanquetPreviewHydrationIsFresh\(options\.context, options\.block \|\| null, snapshot\)[\s\S]*return false/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview\(block, booking = \{\}\)[\s\S]*const hydrationContext = timelineBanquetPreviewHydrationContext\(block, booking\)[\s\S]*timelineBanquetPreviewHydrationIsFresh\(hydrationContext, block\)[\s\S]*applyTimelineBanquetPreview\(snapshot, \{ context: hydrationContext, block \}\)/);
+    assert.match(timeline, /const inspector = document\.getElementById\('timelineBanquetInspector'\);\s*if \(inspector && !inspector\.classList\.contains\('hidden'\)/);
+    assert.doesNotMatch(timeline, /!inspector\?\.classList\.contains\('hidden'\) && inspector\._timelineBanquetTrigger/);
     assert.match(timeline, /apiCreateBookingBanquetLink\(sourceId, targetId, label\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
     assert.match(timeline, /apiDeleteBookingBanquetLink\(sourceId, targetId, relationType\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
     assert.match(timeline, /apiUpdateLinkedBookingsAtomic\(intent\.mainBooking\.id, payload\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(/);

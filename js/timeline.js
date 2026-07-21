@@ -3639,7 +3639,7 @@ function hydrateTimelineBanquetPreview(block, booking = {}) {
                 block._timelineBanquetInspectorState = timelineBanquetSnapshotStateForBooking(booking);
             }
             const inspector = document.getElementById('timelineBanquetInspector');
-            if (!inspector?.classList.contains('hidden') && inspector._timelineBanquetTrigger === block) {
+            if (inspector && !inspector.classList.contains('hidden') && inspector._timelineBanquetTrigger === block) {
                 if (block._timelineBanquetSummary) {
                     showTimelineBanquetInspector(null, block._timelineBanquetSummary, block);
                 } else {

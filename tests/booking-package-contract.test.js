@@ -1793,7 +1793,7 @@ test('booking animator options ignore stale reversed availability responses', as
     const context = createMultiActivityScheduleHarness({
         programs: [multiActivitySchedulePrograms()[0]],
         useRealAnimatorRefresh: true,
-        getLinesForDate: async () => new Promise(resolve => pending.push(resolve))
+        apiGetLines: async () => new Promise(resolve => pending.push(resolve))
     });
     const select = context.__fields.get('bookingPrimaryAnimatorSelect');
 

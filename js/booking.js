@@ -10589,6 +10589,7 @@ function setSelectedActivitySecondAnimator(programId, value) {
 async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
     const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
     const programs = getSelectedActivityPrograms().filter(selectedActivityRequiresSecondAnimator);
+    if (!programs.length) return;
     const rowsByProgramId = new Map(getSelectedActivityScheduleRows(getSelectedActivityPrograms())
         .map(row => [String(row.programId), row]));
     const activityBookingFields = getSelectedActivityBookingFields();

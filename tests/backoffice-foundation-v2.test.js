@@ -215,7 +215,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.doesNotMatch(bookingService, /s\.department = 'animators'\s+OR\s+s\.role_type = 'animator'/);
         assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(business_context, date, line_id\)/);
         assert.match(bookingService, /function cleanupLegacyDefaultAnimatorLines/);
-        assert.match(bookingService, /LOWER\(TRIM\(l\.name\)\) ~ '\^аніматор\[\[:space:\]\]\+\[0-9\]\+\$'/);
+        assert.match(bookingService, /function isLegacyDefaultAnimatorLineId\(lineId, date = ''\)/);
+        assert.match(bookingService, /normalized === 'line1' \|\| normalized === 'line2'/);
+        assert.match(bookingService, /l\.line_id IN \('line1', 'line2', 'line1_' \|\| \$1, 'line2_' \|\| \$1\)/);
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM bookings b[\s\S]*activeBookingStatusSql\('b\.status'\)/);
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM afisha a/);
         assert.match(bookingService, /function reconcileScheduledAnimatorLines/);

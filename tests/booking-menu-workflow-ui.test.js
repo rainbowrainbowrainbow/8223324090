@@ -124,7 +124,7 @@ function loadWorkflowApi(extraSandbox = {}) {
         ...extraSandbox
     };
     vm.createContext(sandbox);
-    vm.runInContext(`${source.slice(start, end)}\nthis.__api = { normalizeBookingMenuRuleContract, loadBookingMenuRuleContract, setBookingMenuWorkflowMode, collectBookingMenuWorkflowForSubmit, bookingPreorderStatusFromFormData, renderBookingPreorderSummaryWarning, renderBookingMenuWorkflowCard, hydrateBookingMenuWorkflowFromPackage };`, sandbox);
+    vm.runInContext(`${source.slice(start, end)}\nthis.__api = { normalizeBookingMenuRuleContract, loadBookingMenuRuleContract, setBookingMenuWorkflowMode, collectBookingMenuWorkflowForSubmit, bookingPreorderStatusFromFormData, renderBookingPreorderSummaryWarning, renderBookingMenuWorkflowCard, hydrateBookingMenuWorkflowFromPackage, bookingMenuWorkflowCurrentUserIsCreator, bookingMenuWorkflowFinalizeEndpointUrl };`, sandbox);
     return { ...harness, sandbox, api: sandbox.__api };
 }
 
@@ -145,8 +145,11 @@ test('booking menu workflow styles cover default, dark, mobile, and status card 
     assert.match(panelCss, /\.booking-menu-workflow\b/);
     assert.match(panelCss, /\.booking-menu-workflow-option:has\(input:checked\)/);
     assert.match(panelCss, /\.booking-menu-workflow-card__grid/);
+    assert.match(panelCss, /\.booking-menu-workflow-finalize\b/);
+    assert.match(panelCss, /\.booking-menu-workflow-exception-reason/);
     assert.match(darkCss, /html\[data-theme="dark"\] \.booking-menu-workflow/);
     assert.match(darkCss, /body\.dark-mode \.booking-menu-workflow-card/);
+    assert.match(darkCss, /html\[data-theme="dark"\] \.booking-menu-workflow-finalize__preview/);
     assert.match(responsiveCss, /\.booking-menu-workflow-options/);
     assert.match(responsiveCss, /\.booking-menu-workflow-card__grid/);
 });
@@ -214,6 +217,31 @@ test('actual awaiting mode suppresses menu save modal warning but keeps deposit 
     assert.doesNotMatch(card.innerHTML, /Фінальна сума/);
 });
 
+test('actual awaiting status card exposes finalize action and creator-only exception UI', async () => {
+    const { api, card, sandbox } = loadWorkflowApi({
+        getUserRoles: () => ['manager', 'creator']
+    });
+    sandbox.AppState.editingBookingId = 42;
+    sandbox.AppState.currentUser = { id: 1, username: 'owner', role: 'creator' };
+    await api.loadBookingMenuRuleContract({ force: true });
+    const status = api.bookingPreorderStatusFromFormData({
+        kitchenEnabled: true,
+        room: 'Столик 4',
+        positionsSubtotal: 1900,
+        menuWorkflow: { mode: 'actual', status: 'awaiting_actual', minimumSnapshot: { minimumAmount: 2500 } }
+    });
+
+    assert.equal(api.bookingMenuWorkflowCurrentUserIsCreator(), true);
+    assert.equal(api.bookingMenuWorkflowFinalizeEndpointUrl(42), '/api/bookings/42/menu-workflow/finalize?businessContext=event_genix');
+    api.renderBookingMenuWorkflowCard(status);
+
+    assert.match(card.innerHTML, /id="bookingMenuWorkflowFinalizeBtn"/);
+    assert.match(card.innerHTML, /Закрити меню по факту/);
+    assert.match(card.innerHTML, /id="bookingMenuWorkflowExceptionToggle"/);
+    assert.match(card.innerHTML, /id="bookingMenuWorkflowExceptionReason"/);
+    assert.match(card.innerHTML, /до нарахування/);
+});
+
 test('actual workflow hydrates after reopen but legacy bookings remain compatible preorder until touched', () => {
     const { api, sandbox, preorder, actual } = loadWorkflowApi();
     api.hydrateBookingMenuWorkflowFromPackage({
@@ -250,4 +278,8 @@ test('booking payload serializes menuWorkflow without server-owned audit fields'
     assert.match(source, /obj\.extraData\.bookingPackage\.menuWorkflow = \{ \.\.\.formData\.menuWorkflow \};/);
     assert.doesNotMatch(source, /collectBookingMenuWorkflowForSubmit[\s\S]{0,900}selectedBy/);
     assert.doesNotMatch(source, /collectBookingMenuWorkflowForSubmit[\s\S]{0,900}selectedAt/);
+    assert.match(source, /bookings\/\$\{encodeURIComponent\(bookingId\)\}\/menu-workflow\/finalize/);
+    assert.match(source, /actualMenuPositions: formData\.menuPositions/);
+    assert.match(source, /allowBelowMinimumException/);
+    assert.match(source, /exceptionReason/);
 });

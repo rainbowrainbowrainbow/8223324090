@@ -6145,6 +6145,9 @@ function renderBookingMenuWorkflowCard(status = null) {
     const loading = BookingPackageState.menuRuleLoadStatus === 'loading';
     card.hidden = false;
     card.classList.remove('hidden');
+    const canFinalize = Boolean(AppState.editingBookingId);
+    const canException = bookingMenuWorkflowCurrentUserIsCreator() && missing !== null && missing > 0;
+    const projectedFinal = missing === null ? current : Math.max(current, minimum || 0);
     card.innerHTML = `
         <div class="booking-menu-workflow-card__head">
             <strong>Меню по факту · очікує закриття</strong>
@@ -6156,7 +6159,127 @@ function renderBookingMenuWorkflowCard(status = null) {
             <div><span>Різниця до мінімуму</span><strong>${escapeHtml(missing === null ? '—' : bookingPreorderFormatMoney(missing))}</strong></div>
         </div>
         <p>Меню нижче мінімуму не блокує збереження в цьому режимі. Закриття фінальної суми буде окремим кроком.</p>
+        <div class="booking-menu-workflow-finalize" ${canFinalize ? '' : 'hidden'}>
+            <div class="booking-menu-workflow-finalize__preview">
+                <span>Фіналізація: ${escapeHtml(bookingPreorderFormatMoney(current))} фактичне меню · ${escapeHtml(bookingPreorderFormatMoney(projectedFinal))} до нарахування</span>
+            </div>
+            ${canException ? `
+                <label class="booking-menu-workflow-exception">
+                    <input type="checkbox" id="bookingMenuWorkflowExceptionToggle">
+                    <span>Creator exception: закрити нижче мінімуму без adjustment</span>
+                </label>
+                <textarea id="bookingMenuWorkflowExceptionReason" class="booking-menu-workflow-exception-reason" rows="2" placeholder="Обовʼязкова причина creator exception"></textarea>
+            ` : ''}
+            <button type="button" id="bookingMenuWorkflowFinalizeBtn" class="btn btn-warning booking-menu-workflow-finalize-btn">Закрити меню по факту</button>
+        </div>
+        ${canFinalize ? '' : '<p>Спершу збережіть бронювання, потім закрийте фактичне меню.</p>'}
     `;
+}
+
+function bookingMenuWorkflowCurrentUserIsCreator() {
+    const roles = [];
+    try {
+        if (typeof getUserRoles === 'function') roles.push(...getUserRoles());
+    } catch {}
+    const user = AppState.currentUser || {};
+    if (user.role) roles.push(user.role);
+    if (Array.isArray(user.roles)) roles.push(...user.roles);
+    if (Array.isArray(user.extraRoles)) roles.push(...user.extraRoles);
+    if (Array.isArray(user.extra_roles)) roles.push(...user.extra_roles);
+    return roles.map(role => String(role || '').trim().toLowerCase()).includes('creator');
+}
+
+function bookingMenuWorkflowFinalizeEndpointUrl(bookingId) {
+    const base = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+    const path = `${base}/bookings/${encodeURIComponent(bookingId)}/menu-workflow/finalize`;
+    return typeof timelineApiUrl === 'function' ? timelineApiUrl(path) : path;
+}
+
+async function apiFinalizeBookingMenuWorkflow(bookingId, payload = {}) {
+    const requestOptions = {
+        method: 'POST',
+        headers: {
+            ...(typeof getAuthHeaders === 'function' ? getAuthHeaders(false) : {}),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    };
+    const response = typeof apiFetchWithAuthRetry === 'function'
+        ? await apiFetchWithAuthRetry(bookingMenuWorkflowFinalizeEndpointUrl(bookingId), requestOptions)
+        : await fetch(bookingMenuWorkflowFinalizeEndpointUrl(bookingId), requestOptions);
+    if (typeof handleAuthError === 'function' && handleAuthError(response)) return { success: false, error: 'Потрібна авторизація' };
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, status: response.status, ...body };
+    return body;
+}
+
+async function handleBookingMenuWorkflowFinalizeClick() {
+    const bookingId = AppState.editingBookingId;
+    if (!bookingId) {
+        showNotification('Спершу збережіть бронювання, потім закрийте меню по факту.', 'warning');
+        return;
+    }
+    const formData = getBookingFormData();
+    const status = bookingPreorderStatusFromFormData({
+        ...formData,
+        menuWorkflow: bookingMenuWorkflowDraftForFormData({ kitchenEnabled: formData.kitchenEnabled })
+    });
+    const minimum = status.requiredMenuMinimum;
+    const current = formData.positionsSubtotal || 0;
+    const missing = minimum === null || minimum === undefined ? 0 : Math.max(0, minimum - current);
+    const exceptionToggle = document.getElementById('bookingMenuWorkflowExceptionToggle');
+    const allowBelowMinimumException = Boolean(exceptionToggle?.checked && missing > 0);
+    const exceptionReason = document.getElementById('bookingMenuWorkflowExceptionReason')?.value?.trim() || '';
+    if (allowBelowMinimumException && !exceptionReason) {
+        showNotification('Для creator exception потрібно вказати причину.', 'error');
+        document.getElementById('bookingMenuWorkflowExceptionReason')?.focus();
+        return;
+    }
+    const charged = allowBelowMinimumException ? current : Math.max(current, minimum || 0);
+    const confirmed = typeof confirmModal === 'function'
+        ? await confirmModal([
+            'Закрити меню по факту?',
+            `Фактичне меню: ${bookingPreorderFormatMoney(current)}`,
+            minimum ? `Мінімум: ${bookingPreorderFormatMoney(minimum)}` : null,
+            missing > 0 && !allowBelowMinimumException ? `Finance-only adjustment: ${bookingPreorderFormatMoney(missing)}` : null,
+            allowBelowMinimumException ? 'Creator exception: без adjustment, причина буде записана в audit.' : null,
+            `Фінальна сума меню до нарахування: ${bookingPreorderFormatMoney(charged)}`
+        ].filter(Boolean).join('\n'), {
+            type: 'warning',
+            okText: 'Закрити меню по факту',
+            cancelText: 'Повернутися'
+        })
+        : true;
+    if (!confirmed) return;
+
+    const button = document.getElementById('bookingMenuWorkflowFinalizeBtn');
+    if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+    }
+    try {
+        const result = await apiFinalizeBookingMenuWorkflow(bookingId, {
+            actualMenuPositions: formData.menuPositions || [],
+            allowBelowMinimumException,
+            exceptionReason: allowBelowMinimumException ? exceptionReason : null
+        });
+        if (!result?.success) {
+            showNotification(result?.error || 'Не вдалося закрити меню по факту.', 'error');
+            return;
+        }
+        if (result.booking) {
+            hydrateBookingPackageWorkspace(result.booking, { ticketBooking: result.booking });
+            AppState.editingBookingUpdatedAt = result.booking.updatedAt || AppState.editingBookingUpdatedAt;
+        }
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
+        await renderTimeline();
+        showNotification(result.idempotent ? 'Меню по факту вже було закрите.' : 'Меню по факту закрито.', 'success');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.setAttribute('aria-disabled', 'false');
+        }
+    }
 }
 
 async function confirmBookingPreorderWarningsBeforeSubmit(formData = {}) {
@@ -6906,6 +7029,13 @@ function initBookingPackageWorkspace() {
         const input = event.target?.closest?.('input[name="bookingMenuWorkflowMode"]');
         if (!input) return;
         setBookingMenuWorkflowMode(input.value, { touched: true, markDirty: true });
+    });
+    document.getElementById('bookingMenuWorkflowCard')?.addEventListener('click', (event) => {
+        if (!event.target?.closest?.('#bookingMenuWorkflowFinalizeBtn')) return;
+        handleBookingMenuWorkflowFinalizeClick().catch(error => {
+            console.error('Failed to finalize actual menu workflow', error);
+            showNotification('Не вдалося закрити меню по факту.', 'error');
+        });
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
     initBookingMenuCatalogOpenControl();

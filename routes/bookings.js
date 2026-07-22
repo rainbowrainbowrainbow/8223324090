@@ -29,6 +29,7 @@ const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
 const { loadBanquetPreorderRuleContract, sanitizeBanquetPreorderRuleContract } = require('../services/banquetPreorderRules');
+const { buildFinalizedBanquetMenuPackage } = require('../services/banquetMenuFinalization');
 const { buildBanquetSummary, normalizeBanquetSummaryMode } = require('../services/banquetSummary');
 const {
     buildBanquetSummaryPdfBuffer,
@@ -4812,6 +4813,130 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
     }
 });
 
+router.post('/:id/menu-workflow/finalize', requireAction('edit_booking'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+        await client.query('BEGIN');
+        const banquetMembership = await getBanquetMembershipForDelete(client, id, businessContext);
+        const booking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
+        if (!booking) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        if (!canEditBooking(req.user, booking)) {
+            await client.query('ROLLBACK');
+            return sendBookingDenied(req, res, booking);
+        }
+
+        let extraData = {};
+        if (booking.extra_data && typeof booking.extra_data === 'object' && !Array.isArray(booking.extra_data)) {
+            extraData = { ...booking.extra_data };
+        } else if (typeof booking.extra_data === 'string' && booking.extra_data.trim()) {
+            extraData = JSON.parse(booking.extra_data);
+        }
+        const finalizeResult = buildFinalizedBanquetMenuPackage({
+            booking: { ...booking, extraData },
+            actualPositions: body.actualMenuPositions || body.actual_menu_positions || body.menuPositions || body.menu_positions || [],
+            actor: req.user,
+            now: new Date(),
+            allowBelowMinimumException: body.allowBelowMinimumException === true || body.allow_below_minimum_exception === true,
+            exceptionReason: body.exceptionReason || body.exception_reason || null
+        });
+
+        if (finalizeResult.idempotent) {
+            await client.query('COMMIT');
+            return res.json({
+                success: true,
+                idempotent: true,
+                booking: mapBookingRow(booking),
+                calculation: finalizeResult.calculation
+            });
+        }
+
+        const nextExtraData = {
+            ...extraData,
+            bookingPackage: finalizeResult.bookingPackage
+        };
+        const updateResult = await client.query(
+            `UPDATE bookings
+                SET price = $1,
+                    extra_data = $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $3
+                AND ${bookingContextSql('', '$4')}
+              RETURNING *`,
+            [finalizeResult.nextTotal, JSON.stringify(nextExtraData), id, businessContext]
+        );
+        const updatedBooking = updateResult.rows[0];
+        if (!updatedBooking) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'MENU_WORKFLOW_FINALIZE_UPDATE_CONFLICT', error: 'Booking changed during menu finalization' });
+        }
+
+        await syncBookingFinanceInTransaction(client, updatedBooking, {
+            businessContext,
+            createdBy: req.user?.username,
+            optional: false,
+            label: 'Actual banquet menu finalization finance synchronization'
+        });
+
+        if (banquetMembership?.group_id && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active') {
+            await client.query(
+                `UPDATE banquet_groups
+                    SET updated_at = NOW(),
+                        updated_by = $3
+                  WHERE id = $1
+                    AND ${bookingContextSql('', '$2')}`,
+                [banquetMembership.group_id, businessContext, req.user?.username || null]
+            );
+        }
+
+        await insertScopedHistory(client, 'booking_menu_actual_finalized', req.user?.username, {
+            booking_id: id,
+            group_id: banquetMembership?.group_id || null,
+            previous_total: finalizeResult.previousTotal,
+            next_total: finalizeResult.nextTotal,
+            positions_subtotal: finalizeResult.calculation.positionsSubtotal,
+            minimum_amount: finalizeResult.calculation.minimumAmount,
+            adjustment_amount: finalizeResult.calculation.adjustmentAmount,
+            billing_basis: finalizeResult.calculation.billingBasis,
+            creator_exception: finalizeResult.workflow?.creatorException || null,
+            menu_minimum_adjustment: finalizeResult.adjustment || null
+        }, businessContext);
+
+        await client.query('COMMIT');
+        const mapped = mapBookingRow(updatedBooking);
+        broadcastBookingEvent('booking:updated', mapped, req.user?.id?.toString(), {
+            businessContext,
+            previousBooking: mapBookingRow(booking)
+        });
+        _alertPush();
+        res.json({
+            success: true,
+            booking: mapped,
+            calculation: finalizeResult.calculation,
+            adjustment: finalizeResult.adjustment || null
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (menu finalize)', rbErr));
+        log.error('POST /bookings/:id/menu-workflow/finalize error', err);
+        res.status(err.statusCode || err.status || 500).json({
+            success: false,
+            error: err.publicMessage || 'Failed to finalize actual menu',
+            code: err.code || 'internal_error',
+            details: err.details || undefined
+        });
+    } finally {
+        client.release();
+    }
+});
 // Soft delete or permanent delete — requires delete_booking permission
 router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
     const client = await pool.connect();

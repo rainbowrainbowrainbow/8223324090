@@ -2341,6 +2341,18 @@ body.dark-mode .booking-menu-workflow-card__grid span,
 html[data-theme="dark"] .booking-menu-workflow-card__grid span {
     color: #FCD34D;
 }
+body.dark-mode .booking-menu-workflow-finalize__preview,
+body.dark-mode .booking-menu-workflow-exception-reason,
+html[data-theme="dark"] .booking-menu-workflow-finalize__preview,
+html[data-theme="dark"] .booking-menu-workflow-exception-reason {
+    border-color: rgba(245,158,11,0.34);
+    background: rgba(15,23,42,0.42);
+    color: #FDE68A;
+}
+body.dark-mode .booking-menu-workflow-exception,
+html[data-theme="dark"] .booking-menu-workflow-exception {
+    color: #FDE68A;
+}
 body.dark-mode .booking-workspace-heading strong,
 body.dark-mode .booking-event-toggle-label strong,
 body.dark-mode .maysternya-quick-booking-tools strong,

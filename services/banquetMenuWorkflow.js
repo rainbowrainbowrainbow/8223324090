@@ -150,6 +150,11 @@ function normalizeBanquetMenuWorkflow({
         minimumSnapshot
     };
     if (status) normalized.status = status;
+    if (status === 'finalized' && previousStatus === 'finalized') {
+        if (previous.finalizedAt) normalized.finalizedAt = previous.finalizedAt;
+        if (previous.finalizedBy && typeof previous.finalizedBy === 'object') normalized.finalizedBy = previous.finalizedBy;
+        if (previous.finalization && typeof previous.finalization === 'object') normalized.finalization = previous.finalization;
+    }
     if (previous.creatorException && typeof previous.creatorException === 'object') {
         normalized.creatorException = previous.creatorException;
     }

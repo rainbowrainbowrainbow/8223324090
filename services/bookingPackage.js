@@ -5,7 +5,8 @@ const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
     weekday: 'banquet_entry_weekday_child',
     weekend: 'banquet_entry_weekend_child'
 });
-const { buildBanquetPreorderStatus } = require('./banquetPreorderRules');
+const { buildBanquetPreorderStatus, loadBanquetPreorderRuleContract } = require('./banquetPreorderRules');
+const { hasBanquetMenuWorkflowInput, normalizeBanquetMenuWorkflow } = require('./banquetMenuWorkflow');
 const BANQUET_ENTRY_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_ENTRY_PRICE_RULE_CODES));
 const BANQUET_ENTRY_SOURCE = 'banquet_entry_price_rules';
 const LEGACY_ENTRY_WARNING_CODES = new Set([
@@ -538,6 +539,7 @@ function hasBookingPackageInput(booking = {}) {
         || Object.prototype.hasOwnProperty.call(booking, 'program_base_price')
         || Object.prototype.hasOwnProperty.call(booking, 'bookingPackage')
         || Object.prototype.hasOwnProperty.call(booking, 'booking_package')
+        || hasBanquetMenuWorkflowInput(booking)
         || Boolean(extra.bookingPackage || extra.booking_package || extra.menuPositions || extra.serviceEvents);
 }
 
@@ -655,10 +657,22 @@ function buildBookingPackage(booking = {}, options = {}) {
         serviceEvents,
         source: 'booking_workspace'
     };
+    const banquetPreorderRuleContract = options.banquetPreorderRuleContract || options.menuRuleContract || null;
+    const menuWorkflow = normalizeBanquetMenuWorkflow({
+        booking,
+        previousWorkflow: previousPackage.menuWorkflow || previousPackage.menu_workflow || null,
+        ruleContract: banquetPreorderRuleContract,
+        actor: options.menuWorkflowActor || options.actor || null,
+        now: options.now || null
+    });
+    if (menuWorkflow) {
+        result.menuWorkflow = menuWorkflow;
+    }
     const banquetPreorderStatus = buildBanquetPreorderStatus({
         booking,
         bookingPackage: result,
-        deposit: booking.banquetDeposit || booking.banquet_deposit || booking.deposit || null
+        deposit: booking.banquetDeposit || booking.banquet_deposit || booking.deposit || null,
+        ruleContract: banquetPreorderRuleContract
     });
     if (banquetPreorderStatus.applies) {
         result.banquetPreorderStatus = banquetPreorderStatus;
@@ -759,18 +773,28 @@ async function loadBanquetEntryPriceRules(queryable) {
 
 async function applyBookingPackageEntryCharge(queryable, booking = {}, options = {}) {
     if (!hasBookingPackageInput(booking)) return booking;
+    const banquetPreorderRuleContract = options.banquetPreorderRuleContract
+        || options.menuRuleContract
+        || await loadBanquetPreorderRuleContract(queryable);
     if (hasExplicitTicketPackageInput(booking, options)) {
-        return applyBookingPackage(booking, options);
+        return applyBookingPackage(booking, {
+            ...options,
+            banquetPreorderRuleContract
+        });
     }
     if (options.preserveNoTicketPackage === true) {
-        return applyBookingPackage(booking, options);
+        return applyBookingPackage(booking, {
+            ...options,
+            banquetPreorderRuleContract
+        });
     }
     const priceRules = Array.isArray(options.priceRules)
         ? options.priceRules
         : await loadBanquetEntryPriceRules(queryable);
     return applyBookingPackage(booking, {
         ...options,
-        priceRules
+        priceRules,
+        banquetPreorderRuleContract
     });
 }
 

@@ -45,6 +45,7 @@ const hrTodayBrowserSmokeCode = fileText('tests/browser/hr-today-metrics-browser
 const hrAttendanceStateCode = fileText('js/hr-attendance-state.js');
 const ciWorkflow = fileText('.github/workflows/ci.yml');
 const inviteShareCode = fileText('js/invite-share.js');
+const timelineBookingCode = fileText('js/booking.js');
 
 runInviteChecks(ui);
 
@@ -3438,7 +3439,11 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && !timelineBanquetInspectorBlock.includes('data-banquet-inspector-edit-arrival')
     && !timelineBanquetInspectorBlock.includes('timelineBanquetSummaryHref(summary, { editArrival: true })')
     && timelineBanquetInspectorBlock.includes('const bookingId = summary.carrierBooking?.id || summary.primaryBooking?.id;')
-    && timelineBanquetInspectorBlock.includes("if (bookingId && typeof editBooking === 'function') void editBooking(bookingId);")
+    && timelineBanquetInspectorBlock.includes("source: 'timeline_banquet_inspector'")
+    && timelineBanquetInspectorBlock.includes('preferBanquetEditor: true')
+    && timelineBookingCode.includes('async function editBooking(bookingId, options = {})')
+    && timelineBookingCode.includes('function shouldRouteBookingEditToAnimatorView')
+    && timelineBookingCode.includes('if (shouldRouteBookingEditToAnimatorView(anchorBooking, options, banquetEditContext))')
     && timelineCode.includes('markerEl.dataset.banquetGroupId = canonicalGroupId')
     && timelineCode.includes("if (type === 'guest_arrival') markerEl.draggable = false")
     && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetCommentItems')

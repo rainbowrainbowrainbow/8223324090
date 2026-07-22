@@ -765,19 +765,30 @@ test('timeline banquet inspector summary trusts the canonical group customer and
     assert.equal(normalSummary.primaryBooking.status, 'confirmed');
     assert.equal(normalSummary.kitchenBookings.length, 1);
     assert.equal(ctx.timelineCanEditBanquet(normalSummary), true);
+    const activityCarrier = {
+        id: 'BK-ACTIVITY-CARRIER',
+        programId: 'PROGRAM-1',
+        lineId: 'animator-1'
+    };
     const normalInspectorSummary = ctx.timelineBanquetSummaryForInspector(
         normalSummary,
         ctx.timelineBanquetServingInfo(normalSummary),
-        kitchen
+        activityCarrier
     );
     const editCalls = [];
-    ctx.editBooking = bookingId => editCalls.push(bookingId);
+    ctx.editBooking = (bookingId, options) => editCalls.push({ bookingId, options });
     ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
     const editButton = inspector.querySelector('[data-banquet-inspector-edit]');
     assert.ok(editButton);
     assert.equal(inspector.querySelector('[data-banquet-inspector-edit-arrival]'), null);
     editButton.click();
-    assert.deepEqual(editCalls, [normalInspectorSummary.carrierBooking?.id || normalInspectorSummary.primaryBooking?.id]);
+    assert.deepEqual(plain(editCalls), [{
+        bookingId: activityCarrier.id,
+        options: {
+            source: 'timeline_banquet_inspector',
+            preferBanquetEditor: true
+        }
+    }]);
 
     ctx.canAccess = () => false;
     ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
@@ -2646,6 +2657,7 @@ test('timeline visual settings ignore deprecated room-load keys from saved paylo
 
 test('room timeline banquet preview is room-only, frontend-only, and snapshot-backed', () => {
     const timeline = read('js/timeline.js');
+    const booking = read('js/booking.js');
     const banquetInspectorHelpers = read('js/timeline-banquet-inspector-helpers.js');
     const css = read('css/timeline.css');
     const controlsCss = read('css/controls.css');
@@ -2667,9 +2679,20 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     const banquetInspector = timeline.slice(banquetInspectorStart, banquetInspectorEnd);
     assert.match(banquetInspector, /const bookingId = summary\.carrierBooking\?\.id \|\| summary\.primaryBooking\?\.id;/);
     assert.match(banquetInspector, /data-banquet-inspector-edit>Редагувати<\/button>/);
-    assert.match(banquetInspector, /if \(bookingId && typeof editBooking === 'function'\) void editBooking\(bookingId\);/);
+    assert.match(banquetInspector, /editBooking\(bookingId, \{[\s\S]*?source: 'timeline_banquet_inspector',[\s\S]*?preferBanquetEditor: true[\s\S]*?\}\);/);
     assert.doesNotMatch(banquetInspector, /data-banquet-inspector-edit-arrival/);
     assert.doesNotMatch(banquetInspector, /timelineBanquetSummaryHref\(summary, \{ editArrival: true \}\)/);
+
+    const editBookingStart = booking.indexOf('async function editBooking');
+    const editBookingEnd = booking.indexOf('// ==========================================\n// DUPLICATE BOOKING', editBookingStart);
+    const editBookingBlock = booking.slice(editBookingStart, editBookingEnd);
+    assert.match(editBookingBlock, /async function editBooking\(bookingId, options = \{\}\)/);
+    assert.match(booking, /function shouldRouteBookingEditToAnimatorView\(booking = \{\}, options = \{\}, banquetEditContext = null\)/);
+    assert.match(editBookingBlock, /if \(shouldRouteBookingEditToAnimatorView\(anchorBooking, options, banquetEditContext\)\)/);
+    assert.ok(
+        editBookingBlock.indexOf('const banquetEditContext') < editBookingBlock.indexOf('if (shouldRouteBookingEditToAnimatorView(anchorBooking, options, banquetEditContext))'),
+        'banquet context must be resolved before deciding whether to switch to the animator view'
+    );
 
     assert.match(timeline, /params\.set\('editArrival', '1'\)/);
     assert.match(timeline, /const timeText = normalizeTimelineBanquetServingTime\(arrival\.time\)/);
@@ -2784,6 +2807,47 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('booking edit routing keeps direct activities in animator view and bypasses it only for a valid banquet inspector context', () => {
+    const booking = read('js/booking.js');
+    const helperStart = booking.indexOf('function shouldEditBookingInAnimatorView');
+    const helperEnd = booking.indexOf('function canAddAnimationFromRoomBooking', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'booking edit route helper slice exists');
+
+    const context = {
+        ROOM_FIRST_BANQUET_SERVICE_LINE_ID: 'banquet-service',
+        isRoomFirstTimelineView: () => true
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        booking.slice(helperStart, helperEnd)
+            + '\nthis.__bookingEditRoute = shouldRouteBookingEditToAnimatorView;',
+        context,
+        { filename: 'js/booking.js' }
+    );
+
+    const routeToAnimator = context.__bookingEditRoute;
+    const activityCarrier = {
+        id: 'BK-ACTIVITY-CARRIER',
+        lineId: 'animator-1',
+        programId: 'PROGRAM-1'
+    };
+    const banquetEditContext = { groupId: 'BG-1', primaryBookingId: 'BK-PRIMARY' };
+
+    assert.equal(
+        routeToAnimator(activityCarrier, {}, banquetEditContext),
+        true,
+        'direct activity editing still routes to the animator view'
+    );
+    assert.equal(
+        routeToAnimator(activityCarrier, {
+            source: 'timeline_banquet_inspector',
+            preferBanquetEditor: true
+        }, banquetEditContext),
+        false,
+        'banquet inspector editing stays in the canonical banquet editor'
+    );
 });
 
 test('booking detail and invite fallbacks use group snapshot arrival instead of member booking time', () => {

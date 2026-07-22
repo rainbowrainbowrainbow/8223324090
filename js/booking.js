@@ -13625,6 +13625,12 @@ function shouldEditBookingInAnimatorView(booking = {}) {
         && String(booking.lineId || '') !== ROOM_FIRST_BANQUET_SERVICE_LINE_ID
         && Boolean(booking.programId);
 }
+function shouldRouteBookingEditToAnimatorView(booking = {}, options = {}, banquetEditContext = null) {
+    const preferBanquetEditor = options?.source === 'timeline_banquet_inspector'
+        && options?.preferBanquetEditor === true
+        && Boolean(banquetEditContext);
+    return !preferBanquetEditor && shouldEditBookingInAnimatorView(booking);
+}
 
 function canAddAnimationFromRoomBooking(booking = {}) {
     return isRoomFirstTimelineView()
@@ -16208,7 +16214,7 @@ async function createLegacyBanquetReplacement(bookingId) {
     return true;
 }
 
-async function editBooking(bookingId) {
+async function editBooking(bookingId, options = {}) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const anchorBooking = bookings.find(b => b.id === bookingId);
     if (!anchorBooking) return;
@@ -16228,15 +16234,15 @@ async function editBooking(bookingId) {
         showNotification(banquetEditIntegrityIssue.message, 'warning');
         return false;
     }
-    if (shouldEditBookingInAnimatorView(anchorBooking)) {
-        return openAnimationBookingInAnimatorView(anchorBooking.id, 'edit');
-    }
     const banquetEditContext = banquetSnapshot?.success !== false
         ? createBanquetEditContext(banquetSnapshot || {}, anchorBooking.id)
         : null;
     if (banquetSnapshotHasGroup(banquetSnapshot) && !banquetEditContext) {
         showNotification('Snapshot банкету неповний: немає primary booking або версії групи. Редагування заблоковано.', 'error');
         return;
+    }
+    if (shouldRouteBookingEditToAnimatorView(anchorBooking, options, banquetEditContext)) {
+        return openAnimationBookingInAnimatorView(anchorBooking.id, 'edit');
     }
     const booking = banquetEditContext?.primaryBooking || anchorBooking;
 

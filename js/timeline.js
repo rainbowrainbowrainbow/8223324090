@@ -2903,7 +2903,12 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         hideTimelineBanquetInspector();
-        if (bookingId && typeof editBooking === 'function') void editBooking(bookingId);
+        if (bookingId && typeof editBooking === 'function') {
+            void editBooking(bookingId, {
+                source: 'timeline_banquet_inspector',
+                preferBanquetEditor: true
+            });
+        }
     });
     inspector.querySelectorAll('a, button').forEach(el => {
         el.addEventListener('click', clickEvent => clickEvent.stopPropagation());

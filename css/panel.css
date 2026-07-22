@@ -4904,28 +4904,28 @@ body.booking-menu-catalog-active {
     border: 1px solid rgba(245, 158, 11, 0.28);
     border-radius: 10px;
     background: rgba(245, 158, 11, 0.08);
-    color: rgba(253, 230, 138, 0.92);
+    color: #92400E;
     font-size: 12px;
     line-height: 1.45;
 }
 
 .booking-summary-note--error {
-    border-color: rgba(248, 113, 113, 0.38);
-    background: rgba(127, 29, 29, 0.28);
-    color: #fecaca;
+    border-color: rgba(220, 38, 38, 0.32);
+    background: rgba(254, 226, 226, 0.72);
+    color: #991B1B;
 }
 
 .booking-summary-note--warning {
     border-color: rgba(245, 158, 11, 0.42);
     background: rgba(245, 158, 11, 0.12);
-    color: #fde68a;
+    color: #78350F;
     font-weight: 800;
 }
 
 .booking-summary-note--danger {
-    border-color: rgba(248, 113, 113, 0.5);
-    background: rgba(127, 29, 29, 0.28);
-    color: #fecaca;
+    border-color: rgba(220, 38, 38, 0.42);
+    background: rgba(254, 226, 226, 0.82);
+    color: #7F1D1D;
     font-weight: 900;
 }
 
@@ -4933,13 +4933,13 @@ body.booking-menu-catalog-active {
     margin-top: 12px;
     border-color: rgba(245, 158, 11, 0.42);
     background: rgba(245, 158, 11, 0.11);
-    color: #FDE68A;
+    color: #78350F;
 }
 
 .booking-summary-note strong {
     display: block;
     margin-bottom: 6px;
-    color: #fff7ed;
+    color: #78350F;
 }
 
 .booking-summary-note ul {
@@ -5067,7 +5067,7 @@ body.booking-menu-catalog-active {
     gap: 8px;
     border-color: rgba(245, 158, 11, 0.48);
     background: rgba(245, 158, 11, 0.14);
-    color: #FDE68A;
+    color: #78350F;
 }
 
 .booking-preflight-warning span {
@@ -5080,8 +5080,8 @@ body.booking-menu-catalog-active {
     padding: 6px 10px;
     border: 1px solid rgba(245, 158, 11, 0.42);
     border-radius: 8px;
-    background: rgba(245, 158, 11, 0.18);
-    color: #FFFBEB;
+    background: rgba(255, 251, 235, 0.92);
+    color: #78350F;
     font: inherit;
     font-size: 12px;
     font-weight: 900;
@@ -5091,7 +5091,7 @@ body.booking-menu-catalog-active {
 .booking-preflight-retry:hover,
 .booking-preflight-retry:focus-visible {
     border-color: rgba(245, 158, 11, 0.7);
-    background: rgba(245, 158, 11, 0.28);
+    background: rgba(254, 243, 199, 0.98);
     outline: none;
 }
 
@@ -5110,8 +5110,8 @@ body.booking-menu-catalog-active {
     max-width: none;
     margin: 18px 0 0;
     padding: 12px;
-    background: linear-gradient(180deg, rgba(18, 24, 42, 0.96) 0%, rgba(18, 24, 42, 1) 100%);
-    border: 1px solid rgba(76, 201, 240, 0.16);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+    border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 12px;
     box-shadow: none;
 }
@@ -5126,26 +5126,26 @@ body.booking-menu-catalog-active {
 
 .booking-sticky-footer__top strong {
     display: block;
-    color: #f8fbff;
+    color: var(--gray-900);
     font-size: 15px;
 }
 
 .booking-sticky-footer__top small {
     display: block;
     margin-top: 3px;
-    color: rgba(216, 229, 255, 0.72);
+    color: var(--gray-500);
     font-size: 12px;
     line-height: 1.4;
 }
 
 .booking-sticky-footer .booking-summary-empty,
 .booking-sticky-footer .booking-summary-row {
-    color: rgba(226, 232, 240, 0.86);
+    color: var(--gray-700);
 }
 
 .booking-sticky-footer .booking-summary-row strong,
 .booking-sticky-footer .booking-summary-total strong {
-    color: #f8fbff;
+    color: var(--gray-900);
 }
 
 .booking-sticky-footer .booking-package-summary {

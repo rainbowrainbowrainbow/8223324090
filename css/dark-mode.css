@@ -2308,6 +2308,114 @@ body.dark-mode .pinata-service-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
 }
+body.dark-mode .booking-sticky-footer,
+html[data-theme="dark"] .booking-sticky-footer {
+    background: linear-gradient(180deg, rgba(18, 24, 42, 0.96) 0%, rgba(18, 24, 42, 1) 100%);
+    border-color: rgba(76, 201, 240, 0.16);
+}
+body.dark-mode .booking-sticky-footer__top strong,
+html[data-theme="dark"] .booking-sticky-footer__top strong {
+    color: #F8FBFF;
+}
+body.dark-mode .booking-sticky-footer__top small,
+html[data-theme="dark"] .booking-sticky-footer__top small {
+    color: rgba(216, 229, 255, 0.72);
+}
+body.dark-mode .booking-sticky-footer .booking-summary-empty,
+body.dark-mode .booking-sticky-footer .booking-summary-row,
+html[data-theme="dark"] .booking-sticky-footer .booking-summary-empty,
+html[data-theme="dark"] .booking-sticky-footer .booking-summary-row {
+    color: rgba(226, 232, 240, 0.86);
+}
+body.dark-mode .booking-sticky-footer .booking-summary-row strong,
+body.dark-mode .booking-sticky-footer .booking-summary-total strong,
+html[data-theme="dark"] .booking-sticky-footer .booking-summary-row strong,
+html[data-theme="dark"] .booking-sticky-footer .booking-summary-total strong {
+    color: #F8FBFF;
+}
+body.dark-mode .booking-summary-note,
+html[data-theme="dark"] .booking-summary-note {
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.08);
+    color: rgba(253, 230, 138, 0.92);
+}
+body.dark-mode .booking-summary-note strong,
+html[data-theme="dark"] .booking-summary-note strong {
+    color: #FFF7ED;
+}
+body.dark-mode .booking-summary-note--error,
+html[data-theme="dark"] .booking-summary-note--error,
+body.dark-mode .booking-summary-note--danger,
+html[data-theme="dark"] .booking-summary-note--danger {
+    border-color: rgba(248, 113, 113, 0.42);
+    background: rgba(127, 29, 29, 0.28);
+    color: #FECACA;
+}
+body.dark-mode .booking-summary-note--warning,
+body.dark-mode .booking-validation-checklist,
+body.dark-mode .booking-preflight-warning,
+html[data-theme="dark"] .booking-summary-note--warning,
+html[data-theme="dark"] .booking-validation-checklist,
+html[data-theme="dark"] .booking-preflight-warning {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.12);
+    color: #FDE68A;
+}
+body.dark-mode .booking-preflight-retry,
+html[data-theme="dark"] .booking-preflight-retry {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.18);
+    color: #FFFBEB;
+}
+body.dark-mode .booking-preflight-retry:hover,
+body.dark-mode .booking-preflight-retry:focus-visible,
+html[data-theme="dark"] .booking-preflight-retry:hover,
+html[data-theme="dark"] .booking-preflight-retry:focus-visible {
+    border-color: rgba(245, 158, 11, 0.7);
+    background: rgba(245, 158, 11, 0.28);
+}
+body.dark-mode .booking-ticket-control input,
+html[data-theme="dark"] .booking-ticket-control input {
+    background: rgba(15,23,42,0.92);
+    border-color: rgba(148,163,184,0.34);
+    color: #F8FAFC;
+}
+body.dark-mode .booking-ticket-control input:focus,
+html[data-theme="dark"] .booking-ticket-control input:focus {
+    border-color: rgba(45,212,191,0.76);
+    box-shadow: 0 0 0 3px rgba(45,212,191,0.18);
+}
+body.dark-mode .booking-ticket-control output,
+html[data-theme="dark"] .booking-ticket-control output {
+    background: rgba(148,163,184,0.14);
+    color: #F8FAFC;
+}
+body.dark-mode .booking-ticket-quote-state,
+html[data-theme="dark"] .booking-ticket-quote-state {
+    border-color: rgba(96,165,250,0.28);
+    background: rgba(37,99,235,0.18);
+    color: #BFDBFE;
+}
+body.dark-mode .booking-ticket-quote-state.is-error,
+body.dark-mode .booking-ticket-sticky-error,
+html[data-theme="dark"] .booking-ticket-quote-state.is-error,
+html[data-theme="dark"] .booking-ticket-sticky-error {
+    background: rgba(127,29,29,0.28);
+    color: #FECACA;
+}
+body.dark-mode .booking-ticket-line,
+html[data-theme="dark"] .booking-ticket-line {
+    border-bottom-color: rgba(148,163,184,0.22);
+}
+body.dark-mode .booking-ticket-total,
+html[data-theme="dark"] .booking-ticket-total {
+    border-top-color: rgba(148,163,184,0.28);
+    color: #F8FAFC;
+}
+body.dark-mode .booking-ticket-delta,
+html[data-theme="dark"] .booking-ticket-delta {
+    color: #7DD3FC;
+}
 body.dark-mode .booking-workspace-heading strong,
 body.dark-mode .booking-event-toggle-label strong,
 body.dark-mode .maysternya-quick-booking-tools strong,

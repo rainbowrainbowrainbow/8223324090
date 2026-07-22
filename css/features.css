@@ -3430,10 +3430,23 @@ html[data-theme="dark"] .search-result-arrow {
     border: 1px solid var(--border-color, #cbd5e1);
     border-radius: 8px;
     background: var(--input-bg, #fff);
-    color: inherit;
+    color: var(--gray-900, #0f172a);
+    caret-color: currentColor;
     font: inherit;
     font-size: 16px;
     text-align: center;
+}
+
+.booking-ticket-control input:focus {
+    border-color: rgba(20, 184, 166, .72);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, .16);
+    outline: none;
+}
+
+.booking-ticket-control input:disabled,
+.booking-ticket-control input[readonly] {
+    opacity: .74;
+    cursor: not-allowed;
 }
 
 .booking-ticket-control output {
@@ -3442,6 +3455,7 @@ html[data-theme="dark"] .search-result-arrow {
     place-items: center;
     border-radius: 8px;
     background: rgba(148, 163, 184, .14);
+    color: var(--gray-900, #0f172a);
     font-weight: 800;
 }
 
@@ -3457,7 +3471,7 @@ html[data-theme="dark"] .search-result-arrow {
 .booking-ticket-banner { background: rgba(245, 158, 11, .12); color: #92400e; }
 .booking-ticket-banner span { display: block; margin: 4px 0 8px; }
 .booking-ticket-banner button { min-height: 44px; }
-.booking-ticket-quote-state { background: rgba(59, 130, 246, .09); color: var(--text-color, #334155); }
+.booking-ticket-quote-state { border: 1px solid rgba(59, 130, 246, .16); background: rgba(59, 130, 246, .09); color: var(--text-color, #334155); }
 .booking-ticket-quote-state.is-loading { opacity: .75; }
 .booking-ticket-quote-state.is-error,
 .booking-ticket-sticky-error { background: rgba(220, 38, 38, .12); color: #b91c1c; }

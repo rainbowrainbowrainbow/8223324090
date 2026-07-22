@@ -544,17 +544,19 @@ const BookingTickets = (() => {
             status.tabIndex = -1;
             status.classList.toggle('is-loading', state.status === 'loading');
             status.classList.toggle('is-error', state.status === 'error');
-            status.textContent = state.status === 'loading'
+            const statusMessage = state.status === 'loading'
                 ? 'Сервер перераховує квитки…'
                 : state.status === 'error'
                     ? (state.error?.message || 'Не вдалося розрахувати квитки.')
                     : state.quote
-                        ? 'Серверний розрахунок актуальний.'
+                        ? ''
                         : state.mode === 'legacy_entry'
                             ? 'Legacy-сума не зміниться без явного переходу.'
                             : state.mode === 'no_tickets'
                                 ? 'Квитки не додані. Поточне бронювання збережеться без них.'
                                 : 'Вкажіть кількість дітей і дорослих.';
+            status.hidden = !statusMessage;
+            status.textContent = statusMessage;
         }
 
         const lines = Array.isArray(state.quote?.ticketLines) ? state.quote.ticketLines : [];

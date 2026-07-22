@@ -158,6 +158,21 @@ test('version smoke requires stable complete metadata by default', () => {
                 invalidSources: [],
                 warnings: []
             }
+        }),
+        /set VERSION_SMOKE_EXPECT_COMMIT/
+    );
+    assert.throws(
+        () => assertDeploymentMetadata({
+            commitSha: 'a'.repeat(40),
+            sourceBranch: 'codex/production',
+            deploymentMetadata: {
+                status: 'configured',
+                complete: true,
+                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
+                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
+                invalidSources: [],
+                warnings: []
+            }
         }, {
             expectedCommit: 'b'.repeat(40),
             expectedBranch: 'codex/production'

@@ -54,7 +54,8 @@ function assertDeploymentMetadata(versionJson, options = {}) {
     const {
         requireComplete = true,
         expectedCommit = null,
-        expectedBranch = null
+        expectedBranch = null,
+        allowUnverifiedManualCommit = false
     } = options;
 
     if (!Object.prototype.hasOwnProperty.call(versionJson, 'commitSha')) {
@@ -107,6 +108,12 @@ function assertDeploymentMetadata(versionJson, options = {}) {
         if (requireComplete && (!meta.complete || ['partial', 'unavailable', 'conflict'].includes(meta.status))) {
             throw new Error(`/api/version deployment metadata is not complete: ${meta.status}`);
         }
+        if (requireComplete
+            && !expectedCommit
+            && meta.commitShaSource === 'RELEASE_DEPLOY_COMMIT'
+            && !allowUnverifiedManualCommit) {
+            throw new Error('/api/version uses manual RELEASE_DEPLOY_COMMIT metadata; set VERSION_SMOKE_EXPECT_COMMIT to the exact deployed commit');
+        }
     }
     if (requireComplete && !versionJson.commitSha) {
         throw new Error('/api/version commitSha is required for release smoke');
@@ -145,7 +152,8 @@ async function main() {
     assertDeploymentMetadata(versionJson, {
         requireComplete: process.env.VERSION_SMOKE_ALLOW_MISSING_METADATA !== 'true',
         expectedCommit: process.env.VERSION_SMOKE_EXPECT_COMMIT || process.env.RELEASE_DEPLOY_COMMIT || null,
-        expectedBranch: process.env.VERSION_SMOKE_EXPECT_BRANCH || process.env.RELEASE_DEPLOY_BRANCH || null
+        expectedBranch: process.env.VERSION_SMOKE_EXPECT_BRANCH || process.env.RELEASE_DEPLOY_BRANCH || null,
+        allowUnverifiedManualCommit: process.env.VERSION_SMOKE_ALLOW_UNVERIFIED_MANUAL_COMMIT === 'true'
     });
 
     const html = await fetchText(`${base}/`);

@@ -11,13 +11,18 @@ const bookingJs = fs.readFileSync(path.join(repoRoot, 'js', 'booking.js'), 'utf8
 function bookingPreorderConfirmationSandbox(confirmResult) {
     const dom = new JSDOM('<input type="radio" name="bookingStatus" value="confirmed" checked>');
     const calls = [];
-    const sourceStart = bookingJs.indexOf('const BANQUET_PREORDER_MENU_MINIMUMS');
+    const sourceStart = bookingJs.indexOf('async function confirmBookingPreorderWarningsBeforeSubmit');
     const sourceEnd = bookingJs.indexOf('const BOOKING_SUBMIT_INCOMPLETE_TEXT', sourceStart);
-    assert.notEqual(sourceStart, -1, 'banquet preorder constants should exist');
+    assert.notEqual(sourceStart, -1, 'preorder confirmation function should exist');
     assert.notEqual(sourceEnd, -1, 'booking submit constants should follow preorder confirmation');
 
     const sandbox = {
         document: dom.window.document,
+        BookingPackageState: { menuRuleLoadStatus: 'loaded' },
+        requestBookingMenuRuleContract: async () => ({ loaded: true }),
+        bookingPreorderStatusFromFormData: () => ({
+            warnings: [{ code: 'banquet_menu_minimum_below', message: 'Меню нижче мінімуму: потрібно 2 500 ₴, зараз 1 900 ₴, бракує 600 ₴.' }]
+        }),
         confirmModal: async (message, options = {}) => {
             calls.push({ message, options });
             return confirmResult;

@@ -799,16 +799,13 @@ async function loadBanquetEntryPriceRules(queryable) {
 
 async function applyBookingPackageEntryCharge(queryable, booking = {}, options = {}) {
     if (!hasBookingPackageInput(booking)) return booking;
+    if (options.preserveNoTicketPackage === true) {
+        return applyBookingPackage(booking, options);
+    }
     const banquetPreorderRuleContract = options.banquetPreorderRuleContract
         || options.menuRuleContract
         || await loadBanquetPreorderRuleContract(queryable);
     if (hasExplicitTicketPackageInput(booking, options)) {
-        return applyBookingPackage(booking, {
-            ...options,
-            banquetPreorderRuleContract
-        });
-    }
-    if (options.preserveNoTicketPackage === true) {
         return applyBookingPackage(booking, {
             ...options,
             banquetPreorderRuleContract

@@ -24,6 +24,7 @@ const {
     bookingPackageAudit
 } = require('../services/bookingPackage');
 const {
+    buildBanquetPreorderRuleContract,
     buildBanquetPreorderStatus
 } = require('../services/banquetPreorderRules');
 const {
@@ -1034,7 +1035,7 @@ function createBookingActivityPromoHarness(products = []) {
 
 function createBookingDrawerSummaryHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
-    const start = bookingJs.indexOf('const BANQUET_PREORDER_MENU_MINIMUMS');
+    const start = bookingJs.indexOf('function bookingMenuRuleForPlaceType');
     const end = bookingJs.indexOf("if (typeof window !== 'undefined' && window.BookingPackageRenderer)", start);
     assert.ok(start >= 0 && end > start, 'booking drawer summary helper slice exists');
     const selectedProgramValue = options.selectedProgramValue ?? 'pinata';
@@ -1111,6 +1112,20 @@ function createBookingDrawerSummaryHarness(options = {}) {
         document: dom.window.document,
         window: dom.window,
         BookingDrawerState: { validationAttempted: false },
+        BookingPackageState: {
+            menuWorkflow: null,
+            menuRuleContract: buildBanquetPreorderRuleContract([]),
+            menuRuleLoadStatus: 'loaded'
+        },
+        normalizeBookingMenuWorkflow: value => value && typeof value === 'object' ? value : null,
+        collectBookingMenuWorkflowForSubmit: () => null,
+        normalizeBookingMenuWorkflowStatus: (value, mode) => value || (mode === 'actual' ? 'awaiting_actual' : null),
+        normalizeBookingMenuWorkflowSnapshot: value => value && typeof value === 'object' ? value : null,
+        bookingPreorderMoney: (value, fallback = 0) => {
+            const number = Number(value);
+            return Number.isFinite(number) ? Math.round(number * 100) / 100 : fallback;
+        },
+        bookingPreorderFormatMoney: value => String(Number(value || 0)) + ' грн',
         CLIENT_PINATA_FILLER_VALUE: 'client_filler',
         ROOM_FIRST_BANQUET_SERVICE_LINE_ID: 'banquet-service',
         CLIENT_PINATA_FILLER_LABEL: 'Client filler',
@@ -3163,7 +3178,7 @@ test('booking package calculates banquet entry from center price rules by weekda
     const weekdayBooking = await applyBookingPackageEntryCharge({
         async query(sql, params) {
             queries.push({ sql: String(sql), params });
-            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+            return { rows: priceRules.filter(rule => (params[0] || []).includes(rule.code)) };
         }
     }, applyBookingPackage({
         date: '2026-06-23',
@@ -3176,8 +3191,10 @@ test('booking package calculates banquet entry from center price rules by weekda
         ]
     }));
 
-    assert.match(queries[0].sql, /FROM price_rules/);
-    assert.deepEqual([...queries[0].params[0]].sort(), [
+    const entryRuleQuery = queries.find(query => query.params?.[0]?.includes(BANQUET_ENTRY_PRICE_RULE_CODES.weekday));
+    assert.ok(entryRuleQuery, 'entry price rule query exists');
+    assert.match(entryRuleQuery.sql, /FROM price_rules/);
+    assert.deepEqual([...entryRuleQuery.params[0]].sort(), [
         BANQUET_ENTRY_PRICE_RULE_CODES.weekday,
         BANQUET_ENTRY_PRICE_RULE_CODES.weekend
     ].sort());
@@ -3196,7 +3213,7 @@ test('booking package calculates banquet entry from center price rules by weekda
 
     const weekendBooking = await applyBookingPackageEntryCharge({
         async query(_sql, params) {
-            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+            return { rows: priceRules.filter(rule => (params[0] || []).includes(rule.code)) };
         }
     }, applyBookingPackage({
         date: '2026-06-27',

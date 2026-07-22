@@ -761,6 +761,10 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
         if (/^INSERT INTO lines_by_date \(business_context, date, line_id, name, color, from_sheet\)/i.test(sql)) {
             return { rows: [], rowCount: 1 };
         }
+        if (/FROM tasks WHERE COALESCE\(business_context, 'event_genix'\) = \$1/i.test(sql)
+            && /source_module = \$4/i.test(sql)) {
+            return { rows: [], rowCount: 0 };
+        }
         if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
             const [businessContext, relationTypes, ids] = params;
             const relationSet = new Set(Array.isArray(relationTypes) ? relationTypes : [relationTypes]);

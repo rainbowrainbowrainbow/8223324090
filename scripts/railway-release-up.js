@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const pkg = require('../package.json');
 
@@ -60,8 +62,35 @@ function commandText(command, args) {
     return [command, ...args].join(' ');
 }
 
+function resolveCommandExecutable(command) {
+    if (process.platform !== 'win32') return command;
+    if (command === 'git') return 'git.exe';
+    if (command !== 'railway') return command;
+
+    const explicit = String(process.env.RELEASE_RAILWAY_BIN || '').trim();
+    if (explicit) {
+        if (!fs.existsSync(explicit)) fail(`RELEASE_RAILWAY_BIN does not exist: ${explicit}`);
+        return explicit;
+    }
+
+    const lookup = spawnSync('where.exe', ['railway.cmd'], {
+        encoding: 'utf8',
+        shell: false,
+        windowsHide: true
+    });
+    const wrappers = lookup.status === 0
+        ? String(lookup.stdout || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+        : [];
+    for (const wrapper of wrappers) {
+        const executable = path.join(path.dirname(wrapper), 'node_modules', '@railway', 'cli', 'bin', 'railway.exe');
+        if (fs.existsSync(executable)) return executable;
+    }
+    fail('Could not resolve native Railway CLI on Windows. Set RELEASE_RAILWAY_BIN to railway.exe.');
+}
+
 function run(command, args, options = {}) {
-    const result = spawnSync(command, args, {
+    const executable = resolveCommandExecutable(command);
+    const result = spawnSync(executable, args, {
         encoding: 'utf8',
         shell: false,
         stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',

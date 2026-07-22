@@ -55,6 +55,8 @@ On PowerShell/Windows, invoke the helper directly so npm does not consume named 
 node scripts/railway-release-up.js --branch codex/production --service 8223324090 --environment production
 ~~~
 
+The helper resolves the bundled native Railway CLI on Windows. For a non-standard installation, set `RELEASE_RAILWAY_BIN` to the exact `railway.exe` path.
+
 The helper fails closed when the worktree is dirty, when local HEAD is not the same SHA as origin/<branch>, or when the deploy branch is missing. It always deploys with railway up . --path-as-root and sets the non-secret RELEASE_DEPLOY_COMMIT / RELEASE_DEPLOY_BRANCH metadata before deploy. Use raw railway up only if the helper itself is unavailable, and then manually include . --path-as-root plus the metadata variables.
 
 ## Production Branch Rule Exception

@@ -21,4 +21,8 @@ test('Railway release helper deploys the pushed clean worktree as root', () => {
     assert.match(script, /'variable',\s*\n\s*'set'/);
     assert.match(script, /shell:\s*false/);
     assert.doesNotMatch(script, /shell:\s*process\.platform/);
+    assert.match(script, /resolveCommandExecutable/);
+    assert.match(script, /RELEASE_RAILWAY_BIN/);
+    assert.match(script, /where\.exe/);
+    assert.match(script, /railway\.exe/);
 });

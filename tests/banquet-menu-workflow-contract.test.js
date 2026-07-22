@@ -154,7 +154,7 @@ test('menuWorkflow validates modes and keeps finalization for a dedicated endpoi
     );
 });
 
-test('applyBookingPackage stores menuWorkflow without flooring booking finance total', () => {
+test('applyBookingPackage bills actual awaiting menu against the minimum commitment without kitchen fake items', () => {
     const booking = {
         category: 'kitchen',
         room: 'столик 4',
@@ -175,8 +175,12 @@ test('applyBookingPackage stores menuWorkflow without flooring booking finance t
         now: '2026-07-22T12:00:00.000Z'
     });
 
-    assert.equal(booking.price, 1900);
-    assert.equal(booking.extraData.bookingPackage.finalTotal, 1900);
+    assert.equal(booking.price, 2500);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 2500);
+    assert.equal(booking.extraData.bookingPackage.positionsSubtotal, 1900);
+    assert.equal(booking.extraData.bookingPackage.menuChargedSubtotal, 2500);
+    assert.equal(booking.extraData.bookingPackage.billingBasis, 'minimum_commitment');
+    assert.equal(Object.prototype.hasOwnProperty.call(booking.extraData.bookingPackage, 'menuMinimumAdjustment'), false);
     assert.equal(booking.extraData.bookingPackage.menuWorkflow.mode, 'actual');
     assert.equal(booking.extraData.bookingPackage.menuWorkflow.minimumSnapshot.minimumAmount, 2500);
     assert.equal(booking.extraData.bookingPackage.banquetPreorderStatus.menuStatus, 'below_minimum');
@@ -214,7 +218,7 @@ test('applyBookingPackageEntryCharge loads canonical menu rule contract for pack
         now: '2026-07-22T12:00:00.000Z'
     });
 
-    assert.equal(booking.price, 1900);
+    assert.equal(booking.price, 2800);
     assert.equal(booking.extraData.bookingPackage.menuWorkflow.minimumSnapshot.minimumAmount, 2800);
     assert.equal(booking.extraData.bookingPackage.banquetPreorderStatus.requiredMenuMinimum, 2800);
     assert.equal(booking.extraData.bookingPackage.banquetPreorderStatus.recommendedDepositAmount, 2300);

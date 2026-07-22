@@ -7,6 +7,7 @@ const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
 });
 const { buildBanquetPreorderStatus, loadBanquetPreorderRuleContract } = require('./banquetPreorderRules');
 const { hasBanquetMenuWorkflowInput, normalizeBanquetMenuWorkflow } = require('./banquetMenuWorkflow');
+const { buildMenuMinimumAdjustment, calculateBanquetMenuFinancials } = require('./banquetMenuFinalization');
 const BANQUET_ENTRY_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_ENTRY_PRICE_RULE_CODES));
 const BANQUET_ENTRY_SOURCE = 'banquet_entry_price_rules';
 const LEGACY_ENTRY_WARNING_CODES = new Set([
@@ -637,13 +638,31 @@ function buildBookingPackage(booking = {}, options = {}) {
     const entrySubtotal = hasTicketSnapshot
         ? ticketSubtotal
         : (entryResult.entryCharge ? toMoney(entryResult.entrySubtotal) : 0);
-    const finalTotal = toMoney(programBasePrice + positionsSubtotal + entrySubtotal);
     const previousWarnings = hasTicketSnapshot
         ? (Array.isArray(previousPackage.warnings)
             ? previousPackage.warnings.filter(warning => !LEGACY_ENTRY_WARNING_CODES.has(warning?.code))
             : [])
         : previousPackage.warnings;
     const warnings = bookingPackageWarnings(previousWarnings, entryResult.warnings);
+    const banquetPreorderRuleContract = options.banquetPreorderRuleContract || options.menuRuleContract || null;
+    const menuWorkflow = normalizeBanquetMenuWorkflow({
+        booking,
+        previousWorkflow: previousPackage.menuWorkflow || previousPackage.menu_workflow || null,
+        ruleContract: banquetPreorderRuleContract,
+        actor: options.menuWorkflowActor || options.actor || null,
+        now: options.now || null
+    });
+    const menuMinimumSnapshot = menuWorkflow?.minimumSnapshot || menuWorkflow?.minimum_snapshot || {};
+    const menuFinancials = calculateBanquetMenuFinancials({
+        positionsSubtotal,
+        minimumAmount: menuMinimumSnapshot.minimumAmount ?? menuMinimumSnapshot.minimum_amount,
+        programBasePrice,
+        entrySubtotal,
+        mode: menuWorkflow?.mode || 'preorder',
+        status: menuWorkflow?.status || null,
+        allowBelowMinimumException: Boolean(menuWorkflow?.creatorException)
+    });
+    const finalTotal = menuFinancials.finalTotal;
     const result = {
         schemaVersion: hasTicketSnapshot
             ? BOOKING_PACKAGE_SCHEMA_VERSION
@@ -657,16 +676,23 @@ function buildBookingPackage(booking = {}, options = {}) {
         serviceEvents,
         source: 'booking_workspace'
     };
-    const banquetPreorderRuleContract = options.banquetPreorderRuleContract || options.menuRuleContract || null;
-    const menuWorkflow = normalizeBanquetMenuWorkflow({
-        booking,
-        previousWorkflow: previousPackage.menuWorkflow || previousPackage.menu_workflow || null,
-        ruleContract: banquetPreorderRuleContract,
-        actor: options.menuWorkflowActor || options.actor || null,
-        now: options.now || null
-    });
     if (menuWorkflow) {
         result.menuWorkflow = menuWorkflow;
+    }
+    if (menuFinancials.applies) {
+        result.menuChargedSubtotal = menuFinancials.menuChargedSubtotal;
+        result.billingBasis = menuFinancials.billingBasis;
+        if (menuWorkflow?.status === 'finalized') {
+            const minimumAdjustment = buildMenuMinimumAdjustment({
+                amount: menuFinancials.adjustmentAmount,
+                minimumAmount: menuFinancials.minimumAmount,
+                positionsSubtotal,
+                actor: options.menuWorkflowActor || options.actor || null,
+                now: options.now || null,
+                status: 'final'
+            });
+            if (minimumAdjustment) result.menuMinimumAdjustment = minimumAdjustment;
+        }
     }
     const banquetPreorderStatus = buildBanquetPreorderStatus({
         booking,

@@ -4564,6 +4564,58 @@ body.booking-menu-catalog-active {
     font-weight: 900;
 }
 
+.booking-menu-workflow-finalize {
+    display: grid;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.booking-menu-workflow-finalize[hidden] {
+    display: none;
+}
+
+.booking-menu-workflow-finalize__preview {
+    padding: 8px 10px;
+    border: 1px solid rgba(245, 158, 11, .34);
+    border-radius: 9px;
+    background: rgba(255,255,255,.58);
+    color: #78350F;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.booking-menu-workflow-exception {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    color: #78350F;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.booking-menu-workflow-exception input {
+    margin-top: 2px;
+}
+
+.booking-menu-workflow-exception-reason {
+    width: 100%;
+    min-height: 54px;
+    resize: vertical;
+    border: 1px solid rgba(245, 158, 11, .34);
+    border-radius: 9px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,.82);
+    color: #78350F;
+    font: inherit;
+    font-size: 12px;
+}
+
+.booking-menu-workflow-finalize-btn {
+    justify-self: start;
+}
+
 .booking-menu-grid .form-section,
 .booking-menu-banquet-meta .form-section {
     margin-bottom: 8px;

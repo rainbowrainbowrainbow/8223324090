@@ -3423,18 +3423,36 @@ html[data-theme="dark"] .search-result-arrow {
 .booking-ticket-control:last-child { border-bottom: 0; }
 .booking-ticket-control > span { font-size: 13px; font-weight: 700; }
 .booking-ticket-control small { display: block; margin-top: 2px; color: var(--gray-500); font-size: 11px; font-weight: 500; }
-.booking-ticket-control input {
+.booking-ticket-control input,
+.booking-ticket-control output {
     width: 76px;
+    height: 44px;
     min-height: 44px;
-    padding: 8px;
-    border: 1px solid var(--border-color, #cbd5e1);
+    box-sizing: border-box;
     border-radius: 8px;
-    background: var(--input-bg, #fff);
     color: var(--gray-900, #0f172a);
-    caret-color: currentColor;
     font: inherit;
     font-size: 16px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    line-height: 1;
     text-align: center;
+}
+
+.booking-ticket-control input {
+    padding: 0 8px;
+    border: 1px solid var(--border-color, #cbd5e1);
+    background: var(--input-bg, #fff);
+    caret-color: currentColor;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.booking-ticket-control input[type="number"]::-webkit-outer-spin-button,
+.booking-ticket-control input[type="number"]::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
 }
 
 .booking-ticket-control input:focus {
@@ -3450,13 +3468,10 @@ html[data-theme="dark"] .search-result-arrow {
 }
 
 .booking-ticket-control output {
-    min-height: 44px;
     display: grid;
     place-items: center;
-    border-radius: 8px;
+    padding: 0 8px;
     background: rgba(148, 163, 184, .14);
-    color: var(--gray-900, #0f172a);
-    font-weight: 800;
 }
 
 .booking-ticket-banner,

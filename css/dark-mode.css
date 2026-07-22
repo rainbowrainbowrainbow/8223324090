@@ -2308,6 +2308,30 @@ body.dark-mode .pinata-service-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
 }
+body.dark-mode .booking-menu-catalog-open,
+html[data-theme="dark"] .booking-menu-catalog-open {
+    border-color: color-mix(in srgb, var(--primary-light) 42%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary-light);
+}
+body.dark-mode .booking-menu-catalog-open:hover,
+body.dark-mode .booking-menu-catalog-open:focus-visible,
+html[data-theme="dark"] .booking-menu-catalog-open:hover,
+html[data-theme="dark"] .booking-menu-catalog-open:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light) 68%, transparent);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    color: var(--primary-light);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-light) 16%, transparent);
+}
+body.dark-mode .booking-menu-catalog-open span[aria-hidden="true"],
+html[data-theme="dark"] .booking-menu-catalog-open span[aria-hidden="true"] {
+    background: color-mix(in srgb, var(--primary) 24%, transparent);
+    color: var(--primary-light);
+}
+body.dark-mode .booking-menu-catalog-entry-summary,
+html[data-theme="dark"] .booking-menu-catalog-entry-summary {
+    color: var(--text-secondary);
+}
 body.dark-mode .booking-sticky-footer,
 html[data-theme="dark"] .booking-sticky-footer {
     background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 90%, transparent), var(--bg-primary));

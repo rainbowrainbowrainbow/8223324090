@@ -2914,19 +2914,23 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     justify-content: center;
     gap: 8px;
     min-height: 44px;
-    border: 1px solid rgba(20, 184, 166, 0.42);
+    border: 1px solid rgba(13, 148, 136, 0.42);
     border-radius: 10px;
-    background: rgba(20, 184, 166, 0.12);
-    color: #5eead4;
+    background: rgba(20, 184, 166, 0.10);
+    color: #0f766e;
     font-size: 14px;
     font-weight: 900;
     cursor: pointer;
     pointer-events: auto;
 }
 
-.booking-menu-catalog-open:hover {
-    background: rgba(20, 184, 166, 0.18);
-    border-color: rgba(20, 184, 166, 0.68);
+.booking-menu-catalog-open:hover,
+.booking-menu-catalog-open:focus-visible {
+    background: rgba(20, 184, 166, 0.16);
+    border-color: rgba(13, 148, 136, 0.62);
+    color: #115e59;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
 }
 
 .booking-menu-catalog-open span[aria-hidden="true"] {
@@ -2935,13 +2939,13 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     width: 22px;
     height: 22px;
     border-radius: 999px;
-    background: rgba(20, 184, 166, 0.24);
-    color: #99f6e4;
+    background: rgba(20, 184, 166, 0.18);
+    color: #0f766e;
 }
 
 .booking-menu-catalog-entry-summary {
     pointer-events: none;
-    color: rgba(226, 232, 240, 0.76);
+    color: var(--gray-600, #475569);
     font-size: 13px;
     font-weight: 800;
     white-space: nowrap;

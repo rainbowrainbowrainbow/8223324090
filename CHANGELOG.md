@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.130 - Банкет: квитки і меню
+
+### Release / Versioning / (22.07.2026) [codex]
+- **Банкет: квитки і меню** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.129 - Банкет: контраст квитків
 
 ### Release / Versioning / (22.07.2026) [codex]

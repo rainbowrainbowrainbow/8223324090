@@ -49,6 +49,12 @@ For manual production deploys, prefer the repo helper over raw railway up:
 RELEASE_DEPLOY_BRANCH=codex/production npm run release:railway-up -- --service 8223324090 --environment production
 ~~~
 
+On PowerShell/Windows, invoke the helper directly so npm does not consume named flags:
+
+~~~powershell
+node scripts/railway-release-up.js --branch codex/production --service 8223324090 --environment production
+~~~
+
 The helper fails closed when the worktree is dirty, when local HEAD is not the same SHA as origin/<branch>, or when the deploy branch is missing. It always deploys with railway up . --path-as-root and sets the non-secret RELEASE_DEPLOY_COMMIT / RELEASE_DEPLOY_BRANCH metadata before deploy. Use raw railway up only if the helper itself is unavailable, and then manually include . --path-as-root plus the metadata variables.
 
 ## Production Branch Rule Exception

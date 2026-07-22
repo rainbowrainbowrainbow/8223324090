@@ -63,7 +63,7 @@ function commandText(command, args) {
 function run(command, args, options = {}) {
     const result = spawnSync(command, args, {
         encoding: 'utf8',
-        shell: process.platform === 'win32',
+        shell: false,
         stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
         env: { ...process.env, ...options.env }
     });

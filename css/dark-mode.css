@@ -2299,6 +2299,48 @@ body.dark-mode .pinata-service-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
 }
+body.dark-mode .booking-menu-workflow,
+html[data-theme="dark"] .booking-menu-workflow,
+body.dark-mode .booking-menu-workflow-option,
+html[data-theme="dark"] .booking-menu-workflow-option,
+body.dark-mode .booking-menu-workflow-card__grid div,
+html[data-theme="dark"] .booking-menu-workflow-card__grid div {
+    border-color: rgba(148,163,184,0.24);
+    background: rgba(15,23,42,0.46);
+}
+body.dark-mode .booking-menu-workflow-option:has(input:checked),
+html[data-theme="dark"] .booking-menu-workflow-option:has(input:checked) {
+    border-color: rgba(45,212,191,0.52);
+    background: rgba(20,184,166,0.16);
+}
+body.dark-mode .booking-menu-workflow legend,
+body.dark-mode .booking-menu-workflow-option strong,
+html[data-theme="dark"] .booking-menu-workflow legend,
+html[data-theme="dark"] .booking-menu-workflow-option strong {
+    color: #F8FAFC;
+}
+body.dark-mode .booking-menu-workflow-option small,
+body.dark-mode .booking-menu-workflow-hint,
+html[data-theme="dark"] .booking-menu-workflow-option small,
+html[data-theme="dark"] .booking-menu-workflow-hint {
+    color: #CBD5E1;
+}
+body.dark-mode .booking-menu-workflow-card,
+html[data-theme="dark"] .booking-menu-workflow-card {
+    border-color: rgba(245,158,11,0.38);
+    background: rgba(120,53,15,0.22);
+    color: #FDE68A;
+}
+body.dark-mode .booking-menu-workflow-card__head strong,
+body.dark-mode .booking-menu-workflow-card__grid strong,
+html[data-theme="dark"] .booking-menu-workflow-card__head strong,
+html[data-theme="dark"] .booking-menu-workflow-card__grid strong {
+    color: #FFF7ED;
+}
+body.dark-mode .booking-menu-workflow-card__grid span,
+html[data-theme="dark"] .booking-menu-workflow-card__grid span {
+    color: #FCD34D;
+}
 body.dark-mode .booking-workspace-heading strong,
 body.dark-mode .booking-event-toggle-label strong,
 body.dark-mode .maysternya-quick-booking-tools strong,

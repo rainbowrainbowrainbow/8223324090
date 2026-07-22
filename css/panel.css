@@ -4434,6 +4434,132 @@ body.booking-menu-catalog-active {
     margin-top: 10px;
 }
 
+.booking-menu-workflow {
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid rgba(20, 184, 166, .18);
+    border-radius: 12px;
+    background: rgba(20, 184, 166, .06);
+}
+
+.booking-menu-workflow legend {
+    padding: 0 4px;
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.booking-menu-workflow-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.booking-menu-workflow-option {
+    display: flex;
+    min-width: 0;
+    gap: 9px;
+    align-items: flex-start;
+    min-height: 44px;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, .28);
+    border-radius: 10px;
+    background: rgba(255,255,255,.76);
+    cursor: pointer;
+}
+
+.booking-menu-workflow-option:has(input:checked) {
+    border-color: rgba(20, 184, 166, .58);
+    background: rgba(20, 184, 166, .12);
+    box-shadow: 0 0 0 2px rgba(20, 184, 166, .10);
+}
+
+.booking-menu-workflow-option input {
+    margin-top: 3px;
+}
+
+.booking-menu-workflow-option span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.booking-menu-workflow-option strong {
+    color: var(--gray-900, #0f172a);
+    font-size: 13px;
+}
+
+.booking-menu-workflow-option small,
+.booking-menu-workflow-hint {
+    color: var(--gray-600, #475569);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.booking-menu-workflow-hint {
+    margin: 8px 0 0;
+}
+
+.booking-menu-workflow-card {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0 12px;
+    padding: 12px;
+    border: 1px solid rgba(245, 158, 11, .34);
+    border-radius: 12px;
+    background: rgba(255, 251, 235, .86);
+    color: #78350F;
+}
+
+.booking-menu-workflow-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.booking-menu-workflow-card__head strong {
+    color: #78350F;
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.booking-menu-workflow-card__head span,
+.booking-menu-workflow-card p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.booking-menu-workflow-card__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.booking-menu-workflow-card__grid div {
+    min-width: 0;
+    padding: 8px;
+    border-radius: 9px;
+    background: rgba(255,255,255,.64);
+}
+
+.booking-menu-workflow-card__grid span {
+    display: block;
+    color: #92400E;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.booking-menu-workflow-card__grid strong {
+    display: block;
+    margin-top: 2px;
+    color: #78350F;
+    font-size: 13px;
+    font-weight: 900;
+}
+
 .booking-menu-grid .form-section,
 .booking-menu-banquet-meta .form-section {
     margin-bottom: 8px;

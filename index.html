@@ -789,6 +789,27 @@
                             <small>Страви й торти додаються з каталогу, час видачі задається для кожної позиції.</small>
                         </div>
                     </div>
+                    <fieldset id="bookingMenuWorkflowControl" class="booking-menu-workflow" aria-describedby="bookingMenuWorkflowHint">
+                        <legend>Формат меню</legend>
+                        <div class="booking-menu-workflow-options">
+                            <label class="booking-menu-workflow-option">
+                                <input type="radio" name="bookingMenuWorkflowMode" value="preorder" checked>
+                                <span>
+                                    <strong>Передзамовлення</strong>
+                                    <small>Меню має добрати мінімум до збереження підтвердженого бронювання.</small>
+                                </span>
+                            </label>
+                            <label class="booking-menu-workflow-option">
+                                <input type="radio" name="bookingMenuWorkflowMode" value="actual">
+                                <span>
+                                    <strong>Меню по факту</strong>
+                                    <small>Свідомо відкритий чек: фінальна сума буде закрита окремо.</small>
+                                </span>
+                            </label>
+                        </div>
+                        <p id="bookingMenuWorkflowHint" class="booking-menu-workflow-hint">Для меню по факту нижче мінімуму показується окремий статус, без помилкового warning перед збереженням.</p>
+                    </fieldset>
+                    <div id="bookingMenuWorkflowCard" class="booking-menu-workflow-card hidden" hidden aria-live="polite"></div>
                     <div class="booking-menu-catalog-entry">
                         <button type="button" id="bookingMenuCatalogOpenBtn" class="booking-menu-catalog-open">
                             <span aria-hidden="true">+</span>

@@ -457,7 +457,13 @@ const BookingPackageState = {
     catalogInsight: null,
     catalogInsightNudgeTimer: null,
     catalogProductsLoading: false,
-    catalogProductsLastLoadKey: null
+    catalogProductsLastLoadKey: null,
+    menuWorkflow: null,
+    menuWorkflowTouched: false,
+    menuRuleContract: null,
+    menuRuleLoadStatus: 'idle',
+    menuRuleLoadPromise: null,
+    menuRuleError: null
 };
 
 // Booking drawer state lives in js/booking-drawer-state.js.
@@ -2728,6 +2734,7 @@ function syncBookingWorkspaceMode(options = {}) {
     if (primaryAnimatorSection) {
         primaryAnimatorSection.classList.add('hidden');
     }
+    if (kitchenEnabled) requestBookingMenuRuleContract();
     renderBookingPackageSummary();
     if (kitchenEnabled) requestBookingEntryPriceRulesPreview();
     updateBookingSubmitState();
@@ -5428,6 +5435,7 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.catalogFilter = 'all';
     BookingPackageState.catalogEditing = null;
     BookingPackageState.catalogInsight = null;
+    resetBookingMenuWorkflowState();
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
     window.BookingTickets?.reset();
     ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingDepositExpectedAmount', 'bookingDepositManagerNote'].forEach(id => {
@@ -5684,11 +5692,10 @@ function getBookingPackageTotals(program) {
     };
 }
 
-const BANQUET_PREORDER_MENU_MINIMUMS = Object.freeze({
-    room: { label: 'Кімнатка', amount: 4000 },
-    table: { label: 'Столик', amount: 2500 }
-});
-const BANQUET_PREORDER_RECOMMENDED_DEPOSIT = 2000;
+const BOOKING_MENU_WORKFLOW_MODES = Object.freeze(['preorder', 'actual']);
+const BOOKING_MENU_WORKFLOW_MODE_SET = new Set(BOOKING_MENU_WORKFLOW_MODES);
+const BOOKING_MENU_WORKFLOW_ACTUAL_STATUSES = Object.freeze(['awaiting_actual', 'finalized']);
+const BOOKING_MENU_WORKFLOW_ACTUAL_STATUS_SET = new Set(BOOKING_MENU_WORKFLOW_ACTUAL_STATUSES);
 
 function bookingPreorderMoney(value, fallback = 0) {
     if (value === undefined || value === null || value === '') return fallback;
@@ -5698,6 +5705,262 @@ function bookingPreorderMoney(value, fallback = 0) {
     const amount = Number(normalized);
     if (!Number.isFinite(amount) || amount < 0) return fallback;
     return Math.round(amount * 100) / 100;
+}
+
+function bookingPreorderFormatMoney(value) {
+    const amount = bookingPreorderMoney(value, null);
+    return amount === null ? '—' : formatPrice(amount);
+}
+
+function normalizeBookingMenuWorkflowMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    return BOOKING_MENU_WORKFLOW_MODE_SET.has(mode) ? mode : 'preorder';
+}
+
+function normalizeBookingMenuWorkflowStatus(value, mode = 'preorder') {
+    if (mode !== 'actual') return null;
+    const status = String(value || '').trim().toLowerCase();
+    return BOOKING_MENU_WORKFLOW_ACTUAL_STATUS_SET.has(status) ? status : 'awaiting_actual';
+}
+
+function getBookingMenuWorkflowPackage(source = {}) {
+    return source?.bookingPackage
+        || source?.booking_package
+        || source?.extraData?.bookingPackage
+        || source?.extra_data?.bookingPackage
+        || source?.extraData?.booking_package
+        || source?.extra_data?.booking_package
+        || source
+        || {};
+}
+
+function normalizeBookingMenuWorkflowSnapshot(snapshot = null) {
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    return {
+        schemaVersion: Number(snapshot.schemaVersion || snapshot.schema_version || 1) || 1,
+        source: String(snapshot.source || 'price_rules'),
+        capturedAt: snapshot.capturedAt || snapshot.captured_at || null,
+        placeType: snapshot.placeType || snapshot.place_type || null,
+        placeLabel: snapshot.placeLabel || snapshot.place_label || null,
+        ruleCode: snapshot.ruleCode || snapshot.rule_code || null,
+        minimumAmount: bookingPreorderMoney(snapshot.minimumAmount ?? snapshot.minimum_amount, null),
+        recommendedDepositRuleCode: snapshot.recommendedDepositRuleCode || snapshot.recommended_deposit_rule_code || null,
+        recommendedDepositAmount: bookingPreorderMoney(snapshot.recommendedDepositAmount ?? snapshot.recommended_deposit_amount, null),
+        currency: snapshot.currency || 'UAH'
+    };
+}
+
+function normalizeBookingMenuWorkflow(source = null) {
+    const workflow = source && typeof source === 'object' ? source : null;
+    if (!workflow) return null;
+    const mode = normalizeBookingMenuWorkflowMode(workflow.mode || workflow.menuMode || workflow.menu_mode);
+    const status = normalizeBookingMenuWorkflowStatus(workflow.status, mode);
+    const normalized = {
+        schemaVersion: Number(workflow.schemaVersion || workflow.schema_version || 1) || 1,
+        mode
+    };
+    if (status) normalized.status = status;
+    const snapshot = normalizeBookingMenuWorkflowSnapshot(workflow.minimumSnapshot || workflow.minimum_snapshot);
+    if (snapshot) normalized.minimumSnapshot = snapshot;
+    return normalized;
+}
+
+function bookingMenuWorkflowFromBooking(booking = {}) {
+    const packageData = getBookingMenuWorkflowPackage(booking);
+    return normalizeBookingMenuWorkflow(
+        booking?.menuWorkflow
+        || booking?.menu_workflow
+        || packageData.menuWorkflow
+        || packageData.menu_workflow
+    );
+}
+
+function bookingMenuWorkflowCurrentMode() {
+    const checked = document.querySelector('input[name="bookingMenuWorkflowMode"]:checked');
+    return normalizeBookingMenuWorkflowMode(checked?.value || BookingPackageState.menuWorkflow?.mode || 'preorder');
+}
+
+function bookingMenuWorkflowCurrentStatus(mode = bookingMenuWorkflowCurrentMode()) {
+    const workflow = BookingPackageState.menuWorkflow || null;
+    return normalizeBookingMenuWorkflowStatus(workflow?.status, mode);
+}
+
+function updateBookingMenuWorkflowControl() {
+    const mode = bookingMenuWorkflowCurrentMode();
+    document.querySelectorAll('input[name="bookingMenuWorkflowMode"]').forEach(input => {
+        input.checked = input.value === mode;
+    });
+    const control = document.getElementById('bookingMenuWorkflowControl');
+    if (control) control.dataset.mode = mode;
+    const hint = document.getElementById('bookingMenuWorkflowHint');
+    if (hint) {
+        hint.textContent = mode === 'actual'
+            ? 'Меню по факту · очікує закриття. Це не фіналізація і не змінює фінансовий чек.'
+            : 'Передзамовлення перевіряється проти серверного мінімуму перед збереженням підтвердженого бронювання.';
+    }
+}
+
+function setBookingMenuWorkflowMode(mode, options = {}) {
+    const nextMode = normalizeBookingMenuWorkflowMode(mode);
+    const previous = BookingPackageState.menuWorkflow || null;
+    BookingPackageState.menuWorkflow = {
+        ...(previous || {}),
+        schemaVersion: previous?.schemaVersion || 1,
+        mode: nextMode
+    };
+    if (nextMode === 'actual') {
+        BookingPackageState.menuWorkflow.status = normalizeBookingMenuWorkflowStatus(previous?.status, nextMode);
+        requestBookingMenuRuleContract();
+    } else {
+        delete BookingPackageState.menuWorkflow.status;
+        delete BookingPackageState.menuWorkflow.minimumSnapshot;
+    }
+    document.querySelectorAll('input[name="bookingMenuWorkflowMode"]').forEach(input => {
+        input.checked = input.value === nextMode;
+    });
+    if (options.touched) BookingPackageState.menuWorkflowTouched = true;
+    updateBookingMenuWorkflowControl();
+    if (options.render !== false) {
+        renderBookingPackageSummary();
+        updateBookingSubmitState();
+    }
+    if (options.markDirty && window.BookingForm) BookingForm._dirty = true;
+}
+
+function resetBookingMenuWorkflowState() {
+    BookingPackageState.menuWorkflow = null;
+    BookingPackageState.menuWorkflowTouched = false;
+    document.querySelectorAll('input[name="bookingMenuWorkflowMode"]').forEach(input => {
+        input.checked = input.value === 'preorder';
+    });
+    updateBookingMenuWorkflowControl();
+    renderBookingMenuWorkflowCard(null);
+}
+
+function hydrateBookingMenuWorkflowFromPackage(booking = {}) {
+    const workflow = bookingMenuWorkflowFromBooking(booking);
+    BookingPackageState.menuWorkflow = workflow;
+    BookingPackageState.menuWorkflowTouched = false;
+    document.querySelectorAll('input[name="bookingMenuWorkflowMode"]').forEach(input => {
+        input.checked = input.value === (workflow?.mode || 'preorder');
+    });
+    updateBookingMenuWorkflowControl();
+    return workflow;
+}
+
+function collectBookingMenuWorkflowForSubmit(formData = {}) {
+    if (!formData.kitchenEnabled) return null;
+    const mode = bookingMenuWorkflowCurrentMode();
+    const existing = BookingPackageState.menuWorkflow || null;
+    if (mode === 'actual') {
+        return {
+            mode: 'actual',
+            status: normalizeBookingMenuWorkflowStatus(existing?.status, 'actual')
+        };
+    }
+    const shouldPersistPreorder = Boolean(existing)
+        || BookingPackageState.menuWorkflowTouched
+        || !AppState.editingBookingId;
+    return shouldPersistPreorder ? { mode: 'preorder' } : null;
+}
+
+function normalizeBookingMenuRuleAmount(value) {
+    return bookingPreorderMoney(value, null);
+}
+
+function normalizeBookingMenuRuleContract(payload = null) {
+    const source = payload?.rules || payload || {};
+    const minimums = source.menuMinimums || source.menu_minimums || {};
+    const deposit = source.recommendedDeposit || source.recommended_deposit || {};
+    const room = minimums.room || {};
+    const table = minimums.table || {};
+    const normalized = {
+        schemaVersion: Number(source.schemaVersion || source.schema_version || 1) || 1,
+        source: source.source || 'price_rules',
+        currency: source.currency || 'UAH',
+        menuMinimums: {
+            room: {
+                placeType: 'room',
+                placeLabel: room.placeLabel || room.place_label || 'Кімнатка',
+                ruleCode: room.ruleCode || room.rule_code || null,
+                requiredMenuMinimum: normalizeBookingMenuRuleAmount(room.requiredMenuMinimum ?? room.required_menu_minimum)
+            },
+            table: {
+                placeType: 'table',
+                placeLabel: table.placeLabel || table.place_label || 'Столик',
+                ruleCode: table.ruleCode || table.rule_code || null,
+                requiredMenuMinimum: normalizeBookingMenuRuleAmount(table.requiredMenuMinimum ?? table.required_menu_minimum)
+            }
+        },
+        recommendedDeposit: {
+            ruleCode: deposit.ruleCode || deposit.rule_code || null,
+            amount: normalizeBookingMenuRuleAmount(deposit.amount)
+        }
+    };
+    const hasMenuRule = normalized.menuMinimums.room.requiredMenuMinimum !== null
+        || normalized.menuMinimums.table.requiredMenuMinimum !== null;
+    const hasDepositRule = normalized.recommendedDeposit.amount !== null;
+    return hasMenuRule || hasDepositRule ? normalized : null;
+}
+
+function bookingMenuRulesEndpointUrl() {
+    const base = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+    const path = `${base}/bookings/banquet-menu-rules`;
+    return typeof timelineApiUrl === 'function' ? timelineApiUrl(path) : path;
+}
+
+async function loadBookingMenuRuleContract(options = {}) {
+    if (!options.force && BookingPackageState.menuRuleContract) return BookingPackageState.menuRuleContract;
+    if (!options.force && BookingPackageState.menuRuleLoadPromise) return BookingPackageState.menuRuleLoadPromise;
+    BookingPackageState.menuRuleLoadStatus = 'loading';
+    const loader = (async () => {
+        try {
+            const url = bookingMenuRulesEndpointUrl();
+            const requestOptions = { headers: typeof getAuthHeaders === 'function' ? getAuthHeaders(false) : {} };
+            const response = typeof apiFetchWithAuthRetry === 'function'
+                ? await apiFetchWithAuthRetry(url, requestOptions)
+                : await fetch(url, requestOptions);
+            if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
+            if (!response.ok) throw new Error(`Menu rules request failed: ${response.status}`);
+            const payload = await response.json();
+            if (payload?.success === false) throw new Error(payload.error || 'Menu rules unavailable');
+            const contract = normalizeBookingMenuRuleContract(payload.rules || payload);
+            if (!contract) throw new Error('Menu rules response is empty');
+            BookingPackageState.menuRuleContract = contract;
+            BookingPackageState.menuRuleLoadStatus = 'loaded';
+            return contract;
+        } catch (err) {
+            BookingPackageState.menuRuleLoadStatus = 'failed';
+            BookingPackageState.menuRuleError = err?.message || String(err || 'Menu rules unavailable');
+            console.warn('[BookingMenuWorkflow] canonical menu rules unavailable', err);
+            return null;
+        } finally {
+            BookingPackageState.menuRuleLoadPromise = null;
+            renderBookingPackageSummary();
+        }
+    })();
+    BookingPackageState.menuRuleLoadPromise = loader;
+    return loader;
+}
+
+function requestBookingMenuRuleContract(options = {}) {
+    if (!options.force && (BookingPackageState.menuRuleContract || BookingPackageState.menuRuleLoadStatus === 'loading')) {
+        return BookingPackageState.menuRuleLoadPromise || Promise.resolve(BookingPackageState.menuRuleContract);
+    }
+    return loadBookingMenuRuleContract(options);
+}
+
+function bookingMenuRuleForPlaceType(placeType, contract = BookingPackageState.menuRuleContract) {
+    const normalizedPlace = normalizeBookingPreorderPlaceType(placeType);
+    if (!normalizedPlace) return null;
+    const rule = contract?.menuMinimums?.[normalizedPlace] || null;
+    return rule && rule.requiredMenuMinimum !== null ? rule : null;
+}
+
+function bookingRecommendedDepositRule(contract = BookingPackageState.menuRuleContract) {
+    return contract?.recommendedDeposit?.amount !== null && contract?.recommendedDeposit?.amount !== undefined
+        ? contract.recommendedDeposit
+        : null;
 }
 
 function normalizeBookingPreorderPlaceType(value) {
@@ -5727,10 +5990,6 @@ function resolveBookingPreorderPlaceType(input = {}) {
     return normalizeBookingPreorderPlaceType(roomIdentity);
 }
 
-function bookingPreorderFormatMoney(value) {
-    return formatPrice(bookingPreorderMoney(value, 0));
-}
-
 function bookingPreorderDepositAmount(deposit = null) {
     if (!deposit || typeof deposit !== 'object' || !deposit.provided) return null;
     return deposit.expectedAmount === null || deposit.expectedAmount === undefined
@@ -5738,81 +5997,186 @@ function bookingPreorderDepositAmount(deposit = null) {
         : bookingPreorderMoney(deposit.expectedAmount, null);
 }
 
+function bookingMenuWorkflowDraftForFormData(formData = {}) {
+    const existing = BookingPackageState.menuWorkflow || null;
+    const selected = formData.menuWorkflow || collectBookingMenuWorkflowForSubmit(formData);
+    return normalizeBookingMenuWorkflow(selected)
+        || normalizeBookingMenuWorkflow(existing)
+        || { schemaVersion: 1, mode: 'preorder' };
+}
+
+function bookingMenuWorkflowIsActualAwaiting(workflow = null) {
+    return workflow?.mode === 'actual'
+        && normalizeBookingMenuWorkflowStatus(workflow.status, 'actual') === 'awaiting_actual';
+}
+
 function bookingPreorderStatusFromFormData(formData = {}) {
-    if (!formData.kitchenEnabled) return { applies: false, warnings: [] };
+    if (!formData.kitchenEnabled) return { applies: false, warnings: [], menuWarnings: [], depositWarnings: [] };
+    const workflow = bookingMenuWorkflowDraftForFormData(formData);
+    const actualAwaiting = bookingMenuWorkflowIsActualAwaiting(workflow);
     const placeType = resolveBookingPreorderPlaceType({
         room: formData.room,
         roomResourceId: formData.roomResourceId,
         placeType: formData.banquetPlaceType
     });
-    const rule = placeType ? BANQUET_PREORDER_MENU_MINIMUMS[placeType] : null;
+    const rule = bookingMenuRuleForPlaceType(placeType);
     const currentMenuSubtotal = bookingPreorderMoney(formData.positionsSubtotal || 0);
     const currentDepositAmount = bookingPreorderDepositAmount(formData.deposit);
+    const menuWarnings = [];
+    const depositWarnings = [];
     const warnings = [];
-    let menuStatus = 'place_type_unknown';
+    let menuStatus = rule ? 'sufficient' : 'rules_unavailable';
     let missingMenuAmount = null;
+
     if (rule) {
-        missingMenuAmount = bookingPreorderMoney(Math.max(0, rule.amount - currentMenuSubtotal));
+        missingMenuAmount = bookingPreorderMoney(Math.max(0, rule.requiredMenuMinimum - currentMenuSubtotal));
         menuStatus = missingMenuAmount > 0 ? 'below_minimum' : 'sufficient';
         if (missingMenuAmount > 0) {
-            warnings.push({
+            menuWarnings.push({
                 code: 'banquet_menu_minimum_below',
-                message: `Меню нижче мінімуму для ${rule.label.toLowerCase()}: потрібно ${bookingPreorderFormatMoney(rule.amount)}, зараз ${bookingPreorderFormatMoney(currentMenuSubtotal)}, бракує ${bookingPreorderFormatMoney(missingMenuAmount)}. Збереження не блокується.`
+                message: `Меню нижче мінімуму для ${String(rule.placeLabel || '').toLowerCase()}: потрібно ${bookingPreorderFormatMoney(rule.requiredMenuMinimum)}, зараз ${bookingPreorderFormatMoney(currentMenuSubtotal)}, бракує ${bookingPreorderFormatMoney(missingMenuAmount)}. Збереження не блокується.`
             });
         }
+    } else if (BookingPackageState.menuRuleLoadStatus === 'loading') {
+        menuStatus = 'rules_loading';
+    } else if (BookingPackageState.menuRuleLoadStatus === 'failed') {
+        menuWarnings.push({
+            code: 'banquet_menu_rules_unavailable',
+            message: 'Серверні правила мінімуму меню не завантажились. Спробуйте ще раз або перевірте мінімум вручну.'
+        });
+    } else if (placeType) {
+        menuStatus = 'rules_unavailable';
     } else {
-        warnings.push({
+        menuStatus = 'place_type_unknown';
+        menuWarnings.push({
             code: 'banquet_place_type_unknown',
             message: 'Не визначено тип місця для банкету: кімнатка чи столик. Перевірте мінімальне передзамовлення вручну.'
         });
     }
 
-    let depositStatus = 'missing';
-    let missingDepositAmount = BANQUET_PREORDER_RECOMMENDED_DEPOSIT;
-    if (currentDepositAmount !== null) {
-        missingDepositAmount = bookingPreorderMoney(Math.max(0, BANQUET_PREORDER_RECOMMENDED_DEPOSIT - currentDepositAmount));
-        depositStatus = missingDepositAmount > 0 ? 'below_recommended' : 'sufficient';
+    if (!actualAwaiting) warnings.push(...menuWarnings);
+
+    const depositRule = bookingRecommendedDepositRule();
+    let depositStatus = depositRule ? 'missing' : 'rules_unavailable';
+    let missingDepositAmount = depositRule ? depositRule.amount : null;
+    if (depositRule) {
+        if (currentDepositAmount !== null) {
+            missingDepositAmount = bookingPreorderMoney(Math.max(0, depositRule.amount - currentDepositAmount));
+            depositStatus = missingDepositAmount > 0 ? 'below_recommended' : 'sufficient';
+        }
+        if (depositStatus === 'missing') {
+            depositWarnings.push({
+                code: 'banquet_deposit_missing',
+                message: `Завдаток не вказано. Рекомендований завдаток — ${bookingPreorderFormatMoney(depositRule.amount)}. Збереження не блокується.`
+            });
+        } else if (depositStatus === 'below_recommended') {
+            depositWarnings.push({
+                code: 'banquet_deposit_below_recommended',
+                message: `Завдаток нижче рекомендації: потрібно ${bookingPreorderFormatMoney(depositRule.amount)}, зараз ${bookingPreorderFormatMoney(currentDepositAmount)}, бракує ${bookingPreorderFormatMoney(missingDepositAmount)}. Збереження не блокується.`
+            });
+        }
     }
-    if (depositStatus === 'missing') {
-        warnings.push({
-            code: 'banquet_deposit_missing',
-            message: `Завдаток не вказано. Рекомендований завдаток — ${bookingPreorderFormatMoney(BANQUET_PREORDER_RECOMMENDED_DEPOSIT)}. Збереження не блокується.`
-        });
-    } else if (depositStatus === 'below_recommended') {
-        warnings.push({
-            code: 'banquet_deposit_below_recommended',
-            message: `Завдаток нижче рекомендації: потрібно ${bookingPreorderFormatMoney(BANQUET_PREORDER_RECOMMENDED_DEPOSIT)}, зараз ${bookingPreorderFormatMoney(currentDepositAmount)}, бракує ${bookingPreorderFormatMoney(missingDepositAmount)}. Збереження не блокується.`
-        });
-    }
+    warnings.push(...depositWarnings);
 
     return {
         applies: true,
         placeType,
-        placeLabel: rule?.label || null,
-        requiredMenuMinimum: rule?.amount ?? null,
+        placeLabel: rule?.placeLabel || null,
+        ruleCode: rule?.ruleCode || null,
+        requiredMenuMinimum: rule?.requiredMenuMinimum ?? null,
         currentMenuSubtotal,
         missingMenuAmount,
         menuStatus,
-        recommendedDepositAmount: BANQUET_PREORDER_RECOMMENDED_DEPOSIT,
+        recommendedDepositRuleCode: depositRule?.ruleCode || null,
+        recommendedDepositAmount: depositRule?.amount ?? null,
         currentDepositAmount,
         missingDepositAmount,
         depositStatus,
+        menuWorkflow: workflow,
+        actualAwaiting,
+        menuWarnings,
+        depositWarnings,
         warnings
     };
 }
 
 function renderBookingPreorderSummaryWarning(status = null) {
-    const warnings = Array.isArray(status?.warnings) ? status.warnings.filter(Boolean) : [];
-    if (!warnings.length) return '';
-    return `
-        <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning">
-            <strong>Передзамовлення / завдаток</strong>
-            <ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+    const actualAwaiting = Boolean(status?.actualAwaiting);
+    const sections = [];
+    const menuWarnings = actualAwaiting ? [] : (Array.isArray(status?.menuWarnings) ? status.menuWarnings.filter(Boolean) : []);
+    const depositWarnings = Array.isArray(status?.depositWarnings) ? status.depositWarnings.filter(Boolean) : [];
+    if (menuWarnings.length) {
+        sections.push(`
+            <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning booking-preorder-warning--menu">
+                <strong>Передзамовлення</strong>
+                <ul>${menuWarnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+            </div>
+        `);
+    }
+    if (depositWarnings.length) {
+        sections.push(`
+            <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning booking-preorder-warning--deposit">
+                <strong>Завдаток</strong>
+                <ul>${depositWarnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+            </div>
+        `);
+    }
+    return sections.join('');
+}
+
+function bookingMenuWorkflowSnapshotForStatus(status = null) {
+    const workflowSnapshot = normalizeBookingMenuWorkflowSnapshot(status?.menuWorkflow?.minimumSnapshot || status?.menuWorkflow?.minimum_snapshot);
+    if (workflowSnapshot) return workflowSnapshot;
+    return {
+        schemaVersion: 1,
+        source: BookingPackageState.menuRuleContract?.source || 'price_rules',
+        capturedAt: null,
+        placeType: status?.placeType || null,
+        placeLabel: status?.placeLabel || null,
+        ruleCode: status?.ruleCode || null,
+        minimumAmount: status?.requiredMenuMinimum ?? null,
+        recommendedDepositRuleCode: status?.recommendedDepositRuleCode || null,
+        recommendedDepositAmount: status?.recommendedDepositAmount ?? null,
+        currency: BookingPackageState.menuRuleContract?.currency || 'UAH'
+    };
+}
+
+function renderBookingMenuWorkflowCard(status = null) {
+    const card = document.getElementById('bookingMenuWorkflowCard');
+    if (!card) return;
+    const workflow = status?.menuWorkflow || BookingPackageState.menuWorkflow || null;
+    const showActual = status?.actualAwaiting || bookingMenuWorkflowIsActualAwaiting(workflow);
+    if (!showActual || !isBookingKitchenEnabled()) {
+        card.classList.add('hidden');
+        card.hidden = true;
+        card.innerHTML = '';
+        return;
+    }
+    const snapshot = bookingMenuWorkflowSnapshotForStatus(status);
+    const minimum = snapshot.minimumAmount ?? status?.requiredMenuMinimum ?? null;
+    const current = status?.currentMenuSubtotal ?? bookingMenuPositionsSubtotal();
+    const missing = minimum === null ? null : bookingPreorderMoney(Math.max(0, minimum - current));
+    const loading = BookingPackageState.menuRuleLoadStatus === 'loading';
+    card.hidden = false;
+    card.classList.remove('hidden');
+    card.innerHTML = `
+        <div class="booking-menu-workflow-card__head">
+            <strong>Меню по факту · очікує закриття</strong>
+            <span>Попередня сума, не фінальна</span>
         </div>
+        <div class="booking-menu-workflow-card__grid">
+            <div><span>Minimum snapshot</span><strong>${escapeHtml(minimum === null ? (loading ? 'Завантаження...' : '—') : bookingPreorderFormatMoney(minimum))}</strong></div>
+            <div><span>Поточне орієнтовне меню</span><strong>${escapeHtml(bookingPreorderFormatMoney(current))}</strong></div>
+            <div><span>Різниця до мінімуму</span><strong>${escapeHtml(missing === null ? '—' : bookingPreorderFormatMoney(missing))}</strong></div>
+        </div>
+        <p>Меню нижче мінімуму не блокує збереження в цьому режимі. Закриття фінальної суми буде окремим кроком.</p>
     `;
 }
 
 async function confirmBookingPreorderWarningsBeforeSubmit(formData = {}) {
+    if (formData.kitchenEnabled) {
+        await requestBookingMenuRuleContract({ force: BookingPackageState.menuRuleLoadStatus !== 'loaded' });
+    }
     const status = bookingPreorderStatusFromFormData(formData);
     formData.banquetPreorderStatus = status;
     const warnings = Array.isArray(status.warnings) ? status.warnings.filter(Boolean) : [];
@@ -5820,7 +6184,7 @@ async function confirmBookingPreorderWarningsBeforeSubmit(formData = {}) {
     const bookingStatus = document.querySelector('input[name="bookingStatus"]:checked')?.value || 'confirmed';
     if (bookingStatus !== 'confirmed') return true;
     const text = [
-        'Є попередження по передзамовленню або завдатку:',
+        'Є попередження перед збереженням:',
         ...warnings.map(warning => `• ${warning.message || warning.code || warning}`),
         '',
         'Зберегти підтверджене бронювання з цими попередженнями?'
@@ -6133,8 +6497,11 @@ function renderBookingPackageSummary() {
         room: roomLabel || roomValue,
         roomResourceId: document.getElementById('roomSelect')?.selectedOptions?.[0]?.dataset?.resourceId || '',
         positionsSubtotal: menuSubtotal,
-        deposit
+        deposit,
+        menuWorkflow: kitchenEnabled ? bookingMenuWorkflowDraftForFormData({ kitchenEnabled }) : null
     });
+    renderBookingMenuWorkflowCard(banquetPreorderStatus);
+    const bookingSummaryTotalLabel = banquetPreorderStatus.actualAwaiting ? 'Попередня сума' : 'Разом';
     const banquetPreorderWarning = renderBookingPreorderSummaryWarning(banquetPreorderStatus);
     const validationWarningClass = validation.boundaryWarnings?.length
         ? 'booking-summary-note--danger'
@@ -6164,7 +6531,7 @@ function renderBookingPackageSummary() {
         ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Залишок після завдатку</span><strong>${escapeHtml(formatPrice(remainingAfterDeposit))}</strong></div>` : ''}
         ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Попередня загальна сума</span><strong>${escapeHtml(formatPrice(previousFinalTotal))}</strong></div>` : ''}
         ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Зміна загальної суми</span><strong>${escapeHtml(totalDeltaLabel)}</strong></div>` : ''}
-        <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
+        <div class="booking-summary-row booking-summary-total"><span>${escapeHtml(bookingSummaryTotalLabel)}</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
         ${customCakeDecorationWarning ? `<div class="booking-summary-note booking-summary-note--warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
@@ -6255,6 +6622,8 @@ function hydrateBookingPackageWorkspace(booking, options = {}) {
     const tables = document.getElementById('banquetTables');
     if (tables) tables.value = booking?.banquetTables || '';
     setBookingDepositFormData(booking);
+    const hydratedMenuWorkflow = hydrateBookingMenuWorkflowFromPackage(booking);
+    if (hydratedMenuWorkflow?.mode === 'actual') requestBookingMenuRuleContract();
     const ticketBooking = options.ticketBooking || booking;
     window.BookingTickets?.hydrate(ticketBooking, {
         bookingId: options.ticketOwnerBookingId || options.packageOwnerBookingId || ticketBooking?.id || booking?.id || null
@@ -6547,6 +6916,11 @@ function initBookingPackageWorkspace() {
         document.getElementById('bookingTimeStepForward')?.addEventListener('click', () => stepBookingTimeControl(1));
     }
     if (typeof renderBookingTimeOptions === 'function') renderBookingTimeOptions();
+    document.getElementById('bookingMenuWorkflowControl')?.addEventListener('change', (event) => {
+        const input = event.target?.closest?.('input[name="bookingMenuWorkflowMode"]');
+        if (!input) return;
+        setBookingMenuWorkflowMode(input.value, { touched: true, markDirty: true });
+    });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
     initBookingMenuCatalogOpenControl();
     document.getElementById('bookingMenuCatalogCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
@@ -11613,6 +11987,7 @@ function getBookingFormData() {
         kidsCount: childrenCountSource.value || null,
         kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null,
         deposit: kitchenEnabled ? getBookingDepositFormData() : null,
+        menuWorkflow: kitchenEnabled ? collectBookingMenuWorkflowForSubmit({ kitchenEnabled }) : null,
         ticketQuantities: ticketData.ticketQuantities,
         ticketQuote: ticketData.ticketQuote,
         convertLegacyTickets: ticketData.convertLegacy === true
@@ -12261,6 +12636,9 @@ function buildBookingObject(formData, program) {
         }
         : null;
     obj.banquetDeposit = obj.deposit;
+    if (formData.kitchenEnabled && formData.menuWorkflow) {
+        obj.menuWorkflow = { ...formData.menuWorkflow };
+    }
     if (Array.isArray(formData.ticketQuantities)) {
         obj.ticketQuantities = formData.ticketQuantities;
         obj.ticketQuote = formData.ticketQuote || null;
@@ -12279,6 +12657,9 @@ function buildBookingObject(formData, program) {
         serviceEvents: formData.serviceEvents || [],
         source: 'booking_workspace'
     };
+    if (formData.kitchenEnabled && formData.menuWorkflow) {
+        obj.extraData.bookingPackage.menuWorkflow = { ...formData.menuWorkflow };
+    }
     if (Array.isArray(formData.bookingPackageWarnings) && formData.bookingPackageWarnings.length) {
         obj.extraData.bookingPackage.warnings = formData.bookingPackageWarnings;
     }

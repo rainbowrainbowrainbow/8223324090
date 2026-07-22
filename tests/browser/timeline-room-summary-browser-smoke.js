@@ -236,6 +236,19 @@ async function routeMockedApi(page) {
             };
         } else if (pathname === '/api/business/profile') {
             body = businessProfilePayload();
+        } else if (pathname === '/api/timeline/resources') {
+            body = {
+                context: 'event_genix',
+                type: 'room',
+                resources: [{
+                    resourceId: 'room-rock',
+                    name: ROOM_NAME,
+                    type: 'room',
+                    isActive: true,
+                    color: '#2563eb',
+                    sortOrder: 1
+                }]
+            };
         } else if (/^\/api\/lines\/\d{4}-\d{2}-\d{2}$/.test(pathname)) {
             body = ROOM_LINES;
         } else if (/^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(pathname)) {
@@ -277,7 +290,10 @@ async function routeMockedApi(page) {
 }
 
 async function openAuthenticatedTimelinePage(browser, baseUrl) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+    const context = await browser.newContext({
+        viewport: { width: 1440, height: 960 },
+        serviceWorkers: 'block'
+    });
     await context.addInitScript(({ user }) => {
         const token = 'timeline-room-summary-smoke-token';
         localStorage.setItem('pzp_token', token);
@@ -381,14 +397,20 @@ async function openRoomFirstDrawerAndReadSummary(page) {
 
 async function verifyRoomSummarySmoke(page) {
     const result = await openRoomFirstDrawerAndReadSummary(page);
-    assert.equal(result.opened, true, result.error || 'booking drawer opens');
+    const openError = result.error
+        ? `${result.error}; lines=${JSON.stringify(result.lines || [])}`
+        : 'booking drawer opens';
+    assert.equal(result.opened, true, openError);
     assert.equal(result.panelVisible, true, 'booking drawer is visible');
     assert.equal(result.timelineView, 'rooms', 'timeline is in room-first mode');
     assert.equal(result.roomValue, ROOM_NAME, 'room select keeps the stored room value');
 
     assert.equal(result.optionRoomLabel, ROOM_NAME, 'selected option stores clean data-room-label');
     assert.ok(result.optionText.includes(ROOM_NAME), 'dropdown option shows room');
-    assert.ok(result.optionText.includes('15:00'), 'dropdown option shows day booking time hint');
+    assert.ok(
+        result.optionText.includes('15:00'),
+        'dropdown option shows day booking time hint; optionText=' + JSON.stringify(result.optionText)
+    );
     assert.ok(result.optionText.includes(DAY_HINT_CUSTOMER), 'dropdown option shows day booking customer hint');
     assert.ok(result.optionText.includes('+1'), 'dropdown option shows extra day booking count');
 

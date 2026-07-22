@@ -248,5 +248,6 @@ test('actual menu task hook stays explicit and does not use generic booking auto
     assert.doesNotMatch(syncCode, /bookingAutomation\.matchesCondition/);
     assert.match(syncCode, /skipNotifications:\s*true/);
     assert.match(syncCode, /skipHermesOutbox:\s*true/);
+    assert.ok(syncCode.includes('deadline = $5::timestamptz'));
     assert.match(syncCode, /source_module:\s*MENU_ACTUAL_TASK_SOURCE_MODULE/);
 });

@@ -202,7 +202,7 @@ async function updateActiveTask(queryable, task, booking, businessContext, actor
             SET title = $2,
                 description = $3,
                 date = $4,
-                deadline = $5,
+                deadline = $5::timestamptz,
                 priority = 'high',
                 category = 'booking',
                 task_mode = 'work',

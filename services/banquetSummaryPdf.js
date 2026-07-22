@@ -456,6 +456,7 @@ function buildBanquetSummaryPdfView(summary = {}, mode = 'client', options = {})
     view.orderTableColumns = buildOrderTableColumns(view);
     view.orderTableRows = buildOrderTableRows(view, summary);
     view.financeRows = config.showFinance ? financeRowsForSummary(summary) : [];
+    view.menuWorkflowRows = config.showFinance ? menuWorkflowRowsForSummary(summary) : [];
     return view;
 }
 
@@ -919,6 +920,45 @@ function financeTableRows(summary = {}) {
     ]);
 }
 
+function menuWorkflowRowsForSummary(summary = {}) {
+    const workflow = summary.menuWorkflow || summary.menu_workflow || null;
+    if (!workflow || workflow.mode !== 'actual') return [];
+    const currency = summary.totals?.currency || workflow.currency || 'UAH';
+    const rows = [];
+    const add = (label, value) => {
+        const cleanLabel = cleanText(label);
+        const cleanValue = cleanText(value);
+        if (cleanLabel && cleanValue) rows.push([cleanLabel, cleanValue]);
+    };
+    add('Статус', workflow.statusLabel || workflow.status_label || (workflow.status === 'finalized' ? 'Меню по факту · закрито' : 'Меню по факту · очікує закриття'));
+    add('Мінімум меню', formatMoney(nullableNumber(workflow.minimumAmount ?? workflow.minimum_amount) ?? 0, currency));
+    add('Попередня сума', formatMoney(nullableNumber(workflow.positionsSubtotal ?? workflow.positions_subtotal) ?? 0, currency));
+    add('Різниця до мінімуму', formatMoney(nullableNumber(workflow.adjustmentAmount ?? workflow.adjustment_amount) ?? 0, currency));
+    add('Сума меню до оплати', formatMoney(nullableNumber(workflow.chargedSubtotal ?? workflow.charged_subtotal) ?? 0, currency));
+    const finalizedBy = workflow.finalizedBy || workflow.finalized_by || null;
+    const finalizedByLabel = typeof finalizedBy === 'object' && finalizedBy
+        ? (finalizedBy.name || finalizedBy.username || finalizedBy.id)
+        : finalizedBy;
+    if (workflow.status === 'finalized') {
+        add('Закрито', [finalizedByLabel, workflow.finalizedAt || workflow.finalized_at].filter(Boolean).join(' · ') || 'Так');
+    }
+    if (workflow.exceptionReason || workflow.exception_reason) {
+        add('Причина винятку', workflow.exceptionReason || workflow.exception_reason);
+    }
+    const taskSource = workflow.taskSource || workflow.task_source || null;
+    if (taskSource?.sourceModule || taskSource?.source_module) {
+        add('Контрольна задача', 'Закрити меню по факту');
+    }
+    return rows;
+}
+
+function menuWorkflowTableColumns() {
+    return [
+        { label: 'Меню по факту', weight: 1 },
+        { label: 'Стан', weight: 2 }
+    ];
+}
+
 function commentsTableColumns() {
     return [
         { label: 'Тип', weight: 1 },
@@ -1331,8 +1371,14 @@ function drawBanquetSummaryPdf(doc, summary = {}, view) {
     if (view.config.showFinance) {
         const financeColumns = financeTableColumns();
         const financeRows = financeTableRows(summary);
-        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, financeColumns, financeRows) + 2);
+        const menuWorkflowColumns = menuWorkflowTableColumns();
+        const menuWorkflowRows = view.menuWorkflowRows || [];
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, financeColumns, financeRows) + tableStartHeight(doc, menuWorkflowColumns, menuWorkflowRows) + 2);
         drawSectionTitle(doc, 'Фінанси');
+        if (menuWorkflowRows.length) {
+            drawTable(doc, menuWorkflowColumns, menuWorkflowRows);
+            doc.moveDown(0.35);
+        }
         drawTable(doc, financeColumns, financeRows);
     }
 

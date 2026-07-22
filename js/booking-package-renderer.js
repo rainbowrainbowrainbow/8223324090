@@ -192,6 +192,77 @@ function renderBookingPackagePreorderWarning(bookingPackage = {}) {
     `;
 }
 
+function bookingPackageMenuWorkflowOf(bookingPackage = {}) {
+    const workflow = bookingPackage?.menuWorkflow || bookingPackage?.menu_workflow || null;
+    if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return null;
+    const mode = String(workflow.mode || '').trim();
+    if (!mode) return null;
+    const status = String(workflow.status || '').trim() || (mode === 'actual' ? 'awaiting_actual' : '');
+    const snapshot = workflow.minimumSnapshot || workflow.minimum_snapshot || {};
+    const finalization = workflow.finalization || {};
+    const exception = workflow.creatorException || workflow.creator_exception || null;
+    const positionsSubtotal = bookingPackageMoneyValue(bookingPackage.positionsSubtotal ?? bookingPackage.positions_subtotal ?? workflow.positionsSubtotal ?? workflow.positions_subtotal ?? 0);
+    const minimumAmount = bookingPackageMoneyValue(snapshot.minimumAmount ?? snapshot.minimum_amount ?? workflow.minimumAmount ?? workflow.minimum_amount ?? 0);
+    const adjustment = bookingPackage.menuMinimumAdjustment || bookingPackage.menu_minimum_adjustment || {};
+    const adjustmentAmount = bookingPackageMoneyValue(adjustment.amount ?? finalization.adjustmentAmount ?? finalization.adjustment_amount ?? Math.max(0, minimumAmount - positionsSubtotal));
+    const chargedSubtotal = bookingPackageMoneyValue(bookingPackage.menuChargedSubtotal ?? bookingPackage.menu_charged_subtotal ?? workflow.chargedSubtotal ?? workflow.charged_subtotal ?? positionsSubtotal + adjustmentAmount);
+    return {
+        mode,
+        status,
+        statusLabel: workflow.statusLabel || workflow.status_label || (mode === 'actual'
+            ? (status === 'finalized' ? 'Меню по факту · закрито' : 'Меню по факту · очікує закриття')
+            : 'Передзамовлення'),
+        minimumAmount,
+        positionsSubtotal,
+        adjustmentAmount,
+        chargedSubtotal,
+        finalizedAt: workflow.finalizedAt || workflow.finalized_at || finalization.finalizedAt || finalization.finalized_at || null,
+        finalizedBy: workflow.finalizedBy || workflow.finalized_by || finalization.finalizedBy || finalization.finalized_by || null,
+        exceptionReason: exception && typeof exception === 'object' ? String(exception.reason || '').trim() : null
+    };
+}
+
+function bookingPackageActorLabel(actor) {
+    if (!actor) return '';
+    if (typeof actor === 'string') return actor.trim();
+    if (typeof actor !== 'object') return '';
+    return String(actor.name || actor.username || actor.id || '').trim();
+}
+
+function bookingPackageDateTimeLabel(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString('uk-UA', {
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function renderBookingPackageMenuWorkflow(bookingPackage = {}) {
+    const workflow = bookingPackageMenuWorkflowOf(bookingPackage);
+    if (!workflow || workflow.mode !== 'actual') return '';
+    const rows = [
+        ['Мінімум меню', formatPrice(workflow.minimumAmount)],
+        ['Попередня сума', formatPrice(workflow.positionsSubtotal)],
+        ['Різниця до мінімуму', formatPrice(workflow.adjustmentAmount)],
+        ['Сума меню до оплати', formatPrice(workflow.chargedSubtotal)]
+    ];
+    if (workflow.status === 'finalized') {
+        const finalizedParts = [bookingPackageActorLabel(workflow.finalizedBy), bookingPackageDateTimeLabel(workflow.finalizedAt)].filter(Boolean).join(' · ');
+        rows.push(['Закрито', finalizedParts || 'Так']);
+    }
+    if (workflow.exceptionReason) {
+        rows.push(['Причина винятку', workflow.exceptionReason]);
+    }
+    const rowHtml = rows.map(([label, value]) => '<li><span>' + escapeHtml(label) + ':</span> ' + escapeHtml(value) + '</li>').join('');
+    return '\n        <div class="booking-summary-note booking-menu-actual-status' + (workflow.status === 'awaiting_actual' ? ' booking-menu-actual-status--attention' : '') + '">\n            <strong>' + escapeHtml(workflow.statusLabel) + '</strong>\n            <small>Контрольна задача: Закрити меню по факту</small>\n            <ul>' + rowHtml + '</ul>\n        </div>\n    ';
+}
+
 function bookingPackageEntryChargeFromPackage(bookingPackage = {}) {
     if (!bookingPackage || typeof bookingPackage !== 'object') return null;
     const raw = bookingPackage.entryCharge || bookingPackage.entry_charge || null;
@@ -335,6 +406,7 @@ function renderBookingPackageDetail(booking, options = {}) {
     const ticketLines = bookingPackageTicketLines(bookingPackage);
     const ticketRows = renderBookingPackageTicketRows(bookingPackage);
     const preorderWarning = renderBookingPackagePreorderWarning(bookingPackage);
+    const menuWorkflowStatus = renderBookingPackageMenuWorkflow(bookingPackage);
     const entryCharge = ticketLines.length ? null : bookingPackageEntryChargeFromPackage(bookingPackage);
     const entryRow = entryCharge ? renderBookingPackageEntryRow(bookingPackage) : '';
     const businessRowsSummary = showHeaderSummary
@@ -376,6 +448,7 @@ function renderBookingPackageDetail(booking, options = {}) {
             </div>
             ` : ''}
             ${missingServingTimes ? `<div class="booking-summary-note">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій.</div>` : ''}
+            ${menuWorkflowStatus}
             ${preorderWarning}
             ${rows}
             ${entertainmentHtml}

@@ -1061,6 +1061,63 @@ function pushPackageWarnings(warnings, bookingPackage = {}) {
     }
 }
 
+function publicActorLabel(actor = {}) {
+    if (!actor || typeof actor !== 'object') return null;
+    return cleanText(actor.username || actor.name || actor.id, 160);
+}
+
+function buildMenuWorkflowProjection(bookingPackage = {}) {
+    const workflow = bookingPackage.menuWorkflow || bookingPackage.menu_workflow || null;
+    if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return null;
+    const snapshot = workflow.minimumSnapshot || workflow.minimum_snapshot || {};
+    const finalization = workflow.finalization || {};
+    const exception = workflow.creatorException || workflow.creator_exception || null;
+    const adjustment = bookingPackage.menuMinimumAdjustment || bookingPackage.menu_minimum_adjustment || null;
+    const mode = cleanText(workflow.mode, 40);
+    if (!mode) return null;
+    const positionsSubtotal = money(valueOf(
+        bookingPackage,
+        'positionsSubtotal',
+        'positions_subtotal'
+    ));
+    const minimumAmount = money(valueOf(snapshot, 'minimumAmount', 'minimum_amount'));
+    const adjustmentAmount = money(
+        valueOf(adjustment || {}, 'amount')
+        ?? valueOf(finalization, 'adjustmentAmount', 'adjustment_amount')
+        ?? Math.max(0, (minimumAmount || 0) - (positionsSubtotal || 0))
+    );
+    const chargedSubtotal = money(valueOf(bookingPackage, 'menuChargedSubtotal', 'menu_charged_subtotal'));
+    const status = cleanText(workflow.status, 40) || (mode === 'actual' ? 'awaiting_actual' : null);
+    return {
+        schemaVersion: 1,
+        mode,
+        status,
+        statusLabel: mode === 'actual'
+            ? (status === 'finalized' ? 'Меню по факту · закрито' : 'Меню по факту · очікує закриття')
+            : 'Передзамовлення',
+        attention: mode === 'actual' && status === 'awaiting_actual',
+        minimumAmount,
+        positionsSubtotal,
+        adjustmentAmount,
+        chargedSubtotal: chargedSubtotal ?? positionsSubtotal,
+        billingBasis: cleanText(valueOf(bookingPackage, 'billingBasis', 'billing_basis'), 80),
+        finalizedAt: cleanText(workflow.finalizedAt || workflow.finalized_at || finalization.finalizedAt || finalization.finalized_at, 80),
+        finalizedBy: publicActorLabel(workflow.finalizedBy || workflow.finalized_by || finalization.finalizedBy || finalization.finalized_by),
+        exceptionReason: exception ? cleanText(exception.reason, 500) : null,
+        taskSource: mode === 'actual' && status === 'awaiting_actual' ? {
+            sourceType: 'booking',
+            sourceId: null,
+            sourceModule: 'banquet_menu_actual'
+        } : null,
+        adjustment: adjustment && typeof adjustment === 'object' ? {
+            code: cleanText(adjustment.code, 120),
+            title: cleanText(adjustment.title, 160),
+            amount: money(adjustment.amount),
+            financeOnly: adjustment.financeOnly === true || adjustment.finance_only === true,
+            productionList: adjustment.productionList === true || adjustment.production_list === true
+        } : null
+    };
+}
 function buildLegacyBanquetMenuRows(booking = {}) {
     const menu = cleanText(valueOf(booking, 'banquetMenu', 'banquet_menu'), 5000);
     if (!menu) return [];
@@ -1499,7 +1556,7 @@ function summaryDepositOf(mainBooking = {}, canonicalDepositProjection = null) {
     };
 }
 
-function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activitySubtotal, orderTotal, bookingPrice, deposit } = {}) {
+function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activitySubtotal, orderTotal, bookingPrice, deposit, menuWorkflow = null } = {}) {
     const rows = [];
     const currency = CURRENCY;
     const add = (key, label, amount, options = {}) => {
@@ -1517,6 +1574,13 @@ function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activ
 
     const normalizedOrderTotal = money(orderTotal);
     const normalizedBookingPrice = money(bookingPrice);
+    if (menuWorkflow?.mode === 'actual') {
+        add('menu_positions_subtotal', 'Попередня сума меню', menuWorkflow.positionsSubtotal, { hideZero: false });
+        if ((menuWorkflow.adjustmentAmount || 0) > 0) {
+            add('menu_minimum_adjustment', 'Донарахування до мінімуму меню', menuWorkflow.adjustmentAmount, { hideZero: false });
+        }
+        add('menu_charged_subtotal', 'Сума меню до оплати', menuWorkflow.chargedSubtotal, { hideZero: false });
+    }
     add('total', 'Загальна сума', normalizedOrderTotal ?? normalizedBookingPrice, { hideZero: false, role: 'total' });
     const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? 0 : (money(deposit.amount) ?? 0);
     add('deposit', 'Завдаток', depositAmount, { hideZero: false, role: 'line' });
@@ -1693,6 +1757,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
     const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
+    const menuWorkflow = buildMenuWorkflowProjection(bookingPackage);
+    const menuChargedSubtotal = money(valueOf(bookingPackage, 'menuChargedSubtotal', 'menu_charged_subtotal'));
     const entrySubtotal = (hasTicketSnapshot
         ? money(valueOf(ticketPackage, 'ticketSubtotal', 'ticket_subtotal'))
         : money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal')))
@@ -1718,8 +1784,11 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     });
     const rowsTotal = sumKnown(orderRows);
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
-    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
-    const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
+    const menuFinancialSubtotal = menuWorkflow?.mode === 'actual' ? (menuChargedSubtotal ?? menuSubtotal) : menuSubtotal;
+    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuFinancialSubtotal, entrySubtotal);
+    const orderTotal = menuWorkflow?.mode === 'actual'
+        ? (packageTotal ?? computedTotal ?? rowsTotal ?? bookingPrice)
+        : (rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice);
     const deposit = summaryDepositOf(primaryBooking, canonicalDepositProjection || depositProjection);
     const banquetPreorderStatus = buildBanquetPreorderStatus({
         booking: kitchenBooking,
@@ -1745,11 +1814,12 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const finance = buildFinanceRows({
         programBasePrice,
         entrySubtotal,
-        menuSubtotal,
+        menuSubtotal: menuFinancialSubtotal,
         activitySubtotal,
         orderTotal,
         bookingPrice,
-        deposit
+        deposit,
+        menuWorkflow
     });
 
     const explicitChildrenCount = firstNonNull(
@@ -1846,6 +1916,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         totals: {
             programBasePrice,
             menuSubtotal,
+            menuChargedSubtotal: menuFinancialSubtotal,
             entrySubtotal,
             activitySubtotal,
             orderTotal,
@@ -1866,6 +1937,13 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             accountantTaskId: deposit.accountantTaskId || null
         },
         banquetPreorderStatus,
+        menuWorkflow: menuWorkflow ? {
+            ...menuWorkflow,
+            taskSource: menuWorkflow.taskSource ? {
+                ...menuWorkflow.taskSource,
+                sourceId: bookingIdOf(kitchenBooking)
+            } : null
+        } : null,
         finance,
         terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),
         warnings

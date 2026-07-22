@@ -6,6 +6,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const {
     checkServerConflicts,
+    ensureDefaultLines,
     reconcileScheduledAnimatorLines,
     getAnimatorTimelineLines
 } = require('../services/booking');
@@ -42,6 +43,19 @@ function rosterDb(initial = {}) {
                 const removed = [];
                 for (const [lineId, line] of state.lines) {
                     if (line.from_sheet !== true || scheduledIds.has(lineId)) continue;
+                    if (state.bookingLineIds.has(lineId) || state.afishaLineIds.has(lineId)) continue;
+                    state.lines.delete(lineId);
+                    removed.push({ line_id: lineId });
+                }
+                return { rows: removed, rowCount: removed.length };
+            }
+            if (normalized.startsWith('DELETE FROM lines_by_date l') && normalized.includes('l.from_sheet IS DISTINCT FROM true')) {
+                state.writes.push('legacy-delete');
+                const date = params[0];
+                const legacyIds = new Set(['line1', 'line2', `line1_${date}`, `line2_${date}`]);
+                const removed = [];
+                for (const [lineId, line] of state.lines) {
+                    if (line.from_sheet === true || !legacyIds.has(lineId)) continue;
                     if (state.bookingLineIds.has(lineId) || state.afishaLineIds.has(lineId)) continue;
                     state.lines.delete(lineId);
                     removed.push({ line_id: lineId });
@@ -131,6 +145,55 @@ test('generated stale line with booking is preserved as unavailable orphan while
     assert.equal(lines.find(line => line.id === 'manual-host').assignmentAllowed, true);
 });
 
+test('ensureDefaultLines never creates phantom default animator lines for an empty roster', async () => {
+    const db = rosterDb();
+
+    const result = await ensureDefaultLines('2026-07-20', db);
+
+    assert.equal(result.count, 0);
+    assert.equal(db.state.lines.has('line1_2026-07-20'), false);
+    assert.equal(db.state.lines.has('line2_2026-07-20'), false);
+    assert.equal(db.state.writes.includes('insert'), false);
+});
+
+test('roster reconciliation deletes empty exact legacy default lines only', async () => {
+    const db = rosterDb({
+        lines: [
+            { line_id: 'line1', name: 'Аніматор 1', color: '#4CAF50', from_sheet: false },
+            { line_id: 'line2_2026-07-20', name: 'Аніматор 2', color: '#2196F3', from_sheet: false },
+            { line_id: 'manual-host', name: 'Manual host', color: '#8B5CF6', from_sheet: false }
+        ]
+    });
+
+    const result = await reconcileScheduledAnimatorLines('2026-07-20', db);
+
+    assert.equal(result.legacyRemoved, 2);
+    assert.deepEqual(result.legacyRemovedLineIds.sort(), ['line1', 'line2_2026-07-20']);
+    assert.equal(db.state.lines.has('line1'), false);
+    assert.equal(db.state.lines.has('line2_2026-07-20'), false);
+    assert.equal(db.state.lines.has('manual-host'), true);
+});
+
+test('legacy default line with active booking remains visible but unavailable for new assignments', async () => {
+    const db = rosterDb({
+        lines: [
+            { line_id: 'line2_2026-07-20', name: 'Аніматор 2', color: '#2196F3', from_sheet: false },
+            { line_id: 'line1_2026-07-20', name: 'Аніматор 1', color: '#4CAF50', from_sheet: false }
+        ],
+        bookingLineIds: ['line2_2026-07-20']
+    });
+
+    const reconciliation = await reconcileScheduledAnimatorLines('2026-07-20', db);
+    const lines = await getAnimatorTimelineLines('2026-07-20', db);
+
+    assert.equal(reconciliation.legacyRemoved, 1);
+    assert.equal(db.state.lines.has('line1_2026-07-20'), false);
+    const orphan = lines.find(line => line.id === 'line2_2026-07-20');
+    assert.equal(orphan.source, 'legacy_default_orphan');
+    assert.equal(orphan.assignmentAllowed, false);
+    assert.equal(orphan.isUnavailable, true);
+    assert.equal(orphan.orphaned, true);
+});
 test('empty roster returns a virtual unavailable fallback without writes during read', async () => {
     const db = rosterDb();
 
@@ -260,6 +323,8 @@ test('operational consumers use segment windows without duplicating staff rows',
     assert.match(centerRoute, /ss\.date::date = \$2::date[\s\S]*hss_previous\.planned_end <= hss_previous\.planned_start/);
     assert.match(kleshnya, /staffShiftBlocks/);
     assert.match(recurring, /outside animator availability; windows:/);
+    assert.match(recurring, /function legacyDefaultLineWhere/);
+    assert.ok(recurring.includes("line_id NOT IN ('line1', 'line2'"));
     assert.match(timeline, /timelineCandidateFitsAvailability/);
     assert.match(timeline, /grid-cell--outside-availability/);
     assert.match(timelineCss, /\.grid-cell\.grid-cell--outside-availability/);

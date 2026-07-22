@@ -351,10 +351,7 @@ function initializeLocalData() {
     }
 
     if (!localStorage.getItem(CONFIG.STORAGE.LINES)) {
-        localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify([
-            { id: 'line1', name: 'Аніматор 1', color: '#4CAF50' },
-            { id: 'line2', name: 'Аніматор 2', color: '#2196F3' }
-        ]));
+        localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify([]));
     }
 }
 

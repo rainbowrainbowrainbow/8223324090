@@ -1024,6 +1024,14 @@ async function syncScheduledAnimatorLines(date, db = pool) {
     return reconcileScheduledAnimatorLines(date, db);
 }
 
+function isLegacyDefaultAnimatorLineId(lineId, date = '') {
+    const normalized = String(lineId || '').trim();
+    if (!normalized) return false;
+    if (normalized === 'line1' || normalized === 'line2') return true;
+    if (!date) return false;
+    return normalized === `line1_${date}` || normalized === `line2_${date}`;
+}
+
 async function reconcileScheduledAnimatorLines(date, db = pool) {
     const scheduledLines = await getScheduledAnimatorLines(date, db);
 
@@ -1062,12 +1070,15 @@ async function reconcileScheduledAnimatorLines(date, db = pool) {
          RETURNING l.line_id`,
         [date, DEFAULT_TIMELINE_CONTEXT, scheduledIds]
     );
+    const legacyRemoved = await cleanupLegacyDefaultAnimatorLines(date, db);
 
     return {
         source: 'staff_schedule',
         count: scheduledLines.length,
         removed: removed.rowCount || 0,
-        removedLineIds: (removed.rows || []).map(row => String(row.line_id))
+        removedLineIds: (removed.rows || []).map(row => String(row.line_id)),
+        legacyRemoved: legacyRemoved.rowCount || 0,
+        legacyRemovedLineIds: (legacyRemoved.rows || []).map(row => String(row.line_id))
     };
 }
 
@@ -1109,8 +1120,9 @@ async function getAnimatorTimelineLines(date, db = pool) {
         const lineId = String(row.line_id);
         if (scheduledIds.has(lineId)) continue;
         const generated = row.from_sheet === true;
+        const legacyDefault = isLegacyDefaultAnimatorLineId(lineId, date);
         const hasActiveAssignment = row.has_active_booking === true || row.has_active_afisha === true;
-        if (generated && !hasActiveAssignment) continue;
+        if ((generated || legacyDefault) && !hasActiveAssignment) continue;
         lines.push({
             id: lineId,
             resourceId: lineId,
@@ -1122,12 +1134,12 @@ async function getAnimatorTimelineLines(date, db = pool) {
             staffId: generated ? (Number(lineId) || null) : null,
             shiftStart: null,
             shiftEnd: null,
-            shiftStatus: generated ? 'unavailable' : null,
-            source: generated ? 'staff_schedule_orphan' : 'manual',
-            assignmentAllowed: !generated,
-            isUnavailable: generated,
-            orphaned: generated,
-            warning: generated
+            shiftStatus: generated || legacyDefault ? 'unavailable' : null,
+            source: legacyDefault ? 'legacy_default_orphan' : (generated ? 'staff_schedule_orphan' : 'manual'),
+            assignmentAllowed: !generated && !legacyDefault,
+            isUnavailable: generated || legacyDefault,
+            orphaned: generated || legacyDefault,
+            warning: generated || legacyDefault
                 ? 'Аніматор більше не доступний у графіку. Існуючі бронювання збережено, нові призначення заборонені.'
                 : null
         });
@@ -1160,13 +1172,7 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
          WHERE l.date = $1
            AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
            AND l.from_sheet IS DISTINCT FROM true
-           AND (
-                l.line_id IN ('line1', 'line2', 'line1_' || $1, 'line2_' || $1)
-                OR (
-                    l.line_id ~ ('^line[0-9]{1,3}(_' || $1 || ')?$')
-                    AND LOWER(TRIM(l.name)) ~ '^аніматор[[:space:]]+[0-9]+$'
-                )
-           )
+           AND l.line_id IN ('line1', 'line2', 'line1_' || $1, 'line2_' || $1)
            AND NOT EXISTS (
                 SELECT 1 FROM bookings b
                 WHERE b.date = l.date
@@ -1178,7 +1184,8 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
                 SELECT 1 FROM afisha a
                 WHERE a.date = l.date
                   AND a.line_id = l.line_id
-           )`,
+           )
+         RETURNING l.line_id`,
         [date, DEFAULT_TIMELINE_CONTEXT]
     );
 }
@@ -1186,25 +1193,7 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
 // --- Default lines ---
 
 async function ensureDefaultLines(date, db = pool) {
-    const existing = await db.query(
-        "SELECT COUNT(*) FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, 'event_genix') = $2",
-        [date, DEFAULT_TIMELINE_CONTEXT]
-    );
-    const count = parseInt(existing.rows[0].count);
-    // v12.6: Only create defaults when NO lines exist (count === 0)
-    // Previously count < 2 caused phantom "Аніматор 1/2" to reappear after user deleted a line
-    if (count === 0) {
-        const defaults = [
-            { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
-            { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
-        ];
-        for (const line of defaults) {
-            await db.query(
-                'INSERT INTO lines_by_date (business_context, date, line_id, name, color) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
-                [DEFAULT_TIMELINE_CONTEXT, date, line.id, line.name, line.color]
-            );
-        }
-    }
+    return reconcileScheduledAnimatorLines(date, db);
 }
 
 // --- Kyiv timezone helpers ---
@@ -1235,6 +1224,6 @@ module.exports = {
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
     checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate, findRoomConflictAmongCandidates,
     mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, getAnimatorTimelineLines,
-    syncScheduledAnimatorLines, reconcileScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
+    syncScheduledAnimatorLines, reconcileScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines, isLegacyDefaultAnimatorLineId,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

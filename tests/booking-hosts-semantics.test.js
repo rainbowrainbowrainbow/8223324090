@@ -76,7 +76,8 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingJs, /checkConflicts\(candidate\.id, time, duration, excludeId\)/);
     assert.match(bookingJs, /findEditingLinkedBookingIdForLine/);
     assert.match(bookingJs, /selectedAnimatorLineCandidate\('secondAnimatorSelect'/);
-    assert.match(bookingJs, /option\.dataset\.lineId = line\.id/);
+    assert.match(bookingJs, /function normalizeAnimatorLineCandidate/);
+    assert.match(bookingJs, /option\.dataset\.lineId = normalized\.id/);
     assert.match(bookingJs, /function getBookingLineSnapshot/);
     assert.match(bookingJs, /lineName: formData\.lineName/);
     assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
@@ -228,6 +229,11 @@ test('second animator repair audit is dry-run by default and inserts only missin
     assert.match(script, /generateBookingNumber\(client\)/);
     assert.match(script, /repair_second_animator_link/);
     assert.match(script, /repair_second_animator_identity/);
+    assert.match(script, /loadLegacyDefaultAssignments/);
+    assert.match(script, /LEGACY_DEFAULT_ASSIGNMENT/);
+    assert.match(script, /loadNonexistentLineAssignments/);
+    assert.match(script, /NONEXISTENT_LINE/);
+    assert.match(script, /legacy_default_assignments/);
     assert.match(script, /if \(!FIX\) continue/);
     assert.match(script, /Database connection unavailable/);
 });

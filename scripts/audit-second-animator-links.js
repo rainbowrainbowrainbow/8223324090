@@ -49,6 +49,23 @@ const LIMIT = Math.max(0, parseInt(argValue('--limit', '0'), 10) || 0);
 
 const PARK_FALLBACK_LINE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
 
+function dateRangeFilters(alias, params) {
+    const filters = [];
+    if (FROM) {
+        params.push(FROM);
+        filters.push(`${alias}.date >= $${params.length}`);
+    }
+    if (TO) {
+        params.push(TO);
+        filters.push(`${alias}.date <= $${params.length}`);
+    }
+    return filters;
+}
+
+function legacyDefaultLineSql(alias = 'b') {
+    return `${alias}.line_id IN ('line1', 'line2', 'line1_' || ${alias}.date, 'line2_' || ${alias}.date)`;
+}
+
 function fallbackLineColor(value) {
     const numeric = Math.abs(parseInt(value, 10) || 0);
     return PARK_FALLBACK_LINE_COLORS[numeric % PARK_FALLBACK_LINE_COLORS.length];
@@ -187,6 +204,61 @@ async function loadCandidateBookings(client) {
                 b.client_pinata_service_price, b.client_pinata_service_note, b.costume, b.room,
                 b.notes, b.created_by, b.status, b.kids_count, b.group_name
            FROM bookings b
+          WHERE ${filters.join('\n            AND ')}
+          ORDER BY b.date, b.time, b.id
+          ${limitSql}`,
+        params
+    );
+    return result.rows;
+}
+
+async function loadLegacyDefaultAssignments(client) {
+    const params = [CONTEXT];
+    const filters = [
+        `COALESCE(b.business_context, $1) = $1`,
+        `COALESCE(b.status, 'confirmed') <> 'cancelled'`,
+        `NULLIF(BTRIM(b.line_id), '') IS NOT NULL`,
+        legacyDefaultLineSql('b')
+    ];
+    filters.push(...dateRangeFilters('b', params));
+
+    const limitSql = LIMIT > 0 ? `LIMIT ${LIMIT}` : '';
+    const result = await client.query(
+        `SELECT b.id, b.business_context, b.date, b.time, b.line_id, b.linked_to,
+                b.label, b.program_name, b.second_animator, b.status
+           FROM bookings b
+          WHERE ${filters.join('\n            AND ')}
+          ORDER BY b.date, b.time, b.id
+          ${limitSql}`,
+        params
+    );
+    return result.rows;
+}
+
+async function loadNonexistentLineAssignments(client) {
+    const params = [CONTEXT];
+    const filters = [
+        `COALESCE(b.business_context, $1) = $1`,
+        `COALESCE(b.status, 'confirmed') <> 'cancelled'`,
+        `NULLIF(BTRIM(b.line_id), '') IS NOT NULL`,
+        `l.line_id IS NULL`,
+        `ss.staff_id IS NULL`
+    ];
+    filters.push(...dateRangeFilters('b', params));
+
+    const limitSql = LIMIT > 0 ? `LIMIT ${LIMIT}` : '';
+    const result = await client.query(
+        `SELECT b.id, b.business_context, b.date, b.time, b.line_id, b.linked_to,
+                b.label, b.program_name, b.second_animator, b.status
+           FROM bookings b
+      LEFT JOIN lines_by_date l
+             ON l.date = b.date
+            AND COALESCE(l.business_context, $1) = $1
+            AND l.line_id = b.line_id
+      LEFT JOIN staff_schedule ss
+             ON ss.date::text = b.date::text
+            AND ss.staff_id::text = b.line_id
+            AND ss.status IN ('working', 'remote')
           WHERE ${filters.join('\n            AND ')}
           ORDER BY b.date, b.time, b.id
           ${limitSql}`,
@@ -337,8 +409,12 @@ async function main() {
     const lineMismatches = [];
     const repaired = [];
     const alreadyLinked = [];
+    let legacyDefaultAssignments = [];
+    let nonexistentLineAssignments = [];
 
     try {
+        legacyDefaultAssignments = await loadLegacyDefaultAssignments(client);
+        nonexistentLineAssignments = await loadNonexistentLineAssignments(client);
         const candidates = await loadCandidateBookings(client);
         for (const booking of candidates) {
             let line = await resolveSecondAnimatorLine(client, booking, { createLine: false });
@@ -418,7 +494,7 @@ async function main() {
 
     console.log(`Second animator link audit (${FIX ? 'fix' : 'dry-run'})`);
     console.log(`context=${CONTEXT} from=${FROM || '*'} to=${TO || '*'} candidates=${missing.length + alreadyLinked.length + unresolved.length + mismatchKeys.size}`);
-    console.log(`ok=${alreadyLinked.length} missing=${missing.length} line_mismatch=${lineMismatches.length} identity_mismatch=${identityMismatches.length} unresolved=${unresolved.length} repaired=${repaired.length}`);
+    console.log(`ok=${alreadyLinked.length} missing=${missing.length} line_mismatch=${lineMismatches.length} identity_mismatch=${identityMismatches.length} unresolved=${unresolved.length} legacy_default_assignments=${legacyDefaultAssignments.length} nonexistent_line=${nonexistentLineAssignments.length} repaired=${repaired.length}`);
 
     const sample = missing.slice(0, 50);
     for (const item of sample) {
@@ -434,6 +510,13 @@ async function main() {
     for (const item of lineMismatches.slice(0, 50)) {
         console.log(`LINE_MISMATCH ${item.booking.id} -> ${item.existing.id} ${item.booking.date} ${item.booking.time} second="${item.booking.second_animator}" old_line=${item.existing.line_id || '*'} expected_line=${item.line.lineId}`);
     }
+    for (const booking of legacyDefaultAssignments.slice(0, 50)) {
+        console.log(`LEGACY_DEFAULT_ASSIGNMENT ${booking.id} ${booking.date} ${booking.time} line=${booking.line_id} linked_to=${booking.linked_to || '*'} label="${booking.label || booking.program_name || '*'}"`);
+    }
+    for (const booking of nonexistentLineAssignments.slice(0, 50)) {
+        console.log(`NONEXISTENT_LINE ${booking.id} ${booking.date} ${booking.time} line=${booking.line_id} linked_to=${booking.linked_to || '*'} label="${booking.label || booking.program_name || '*'}"`);
+    }
+
     for (const item of repaired) {
         const mode = item.lineOnly ? 'line' : (item.identityOnly ? 'identity' : 'linked');
         console.log(`REPAIRED ${mode} ${item.booking.id} -> ${item.linkedId} second="${item.line.name}" line=${item.line.lineId}`);
@@ -441,6 +524,7 @@ async function main() {
 
     if ((STRICT || FIX) && unresolved.length > 0) process.exitCode = 1;
     if (STRICT && (missing.length + mismatchKeys.size) > repaired.length) process.exitCode = 1;
+    if (STRICT && (legacyDefaultAssignments.length > 0 || nonexistentLineAssignments.length > 0)) process.exitCode = 1;
 }
 
 function friendlyDbError(err) {

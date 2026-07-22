@@ -672,14 +672,14 @@ router.post('/webhook', async (req, res) => {
                     lineParams
                 );
                 const existingNumbers = linesResult.rows
-                    .map(row => { const m = row.name.match(/^Аніматор (\d+)$/); return m ? parseInt(m[1]) : 0; })
+                    .map(row => { const m = String(row.name || '').match(/^(?:Ручний аніматор|Manual animator) (\d+)$/); return m ? parseInt(m[1]) : 0; })
                     .filter(n => n > 0);
                 let nextNum = 1;
                 while (existingNumbers.includes(nextNum)) nextNum++;
 
                 const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
-                const newLineId = `line${Date.now()}_${date}`;
-                const newName = `Аніматор ${nextNum}`;
+                const newLineId = `manual_animator_${Date.now()}_${date}`;
+                const newName = `Ручний аніматор ${nextNum}`;
 
                 await pool.query(
                     `INSERT INTO lines_by_date (business_context, date, line_id, name, color)

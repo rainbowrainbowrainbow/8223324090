@@ -1117,8 +1117,8 @@ test('park timeline keeps legacy animator lines even if resource model is mis-se
 test('park manual animator lines are not deleted as legacy default lines', () => {
     const bookingService = read('services/booking.js');
     const settings = read('js/settings.js');
-    assert.match(bookingService, /\^line\[0-9\]\{1,3\}\(_/);
-    assert.doesNotMatch(bookingService, /\^line\[0-9\]\+\(_/);
+    assert.match(bookingService, /l\.line_id IN \('line1', 'line2', 'line1_' \|\| \$1, 'line2_' \|\| \$1\)/);
+    assert.doesNotMatch(bookingService, /\^line\[0-9\]/);
     assert.match(settings, /id:\s*`manual_animator_\$\{Date\.now\(\)\}_\$\{dateStr\}`/);
 });
 
@@ -2850,6 +2850,28 @@ test('booking edit routing keeps direct activities in animator view and bypasses
     );
 });
 
+test('banquet inspector editor keeps second animator self-conflicts inside the edit context', () => {
+    const booking = read('js/booking.js');
+    const editBlock = booking.slice(
+        booking.indexOf('async function editBooking'),
+        booking.indexOf('// DUPLICATE BOOKING')
+    );
+    const selectBlock = booking.slice(
+        booking.indexOf('async function getAnimatorLinesForBookingDate'),
+        booking.indexOf('function selectedSecondAnimatorLineCandidate')
+    );
+    const activityBlock = booking.slice(
+        booking.indexOf('async function populateSelectedActivitySecondAnimatorSelects'),
+        booking.indexOf('function setSelectedActivityPinataField')
+    );
+
+    assert.match(editBlock, /resolveSecondAnimatorSelectionCandidate\(\{/);
+    assert.match(editBlock, /excludeBookingIds:\s*bookingEditConflictExcludeIds\(\)/);
+    assert.match(selectBlock, /getAnimatorBookingsForBookingDate\(\{ forceAnimatorView: true, fresh: true \}\)/);
+    assert.match(selectBlock, /preserveSelected[\s\S]*animatorSelectConflictExcludeIds/);
+    assert.match(activityBlock, /selectedCandidate[\s\S]*selectedLineId/);
+    assert.match(activityBlock, /excludeBookingIds:\s*bookingEditConflictExcludeIds\(\)/);
+});
 test('booking detail and invite fallbacks use group snapshot arrival instead of member booking time', () => {
     const booking = read('js/booking.js');
     const detailStart = booking.indexOf('function bookingDetailBanquetArrival');

@@ -3732,6 +3732,40 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
     assert.match(apiJs, /\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/booking-set/);
 });
 
+test('booking edit restores the current second animator before availability filtering', () => {
+    const bookingJs = read('js', 'booking.js');
+    const selectBlock = bookingJs.slice(
+        bookingJs.indexOf('async function getAnimatorLinesForBookingDate'),
+        bookingJs.indexOf('function selectedSecondAnimatorLineCandidate')
+    );
+    const resolverBlock = bookingJs.slice(
+        bookingJs.indexOf('async function resolveSecondAnimatorSelectionCandidate'),
+        bookingJs.indexOf('function selectedAnimatorLineCandidate')
+    );
+    const editBlock = bookingJs.slice(
+        bookingJs.indexOf('async function editBooking'),
+        bookingJs.indexOf('// DUPLICATE BOOKING')
+    );
+    const activitySelectBlock = bookingJs.slice(
+        bookingJs.indexOf('async function populateSelectedActivitySecondAnimatorSelects'),
+        bookingJs.indexOf('function setSelectedActivityPinataField')
+    );
+
+    assert.match(selectBlock, /getAnimatorLinesForBookingDate\(\{ forceAnimatorView: true/);
+    assert.match(selectBlock, /async function getAnimatorBookingsForBookingDate/);
+    assert.match(selectBlock, /apiGetBookings\(dateStr, \{ timelineView: 'animators'/);
+    assert.match(resolverBlock, /secondAnimatorLineId[\s\S]*findLinkedSecondAnimatorBooking[\s\S]*byName/);
+    assert.match(selectBlock, /selectedLineId/);
+    assert.match(selectBlock, /animatorSelectConflictExcludeIds\(bookings, candidate\.id, options\)/);
+    assert.match(selectBlock, /checkConflicts\(candidate\.id, time, duration, excludeId\)/);
+    assert.match(activitySelectBlock, /selectedCandidate[\s\S]*excludeBookingIds:\s*bookingEditConflictExcludeIds\(\)/);
+    assert.match(editBlock, /resolveSecondAnimatorSelectionCandidate\(\{[\s\S]*secondAnimatorLineId:\s*bookingSecondAnimatorLineId\(booking\)[\s\S]*populateSecondAnimatorSelect\(\{/);
+    assert.match(bookingJs, /selectedAnimatorSelectHasUnresolvedLine/);
+    assert.match(bookingJs, /second_animator_unresolved/);
+    assert.match(bookingJs, /const banquetEditActive = Boolean\(BookingDrawerState\.banquetEditContext\?\.groupId\)/);
+    assert.match(bookingJs, /const programs = formPrograms\.length \? formPrograms : getSelectedActivityPrograms\(\)/);
+    assert.doesNotMatch(bookingJs.slice(bookingJs.indexOf('async function resolveSecondAnimatorSelect'), bookingJs.indexOf('function updateCustomDuration')), /showNotification\(/);
+});
 test('booking templates use the shared authenticated request headers', () => {
     const bookingForm = read('js', 'booking-form.js');
     const templateBlock = bookingForm.slice(

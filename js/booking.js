@@ -2462,6 +2462,9 @@ function getSmartBookingValidationState() {
         if (Number(formData.program.hosts || 0) > 1 && !formData.secondAnimator) {
             addBookingValidationIssue(state, 'second_animator', 'Оберіть другого ведучого для цієї програми.', ['secondAnimatorSelect']);
         }
+        if (formData.secondAnimator && selectedAnimatorSelectHasUnresolvedLine('secondAnimatorSelect')) {
+            addBookingValidationIssue(state, 'second_animator_unresolved', 'Поточний другий ведучий не прив’язаний до активної лінії. Оберіть виконавця вручну перед збереженням.', ['secondAnimatorSelect']);
+        }
     }
 
     const extraHostToggle = document.getElementById('extraHostToggle');
@@ -9230,6 +9233,14 @@ function selectedActivitySecondAnimatorValidationIssues(program = {}) {
     if (!selectedActivityRequiresSecondAnimator(program)) return [];
     const draft = selectedActivitySecondAnimatorDraft(program);
     const label = program.code || program.name || 'Активність';
+    const selectId = selectedActivitySecondAnimatorSelectId(program.id);
+    if (draft.secondAnimator && selectedAnimatorSelectHasUnresolvedLine(selectId)) {
+        return [{
+            key: `activity_second_animator_unresolved_${program.id}`,
+            message: `${label}: поточний другий ведучий не прив’язаний до активної лінії. Оберіть виконавця вручну перед збереженням.`,
+            fields: [`activitySecondAnimator:${program.id}`]
+        }];
+    }
     return draft.secondAnimator ? [] : [{
         key: `activity_second_animator_${program.id}`,
         message: `${label}: оберіть другого ведучого.`,
@@ -9238,13 +9249,14 @@ function selectedActivitySecondAnimatorValidationIssues(program = {}) {
 }
 
 function selectedActivitySecondAnimatorValidationBlockers(formData = {}) {
-    if (!formData.hasEvent || !bookingMultiActivityEnabled()) return [];
-    const programs = Array.isArray(formData.activityPrograms)
+    const banquetEditActive = Boolean(BookingDrawerState.banquetEditContext?.groupId);
+    if ((!formData.hasEvent && !banquetEditActive) || !bookingMultiActivityEnabled()) return [];
+    const formPrograms = Array.isArray(formData.activityPrograms)
         ? formData.activityPrograms.filter(Boolean)
-        : getSelectedActivityPrograms();
+        : [];
+    const programs = formPrograms.length ? formPrograms : getSelectedActivityPrograms();
     return programs.flatMap(program => selectedActivitySecondAnimatorValidationIssues(program));
 }
-
 function selectedActivityPinataDefaultMode(program = {}) {
     if (!isPinataProgram(program)) return 'none';
     return String(program.id || '') === 'pinata_own' ? 'client' : 'park';
@@ -10579,6 +10591,15 @@ async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
     const programs = getSelectedActivityPrograms().filter(selectedActivityRequiresSecondAnimator);
     const rowsByProgramId = new Map(getSelectedActivityScheduleRows(getSelectedActivityPrograms())
         .map(row => [String(row.programId), row]));
+    const activityBookingFields = getSelectedActivityBookingFields();
+    const sharedLines = await getAnimatorLinesForBookingDate({ forceAnimatorView: true, fresh: options.fresh !== false });
+    if (!isCurrent()) return;
+    const needsPersistedLookup = AppState.editingBookingId || BookingDrawerState.banquetEditContext?.groupId;
+    const sharedBookings = needsPersistedLookup
+        ? await getAnimatorBookingsForBookingDate({ forceAnimatorView: true, fresh: true })
+        : [];
+    if (!isCurrent()) return;
+
     for (const program of programs) {
         if (!isCurrent()) return;
         const programId = String(program.id || '');
@@ -10586,31 +10607,45 @@ async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
         if (!select) continue;
         const draft = selectedActivitySecondAnimatorDraft(program);
         const row = rowsByProgramId.get(programId) || null;
+        const persistedFields = activityBookingFields[programId] || {};
         const selectedName = draft.secondAnimator || '';
-        if (selectedName && !select.value) {
-            const option = document.createElement('option');
-            option.value = selectedName;
-            option.textContent = draft.secondAnimatorLineName || selectedName;
-            if (draft.secondAnimatorLineId) option.dataset.lineId = draft.secondAnimatorLineId;
-            if (draft.secondAnimatorLineName) option.dataset.lineName = draft.secondAnimatorLineName;
-            option.selected = true;
-            select.appendChild(option);
+        const selectedCandidate = await resolveSecondAnimatorSelectionCandidate({
+            storedName: selectedName,
+            secondAnimatorLineId: draft.secondAnimatorLineId,
+            bookingId: persistedFields.bookingId || persistedFields.existingActivityBookingId || null,
+            primaryLineId: persistedFields.lineId || document.getElementById('bookingLine')?.value || '',
+            lines: sharedLines,
+            bookings: sharedBookings
+        });
+        if (selectedName || selectedCandidate) {
+            ensureAnimatorSelectCandidateOption(select, selectedCandidate || {
+                id: draft.secondAnimatorLineId || selectedName,
+                name: selectedName,
+                label: draft.secondAnimatorLineName || selectedName,
+                source: 'activity_second_animator',
+                unresolved: !draft.secondAnimatorLineId
+            }, { selected: true });
         }
         await populateAnimatorSelectById(select.id, 'Оберіть другого ведучого', {
             ...options,
             time: row?.time || '',
-            duration: row?.duration || 0
+            duration: row?.duration || 0,
+            selectedName,
+            selectedLineId: selectedCandidate?.id || draft.secondAnimatorLineId || '',
+            selectedCandidate,
+            excludeBookingIds: bookingEditConflictExcludeIds(),
+            primaryLineId: persistedFields.lineId || document.getElementById('bookingLine')?.value || ''
         });
         if (!isCurrent()) return;
-        if (selectedName && select.value !== selectedName) {
-            const option = document.createElement('option');
-            option.value = selectedName;
-            option.textContent = draft.secondAnimatorLineName || selectedName;
-            if (draft.secondAnimatorLineId) option.dataset.lineId = draft.secondAnimatorLineId;
-            if (draft.secondAnimatorLineName) option.dataset.lineName = draft.secondAnimatorLineName;
-            option.selected = true;
-            select.appendChild(option);
-            select.value = selectedName;
+        const selectedValue = selectedCandidate?.name || selectedName;
+        if (selectedValue && select.value !== selectedValue) {
+            ensureAnimatorSelectCandidateOption(select, selectedCandidate || {
+                id: draft.secondAnimatorLineId || selectedValue,
+                name: selectedValue,
+                label: draft.secondAnimatorLineName || selectedValue,
+                source: 'activity_second_animator',
+                unresolved: !draft.secondAnimatorLineId
+            }, { selected: true });
         }
     }
 }
@@ -11086,36 +11121,99 @@ async function getAnimatorLinesForBookingDate(options = {}) {
     return await getLinesForDate(AppState.selectedDate);
 }
 
+async function getAnimatorBookingsForBookingDate(options = {}) {
+    const dateStr = formatDate(AppState.selectedDate);
+    if (isRoomFirstTimelineView() || options.forceAnimatorView) {
+        const bookings = await apiGetBookings(dateStr, { timelineView: 'animators', fresh: options.fresh !== false });
+        return Array.isArray(bookings) ? bookings : [];
+    }
+    return await getBookingsForDate(AppState.selectedDate, { force: options.force === true });
+}
+
+function normalizeAnimatorLineCandidate(candidate = {}) {
+    const id = String(candidate?.id || candidate?.lineId || candidate?.line_id || candidate?.staffId || '').trim();
+    const name = String(candidate?.name || candidate?.lineName || candidate?.line_name || '').trim();
+    const label = String(candidate?.label || name || id).trim();
+    if (!id || !name) return null;
+    return {
+        ...candidate,
+        id,
+        name,
+        label,
+        source: candidate?.source || 'timeline_line',
+        unresolved: candidate?.unresolved === true
+    };
+}
+
+function ensureAnimatorSelectCandidateOption(selectOrId, candidate = null, options = {}) {
+    const select = typeof selectOrId === 'string' ? document.getElementById(selectOrId) : selectOrId;
+    const normalized = normalizeAnimatorLineCandidate(candidate);
+    if (!select || !normalized) return null;
+    const existing = Array.from(select.options || []).find(option =>
+        String(option.dataset.lineId || '') === normalized.id
+        || String(option.value || '') === normalized.name
+    );
+    const option = existing || document.createElement('option');
+    option.value = normalized.name;
+    option.textContent = normalized.label || normalized.name;
+    option.dataset.lineId = normalized.id;
+    option.dataset.lineName = normalized.name;
+    option.dataset.source = normalized.source || 'timeline_line';
+    if (normalized.unresolved) option.dataset.unresolvedSecondAnimator = 'true';
+    else delete option.dataset.unresolvedSecondAnimator;
+    if (!existing) select.appendChild(option);
+    if (options.selected) {
+        option.selected = true;
+        select.value = normalized.name;
+    }
+    return option;
+}
+
+function selectedAnimatorSelectHasUnresolvedLine(selectId) {
+    const select = document.getElementById(selectId);
+    const option = select?.selectedOptions?.[0];
+    return option?.dataset?.unresolvedSecondAnimator === 'true';
+}
+
 async function populateAnimatorSelectById(selectId, placeholder, options = {}) {
     const select = document.getElementById(selectId);
     if (!select) return;
     const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
-    const lines = await getAnimatorLinesForBookingDate();
+    const lines = await getAnimatorLinesForBookingDate({ forceAnimatorView: true, fresh: options.fresh !== false });
     if (!isCurrent()) return;
-    const currentLineId = document.getElementById('bookingLine')?.value;
-    const currentValue = select.value;
+    const currentLineId = options.primaryLineId || document.getElementById('bookingLine')?.value;
+    const selectedCandidate = normalizeAnimatorLineCandidate(options.selectedCandidate || null);
+    const currentValue = String(options.selectedName || selectedCandidate?.name || select.value || '').trim();
+    const currentSelectedLineId = String(options.selectedLineId || selectedCandidate?.id || select.selectedOptions?.[0]?.dataset?.lineId || '').trim();
     const candidates = await buildAnimatorLineCandidates(lines, currentLineId);
+    if (selectedCandidate) {
+        const exists = candidates.some(line =>
+            String(line.id || '') === selectedCandidate.id
+            || String(line.name || '') === selectedCandidate.name
+        );
+        if (!exists) candidates.unshift(selectedCandidate);
+    }
     if (!isCurrent()) return;
     const filteredCandidates = await filterAnimatorLineCandidatesForOpenSlot(candidates, {
         selectedName: currentValue,
+        selectedLineId: currentSelectedLineId,
         selectId,
         time: options.time,
-        duration: options.duration
+        duration: options.duration,
+        excludeBookingIds: options.excludeBookingIds
     });
     if (!isCurrent()) return;
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
     filteredCandidates.forEach(line => {
-        const option = document.createElement('option');
-        option.value = line.name;
-        option.textContent = line.label || line.name;
-        option.dataset.lineId = line.id;
-        option.dataset.lineName = line.name;
-        option.dataset.source = line.source || 'timeline_line';
-        select.appendChild(option);
+        ensureAnimatorSelectCandidateOption(select, line);
     });
-    if (currentValue) select.value = currentValue;
+    const selectedValue = selectedCandidate?.name || currentValue;
+    if (selectedCandidate && !Array.from(select.options || []).some(option => option.value === selectedCandidate.name)) {
+        ensureAnimatorSelectCandidateOption(select, selectedCandidate);
+    }
+    if (selectedValue) select.value = selectedValue;
 }
 
 async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
@@ -11125,13 +11223,12 @@ async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
     const byKey = new Map();
 
     function addCandidate(candidate) {
-        const id = String(candidate?.id || candidate?.lineId || candidate?.staffId || '').trim();
-        const name = String(candidate?.name || '').trim();
-        if (!id || !name) return;
-        if (id === normalizedCurrentLineId) return;
-        if (currentName && name.toLowerCase() === currentName) return;
-        const key = name.toLowerCase();
-        if (!byKey.has(key)) byKey.set(key, { ...candidate, id, name });
+        const normalized = normalizeAnimatorLineCandidate(candidate);
+        if (!normalized) return;
+        if (normalized.id === normalizedCurrentLineId) return;
+        if (currentName && normalized.name.toLowerCase() === currentName) return;
+        const key = normalized.name.toLowerCase();
+        if (!byKey.has(key)) byKey.set(key, normalized);
     }
 
     (lines || []).forEach(line => addCandidate({
@@ -11153,12 +11250,38 @@ function getAnimatorPickerDuration() {
     return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 0;
 }
 
-function findEditingLinkedBookingIdForLine(bookings = [], lineId) {
-    if (!AppState.editingBookingId || !lineId) return null;
-    return bookings.find(item =>
-        String(item.linkedTo || '') === String(AppState.editingBookingId)
-        && String(item.lineId || '') === String(lineId)
+function normalizeBookingIdList(value) {
+    return (Array.isArray(value) ? value : [value])
+        .map(normalizeBookingIdentity)
+        .filter(Boolean);
+}
+
+function findLinkedSecondAnimatorBooking(bookings = [], bookingId = '', primaryLineId = '') {
+    const normalizedBookingId = normalizeBookingIdentity(bookingId);
+    const normalizedPrimaryLineId = normalizeBookingIdentity(primaryLineId);
+    if (!normalizedBookingId) return null;
+    return (Array.isArray(bookings) ? bookings : []).find(item =>
+        normalizeBookingIdentity(item?.linkedTo || item?.linked_to) === normalizedBookingId
+        && (!normalizedPrimaryLineId || normalizeBookingIdentity(item?.lineId || item?.line_id) !== normalizedPrimaryLineId)
+    ) || null;
+}
+
+function findEditingLinkedBookingIdForLine(bookings = [], lineId, options = {}) {
+    const normalizedLineId = normalizeBookingIdentity(lineId);
+    if (!normalizedLineId) return null;
+    const targetIds = new Set(normalizeBookingIdList(options.excludeBookingIds || AppState.editingBookingId));
+    if (!targetIds.size) return null;
+    return (Array.isArray(bookings) ? bookings : []).find(item =>
+        targetIds.has(normalizeBookingIdentity(item?.linkedTo || item?.linked_to))
+        && normalizeBookingIdentity(item?.lineId || item?.line_id) === normalizedLineId
     )?.id || null;
+}
+
+function animatorSelectConflictExcludeIds(bookings = [], lineId, options = {}) {
+    const ids = new Set(normalizeBookingIdList(options.excludeBookingIds || bookingEditConflictExcludeIds()));
+    const linkedId = findEditingLinkedBookingIdForLine(bookings, lineId, { excludeBookingIds: [...ids] });
+    if (linkedId) ids.add(normalizeBookingIdentity(linkedId));
+    return [...ids].filter(Boolean);
 }
 
 async function filterAnimatorLineCandidatesForOpenSlot(candidates = [], options = {}) {
@@ -11167,17 +11290,76 @@ async function filterAnimatorLineCandidatesForOpenSlot(candidates = [], options 
     const duration = optionDuration > 0 ? optionDuration : getAnimatorPickerDuration();
     if (!time || !duration) return Array.isArray(candidates) ? candidates : [];
     const selectedName = String(options.selectedName || '').trim();
-    const bookings = AppState.editingBookingId ? await getBookingsForDate(AppState.selectedDate) : [];
+    const selectedLineId = normalizeBookingIdentity(options.selectedLineId);
+    const hasEditExclusions = Boolean(AppState.editingBookingId) || normalizeBookingIdList(options.excludeBookingIds).length > 0;
+    const bookings = hasEditExclusions
+        ? await getAnimatorBookingsForBookingDate({ forceAnimatorView: true, fresh: true })
+        : [];
     const filtered = [];
 
     for (const candidate of (candidates || [])) {
-        const preserveSelected = selectedName && String(candidate?.name || '') === selectedName;
-        const excludeId = preserveSelected ? findEditingLinkedBookingIdForLine(bookings, candidate.id) : null;
+        const candidateLineId = normalizeBookingIdentity(candidate?.id);
+        const preserveSelected = Boolean(
+            (selectedLineId && candidateLineId === selectedLineId)
+            || (selectedName && String(candidate?.name || '') === selectedName)
+        );
+        if (preserveSelected && candidate?.unresolved === true) {
+            filtered.push(candidate);
+            continue;
+        }
+        const excludeId = preserveSelected
+            ? animatorSelectConflictExcludeIds(bookings, candidate.id, options)
+            : null;
         const conflict = await checkConflicts(candidate.id, time, duration, excludeId);
         if (!conflict.overlap || preserveSelected) filtered.push(candidate);
     }
 
     return filtered;
+}
+
+function bookingSecondAnimatorLineId(booking = {}) {
+    return booking?.secondAnimatorLineId
+        || booking?.second_animator_line_id
+        || booking?.extraData?.bookingWorkspace?.secondAnimatorLineId
+        || booking?.extra_data?.booking_workspace?.secondAnimatorLineId
+        || null;
+}
+
+function bookingPrimaryLineId(booking = {}) {
+    return booking?.lineId || booking?.line_id || null;
+}
+
+async function resolveSecondAnimatorSelectionCandidate(options = {}) {
+    const storedName = String(options.storedName || options.booking?.secondAnimator || options.booking?.second_animator || '').trim();
+    const explicitLineId = String(options.secondAnimatorLineId || bookingSecondAnimatorLineId(options.booking || {}) || '').trim();
+    const bookingId = options.bookingId || options.booking?.id || options.booking?.bookingId || options.booking?.booking_id || null;
+    const primaryLineId = options.primaryLineId || bookingPrimaryLineId(options.booking || {}) || '';
+    const lines = Array.isArray(options.lines)
+        ? options.lines
+        : await getAnimatorLinesForBookingDate({ forceAnimatorView: true, fresh: options.fresh !== false });
+    const bookings = Array.isArray(options.bookings)
+        ? options.bookings
+        : (bookingId ? await getAnimatorBookingsForBookingDate({ forceAnimatorView: true, fresh: true }) : []);
+    const linked = findLinkedSecondAnimatorBooking(bookings, bookingId, primaryLineId);
+    const linkedLineId = String(linked?.lineId || linked?.line_id || '').trim();
+    const linkedName = String(linked?.lineName || linked?.line_name || linked?.secondAnimatorLineName || linked?.second_animator_line_name || '').trim();
+    const lineId = explicitLineId || linkedLineId;
+    const byId = lineId ? lines.find(line => normalizeBookingIdentity(line?.id) === normalizeBookingIdentity(lineId)) : null;
+    if (byId) return normalizeAnimatorLineCandidate({ ...byId, source: byId.source || 'timeline_line' });
+    if (lineId && linkedName) return normalizeAnimatorLineCandidate({ id: lineId, name: linkedName, label: linkedName, source: 'linked_booking' });
+    const byName = storedName ? lines.find(line => String(line?.name || '') === storedName) : null;
+    if (byName) return normalizeAnimatorLineCandidate({ ...byName, source: byName.source || 'timeline_line' });
+    if (storedName || lineId) {
+        const fallbackName = storedName || lineId;
+        return normalizeAnimatorLineCandidate({
+            id: lineId || fallbackName,
+            name: fallbackName,
+            label: fallbackName,
+            source: 'legacy_second_animator',
+            unresolved: true
+        });
+    }
+    return null;
 }
 
 function selectedAnimatorLineCandidate(selectId, selectedName) {
@@ -11242,31 +11424,31 @@ async function populatePrimaryAnimatorSelect(options = {}) {
 
 // v7.9.3: Resolve secondAnimator name when line was renamed
 // If the stored name doesn't match any current line, tries to find via linked booking
-async function resolveSecondAnimatorSelect(storedName, bookingId) {
+async function resolveSecondAnimatorSelect(storedName, bookingId, options = {}) {
     const select = document.getElementById('secondAnimatorSelect');
-    if (!select) return;
-    select.value = storedName;
-    // If the stored name matches an option, we're done
-    if (select.value === storedName) return;
-
-    // Name doesn't match — try to resolve via linked booking's line_id
-    if (bookingId) {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
-        const mainBooking = bookings.find(b => b.id === bookingId);
-        if (mainBooking) {
-            const linked = bookings.find(b => b.linkedTo === bookingId && b.lineId !== mainBooking.lineId);
-            if (linked) {
-                const lines = await getLinesForDate(AppState.selectedDate);
-                const resolvedLine = lines.find(l => l.id === linked.lineId);
-                if (resolvedLine) {
-                    select.value = resolvedLine.name;
-                    if (select.value === resolvedLine.name) return;
-                }
-            }
-        }
+    if (!select) return null;
+    const candidate = options.selectedCandidate || await resolveSecondAnimatorSelectionCandidate({
+        storedName,
+        bookingId,
+        secondAnimatorLineId: options.secondAnimatorLineId || '',
+        primaryLineId: options.primaryLineId || document.getElementById('bookingLine')?.value || ''
+    });
+    if (candidate) {
+        ensureAnimatorSelectCandidateOption(select, candidate, { selected: true });
+        return candidate;
     }
-    // Couldn't resolve — show warning
-    showNotification(`⚠️ Другий аніматор "${storedName}" не знайдений (лінію перейменовано?)`, 'warning');
+    if (storedName) {
+        const fallback = normalizeAnimatorLineCandidate({
+            id: storedName,
+            name: storedName,
+            label: storedName,
+            source: 'legacy_second_animator',
+            unresolved: true
+        });
+        ensureAnimatorSelectCandidateOption(select, fallback, { selected: true });
+        return fallback;
+    }
+    return null;
 }
 
 function updateCustomDuration() {
@@ -16377,10 +16559,26 @@ async function editBooking(bookingId, options = {}) {
 
     // Другий аніматор
     if (booking.secondAnimator) {
-        await populateSecondAnimatorSelect();
-        await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
+        const secondAnimatorCandidate = await resolveSecondAnimatorSelectionCandidate({
+            booking,
+            bookingId: booking.id,
+            storedName: booking.secondAnimator,
+            secondAnimatorLineId: bookingSecondAnimatorLineId(booking),
+            primaryLineId: bookingPrimaryLineId(booking)
+        });
+        await populateSecondAnimatorSelect({
+            selectedName: booking.secondAnimator,
+            selectedLineId: secondAnimatorCandidate?.id || bookingSecondAnimatorLineId(booking) || '',
+            selectedCandidate: secondAnimatorCandidate,
+            excludeBookingIds: bookingEditConflictExcludeIds(),
+            primaryLineId: bookingPrimaryLineId(booking)
+        });
+        await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id, {
+            selectedCandidate: secondAnimatorCandidate,
+            secondAnimatorLineId: bookingSecondAnimatorLineId(booking),
+            primaryLineId: bookingPrimaryLineId(booking)
+        });
     }
-
     renderBookingPackageSummary();
     syncBookingCommentFieldPresentation(getBookingFormData());
     if (window.BookingForm?.markClean) BookingForm.markClean();

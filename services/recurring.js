@@ -151,6 +151,11 @@ function shouldRunOnDate(template, dateStr, dateObj) {
 
 // --- Line resolution ---
 
+function legacyDefaultLineWhere(dateParam = 1) {
+    return `line_id NOT IN ('line1', 'line2', 'line1_' || $${dateParam}, 'line2_' || $${dateParam})`;
+}
+
+
 /**
  * Resolve an animator line name to a date-specific line_id.
  * Strategy: exact match -> ensure defaults -> retry -> fallback to first line.
@@ -164,7 +169,11 @@ async function resolveLineByName(lineName, date) {
 
     // Try exact match
     const result = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2 AND business_context = $3',
+        `SELECT line_id FROM lines_by_date
+          WHERE date = $1
+            AND name = $2
+            AND business_context = $3
+            AND ${legacyDefaultLineWhere(1)}`,
         [date, lineName, DEFAULT_TIMELINE_CONTEXT]
     );
     if (result.rows.length > 0) return result.rows[0].line_id;
@@ -172,14 +181,23 @@ async function resolveLineByName(lineName, date) {
     // Ensure default lines exist, then retry
     await ensureDefaultLines(date);
     const retry = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2 AND business_context = $3',
+        `SELECT line_id FROM lines_by_date
+          WHERE date = $1
+            AND name = $2
+            AND business_context = $3
+            AND ${legacyDefaultLineWhere(1)}`,
         [date, lineName, DEFAULT_TIMELINE_CONTEXT]
     );
     if (retry.rows.length > 0) return retry.rows[0].line_id;
 
     // Fallback: first available line
     const anyLine = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND business_context = $2 ORDER BY line_id LIMIT 1',
+        `SELECT line_id FROM lines_by_date
+          WHERE date = $1
+            AND business_context = $2
+            AND ${legacyDefaultLineWhere(1)}
+          ORDER BY line_id
+          LIMIT 1`,
         [date, DEFAULT_TIMELINE_CONTEXT]
     );
     return anyLine.rows[0]?.line_id || null;
@@ -191,7 +209,12 @@ async function resolveLineByName(lineName, date) {
 async function getFirstLineForDate(date) {
     await ensureDefaultLines(date);
     const result = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND business_context = $2 ORDER BY line_id LIMIT 1',
+        `SELECT line_id FROM lines_by_date
+          WHERE date = $1
+            AND business_context = $2
+            AND ${legacyDefaultLineWhere(1)}
+          ORDER BY line_id
+          LIMIT 1`,
         [date, DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows[0]?.line_id || null;

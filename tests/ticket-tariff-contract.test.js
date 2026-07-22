@@ -199,4 +199,7 @@ test('live ticket release gate is committed and version-agnostic', () => {
     assert.match(script, /findFreeTestSlot/);
     assert.match(script, /softDeleteAndVerify/);
     assert.match(script, /assertNoUnknownBrowserErrors/);
+    assert.match(script, /discoverSafeTestCustomer/);
+    assert.match(script, /resolveSafeTestCustomer/);
+    assert.match(script, /LIVE_TICKET_QA_CUSTOMER_NAME/);
 });

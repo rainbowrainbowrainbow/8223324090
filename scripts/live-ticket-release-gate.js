@@ -22,6 +22,7 @@ const ROOM_RESOURCE_ID = String(process.env.LIVE_TICKET_QA_ROOM_ID || 'room-yell
 const ROOM_NAME = String(process.env.LIVE_TICKET_QA_ROOM_NAME || 'Жовтий стіл').trim();
 const TIMEOUT_MS = Number(process.env.LIVE_TICKET_QA_TIMEOUT_MS || 30000);
 const QA_CUSTOMER_ID = Number(process.env.LIVE_TICKET_QA_CUSTOMER_ID || 0);
+const QA_CUSTOMER_NAME = String(process.env.LIVE_TICKET_QA_CUSTOMER_NAME || '').trim();
 const ARTIFACT_ROOT = path.join(
     __dirname,
     '..',
@@ -189,6 +190,55 @@ async function validateSafeTestCustomer(token, customerId) {
     assert.equal(Number(customer?.id), customerId, 'safe QA customer id round-trips');
     assert.match(String(customer?.name || ''), /^Codex QA\b/i, 'safe QA customer marker');
     return customerId;
+}
+
+function normalizeQaCustomerName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function isSafeQaCustomer(customer) {
+    return /^Codex QA\b/i.test(normalizeQaCustomerName(customer?.name));
+}
+
+function compareCustomersById(first, second) {
+    return Number(first?.id || 0) - Number(second?.id || 0);
+}
+
+async function discoverSafeTestCustomer(token) {
+    const search = QA_CUSTOMER_NAME || 'Codex QA';
+    const body = await fetchJson(
+        scopedPath('/api/customers', { search, limit: 100, sortBy: 'name' }),
+        { token }
+    );
+    const safeCustomers = (Array.isArray(body?.customers) ? body.customers : [])
+        .filter(isSafeQaCustomer);
+    assert.ok(safeCustomers.length > 0, 'safe QA customer discovery found a Codex QA customer');
+
+    const exactName = normalizeQaCustomerName(QA_CUSTOMER_NAME).toLowerCase();
+    if (exactName) {
+        const exactMatches = safeCustomers.filter(customer => (
+            normalizeQaCustomerName(customer?.name).toLowerCase() === exactName
+        ));
+        assert.equal(exactMatches.length, 1, 'LIVE_TICKET_QA_CUSTOMER_NAME matches exactly one safe QA customer');
+        return Number(exactMatches[0].id);
+    }
+
+    const banquetCandidates = safeCustomers.filter(customer => (
+        /(admission|banquet|ticket)/i.test(normalizeQaCustomerName(customer?.name))
+    ));
+    const selected = [...(banquetCandidates.length ? banquetCandidates : safeCustomers)]
+        .sort(compareCustomersById)[0];
+    assert.ok(Number.isInteger(Number(selected?.id)) && Number(selected.id) > 0, 'safe QA customer discovery returns id');
+    console.log('[qa customer] selected ' + selected.id + ': ' + normalizeQaCustomerName(selected.name));
+    return Number(selected.id);
+}
+
+async function resolveSafeTestCustomer(token, configuredCustomerId) {
+    if (Number.isInteger(configuredCustomerId) && configuredCustomerId > 0) {
+        return validateSafeTestCustomer(token, configuredCustomerId);
+    }
+    const discoveredCustomerId = await discoverSafeTestCustomer(token);
+    return validateSafeTestCustomer(token, discoveredCustomerId);
 }
 
 function addDays(dateText, offset) {
@@ -1031,7 +1081,7 @@ async function main() {
     const managerSession = await managerImpersonationSession();
     await verifyRole(seniorSession, 'senior_manager');
     await verifyRole(managerSession, 'manager');
-    const safeCustomerId = await validateSafeTestCustomer(seniorSession.token, QA_CUSTOMER_ID);
+    const safeCustomerId = await resolveSafeTestCustomer(seniorSession.token, QA_CUSTOMER_ID);
     const weekdaySlot = await findFreeTestSlot(managerSession.token, {
         startDate: BOOKING_DATE,
         wantWeekend: false

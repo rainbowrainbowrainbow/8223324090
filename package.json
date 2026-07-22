@@ -58,7 +58,7 @@
     "repair:banquet-pinatas": "node scripts/banquet-production-recovery.js recover",
     "test:banquet-arrival-migrations": "node --test tests/banquet-guest-arrival-migrations.test.js",
     "test:backup-recovery": "node --test tests/backup-artifact.test.js tests/backup-recovery-contract.test.js tests/backup-inventory-contract.test.js",
-    "test:version-tooling": "node --test tests/version-sync-tooling.test.js tests/release-metadata.test.js",
+    "test:version-tooling": "node --test tests/version-sync-tooling.test.js tests/release-metadata.test.js tests/release-railway-up-static.test.js",
     "test:api:account-access": "node --test tests/api-account-access.test.js",
     "test:hr-release-b": "node --test tests/hr-profession-conditions.test.js tests/hr-profession-checklist-migration.test.js tests/hr-profession-checklists.test.js tests/hr-onboarding-checklist-sync.test.js tests/profile-hr-professions-foundation.test.js tests/hr-profession-readiness-static.test.js tests/training-course-progress.test.js tests/payroll-profiles-migration.test.js tests/hr-payroll-profiles-service.test.js",
     "test:unit:hr-org-tree": "node --test tests/hr-org-tree-regressions.test.js",
@@ -122,7 +122,8 @@
     "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
-    "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""
+    "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\"",
+    "release:railway-up": "node scripts/railway-release-up.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

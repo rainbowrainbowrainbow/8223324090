@@ -1,0 +1,168 @@
+#!/usr/bin/env node
+'use strict';
+
+const { spawnSync } = require('node:child_process');
+const pkg = require('../package.json');
+
+const DEFAULT_SERVICE = '8223324090';
+const DEFAULT_ENVIRONMENT = 'production';
+
+function parseArgs(argv) {
+    const options = {
+        service: process.env.RELEASE_RAILWAY_SERVICE || process.env.RAILWAY_SERVICE || DEFAULT_SERVICE,
+        environment: process.env.RELEASE_RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT || DEFAULT_ENVIRONMENT,
+        branch: process.env.RELEASE_DEPLOY_BRANCH || '',
+        commit: process.env.RELEASE_DEPLOY_COMMIT || '',
+        message: process.env.RELEASE_DEPLOY_MESSAGE || '',
+        dryRun: false,
+        skipVariableSet: false,
+        skipRemoteCheck: false
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === '--dry-run') {
+            options.dryRun = true;
+        } else if (arg === '--skip-variable-set') {
+            options.skipVariableSet = true;
+        } else if (arg === '--skip-remote-check') {
+            options.skipRemoteCheck = true;
+        } else if (arg === '--service') {
+            options.service = requireValue(argv, index += 1, arg);
+        } else if (arg === '--environment') {
+            options.environment = requireValue(argv, index += 1, arg);
+        } else if (arg === '--branch') {
+            options.branch = requireValue(argv, index += 1, arg);
+        } else if (arg === '--commit') {
+            options.commit = requireValue(argv, index += 1, arg);
+        } else if (arg === '--message') {
+            options.message = requireValue(argv, index += 1, arg);
+        } else {
+            fail(`Unknown argument: ${arg}`);
+        }
+    }
+
+    return options;
+}
+
+function requireValue(argv, index, flag) {
+    const value = argv[index];
+    if (!value || value.startsWith('--')) fail(`${flag} requires a value`);
+    return value;
+}
+
+function fail(message) {
+    console.error(`[release:railway-up] ${message}`);
+    process.exit(1);
+}
+
+function commandText(command, args) {
+    return [command, ...args].join(' ');
+}
+
+function run(command, args, options = {}) {
+    const result = spawnSync(command, args, {
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+        stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        env: { ...process.env, ...options.env }
+    });
+    if (result.error) fail(`${commandText(command, args)} failed: ${result.error.message}`);
+    if (result.status !== 0) {
+        const stderr = String(result.stderr || '').trim();
+        fail(`${commandText(command, args)} exited ${result.status}${stderr ? `: ${stderr}` : ''}`);
+    }
+    return String(result.stdout || '').trim();
+}
+
+function git(args) {
+    return run('git', args, { capture: true });
+}
+
+function assertCleanWorktree() {
+    const status = git(['status', '--porcelain']);
+    if (status) {
+        fail('Worktree is dirty. Use a clean release worktree before deploying.');
+    }
+}
+
+function assertSafeBranchName(branch) {
+    if (!branch) fail('RELEASE_DEPLOY_BRANCH or --branch is required.');
+    if (!/^[A-Za-z0-9._/-]+$/.test(branch) || branch.includes('..') || branch.startsWith('/') || branch.endsWith('/')) {
+        fail(`Unsafe deploy branch name: ${branch}`);
+    }
+}
+
+function remoteBranchSha(branch) {
+    const output = git(['ls-remote', 'origin', `refs/heads/${branch}`]);
+    const sha = output.split(/\s+/)[0] || '';
+    if (!/^[0-9a-f]{40}$/i.test(sha)) fail(`Could not resolve origin/${branch}`);
+    return sha;
+}
+
+function shortSha(sha) {
+    return String(sha || '').slice(0, 8);
+}
+
+function main() {
+    const options = parseArgs(process.argv.slice(2));
+    assertSafeBranchName(options.branch);
+    assertCleanWorktree();
+
+    const head = git(['rev-parse', 'HEAD']);
+    const expectedCommit = options.commit || head;
+    if (expectedCommit !== head) {
+        fail(`Expected commit ${expectedCommit} does not match local HEAD ${head}`);
+    }
+
+    if (!options.skipRemoteCheck) {
+        const remoteSha = remoteBranchSha(options.branch);
+        if (remoteSha !== head) {
+            fail(`origin/${options.branch} is ${remoteSha}, but local HEAD is ${head}. Push and wait for CI first.`);
+        }
+    }
+
+    const message = options.message || `Release v${pkg.version} ${pkg.eventGenix?.releaseLabel || pkg.name} (${shortSha(head)}; ${options.branch})`;
+    console.log(`[release:railway-up] service=${options.service}`);
+    console.log(`[release:railway-up] environment=${options.environment}`);
+    console.log(`[release:railway-up] branch=${options.branch}`);
+    console.log(`[release:railway-up] commit=${head}`);
+    console.log(`[release:railway-up] message=${message}`);
+
+    const variableArgs = [
+        'variable',
+        'set',
+        `RELEASE_DEPLOY_COMMIT=${head}`,
+        `RELEASE_DEPLOY_BRANCH=${options.branch}`,
+        '--service',
+        options.service,
+        '--environment',
+        options.environment,
+        '--skip-deploys',
+        '--json'
+    ];
+    const deployArgs = [
+        'up',
+        '.',
+        '--path-as-root',
+        '--service',
+        options.service,
+        '--environment',
+        options.environment,
+        '--message',
+        message
+    ];
+
+    if (options.dryRun) {
+        if (!options.skipVariableSet) console.log(`[release:railway-up] dry-run > railway ${variableArgs.join(' ')}`);
+        console.log(`[release:railway-up] dry-run > railway ${deployArgs.join(' ')}`);
+        return;
+    }
+
+    if (!options.skipVariableSet) {
+        run('railway', variableArgs);
+    }
+    run('railway', deployArgs);
+}
+
+main();

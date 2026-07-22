@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.132",
+  "version": "0.79.133",
   "eventGenix": {
-    "releaseLabel": "Банкет: стабільні лінії аніматорів"
+    "releaseLabel": "Handoff ліда з бронювання"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

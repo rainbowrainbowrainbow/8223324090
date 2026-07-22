@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.137 - Меню по факту finalize hotfix
+
+### Release / Versioning / (22.07.2026) [codex]
+- **Меню по факту finalize hotfix** - виправлено PostgreSQL casts у close/finalize linked task `Закрити меню по факту`, щоб фіналізація actual menu закривала задачу без 500 `42P08`.
+
+---
+
 ## v0.79.136 - Меню по факту hotfix
 
 ### Release / Versioning / (22.07.2026) [codex]

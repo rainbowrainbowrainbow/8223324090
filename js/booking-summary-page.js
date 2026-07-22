@@ -1069,6 +1069,33 @@
         `;
     }
 
+    function renderMenuWorkflowStatus(summary) {
+        const workflow = summary?.menuWorkflow || summary?.menu_workflow || null;
+        if (!workflow || workflow.mode !== 'actual') return '';
+        const currency = summary?.totals?.currency || workflow.currency || 'UAH';
+        const rows = [
+            ['Статус', workflow.statusLabel || workflow.status_label || (workflow.status === 'finalized' ? 'Меню по факту · закрито' : 'Меню по факту · очікує закриття')],
+            ['Мінімум меню', formatMoney(summaryMoney(workflow.minimumAmount ?? workflow.minimum_amount) ?? 0, currency)],
+            ['Попередня сума', formatMoney(summaryMoney(workflow.positionsSubtotal ?? workflow.positions_subtotal) ?? 0, currency)],
+            ['Різниця до мінімуму', formatMoney(summaryMoney(workflow.adjustmentAmount ?? workflow.adjustment_amount) ?? 0, currency)],
+            ['Сума меню до оплати', formatMoney(summaryMoney(workflow.chargedSubtotal ?? workflow.charged_subtotal) ?? 0, currency)]
+        ];
+        const finalizedBy = workflow.finalizedBy || workflow.finalized_by;
+        const finalizedAt = workflow.finalizedAt || workflow.finalized_at;
+        if (workflow.status === 'finalized') {
+            rows.push(['Закрито', [formatValue(finalizedBy?.name || finalizedBy?.username || finalizedBy), formatDateTime(finalizedAt)].filter(value => value && value !== '—').join(' · ') || 'Так']);
+        }
+        if (workflow.exceptionReason || workflow.exception_reason) {
+            rows.push(['Причина винятку', workflow.exceptionReason || workflow.exception_reason]);
+        }
+        const taskSource = workflow.taskSource || workflow.task_source || null;
+        if (taskSource?.sourceModule || taskSource?.source_module) {
+            rows.push(['Контрольна задача', 'Закрити меню по факту']);
+        }
+        const rowHtml = rows.map(([label, value]) => '<li><b>' + escapeHtml(label) + ':</b> ' + escapeHtml(value) + '</li>').join('');
+        return '\n            <div class="summary-note-block summary-menu-workflow' + (workflow.status === 'awaiting_actual' ? ' summary-menu-workflow--attention' : '') + '">\n                <strong>' + escapeHtml(workflow.status === 'awaiting_actual' ? 'Операційна увага' : 'Меню по факту') + '</strong>\n                <ul>' + rowHtml + '</ul>\n            </div>\n        ';
+    }
+
     function renderDocument(summary) {
         const doc = el('bookingSummaryDocument');
         if (!doc) return;
@@ -1184,6 +1211,7 @@
 
             ${sections.finance ? `<section class="summary-section summary-section--finance">
                 <h2>Фінанси</h2>
+                ${renderMenuWorkflowStatus(summary)}
                 ${renderBanquetPreorderStatus(summary)}
                 ${renderTotals(summary)}
             </section>` : ''}

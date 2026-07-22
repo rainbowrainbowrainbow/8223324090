@@ -30,6 +30,7 @@ const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/lea
 const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
 const { loadBanquetPreorderRuleContract, sanitizeBanquetPreorderRuleContract } = require('../services/banquetPreorderRules');
 const { buildFinalizedBanquetMenuPackage } = require('../services/banquetMenuFinalization');
+const { syncBanquetActualMenuTask } = require('../services/banquetMenuTaskSync');
 const { buildBanquetSummary, normalizeBanquetSummaryMode } = require('../services/banquetSummary');
 const {
     buildBanquetSummaryPdfBuffer,
@@ -3513,6 +3514,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // Canonical ticket totals and their non-certificate finance row commit atomically.
         const createdBookingRow = insertResult.rows[0];
+        await syncBanquetActualMenuTask(client, createdBookingRow, { businessContext, actor: req.user });
         const strictTicketFinance = bookingRequiresStrictFinanceSync(createdBookingRow);
         if (
             parkSideEffectsAllowedForContext(businessContext)
@@ -4609,6 +4611,11 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
+        await syncBanquetActualMenuTask(client, mainInsert.rows[0], { businessContext, actor: req.user });
+        for (const activityRow of activityRows) {
+            await syncBanquetActualMenuTask(client, activityRow, { businessContext, actor: req.user });
+        }
+
         const strictMainTicketFinance = bookingRequiresStrictFinanceSync(mainInsert.rows[0]);
         if (
             parkSideEffectsAllowedForContext(businessContext)
@@ -4910,6 +4917,7 @@ router.post('/:id/menu-workflow/finalize', requireAction('edit_booking'), async 
             creator_exception: finalizeResult.workflow?.creatorException || null,
             menu_minimum_adjustment: finalizeResult.adjustment || null
         }, businessContext);
+        await syncBanquetActualMenuTask(client, updatedBooking, { businessContext, actor: req.user });
 
         await client.query('COMMIT');
         const mapped = mapBookingRow(updatedBooking);
@@ -4980,20 +4988,24 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         await insertScopedHistory(client, action, req.user?.username, mapBookingRow(booking), businessContext);
 
         if (permanent) {
+            await syncBanquetActualMenuTask(client, { ...booking, status: 'cancelled' }, { businessContext, actor: req.user, cancel: true });
             await client.query(
                 `DELETE FROM bookings WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             );
         } else {
-            await client.query(
+            const cancelledRows = await client.query(
                 `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
-                 WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
+                 WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}
+                 RETURNING *`,
                 [id, businessContext]
             );
+            for (const cancelledBooking of cancelledRows.rows || []) {
+                await syncBanquetActualMenuTask(client, cancelledBooking, { businessContext, actor: req.user, cancel: true });
+            }
             // Keep banquet group read models in sync for cancelled non-primary members.
             await detachBanquetMembershipOnSoftDelete(client, id, businessContext, req.user);
         }
-
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
 
         // v19.10: Remove auto-recorded finance transaction inside transaction
@@ -6056,6 +6068,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             });
         }
 
+        await syncBanquetActualMenuTask(client, updateResult.rows[0], { businessContext, actor: req.user });
         const savedBooking = mapBookingRow(updateResult.rows[0]);
         if (readAdmissionTicketSnapshot(updateResult.rows[0])?.kind === 'v3') {
             const ticketMembership = await client.query(

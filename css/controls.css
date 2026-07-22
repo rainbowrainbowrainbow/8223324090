@@ -452,6 +452,8 @@ body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timel
    ========================================== */
 
 .status-radio-group {
+    --booking-status-confirmed-bg: #047857;
+    --booking-status-preliminary-bg: #B45309;
     display: flex;
     gap: 2px;
     width: 100%;
@@ -499,13 +501,13 @@ body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timel
 }
 
 .status-radio input:checked + .status-radio-label.confirmed {
-    background: #047857;
+    background: var(--booking-status-confirmed-bg);
     color: #FFFFFF;
     box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
 
 .status-radio input:checked + .status-radio-label.preliminary {
-    background: #B45309;
+    background: var(--booking-status-preliminary-bg);
     color: #FFFFFF;
     box-shadow: 0 1px 3px rgba(245,158,11,0.3);
 }

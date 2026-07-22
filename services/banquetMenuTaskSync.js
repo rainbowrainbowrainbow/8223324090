@@ -178,12 +178,12 @@ async function closeTasks(queryable, tasks = [], status, actor = {}, reason = nu
     const archiveReason = status === 'done' ? null : (reason || 'booking_menu_actual_closed');
     const result = await queryable.query(
         `UPDATE tasks
-            SET status = $2,
-                workflow_state = $3,
-                schedule_status = $4,
-                completed_at = CASE WHEN $2 = 'done' THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
-                archived_at = CASE WHEN $2 <> 'done' THEN COALESCE(archived_at, NOW()) ELSE archived_at END,
-                archive_reason = CASE WHEN $2 <> 'done' THEN $5 ELSE archive_reason END,
+            SET status = $2::text,
+                workflow_state = $3::text,
+                schedule_status = $4::text,
+                completed_at = CASE WHEN $2::text = 'done' THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+                archived_at = CASE WHEN $2::text <> 'done' THEN COALESCE(archived_at, NOW()) ELSE archived_at END,
+                archive_reason = CASE WHEN $2::text <> 'done' THEN $5::text ELSE archive_reason END,
                 updated_at = NOW(),
                 control_meta = COALESCE(control_meta, '{}'::jsonb) || $6::jsonb
           WHERE id = ANY($1::int[])

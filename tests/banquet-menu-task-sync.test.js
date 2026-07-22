@@ -249,5 +249,9 @@ test('actual menu task hook stays explicit and does not use generic booking auto
     assert.match(syncCode, /skipNotifications:\s*true/);
     assert.match(syncCode, /skipHermesOutbox:\s*true/);
     assert.ok(syncCode.includes('deadline = $5::timestamptz'));
+    assert.ok(syncCode.includes('status = $2::text'));
+    assert.ok(syncCode.includes('workflow_state = $3::text'));
+    assert.ok(syncCode.includes('schedule_status = $4::text'));
+    assert.ok(syncCode.includes("archive_reason = CASE WHEN $2::text <> 'done' THEN $5::text ELSE archive_reason END"));
     assert.match(syncCode, /source_module:\s*MENU_ACTUAL_TASK_SOURCE_MODULE/);
 });

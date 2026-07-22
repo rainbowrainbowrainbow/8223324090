@@ -5694,15 +5694,15 @@ body.timeline-dashboard-page .timeline-view-panel-actions .timeline-header-histo
 
 body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout {
     padding: 0 18px !important;
-    border-color: var(--timeline-topbar-accent) !important;
-    background: var(--timeline-topbar-accent) !important;
+    border-color: #047857 !important;
+    background: #047857 !important;
     color: #FFFFFF !important;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:hover,
 body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:focus-visible {
-    border-color: var(--timeline-topbar-accent-hover) !important;
-    background: var(--timeline-topbar-accent-hover) !important;
+    border-color: #065F46 !important;
+    background: #065F46 !important;
     color: #FFFFFF !important;
     transform: none !important;
 }

@@ -286,6 +286,17 @@ body.embed-mode .page-login-overlay {
     display: none !important;
 }
 
+.skip-link {
+    background: #047857;
+    color: #FFFFFF;
+}
+
+.skip-link:focus-visible {
+    outline: 3px solid #A7F3D0;
+    outline-offset: 2px;
+}
+
+
 html.embed-mode body[data-page-group] .page-container,
 html.embed-mode body[data-page-group] .main-content,
 body.embed-mode[data-page-group] .page-container,

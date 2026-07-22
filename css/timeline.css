@@ -617,7 +617,7 @@ body.timeline-dashboard-page .afisha-dist-btn {
     border: 1px solid rgba(139, 92, 246, 0.22);
     border-radius: 999px;
     background: rgba(139, 92, 246, 0.06);
-    color: #6D28D9;
+    color: #5B21B6;
     font: inherit;
     font-size: 12px;
     line-height: 1;
@@ -634,7 +634,7 @@ body.timeline-dashboard-page .afisha-dist-btn:hover,
 body.timeline-dashboard-page .afisha-dist-btn:focus-visible {
     border-color: rgba(109, 40, 217, 0.38);
     background: rgba(139, 92, 246, 0.12);
-    color: #5B21B6;
+    color: #4C1D95;
     outline: none;
 }
 

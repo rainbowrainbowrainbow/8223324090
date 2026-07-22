@@ -1,6 +1,13 @@
-﻿# CHANGELOG — Event Genix CRM
+# CHANGELOG — Event Genix CRM
 
 > Журнал змін. Останні версії зверху, детально. Старі — коротко внизу.
+
+---
+
+## v0.79.136 - Меню по факту hotfix
+
+### Release / Versioning / (22.07.2026) [codex]
+- **Меню по факту hotfix** - виправлено PostgreSQL cast для deadline linked task `Закрити меню по факту`, щоб actual booking стабільно створювався на live без 500 `42P08`.
 
 ---
 

@@ -3605,7 +3605,7 @@ test('legacy banquet integrity guard blocks mutation and opens only a clean cano
     );
     const editBlock = bookingJs.slice(
         bookingJs.indexOf('async function editBooking'),
-        bookingJs.indexOf('// ==========================================\n// DUPLICATE BOOKING')
+        bookingJs.indexOf('// DUPLICATE BOOKING')
     );
 
     assert.match(bookingJs, /const INCOMPLETE_HISTORICAL_BANQUET_WARNING_CODE = 'incomplete_historical_banquet_record'/);
@@ -3620,7 +3620,7 @@ test('legacy banquet integrity guard blocks mutation and opens only a clean cano
     assert.match(detailsBlock, /banquetEditIntegrityIssue[\s\S]*createLegacyBanquetReplacement/);
     assert.match(editBlock, /banquetSnapshotEditIntegrityIssue\(banquetSnapshot \|\| \{\}\)/);
     assert.ok(
-        editBlock.indexOf('banquetSnapshotEditIntegrityIssue') < editBlock.indexOf('shouldEditBookingInAnimatorView'),
+        editBlock.indexOf('banquetSnapshotEditIntegrityIssue') < editBlock.indexOf('shouldRouteBookingEditToAnimatorView'),
         'fresh integrity guard must run before any edit-mode redirect'
     );
     assert.match(editBlock, /focusIntegrityGuard: true/);

@@ -3377,7 +3377,7 @@ body.booking-menu-catalog-active {
     padding: 9px 10px 8px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.18);
     background: var(--catalog-surface-soft);
-    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
     color: var(--catalog-text-muted);
     font-size: 11px;
     font-weight: 950;

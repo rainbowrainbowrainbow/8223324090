@@ -16473,6 +16473,72 @@ function buildBanquetEditActivityBookings(baseBooking, formData = {}, context = 
     })).filter(Boolean);
 }
 
+function applyBanquetPrimaryActivitySelection(baseBooking, scheduleRow, programs = [], context = BookingDrawerState.banquetEditContext) {
+    if (!context?.primaryIsActivity || !scheduleRow?.program) return { ...baseBooking };
+    const generated = buildMultiActivityBookingFromProgram(baseBooking, scheduleRow.program, {
+        index: scheduleRow.index,
+        time: scheduleRow.time,
+        activityPrograms: programs,
+        primaryProgramId: scheduleRow.program.id
+    });
+    if (!generated) return { ...baseBooking };
+
+    const adjusted = { ...baseBooking };
+    [
+        'time',
+        'lineId',
+        'programId',
+        'programCode',
+        'label',
+        'programName',
+        'category',
+        'duration',
+        'hosts',
+        'secondAnimator',
+        'secondAnimatorLineId',
+        'secondAnimatorLineName',
+        'pinataMode',
+        'pinataNumber',
+        'pinataFillerNumber',
+        'pinataFiller',
+        'clientPinataServicePrice',
+        'clientPinataServiceNote',
+        'costume',
+        'kidsCount'
+    ].forEach(field => {
+        adjusted[field] = generated[field];
+    });
+
+    const existingExtraData = bookingExtraDataObjectFromBooking(baseBooking);
+    const generatedExtraData = bookingExtraDataObjectFromBooking(generated);
+    const programBasePrice = toBookingMoney(generated.price || 0);
+    const existingPackage = existingExtraData.bookingPackage || existingExtraData.booking_package;
+    const positionsSubtotal = toBookingMoney(existingPackage?.positionsSubtotal ?? existingPackage?.positions_subtotal ?? 0);
+    const entrySubtotal = toBookingMoney(existingPackage?.entrySubtotal ?? existingPackage?.entry_subtotal ?? 0);
+    const finalTotal = toBookingMoney(programBasePrice + positionsSubtotal + entrySubtotal);
+    adjusted.programBasePrice = programBasePrice;
+    adjusted.price = finalTotal;
+    const existingWorkspace = existingExtraData.bookingWorkspace || existingExtraData.booking_workspace || {};
+    const generatedWorkspace = generatedExtraData.bookingWorkspace || generatedExtraData.booking_workspace || {};
+    adjusted.extraData = {
+        ...existingExtraData,
+        ...generatedExtraData,
+        bookingWorkspace: {
+            ...existingWorkspace,
+            ...generatedWorkspace
+        }
+    };
+    delete adjusted.extraData.booking_package;
+    delete adjusted.extraData.booking_workspace;
+    if (existingPackage) {
+        adjusted.extraData.bookingPackage = {
+            ...existingPackage,
+            programBasePrice,
+            finalTotal
+        };
+    }
+    return adjusted;
+}
 function buildBanquetPackageOwnerPatch(baseBooking = {}, formData = {}, context = BookingDrawerState.banquetEditContext) {
     const ownerPackage = getBookingPackageFromBooking(context?.packageOwnerBooking || {}) || {};
     const storedProgramBasePrice = toBookingMoney(
@@ -16578,13 +16644,7 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
         ? formData.activityPrograms.filter(Boolean)
         : getSelectedActivityPrograms();
     const scheduleRows = getSelectedActivityScheduleRows(programs);
-    const adjustedPrimary = { ...baseBooking };
-    if (context?.primaryIsActivity && scheduleRows[0]) {
-        const primaryFields = getSelectedActivityBookingFields()[String(scheduleRows[0].programId)] || {};
-        adjustedPrimary.time = scheduleRows[0].time || adjustedPrimary.time;
-        adjustedPrimary.duration = Number(primaryFields.duration || scheduleRows[0].duration || adjustedPrimary.duration);
-        adjustedPrimary.lineId = primaryFields.lineId || adjustedPrimary.lineId;
-    }
+    const adjustedPrimary = applyBanquetPrimaryActivitySelection(baseBooking, scheduleRows[0], programs, context);
     let primaryPatch = buildBanquetEditPrimaryPatch(adjustedPrimary, context);
     const primaryBookingId = String(context?.primaryBookingId || '').trim();
     const packageOwnerBookingId = String(context?.packageOwnerBookingId || primaryBookingId).trim();

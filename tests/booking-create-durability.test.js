@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const vm = require('node:vm');
 
 const repoRoot = path.resolve(__dirname, '..');
 
@@ -3717,6 +3718,17 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
     assert.match(bookingJs, /bookingId: persistedFields\.existingActivityBookingId/);
     assert.match(bookingJs, /lineId: persistedFields\.lineId \|\| baseBooking\.lineId/);
     assert.match(bookingJs, /const desiredRows = context\.primaryIsActivity \? scheduleRows\.slice\(1\) : scheduleRows/);
+    assert.match(bookingJs, /function applyBanquetPrimaryActivitySelection/);
+    assert.match(bookingSetPayloadBlock, /applyBanquetPrimaryActivitySelection\(baseBooking, scheduleRows\[0\], programs, context\)/);
+    const primaryActivitySelectionStart = bookingJs.indexOf('function applyBanquetPrimaryActivitySelection');
+    const primaryActivitySelectionEnd = bookingJs.indexOf('function buildBanquetPackageOwnerPatch', primaryActivitySelectionStart);
+    const primaryActivitySelectionBlock = bookingJs.slice(primaryActivitySelectionStart, primaryActivitySelectionEnd);
+    assert.match(primaryActivitySelectionBlock, /buildMultiActivityBookingFromProgram/);
+    assert.match(primaryActivitySelectionBlock, /'programId'/);
+    assert.match(primaryActivitySelectionBlock, /'programName'/);
+    assert.match(primaryActivitySelectionBlock, /adjusted\.programBasePrice = programBasePrice/);
+    assert.match(primaryActivitySelectionBlock, /adjusted\.price = finalTotal/);
+    assert.match(primaryActivitySelectionBlock, /if \(existingPackage\)[\s\S]*programBasePrice,[\s\S]*finalTotal/);
     assert.match(submitBlock, /apiUpdateBanquetBookingSet/);
     assert.match(submitBlock, /buildBanquetBookingSetPayload/);
     assert.match(submitBlock, /BANQUET_BOOKING_SET_VERSION_CONFLICT/);
@@ -3736,6 +3748,82 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
     assert.match(apiJs, /\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/booking-set/);
 });
 
+test('banquet primary activity merge preserves the selected program and package totals', () => {
+    const bookingJs = read('js/booking.js');
+    const helperStart = bookingJs.indexOf('function applyBanquetPrimaryActivitySelection');
+    const helperEnd = bookingJs.indexOf('function buildBanquetPackageOwnerPatch', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'primary activity merge helper exists');
+
+    const context = {
+        BookingDrawerState: { banquetEditContext: null },
+        buildMultiActivityBookingFromProgram: () => ({
+            time: '20:00',
+            lineId: 'animator-1',
+            programId: 'bubble-show',
+            programCode: 'BUBBLE',
+            label: 'Бульб(30)',
+            programName: 'Бульбашкове шоу',
+            category: 'wow',
+            duration: 30,
+            price: 2700,
+            hosts: 1,
+            extraData: {
+                bookingPackage: {
+                    schemaVersion: 1,
+                    programBasePrice: 2700,
+                    positionsSubtotal: 0,
+                    finalTotal: 2700,
+                    menuPositions: []
+                },
+                bookingWorkspace: { secondAnimator: null },
+                multiActivity: { role: 'activity', activityCount: 1 }
+            }
+        }),
+        bookingExtraDataObjectFromBooking: booking => booking.extraData || {},
+        toBookingMoney: value => Math.round((Number(value) || 0) * 100) / 100
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        bookingJs.slice(helperStart, helperEnd)
+            + '\nthis.__applyBanquetPrimaryActivitySelection = applyBanquetPrimaryActivitySelection;',
+        context
+    );
+
+    const result = context.__applyBanquetPrimaryActivitySelection({
+        customerId: 77,
+        room: 'Міньйон',
+        programId: null,
+        programBasePrice: 0,
+        price: 500,
+        extraData: {
+            bookingPackage: {
+                schemaVersion: 2,
+                programBasePrice: 0,
+                positionsSubtotal: 400,
+                entrySubtotal: 100,
+                finalTotal: 500,
+                menuPositions: [{ title: 'Тестове меню', quantity: 1, unitPrice: 400 }]
+            },
+            bookingWorkspace: { comments: { internal: 'keep' } }
+        }
+    }, {
+        index: 0,
+        time: '20:00',
+        programId: 'bubble-show',
+        program: { id: 'bubble-show' }
+    }, [{ id: 'bubble-show' }], { primaryIsActivity: true });
+
+    assert.equal(result.programId, 'bubble-show');
+    assert.equal(result.programName, 'Бульбашкове шоу');
+    assert.equal(result.programBasePrice, 2700);
+    assert.equal(result.price, 3200);
+    assert.equal(result.customerId, 77);
+    assert.equal(result.room, 'Міньйон');
+    assert.equal(result.extraData.bookingPackage.finalTotal, 3200);
+    assert.equal(result.extraData.bookingPackage.menuPositions[0].title, 'Тестове меню');
+    assert.equal(result.extraData.bookingWorkspace.comments.internal, 'keep');
+    assert.equal(result.extraData.multiActivity.activityCount, 1);
+});
 test('booking edit restores the current second animator before availability filtering', () => {
     const bookingJs = read('js', 'booking.js');
     const selectBlock = bookingJs.slice(

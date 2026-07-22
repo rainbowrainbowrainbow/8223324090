@@ -5811,8 +5811,12 @@ async function confirmBookingPreorderWarningsBeforeSubmit(formData = {}) {
         '',
         'Зберегти підтверджене бронювання з цими попередженнями?'
     ].join('\n');
-    const confirmed = typeof customConfirm === 'function'
-        ? await customConfirm(text, 'Передзамовлення / завдаток')
+    const confirmed = typeof confirmModal === 'function'
+        ? await confirmModal(text, {
+            type: 'warning',
+            okText: 'Зберегти бронювання',
+            cancelText: 'Повернутися до меню'
+        })
         : true;
     if (!confirmed) return false;
     formData.preorderWarningAcknowledgement = {

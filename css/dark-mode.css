@@ -2375,13 +2375,21 @@ html[data-theme="dark"] .booking-preflight-retry:focus-visible {
     background: color-mix(in srgb, var(--warning) 28%, transparent);
 }
 body.dark-mode .booking-ticket-control input,
-html[data-theme="dark"] .booking-ticket-control input {
+html[data-theme="dark"] .booking-ticket-control input,
+body.dark-mode #bookingTicketsSection .booking-ticket-control input[type="number"],
+html[data-theme="dark"] #bookingTicketsSection .booking-ticket-control input[type="number"] {
     background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+    background-color: color-mix(in srgb, var(--bg-primary) 92%, transparent);
     border-color: color-mix(in srgb, var(--text-secondary) 34%, transparent);
     color: var(--text-primary);
+    -webkit-text-fill-color: var(--text-primary);
+    caret-color: var(--text-primary);
+    color-scheme: dark;
 }
 body.dark-mode .booking-ticket-control input:focus,
-html[data-theme="dark"] .booking-ticket-control input:focus {
+html[data-theme="dark"] .booking-ticket-control input:focus,
+body.dark-mode #bookingTicketsSection .booking-ticket-control input[type="number"]:focus,
+html[data-theme="dark"] #bookingTicketsSection .booking-ticket-control input[type="number"]:focus {
     border-color: color-mix(in srgb, var(--primary-light) 76%, transparent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-light) 18%, transparent);
 }
@@ -2394,7 +2402,7 @@ body.dark-mode .booking-ticket-quote-state,
 html[data-theme="dark"] .booking-ticket-quote-state {
     border-color: color-mix(in srgb, var(--primary-light) 28%, transparent);
     background: color-mix(in srgb, var(--primary) 18%, transparent);
-    color: var(--primary-light);
+    color: var(--text-primary);
 }
 body.dark-mode .booking-ticket-quote-state.is-error,
 body.dark-mode .booking-ticket-sticky-error,

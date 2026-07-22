@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.129 - Банкет: контраст квитків
+
+### Release / Versioning / (22.07.2026) [codex]
+- **Банкет: контраст квитків** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.128 - Банкет: редагування з таймлайну
 
 ### Release / Versioning / (22.07.2026) [codex]

@@ -28,6 +28,7 @@ const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
+const { loadBanquetPreorderRuleContract, sanitizeBanquetPreorderRuleContract } = require('../services/banquetPreorderRules');
 const { buildBanquetSummary, normalizeBanquetSummaryMode } = require('../services/banquetSummary');
 const {
     buildBanquetSummaryPdfBuffer,
@@ -2566,6 +2567,27 @@ async function updateAtomicLinkedBookingFields(client, id, patch, businessContex
     return result.rows[0] || null;
 }
 
+// GET /api/bookings/banquet-menu-rules — authenticated canonical menu/deposit rule contract.
+router.get('/banquet-menu-rules', async (req, res) => {
+    try {
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'view')) return;
+        const contract = await loadBanquetPreorderRuleContract(pool);
+        res.json({
+            success: true,
+            businessContext,
+            rules: sanitizeBanquetPreorderRuleContract(contract)
+        });
+    } catch (err) {
+        log.error('GET /bookings/banquet-menu-rules error', err);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to load banquet menu rules',
+            code: 'BANQUET_MENU_RULES_LOAD_FAILED'
+        });
+    }
+});
 // POST /api/bookings/ticket-quote — canonical server-side ticket preview.
 // Business context is resolved from the authenticated request query/header and
 // never from the pricing payload.
@@ -3500,7 +3522,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             newBanquetFlow: banquetContext?.mode === 'new'
         });
         await applyEffectiveBookingPrice(client, b, { businessContext });
-        await applyBookingPackageEntryCharge(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, { businessContext, menuWorkflowActor: req.user });
         await snapshotBanquetTermsForBooking(client, b);
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
@@ -4440,10 +4462,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             newBanquetFlow: banquetContext?.mode === 'new'
         });
         await applyEffectiveBookingPrice(client, main, { businessContext });
-        await applyBookingPackageEntryCharge(client, main, { businessContext });
+        await applyBookingPackageEntryCharge(client, main, { businessContext, menuWorkflowActor: req.user });
         for (const activity of banquetActivities) {
             await applyEffectiveBookingPrice(client, activity, { businessContext });
-            await applyBookingPackageEntryCharge(client, activity, { businessContext });
+            await applyBookingPackageEntryCharge(client, activity, { businessContext, menuWorkflowActor: req.user });
         }
         refreshMultiActivityPriceTotals([main, ...banquetActivities]);
         await snapshotBanquetTermsForBooking(client, main);
@@ -6085,7 +6107,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         await applyEffectiveBookingPrice(client, b, { businessContext });
         await applyBookingPackageEntryCharge(client, b, {
             businessContext,
-            preserveNoTicketPackage: ticketResolution.preserveNoTicketPackage === true
+            preserveNoTicketPackage: ticketResolution.preserveNoTicketPackage === true,
+            menuWorkflowActor: req.user
         });
         await snapshotBanquetTermsForBooking(client, b);
         const updateExtraDataSql = bookingExtraDataSqlValue(b);

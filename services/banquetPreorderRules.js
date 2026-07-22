@@ -1,14 +1,24 @@
 'use strict';
 
+const BANQUET_MENU_PRICE_RULE_CODES = Object.freeze({
+    room: 'banquet_menu_minimum_room',
+    table: 'banquet_menu_minimum_table',
+    recommendedDeposit: 'banquet_recommended_deposit'
+});
+
+const BANQUET_MENU_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_MENU_PRICE_RULE_CODES));
+
 const BANQUET_PREORDER_RULES = Object.freeze({
     room: Object.freeze({
         placeType: 'room',
         placeLabel: 'Кімнатка',
+        ruleCode: BANQUET_MENU_PRICE_RULE_CODES.room,
         requiredMenuMinimum: 4000
     }),
     table: Object.freeze({
         placeType: 'table',
         placeLabel: 'Столик',
+        ruleCode: BANQUET_MENU_PRICE_RULE_CODES.table,
         requiredMenuMinimum: 2500
     })
 });
@@ -54,6 +64,92 @@ function firstClean(...values) {
         if (text) return text;
     }
     return '';
+}
+
+function normalizeRuleMap(priceRules = []) {
+    if (priceRules && typeof priceRules === 'object' && !Array.isArray(priceRules)) {
+        return new Map(Object.entries(priceRules));
+    }
+    return new Map((Array.isArray(priceRules) ? priceRules : [])
+        .map(rule => [String(rule?.code || '').trim(), rule])
+        .filter(([code]) => code));
+}
+
+function numericRuleValue(rule, fallback) {
+    const amount = nullableMoney(rule?.value);
+    return amount === null ? fallback : amount;
+}
+
+function buildBanquetPreorderRuleContract(priceRules = []) {
+    const rules = normalizeRuleMap(priceRules);
+    const roomRule = rules.get(BANQUET_MENU_PRICE_RULE_CODES.room) || null;
+    const tableRule = rules.get(BANQUET_MENU_PRICE_RULE_CODES.table) || null;
+    const depositRule = rules.get(BANQUET_MENU_PRICE_RULE_CODES.recommendedDeposit) || null;
+
+    const menuMinimums = Object.freeze({
+        room: Object.freeze({
+            ...BANQUET_PREORDER_RULES.room,
+            requiredMenuMinimum: numericRuleValue(roomRule, BANQUET_PREORDER_RULES.room.requiredMenuMinimum),
+            source: roomRule ? 'price_rules' : 'fallback_default'
+        }),
+        table: Object.freeze({
+            ...BANQUET_PREORDER_RULES.table,
+            requiredMenuMinimum: numericRuleValue(tableRule, BANQUET_PREORDER_RULES.table.requiredMenuMinimum),
+            source: tableRule ? 'price_rules' : 'fallback_default'
+        })
+    });
+
+    return Object.freeze({
+        schemaVersion: 1,
+        source: 'price_rules',
+        currency: 'UAH',
+        menuMinimums,
+        recommendedDeposit: Object.freeze({
+            ruleCode: BANQUET_MENU_PRICE_RULE_CODES.recommendedDeposit,
+            amount: numericRuleValue(depositRule, BANQUET_RECOMMENDED_DEPOSIT_AMOUNT),
+            source: depositRule ? 'price_rules' : 'fallback_default'
+        })
+    });
+}
+
+async function loadBanquetPreorderRuleContract(queryable) {
+    if (!queryable || typeof queryable.query !== 'function') {
+        return buildBanquetPreorderRuleContract([]);
+    }
+    const result = await queryable.query(
+        `SELECT code, name, value, unit, category, description
+           FROM price_rules
+          WHERE code = ANY($1::text[])`,
+        [BANQUET_MENU_PRICE_RULE_CODE_LIST]
+    );
+    return buildBanquetPreorderRuleContract(result.rows || []);
+}
+
+function sanitizeBanquetPreorderRuleContract(contract = null) {
+    const resolved = contract || buildBanquetPreorderRuleContract([]);
+    return {
+        schemaVersion: resolved.schemaVersion || 1,
+        source: resolved.source || 'price_rules',
+        currency: resolved.currency || 'UAH',
+        menuMinimums: {
+            room: {
+                placeType: 'room',
+                placeLabel: resolved.menuMinimums?.room?.placeLabel || BANQUET_PREORDER_RULES.room.placeLabel,
+                ruleCode: BANQUET_MENU_PRICE_RULE_CODES.room,
+                requiredMenuMinimum: money(resolved.menuMinimums?.room?.requiredMenuMinimum, BANQUET_PREORDER_RULES.room.requiredMenuMinimum)
+            },
+            table: {
+                placeType: 'table',
+                placeLabel: resolved.menuMinimums?.table?.placeLabel || BANQUET_PREORDER_RULES.table.placeLabel,
+                ruleCode: BANQUET_MENU_PRICE_RULE_CODES.table,
+                requiredMenuMinimum: money(resolved.menuMinimums?.table?.requiredMenuMinimum, BANQUET_PREORDER_RULES.table.requiredMenuMinimum)
+            }
+        },
+        recommendedDeposit: {
+            ruleCode: BANQUET_MENU_PRICE_RULE_CODES.recommendedDeposit,
+            amount: money(resolved.recommendedDeposit?.amount, BANQUET_RECOMMENDED_DEPOSIT_AMOUNT)
+        }
+    };
 }
 
 function normalizeExplicitPlaceType(value) {
@@ -177,9 +273,11 @@ function isBanquetPreorderApplicable(booking = {}, bookingPackage = {}, options 
 function buildBanquetPreorderStatus(input = {}) {
     const booking = input.booking && typeof input.booking === 'object' ? input.booking : input;
     const bookingPackage = input.bookingPackage || banquetPackageOf(booking);
+    const ruleContract = input.ruleContract || input.banquetPreorderRuleContract || buildBanquetPreorderRuleContract([]);
     const applies = isBanquetPreorderApplicable(booking, bookingPackage, input);
     const placeType = resolveBanquetPreorderPlaceType(input);
-    const rule = placeType ? BANQUET_PREORDER_RULES[placeType] : null;
+    const rule = placeType ? (ruleContract.menuMinimums?.[placeType] || BANQUET_PREORDER_RULES[placeType]) : null;
+    const recommendedDepositAmount = money(ruleContract.recommendedDeposit?.amount, BANQUET_RECOMMENDED_DEPOSIT_AMOUNT);
     const currentMenuSubtotal = menuSubtotalFromPackage(bookingPackage, input.menuSubtotal ?? input.menu_subtotal);
     const currentDepositAmount = depositAmountFromSource(
         input.depositProjection
@@ -216,19 +314,19 @@ function buildBanquetPreorderStatus(input = {}) {
     if (applies) {
         if (currentDepositAmount === null) {
             depositStatus = 'missing';
-            missingDepositAmount = BANQUET_RECOMMENDED_DEPOSIT_AMOUNT;
+            missingDepositAmount = recommendedDepositAmount;
             warnings.push({
                 code: 'banquet_deposit_missing',
-                message: `Завдаток не вказано. Рекомендований завдаток — ${formatRuleMoney(BANQUET_RECOMMENDED_DEPOSIT_AMOUNT)} грн. Збереження не блокується.`,
+                message: `Завдаток не вказано. Рекомендований завдаток — ${formatRuleMoney(recommendedDepositAmount)} грн. Збереження не блокується.`,
                 severity: 'warning'
             });
         } else {
-            missingDepositAmount = money(Math.max(0, BANQUET_RECOMMENDED_DEPOSIT_AMOUNT - currentDepositAmount));
+            missingDepositAmount = money(Math.max(0, recommendedDepositAmount - currentDepositAmount));
             depositStatus = missingDepositAmount > 0 ? 'below_recommended' : 'sufficient';
             if (missingDepositAmount > 0) {
                 warnings.push({
                     code: 'banquet_deposit_below_recommended',
-                    message: `Завдаток нижче рекомендації: потрібно ${formatRuleMoney(BANQUET_RECOMMENDED_DEPOSIT_AMOUNT)} грн, зараз ${formatRuleMoney(currentDepositAmount)} грн, бракує ${formatRuleMoney(missingDepositAmount)} грн. Збереження не блокується.`,
+                    message: `Завдаток нижче рекомендації: потрібно ${formatRuleMoney(recommendedDepositAmount)} грн, зараз ${formatRuleMoney(currentDepositAmount)} грн, бракує ${formatRuleMoney(missingDepositAmount)} грн. Збереження не блокується.`,
                     severity: 'warning'
                 });
             }
@@ -239,11 +337,13 @@ function buildBanquetPreorderStatus(input = {}) {
         applies,
         placeType,
         placeLabel: rule?.placeLabel || null,
+        ruleCode: rule?.ruleCode || null,
         requiredMenuMinimum: rule?.requiredMenuMinimum ?? null,
         currentMenuSubtotal,
         missingMenuAmount,
         menuStatus,
-        recommendedDepositAmount: BANQUET_RECOMMENDED_DEPOSIT_AMOUNT,
+        recommendedDepositRuleCode: BANQUET_MENU_PRICE_RULE_CODES.recommendedDeposit,
+        recommendedDepositAmount,
         currentDepositAmount,
         missingDepositAmount,
         depositStatus,
@@ -252,8 +352,13 @@ function buildBanquetPreorderStatus(input = {}) {
 }
 
 module.exports = {
+    BANQUET_MENU_PRICE_RULE_CODES,
+    BANQUET_MENU_PRICE_RULE_CODE_LIST,
     BANQUET_PREORDER_RULES,
     BANQUET_RECOMMENDED_DEPOSIT_AMOUNT,
+    buildBanquetPreorderRuleContract,
+    loadBanquetPreorderRuleContract,
+    sanitizeBanquetPreorderRuleContract,
     resolveBanquetPreorderPlaceType,
     menuSubtotalFromPackage,
     depositAmountFromSource,

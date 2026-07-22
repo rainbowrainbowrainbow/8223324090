@@ -16,6 +16,7 @@ const pkg = require('../package.json');
 const ROOT = path.resolve(__dirname, '..');
 const NO_FETCH = process.argv.includes('--no-fetch');
 const JSON_OUTPUT = process.argv.includes('--json');
+const GIT_COMMAND = process.platform === 'win32' ? 'git.exe' : 'git';
 
 function run(command, args) {
     const result = spawnSync(command, args, {
@@ -31,7 +32,7 @@ function run(command, args) {
 }
 
 function git(args) {
-    return run('git', args);
+    return run(GIT_COMMAND, args);
 }
 
 function parseAheadBehind(value) {

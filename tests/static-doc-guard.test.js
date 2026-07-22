@@ -125,6 +125,7 @@ describe('static documentation exposure guard', () => {
         const agents = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
 
         assert.equal(pkg.scripts['version:current'], 'node scripts/current-version.js');
+        assert.match(script, /process\.platform === 'win32' \? 'git\.exe' : 'git'/);
         assert.match(script, /HEAD\.\.\.\@\{u\}/);
         assert.match(script, /Version guard failed/);
         assert.match(script, /git pull --ff-only/);

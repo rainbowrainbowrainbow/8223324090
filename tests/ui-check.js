@@ -3372,6 +3372,10 @@ const timelineBanquetRoomCardBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetRoomCardSignals'),
     timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
 );
+const timelineBanquetInspectorBlock = timelineCode.slice(
+    timelineCode.indexOf('function showTimelineBanquetInspector'),
+    timelineCode.indexOf('function timelineBanquetRoomKey')
+);
 const timelineBanquetOccupancyRoleBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetPreviewRoleUsesOccupancyBand'),
     timelineCode.indexOf('function timelineBanquetPreviewGridDuplicateReason')
@@ -3426,9 +3430,15 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineBanquetInspectorHelpersCode.includes('groupId: groupId || null')
     && timelineBanquetInspectorHelpersCode.includes('updatedAt: updatedAt || null')
     && timelineBanquetInspectorHelpersCode.includes("type: 'guest_arrival'")
-    && timelineCode.includes("data-banquet-inspector-edit-arrival")
+    && timelineCode.includes('function timelineCanEditBanquet(summary = {})')
     && timelineCode.includes("canAccess('edit_booking')")
     && timelineCode.includes("params.set('editArrival', '1')")
+    && timelineBanquetInspectorBlock.includes('const editBookingButton = timelineCanEditBanquet(summary)')
+    && timelineBanquetInspectorBlock.includes('data-banquet-inspector-edit>Редагувати</button>')
+    && !timelineBanquetInspectorBlock.includes('data-banquet-inspector-edit-arrival')
+    && !timelineBanquetInspectorBlock.includes('timelineBanquetSummaryHref(summary, { editArrival: true })')
+    && timelineBanquetInspectorBlock.includes('const bookingId = summary.carrierBooking?.id || summary.primaryBooking?.id;')
+    && timelineBanquetInspectorBlock.includes("if (bookingId && typeof editBooking === 'function') void editBooking(bookingId);")
     && timelineCode.includes('markerEl.dataset.banquetGroupId = canonicalGroupId')
     && timelineCode.includes("if (type === 'guest_arrival') markerEl.draggable = false")
     && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetCommentItems')

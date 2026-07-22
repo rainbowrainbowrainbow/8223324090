@@ -2528,6 +2528,10 @@ function timelineCanEditBanquetArrival(summary = {}) {
     }
 }
 
+function timelineCanEditBanquet(summary = {}) {
+    return timelineCanEditBanquetArrival(summary);
+}
+
 function ensureTimelineBanquetInspector() {
     let inspector = document.getElementById('timelineBanquetInspector');
     if (!inspector) {
@@ -2840,8 +2844,9 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
     const activityLabel = `${summary.activityCount || 0} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`;
     const activityStartsText = timelineBanquetActivityStartsText(summary);
     const commentsHtml = timelineBanquetCommentsHtml(summary);
-    const editArrivalLink = timelineCanEditBanquetArrival(summary)
-        ? `<a class="timeline-banquet-inspector-btn" data-banquet-inspector-edit-arrival href="${escapeHtml(timelineBanquetSummaryHref(summary, { editArrival: true }))}">Змінити прихід</a>`
+    const bookingId = summary.carrierBooking?.id || summary.primaryBooking?.id;
+    const editBookingButton = timelineCanEditBanquet(summary)
+        ? '<button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-edit>Редагувати</button>'
         : '';
     inspector.innerHTML = `
         <div class="timeline-banquet-inspector-head">
@@ -2876,7 +2881,7 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
         </div>
         <div class="timeline-banquet-inspector-actions">
             <button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-details>Деталі</button>
-            ${editArrivalLink}
+            ${editBookingButton}
             <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Банкетний лист</a>
         </div>
     `;
@@ -2891,7 +2896,14 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
         hideTimelineBanquetInspector();
-        if (typeof showBookingDetails === 'function') showBookingDetails(summary.carrierBooking?.id || summary.primaryBooking?.id);
+        if (typeof showBookingDetails === 'function') showBookingDetails(bookingId);
+    });
+    const editBtn = inspector.querySelector('[data-banquet-inspector-edit]');
+    editBtn?.addEventListener('click', clickEvent => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        hideTimelineBanquetInspector();
+        if (bookingId && typeof editBooking === 'function') void editBooking(bookingId);
     });
     inspector.querySelectorAll('a, button').forEach(el => {
         el.addEventListener('click', clickEvent => clickEvent.stopPropagation());

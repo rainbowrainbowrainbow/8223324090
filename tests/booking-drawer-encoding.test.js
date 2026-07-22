@@ -706,6 +706,7 @@ test('booking detail keeps canonical stale-banquet deposit visible and blocks or
     const actionBlock = bookingJs.slice(actionStart, actionEnd);
     assert.match(actionBlock, /banquetEditIntegrityIssue[\s\S]*createLegacyBanquetReplacement/);
     assert.match(actionBlock, /:\s*`[\s\S]*btn-edit-booking/);
+    assert.match(actionBlock, /booking-detail-action--primary btn-edit-booking">Редагувати<\/button>/);
 });
 
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {

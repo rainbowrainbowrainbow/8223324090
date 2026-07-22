@@ -722,6 +722,7 @@ test('timeline banquet inspector summary trusts the canonical group customer and
     assert.match(inspector.textContent, /12:15/);
     assert.match(inspector.textContent, /13:45/);
     assert.equal(inspector.querySelector('[data-banquet-inspector-edit-arrival]'), null);
+    assert.equal(inspector.querySelector('[data-banquet-inspector-edit]'), null);
     assert.match(
         inspector.textContent,
         /Неповний історичний банкетний запис/
@@ -763,14 +764,24 @@ test('timeline banquet inspector summary trusts the canonical group customer and
     const normalSummary = ctx.timelineBanquetSnapshotSummary(normalSnapshot);
     assert.equal(normalSummary.primaryBooking.status, 'confirmed');
     assert.equal(normalSummary.kitchenBookings.length, 1);
-    assert.equal(ctx.timelineCanEditBanquetArrival(normalSummary), true);
+    assert.equal(ctx.timelineCanEditBanquet(normalSummary), true);
     const normalInspectorSummary = ctx.timelineBanquetSummaryForInspector(
         normalSummary,
         ctx.timelineBanquetServingInfo(normalSummary),
         kitchen
     );
+    const editCalls = [];
+    ctx.editBooking = bookingId => editCalls.push(bookingId);
     ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
-    assert.ok(inspector.querySelector('[data-banquet-inspector-edit-arrival]'));
+    const editButton = inspector.querySelector('[data-banquet-inspector-edit]');
+    assert.ok(editButton);
+    assert.equal(inspector.querySelector('[data-banquet-inspector-edit-arrival]'), null);
+    editButton.click();
+    assert.deepEqual(editCalls, [normalInspectorSummary.carrierBooking?.id || normalInspectorSummary.primaryBooking?.id]);
+
+    ctx.canAccess = () => false;
+    ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
+    assert.equal(inspector.querySelector('[data-banquet-inspector-edit]'), null);
 });
 
 function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
@@ -2648,8 +2659,18 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
+    assert.match(timeline, /function timelineCanEditBanquet\(summary = \{\}\)/);
     assert.match(timeline, /function timelineCanEditBanquetArrival/);
     assert.match(timeline, /canAccess\('edit_booking'\)/);
+    const banquetInspectorStart = timeline.indexOf('function showTimelineBanquetInspector');
+    const banquetInspectorEnd = timeline.indexOf('function timelineBanquetRoomKey', banquetInspectorStart);
+    const banquetInspector = timeline.slice(banquetInspectorStart, banquetInspectorEnd);
+    assert.match(banquetInspector, /const bookingId = summary\.carrierBooking\?\.id \|\| summary\.primaryBooking\?\.id;/);
+    assert.match(banquetInspector, /data-banquet-inspector-edit>Редагувати<\/button>/);
+    assert.match(banquetInspector, /if \(bookingId && typeof editBooking === 'function'\) void editBooking\(bookingId\);/);
+    assert.doesNotMatch(banquetInspector, /data-banquet-inspector-edit-arrival/);
+    assert.doesNotMatch(banquetInspector, /timelineBanquetSummaryHref\(summary, \{ editArrival: true \}\)/);
+
     assert.match(timeline, /params\.set\('editArrival', '1'\)/);
     assert.match(timeline, /const timeText = normalizeTimelineBanquetServingTime\(arrival\.time\)/);
     assert.doesNotMatch(timeline, /function timelineBanquetDateTimeText[\s\S]*?timeToMinutes\(startTime\)/);

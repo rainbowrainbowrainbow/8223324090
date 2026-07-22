@@ -6772,8 +6772,13 @@ test('Sales funnel lead create deep link uses createStage booking handoff contra
     assert.ok(leadsJs.includes('lockStage: fromBooking'));
     assert.ok(leadsJs.includes('sourceCustomerId: readLeadCreateCustomerId(params)'));
     assert.ok(leadsJs.includes('handoffRequest: leadCreateHandoffRequestFromUrl(params)'));
-    assert.ok(initBlock.indexOf('await loadUsers();') < initBlock.indexOf('maybeOpenLeadCreateFromUrl();'));
-    assert.ok(initBlock.indexOf('maybeOpenLeadCreateFromUrl();') < initBlock.indexOf('await loadLeads();'));
+    assert.ok(initBlock.indexOf('await loadUsers();') < initBlock.indexOf('await maybeOpenLeadCreateFromUrl();'));
+    assert.ok(initBlock.indexOf('await maybeOpenLeadCreateFromUrl();') < initBlock.indexOf('await loadLeads();'));
+    assert.ok(leadsJs.includes('async function loadLeadCreateCustomer(customerId)'));
+    assert.ok(leadsJs.includes('apiFetch(`/api/customers/${normalizedCustomerId}`)'));
+    assert.ok(leadsJs.includes('sourceCustomer = await loadLeadCreateCustomer(options.sourceCustomerId)'));
+    assert.ok(leadsJs.includes('prefillLeadModalFromCustomer(sourceCustomer, { includeFallbackNote: false });'));
+    assert.ok(leadsJs.includes('sourceCustomerLoadFailed'));
     assert.ok(leadsJs.includes('Object.assign(body, stagePayload);'));
     assert.ok(leadsJs.includes('body.customerId = sourceCustomerId'));
     assert.ok(leadsJs.includes('responseCustomerId !== sourceCustomerId'));

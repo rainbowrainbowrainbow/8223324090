@@ -775,7 +775,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindKanbanBookingConversionMenuEvents();
     applyLeadQueryParams();
     await loadUsers();
-    maybeOpenLeadCreateFromUrl();
+    await maybeOpenLeadCreateFromUrl();
     await loadLeads();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -1238,11 +1238,42 @@ function clearLeadCreateUrlParams() {
     window.history.replaceState({ ...previousState, leadCreateDeepLinkConsumed: true }, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
-function maybeOpenLeadCreateFromUrl() {
+async function loadLeadCreateCustomer(customerId) {
+    const normalizedCustomerId = positiveLeadQueryId(customerId);
+    if (!normalizedCustomerId) return null;
+
+    const res = await apiFetch(`/api/customers/${normalizedCustomerId}`);
+    if (!res) return null;
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(payload.error || '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0438\u0442\u0438 \u043a\u0430\u0440\u0442\u043a\u0443 \u043a\u043b\u0456\u0454\u043d\u0442\u0430');
+    }
+    return positiveLeadQueryId(payload.id) ? payload : null;
+}
+
+async function maybeOpenLeadCreateFromUrl() {
     const options = readLeadCreateDeepLinkOptions();
     if (!options) return false;
-    openAddModal(options);
     clearLeadCreateUrlParams();
+
+    let sourceCustomer = null;
+    let sourceCustomerLoadFailed = false;
+    if (options.sourceCustomerId) {
+        try {
+            sourceCustomer = await loadLeadCreateCustomer(options.sourceCustomerId);
+            sourceCustomerLoadFailed = !sourceCustomer;
+        } catch (err) {
+            sourceCustomerLoadFailed = true;
+            console.warn('Lead create customer prefill failed', err);
+        }
+    }
+
+    openAddModal(options);
+    if (sourceCustomer) {
+        prefillLeadModalFromCustomer(sourceCustomer, { includeFallbackNote: false });
+    } else if (sourceCustomerLoadFailed && typeof showNotification === 'function') {
+        showNotification('\u041a\u0430\u0440\u0442\u043a\u0443 \u043a\u043b\u0456\u0454\u043d\u0442\u0430 \u043d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0438\u0442\u0438. \u0412\u0432\u0435\u0434\u0456\u0442\u044c \u0456\u043c\u02bc\u044f \u0432\u0440\u0443\u0447\u043d\u0443; \u0437\u0432\u02bc\u044f\u0437\u043e\u043a \u0456\u0437 \u0432\u0438\u0431\u0440\u0430\u043d\u0438\u043c \u043a\u043b\u0456\u0454\u043d\u0442\u043e\u043c \u0431\u0443\u0434\u0435 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e.', 'warning');
+    }
     return true;
 }
 
@@ -4439,8 +4470,9 @@ function customerFallbackLeadNote(customer = {}) {
     return parts.join('\n');
 }
 
-function prefillLeadModalFromCustomer(customer = {}) {
+function prefillLeadModalFromCustomer(customer = {}, options = {}) {
     const instagram = leadCustomerInstagramValue(customer);
+    const includeFallbackNote = options.includeFallbackNote !== false;
     const nameEl = document.getElementById('leadName');
     const phoneEl = document.getElementById('leadPhone');
     const instagramEl = document.getElementById('leadInstagram');
@@ -4448,7 +4480,7 @@ function prefillLeadModalFromCustomer(customer = {}) {
     if (nameEl) nameEl.value = customer.name || '';
     if (phoneEl) phoneEl.value = customer.phone || '';
     if (instagramEl) instagramEl.value = instagram ? '@' + instagram : '';
-    if (notesEl) notesEl.value = customerFallbackLeadNote(customer);
+    if (notesEl && includeFallbackNote) notesEl.value = customerFallbackLeadNote(customer);
 
     const modal = document.getElementById('leadModal');
     if (modal && customer.id) modal.dataset.sourceCustomerId = String(customer.id);

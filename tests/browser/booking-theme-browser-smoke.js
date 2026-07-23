@@ -91,6 +91,15 @@ async function collect(page, theme) {
             const fg = blend(parse(getComputedStyle(element).color), bg);
             return Math.round(((Math.max(luminance(fg), luminance(bg)) + 0.05) / (Math.min(luminance(fg), luminance(bg)) + 0.05)) * 100) / 100;
         };
+        const appearance = selector => {
+            const element = document.querySelector(selector);
+            const style = getComputedStyle(element);
+            return {
+                color: style.color,
+                backgroundColor: style.backgroundColor,
+                effectiveBackground: background(element)
+            };
+        };
         const box = selector => {
             const element = document.querySelector(selector);
             const rect = element.getBoundingClientRect();
@@ -101,6 +110,7 @@ async function collect(page, theme) {
         return {
             theme: currentTheme,
             contrasts: Object.fromEntries(selectors.map(selector => [selector, contrast(selector)])),
+            appearances: Object.fromEntries(selectors.map(selector => [selector, appearance(selector)])),
             input: box('#ticketInput'), output: box('#ticketOutput'),
             stickyBackground: getComputedStyle(document.querySelector('.booking-sticky-footer')).backgroundImage,
             catalogBackground: getComputedStyle(document.querySelector('.booking-menu-catalog-panel')).backgroundColor

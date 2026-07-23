@@ -41,6 +41,12 @@ function bookingWithActualWorkflow(overrides = {}) {
                     financeOnly: true,
                     productionList: false
                 },
+                banquetPreorderStatus: {
+                    warnings: [
+                        { code: 'banquet_menu_minimum_below', message: 'Меню нижче мінімуму: бракує 600 грн.' },
+                        { code: 'banquet_deposit_missing', message: 'Завдаток не вказано.' }
+                    ]
+                },
                 menuWorkflow: {
                     mode: 'actual',
                     status: overrides.status || 'awaiting_actual',
@@ -83,6 +89,12 @@ test('banquet summary exposes actual menu operational projection and charged sub
     assert.ok(summary.finance.rows.some(row => row.key === 'menu_positions_subtotal' && row.label === 'Попередня сума меню' && row.amount === 1900));
     assert.ok(summary.finance.rows.some(row => row.key === 'menu_minimum_adjustment' && row.amount === 600));
     assert.ok(summary.finance.rows.some(row => row.key === 'menu_charged_subtotal' && row.amount === 2500));
+    assert.equal(summary.banquetPreorderStatus.menuStatus, 'below_minimum');
+    assert.ok(summary.banquetPreorderStatus.menuWarnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
+    assert.ok(summary.banquetPreorderStatus.depositWarnings.some(warning => warning.code === 'banquet_deposit_missing'));
+    assert.doesNotMatch(summary.banquetPreorderStatus.warnings.map(warning => warning.code).join(' '), /banquet_menu_minimum_below/);
+    assert.ok(summary.warnings.some(warning => warning.code === 'banquet_deposit_missing'));
+    assert.ok(!summary.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
 });
 
 test('PDF view uses server actual menu projection before finance rows', () => {
@@ -92,12 +104,14 @@ test('PDF view uses server actual menu projection before finance rows', () => {
         businessContext: 'event_genix',
         mode: 'client'
     });
-    const view = buildBanquetSummaryPdfView(summary, 'client');
+    const view = buildBanquetSummaryPdfView(summary, 'staff');
 
     assert.ok(view.menuWorkflowRows.some(row => row[0] === 'Статус' && row[1] === 'Меню по факту · очікує закриття'));
     assert.ok(view.menuWorkflowRows.some(row => row[0] === 'Попередня сума' && /1\s?900/.test(row[1])));
     assert.ok(view.menuWorkflowRows.some(row => row[0] === 'Контрольна задача' && row[1] === 'Закрити меню по факту'));
     assert.ok(view.financeRows.some(row => row.key === 'menu_charged_subtotal' && row.amount === 2500));
+    assert.ok(view.warnings.some(warning => warning.code === 'banquet_deposit_missing'));
+    assert.ok(!view.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
 });
 
 test('booking detail renderer displays actual menu status separately from preorder warning', () => {
@@ -125,7 +139,27 @@ test('booking detail renderer displays actual menu status separately from preord
     assert.match(html, /Контрольна задача: Закрити меню по факту/);
     assert.match(html, /Попередня сума/);
     assert.match(html, /Різниця до мінімуму/);
-    assert.doesNotMatch(html, /Передзамовлення \/ завдаток.*Меню по факту/s);
+    assert.match(html, /booking-preorder-warning--deposit/);
+    assert.match(html, /<strong>Завдаток<\/strong>/);
+    assert.match(html, /Завдаток не вказано/);
+    assert.doesNotMatch(html, /Меню нижче мінімуму/);
+    assert.doesNotMatch(html, /Передзамовлення \/ завдаток/);
+
+    const preorderHtml = renderer.renderBookingPackagePreorderWarning({
+        menuWorkflow: { mode: 'preorder' },
+        banquetPreorderStatus: {
+            warnings: [
+                { code: 'banquet_menu_minimum_below', message: 'Меню нижче мінімуму.' },
+                { code: 'banquet_deposit_missing', message: 'Завдаток не вказано.' }
+            ]
+        }
+    });
+    assert.match(preorderHtml, /booking-preorder-warning--menu/);
+    assert.match(preorderHtml, /<strong>Передзамовлення<\/strong>/);
+    assert.match(preorderHtml, /Меню нижче мінімуму/);
+    assert.match(preorderHtml, /booking-preorder-warning--deposit/);
+    assert.match(preorderHtml, /<strong>Завдаток<\/strong>/);
+    assert.match(preorderHtml, /Завдаток не вказано/);
 });
 
 test('static canonical surfaces consume menuWorkflow projection', () => {

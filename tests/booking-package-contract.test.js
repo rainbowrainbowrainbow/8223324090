@@ -3333,6 +3333,86 @@ test('banquet preorder rules use table minimum and mark sufficient menu/deposit 
     assert.deepEqual(status.warnings, []);
 });
 
+test('actual menu keeps minimum diagnostics but exposes deposit warning separately', () => {
+    const status = buildBanquetPreorderStatus({
+        booking: {
+            category: 'kitchen',
+            room: 'Диван 3'
+        },
+        bookingPackage: {
+            positionsSubtotal: 1900,
+            menuPositions: [
+                { title: 'Меню', quantity: 1, unitPrice: 1900, subtotal: 1900 }
+            ],
+            menuWorkflow: {
+                mode: 'actual',
+                status: 'awaiting_actual',
+                minimumSnapshot: { minimumAmount: 2500 }
+            }
+        }
+    });
+
+    assert.equal(status.menuStatus, 'below_minimum');
+    assert.equal(status.missingMenuAmount, 600);
+    assert.deepEqual(status.menuWarnings.map(warning => warning.code), ['banquet_menu_minimum_below']);
+    assert.deepEqual(status.depositWarnings.map(warning => warning.code), ['banquet_deposit_missing']);
+    assert.deepEqual(status.warnings.map(warning => warning.code), ['banquet_deposit_missing']);
+});
+
+test('actual menu summary, staff PDF view, and summary page omit generic minimum warning', async () => {
+    const summary = buildBanquetSummary({
+        mainBooking: {
+            id: 'BK-ACTUAL-WARNING-1',
+            business_context: 'event_genix',
+            date: '2026-08-20',
+            time: '16:00',
+            duration: 180,
+            category: 'kitchen',
+            room: 'Диван 3',
+            status: 'confirmed',
+            price: 2500,
+            extra_data: {
+                bookingPackage: {
+                    schemaVersion: 3,
+                    positionsSubtotal: 1900,
+                    menuChargedSubtotal: 2500,
+                    finalTotal: 2500,
+                    menuPositions: [
+                        { title: 'Меню', quantity: 1, unitPrice: 1900, subtotal: 1900, servingTime: '16:30' }
+                    ],
+                    menuWorkflow: {
+                        mode: 'actual',
+                        status: 'awaiting_actual',
+                        minimumSnapshot: { minimumAmount: 2500 }
+                    }
+                }
+            }
+        },
+        customer: { name: 'QA Client', phone: '+380000000000' },
+        businessContext: 'event_genix',
+        mode: 'staff'
+    });
+
+    const preorderCodes = summary.banquetPreorderStatus.warnings.map(warning => warning.code);
+    assert.deepEqual(preorderCodes, ['banquet_deposit_missing']);
+    assert.ok(summary.warnings.some(warning => warning.code === 'banquet_deposit_missing'));
+    assert.ok(!summary.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
+
+    const pdfView = buildBanquetSummaryPdfView(summary, 'staff');
+    assert.ok(pdfView.menuWorkflowRows.some(row => row[0] === 'Різниця до мінімуму' && /600/.test(row[1])));
+    assert.ok(pdfView.warnings.some(warning => warning.code === 'banquet_deposit_missing'));
+    assert.ok(!pdfView.warnings.some(warning => warning.code === 'banquet_menu_minimum_below'));
+
+    const { document } = await renderBookingSummaryFixture(summary, { mode: 'staff' });
+    const sheet = document.getElementById('bookingSummaryDocument');
+    assert.ok(sheet.querySelector('.summary-menu-workflow'));
+    assert.ok(sheet.querySelector('.summary-preorder-warning--deposit'));
+    assert.equal(sheet.querySelector('.summary-preorder-warning--deposit strong')?.textContent.trim(), 'Завдаток');
+    assert.equal(sheet.querySelector('.summary-preorder-warning--menu'), null);
+    assert.doesNotMatch(sheet.textContent, /Меню нижче мінімуму/);
+    assert.doesNotMatch(sheet.textContent, /Передзамовлення \/ завдаток/);
+});
+
 test('banquet summary exposes preorder warnings without mixing ticket totals into menu minimum', () => {
     const summary = buildBanquetSummary({
         mainBooking: {

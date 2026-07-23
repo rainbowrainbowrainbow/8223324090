@@ -171,25 +171,53 @@ function bookingPackageMoneyValue(value) {
     return Math.round(amount * 100) / 100;
 }
 
-function bookingPackagePreorderWarnings(bookingPackage = {}) {
+function bookingPackagePreorderWarningGroups(bookingPackage = {}) {
     const status = bookingPackage?.banquetPreorderStatus
         || bookingPackage?.banquet_preorder_status
         || null;
     const warnings = Array.isArray(status?.warnings) ? status.warnings : [];
-    return warnings
-        .map(warning => String(warning?.message || warning?.code || warning || '').trim())
-        .filter(Boolean);
+    const workflow = bookingPackageMenuWorkflowOf(bookingPackage);
+    const groups = {
+        menu: [],
+        deposit: [],
+        other: []
+    };
+    for (const warning of warnings) {
+        const code = String(warning?.code || '').trim();
+        const message = String(warning?.message || warning?.code || warning || '').trim();
+        if (!message) continue;
+        if (code.startsWith('banquet_deposit_')) {
+            groups.deposit.push(message);
+        } else if (code.startsWith('banquet_menu_') || code === 'banquet_place_type_unknown') {
+            if (workflow?.mode !== 'actual') groups.menu.push(message);
+        } else {
+            groups.other.push(message);
+        }
+    }
+    return groups;
+}
+
+function bookingPackagePreorderWarnings(bookingPackage = {}) {
+    const groups = bookingPackagePreorderWarningGroups(bookingPackage);
+    return [...groups.menu, ...groups.deposit, ...groups.other];
 }
 
 function renderBookingPackagePreorderWarning(bookingPackage = {}) {
-    const warnings = bookingPackagePreorderWarnings(bookingPackage);
-    if (!warnings.length) return '';
-    return `
-        <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning">
-            <strong>Передзамовлення / завдаток</strong>
-            <ul>${warnings.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul>
-        </div>
-    `;
+    const groups = bookingPackagePreorderWarningGroups(bookingPackage);
+    return [
+        ['menu', 'Передзамовлення'],
+        ['deposit', 'Завдаток'],
+        ['other', 'Перевірка бронювання']
+    ].map(([key, title]) => {
+        const warnings = groups[key];
+        if (!warnings.length) return '';
+        return `
+            <div class="booking-summary-note booking-summary-note--warning booking-preorder-warning booking-preorder-warning--${key}">
+                <strong>${title}</strong>
+                <ul>${warnings.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul>
+            </div>
+        `;
+    }).join('');
 }
 
 function bookingPackageMenuWorkflowOf(bookingPackage = {}) {
@@ -483,6 +511,7 @@ function renderBookingPackageDetail(booking, options = {}) {
         renderBookingPackageEntryRow,
         bookingPackageTicketLines,
         renderBookingPackageTicketRows,
+        bookingPackagePreorderWarningGroups,
         bookingPackagePreorderWarnings,
         renderBookingPackagePreorderWarning,
         bookingPackageBusinessRowsSummary,

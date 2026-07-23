@@ -1057,16 +1057,40 @@
         `;
     }
 
-    function renderBanquetPreorderStatus(summary) {
+    function banquetPreorderWarningGroups(summary) {
         const status = summary?.banquetPreorderStatus || summary?.banquet_preorder_status || null;
         const warnings = Array.isArray(status?.warnings) ? status.warnings.filter(Boolean) : [];
-        if (!warnings.length) return '';
-        return `
-            <div class="summary-note-block summary-preorder-warning">
-                <strong>Передзамовлення / завдаток</strong>
-                <ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
-            </div>
-        `;
+        const workflow = summary?.menuWorkflow || summary?.menu_workflow || null;
+        const groups = { menu: [], deposit: [], other: [] };
+        warnings.forEach(warning => {
+            const code = String(warning?.code || '').trim();
+            if (code.startsWith('banquet_deposit_')) {
+                groups.deposit.push(warning);
+            } else if (code.startsWith('banquet_menu_') || code === 'banquet_place_type_unknown') {
+                if (workflow?.mode !== 'actual') groups.menu.push(warning);
+            } else {
+                groups.other.push(warning);
+            }
+        });
+        return groups;
+    }
+
+    function renderBanquetPreorderStatus(summary) {
+        const groups = banquetPreorderWarningGroups(summary);
+        return [
+            ['menu', 'Передзамовлення'],
+            ['deposit', 'Завдаток'],
+            ['other', 'Перевірка бронювання']
+        ].map(([key, title]) => {
+            const warnings = groups[key];
+            if (!warnings.length) return '';
+            return `
+                <div class="summary-note-block summary-preorder-warning summary-preorder-warning--${key}">
+                    <strong>${title}</strong>
+                    <ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || warning)}</li>`).join('')}</ul>
+                </div>
+            `;
+        }).join('');
     }
 
     function renderMenuWorkflowStatus(summary) {

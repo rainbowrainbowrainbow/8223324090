@@ -273,6 +273,12 @@ function isBanquetPreorderApplicable(booking = {}, bookingPackage = {}, options 
 function buildBanquetPreorderStatus(input = {}) {
     const booking = input.booking && typeof input.booking === 'object' ? input.booking : input;
     const bookingPackage = input.bookingPackage || banquetPackageOf(booking);
+    const menuWorkflow = input.menuWorkflow
+        || input.menu_workflow
+        || bookingPackage.menuWorkflow
+        || bookingPackage.menu_workflow
+        || null;
+    const actualMenuMode = cleanText(menuWorkflow?.mode, 40).toLowerCase() === 'actual';
     const ruleContract = input.ruleContract || input.banquetPreorderRuleContract || buildBanquetPreorderRuleContract([]);
     const applies = isBanquetPreorderApplicable(booking, bookingPackage, input);
     const placeType = resolveBanquetPreorderPlaceType(input);
@@ -286,7 +292,8 @@ function buildBanquetPreorderStatus(input = {}) {
         || booking.banquet_deposit
         || booking.deposit
     );
-    const warnings = [];
+    const menuWarnings = [];
+    const depositWarnings = [];
     let menuStatus = 'not_applicable';
     let missingMenuAmount = null;
 
@@ -294,7 +301,7 @@ function buildBanquetPreorderStatus(input = {}) {
         missingMenuAmount = money(Math.max(0, rule.requiredMenuMinimum - currentMenuSubtotal));
         menuStatus = missingMenuAmount > 0 ? 'below_minimum' : 'sufficient';
         if (missingMenuAmount > 0) {
-            warnings.push({
+            menuWarnings.push({
                 code: 'banquet_menu_minimum_below',
                 message: `Меню нижче мінімуму для ${rule.placeLabel.toLowerCase()}: потрібно ${formatRuleMoney(rule.requiredMenuMinimum)} грн, зараз ${formatRuleMoney(currentMenuSubtotal)} грн, бракує ${formatRuleMoney(missingMenuAmount)} грн. Збереження не блокується.`,
                 severity: 'warning'
@@ -302,7 +309,7 @@ function buildBanquetPreorderStatus(input = {}) {
         }
     } else if (applies) {
         menuStatus = 'place_type_unknown';
-        warnings.push({
+        menuWarnings.push({
             code: 'banquet_place_type_unknown',
             message: 'Не визначено тип місця для банкету: кімнатка чи столик. Перевірте мінімальне передзамовлення вручну.',
             severity: 'warning'
@@ -315,7 +322,7 @@ function buildBanquetPreorderStatus(input = {}) {
         if (currentDepositAmount === null) {
             depositStatus = 'missing';
             missingDepositAmount = recommendedDepositAmount;
-            warnings.push({
+            depositWarnings.push({
                 code: 'banquet_deposit_missing',
                 message: `Завдаток не вказано. Рекомендований завдаток — ${formatRuleMoney(recommendedDepositAmount)} грн. Збереження не блокується.`,
                 severity: 'warning'
@@ -324,7 +331,7 @@ function buildBanquetPreorderStatus(input = {}) {
             missingDepositAmount = money(Math.max(0, recommendedDepositAmount - currentDepositAmount));
             depositStatus = missingDepositAmount > 0 ? 'below_recommended' : 'sufficient';
             if (missingDepositAmount > 0) {
-                warnings.push({
+                depositWarnings.push({
                     code: 'banquet_deposit_below_recommended',
                     message: `Завдаток нижче рекомендації: потрібно ${formatRuleMoney(recommendedDepositAmount)} грн, зараз ${formatRuleMoney(currentDepositAmount)} грн, бракує ${formatRuleMoney(missingDepositAmount)} грн. Збереження не блокується.`,
                     severity: 'warning'
@@ -347,7 +354,12 @@ function buildBanquetPreorderStatus(input = {}) {
         currentDepositAmount,
         missingDepositAmount,
         depositStatus,
-        warnings
+        menuWarnings,
+        depositWarnings,
+        warnings: [
+            ...(actualMenuMode ? [] : menuWarnings),
+            ...depositWarnings
+        ]
     };
 }
 

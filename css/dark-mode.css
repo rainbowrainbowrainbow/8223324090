@@ -4027,7 +4027,7 @@ html[data-theme="dark"] body.timeline-dashboard-page .main-content {
     border-radius: 10px !important;
     border: 1px solid var(--eg-border-default) !important;
     background: var(--eg-panel-bg-soft) !important;
-    color: var(--eg-text-secondary) !important;
+    color: var(--eg-text-primary) !important;
     box-shadow: none !important;
 }
 

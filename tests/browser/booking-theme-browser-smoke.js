@@ -43,7 +43,7 @@ const HTML = `<!doctype html><html lang="uk" data-theme="light"><head><meta char
 <div class="afisha-line-header">АФІША <button class="afisha-dist-btn" aria-label="Розподілити афішу по ведучих">↔</button></div>
 </main></body></html>`;
 
-const FIXTURE_CSS = `body{margin:0;min-height:100vh}.theme-fixture{display:grid;gap:16px;max-width:920px;margin:72px auto 24px;padding:20px}.theme-fixture-card{padding:16px;border:1px solid var(--border-color,#cbd5e1);border-radius:12px;background:var(--bg-card,#fff)}.booking-menu-catalog-panel{position:relative;inset:auto;width:100%;height:auto;min-height:180px;padding:12px}.booking-menu-catalog-body{min-height:80px}.afisha-line-header{width:220px;padding:12px}`;
+const FIXTURE_CSS = `*,*::before,*::after{transition:none!important;animation:none!important}body{margin:0;min-height:100vh}.theme-fixture{display:grid;gap:16px;max-width:920px;margin:72px auto 24px;padding:20px}.theme-fixture-card{padding:16px;border:1px solid var(--border-color,#cbd5e1);border-radius:12px;background:var(--bg-card,#fff)}.booking-menu-catalog-panel{position:relative;inset:auto;width:100%;height:auto;min-height:180px;padding:12px}.booking-menu-catalog-body{min-height:80px}.afisha-line-header{width:220px;padding:12px}`;
 
 async function collect(page, theme) {
     await page.evaluate(value => {
@@ -59,12 +59,16 @@ async function collect(page, theme) {
     await page.evaluate(() => document.activeElement?.blur());
 
     return page.evaluate(currentTheme => {
+        const colorCanvas = document.createElement('canvas');
+        colorCanvas.width = 1;
+        colorCanvas.height = 1;
+        const colorContext = colorCanvas.getContext('2d', { willReadFrequently: true });
         const parse = value => {
-            const text = String(value || '');
-            const parts = text.match(/[\d.]+/g)?.map(Number) || [];
-            if (parts.length < 3) return null;
-            const srgbScale = text.startsWith('color(srgb') ? 255 : 1;
-            return { r: parts[0] * srgbScale, g: parts[1] * srgbScale, b: parts[2] * srgbScale, a: parts[3] ?? 1 };
+            colorContext.clearRect(0, 0, 1, 1);
+            colorContext.fillStyle = String(value || 'transparent');
+            colorContext.fillRect(0, 0, 1, 1);
+            const [r, g, b, alpha] = colorContext.getImageData(0, 0, 1, 1).data;
+            return { r, g, b, a: alpha / 255 };
         };
         const blend = (top, bottom) => ({
             r: top.r * top.a + bottom.r * (1 - top.a),

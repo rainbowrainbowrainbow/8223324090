@@ -2325,7 +2325,22 @@ body.dark-mode .booking-mini-action,
 body.dark-mode .booking-menu-add-btn,
 html[data-theme="dark"] .booking-mini-action,
 html[data-theme="dark"] .booking-menu-add-btn {
-    color: var(--primary-light);
+    border-color: color-mix(in srgb, var(--primary-light) 46%, transparent);
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--text-primary);
+}
+
+body.dark-mode .booking-mini-action:hover,
+body.dark-mode .booking-menu-add-btn:hover,
+body.dark-mode .booking-mini-action:focus-visible,
+body.dark-mode .booking-menu-add-btn:focus-visible,
+html[data-theme="dark"] .booking-mini-action:hover,
+html[data-theme="dark"] .booking-menu-add-btn:hover,
+html[data-theme="dark"] .booking-mini-action:focus-visible,
+html[data-theme="dark"] .booking-menu-add-btn:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light) 70%, transparent);
+    background: color-mix(in srgb, var(--primary) 24%, transparent);
+    color: var(--text-primary);
 }
 
 body.dark-mode .booking-menu-catalog-panel,

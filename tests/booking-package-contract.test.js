@@ -1752,6 +1752,34 @@ test('booking banquet edit hydrates bookingTime from first real activity without
     });
 });
 
+test('legacy banquet edit keeps the resolved group selected and no-op hydration clean', () => {
+    const bookingJs = read('js/booking.js');
+    const selectorJs = read('js/booking-banquet-selector.js');
+    const editBlock = bookingJs.slice(
+        bookingJs.indexOf('async function editBooking'),
+        bookingJs.indexOf('// ==========================================\n// DUPLICATE BOOKING')
+    );
+    const groupAssignment = editBlock.indexOf('BookingDrawerState.selectedBanquetGroupId = banquetEditContext.groupId');
+    const activityHydration = editBlock.indexOf('hydrateBanquetEditActivityState(banquetEditContext)');
+    const customerHydration = editBlock.indexOf('await hydrateBookingCustomerSelection(booking');
+    const selectorRender = editBlock.indexOf('renderBookingBanquetGroupSelector()', customerHydration);
+    const markClean = editBlock.lastIndexOf('BookingForm.markClean');
+
+    assert.ok(groupAssignment >= 0, 'resolved banquet group is selected');
+    assert.ok(activityHydration > groupAssignment, 'activity hydration runs after the group is fixed');
+    assert.ok(customerHydration > activityHydration, 'customer hydration keeps the resolved activity state');
+    assert.ok(selectorRender > customerHydration, 'selector is rendered after customer hydration');
+    assert.ok(markClean > selectorRender, 'final no-op hydration is marked clean');
+    assert.doesNotMatch(
+        editBlock.slice(groupAssignment, markClean),
+        /BookingForm\._dirty\s*=\s*true/,
+        'automatic legacy hydration must not dirty the form'
+    );
+    assert.match(selectorJs, /if \(selectedGroupId && !selectedKnown\)[\s\S]*option value="\$\{escapeHtml\(selectedGroupId\)\}"/);
+    assert.match(selectorJs, /select\.value = selectedGroupId[\s\S]*\? selectedGroupId : ''/);
+    assert.match(editBlock, /banquetSnapshotResolution\.issue[\s\S]*return false[\s\S]*closeAllModals\(\)/);
+});
+
 test('booking time duplicate input and change events are idempotent', async () => {
     const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:45' } });
 

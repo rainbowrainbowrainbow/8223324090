@@ -17040,13 +17040,130 @@ async function createLegacyBanquetReplacement(bookingId) {
     return true;
 }
 
+function normalizeBanquetInspectorEditHint(options = {}) {
+    if (options?.source !== 'timeline_banquet_inspector') return null;
+    const input = options?.banquetContext && typeof options.banquetContext === 'object'
+        ? options.banquetContext
+        : {};
+    return {
+        groupId: String(input.groupId || input.group_id || '').trim(),
+        primaryBookingId: String(input.primaryBookingId || input.primary_booking_id || '').trim(),
+        sourceBookingId: String(input.sourceBookingId || input.source_booking_id || '').trim()
+    };
+}
+
+function banquetInspectorEditHydrationIssue(code) {
+    const messages = {
+        banquet_context_mismatch: "\u0411\u0430\u043d\u043a\u0435\u0442\u043d\u0430 \u043f\u0440\u0438\u0432\u2019\u044f\u0437\u043a\u0430 \u0437\u043c\u0456\u043d\u0438\u043b\u0430\u0441\u044f \u0430\u0431\u043e \u043d\u0435 \u0437\u0431\u0456\u0433\u0430\u0454\u0442\u044c\u0441\u044f \u0437 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e\u044e \u043c\u0456\u043d\u0456\u043a\u0430\u0440\u0442\u043a\u043e\u044e. \u0420\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0431\u043b\u043e\u043a\u043e\u0432\u0430\u043d\u043e, \u0449\u043e\u0431 \u043d\u0435 \u043f\u0435\u0440\u0435\u0437\u0430\u043f\u0438\u0441\u0430\u0442\u0438 \u0456\u043d\u0448\u0438\u0439 \u0431\u0430\u043d\u043a\u0435\u0442.",
+        banquet_context_ambiguous: "\u0414\u043b\u044f \u0446\u044c\u043e\u0433\u043e \u0441\u0442\u0430\u0440\u043e\u0433\u043e \u0437\u0430\u043f\u0438\u0441\u0443 \u0437\u043d\u0430\u0439\u0434\u0435\u043d\u043e \u043a\u0456\u043b\u044c\u043a\u0430 \u0440\u0456\u0437\u043d\u0438\u0445 \u0431\u0430\u043d\u043a\u0435\u0442\u043d\u0438\u0445 \u043f\u0440\u0438\u0432\u2019\u044f\u0437\u043e\u043a. \u0420\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0431\u043b\u043e\u043a\u043e\u0432\u0430\u043d\u043e \u0434\u043e \u0440\u0443\u0447\u043d\u043e\u0457 \u043f\u0435\u0440\u0435\u0432\u0456\u0440\u043a\u0438 \u0437\u0432\u2019\u044f\u0437\u043a\u0456\u0432.",
+        banquet_context_unresolved: "\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u043e\u0434\u043d\u043e\u0437\u043d\u0430\u0447\u043d\u043e \u0432\u0456\u0434\u043d\u043e\u0432\u0438\u0442\u0438 \u043f\u043e\u0432\u043d\u0438\u0439 \u0441\u043a\u043b\u0430\u0434 \u0441\u0442\u0430\u0440\u043e\u0433\u043e \u0431\u0430\u043d\u043a\u0435\u0442\u0443. \u0420\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0431\u043b\u043e\u043a\u043e\u0432\u0430\u043d\u043e, \u0449\u043e\u0431 \u043d\u0435 \u0432\u0442\u0440\u0430\u0442\u0438\u0442\u0438 \u043c\u0435\u043d\u044e \u0430\u0431\u043e \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0456."
+    };
+    return {
+        code,
+        message: messages[code] || messages.banquet_context_unresolved
+    };
+}
+
+async function resolveBanquetEditSnapshotForOpen(anchorBooking = {}, options = {}) {
+    const hint = normalizeBanquetInspectorEditHint(options);
+    const anchorBookingId = String(anchorBooking?.id || '').trim();
+    if (typeof apiGetBanquetByBooking !== 'function') {
+        return {
+            snapshot: null,
+            lookupBookingId: null,
+            hint,
+            issue: hint ? banquetInspectorEditHydrationIssue('banquet_context_unresolved') : null
+        };
+    }
+
+    const candidateIds = [];
+    const addCandidateId = value => {
+        const id = String(value || '').trim();
+        if (id && !candidateIds.includes(id)) candidateIds.push(id);
+    };
+    addCandidateId(anchorBookingId);
+    if (hint) {
+        addCandidateId(hint.primaryBookingId);
+        addCandidateId(hint.sourceBookingId);
+    }
+
+    const successful = [];
+    let firstResult = null;
+    for (const candidateId of candidateIds) {
+        const snapshot = await apiGetBanquetByBooking(candidateId);
+        if (firstResult === null) firstResult = snapshot;
+        if (!snapshot || snapshot.success === false) continue;
+        successful.push({
+            bookingId: candidateId,
+            groupId: String(banquetGroupIdFromSnapshot(snapshot) || '').trim(),
+            snapshot
+        });
+    }
+
+    if (!hint) {
+        const resolved = successful[0] || null;
+        return {
+            snapshot: resolved?.snapshot || firstResult,
+            lookupBookingId: resolved?.bookingId || anchorBookingId || null,
+            hint: null,
+            issue: null
+        };
+    }
+
+    const grouped = successful.filter(item => item.groupId);
+    if (hint.groupId) {
+        const matching = grouped.find(item => item.groupId === hint.groupId);
+        if (matching) {
+            return {
+                snapshot: matching.snapshot,
+                lookupBookingId: matching.bookingId,
+                hint,
+                issue: null
+            };
+        }
+        return {
+            snapshot: successful[0]?.snapshot || firstResult,
+            lookupBookingId: null,
+            hint,
+            issue: banquetInspectorEditHydrationIssue(
+                grouped.length ? 'banquet_context_mismatch' : 'banquet_context_unresolved'
+            )
+        };
+    }
+
+    const distinctGroupIds = new Set(grouped.map(item => item.groupId));
+    if (distinctGroupIds.size === 1) {
+        const resolved = grouped[0];
+        return {
+            snapshot: resolved.snapshot,
+            lookupBookingId: resolved.bookingId,
+            hint: {
+                ...hint,
+                groupId: resolved.groupId
+            },
+            issue: null
+        };
+    }
+
+    return {
+        snapshot: successful[0]?.snapshot || firstResult,
+        lookupBookingId: null,
+        hint,
+        issue: banquetInspectorEditHydrationIssue(
+            distinctGroupIds.size > 1 ? 'banquet_context_ambiguous' : 'banquet_context_unresolved'
+        )
+    };
+}
 async function editBooking(bookingId, options = {}) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const anchorBooking = bookings.find(b => b.id === bookingId);
     if (!anchorBooking) return;
-    const banquetSnapshot = typeof apiGetBanquetByBooking === 'function'
-        ? await apiGetBanquetByBooking(anchorBooking.id)
-        : null;
+    const banquetSnapshotResolution = await resolveBanquetEditSnapshotForOpen(anchorBooking, options);
+    if (banquetSnapshotResolution.issue) {
+        showNotification(banquetSnapshotResolution.issue.message, 'error');
+        return false;
+    }
+    const banquetSnapshot = banquetSnapshotResolution.snapshot;
     if (banquetSnapshot?.success === false) {
         showNotification(banquetSnapshot.error || 'Не вдалося перевірити склад банкету. Спробуйте відкрити форму ще раз.', 'error');
         return;
@@ -17086,6 +17203,11 @@ async function editBooking(bookingId, options = {}) {
         : panelLineSource.lineId;
     await openBookingPanel(booking.time, panelLineId);
     BookingDrawerState.banquetEditContext = banquetEditContext;
+    if (banquetEditContext?.groupId) {
+        BookingDrawerState.selectedBanquetGroupId = banquetEditContext.groupId;
+        BookingDrawerState.manualBanquetGroupSelection = false;
+    }
+
 
     // Змінити заголовок і кнопку
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
@@ -17186,6 +17308,9 @@ async function editBooking(bookingId, options = {}) {
     if (banquetEditContext) hydrateBanquetEditActivityState(banquetEditContext);
 
     await hydrateBookingCustomerSelection(booking, { renderSummary: false });
+    if (banquetEditContext?.groupId) {
+        renderBookingBanquetGroupSelector();
+    }
     const packageOwnerBooking = banquetEditContext?.packageOwnerBooking || booking;
     const ticketOwnerBooking = banquetEditContext?.ticketOwnerBooking || packageOwnerBooking;
     hydrateBookingPackageWorkspace(packageOwnerBooking, {

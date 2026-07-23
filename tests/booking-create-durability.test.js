@@ -3765,7 +3765,9 @@ test('banquet edit frontend hydrates membership snapshot and keeps optimistic co
         bookingJs.indexOf('async function validateSelectedActivityScheduleBeforeSubmit')
     );
 
-    assert.match(editBlock, /apiGetBanquetByBooking\(anchorBooking\.id\)/);
+    assert.match(bookingJs, /async function resolveBanquetEditSnapshotForOpen[\s\S]*apiGetBanquetByBooking\(candidateId\)/);
+    assert.match(editBlock, /resolveBanquetEditSnapshotForOpen\(anchorBooking, options\)/);
+    assert.match(editBlock, /banquetSnapshotResolution\.issue[\s\S]*return false/);
     assert.match(editBlock, /banquetEditContext\?\.primaryBooking \|\| anchorBooking/);
     assert.match(editBlock, /banquetEditContext\?\.packageOwnerBooking \|\| booking/);
     assert.match(editBlock, /ticketOwnerBookingId:\s*banquetEditContext\?\.ticketOwnerBookingId/);

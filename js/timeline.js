@@ -2845,6 +2845,13 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
     const activityStartsText = timelineBanquetActivityStartsText(summary);
     const commentsHtml = timelineBanquetCommentsHtml(summary);
     const bookingId = summary.carrierBooking?.id || summary.primaryBooking?.id;
+    const banquetEditContextHint = {
+        ...activeContext,
+        groupId: summary.groupId || activeContext?.groupId || null,
+        primaryBookingId: summary.primaryBooking?.id || activeContext?.primaryBookingId || null,
+        sourceBookingId: bookingId || activeContext?.sourceBookingId || null,
+        source: activeContext?.source || 'timeline_banquet_inspector'
+    };
     const editBookingButton = timelineCanEditBanquet(summary)
         ? '<button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-edit>Редагувати</button>'
         : '';
@@ -2906,7 +2913,8 @@ function showTimelineBanquetInspector(event, summary, trigger, options = {}) {
         if (bookingId && typeof editBooking === 'function') {
             void editBooking(bookingId, {
                 source: 'timeline_banquet_inspector',
-                preferBanquetEditor: true
+                preferBanquetEditor: true,
+                banquetContext: banquetEditContextHint
             });
         }
     });

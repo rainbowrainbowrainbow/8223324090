@@ -782,13 +782,13 @@ test('timeline banquet inspector summary trusts the canonical group customer and
     assert.ok(editButton);
     assert.equal(inspector.querySelector('[data-banquet-inspector-edit-arrival]'), null);
     editButton.click();
-    assert.deepEqual(plain(editCalls), [{
-        bookingId: activityCarrier.id,
-        options: {
-            source: 'timeline_banquet_inspector',
-            preferBanquetEditor: true
-        }
-    }]);
+    assert.equal(editCalls.length, 1);
+    assert.equal(editCalls[0].bookingId, activityCarrier.id);
+    assert.equal(editCalls[0].options.source, 'timeline_banquet_inspector');
+    assert.equal(editCalls[0].options.preferBanquetEditor, true);
+    assert.equal(editCalls[0].options.banquetContext.groupId, normalInspectorSummary.groupId);
+    assert.equal(editCalls[0].options.banquetContext.primaryBookingId, normalSummary.primaryBooking.id);
+    assert.equal(editCalls[0].options.banquetContext.sourceBookingId, activityCarrier.id);
 
     ctx.canAccess = () => false;
     ctx.showTimelineBanquetInspector(null, normalInspectorSummary, null);
@@ -2680,6 +2680,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(banquetInspector, /const bookingId = summary\.carrierBooking\?\.id \|\| summary\.primaryBooking\?\.id;/);
     assert.match(banquetInspector, /data-banquet-inspector-edit>Редагувати<\/button>/);
     assert.match(banquetInspector, /editBooking\(bookingId, \{[\s\S]*?source: 'timeline_banquet_inspector',[\s\S]*?preferBanquetEditor: true[\s\S]*?\}\);/);
+    assert.match(banquetInspector, /banquetContext: banquetEditContextHint/);
     assert.doesNotMatch(banquetInspector, /data-banquet-inspector-edit-arrival/);
     assert.doesNotMatch(banquetInspector, /timelineBanquetSummaryHref\(summary, \{ editArrival: true \}\)/);
 
@@ -2689,6 +2690,9 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(editBookingBlock, /async function editBooking\(bookingId, options = \{\}\)/);
     assert.match(booking, /function shouldRouteBookingEditToAnimatorView\(booking = \{\}, options = \{\}, banquetEditContext = null\)/);
     assert.match(editBookingBlock, /if \(shouldRouteBookingEditToAnimatorView\(anchorBooking, options, banquetEditContext\)\)/);
+    assert.match(editBookingBlock, /resolveBanquetEditSnapshotForOpen\(anchorBooking, options\)/);
+    assert.match(editBookingBlock, /banquetSnapshotResolution\.issue[\s\S]*return false/);
+    assert.match(editBookingBlock, /BookingDrawerState\.selectedBanquetGroupId = banquetEditContext\.groupId/);
     assert.ok(
         editBookingBlock.indexOf('const banquetEditContext') < editBookingBlock.indexOf('if (shouldRouteBookingEditToAnimatorView(anchorBooking, options, banquetEditContext))'),
         'banquet context must be resolved before deciding whether to switch to the animator view'
@@ -2848,6 +2852,117 @@ test('booking edit routing keeps direct activities in animator view and bypasses
         false,
         'banquet inspector editing stays in the canonical banquet editor'
     );
+});
+
+test('banquet inspector edit resolves legacy arrival and service carriers through the canonical primary snapshot and fails closed', async () => {
+    const booking = read('js/booking.js');
+    const helperStart = booking.indexOf('function normalizeBanquetInspectorEditHint');
+    const helperEnd = booking.indexOf('async function editBooking', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'banquet inspector hydration helper slice exists');
+
+    const snapshotsById = new Map();
+    const calls = [];
+    const context = {
+        apiGetBanquetByBooking: async bookingId => {
+            calls.push(bookingId);
+            return snapshotsById.get(bookingId) || { success: false, error: 'not found' };
+        },
+        banquetGroupIdFromSnapshot: snapshot => snapshot?.groupId || snapshot?.group?.id || null
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        booking.slice(helperStart, helperEnd)
+            + '\nthis.__resolveBanquetEditSnapshotForOpen = resolveBanquetEditSnapshotForOpen;',
+        context,
+        { filename: 'js/booking.js' }
+    );
+
+    const resolveSnapshot = context.__resolveBanquetEditSnapshotForOpen;
+    const canonicalSnapshot = {
+        success: true,
+        groupId: 'BG-LEGACY-1',
+        bookings: {
+            primary: {
+                id: 'BK-PRIMARY',
+                date: '2099-06-18',
+                bookingPackage: {
+                    menuPositions: [
+                        { productId: 'MENU-1', quantity: 3, servingTime: '13:30' }
+                    ]
+                }
+            },
+            activities: [
+                { id: 'BK-ACTIVITY-1', programId: 'PROGRAM-1' },
+                { id: 'BK-ACTIVITY-2', programId: 'PROGRAM-2' }
+            ]
+        }
+    };
+
+    for (const carrierId of ['BK-ARRIVAL-CARRIER', 'BK-SERVICE-CARRIER']) {
+        calls.length = 0;
+        snapshotsById.clear();
+        snapshotsById.set(carrierId, { success: true, legacyFallback: true });
+        snapshotsById.set('BK-PRIMARY', canonicalSnapshot);
+
+        const resolved = await resolveSnapshot({ id: carrierId }, {
+            source: 'timeline_banquet_inspector',
+            preferBanquetEditor: true,
+            banquetContext: {
+                groupId: 'BG-LEGACY-1',
+                primaryBookingId: 'BK-PRIMARY',
+                sourceBookingId: carrierId
+            }
+        });
+
+        assert.equal(resolved.issue, null);
+        assert.equal(resolved.lookupBookingId, 'BK-PRIMARY');
+        assert.equal(resolved.snapshot.groupId, 'BG-LEGACY-1');
+        assert.equal(resolved.snapshot.bookings.activities.length, 2);
+        assert.equal(resolved.snapshot.bookings.primary.bookingPackage.menuPositions.length, 1);
+        assert.equal(resolved.snapshot.bookings.primary.bookingPackage.menuPositions[0].productId, 'MENU-1');
+        assert.deepEqual(calls, [carrierId, 'BK-PRIMARY']);
+    }
+
+    snapshotsById.clear();
+    snapshotsById.set('BK-MISMATCH-CARRIER', { success: true, legacyFallback: true });
+    snapshotsById.set('BK-MISMATCH-PRIMARY', { success: true, groupId: 'BG-OTHER' });
+    const mismatch = await resolveSnapshot({ id: 'BK-MISMATCH-CARRIER' }, {
+        source: 'timeline_banquet_inspector',
+        banquetContext: {
+            groupId: 'BG-EXPECTED',
+            primaryBookingId: 'BK-MISMATCH-PRIMARY',
+            sourceBookingId: 'BK-MISMATCH-CARRIER'
+        }
+    });
+    assert.equal(mismatch.issue.code, 'banquet_context_mismatch');
+    assert.equal(mismatch.lookupBookingId, null);
+
+    snapshotsById.clear();
+    snapshotsById.set('BK-UNRESOLVED-CARRIER', { success: true, legacyFallback: true });
+    snapshotsById.set('BK-UNRESOLVED-PRIMARY', { success: true, legacyFallback: true });
+    const unresolved = await resolveSnapshot({ id: 'BK-UNRESOLVED-CARRIER' }, {
+        source: 'timeline_banquet_inspector',
+        banquetContext: {
+            groupId: 'BG-EXPECTED',
+            primaryBookingId: 'BK-UNRESOLVED-PRIMARY',
+            sourceBookingId: 'BK-UNRESOLVED-CARRIER'
+        }
+    });
+    assert.equal(unresolved.issue.code, 'banquet_context_unresolved');
+
+    snapshotsById.clear();
+    snapshotsById.set('BK-AMBIGUOUS-CARRIER', { success: true, legacyFallback: true });
+    snapshotsById.set('BK-AMBIGUOUS-PRIMARY', { success: true, groupId: 'BG-ONE' });
+    snapshotsById.set('BK-AMBIGUOUS-SOURCE', { success: true, groupId: 'BG-TWO' });
+    const ambiguous = await resolveSnapshot({ id: 'BK-AMBIGUOUS-CARRIER' }, {
+        source: 'timeline_banquet_inspector',
+        banquetContext: {
+            primaryBookingId: 'BK-AMBIGUOUS-PRIMARY',
+            sourceBookingId: 'BK-AMBIGUOUS-SOURCE'
+        }
+    });
+    assert.equal(ambiguous.issue.code, 'banquet_context_ambiguous');
+    assert.equal(ambiguous.lookupBookingId, null);
 });
 
 test('banquet inspector editor keeps second animator self-conflicts inside the edit context', () => {

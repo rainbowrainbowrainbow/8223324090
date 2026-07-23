@@ -132,6 +132,7 @@ async function main() {
         await page.addStyleTag({ content: FIXTURE_CSS });
         const light = await collect(page, 'light');
         const dark = await collect(page, 'dark');
+        console.log(JSON.stringify({ light, dark }, null, 2));
         verify(light); verify(dark);
         assert.notEqual(light.stickyBackground, dark.stickyBackground, 'summary footer has light/dark backgrounds');
         assert.notEqual(light.catalogBackground, dark.catalogBackground, 'menu catalog has light/dark backgrounds');

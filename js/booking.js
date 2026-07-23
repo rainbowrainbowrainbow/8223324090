@@ -11094,6 +11094,31 @@ function setSelectedActivitySecondAnimator(programId, value) {
     scheduleSelectedActivityConflictRefresh();
 }
 
+function syncSelectedActivitySecondAnimatorValidationState(program) {
+    const programId = String(program?.id || '');
+    const select = programId
+        ? document.getElementById(selectedActivitySecondAnimatorSelectId(programId))
+        : null;
+    const container = select?.closest?.('.selected-activity-second-host');
+    if (!container) return;
+
+    const issueText = selectedActivitySecondAnimatorValidationIssues(program)
+        .map(issue => issue.message)
+        .join(' · ');
+    container.classList.toggle('has-error', Boolean(issueText));
+    container.setAttribute('aria-invalid', issueText ? 'true' : 'false');
+
+    const currentError = container.querySelector('.selected-activity-second-host-error');
+    if (!issueText) {
+        currentError?.remove();
+        return;
+    }
+    const error = currentError || document.createElement('span');
+    error.className = 'selected-activity-second-host-error';
+    error.textContent = issueText;
+    if (!currentError) container.appendChild(error);
+}
+
 async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
     const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
     const programs = getSelectedActivityPrograms().filter(selectedActivityRequiresSecondAnimator);
@@ -11172,7 +11197,9 @@ async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
                 unresolved: !latestDraft.secondAnimatorLineId
             }, { selected: true });
         }
+        syncSelectedActivitySecondAnimatorValidationState(program);
     }
+    if (isCurrent()) updateBookingSubmitState();
 }
 
 function setSelectedActivityPinataField(programId, field, value) {

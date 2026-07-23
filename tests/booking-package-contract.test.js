@@ -2043,6 +2043,17 @@ test('standalone activity edit restores the same second animator line in global 
     });
     const activitySelectId = context.selectedActivitySecondAnimatorSelectId(program.id);
     const activitySelect = createHarnessSelect();
+    let staleErrorRemoved = false;
+    const staleError = {
+        textContent: 'Оберіть другого ведучого',
+        remove: () => {
+            staleErrorRemoved = true;
+        }
+    };
+    const validationContainer = createHarnessElement({
+        querySelector: selector => selector === '.selected-activity-second-host-error' ? staleError : null
+    });
+    activitySelect.closest = selector => selector === '.selected-activity-second-host' ? validationContainer : null;
     context.__fields.set(activitySelectId, activitySelect);
     context.AppState.editingBookingId = 'BK-ACTIVITY';
     const candidate = { id: 'line-second', name: 'Second Animator', source: 'timeline_line' };
@@ -2072,6 +2083,8 @@ test('standalone activity edit restores the same second animator line in global 
     assert.equal(activitySelect.value, candidate.name);
     assert.equal(globalOption?.dataset?.lineId, candidate.id);
     assert.equal(activityOption?.dataset?.lineId, candidate.id);
+    assert.equal(staleErrorRemoved, true);
+    assert.equal(validationContainer['aria-invalid'], 'false');
     assert.equal(context.window.BookingForm._dirty, false);
 });
 

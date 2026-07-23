@@ -237,3 +237,68 @@ test('second animator repair audit is dry-run by default and inserts only missin
     assert.match(script, /if \(!FIX\) continue/);
     assert.match(script, /Database connection unavailable/);
 });
+
+test('second animator audit excludes service resources and keeps real missing animator lines', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-second-animator-links.js'), 'utf8');
+    const code = [
+        extractFunction(script, 'parseExtraData'),
+        extractFunction(script, 'isLegacyDefaultLineId'),
+        extractFunction(script, 'isKnownNonAnimatorResourceLine'),
+        extractFunction(script, 'bookingTimelineResourceType'),
+        extractFunction(script, 'bookingRequiresAnimatorLineAudit')
+    ].join('\n');
+    const context = {};
+    vm.runInNewContext(`
+        ${code}
+        globalThis.results = {
+            banquetService: bookingRequiresAnimatorLineAudit({
+                date: '2026-07-22',
+                line_id: 'banquet-service',
+                extra_data: { timelineIdentity: { resourceType: 'service' } }
+            }),
+            takeaway: bookingRequiresAnimatorLineAudit({
+                date: '2026-07-22',
+                line_id: 'room-takeaway'
+            }),
+            emptyRoster: bookingRequiresAnimatorLineAudit({
+                date: '2026-07-22',
+                line_id: 'empty-roster-2026-07-22',
+                extra_data: { timelineIdentity: { resourceType: 'animator' } }
+            }),
+            unknownAnimator: bookingRequiresAnimatorLineAudit({
+                date: '2026-07-22',
+                line_id: 'missing-animator-line',
+                extra_data: { timelineIdentity: { resourceType: 'animator' } }
+            })
+        };
+    `, context);
+
+    assert.equal(context.results.banquetService, false);
+    assert.equal(context.results.takeaway, false);
+    assert.equal(context.results.emptyRoster, false);
+    assert.equal(context.results.unknownAnimator, true);
+    assert.match(script, /NOT \$\{knownNonAnimatorResourceLineSql\('b'\)\}/);
+    assert.match(script, /animatorAssignmentLineSql\('b', 's'\)/);
+    assert.match(script, /result\.rows\.filter\(bookingRequiresAnimatorLineAudit\)/);
+});
+
+test('second animator audit keeps exact legacy default assignments visible', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-second-animator-links.js'), 'utf8');
+    const code = [
+        extractFunction(script, 'parseExtraData'),
+        extractFunction(script, 'isLegacyDefaultLineId'),
+        extractFunction(script, 'isKnownNonAnimatorResourceLine'),
+        extractFunction(script, 'bookingTimelineResourceType'),
+        extractFunction(script, 'bookingRequiresAnimatorLineAudit')
+    ].join('\n');
+    const context = {};
+    vm.runInNewContext(`
+        ${code}
+        globalThis.results = ['line1', 'line2', 'line1_2026-07-22', 'line2_2026-07-22']
+            .map(line_id => bookingRequiresAnimatorLineAudit({ date: '2026-07-22', line_id }));
+    `, context);
+
+    assert.deepEqual(Array.from(context.results), [true, true, true, true]);
+    assert.match(script, /LEGACY_DEFAULT_ASSIGNMENT/);
+    assert.match(script, /legacy_default_assignments=/);
+});

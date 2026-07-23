@@ -11146,14 +11146,30 @@ async function populateSelectedActivitySecondAnimatorSelects(options = {}) {
             primaryLineId: persistedFields.lineId || document.getElementById('bookingLine')?.value || ''
         });
         if (!isCurrent()) return;
-        const selectedValue = selectedCandidate?.name || selectedName;
+        const latestDraft = selectedActivitySecondAnimatorDraft(program);
+        const latestSelectedName = latestDraft.secondAnimator || selectedCandidate?.name || selectedName;
+        const latestCandidate = latestSelectedName && (
+            latestSelectedName !== selectedName
+            || String(latestDraft.secondAnimatorLineId || '') !== String(draft.secondAnimatorLineId || '')
+        )
+            ? await resolveSecondAnimatorSelectionCandidate({
+                storedName: latestSelectedName,
+                secondAnimatorLineId: latestDraft.secondAnimatorLineId,
+                bookingId: persistedFields.bookingId || persistedFields.existingActivityBookingId || null,
+                primaryLineId: persistedFields.lineId || document.getElementById('bookingLine')?.value || '',
+                lines: sharedLines,
+                bookings: sharedBookings
+            })
+            : selectedCandidate;
+        if (!isCurrent()) return;
+        const selectedValue = latestCandidate?.name || latestSelectedName;
         if (selectedValue && select.value !== selectedValue) {
-            ensureAnimatorSelectCandidateOption(select, selectedCandidate || {
-                id: draft.secondAnimatorLineId || selectedValue,
+            ensureAnimatorSelectCandidateOption(select, latestCandidate || {
+                id: latestDraft.secondAnimatorLineId || selectedValue,
                 name: selectedValue,
-                label: draft.secondAnimatorLineName || selectedValue,
+                label: latestDraft.secondAnimatorLineName || selectedValue,
                 source: 'activity_second_animator',
-                unresolved: !draft.secondAnimatorLineId
+                unresolved: !latestDraft.secondAnimatorLineId
             }, { selected: true });
         }
     }
@@ -16869,6 +16885,31 @@ function hydrateBanquetEditActivityState(context = null) {
     }
 }
 
+function hydrateStandaloneEditSecondAnimatorActivityState(booking = {}, candidate = null) {
+    if (BookingDrawerState.banquetEditContext?.groupId) return null;
+    const programId = banquetEditBookingProgramId(booking);
+    if (!programId) return null;
+
+    const normalizedCandidate = normalizeAnimatorLineCandidate(candidate || {});
+    const storedName = String(banquetEditBookingValue(booking, 'secondAnimator', 'second_animator') || '').trim();
+    const storedLineId = String(bookingSecondAnimatorLineId(booking) || '').trim();
+    const secondAnimator = normalizedCandidate?.name || storedName;
+    const secondAnimatorLineId = normalizedCandidate?.id || storedLineId || null;
+    if (!secondAnimator && !secondAnimatorLineId) return null;
+
+    const state = {
+        secondAnimator: secondAnimator || secondAnimatorLineId,
+        secondAnimatorLineId,
+        secondAnimatorLineName: normalizedCandidate?.name
+            || banquetEditBookingValue(booking, 'secondAnimatorLineName', 'second_animator_line_name')
+            || storedName
+            || secondAnimatorLineId
+            || null
+    };
+    getSelectedActivitySecondAnimatorFields()[String(programId)] = state;
+    return state;
+}
+
 function bookingEditConflictExcludeIds() {
     const context = BookingDrawerState.banquetEditContext;
     if (context?.groupId && Array.isArray(context.allBookingIds)) return context.allBookingIds;
@@ -17134,26 +17175,31 @@ async function editBooking(bookingId, options = {}) {
     if (statusRadio) statusRadio.checked = true;
 
     // Другий аніматор
-    if (booking.secondAnimator) {
+    const storedSecondAnimator = String(booking.secondAnimator || booking.second_animator || '').trim();
+    const storedSecondAnimatorLineId = bookingSecondAnimatorLineId(booking);
+    if (storedSecondAnimator || storedSecondAnimatorLineId) {
         const secondAnimatorCandidate = await resolveSecondAnimatorSelectionCandidate({
             booking,
             bookingId: booking.id,
-            storedName: booking.secondAnimator,
-            secondAnimatorLineId: bookingSecondAnimatorLineId(booking),
+            storedName: storedSecondAnimator,
+            secondAnimatorLineId: storedSecondAnimatorLineId,
             primaryLineId: bookingPrimaryLineId(booking)
         });
+        const selectedSecondAnimatorName = secondAnimatorCandidate?.name || storedSecondAnimator;
+        hydrateStandaloneEditSecondAnimatorActivityState(booking, secondAnimatorCandidate);
         await populateSecondAnimatorSelect({
-            selectedName: booking.secondAnimator,
-            selectedLineId: secondAnimatorCandidate?.id || bookingSecondAnimatorLineId(booking) || '',
+            selectedName: selectedSecondAnimatorName,
+            selectedLineId: secondAnimatorCandidate?.id || storedSecondAnimatorLineId || '',
             selectedCandidate: secondAnimatorCandidate,
             excludeBookingIds: bookingEditConflictExcludeIds(),
             primaryLineId: bookingPrimaryLineId(booking)
         });
-        await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id, {
+        await resolveSecondAnimatorSelect(selectedSecondAnimatorName, booking.id, {
             selectedCandidate: secondAnimatorCandidate,
-            secondAnimatorLineId: bookingSecondAnimatorLineId(booking),
+            secondAnimatorLineId: storedSecondAnimatorLineId,
             primaryLineId: bookingPrimaryLineId(booking)
         });
+        await populateSelectedActivitySecondAnimatorSelects({ fresh: false });
     }
     renderBookingPackageSummary();
     syncBookingCommentFieldPresentation(getBookingFormData());

@@ -66,6 +66,59 @@ function legacyDefaultLineSql(alias = 'b') {
     return `${alias}.line_id IN ('line1', 'line2', 'line1_' || ${alias}.date, 'line2_' || ${alias}.date)`;
 }
 
+function isLegacyDefaultLineId(lineId, date) {
+    const normalizedLineId = String(lineId || '').trim();
+    const dateKey = String(date || '').slice(0, 10);
+    return normalizedLineId === 'line1'
+        || normalizedLineId === 'line2'
+        || (dateKey && normalizedLineId === `line1_${dateKey}`)
+        || (dateKey && normalizedLineId === `line2_${dateKey}`);
+}
+
+function isKnownNonAnimatorResourceLine(lineId) {
+    const normalizedLineId = String(lineId || '').trim().toLowerCase();
+    return normalizedLineId === 'banquet-service'
+        || normalizedLineId === 'room-takeaway'
+        || normalizedLineId.startsWith('empty-roster-');
+}
+
+function bookingTimelineResourceType(booking) {
+    booking = booking || {};
+    const extra = parseExtraData(booking.extra_data ?? booking.extraData);
+    const identity = extra.timelineIdentity || extra.timeline_identity || {};
+    return String(identity.resourceType || identity.resource_type || '').trim().toLowerCase();
+}
+
+function bookingRequiresAnimatorLineAudit(booking) {
+    booking = booking || {};
+    const lineId = String(booking.line_id || booking.lineId || '').trim();
+    if (!lineId || isKnownNonAnimatorResourceLine(lineId)) return false;
+    if (isLegacyDefaultLineId(lineId, booking.date)) return true;
+    if (String(booking.second_animator || booking.secondAnimator || '').trim()) return true;
+    if (bookingTimelineResourceType(booking) === 'animator') return true;
+    return booking.animator_staff_id !== null && booking.animator_staff_id !== undefined;
+}
+
+function knownNonAnimatorResourceLineSql(alias = 'b') {
+    return `(
+        LOWER(BTRIM(${alias}.line_id)) IN ('banquet-service', 'room-takeaway')
+        OR LOWER(BTRIM(${alias}.line_id)) LIKE 'empty-roster-%'
+    )`;
+}
+
+function animatorAssignmentLineSql(alias = 'b', staffAlias = 's') {
+    return `(
+        ${legacyDefaultLineSql(alias)}
+        OR NULLIF(BTRIM(${alias}.second_animator), '') IS NOT NULL
+        OR LOWER(COALESCE(
+            ${alias}.extra_data->'timelineIdentity'->>'resourceType',
+            ${alias}.extra_data->'timeline_identity'->>'resource_type',
+            ''
+        )) = 'animator'
+        OR ${staffAlias}.id IS NOT NULL
+    )`;
+}
+
 function fallbackLineColor(value) {
     const numeric = Math.abs(parseInt(value, 10) || 0);
     return PARK_FALLBACK_LINE_COLORS[numeric % PARK_FALLBACK_LINE_COLORS.length];
@@ -242,14 +295,17 @@ async function loadNonexistentLineAssignments(client) {
         `COALESCE(b.status, 'confirmed') <> 'cancelled'`,
         `NULLIF(BTRIM(b.line_id), '') IS NOT NULL`,
         `l.line_id IS NULL`,
-        `ss.staff_id IS NULL`
+        `ss.staff_id IS NULL`,
+        `NOT ${knownNonAnimatorResourceLineSql('b')}`,
+        animatorAssignmentLineSql('b', 's')
     ];
     filters.push(...dateRangeFilters('b', params));
 
     const limitSql = LIMIT > 0 ? `LIMIT ${LIMIT}` : '';
     const result = await client.query(
         `SELECT b.id, b.business_context, b.date, b.time, b.line_id, b.linked_to,
-                b.label, b.program_name, b.second_animator, b.status
+                b.label, b.program_name, b.second_animator, b.status, b.extra_data,
+                s.id AS animator_staff_id
            FROM bookings b
       LEFT JOIN lines_by_date l
              ON l.date = b.date
@@ -259,12 +315,15 @@ async function loadNonexistentLineAssignments(client) {
              ON ss.date::text = b.date::text
             AND ss.staff_id::text = b.line_id
             AND ss.status IN ('working', 'remote')
+      LEFT JOIN staff s
+             ON s.id::text = b.line_id
+            AND ${staffAnimatorWhere('s')}
           WHERE ${filters.join('\n            AND ')}
           ORDER BY b.date, b.time, b.id
           ${limitSql}`,
         params
     );
-    return result.rows;
+    return result.rows.filter(bookingRequiresAnimatorLineAudit);
 }
 
 async function existingLinkedSecondAnimator(client, booking, line) {

@@ -723,6 +723,11 @@ function createHarnessSelect(value = '', dataset = {}) {
             this.options = this.children;
         }
     });
+    Object.defineProperty(element, 'selectedOptions', {
+        get() {
+            return this.options.filter(option => option.selected || option.value === this.value).slice(0, 1);
+        }
+    });
     return element;
 }
 
@@ -857,6 +862,7 @@ function createMultiActivityScheduleHarness(options = {}) {
         getBookingsForDate: options.getBookingsForDate || (async () => []),
         getLinesForDate: options.getLinesForDate || (async () => []),
         apiGetLines: options.apiGetLines || (async () => []),
+        apiGetBookings: options.apiGetBookings || (async () => []),
         isRoomFirstTimelineView: options.isRoomFirstTimelineView || (() => false),
         checkConflicts: options.checkConflicts || (async () => ({ overlap: false })),
         getBookingFormData: () => ({
@@ -2012,6 +2018,99 @@ test('booking multi-activity second host payload belongs to its activity row', (
     assert.equal(multiHostActivity.secondAnimatorLineId, 'line-second');
     assert.equal(multiHostActivity.secondAnimatorLineName, 'Second Animator');
     assert.equal(multiHostActivity.extraData.bookingWorkspace.secondAnimatorLineId, 'line-second');
+});
+
+test('standalone activity edit restores the same second animator line in global and activity fields', async () => {
+    const program = {
+        id: 'show-40',
+        code: 'WOW',
+        label: 'Wow(40)',
+        name: 'Wow show',
+        category: 'show',
+        duration: 40,
+        price: 2400,
+        hosts: 2
+    };
+    const lines = [
+        { id: 'line-main', name: 'Primary Animator' },
+        { id: 'line-second', name: 'Second Animator' }
+    ];
+    const context = createMultiActivityScheduleHarness({
+        programs: [program],
+        lineId: 'line-main',
+        apiGetLines: async () => lines,
+        apiGetBookings: async () => []
+    });
+    const activitySelectId = context.selectedActivitySecondAnimatorSelectId(program.id);
+    const activitySelect = createHarnessSelect();
+    context.__fields.set(activitySelectId, activitySelect);
+    context.AppState.editingBookingId = 'BK-ACTIVITY';
+    const candidate = { id: 'line-second', name: 'Second Animator', source: 'timeline_line' };
+
+    const hydrated = context.hydrateStandaloneEditSecondAnimatorActivityState({
+        id: 'BK-ACTIVITY',
+        programId: program.id,
+        lineId: 'line-main',
+        secondAnimator: 'Second Animator',
+        secondAnimatorLineId: 'line-second'
+    }, candidate);
+    await context.populateSecondAnimatorSelect({
+        selectedName: candidate.name,
+        selectedLineId: candidate.id,
+        selectedCandidate: candidate,
+        primaryLineId: 'line-main',
+        fresh: false
+    });
+    await context.populateSelectedActivitySecondAnimatorSelects({ fresh: false });
+
+    const globalSelect = context.__fields.get('secondAnimatorSelect');
+    const globalOption = globalSelect.options.find(option => option.value === candidate.name);
+    const activityOption = activitySelect.options.find(option => option.value === candidate.name);
+    assert.equal(hydrated.secondAnimatorLineId, candidate.id);
+    assert.equal(context.BookingDrawerState.selectedActivitySecondAnimatorFields[program.id].secondAnimatorLineId, candidate.id);
+    assert.equal(globalSelect.value, candidate.name);
+    assert.equal(activitySelect.value, candidate.name);
+    assert.equal(globalOption?.dataset?.lineId, candidate.id);
+    assert.equal(activityOption?.dataset?.lineId, candidate.id);
+    assert.equal(context.window.BookingForm._dirty, false);
+});
+
+test('standalone activity edit keeps an unresolved legacy second animator visible and blocking', () => {
+    const program = {
+        id: 'legacy-show',
+        code: 'LEGACY',
+        name: 'Legacy show',
+        category: 'show',
+        duration: 30,
+        hosts: 2
+    };
+    const context = createMultiActivityScheduleHarness({ programs: [program] });
+    const selectId = context.selectedActivitySecondAnimatorSelectId(program.id);
+    const activitySelect = createHarnessSelect();
+    context.__fields.set(selectId, activitySelect);
+    const unresolvedCandidate = {
+        id: 'deleted-line',
+        name: 'Former Animator',
+        source: 'legacy_second_animator',
+        unresolved: true
+    };
+
+    const hydrated = context.hydrateStandaloneEditSecondAnimatorActivityState({
+        id: 'BK-LEGACY',
+        programId: program.id,
+        secondAnimator: 'Former Animator',
+        secondAnimatorLineId: 'deleted-line'
+    }, unresolvedCandidate);
+    context.ensureAnimatorSelectCandidateOption(activitySelect, unresolvedCandidate, { selected: true });
+
+    const [issue] = context.selectedActivitySecondAnimatorValidationIssues(program);
+    assert.equal(hydrated.secondAnimator, 'Former Animator');
+    assert.equal(hydrated.secondAnimatorLineId, 'deleted-line');
+    assert.equal(activitySelect.value, 'Former Animator');
+    assert.equal(issue.key, `activity_second_animator_unresolved_${program.id}`);
+    assert.equal(issue.fields[0], `activitySecondAnimator:${program.id}`);
+    assert.ok(issue.message.length > 0);
+    assert.equal(context.window.BookingForm._dirty, false);
 });
 
 test('booking selected activity second host keeps line id after summary rerender', () => {

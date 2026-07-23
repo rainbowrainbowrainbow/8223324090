@@ -2321,6 +2321,88 @@ test('PUT /api/bookings creates missing linked row when edit adds second animato
     });
 });
 
+test('PUT /api/bookings no-op edit preserves the existing second animator linked row', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const mainId = 'BK-2099-NOOP-MAIN';
+        const linkedId = 'BK-2099-NOOP-LINKED';
+        state.rows.push(
+            earlierPinataRow({
+                id: mainId,
+                date: '2099-02-13',
+                time: '14:30',
+                line_id: 'line-main',
+                program_id: 'paper-show',
+                program_code: 'PAPER',
+                label: 'Paper(30)',
+                program_name: 'Paper Show',
+                category: 'show',
+                duration: 30,
+                price: 1600,
+                hosts: 2,
+                second_animator: 'Second Animator',
+                pinata_mode: 'none',
+                room: 'Room A',
+                customer_id: null,
+                extra_data: JSON.stringify({
+                    bookingWorkspace: { secondAnimatorLineId: 'line-second' },
+                    timelineIdentity: { resourceId: 'line-main', lineId: 'line-main', resourceType: 'animator' }
+                })
+            }),
+            earlierPinataRow({
+                id: linkedId,
+                date: '2099-02-13',
+                time: '14:30',
+                line_id: 'line-second',
+                program_id: 'paper-show',
+                program_code: 'PAPER',
+                label: 'Paper(30)',
+                program_name: 'Paper Show',
+                category: 'show',
+                duration: 30,
+                price: 0,
+                hosts: 2,
+                second_animator: 'Second Animator',
+                pinata_mode: 'none',
+                room: 'Room A',
+                linked_to: mainId,
+                customer_id: null,
+                extra_data: JSON.stringify({
+                    timelineIdentity: { resourceId: 'line-second', lineId: 'line-second', resourceType: 'animator' }
+                })
+            })
+        );
+
+        const res = await updateBooking(baseUrl, mainId, {
+            businessContext: 'event_genix',
+            date: '2099-02-13',
+            time: '14:30',
+            lineId: 'line-main',
+            lineName: 'Anna',
+            room: 'Room A',
+            programId: 'paper-show',
+            programCode: 'PAPER',
+            label: 'Paper(30)',
+            programName: 'Paper Show',
+            category: 'show',
+            duration: 30,
+            price: 1600,
+            hosts: 2,
+            secondAnimator: 'Second Animator',
+            secondAnimatorLineId: 'line-second',
+            status: 'confirmed',
+            createdBy: 'creator-user',
+            pinataMode: 'none'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const linkedRows = state.rows.filter(row => row.linked_to === mainId && row.status !== 'cancelled');
+        assert.equal(linkedRows.length, 1);
+        assert.equal(linkedRows[0].id, linkedId);
+        assert.equal(linkedRows[0].line_id, 'line-second');
+        assert.equal(linkedRows[0].second_animator, 'Second Animator');
+    });
+});
+
 test('PUT /api/bookings preserves booking package during unrelated edits', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         state.rows.push({
@@ -3851,7 +3933,9 @@ test('booking edit restores the current second animator before availability filt
     assert.match(selectBlock, /animatorSelectConflictExcludeIds\(bookings, candidate\.id, options\)/);
     assert.match(selectBlock, /checkConflicts\(candidate\.id, time, duration, excludeId\)/);
     assert.match(activitySelectBlock, /selectedCandidate[\s\S]*excludeBookingIds:\s*bookingEditConflictExcludeIds\(\)/);
-    assert.match(editBlock, /resolveSecondAnimatorSelectionCandidate\(\{[\s\S]*secondAnimatorLineId:\s*bookingSecondAnimatorLineId\(booking\)[\s\S]*populateSecondAnimatorSelect\(\{/);
+    assert.match(editBlock, /resolveSecondAnimatorSelectionCandidate\(\{[\s\S]*secondAnimatorLineId:\s*storedSecondAnimatorLineId[\s\S]*hydrateStandaloneEditSecondAnimatorActivityState\(booking, secondAnimatorCandidate\)/);
+    assert.match(editBlock, /populateSecondAnimatorSelect\(\{[\s\S]*populateSelectedActivitySecondAnimatorSelects\(\{ fresh: false \}\)/);
+    assert.match(bookingJs, /getSelectedActivitySecondAnimatorFields\(\)\[String\(programId\)\] = state/);
     assert.match(bookingJs, /selectedAnimatorSelectHasUnresolvedLine/);
     assert.match(bookingJs, /second_animator_unresolved/);
     assert.match(bookingJs, /const banquetEditActive = Boolean\(BookingDrawerState\.banquetEditContext\?\.groupId\)/);

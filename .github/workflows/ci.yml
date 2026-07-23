@@ -71,6 +71,9 @@ jobs:
       - name: Install Chromium
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
 
+      - name: Run booking light and dark theme browser smoke
+        run: npm run test:browser:booking-theme
+
       - name: Run HR Team browser smoke
         run: npm run test:browser:hr-team
 

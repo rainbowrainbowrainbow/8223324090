@@ -73,6 +73,7 @@
     "test:ui": "node tests/ui-check.js",
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
+    "test:browser:booking-theme": "npx --yes --package playwright node tests/browser/booking-theme-browser-smoke.js",
     "test:browser:customer-child-create": "npx --yes --package playwright node tests/browser/customer-child-create-browser-smoke.js",
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
     "test:browser:hr-structure": "npx --yes --package playwright node tests/browser/hr-structure-tree-browser-smoke.js",

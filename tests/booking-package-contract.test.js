@@ -1752,7 +1752,7 @@ test('booking banquet edit hydrates bookingTime from first real activity without
     });
 });
 
-test('legacy banquet edit keeps the resolved group selected and no-op hydration clean', () => {
+test('legacy banquet edit keeps the resolved group selected and no-op hydration clean', async () => {
     const bookingJs = read('js/booking.js');
     const selectorJs = read('js/booking-banquet-selector.js');
     const editBlock = bookingJs.slice(
@@ -1778,6 +1778,85 @@ test('legacy banquet edit keeps the resolved group selected and no-op hydration 
     assert.match(selectorJs, /if \(selectedGroupId && !selectedKnown\)[\s\S]*option value="\$\{escapeHtml\(selectedGroupId\)\}"/);
     assert.match(selectorJs, /select\.value = selectedGroupId[\s\S]*\? selectedGroupId : ''/);
     assert.match(editBlock, /banquetSnapshotResolution\.issue[\s\S]*return false[\s\S]*closeAllModals\(\)/);
+    assert.match(
+        editBlock,
+        /hydrateBookingCustomerSelection\(booking, \{[\s\S]*preselectBanquetGroupId: banquetEditContext\?\.groupId \|\| ''[\s\S]*\}\)/,
+        'banquet edit passes the resolved group through async customer hydration'
+    );
+
+    const functionSlice = (startMarker, endMarker) => {
+        const start = bookingJs.indexOf(startMarker);
+        const end = bookingJs.indexOf(endMarker, start);
+        assert.ok(start >= 0 && end > start, startMarker + ' slice exists');
+        return bookingJs.slice(start, end);
+    };
+    const customerHydrationSource = [
+        functionSlice('function bookingCustomerDateOnly', 'function bookingCustomerChildrenProjection'),
+        functionSlice('function bookingCustomerChildrenProjection', 'function bookingCustomerPrimaryChild'),
+        functionSlice('function bookingCustomerPrimaryChild', 'function bookingCustomerChildrenDisplay'),
+        functionSlice('function rememberSelectedCustomerSnapshot', 'function normalizeBookingCustomerSelection'),
+        functionSlice('function normalizeBookingCustomerSelection', 'function applySelectedCustomerToBookingForm'),
+        functionSlice('function applySelectedCustomerToBookingForm', 'function bookingCustomerFallback'),
+        functionSlice('function bookingCustomerFallback', 'async function hydrateBookingCustomerSelection'),
+        functionSlice('async function hydrateBookingCustomerSelection', 'function sameBookingRoom')
+    ].join('\n');
+    const fields = new Map();
+    const field = id => {
+        if (!fields.has(id)) {
+            fields.set(id, {
+                id,
+                value: '',
+                textContent: '',
+                innerHTML: '',
+                dataset: {},
+                checked: false,
+                classList: { add: () => {}, remove: () => {} }
+            });
+        }
+        return fields.get(id);
+    };
+    const refreshes = [];
+    const context = {
+        console,
+        document: { getElementById: field },
+        window: { BookingForm: { _dirty: false } },
+        BookingForm: null,
+        BookingDrawerState: {
+            selectedBanquetGroupId: 'BQ-LEGACY-1',
+            roomSelectionBanquetContext: null,
+            roomBookingAnimationBridge: null
+        },
+        bookingCustomerVisitLabel: () => '',
+        bookingCustomerChildHasContext: () => true,
+        renderSelectedCustomerCard: () => {},
+        renderBookingCustomerSearchState: () => {},
+        setBookingClientMode: () => {},
+        renderBookingPackageSummary: () => {},
+        updateBookingContextHeaderSummary: () => {},
+        scheduleBookingBanquetGroupCandidatesRefresh: options => {
+            refreshes.push({ ...options });
+            context.BookingDrawerState.selectedBanquetGroupId = options.preselectGroupId || '';
+        },
+        apiGetCustomer: async id => ({ id, name: 'Legacy customer', phone: '000' })
+    };
+    context.BookingForm = context.window.BookingForm;
+    vm.createContext(context);
+    vm.runInContext(customerHydrationSource, context, { filename: 'js/booking.js' });
+
+    await context.hydrateBookingCustomerSelection({
+        customerId: 'C-LEGACY-1',
+        customerName: 'Legacy customer'
+    }, {
+        renderSummary: false,
+        preselectBanquetGroupId: 'BQ-LEGACY-1'
+    });
+
+    assert.deepEqual(refreshes, [
+        { preselectGroupId: 'BQ-LEGACY-1', preserveSelection: true },
+        { preselectGroupId: 'BQ-LEGACY-1', preserveSelection: true }
+    ]);
+    assert.equal(context.BookingDrawerState.selectedBanquetGroupId, 'BQ-LEGACY-1');
+    assert.equal(context.window.BookingForm._dirty, false);
 });
 
 test('booking time duplicate input and change events are idempotent', async () => {

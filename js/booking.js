@@ -7993,8 +7993,14 @@ function applySelectedCustomerToBookingForm(customer = {}, options = {}) {
 
     if (options.renderSummary !== false) renderBookingPackageSummary();
     updateBookingContextHeaderSummary();
+    const preselectBanquetGroupId = String(
+        options.preselectBanquetGroupId
+        || BookingDrawerState.roomSelectionBanquetContext?.groupId
+        || BookingDrawerState.roomBookingAnimationBridge?.groupId
+        || ''
+    ).trim();
     scheduleBookingBanquetGroupCandidatesRefresh({
-        preselectGroupId: BookingDrawerState.roomSelectionBanquetContext?.groupId || BookingDrawerState.roomBookingAnimationBridge?.groupId || '',
+        preselectGroupId: preselectBanquetGroupId,
         preserveSelection: true
     });
     if (options.markDirty !== false && window.BookingForm) BookingForm._dirty = true;
@@ -8029,7 +8035,8 @@ async function hydrateBookingCustomerSelection(booking = {}, options = {}) {
     if (typeof options.isCurrent === 'function' && !options.isCurrent()) return null;
     applySelectedCustomerToBookingForm(fallback, {
         markDirty: false,
-        renderSummary: false
+        renderSummary: false,
+        preselectBanquetGroupId: options.preselectBanquetGroupId || ''
     });
 
     try {
@@ -8042,7 +8049,8 @@ async function hydrateBookingCustomerSelection(booking = {}, options = {}) {
         return applySelectedCustomerToBookingForm(customer, {
             fallback,
             markDirty: false,
-            renderSummary: options.renderSummary !== false
+            renderSummary: options.renderSummary !== false,
+            preselectBanquetGroupId: options.preselectBanquetGroupId || ''
         });
     } catch (error) {
         console.warn('[Booking] Не вдалося підтягнути клієнта бронювання', error);
@@ -17307,7 +17315,10 @@ async function editBooking(bookingId, options = {}) {
 
     if (banquetEditContext) hydrateBanquetEditActivityState(banquetEditContext);
 
-    await hydrateBookingCustomerSelection(booking, { renderSummary: false });
+    await hydrateBookingCustomerSelection(booking, {
+        renderSummary: false,
+        preselectBanquetGroupId: banquetEditContext?.groupId || ''
+    });
     if (banquetEditContext?.groupId) {
         renderBookingBanquetGroupSelector();
     }

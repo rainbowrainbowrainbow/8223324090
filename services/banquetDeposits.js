@@ -36,6 +36,8 @@ const FINAL_ACCOUNTING_DEPOSIT_STATUSES = new Set([
 ]);
 const DEFAULT_MANAGER_DEPOSIT_STATUS = 'Очікуємо оплату';
 const DEFAULT_ACCOUNTING_DEPOSIT_STATUS = 'Не перевірено';
+const MANAGER_DEPOSIT_STATUS_NOT_REQUIRED = 'Не потрібен';
+const MANAGER_DEPOSIT_OPERATION_CLEAR = 'clear';
 
 class BanquetDepositError extends Error {
     constructor(message, { status = 400, code = 'BANQUET_DEPOSIT_ERROR', details = null } = {}) {
@@ -441,8 +443,9 @@ function depositProjection(depositRow, context = {}) {
     }
     const managerStatus = managerStatusForProjection(deposit);
     const projectedDeposit = { ...deposit, managerStatus };
+    const stateStatus = deposit.status === 'cancelled' ? deposit.status : (deposit.accountingStatus || deposit.status);
     return {
-        state: projectionState(deposit.accountingStatus || deposit.status),
+        state: projectionState(stateStatus),
         status: deposit.status,
         managerStatus,
         accountingStatus: deposit.accountingStatus,
@@ -826,12 +829,27 @@ function depositPayloadFromInput(input = {}) {
     return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
 }
 
+function normalizeManagerDepositOperation(value) {
+    const operation = cleanText(value, 32);
+    if (!operation) return null;
+    const normalized = operation.toLowerCase();
+    if (normalized === MANAGER_DEPOSIT_OPERATION_CLEAR) return MANAGER_DEPOSIT_OPERATION_CLEAR;
+    throw new BanquetDepositError('Unsupported manager deposit operation', {
+        code: 'VALIDATION_MANAGER_OPERATION_INVALID',
+        details: { field: 'operation', value: operation }
+    });
+}
+
 function normalizeManagerDepositPayload(input = {}) {
     const payload = depositPayloadFromInput(input);
     if (!payload) return { provided: false };
 
     const rawStatus = firstProvided(payload, 'managerStatus', 'manager_status', 'status');
     const managerStatus = normalizeManagerStatus(rawStatus, DEFAULT_MANAGER_DEPOSIT_STATUS);
+    const requestedOperation = normalizeManagerDepositOperation(firstProvided(payload, 'operation', 'op', 'action'));
+    const operation = requestedOperation || (managerStatus === MANAGER_DEPOSIT_STATUS_NOT_REQUIRED
+        ? MANAGER_DEPOSIT_OPERATION_CLEAR
+        : null);
     const expectedAmount = normalizeAmount(
         firstProvided(payload, 'expectedAmount', 'expected_amount', 'amount', 'depositAmount', 'deposit_amount'),
         { required: false, allowZero: true }
@@ -839,7 +857,8 @@ function normalizeManagerDepositPayload(input = {}) {
     const dueDate = normalizeDateOnly(firstProvided(payload, 'dueDate', 'due_date'), 'dueDate');
     const managerNote = cleanText(firstProvided(payload, 'managerNote', 'manager_note', 'note', 'comment'), 1000);
     const explicitlyEnabled = payload.enabled === true || payload.provided === true || payload.hasDeposit === true;
-    const provided = explicitlyEnabled
+    const provided = operation === MANAGER_DEPOSIT_OPERATION_CLEAR
+        || explicitlyEnabled
         || expectedAmount !== null
         || Boolean(dueDate)
         || Boolean(managerNote)
@@ -847,15 +866,28 @@ function normalizeManagerDepositPayload(input = {}) {
 
     return {
         provided,
-        expectedAmount,
-        managerStatus,
-        dueDate,
-        managerNote,
+        operation,
+        expectedAmount: operation === MANAGER_DEPOSIT_OPERATION_CLEAR ? null : expectedAmount,
+        managerStatus: operation === MANAGER_DEPOSIT_OPERATION_CLEAR ? null : managerStatus,
+        dueDate: operation === MANAGER_DEPOSIT_OPERATION_CLEAR ? null : dueDate,
+        managerNote: operation === MANAGER_DEPOSIT_OPERATION_CLEAR ? null : managerNote,
         sourcePayload: jsonObject(payload.sourcePayload || payload.source_payload),
         raw: payload
     };
 }
 
+function managerDepositClearBlockers(deposit = {}) {
+    const blockers = [];
+    const paidAmount = Number(deposit.paidAmount);
+    if (Number.isFinite(paidAmount) && paidAmount > 0) blockers.push('paid_amount');
+    if (deposit.paymentMethod) blockers.push('payment_method');
+    if (deposit.financeTransactionId) blockers.push('finance_transaction');
+    if (deposit.accountantTaskId) blockers.push('accountant_task');
+    if (deposit.verifiedAt || deposit.verifiedBy) blockers.push('accounting_verification');
+    if (isFinalAccountingStatus(deposit.accountingStatus)) blockers.push('accounting_status');
+    if (['accountant_verified', 'corrected'].includes(deposit.status)) blockers.push('deposit_status');
+    return [...new Set(blockers)];
+}
 function managerSourcePayload(input = {}, context = {}, payload = {}) {
     return {
         ...jsonObject(input.sourcePayload || input.source_payload),
@@ -865,7 +897,8 @@ function managerSourcePayload(input = {}, context = {}, payload = {}) {
             bookingId: context.primaryBookingId || context.bookingId || null,
             banquetGroupId: context.banquetGroupId || null,
             updatedAt: new Date().toISOString(),
-            sourcePayload: payload.sourcePayload || null
+            sourcePayload: payload.sourcePayload || null,
+            operation: payload.operation || null
         }
     };
 }
@@ -877,7 +910,8 @@ function managerMeta(input = {}, context = {}, payload = {}) {
             bookingId: context.primaryBookingId || context.bookingId || null,
             banquetGroupId: context.banquetGroupId || null,
             managerStatus: payload.managerStatus,
-            dueDate: payload.dueDate || null
+            dueDate: payload.dueDate || null,
+            operation: payload.operation || null
         }
     };
 }
@@ -908,6 +942,77 @@ async function upsertManagerBookingDeposit(input = {}, options = {}) {
         const meta = managerMeta(input, context, payload);
         const legacyStatus = context.needsBookingLink ? 'needs_booking_link' : 'manager_reported';
         const existing = await findDepositForContext(db, context, { forUpdate: true, includeCancelled: false });
+
+        if (payload.operation === MANAGER_DEPOSIT_OPERATION_CLEAR) {
+            if (!existing) {
+                return {
+                    cleared: false,
+                    skipped: true,
+                    reason: 'deposit_clear_absent',
+                    deposit: null,
+                    projection: depositProjection(null, context),
+                    context
+                };
+            }
+
+            const current = mapDepositRow(existing);
+            const blockers = managerDepositClearBlockers(current);
+            if (blockers.length) {
+                throw new BanquetDepositError('Завдаток має оплату або бухгалтерське підтвердження. Його не можна очистити з форми бронювання.', {
+                    status: 409,
+                    code: 'DEPOSIT_CLEAR_BLOCKED_FINANCIAL_DATA',
+                    details: { depositId: current.id, blockers }
+                });
+            }
+
+            const result = await db.query(
+                `UPDATE banquet_deposits
+                    SET expected_amount = NULL,
+                        amount = NULL,
+                        manager_status = $1,
+                        due_date = NULL,
+                        manager_note = NULL,
+                        status = 'cancelled',
+                        source_kind = COALESCE(source_kind, 'manager_booking_form'),
+                        source_payload = $2::jsonb,
+                        meta = $3::jsonb,
+                        updated_at = NOW()
+                  WHERE id = $4
+                    AND business_context = $5
+                  RETURNING *`,
+                [
+                    DEFAULT_MANAGER_DEPOSIT_STATUS,
+                    JSON.stringify({
+                        ...jsonObject(current.sourcePayload),
+                        ...sourcePayload,
+                        managerBookingClear: {
+                            source: input.source || 'banquetDeposits.upsertManagerBookingDeposit',
+                            clearedAt: now,
+                            sourcePayload: payload.sourcePayload || null
+                        }
+                    }),
+                    JSON.stringify({
+                        ...jsonObject(current.meta),
+                        ...meta,
+                        managerBookingClear: {
+                            clearedAt: now,
+                            clearedBy: actorId || null
+                        }
+                    }),
+                    current.id,
+                    businessContext
+                ]
+            );
+            const row = result.rows[0];
+            return {
+                cleared: true,
+                created: false,
+                skipped: false,
+                deposit: mapDepositRow(row),
+                projection: depositProjection(row, context),
+                context
+            };
+        }
 
         if (existing) {
             const current = mapDepositRow(existing);

@@ -93,9 +93,11 @@ test('269 migration copies explicit deposit JSON only and keeps paid_amount as w
 
 test('manager deposit upsert does not overwrite accounting-confirmed amount fields', () => {
     const service = fs.readFileSync(path.join(ROOT, 'services', 'banquetDeposits.js'), 'utf8');
-    const updateStart = service.indexOf('UPDATE banquet_deposits');
+    const amountMarker = service.indexOf('SET expected_amount = $1');
+    assert.ok(amountMarker >= 0, 'manager deposit amount update SQL should exist');
+    const updateStart = service.lastIndexOf('UPDATE banquet_deposits', amountMarker);
     assert.ok(updateStart >= 0, 'manager deposit update SQL should exist');
-    const updateBlock = service.slice(updateStart, service.indexOf('WHERE id = $13', updateStart));
+    const updateBlock = service.slice(updateStart, service.indexOf('WHERE id = $13', amountMarker));
 
     assert.match(updateBlock, /expected_amount = \$1/);
     assert.match(updateBlock, /amount = CASE/);

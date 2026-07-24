@@ -113,6 +113,29 @@ test('preflight allows one canonical booking income for strict finance synchroni
     assert.equal(inspection.blockingFinanceTransactionCount, 0);
 });
 
+
+test('preflight allows safe unpaid manager-only deposit for strict QA cleanup', () => {
+    const inspection = inspectQaCleanupGroupState(groupState({
+        deposits: [{
+            id: 17,
+            status: 'manager_reported',
+            paid_amount: 0,
+            payment_method: null,
+            finance_transaction_id: null,
+            accountant_task_id: null,
+            accounting_status: 'Не перевірено',
+            verified_at: null,
+            verified_by: null
+        }]
+    }), OPTIONS);
+
+    assert.equal(inspection.status, 'ready');
+    assert.equal(inspection.depositCount, 1);
+    assert.equal(inspection.activeDepositCount, 1);
+    assert.equal(inspection.removableDepositCount, 1);
+    assert.equal(inspection.blockingDepositCount, 0);
+    assert.deepEqual(inspection.removableDepositIds, [17]);
+});
 test('preflight exposes sanitized compatibility link scope when cleanup blocks', () => {
     const inspection = inspectQaCleanupGroupState(groupState({
         compatibilityLinks: [{
@@ -137,7 +160,16 @@ test('preflight exposes sanitized compatibility link scope when cleanup blocks',
 test('preflight blocks deposits, receipts, payment references, and noncanonical finance', () => {
     const inspection = inspectQaCleanupGroupState(groupState({
         bookings: [bookingRow({ paid_amount: 100, payment_status: 'paid' })],
-        deposits: [{ id: 1 }],
+        deposits: [{
+            id: 1,
+            status: 'accountant_verified',
+            paid_amount: 100,
+            payment_method: 'cash',
+            finance_transaction_id: 91,
+            accounting_status: 'Підтверджено',
+            verified_at: '2099-08-20T12:05:00.000Z',
+            verified_by: 9
+        }],
         financeTransactions: [
             {
                 id: 71,
@@ -211,6 +243,62 @@ test('exact cancellation updates only verified ids and synchronizes finance befo
     );
 });
 
+
+test('exact cancellation cancels safe unpaid deposits before booking status changes', async () => {
+    const sql = [];
+    const inspection = inspectQaCleanupGroupState(groupState({
+        deposits: [{
+            id: 17,
+            status: 'manager_reported',
+            paid_amount: 0,
+            payment_method: null,
+            finance_transaction_id: null,
+            accountant_task_id: null,
+            accounting_status: 'Не перевірено',
+            verified_at: null,
+            verified_by: null
+        }]
+    }), OPTIONS);
+    const db = {
+        query: async (text, params = []) => {
+            const normalized = String(text).replace(/\s+/g, ' ').trim();
+            sql.push(normalized);
+            if (/^UPDATE banquet_deposits/i.test(normalized)) {
+                assert.deepEqual(params[0], [17]);
+                return { rowCount: 1, rows: [{ id: 17 }] };
+            }
+            if (/^UPDATE bookings/i.test(normalized)) {
+                return {
+                    rowCount: 1,
+                    rows: [{
+                        id: params[0],
+                        business_context: 'event_genix',
+                        status: 'cancelled',
+                        linked_to: null,
+                        price: 350,
+                        date: '2099-08-20',
+                        label: 'QA booking'
+                    }]
+                };
+            }
+            if (/^UPDATE banquet_groups/i.test(normalized)) {
+                return { rowCount: 1, rows: [{ id: 'BQ-QA-CANCEL' }] };
+            }
+            return { rowCount: 0, rows: [] };
+        }
+    };
+
+    const result = await cancelExactQaBookingSet(db, inspection, OPTIONS, {
+        syncBookingFinanceInTransaction: async (_db, booking) => ({ action: 'deleted', bookingId: booking.id })
+    });
+
+    assert.equal(result.cancelledDeposits, 1);
+    assert.equal(
+        sql.findIndex(query => /^UPDATE banquet_deposits/i.test(query))
+            < sql.findIndex(query => /^UPDATE bookings/i.test(query)),
+        true
+    );
+});
 test('transaction applies advisory lock, verifies after mutation, and writes one audit event', async () => {
     const queries = [];
     const ready = inspectQaCleanupGroupState(groupState(), OPTIONS);

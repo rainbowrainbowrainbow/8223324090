@@ -17,6 +17,8 @@ const QA_CLEANUP_HISTORY_ACTION = 'timeline_browser_smoke_qa_cleanup';
 const QA_CLEANUP_GROUP_LOCK_NAMESPACE = 'disposable-qa-banquet-cancellation:v1';
 const BANQUET_RELATION_TYPE = 'banquet_activity';
 const SAFE_PAYMENT_STATUSES = new Set(['', 'pending', 'unpaid']);
+const SAFE_DEPOSIT_ACCOUNTING_STATUS = 'Не перевірено';
+const QA_DEPOSIT_BLOCKING_STATUSES = new Set(['accountant_verified', 'corrected']);
 
 class DisposableQaCancellationError extends Error {
     constructor(message, code, details = null) {
@@ -47,6 +49,25 @@ function normalizedBookingIdSet(values = []) {
 
 function bookingActive(status) {
     return String(status || 'confirmed').trim().toLowerCase() !== 'cancelled';
+}
+
+function qaDepositCancelled(row = {}) {
+    return String(row.status || '').trim().toLowerCase() === 'cancelled';
+}
+
+function qaDepositClearBlockers(row = {}) {
+    if (qaDepositCancelled(row)) return [];
+    const blockers = [];
+    const paidAmount = Number(row.paid_amount);
+    if (Number.isFinite(paidAmount) && paidAmount > 0) blockers.push('paid_amount');
+    if (row.payment_method) blockers.push('payment_method');
+    if (row.finance_transaction_id) blockers.push('finance_transaction');
+    if (row.accountant_task_id) blockers.push('accountant_task');
+    if (row.verified_at || row.verified_by) blockers.push('accounting_verification');
+    const accountingStatus = String(row.accounting_status || SAFE_DEPOSIT_ACCOUNTING_STATUS).trim();
+    if (accountingStatus && accountingStatus !== SAFE_DEPOSIT_ACCOUNTING_STATUS) blockers.push('accounting_status');
+    if (QA_DEPOSIT_BLOCKING_STATUSES.has(String(row.status || '').trim().toLowerCase())) blockers.push('deposit_status');
+    return [...new Set(blockers)];
 }
 
 function qaMarkerInspection(row = {}, options = {}) {
@@ -186,6 +207,14 @@ async function loadQaCleanupDeposits(db, options, bookingIds, { forUpdate = fals
         `SELECT deposit.id,
                 deposit.banquet_group_id,
                 deposit.primary_booking_id,
+                deposit.accountant_task_id,
+                deposit.expected_amount,
+                deposit.amount,
+                deposit.paid_amount,
+                deposit.payment_method,
+                deposit.accounting_status,
+                deposit.verified_at,
+                deposit.verified_by,
                 deposit.finance_transaction_id,
                 deposit.status
            FROM banquet_deposits deposit
@@ -582,6 +611,14 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
     }
 
     const deposits = Array.isArray(state.deposits) ? state.deposits : [];
+    const activeDeposits = deposits.filter(row => !qaDepositCancelled(row));
+    const removableDeposits = [];
+    const blockingDeposits = [];
+    for (const deposit of activeDeposits) {
+        const blockers = qaDepositClearBlockers(deposit);
+        if (blockers.length) blockingDeposits.push({ ...deposit, blockers });
+        else removableDeposits.push(deposit);
+    }
     const financeTransactions = Array.isArray(state.financeTransactions)
         ? state.financeTransactions
         : [];
@@ -622,7 +659,7 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
         || !SAFE_PAYMENT_STATUSES.has(item.paymentStatus)
     ));
 
-    if (deposits.length) addBlocker('financial_dependencies_present', `deposits=${deposits.length}`);
+    if (blockingDeposits.length) addBlocker('financial_dependencies_present', `deposits=${blockingDeposits.length}`);
     if (blockingFinanceTransactions.length) {
         addBlocker(
             'financial_dependencies_present',
@@ -686,7 +723,10 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
         activeChildBookingCount: children.filter(item => item.active).length
             + Number(state.unresolvedChildCount || 0),
         depositCount: deposits.length,
-        activeDepositCount: deposits.length,
+        activeDepositCount: activeDeposits.length,
+        removableDepositCount: removableDeposits.length,
+        blockingDepositCount: blockingDeposits.length,
+        removableDepositIds: removableDeposits.map(row => Number(row.id)).filter(Number.isSafeInteger),
         financeTransactionCount: financeTransactions.length,
         removableFinanceTransactionCount: removableFinanceTransactions.length,
         blockingFinanceTransactionCount: blockingFinanceTransactions.length,
@@ -733,6 +773,14 @@ function summarizeQaCleanupGroupInspections(inspections = []) {
         ),
         depositRows: inspections.reduce(
             (total, item) => total + Number(item.depositCount || 0),
+            0
+        ),
+        removableDepositRows: inspections.reduce(
+            (total, item) => total + Number(item.removableDepositCount || 0),
+            0
+        ),
+        blockingDepositRows: inspections.reduce(
+            (total, item) => total + Number(item.blockingDepositCount || 0),
             0
         ),
         financeTransactions: inspections.reduce(
@@ -814,6 +862,53 @@ async function lockQaCleanupFinanceIdentities(db, options) {
     }
 }
 
+async function cancelSafeQaCleanupDeposits(db, inspection, options) {
+    const depositIds = [...new Set(
+        (inspection.removableDepositIds || [])
+            .map(id => Number(id))
+            .filter(Number.isSafeInteger)
+    )];
+    if (!depositIds.length) return 0;
+
+    const result = await db.query(
+        `UPDATE banquet_deposits
+            SET status = 'cancelled',
+                expected_amount = NULL,
+                amount = NULL,
+                manager_status = NULL,
+                due_date = NULL,
+                manager_note = NULL,
+                source_payload = COALESCE(source_payload, '{}'::jsonb) || $3::jsonb,
+                meta = COALESCE(meta, '{}'::jsonb) || $4::jsonb,
+                updated_at = NOW()
+          WHERE id = ANY($1::integer[])
+            AND ${contextSql('banquet_deposits', '$2')}
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'manager_reported')) <> 'cancelled'
+            AND finance_transaction_id IS NULL
+            AND accountant_task_id IS NULL
+            AND payment_method IS NULL
+            AND verified_at IS NULL
+            AND verified_by IS NULL
+            AND COALESCE(paid_amount, 0) = 0
+            AND COALESCE(NULLIF(BTRIM(accounting_status), ''), $5) = $5
+          RETURNING id`,
+        [
+            depositIds,
+            options.businessContext,
+            JSON.stringify({ disposableQaCleanup: { source: options.source, runId: options.runId, cancelledBy: QA_CLEANUP_ACTOR } }),
+            JSON.stringify({ disposableQaCleanup: { cancelledAt: new Date().toISOString(), cancelledBy: QA_CLEANUP_ACTOR } }),
+            SAFE_DEPOSIT_ACCOUNTING_STATUS
+        ]
+    );
+    if (result.rowCount !== depositIds.length) {
+        throw new DisposableQaCancellationError(
+            'Disposable QA deposit changed while cleanup was running',
+            'DISPOSABLE_QA_DEPOSIT_CANCEL_CONFLICT',
+            { expectedDepositIds: depositIds, cancelledDepositIds: (result.rows || []).map(row => row.id) }
+        );
+    }
+    return result.rowCount;
+}
 function assertExactVerifiedBookingSet(inspection, options) {
     const expected = normalizedBookingIdSet(options.expectedBookingIds);
     const actual = normalizedBookingIdSet(inspection.actualBookingIds);
@@ -835,6 +930,7 @@ async function cancelExactQaBookingSet(db, inspection, options, dependencies = {
     const syncFinance = dependencies.syncBookingFinanceInTransaction
         || syncBookingFinanceInTransaction;
     const bookingIds = assertExactVerifiedBookingSet(inspection, options);
+    const cancelledDeposits = await cancelSafeQaCleanupDeposits(db, inspection, options);
     const finance = [];
 
     for (const bookingId of bookingIds) {
@@ -888,6 +984,7 @@ async function cancelExactQaBookingSet(db, inspection, options, dependencies = {
         bookingIds,
         cancelledBookings: bookingIds.length,
         cancelledGroups: 1,
+        cancelledDeposits,
         finance
     };
 }

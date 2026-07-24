@@ -5159,7 +5159,7 @@ check('Booking panel header shows client and child count live context',
     && bookingCode.includes("source: 'kitchen'")
     && bookingCode.includes("editableElementId: 'banquetGuests'")
     && bookingCode.includes("editableElementId: 'kidsCountInput'")
-    && bookingCode.includes('kidsCount: childrenCountSource.value || null')
+    && bookingCode.includes('kidsCount: childrenCountSource.value ?? null')
     && bookingCode.includes('obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null')
     && indexHtmlForBookingPanel.indexOf('id="programDetails"') < indexHtmlForBookingPanel.indexOf('id="kidsCountSection"')
     && indexHtmlForBookingPanel.indexOf('id="kidsCountSection"') < indexHtmlForBookingPanel.indexOf('id="customProgramSection"')

@@ -53,7 +53,7 @@ test('deposit UI uses group projection first and never treats paid_amount as dep
     assert.match(warningsBlock, /bookingDetailDepositHasCanonicalRecord\(projection\)/);
 });
 
-test('banquet booking-set only clears manager deposit fields after a successful existing projection load', () => {
+test('banquet booking-set sends explicit manager deposit clear instead of empty fields', () => {
     const booking = read('js/booking.js');
     const html = read('index.html');
     const hydrateBlock = functionBlock(booking, 'hydrateBookingDepositFromServer');
@@ -62,8 +62,10 @@ test('banquet booking-set only clears manager deposit fields after a successful 
     const payloadBlock = functionBlock(booking, 'buildBanquetBookingSetPayload');
 
     assert.match(html, /<option value="">Не задано<\/option>/);
+    assert.match(html, /<option value="Не потрібен">Не потрібен<\/option>/);
     assert.doesNotMatch(html, /bookingDepositDueDate/);
     assert.match(html, /Менеджер вказує очікувану суму, статус і коментар/);
+    assert.match(hydrateBlock, /const hadDeposit = Boolean\(projection\?\.deposit && projection\.state !== 'cancelled'\)/);
     assert.match(hydrateBlock, /const deposit = hadDeposit \? bookingDepositFromProjection\(projection\) : null/);
     assert.match(hydrateBlock, /setBookingDepositFormData\(hadDeposit \? projection : null\)/);
     assert.match(hydrateBlock, /dueDate: deposit\?\.dueDate \|\| null/);
@@ -74,17 +76,15 @@ test('banquet booking-set only clears manager deposit fields after a successful 
     assert.match(renderBlock, /Завдаток не завантажився/);
     assert.match(booking, /id = 'bookingDepositRetryBtn'/);
     assert.match(booking, /hydrateBookingDepositFromServer\(bookingId\)/);
+    assert.match(booking, /const clearRequested = status === 'Не потрібен'/);
     assert.match(payloadBlock, /const depositCanMutate = depositHydration\.status === 'loaded'/);
     assert.match(payloadBlock, /formData\.deposit\?\.provided && primaryBookingId && !depositCanMutate/);
-    assert.match(payloadBlock, /depositHydration\.status === 'loaded'/);
-    assert.match(payloadBlock, /depositWasLoaded && depositHydration\.hadDeposit/);
-    assert.match(payloadBlock, /provided:\s*true/);
-    assert.match(payloadBlock, /expectedAmount:\s*null/);
-    assert.match(payloadBlock, /managerStatus:\s*null/);
+    assert.match(payloadBlock, /primaryPatch\.deposit\.operation = formData\.deposit\.operation \|\| null/);
+    assert.doesNotMatch(payloadBlock, /depositWasLoaded/);
+    assert.doesNotMatch(payloadBlock, /provided:\s*true[\s\S]*expectedAmount:\s*null[\s\S]*managerStatus:\s*null/);
     assert.match(payloadBlock, /delete primaryPatch\.deposit/);
     assert.match(payloadBlock, /delete primaryPatch\.banquetDeposit/);
 });
-
 test('deposit hydration failure locks manager fields and exposes retry action in the booking form', () => {
     const booking = read('js/booking.js');
     const helperStart = booking.indexOf('const BOOKING_DEPOSIT_FIELD_IDS');
@@ -171,4 +171,47 @@ test('deposit form preserves loaded due date after deadline input is removed fro
     assert.equal(payload.dueDate, '2026-08-15');
     assert.equal(payload.managerStatus, 'Потрібна перевірка бухгалтерії');
     assert.equal(payload.managerNote, 'Оплачено касиру');
+});
+
+test('deposit form maps Not required status to explicit clear operation', () => {
+    const booking = read('js/booking.js');
+    const helperStart = booking.indexOf('function normalizeBookingDepositAmount');
+    const helperEnd = booking.indexOf('function bookingDepositFromProjection', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'deposit form helpers should exist');
+
+    const dom = new JSDOM(`<!doctype html><html><body>
+        <section id="bookingDepositSection">
+            <input id="bookingDepositExpectedAmount" value="2000">
+            <select id="bookingDepositManagerStatus">
+                <option value=""></option>
+                <option value="Не потрібен" selected>Не потрібен</option>
+            </select>
+            <textarea id="bookingDepositManagerNote">clear this</textarea>
+        </section>
+    </body></html>`);
+    const sandbox = {
+        document: dom.window.document,
+        BookingDrawerState: {
+            depositHydration: {
+                bookingId: 'BK-3',
+                status: 'loaded',
+                hadDeposit: true,
+                dueDate: '2026-08-15'
+            }
+        },
+        console
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(`
+        ${booking.slice(helperStart, helperEnd)}
+        globalThis.__depositHelpers = { getBookingDepositFormData };
+    `, sandbox, { filename: 'js/booking.js#deposit-clear-form-test' });
+
+    const payload = sandbox.__depositHelpers.getBookingDepositFormData();
+    assert.equal(payload.provided, true);
+    assert.equal(payload.operation, 'clear');
+    assert.equal(payload.expectedAmount, null);
+    assert.equal(payload.dueDate, null);
+    assert.equal(payload.managerStatus, null);
+    assert.equal(payload.managerNote, null);
 });

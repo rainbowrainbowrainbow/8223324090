@@ -51,7 +51,23 @@ const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8'
 function extractNamedFunction(source, name) {
     const start = source.indexOf(`function ${name}`);
     assert.notEqual(start, -1, `${name} should exist`);
-    const bodyStart = source.indexOf('{', start);
+    const signatureStart = source.indexOf('(', start);
+    assert.notEqual(signatureStart, -1, `${name} should have a signature`);
+    let signatureDepth = 0;
+    let signatureEnd = -1;
+    for (let index = signatureStart; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === '(') signatureDepth += 1;
+        if (char === ')') {
+            signatureDepth -= 1;
+            if (signatureDepth === 0) {
+                signatureEnd = index;
+                break;
+            }
+        }
+    }
+    assert.notEqual(signatureEnd, -1, `${name} signature should close`);
+    const bodyStart = source.indexOf('{', signatureEnd);
     assert.notEqual(bodyStart, -1, `${name} should have a body`);
     let depth = 0;
     for (let index = bodyStart; index < source.length; index += 1) {
@@ -63,6 +79,42 @@ function extractNamedFunction(source, name) {
         }
     }
     assert.fail(`${name} body should close`);
+}
+function createBookingChildrenCountHarness({ fields = {}, kitchenEnabled = true } = {}) {
+    const bookingJs = read('js', 'booking.js');
+    const context = {
+        document: {
+            getElementById: id => ({ value: Object.prototype.hasOwnProperty.call(fields, id) ? fields[id] : '' })
+        },
+        isBookingKitchenEnabled: () => kitchenEnabled,
+        isEducationTimelineBookingMode: () => false
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        'normalizeBookingCountValue',
+        'normalizeBookingNonNegativeCountValue',
+        'getBookingChildrenCountInputValue',
+        'getKitchenChildrenCountInputValue',
+        'bookingProgramUsesStandaloneChildrenInput',
+        'resolveBookingChildrenCountSource'
+    ].map(name => extractNamedFunction(bookingJs, name)).join('\n'), context, { filename: 'js/booking.js' });
+    return context;
+}
+
+function createBanquetPackageOwnerPatchHarness() {
+    const bookingJs = read('js', 'booking.js');
+    const context = {
+        BookingDrawerState: { banquetEditContext: null },
+        getBookingPackageFromBooking: booking => booking?.bookingPackage || booking?.booking_package || null,
+        bookingExtraDataObjectFromBooking: booking => booking?.extraData || booking?.extra_data || {},
+        toBookingMoney: value => {
+            const amount = Number(value);
+            return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(extractNamedFunction(bookingJs, 'buildBanquetPackageOwnerPatch'), context, { filename: 'js/booking.js' });
+    return context;
 }
 const loadJsonFixture = (...parts) => JSON.parse(read(...parts));
 function readPngInfo(...parts) {
@@ -4377,7 +4429,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /source:\s*'kitchen'/);
     assert.match(bookingJs, /editableElementId:\s*'banquetGuests'/);
     assert.match(bookingJs, /editableElementId:\s*'kidsCountInput'/);
-    assert.match(bookingJs, /kidsCount:\s*childrenCountSource\.value \|\| null/);
+    assert.match(bookingJs, /kidsCount:\s*childrenCountSource\.value \?\? null/);
+    assert.doesNotMatch(bookingJs, /kidsCount:\s*childrenCountSource\.value \|\| null/);
     assert.match(bookingJs, /obj\.banquetGuests = formData\.kitchenEnabled \? kitchenChildrenCount : null/);
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
     assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return false;/);
@@ -6235,6 +6288,96 @@ test('booking update calculates package only after locked legacy data and canoni
     );
 });
 
+test('booking children count source preserves explicit banquet zero separately from empty fields', () => {
+    const zeroCtx = createBookingChildrenCountHarness({
+        kitchenEnabled: true,
+        fields: { banquetGuests: '0', kidsCountInput: '5' }
+    });
+    const zeroSource = zeroCtx.resolveBookingChildrenCountSource({ kitchenEnabled: true });
+    assert.equal(zeroCtx.getKitchenChildrenCountInputValue(), 0);
+    assert.equal(zeroSource.source, 'kitchen');
+    assert.equal(zeroSource.value, 0);
+    assert.equal(zeroSource.kitchenValue, 0);
+
+    const emptyCtx = createBookingChildrenCountHarness({
+        kitchenEnabled: true,
+        fields: { banquetGuests: '', kidsCountInput: '5' }
+    });
+    const emptySource = emptyCtx.resolveBookingChildrenCountSource({ kitchenEnabled: true });
+    assert.equal(emptySource.value, null);
+    assert.equal(emptySource.kitchenValue, null);
+
+    const fallbackZeroSource = emptyCtx.resolveBookingChildrenCountSource({
+        kitchenEnabled: true,
+        fallbackValue: 0
+    });
+    assert.equal(fallbackZeroSource.value, 0);
+
+    const standaloneCtx = createBookingChildrenCountHarness({
+        kitchenEnabled: false,
+        fields: { banquetGuests: '0', kidsCountInput: '0' }
+    });
+    const standaloneSource = standaloneCtx.resolveBookingChildrenCountSource({
+        kitchenEnabled: false,
+        standaloneEditable: true
+    });
+    assert.equal(standaloneSource.value, null);
+    assert.equal(standaloneSource.kitchenValue, null);
+    assert.equal(standaloneSource.standaloneValue, null);
+});
+
+test('banquet package owner patch preserves zero counts for a non-primary ticket owner', () => {
+    const ctx = createBanquetPackageOwnerPatchHarness();
+    const quote = {
+        ticketSubtotal: 0,
+        ticketLines: []
+    };
+
+    const patch = ctx.buildBanquetPackageOwnerPatch({
+        date: '2099-02-13',
+        room: 'Room A',
+        roomResourceId: 'room-a',
+        customerId: 42,
+        banquetGuests: 0,
+        banquetAdults: 0,
+        banquetTables: 0,
+        kidsCount: 0,
+        ticketQuantities: [],
+        ticketQuote: quote,
+        extraData: {
+            bookingPackage: {
+                schemaVersion: 3,
+                positionsSubtotal: 0,
+                entrySubtotal: 0,
+                ticketSubtotal: 0,
+                ticketLines: []
+            }
+        }
+    }, {
+        positionsSubtotal: 0,
+        entrySubtotal: 0,
+        menuPositions: [],
+        serviceEvents: []
+    }, {
+        packageOwnerBooking: {
+            bookingPackage: { programBasePrice: 1200 }
+        },
+        primaryBooking: {
+            date: '2099-02-13',
+            room: 'Room A',
+            roomResourceId: 'room-a',
+            customerId: 42
+        }
+    });
+
+    assert.equal(patch.banquetGuests, 0);
+    assert.equal(patch.banquetAdults, 0);
+    assert.equal(patch.banquetTables, 0);
+    assert.equal(patch.kidsCount, 0);
+    assert.deepEqual(patch.ticketQuantities, []);
+    assert.equal(patch.ticketQuote, quote);
+    assert.equal(patch.extraData.bookingPackage.finalTotal, 1200);
+});
 test('booking package v3 supports explicit zero-ticket snapshot and blocks manual Вхід rows', () => {
     const empty = buildBookingPackage({
         date: '2026-07-18',

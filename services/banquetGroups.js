@@ -31,7 +31,7 @@ const {
 } = require('./admissionTickets');
 const { normalizePinataFields } = require('./pinataMode');
 const { applyEffectiveBookingPrice } = require('./productPricing');
-const { upsertManagerBookingDeposit } = require('./banquetDeposits');
+const { BanquetDepositError, upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 const { normalizeCustomerSource } = require('./customerSource');
 const { canonicalizeBookingRoomResource } = require('./timelineResources');
@@ -1667,16 +1667,26 @@ function managerDepositPayloadFromBookingInput(input = {}) {
 async function syncManagerDepositForMemberBooking(db, inputBooking = {}, memberRow = {}, businessContext, user) {
     const payload = managerDepositPayloadFromBookingInput(inputBooking);
     if (!payload || !memberRow?.id) return null;
-    return upsertManagerBookingDeposit({
-        bookingId: memberRow.id,
-        businessContext,
-        deposit: payload,
-        source: 'services/banquetGroups.syncManagerDepositForMemberBooking',
-        actor: user,
-        managerReportedBy: actorUserId(user)
-    }, { db });
+    try {
+        return await upsertManagerBookingDeposit({
+            bookingId: memberRow.id,
+            businessContext,
+            deposit: payload,
+            source: 'services/banquetGroups.syncManagerDepositForMemberBooking',
+            actor: user,
+            managerReportedBy: actorUserId(user)
+        }, { db });
+    } catch (err) {
+        if (err instanceof BanquetDepositError) {
+            throw new BanquetGroupError(err.message, {
+                status: err.status || 400,
+                code: err.code || 'BANQUET_DEPOSIT_ERROR',
+                details: err.details || null
+            });
+        }
+        throw err;
+    }
 }
-
 function resolveSourceBanquetAnchorFields(source = {}) {
     const customerId = normalizeActivityInteger(source.customer_id ?? source.customerId, null);
     if (!Number.isInteger(customerId) || customerId <= 0) {

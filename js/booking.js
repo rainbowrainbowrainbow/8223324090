@@ -3065,8 +3065,9 @@ function getBookingChildrenCountInputValue() {
     return normalizeBookingCountValue(document.getElementById('kidsCountInput')?.value);
 }
 
-function getKitchenChildrenCountInputValue() {
-    return normalizeBookingCountValue(document.getElementById('banquetGuests')?.value);
+function getKitchenChildrenCountInputValue(options = {}) {
+    const normalizer = options.allowZero === false ? normalizeBookingCountValue : normalizeBookingNonNegativeCountValue;
+    return normalizer(document.getElementById('banquetGuests')?.value);
 }
 
 function bookingProgramUsesStandaloneChildrenInput(program = null) {
@@ -3079,20 +3080,21 @@ function bookingProgramUsesStandaloneChildrenInput(program = null) {
 function resolveBookingChildrenCountSource(options = {}) {
     const kitchenEnabled = options.kitchenEnabled ?? isBookingKitchenEnabled();
     const standaloneEditable = options.standaloneEditable ?? bookingProgramUsesStandaloneChildrenInput(options.program || null);
+    const kitchenCountNormalizer = kitchenEnabled ? normalizeBookingNonNegativeCountValue : normalizeBookingCountValue;
     const kitchenValue = options.kitchenValue !== undefined
-        ? normalizeBookingCountValue(options.kitchenValue)
-        : getKitchenChildrenCountInputValue();
+        ? kitchenCountNormalizer(options.kitchenValue)
+        : getKitchenChildrenCountInputValue({ allowZero: kitchenEnabled });
     const standaloneValue = options.standaloneValue !== undefined
         ? normalizeBookingCountValue(options.standaloneValue)
         : getBookingChildrenCountInputValue();
     const fallbackValue = options.fallbackValue !== undefined
-        ? normalizeBookingCountValue(options.fallbackValue)
+        ? kitchenCountNormalizer(options.fallbackValue)
         : null;
 
     if (kitchenEnabled) {
         return {
             source: 'kitchen',
-            value: kitchenValue || fallbackValue || null,
+            value: kitchenValue ?? fallbackValue ?? null,
             kitchenValue,
             standaloneValue,
             showStandaloneInput: false,
@@ -3101,9 +3103,9 @@ function resolveBookingChildrenCountSource(options = {}) {
     }
 
     if (standaloneEditable) {
-        const value = standaloneValue || fallbackValue || kitchenValue || null;
+        const value = standaloneValue ?? fallbackValue ?? kitchenValue ?? null;
         return {
-            source: standaloneValue ? 'kidsCount' : (kitchenValue ? 'legacyBanquetGuests' : 'kidsCount'),
+            source: standaloneValue !== null ? 'kidsCount' : (kitchenValue !== null ? 'legacyBanquetGuests' : 'kidsCount'),
             value,
             kitchenValue,
             standaloneValue,
@@ -3112,9 +3114,9 @@ function resolveBookingChildrenCountSource(options = {}) {
         };
     }
 
-    const value = fallbackValue || kitchenValue || standaloneValue || null;
+    const value = fallbackValue ?? kitchenValue ?? standaloneValue ?? null;
     return {
-        source: kitchenValue ? 'legacyBanquetGuests' : (standaloneValue ? 'kidsCount' : 'none'),
+        source: kitchenValue !== null ? 'legacyBanquetGuests' : (standaloneValue !== null ? 'kidsCount' : 'none'),
         value,
         kitchenValue,
         standaloneValue,
@@ -5560,16 +5562,19 @@ function getBookingDepositFormData() {
     const depositHydration = BookingDrawerState.depositHydration || {};
     const dueDate = depositHydration.dueDate || '';
     const managerNote = document.getElementById('bookingDepositManagerNote')?.value?.trim() || '';
-    const provided = expectedAmount !== null
+    const clearRequested = status === 'Не потрібен';
+    const provided = clearRequested
+        || expectedAmount !== null
         || Boolean(dueDate)
         || Boolean(managerNote)
         || Boolean(status);
     return {
         provided,
-        expectedAmount,
-        dueDate: dueDate || null,
-        managerStatus: status || null,
-        managerNote: managerNote || null
+        operation: clearRequested ? 'clear' : null,
+        expectedAmount: clearRequested ? null : expectedAmount,
+        dueDate: clearRequested ? null : (dueDate || null),
+        managerStatus: clearRequested ? null : (status || null),
+        managerNote: clearRequested ? null : (managerNote || null)
     };
 }
 
@@ -5638,7 +5643,7 @@ async function hydrateBookingDepositFromServer(bookingId) {
         if (projection?.success === false) {
             throw new Error(projection.error || 'Deposit projection is unavailable');
         }
-        const hadDeposit = Boolean(projection?.deposit);
+        const hadDeposit = Boolean(projection?.deposit && projection.state !== 'cancelled');
         const deposit = hadDeposit ? bookingDepositFromProjection(projection) : null;
         setBookingDepositFormData(hadDeposit ? projection : null);
         return setBookingDepositHydrationState(cleanBookingId, 'loaded', hadDeposit, null, {
@@ -7497,7 +7502,7 @@ function applyExplicitBanquetPackagePrefill(context = {}) {
     const serviceEvents = Array.isArray(packageSnapshot?.serviceEvents) ? packageSnapshot.serviceEvents : [];
     const hadPackage = Boolean(menuPositions.length || serviceEvents.length || packageSnapshot?.banquetMenu);
 
-    setExplicitBanquetPrefillValue('banquetGuests', context.banquetGuests || context.kidsCount, { onlyIfEmpty: true });
+    setExplicitBanquetPrefillValue('banquetGuests', context.banquetGuests ?? context.kidsCount, { onlyIfEmpty: true });
     setExplicitBanquetPrefillValue('banquetAdults', context.banquetAdults, { onlyIfEmpty: true });
     setExplicitBanquetPrefillValue('banquetTables', context.banquetTables, { onlyIfEmpty: true });
 
@@ -12165,8 +12170,8 @@ function getBookingFormData() {
         bookingPackageWarnings: kitchenEnabled ? (packageTotals.warnings || []) : [],
         finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice,
         childrenCountSource,
-        kidsCount: childrenCountSource.value || null,
-        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null,
+        kidsCount: childrenCountSource.value ?? null,
+        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue ?? null) : null,
         deposit: kitchenEnabled ? getBookingDepositFormData() : null,
         menuWorkflow: kitchenEnabled ? collectBookingMenuWorkflowForSubmit({ kitchenEnabled }) : null,
         ticketQuantities: ticketData.ticketQuantities,
@@ -12722,9 +12727,9 @@ function buildBookingObject(formData, program) {
         kitchenEnabled: formData.kitchenEnabled,
         standaloneEditable: hasEvent && bookingProgramUsesStandaloneChildrenInput(program)
     });
-    const kidsCount = childrenCountSource.value || 0;
+    const kidsCount = childrenCountSource.value ?? 0;
     const kitchenChildrenCount = formData.kitchenEnabled
-        ? (childrenCountSource.kitchenValue || null)
+        ? (childrenCountSource.kitchenValue ?? null)
         : null;
     const servicePrice = Number(formData.clientPinataServicePrice || 0);
     const multiActivityPrograms = Array.isArray(formData.activityPrograms) ? formData.activityPrograms.filter(Boolean) : [];
@@ -12784,7 +12789,7 @@ function buildBookingObject(formData, program) {
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
-        kidsCount: childrenCountSource.value || null,
+        kidsCount: childrenCountSource.value ?? null,
         groupName: shouldPersistLegacyGroupName ? (document.getElementById('bookingGroupName')?.value.trim() || null) : null,
         programBasePrice: toBookingMoney(baseProgramPrice),
         menuPositions: formData.menuPositions || [],
@@ -12813,7 +12818,8 @@ function buildBookingObject(formData, program) {
             expectedAmount: formData.deposit.expectedAmount,
             dueDate: formData.deposit.dueDate,
             managerStatus: formData.deposit.managerStatus,
-            managerNote: formData.deposit.managerNote
+            managerNote: formData.deposit.managerNote,
+            operation: formData.deposit.operation || null
         }
         : null;
     obj.banquetDeposit = obj.deposit;
@@ -16709,26 +16715,17 @@ function buildBanquetBookingSetPayload(baseBooking, formData = {}, context = Boo
     const depositHydration = BookingDrawerState.depositHydration || {};
     const depositHydrationMatches = String(depositHydration.bookingId || '') === primaryBookingId;
     const depositCanMutate = depositHydration.status === 'loaded' && depositHydrationMatches;
-    const depositWasLoaded = depositHydration.status === 'loaded'
-        && depositHydrationMatches;
     if (formData.deposit?.provided && primaryBookingId && !depositCanMutate) {
         delete primaryPatch.deposit;
         delete primaryPatch.banquetDeposit;
     }
+    if (formData.deposit?.provided && primaryPatch.deposit) {
+        primaryPatch.deposit.operation = formData.deposit.operation || null;
+        primaryPatch.banquetDeposit = primaryPatch.deposit;
+    }
     if (!formData.deposit?.provided) {
-        if (depositWasLoaded && depositHydration.hadDeposit) {
-            primaryPatch.deposit = {
-                provided: true,
-                expectedAmount: null,
-                dueDate: null,
-                managerStatus: null,
-                managerNote: null
-            };
-            primaryPatch.banquetDeposit = primaryPatch.deposit;
-        } else {
-            delete primaryPatch.deposit;
-            delete primaryPatch.banquetDeposit;
-        }
+        delete primaryPatch.deposit;
+        delete primaryPatch.banquetDeposit;
     }
     return {
         primaryBookingId: context?.primaryBookingId,

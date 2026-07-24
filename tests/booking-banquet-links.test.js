@@ -1230,6 +1230,24 @@ function makeDb(rows, links = [], options = {}) {
                 rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
             };
         }
+        if (/UPDATE banquet_deposits SET expected_amount = NULL,\s*amount = NULL/i.test(sql)) {
+            const row = state.banquetDeposits.find(item =>
+                Number(item.id) === Number(params[3])
+                && normalizeContext(item.business_context) === normalizeContext(params[4])
+            );
+            if (!row) return { rows: [], rowCount: 0 };
+            row.expected_amount = null;
+            row.amount = null;
+            row.manager_status = params[0];
+            row.due_date = null;
+            row.manager_note = null;
+            row.status = 'cancelled';
+            row.source_kind = row.source_kind || 'manager_booking_form';
+            row.source_payload = JSON.parse(params[1]);
+            row.meta = JSON.parse(params[2]);
+            row.updated_at = new Date('2099-01-01T00:04:30Z').toISOString();
+            return { rows: [{ ...row }], rowCount: 1 };
+        }
         if (/UPDATE banquet_deposits SET expected_amount = \$1,/i.test(sql)) {
             const row = state.banquetDeposits.find(item =>
                 Number(item.id) === Number(params[12])
@@ -1308,7 +1326,7 @@ function makeDb(rows, links = [], options = {}) {
             }[status] ?? 9);
             const rows = state.banquetDeposits
                 .filter(row => normalizeContext(row.business_context) === normalizeContext(businessContext))
-                .filter(row => !/!= 'cancelled'/i.test(sql) || String(row.status || 'manager_reported').toLowerCase() !== 'cancelled')
+                .filter(row => !/status\s*(?:!=|<>)\s*'cancelled'/i.test(sql) || String(row.status || 'manager_reported').toLowerCase() !== 'cancelled')
                 .filter(row => byGroupOrBooking
                     ? String(row.banquet_group_id) === String(params[1]) || String(row.primary_booking_id) === String(params[2])
                     : String(byGroup ? row.banquet_group_id : row.primary_booking_id) === String(identityValue))
@@ -6669,7 +6687,7 @@ test('PUT banquet booking-set atomically updates primary and creates activity me
     });
 });
 
-test('PUT banquet booking-set creates, updates, and safely clears the canonical manager deposit', async () => {
+test('PUT banquet booking-set creates, updates, clears manager-only deposit, and blocks paid clear', async () => {
     const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
     const savedGroupUpdatedAt = '2099-01-01T00:10:00.000Z';
     await withApp([
@@ -6686,7 +6704,7 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
             room: 'Room A'
         })
     ], [], async ({ baseUrl, state }) => {
-        const updateDeposit = async (expectedGroupUpdatedAt, deposit) => {
+        const updateDeposit = async (expectedGroupUpdatedAt, deposit, expectedStatus = 200) => {
             const response = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/booking-set?businessContext=event_genix`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -6698,7 +6716,7 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
                 })
             });
             const data = await response.json();
-            assert.equal(response.status, 200, JSON.stringify(data));
+            assert.equal(response.status, expectedStatus, JSON.stringify(data));
             return data;
         };
 
@@ -6731,7 +6749,40 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
         assert.equal(state.banquetDeposits[0].due_date, '2099-05-22');
         assert.equal(state.banquetDeposits[0].manager_note, 'Updated manager note');
 
-        Object.assign(state.banquetDeposits[0], {
+        await updateDeposit(savedGroupUpdatedAt, {
+            provided: true,
+            operation: 'clear',
+            expectedAmount: null,
+            dueDate: null,
+            managerStatus: null,
+            managerNote: null
+        });
+        assert.equal(state.banquetDeposits.length, 1);
+        assert.equal(state.banquetDeposits[0].status, 'cancelled');
+        assert.equal(state.banquetDeposits[0].expected_amount, null);
+        assert.equal(state.banquetDeposits[0].amount, null);
+        assert.equal(state.banquetDeposits[0].due_date, null);
+        assert.equal(state.banquetDeposits[0].manager_note, null);
+
+        const clearedProjectionResponse = await fetch(
+            `${baseUrl}/api/banquets/by-booking/BK-ROOT/deposit?businessContext=event_genix`
+        );
+        const clearedProjection = await clearedProjectionResponse.json();
+        assert.equal(clearedProjectionResponse.status, 200, JSON.stringify(clearedProjection));
+        assert.equal(clearedProjection.state, 'cancelled');
+        assert.equal(clearedProjection.deposit.expectedAmount, null);
+        assert.equal(clearedProjection.managerStatus, null);
+
+        await updateDeposit(savedGroupUpdatedAt, {
+            expectedAmount: 1800,
+            dueDate: '2099-05-23',
+            managerStatus: 'Потрібна перевірка бухгалтерії',
+            managerNote: 'Paid manager note'
+        });
+        assert.equal(state.banquetDeposits.length, 2);
+        const paidDeposit = state.banquetDeposits.find(row => row.status !== 'cancelled');
+        assert.ok(paidDeposit, 'active deposit should be recreated after cancelled manager-only clear');
+        Object.assign(paidDeposit, {
             amount: 1800,
             paid_amount: 1800,
             payment_method: 'cash',
@@ -6741,35 +6792,22 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
             verified_by: 9
         });
 
-        await updateDeposit(savedGroupUpdatedAt, {
+        const blocked = await updateDeposit(savedGroupUpdatedAt, {
             provided: true,
+            operation: 'clear',
             expectedAmount: null,
             dueDate: null,
             managerStatus: null,
             managerNote: null
-        });
-        assert.equal(state.banquetDeposits.length, 1);
-        assert.equal(state.banquetDeposits[0].expected_amount, null);
-        assert.equal(state.banquetDeposits[0].amount, 1800);
-        assert.equal(state.banquetDeposits[0].due_date, null);
-        assert.equal(state.banquetDeposits[0].manager_note, null);
-        assert.equal(state.banquetDeposits[0].manager_status, 'Очікуємо оплату');
-        assert.equal(state.banquetDeposits[0].paid_amount, 1800);
-        assert.equal(state.banquetDeposits[0].payment_method, 'cash');
-        assert.equal(state.banquetDeposits[0].accounting_status, 'Підтверджено');
-        assert.equal(state.banquetDeposits[0].verified_at, '2099-05-21T10:00:00.000Z');
-
-        const clearedProjectionResponse = await fetch(
-            `${baseUrl}/api/banquets/by-booking/BK-ROOT/deposit?businessContext=event_genix`
-        );
-        const clearedProjection = await clearedProjectionResponse.json();
-        assert.equal(clearedProjectionResponse.status, 200, JSON.stringify(clearedProjection));
-        assert.equal(clearedProjection.deposit.expectedAmount, null);
-        assert.equal(clearedProjection.deposit.dueDate, null);
-        assert.equal(clearedProjection.deposit.managerNote, null);
-        assert.equal(clearedProjection.deposit.managerStatus, null);
-        assert.equal(clearedProjection.managerStatus, null);
-        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);
+        }, 409);
+        assert.equal(blocked.code, 'DEPOSIT_CLEAR_BLOCKED_FINANCIAL_DATA');
+        assert.equal(paidDeposit.expected_amount, 1800);
+        assert.equal(paidDeposit.amount, 1800);
+        assert.equal(paidDeposit.paid_amount, 1800);
+        assert.equal(paidDeposit.payment_method, 'cash');
+        assert.equal(paidDeposit.accounting_status, 'Підтверджено');
+        assert.equal(paidDeposit.verified_at, '2099-05-21T10:00:00.000Z');
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'ROLLBACK']);
     }, {
         mockProductPricing: true,
         nextGroupUpdatedAt: savedGroupUpdatedAt,
@@ -6796,7 +6834,6 @@ test('PUT banquet booking-set creates, updates, and safely clears the canonical 
         }]
     });
 });
-
 test('PUT banquet booking-set rolls back booking and group updates when canonical deposit sync fails', async () => {
     const groupUpdatedAt = '2099-01-01T00:00:00.000Z';
     await withApp([

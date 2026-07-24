@@ -14,6 +14,9 @@ const SKIP_SINGLE_CONTEXT = process.env.SIDEBAR_TIMELINE_SMOKE_SKIP_SINGLE_CONTE
 const HEADLESS = process.env.SIDEBAR_TIMELINE_SMOKE_HEADLESS !== 'false';
 const TIMEOUT_MS = Number(process.env.SIDEBAR_TIMELINE_SMOKE_TIMEOUT_MS || 25000);
 const PARK_CONTEXT = 'event_genix';
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DATA_DATE = normalizeOptionalDate('SIDEBAR_TIMELINE_SMOKE_DATA_DATE', process.env.SIDEBAR_TIMELINE_SMOKE_DATA_DATE);
+const EMPTY_DATE = normalizeOptionalDate('SIDEBAR_TIMELINE_SMOKE_EMPTY_DATE', process.env.SIDEBAR_TIMELINE_SMOKE_EMPTY_DATE);
 
 function fail(message) {
     console.error(`Sidebar timeline launcher smoke failed: ${message}`);
@@ -30,6 +33,25 @@ function normalizeBase(value) {
 
 function isLocalBase(base) {
     return ['localhost', '127.0.0.1', '::1'].includes(new URL(base).hostname);
+}
+
+function normalizeOptionalDate(name, value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    if (!DATE_PATTERN.test(normalized)) fail(`${name} must use YYYY-MM-DD`);
+    return normalized;
+}
+
+function createDeferred() {
+    let resolve;
+    const promise = new Promise(done => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
+
+function isBookingsSummaryPath(pathname) {
+    return /^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(pathname);
 }
 
 function requirePlaywright() {
@@ -102,10 +124,11 @@ function singleModeContextFor(user) {
     return ['dar', 'maysternya_doli'].find(context => contexts.has(context)) || '';
 }
 
-function timelineRouteForContext(context, view = '') {
+function timelineRouteForContext(context, view = '', options = {}) {
     const pathname = context === 'maysternya_doli' ? '/maysternya-doli' : '/';
     const url = new URL(pathname, 'http://local');
     if (context && context !== 'maysternya_doli') url.searchParams.set('businessContext', context);
+    if (options.date) url.searchParams.set('date', options.date);
     if (view) url.searchParams.set('timelineView', view);
     return `${url.pathname}${url.search}`;
 }
@@ -264,6 +287,13 @@ function assertLauncherCountsReady(launcher, label = 'launcher') {
     });
 }
 
+function modeCountNumber(launcher, key) {
+    const mode = launcher.modes.find(item => item.key === key);
+    assert.ok(mode, `launcher has ${key} mode`);
+    assert.match(mode.count, /^\d+$/, `${key} count is numeric`);
+    return Number(mode.count);
+}
+
 function assertWithinPx(actual, expected, label, tolerance = 1) {
     assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} differs from ${expected} by more than ${tolerance}px`);
 }
@@ -294,6 +324,85 @@ async function waitForLauncherCounts(page) {
             return rect.width > 0 && rect.height > 0 && /^\d+$/.test(el.textContent.trim()) && el.dataset.sidebarTimelineCountStatus === 'ready';
         });
     });
+}
+
+async function assertLauncherCountsForDate(page, base, date, kind) {
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.evaluate(() => {
+        localStorage.setItem('pzp_dark_mode', 'true');
+        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.setItem('pzp_timeline_view', 'rooms');
+        localStorage.removeItem('eg_sidebar_extra_menu_items_v3');
+    });
+    const view = kind === 'data' ? 'rooms' : '';
+    await page.goto(`${base}${timelineRouteForContext(PARK_CONTEXT, view, { date })}`, { waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+    await waitForLauncherCounts(page);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    const launcher = await readLauncher(page);
+    assertLauncherCountContract(launcher, `${kind} date ${date}`);
+    assertLauncherCountsReady(launcher, `${kind} date ${date}`);
+    assert.equal(launcher.modes.every(mode => mode.countVisible), true, `${kind} date ${date}: active and inactive counts are visible`);
+
+    const animators = modeCountNumber(launcher, 'animators');
+    const rooms = modeCountNumber(launcher, 'rooms');
+    if (kind === 'data') {
+        assert.ok(animators > 0 || rooms > 0, `data date ${date}: at least one timeline mode has visible records`);
+    } else {
+        const currentUrl = new URL(launcher.url);
+        assert.equal(currentUrl.pathname, '/', `empty date ${date}: timeline route is /`);
+        assert.equal(currentUrl.searchParams.get('businessContext'), PARK_CONTEXT, `empty date ${date}: Park context is preserved`);
+        assert.equal(currentUrl.searchParams.get('date'), date, `empty date ${date}: URL date is preserved`);
+        assert.equal(currentUrl.searchParams.get('timelineView'), null, `empty date ${date}: URL keeps the explicit no-view route`);
+        assert.equal(animators, 0, `empty date ${date}: animators count is 0`);
+        assert.equal(rooms, 0, `empty date ${date}: rooms count is 0`);
+    }
+}
+
+async function assertLoadingLayoutStability(page, base, requestControl) {
+    const delayedBookings = {
+        release: createDeferred(),
+        hitCount: 0
+    };
+    requestControl.delayedBookings = delayedBookings;
+    try {
+        await page.setViewportSize({ width: 1440, height: 960 });
+        await page.evaluate(() => {
+            localStorage.setItem('pzp_dark_mode', 'true');
+            localStorage.setItem('pzp_sidebar_collapsed', 'false');
+            localStorage.setItem('pzp_timeline_view', 'rooms');
+            localStorage.removeItem('eg_sidebar_extra_menu_items_v3');
+        });
+        await page.goto(`${base}/dashboard?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
+        await waitForSidebar(page);
+        await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+        await page.waitForFunction(() => {
+            const counts = Array.from(document.querySelectorAll('[data-sidebar-timeline-count-mode]'));
+            return counts.length === 2 && counts.every(el => {
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }) && counts.some(el => el.dataset.sidebarTimelineCountStatus === 'loading');
+        });
+        assert.ok(delayedBookings.hitCount > 0, 'loading stability check delayed at least one bookings summary request');
+
+        const loading = await readLauncher(page);
+        assertLauncherCountContract(loading, 'loading layout');
+        assert.ok(loading.modes.some(mode => mode.countStatus === 'loading'), 'loading layout: at least one count is loading');
+
+        delayedBookings.release.resolve();
+        await waitForLauncherCounts(page);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+        const ready = await readLauncher(page);
+        assertLauncherCountContract(ready, 'ready layout');
+        assertLauncherCountsReady(ready, 'ready layout');
+        assertLauncherGeometryParity(ready, loading, 'loading vs ready launcher geometry');
+    } finally {
+        delayedBookings.release.resolve();
+        if (requestControl.delayedBookings === delayedBookings) requestControl.delayedBookings = null;
+    }
 }
 
 async function openMobileSidebar(page) {
@@ -564,8 +673,12 @@ async function assertSingleModeCard(page, base, context) {
 async function run() {
     if (!TARGET_URL) fail('provide URL argument or SIDEBAR_TIMELINE_SMOKE_URL/TEST_URL');
     const base = normalizeBase(TARGET_URL);
-    if (!isLocalBase(base) && (!ALLOW_NON_LOCAL || !TEST_ACCOUNT_CONFIRMED)) {
+    const localBase = isLocalBase(base);
+    if (!localBase && (!ALLOW_NON_LOCAL || !TEST_ACCOUNT_CONFIRMED)) {
         fail('non-local QA requires SIDEBAR_TIMELINE_SMOKE_ALLOW_PRODUCTION=true and SIDEBAR_TIMELINE_SMOKE_TEST_ACCOUNT=true');
+    }
+    if (!localBase && (!DATA_DATE || !EMPTY_DATE)) {
+        fail('non-local QA requires SIDEBAR_TIMELINE_SMOKE_DATA_DATE and SIDEBAR_TIMELINE_SMOKE_EMPTY_DATE');
     }
 
     let playwright;
@@ -583,15 +696,23 @@ async function run() {
 
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
     const blockedMutations = [];
+    const requestControl = {
+        delayedBookings: null
+    };
     const context = await browser.newContext({
         viewport: { width: 1440, height: 960 },
         serviceWorkers: 'block'
     });
-    await context.route('**/api/**', async route => {
+    await context.route('**/*', async route => {
         const request = route.request();
         const method = request.method().toUpperCase();
-        const pathname = new URL(request.url()).pathname;
+        const url = new URL(request.url());
+        const pathname = url.pathname;
         if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            if (requestControl.delayedBookings && method === 'GET' && isBookingsSummaryPath(pathname)) {
+                requestControl.delayedBookings.hitCount += 1;
+                await requestControl.delayedBookings.release.promise;
+            }
             await route.continue();
             return;
         }
@@ -611,14 +732,22 @@ async function run() {
 
     try {
         await assertLauncherSurfaceParity(page, base);
+        if (DATA_DATE) await assertLauncherCountsForDate(page, base, DATA_DATE, 'data');
+        else console.log('  SKIP data-date count assertion: SIDEBAR_TIMELINE_SMOKE_DATA_DATE is not set');
+        if (EMPTY_DATE) await assertLauncherCountsForDate(page, base, EMPTY_DATE, 'empty');
+        else console.log('  SKIP empty-date zero-count assertion: SIDEBAR_TIMELINE_SMOKE_EMPTY_DATE is not set');
+        await assertLoadingLayoutStability(page, base, requestControl);
         await assertParkLauncher(page, base);
         if (singleContext) await assertSingleModeCard(page, base, singleContext);
-        assert.deepEqual(blockedMutations, [], 'read-only launcher smoke attempted no non-read API requests');
+        assert.deepEqual(blockedMutations, [], 'read-only launcher smoke attempted no non-read requests');
         console.log(`Sidebar timeline launcher smoke OK: ${base}`);
         console.log(`  OK Park two-mode launcher, / vs /dashboard parity, desktop/mobile geometry, local switching, mobile close, keyboard, direct URLs and Back/Forward`);
+        if (DATA_DATE) console.log(`  OK data-date counts for ${DATA_DATE}`);
+        if (EMPTY_DATE) console.log(`  OK empty-date zero counts for ${EMPTY_DATE}`);
+        console.log('  OK loading-to-ready launcher geometry parity');
         if (singleContext) console.log(`  OK ${singleContext} one-mode direct card`);
         else console.log('  SKIP one-mode direct card: test account has no Dar/Maysternya context');
-        console.log('  Safety gate observed no non-read API requests');
+        console.log('  Safety gate observed no non-read requests');
     } finally {
         await context.close().catch(() => {});
         await browser.close().catch(() => {});

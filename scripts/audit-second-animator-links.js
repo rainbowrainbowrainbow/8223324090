@@ -27,6 +27,7 @@ loadEnvFile();
 
 const { pool, generateBookingNumber } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
+const { validateBookingWithinWorkingHours } = require('../services/booking');
 const { insertHistory } = require('../services/historyLog');
 
 const args = process.argv.slice(2);
@@ -346,6 +347,23 @@ async function existingLinkedSecondAnimator(client, booking, line) {
 }
 
 async function insertLinkedSecondAnimator(client, booking, line) {
+    const workingHoursValidation = validateBookingWithinWorkingHours({
+        businessContext: CONTEXT,
+        date: booking.date,
+        time: booking.time,
+        duration: booking.duration
+    }, {
+        businessContext: CONTEXT,
+        existingBooking: booking,
+        allowUnchangedLegacy: true
+    });
+    if (!workingHoursValidation.valid) {
+        const error = new Error(workingHoursValidation.error || 'Booking is outside working hours');
+        error.code = workingHoursValidation.code || 'BOOKING_OUTSIDE_WORKING_HOURS';
+        error.details = workingHoursValidation.details || null;
+        throw error;
+    }
+
     const linkedId = await generateBookingNumber(client);
     await client.query(
         `INSERT INTO bookings (

@@ -18,6 +18,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { DISPOSABLE_QA_CAKE_DECORATIONS_SOURCE: QA_CLEANUP_SOURCE, attachDisposableQaMarker, inspectDisposableQaMarker } = require('../services/disposableQa');
+const { resolveBookingWorkingHoursPolicy } = require('../services/booking');
 
 const BUSINESS_CONTEXT = readEnv('LIVE_CAKE_DECORATIONS_BUSINESS_CONTEXT', 'LIVE_SMOKE_BUSINESS_CONTEXT') || 'event_genix';
 const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
@@ -29,7 +31,10 @@ const SAFE_LABEL_PREFIX = 'QA Cake Decorations Smoke';
 const SAFE_NOTE_MARKER = 'safe automated smoke; disposable booking; cleanup expected';
 const PREFERRED_DATE = readEnv('LIVE_CAKE_DECORATIONS_DATE', 'LIVE_SMOKE_DATE') || futureDate(45);
 const SMOKE_DURATION = Number(readEnv('LIVE_CAKE_DECORATIONS_DURATION_MINUTES') || 60);
-const SMOKE_TIMES = splitCsv(readEnv('LIVE_CAKE_DECORATIONS_TIMES')) || ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
+const SMOKE_TIME_OVERRIDE = splitCsv(readEnv('LIVE_CAKE_DECORATIONS_TIMES'));
+const QA_TEST_CUSTOMER_MARKER = `${QA_CLEANUP_SOURCE}:${RUN_ID}:no_customer`;
+const CREATED_BOOKING_IDS = new Set();
+const CREATED_GROUP_IDS = new Set();
 const KEEP_BOOKING = isConfirmed(readEnv('LIVE_CAKE_DECORATIONS_KEEP_BOOKING'));
 const PERMANENT_CLEANUP = readEnv('LIVE_CAKE_DECORATIONS_PERMANENT_CLEANUP') !== 'false';
 const EXPECTED_SUBTOTAL = 950;
@@ -272,17 +277,6 @@ function activeBookingsForRoom(bookings, room) {
     });
 }
 
-function isSafeSmokeBooking(booking = {}) {
-    const text = [
-        booking.label,
-        booking.programName,
-        booking.program_name,
-        booking.groupName,
-        booking.group_name,
-        booking.notes
-    ].filter(Boolean).join('\n');
-    return text.includes(SAFE_LABEL_PREFIX) || text.includes(SAFE_NOTE_MARKER);
-}
 
 function productPrice(product) {
     return money(product?.price ?? product?.base_price ?? product?.basePrice ?? product?.default_price ?? product?.current_price);
@@ -340,26 +334,48 @@ async function assertProductsApi(base, token) {
     return sectionProducts;
 }
 
-async function cleanupBooking(base, token, bookingId, options = {}) {
-    if (!bookingId) return { ok: false, mode: 'none' };
-    const paths = [];
-    if (PERMANENT_CLEANUP && options.permanent !== false) {
-        paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`, { permanent: 'true' }));
-    }
-    paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`));
+function scheduleCandidateTimes(date, duration, override = SMOKE_TIME_OVERRIDE) {
+    const policy = resolveBookingWorkingHoursPolicy({ date }, { businessContext: BUSINESS_CONTEXT });
+    if (!policy.applies) throw new Error(`No EventGenix working-hours policy for business context ${BUSINESS_CONTEXT}`);
+    const hours = policy.workingHours;
+    const durationMinutes = Number(duration);
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) throw new Error('LIVE_CAKE_DECORATIONS_DURATION_MINUTES must be a positive number');
+    if (durationMinutes > hours.endMinutes - hours.startMinutes) throw new Error('LIVE_CAKE_DECORATIONS_DURATION_MINUTES exceeds the working-day window');
+    const candidates = override || Array.from({ length: Math.floor((hours.endMinutes - hours.startMinutes - durationMinutes) / 15) + 1 }, (_, index) => {
+        const minutes = hours.startMinutes + index * 15;
+        return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    });
+    const valid = candidates.filter(time => { const start = timeToMinutes(time); return start !== null && start >= hours.startMinutes && start + durationMinutes <= hours.endMinutes; });
+    if (valid.length !== candidates.length || !valid.length) throw new Error(`LIVE_CAKE_DECORATIONS_TIMES contains an out-of-hours value for ${date}; allowed ${hours.start}-${hours.end} with duration ${durationMinutes}m`);
+    return valid;
+}
 
+function assertExactDisposableMarker(booking = {}) {
+    const inspection = inspectDisposableQaMarker(booking, { runId: RUN_ID, source: QA_CLEANUP_SOURCE, testCustomerMarker: QA_TEST_CUSTOMER_MARKER });
+    if (!inspection.ok) throw new Error(`refusing cleanup: booking marker mismatch (${inspection.reasons.join(',')})`);
+    return inspection.marker;
+}
+
+async function assertCleanupTransportReady(base, token) {
+    const marker = inspectDisposableQaMarker({ disposableQa: { schemaVersion: 1, runId: RUN_ID, source: QA_CLEANUP_SOURCE, cleanupExpected: true, testCustomerMarker: QA_TEST_CUSTOMER_MARKER, kind: 'cake_decorations', createdAt: new Date().toISOString() } }, { runId: RUN_ID, source: QA_CLEANUP_SOURCE, testCustomerMarker: QA_TEST_CUSTOMER_MARKER });
+    if (!marker.ok) throw new Error(`cleanup marker preflight failed: ${marker.reasons.join(',')}`);
+    const probe = await fetchJsonAllowStatus(base, scopedPath('/api/bookings/QA-CLEANUP-PREFLIGHT-NOT-FOUND', { permanent: 'true' }), { method: 'DELETE', token });
+    // The sentinel cannot match a generated booking id; 404 proves the canonical cleanup route and authorization without touching data.
+    if (probe.status !== 404) throw new Error(`cleanup transport preflight returned unexpected status ${probe.status}`);
+    return true;
+}
+
+async function cleanupBooking(base, token, bookingId, options = {}) {
+    if (!bookingId || !CREATED_BOOKING_IDS.has(String(bookingId))) throw new Error('refusing cleanup outside this smoke run exact booking ID set');
+    const detail = await fetchJson(base, scopedPath(`/api/bookings/detail/${encodeURIComponent(bookingId)}`), { token });
+    assertExactDisposableMarker(detail.booking || detail);
+    const paths = [];
+    if (PERMANENT_CLEANUP && options.permanent !== false) paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`, { permanent: 'true' }));
+    paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`));
     let lastError = null;
     for (const routePath of paths) {
-        const res = await fetchJsonAllowStatus(base, routePath, {
-            method: 'DELETE',
-            token
-        });
-        if (res.ok) {
-            return {
-                ok: true,
-                mode: routePath.includes('permanent=true') ? 'permanent' : 'soft'
-            };
-        }
+        const res = await fetchJsonAllowStatus(base, routePath, { method: 'DELETE', token });
+        if (res.ok) return { ok: true, mode: routePath.includes('permanent=true') ? 'permanent' : 'soft' };
         lastError = `${routePath} returned ${res.status}${responseDetail(res.body) ? `: ${responseDetail(res.body)}` : ''}`;
     }
     throw new Error(`cleanup booking ${bookingId} failed: ${lastError || 'unknown error'}`);
@@ -372,14 +388,6 @@ async function assertBookingAbsentFromActiveList(base, token, bookingId, date) {
     return true;
 }
 
-async function cleanupStaleSmokeBookings(base, token, date) {
-    const bookings = await fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token });
-    const stale = (Array.isArray(bookings) ? bookings : []).filter(isSafeSmokeBooking);
-    for (const booking of stale) {
-        await cleanupBooking(base, token, booking.id);
-    }
-    return stale.length;
-}
 
 function roomNameFromLine(line = {}) {
     return String(line.name || line.shortName || line.short_name || line.resourceName || line.resource_name || line.id || '').trim();
@@ -401,26 +409,19 @@ async function loadRoomLines(base, token, date) {
 }
 
 async function pickSafeSlot(base, token) {
-    let staleCleanupCount = 0;
     for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
         const date = datePlus(PREFERRED_DATE, dayOffset);
-        staleCleanupCount += await cleanupStaleSmokeBookings(base, token, date);
-        const [rooms, bookings] = await Promise.all([
-            loadRoomLines(base, token, date),
-            fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token })
-        ]);
+        const candidateTimes = scheduleCandidateTimes(date, SMOKE_DURATION);
+        const [rooms, bookings] = await Promise.all([loadRoomLines(base, token, date), fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token })]);
         for (const roomLine of rooms) {
             const room = roomNameFromLine(roomLine);
             const roomBookings = activeBookingsForRoom(bookings, room);
-            for (const time of SMOKE_TIMES) {
-                const hasConflict = roomBookings.some(booking => rangesOverlap(time, SMOKE_DURATION, booking.time, booking.duration || 60));
-                if (!hasConflict) {
-                    return { date, time, room, staleCleanupCount };
-                }
+            for (const time of candidateTimes) {
+                if (!roomBookings.some(booking => rangesOverlap(time, SMOKE_DURATION, booking.time, booking.duration || 60))) return { date, time, room, candidateTimes };
             }
         }
     }
-    throw new Error(`no free room slot found for ${PREFERRED_DATE} + 6 days`);
+    throw new Error(`no free in-hours room slot found for ${PREFERRED_DATE} + 6 days`);
 }
 
 async function openAuthenticatedContext(browser, session, viewport = { width: 1440, height: 960 }) {
@@ -672,7 +673,7 @@ function safeBookingPayload(slot, cartPositions, session) {
     }));
     const subtotal = money(positions.reduce((sum, item) => sum + item.subtotal, 0));
     const label = `${SAFE_LABEL_PREFIX} ${RUN_ID}`;
-    return {
+    const payload = {
         businessContext: BUSINESS_CONTEXT,
         date: slot.date,
         time: slot.time,
@@ -710,6 +711,10 @@ function safeBookingPayload(slot, cartPositions, session) {
             source: 'live_cake_decorations_smoke'
         },
         extraData: {
+            disposableQa: {
+                schemaVersion: 1, runId: RUN_ID, source: QA_CLEANUP_SOURCE, cleanupExpected: true,
+                testCustomerMarker: QA_TEST_CUSTOMER_MARKER, kind: 'cake_decorations', createdAt: new Date().toISOString()
+            },
             smokeTest: {
                 kind: 'cake_decorations',
                 runId: RUN_ID,
@@ -736,6 +741,7 @@ function safeBookingPayload(slot, cartPositions, session) {
             }
         }
     };
+    return attachDisposableQaMarker(payload, { runId: RUN_ID, source: QA_CLEANUP_SOURCE, testCustomerMarker: QA_TEST_CUSTOMER_MARKER, kind: 'cake_decorations' });
 }
 
 async function createSafeBooking(base, token, slot, cartPositions, session) {
@@ -748,6 +754,9 @@ async function createSafeBooking(base, token, slot, cartPositions, session) {
     });
     assert.equal(result.success, true, 'booking create success');
     assert.ok(result.booking?.id, 'booking create returns id');
+    CREATED_BOOKING_IDS.add(String(result.booking.id));
+    const groupId = result.group?.id || result.banquetGroup?.id || result.booking?.groupId || result.booking?.group_id;
+    if (groupId) CREATED_GROUP_IDS.add(String(groupId));
     return result.booking;
 }
 
@@ -782,6 +791,7 @@ async function run() {
     const base = normalizeBase(TARGET_URL);
     const playwright = requirePlaywrightOrReexec();
     const session = await login(base);
+    await assertCleanupTransportReady(base, session.token);
     const products = await assertProductsApi(base, session.token);
     const slot = await pickSafeSlot(base, session.token);
 
@@ -824,10 +834,13 @@ async function run() {
     console.log(`  OK Booking catalog: tab=${catalogUi.tabLabel}, cart=${catalogUi.positions.length}, subtotal=${catalogUi.subtotal}`);
     console.log(`  OK safe booking: ${saved.id}, status=${saved.status}, total=${saved.price}, positions=${saved.positionsCount}`);
     console.log(`  OK cleanup: ${cleanup.mode} delete for ${booking.id}; active record absent`);
-    console.log(`  OK slot: ${slot.date} ${slot.time}, room selected, staleSmokeCleaned=${slot.staleCleanupCount}`);
+    console.log(`  OK slot: ${slot.date} ${slot.time}, room selected, candidateSlots=${slot.candidateTimes.length}`);
+    console.log(`  OK exact cleanup IDs: bookings=${[...CREATED_BOOKING_IDS].join(',') || '-'}, groups=${[...CREATED_GROUP_IDS].join(',') || '-'}`);
     console.log(`  OK businessContext: ${BUSINESS_CONTEXT}`);
 }
 
-run().catch(error => {
-    fail(error?.stack || error?.message || String(error));
-});
+if (require.main === module) {
+    run().catch(error => fail(error?.stack || error?.message || String(error)));
+}
+
+module.exports = { scheduleCandidateTimes, safeBookingPayload, assertExactDisposableMarker, QA_CLEANUP_SOURCE };

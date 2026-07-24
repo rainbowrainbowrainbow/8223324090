@@ -1,112 +1,55 @@
 # Cake Decorations Live Smoke Runbook
 
-Цей runbook описує безпечний повторний запуск live smoke для розділу меню
-`Оформлення торта`. Smoke перевіряє Products API/UI, booking catalog tab, cart
-subtotal, створення safe test booking і cleanup.
+Цей smoke створює рівно один disposable QA booking для перевірки каталогу «Оформлення торта» і завжди прибирає його в `finally`.
 
-## Command
+## Перед запуском
 
-```bash
-npm run smoke:cake-decorations -- https://8223324090-production.up.railway.app
-```
-
-URL також можна передати через `LIVE_CAKE_DECORATIONS_URL`, `LIVE_SMOKE_URL` або
-`TEST_URL`. CLI-аргумент має пріоритет.
-
-## Required Auth
-
-Використовуйте один із варіантів, не друкуючи значення в terminal/chat/docs:
-
-```bash
-LIVE_CAKE_DECORATIONS_TOKEN=<jwt>
-```
-
-або:
-
-```bash
-LIVE_CAKE_DECORATIONS_USER=<login>
-LIVE_CAKE_DECORATIONS_PASS=<password>
-```
-
-Fallback env names:
-
-- Token: `LIVE_SMOKE_TOKEN`, `LIVE_SMOKE_BEARER_TOKEN`
-- Login: `LIVE_SMOKE_USER`, `LIVE_SMOKE_USERNAME`, `TEST_USER`
-- Password: `LIVE_SMOKE_PASS`, `LIVE_SMOKE_PASSWORD`, `TEST_PASS`
-
-Для локального Codex запуску можна підхопити затверджений secrets file, але його
-не можна комітити або цитувати:
+- Запускайте тільки після фінального deploy і з test-обліковим записом.
+- Завантажте локальні EventGenix CRM secrets, не виводячи їх у terminal або чат.
+- Переконайтесь, що production `/api/version` та `/api/health` доступні.
+- Не використовуйте `LIVE_CAKE_DECORATIONS_KEEP_BOOKING`: він навмисно блокує запуск.
 
 ```powershell
 . "C:\Users\Plotva\.eventgenix\codex-crm-secrets.ps1"
-npm run smoke:cake-decorations -- https://8223324090-production.up.railway.app
+npm run smoke:cake-decorations -- https://<live-crm-host>
 ```
 
-## Optional Settings
+## Години та overrides
 
-- `LIVE_CAKE_DECORATIONS_BUSINESS_CONTEXT` або `LIVE_SMOKE_BUSINESS_CONTEXT`:
-  business context, default `event_genix`.
-- `LIVE_CAKE_DECORATIONS_HEADLESS=false`: показати browser window.
-- `LIVE_CAKE_DECORATIONS_TIMEOUT_MS`: Playwright/API timeout, default `30000`.
-- `LIVE_CAKE_DECORATIONS_DATE` або `LIVE_SMOKE_DATE`: preferred booking date.
-  Якщо не задано, script бере дату приблизно через 45 днів.
-- `LIVE_CAKE_DECORATIONS_TIMES`: comma-separated preferred times, наприклад
-  `09:00,10:00,11:00`.
-- `LIVE_CAKE_DECORATIONS_DURATION_MINUTES`: test booking duration, default `60`.
-- `LIVE_CAKE_DECORATIONS_PERMANENT_CLEANUP=false`: не пробувати permanent delete;
-  script використає normal delete і все одно перевірить, що запис відсутній в
-  active list.
+Для `event_genix` smoke сам формує слоти з кроком 15 хвилин:
 
-`LIVE_CAKE_DECORATIONS_KEEP_BOOKING` навмисно заборонений. Якщо його встановити,
-script впаде до створення booking, бо cleanup має залишатися обов'язковим.
+- будні: від 12:00 до 20:00;
+- вихідні: від 10:00 до 20:00;
+- останній слот враховує повну duration booking.
 
-## Safety Contract
+`LIVE_CAKE_DECORATIONS_TIMES` — лише override-кандидати. Кожне значення локально перевіряється до першого write. Наприклад, `09:00`, невалідний формат або слот, що виходить за 20:00, завершить smoke до create.
 
-Script створює тільки disposable booking із явними safe markers:
+```powershell
+$env:LIVE_CAKE_DECORATIONS_DURATION_MINUTES='60'
+$env:LIVE_CAKE_DECORATIONS_TIMES='12:00,12:15,12:30'
+npm run smoke:cake-decorations -- https://<live-crm-host>
+```
 
-- label/group/program name починається з `QA Cake Decorations Smoke`;
-- notes містять `safe automated smoke; disposable booking; cleanup expected`;
-- `extraData.smokeTest.kind = "cake_decorations"`;
-- `extraData.smokeTest.cleanupExpected = true`;
-- `extraData.bookingWorkspace.source = "live_cake_decorations_smoke"`.
+Можна задати `LIVE_CAKE_DECORATIONS_DATE` та `LIVE_CAKE_DECORATIONS_BUSINESS_CONTEXT`. Для іншого business context smoke не припускає години EventGenix і зупиняється до write.
 
-Перед вибором slot script також прибирає stale active bookings, які мають ці safe
-markers, у перевіреній даті. Він не має торкатися реальних customer bookings.
+## Cleanup contract
 
-## Cleanup Behavior
+До create виконується preflight disposable marker і `DELETE` до гарантовано неіснуючого sentinel ID: очікуваний `404` підтверджує canonical cleanup transport та права без зміни даних. Створений booking має:
 
-Cleanup виконується у `finally` після browser/API перевірок:
+- унікальний `runId`;
+- source `live_cake_decorations_smoke`;
+- `cleanupExpected=true`;
+- `extraData.disposableQa` із exact test-customer marker;
+- точний in-memory список створених booking і group ID.
 
-1. Якщо booking створено, script викликає `DELETE /api/bookings/:id`.
-2. За замовчуванням він спершу пробує delete з `permanent=true`, потім fallback
-   normal delete.
-3. Після delete script читає active room bookings за ту саму дату і підтверджує,
-   що booking ID більше не присутній.
-4. Якщо cleanup не завершився або не підтвердився, smoke завершується помилкою.
+Cleanup працює лише для ID поточного запуску після повторної перевірки exact marker. Немає cleanup за label, date або старими QA записами. Після delete smoke перевіряє відсутність booking в активному room timeline. Якщо cleanup не підтверджений, команда завершується помилкою.
 
-Успішний рядок має містити:
+Очікувані докази:
 
 ```text
 OK cleanup: <mode> delete for <booking-id>; active record absent
+OK exact cleanup IDs: bookings=<booking-id>, groups=<group-id або ->
+OK slot: <date> <time>, room selected, candidateSlots=<count>
 ```
 
-## Troubleshooting
-
-Якщо smoke впав до створення booking:
-
-- перевірте URL;
-- перевірте auth env vars;
-- перевірте, що live `/api/version` і `/api/health` відповідають.
-
-Якщо booking створено, але cleanup failed:
-
-1. Не запускайте широкі cleanup scripts.
-2. Візьміть booking ID тільки зі smoke output.
-3. Перевірте в CRM, що label починається з `QA Cake Decorations Smoke` і notes
-   містять safe marker.
-4. Видаліть тільки цей safe booking через CRM або точковий API delete.
-5. Після ручного cleanup повторіть smoke або read-only перевірте, що booking ID
-   не присутній в active room bookings за дату smoke.
-
-Не видаляйте production records без safe markers і не публікуйте customer data,
-tokens, passwords або raw booking details у logs/chats/PR descriptions.
+Якщо cleanup не пройшов, не запускайте broad cleanup. Передайте тільки exact ID, run ID та повідомлення помилки відповідальному оператору; не показуйте customer data, токени або raw payload.

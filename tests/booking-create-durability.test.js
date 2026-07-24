@@ -995,6 +995,9 @@ async function withApp(dbOptions, fn) {
             return { attached: false };
         }
     });
+    installMock('../services/banquetMenuTaskSync', {
+        syncBanquetActualMenuTask: async () => ({ action: 'skipped_by_booking_create_durability_harness' })
+    });
     installMock('../services/bookingPackage', {
         applyBookingPackage: booking => booking,
         applyBookingPackageEntryCharge: async (_queryable, booking) => booking,

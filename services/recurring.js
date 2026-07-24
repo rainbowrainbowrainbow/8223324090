@@ -15,7 +15,8 @@ const {
     checkRoomConflict,
     lockBookingConflictResources,
     ensureDefaultLines,
-    getKyivDateStr
+    getKyivDateStr,
+    validateBookingWithinWorkingHours
 } = require('./booking');
 const { processBookingAutomation } = require('./bookingAutomation');
 const { insertHistory } = require('./historyLog');
@@ -309,6 +310,26 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             [template.id, dateStr]
         );
         if (skipped.rows.length > 0) {
+            current.setDate(current.getDate() + 1);
+            continue;
+        }
+
+        const workingHoursValidation = validateBookingWithinWorkingHours({
+            businessContext: DEFAULT_TIMELINE_CONTEXT,
+            date: dateStr,
+            time: timeStart,
+            duration
+        }, {
+            businessContext: DEFAULT_TIMELINE_CONTEXT
+        });
+        if (!workingHoursValidation.valid) {
+            const details = {
+                code: workingHoursValidation.code,
+                details: workingHoursValidation.details
+            };
+            await logSkip(template.id, dateStr, 'working_hours', details);
+            result.skipped++;
+            result.conflicts.push({ date: dateStr, reason: 'working_hours', details });
             current.setDate(current.getDate() + 1);
             continue;
         }

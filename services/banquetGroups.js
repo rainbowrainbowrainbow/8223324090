@@ -1911,10 +1911,11 @@ function assertCreateMemberBookingPayload(booking, role) {
     }
 }
 
-function assertBookingWithinWorkingHoursForBanquetWrite(booking, { existingRow = null } = {}) {
+function assertBookingWithinWorkingHoursForBanquetWrite(booking, { existingRow = null, businessContext = null } = {}) {
     const validation = validateBookingWithinWorkingHours(booking, {
         existingBooking: existingRow,
-        allowUnchangedLegacy: Boolean(existingRow)
+        allowUnchangedLegacy: Boolean(existingRow),
+        businessContext: businessContext || booking.businessContext || booking.business_context || DEFAULT_TIMELINE_CONTEXT
     });
     if (validation.valid) return;
     throw new BanquetGroupError(validation.error || 'Booking is outside working hours', {

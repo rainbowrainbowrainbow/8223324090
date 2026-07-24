@@ -1653,6 +1653,68 @@ test('booking time select is duration-aware and does not offer closing time for 
     assert.equal(slots.includes('20:00'), false);
 });
 
+test('legacy out-of-hours booking remains visible as an explicit exception and only valid slots are offered', () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [{ id: 'solo-30', code: 'SOLO', label: 'Solo(30)', name: 'Solo', category: 'animation', duration: 30, price: 1000, hosts: 1 }],
+        baseTime: '09:00'
+    });
+    context.AppState.editingBookingId = 'BK-LEGACY';
+    context.BookingDrawerState.legacyWorkingHoursBooking = {
+        date: '2099-02-13',
+        time: '09:00',
+        duration: 30,
+        outsideWorkingHours: true
+    };
+
+    const model = context.bookingTimeSlotModel('09:00');
+    const selectable = model.options.filter(option => !option.offGrid).map(option => option.value);
+
+    assert.equal(model.currentOutsideWorkingHours, true);
+    assert.equal(model.options.find(option => option.value === '09:00')?.label.includes('legacy'), true);
+    assert.equal(selectable.includes('09:00'), false);
+    assert.equal(selectable[0], '12:00');
+
+    context.renderBookingTimeOptions('09:00');
+    assert.equal(context.__fields.get('bookingTimeHint').textContent.includes('legacy-'), true);
+});
+
+test('working-hours server error keeps the booking draft open and focuses the time control', () => {
+    const context = createMultiActivityScheduleHarness();
+    const timeControl = context.__fields.get('bookingTime');
+    let focused = false;
+    timeControl.focus = () => { focused = true; };
+
+    const handled = context.handleBookingOutsideWorkingHoursSaveError({
+        code: 'BOOKING_OUTSIDE_WORKING_HOURS',
+        details: { workingHours: { start: '12:00', end: '20:00' } }
+    });
+
+    assert.equal(handled, true);
+    assert.equal(timeControl['aria-invalid'], 'true');
+    assert.equal(focused, true);
+    assert.equal(context.BookingDrawerState.bookingTimeContextIssue.includes('12:00'), true);
+    assert.equal(context.__notifications.at(-1)?.type, 'error');
+});
+
+test('legacy metadata-only UI validation explicitly bypasses only unchanged time shape', () => {
+    const bookingJs = read('js', 'booking.js');
+    const start = bookingJs.indexOf('function selectedActivityScheduleValidationBlockers');
+    const end = bookingJs.indexOf('function getSmartBookingValidationState', start);
+    const block = bookingJs.slice(start, end);
+
+    assert.match(block, /const unchangedLegacyWorkingHoursTime = typeof bookingLegacyWorkingHoursTimeIsUnchanged/);
+    assert.match(block, /!unchangedLegacyWorkingHoursTime && row\.time/);
+    assert.match(block, /!unchangedLegacyWorkingHoursTime && Number\.isFinite\(row\.endMinutes\)/);
+});
+test('booking time UI keeps a duration longer than the workday out of selectable slots', () => {
+    const context = createMultiActivityScheduleHarness({
+        programs: [{ id: 'long', code: 'LONG', label: 'Long', name: 'Long', category: 'animation', duration: 600, price: 1000, hosts: 1 }],
+        baseTime: '12:00'
+    });
+    const model = context.bookingTimeSlotModel('12:00');
+
+    assert.equal(model.options.filter(option => !option.offGrid).length, 0);
+});
 test('booking time select updates latest slot when custom duration changes', () => {
     const context = createMultiActivityScheduleHarness({
         programs: [{ id: 'custom', code: 'Інше', label: 'Інше', name: 'Custom', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }],
@@ -4944,7 +5006,7 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /sourceBookingId: createPath\.sourceBookingId/);
     assert.match(bookingJs, /const createPath = resolveBookingCreatePath\(\{[\s\S]*activityFirstKitchenBridge,[\s\S]*kitchenFirstActivityBridge[\s\S]*\}, BookingDrawerState\)/);
     assert.match(bookingJs, /if \(createPath\.blocked\)[\s\S]*showNotification\(createPath\.error/);
-    assert.match(bookingJs, /if \(createResult && createResult\.success === false\) \{\s*if \(createResult\.conflictBookingId\) revealHiddenBooking\(createResult\.conflictBookingId\);/);
+    assert.match(bookingJs, /if \(createResult && createResult\.success === false\) \{\s*if \(handleBookingOutsideWorkingHoursSaveError\(createResult\)\)[\s\S]*?if \(createResult\.conflictBookingId\) revealHiddenBooking\(createResult\.conflictBookingId\);/);
     assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
     assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
     assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);

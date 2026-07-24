@@ -2372,14 +2372,16 @@ function selectedActivityScheduleValidationBlockers(formData = {}) {
     };
 
     const workday = selectedActivityScheduleWorkday();
+    const unchangedLegacyWorkingHoursTime = typeof bookingLegacyWorkingHoursTimeIsUnchanged === 'function'
+        && bookingLegacyWorkingHoursTimeIsUnchanged(formData);
     rows.forEach(row => {
         const label = row.program?.code || row.program?.name || `активність #${row.index + 1}`;
         if (!row.time) push(row, `Вкажіть старт для ${label}.`);
-        if (row.time && !isSelectedActivityScheduleSlotTime(row.time, row)) {
+        if (!unchangedLegacyWorkingHoursTime && row.time && !isSelectedActivityScheduleSlotTime(row.time, row)) {
             push(row, `${label}: старт має бути в робочих годинах ${workday.start}-${workday.end} з кроком 15 хв.`);
         }
         if (row.duration <= 0) push(row, `${label}: некоректна тривалість.`);
-        if (Number.isFinite(row.endMinutes) && row.endMinutes > workday.endMinutes) {
+        if (!unchangedLegacyWorkingHoursTime && Number.isFinite(row.endMinutes) && row.endMinutes > workday.endMinutes) {
             push(row, `${label}: активність виходить за межі робочого дня (${workday.end}).`);
         }
         if (row.endMinutes > 1440) push(row, `${label}: активність виходить за межі дня.`);
@@ -7767,6 +7769,8 @@ async function openBookingPanel(time, lineId, options = {}) {
     nextBookingTimeChangeToken();
     clearBookingTimePreflightState({ updateSubmit: false });
     setBookingTimeContextIssue('', { updateSubmit: false });
+    BookingDrawerState.legacyWorkingHoursBooking = null;
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--legacy-outside-working-hours');
     resetSelectedActivityScheduleState();
     initializeBookingArrivalDraft(time, options.banquetContext);
 
@@ -9197,7 +9201,8 @@ async function closeBookingPanel(force = false) {
     }
     disposeActiveBookingCreateHandoffs();
     document.getElementById('bookingPanel')?.classList.add('hidden');
-    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first', 'booking-panel--time-overrun');
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first', 'booking-panel--time-overrun', 'booking-panel--legacy-outside-working-hours');
+    BookingDrawerState.legacyWorkingHoursBooking = null;
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -9971,6 +9976,73 @@ function bookingTimeSlotDurationMinutes() {
     return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 0;
 }
 
+function bookingWorkingHoursBusinessContext() {
+    const current = window.TimelineBusinessContext?.current?.() || {};
+    return String(current.apiValue || current.businessContext || 'event_genix').trim().toLowerCase();
+}
+
+function bookingUsesEventGenixWorkingHours() {
+    if (typeof isMaysternyaBookingContext === 'function' && isMaysternyaBookingContext()) return false;
+    return bookingWorkingHoursBusinessContext() === 'event_genix';
+}
+
+function bookingWorkingHoursDateValue(value = AppState.selectedDate) {
+    if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+    const text = String(value || '').trim();
+    if (!text) return AppState.selectedDate;
+    const date = new Date(text.length === 10 ? text + 'T12:00:00' : text);
+    return Number.isFinite(date.getTime()) ? date : AppState.selectedDate;
+}
+
+function bookingTimeOutsideWorkingHours(time, duration, date = AppState.selectedDate) {
+    if (!bookingUsesEventGenixWorkingHours()) return false;
+    const api = bookingActivityScheduleApi();
+    const minutes = api.scheduleTimeToMinutes(time);
+    const normalizedDuration = Number(duration || 0);
+    if (minutes === null || !Number.isFinite(normalizedDuration) || normalizedDuration <= 0) return false;
+    const workday = api.resolveSelectedActivityScheduleWorkday(selectedActivityScheduleOptions({
+        date: bookingWorkingHoursDateValue(date),
+        stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES
+    }));
+    return minutes < workday.startMinutes || minutes + normalizedDuration > workday.endMinutes;
+}
+
+function bookingLegacyWorkingHoursSnapshot() {
+    const snapshot = BookingDrawerState.legacyWorkingHoursBooking;
+    return snapshot || null;
+}
+
+function bookingLegacyWorkingHoursTimeIsUnchanged(formData = {}) {
+    const snapshot = bookingLegacyWorkingHoursSnapshot();
+    if (!snapshot?.outsideWorkingHours) return false;
+    const date = String(formatDate(AppState.selectedDate) || '').slice(0, 10);
+    const time = normalizeSelectedActivityScheduleTime(formData.time || document.getElementById('bookingTime')?.value || '');
+    const duration = Number(formData.duration ?? bookingTimeSlotDurationMinutes());
+    return date === snapshot.date
+        && time === snapshot.time
+        && Number.isFinite(duration)
+        && duration === snapshot.duration;
+}
+
+function setBookingLegacyWorkingHoursSnapshot(booking = {}) {
+    const date = String(booking.date || formatDate(AppState.selectedDate) || '').slice(0, 10);
+    const time = normalizeSelectedActivityScheduleTime(booking.time);
+    const duration = Number(booking.duration || 0);
+    const outsideWorkingHours = Boolean(
+        date
+        && time
+        && Number.isFinite(duration)
+        && duration > 0
+        && bookingTimeOutsideWorkingHours(time, duration, date)
+    );
+    BookingDrawerState.legacyWorkingHoursBooking = {
+        date,
+        time,
+        duration,
+        outsideWorkingHours
+    };
+    return BookingDrawerState.legacyWorkingHoursBooking;
+}
 function bookingTimeSlotModel(currentValue = document.getElementById('bookingTime')?.value || '') {
     const api = bookingActivityScheduleApi();
     const currentTime = api.normalizeSelectedActivityScheduleTime(currentValue);
@@ -9978,29 +10050,22 @@ function bookingTimeSlotModel(currentValue = document.getElementById('bookingTim
         selectedActivityScheduleOptions({ stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES })
     );
     const duration = bookingTimeSlotDurationMinutes();
-    const latestStartMinutes = duration > 0
-        ? Math.max(workday.startMinutes, workday.endMinutes - duration)
-        : workday.endMinutes;
-    const scheduleOptions = selectedActivityScheduleOptions({
-        stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES,
-        latestStartMinutes
-    });
-    const slotValues = api.buildSelectedActivityScheduleTimeOptions(scheduleOptions);
+    const latestStartMinutes = duration > 0 ? workday.endMinutes - duration : workday.endMinutes;
+    const scheduleOptions = selectedActivityScheduleOptions({ stepMinutes: BOOKING_TIME_SLOT_STEP_MINUTES, latestStartMinutes });
+    const slotValues = latestStartMinutes < workday.startMinutes ? [] : api.buildSelectedActivityScheduleTimeOptions(scheduleOptions);
     const currentIsSlot = !currentTime || slotValues.includes(currentTime);
+    const legacySnapshot = bookingLegacyWorkingHoursSnapshot();
+    const currentLegacyTime = Boolean(legacySnapshot && currentTime && currentTime === legacySnapshot.time);
+    const currentOutsideWorkingHours = Boolean(currentLegacyTime && legacySnapshot.outsideWorkingHours);
     const options = slotValues.map(value => ({ value, label: value, offGrid: false }));
-
-    if (currentTime && !currentIsSlot) {
-        options.push({ value: currentTime, label: currentTime + ' (\u043f\u043e\u0437\u0430 \u0441\u0456\u0442\u043a\u043e\u044e)', offGrid: true });
-        options.sort((a, b) => {
-            const aMinutes = api.scheduleTimeToMinutes(a.value);
-            const bMinutes = api.scheduleTimeToMinutes(b.value);
-            return (aMinutes ?? 0) - (bMinutes ?? 0);
-        });
+    if (currentTime && !currentIsSlot && currentLegacyTime) {
+        options.push({ value: currentTime, label: currentOutsideWorkingHours
+            ? currentTime + ' (\u041f\u043e\u0437\u0430 \u0440\u043e\u0431\u043e\u0447\u0438\u043c\u0438 \u0433\u043e\u0434\u0438\u043d\u0430\u043c\u0438 \u00b7 legacy)'
+            : currentTime + ' (\u043f\u043e\u0437\u0430 \u0441\u0456\u0442\u043a\u043e\u044e)', offGrid: true, legacy: true });
+        options.sort((a, b) => (api.scheduleTimeToMinutes(a.value) ?? 0) - (api.scheduleTimeToMinutes(b.value) ?? 0));
     }
-
-    return { currentTime, currentIsSlot, options, workday };
+    return { currentTime, currentIsSlot, currentOutsideWorkingHours, options, workday };
 }
-
 function renderBookingTimeOptions(currentValue = document.getElementById('bookingTime')?.value || '') {
     const control = document.getElementById('bookingTime');
     if (!control) return '';
@@ -10023,6 +10088,8 @@ function renderBookingTimeOptions(currentValue = document.getElementById('bookin
     if (model.currentTime) control.value = model.currentTime;
     control.dataset.currentTime = control.value || model.currentTime || '';
     control.dataset.currentSlotTime = model.currentIsSlot ? 'true' : 'false';
+    control.dataset.legacyOutsideWorkingHours = model.currentOutsideWorkingHours ? 'true' : 'false';
+    document.getElementById('bookingPanel')?.classList.toggle('booking-panel--legacy-outside-working-hours', Boolean(model.currentOutsideWorkingHours));
 
     renderBookingTimeHint();
     syncBookingTimeStepButtons(control.value);
@@ -10179,6 +10246,10 @@ function isLatestAnimatorOptionsRefreshToken(token) {
 
 function bookingTimeOffGridHintText() {
     const control = document.getElementById('bookingTime');
+    if (control?.dataset?.legacyOutsideWorkingHours === 'true') {
+        const model = bookingTimeSlotModel(control.value);
+        return '\u041f\u043e\u0437\u0430 \u0440\u043e\u0431\u043e\u0447\u0438\u043c\u0438 \u0433\u043e\u0434\u0438\u043d\u0430\u043c\u0438: legacy-\u0437\u0430\u043f\u0438\u0441 \u0437\u0430\u043b\u0438\u0448\u0435\u043d\u043e \u0432 \u043f\u043e\u0442\u043e\u0447\u043d\u043e\u043c\u0443 \u0447\u0430\u0441\u0456. \u0414\u043b\u044f \u0437\u043c\u0456\u043d\u0438 \u0447\u0430\u0441\u0443 \u043e\u0431\u0435\u0440\u0456\u0442\u044c \u0441\u043b\u043e\u0442 ' + model.workday.start + '\u2013' + model.workday.end + '; \u0456\u043d\u0448\u0456 \u043f\u043e\u043b\u044f \u043c\u043e\u0436\u043d\u0430 \u0437\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0431\u0435\u0437 \u0437\u043c\u0456\u043d\u0438 \u0447\u0430\u0441\u0443.';
+    }
     return control?.dataset?.currentSlotTime === 'false'
         ? '\u041f\u043e\u0442\u043e\u0447\u043d\u0438\u0439 \u0447\u0430\u0441 \u043f\u043e\u0437\u0430 15-\u0445\u0432\u0438\u043b\u0438\u043d\u043d\u043e\u044e \u0441\u0456\u0442\u043a\u043e\u044e'
         : '';
@@ -10194,6 +10265,28 @@ function setBookingTimeContextIssue(message = '', options = {}) {
     BookingDrawerState.bookingTimeContextIssue = nextMessage;
     if (changed || options.render) renderBookingTimeHint();
     if (changed && options.updateSubmit !== false) updateBookingSubmitState();
+}
+
+function bookingOutsideWorkingHoursMessage(result = {}) {
+    const hours = result?.details?.workingHours || {};
+    const start = String(hours.start || '').trim();
+    const end = String(hours.end || '').trim();
+    return start && end
+        ? '\u0427\u0430\u0441 \u0431\u0440\u043e\u043d\u044e\u0432\u0430\u043d\u043d\u044f \u043c\u0430\u0454 \u0431\u0443\u0442\u0438 \u0432 \u043c\u0435\u0436\u0430\u0445 \u0440\u043e\u0431\u043e\u0447\u0438\u0445 \u0433\u043e\u0434\u0438\u043d ' + start + '\u2013' + end + '. \u041e\u0431\u0435\u0440\u0456\u0442\u044c \u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u0438\u0439 \u0447\u0430\u0441.'
+        : '\u0427\u0430\u0441 \u0431\u0440\u043e\u043d\u044e\u0432\u0430\u043d\u043d\u044f \u043f\u043e\u0437\u0430 \u0440\u043e\u0431\u043e\u0447\u0438\u043c\u0438 \u0433\u043e\u0434\u0438\u043d\u0430\u043c\u0438. \u041e\u0431\u0435\u0440\u0456\u0442\u044c \u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u0438\u0439 \u0447\u0430\u0441.';
+}
+
+function handleBookingOutsideWorkingHoursSaveError(result = {}) {
+    if (result?.code !== 'BOOKING_OUTSIDE_WORKING_HOURS') return false;
+    const message = bookingOutsideWorkingHoursMessage(result);
+    const control = document.getElementById('bookingTime');
+    setBookingTimeContextIssue(message, { render: true });
+    if (control) {
+        control.setAttribute('aria-invalid', 'true');
+        control.focus({ preventScroll: true });
+    }
+    showNotification(message, 'error');
+    return true;
 }
 
 function bookingTimeValidationIssues() {
@@ -10712,6 +10805,7 @@ function refreshBookingTimeDependentsAfterChange(timeValue, options = {}) {
     }
     if (control?.dataset) delete control.dataset.previousTime;
     const token = nextBookingTimeChangeToken();
+    control?.setAttribute('aria-invalid', 'false');
     setBookingTimeContextIssue('', { updateSubmit: false });
     clearBookingTimePreflightState({ updateSubmit: false });
     setSelectedActivityScheduleIssues({});
@@ -10756,7 +10850,18 @@ function selectedActivityScheduleLatestStartMinutes(row = {}) {
     const workday = selectedActivityScheduleWorkday();
     const duration = Number(row.duration || row.program?.duration || 0) || 0;
     if (duration <= 0) return workday.endMinutes;
-    return Math.max(workday.startMinutes, workday.endMinutes - duration);
+    return workday.endMinutes - duration;
+}
+
+function selectedActivityScheduleAllowsLegacyWorkingHoursTime(row = {}) {
+    const snapshot = bookingLegacyWorkingHoursSnapshot();
+    const current = normalizeSelectedActivityScheduleTime(row.time || '');
+    return Boolean(
+        snapshot?.outsideWorkingHours
+        && current
+        && selectedActivityScheduleBaseTime() === snapshot.time
+        && bookingTimeOutsideWorkingHours(current, row.duration, AppState.selectedDate)
+    );
 }
 
 function isSelectedActivityScheduleSlotTime(value, row = {}) {
@@ -10770,10 +10875,10 @@ function selectedActivityScheduleTimeOptions(row = {}) {
     const api = bookingActivityScheduleApi();
     const current = normalizeSelectedActivityScheduleTime(row.time || '');
     const latestStartMinutes = selectedActivityScheduleLatestStartMinutes(row);
-    const options = api.buildSelectedActivityScheduleTimeOptions(
-        selectedActivityScheduleOptions({ latestStartMinutes })
-    );
-    if (current && !options.includes(current)) {
+    const options = latestStartMinutes < selectedActivityScheduleWorkday().startMinutes
+        ? []
+        : api.buildSelectedActivityScheduleTimeOptions(selectedActivityScheduleOptions({ latestStartMinutes }));
+    if (current && !options.includes(current) && selectedActivityScheduleAllowsLegacyWorkingHoursTime(row)) {
         options.push(current);
         options.sort((a, b) => (api.scheduleTimeToMinutes(a) || 0) - (api.scheduleTimeToMinutes(b) || 0));
     }
@@ -10783,15 +10888,17 @@ function selectedActivityScheduleTimeOptions(row = {}) {
 function selectedActivityScheduleTimeOptionsHtml(row = {}) {
     const current = normalizeSelectedActivityScheduleTime(row.time || '');
     const validCurrent = current ? isSelectedActivityScheduleSlotTime(current, row) : false;
-    const blankOption = current ? '' : '<option value="">Оберіть час</option>';
+    const blankOption = current ? '' : '<option value="">\u041e\u0431\u0435\u0440\u0456\u0442\u044c \u0447\u0430\u0441</option>';
+    const legacyOutsideWorkingHours = selectedActivityScheduleAllowsLegacyWorkingHoursTime(row);
     const rows = selectedActivityScheduleTimeOptions(row).map(time => {
         const selected = time === current ? ' selected' : '';
-        const suffix = time === current && !validCurrent ? ' · поза сіткою' : '';
+        const suffix = time === current && !validCurrent
+            ? (legacyOutsideWorkingHours ? ' \u00b7 \u041f\u043e\u0437\u0430 \u0440\u043e\u0431\u043e\u0447\u0438\u043c\u0438 \u0433\u043e\u0434\u0438\u043d\u0430\u043c\u0438 \u00b7 legacy' : ' \u00b7 \u043f\u043e\u0437\u0430 \u0441\u0456\u0442\u043a\u043e\u044e')
+            : '';
         return `<option value="${escapeHtml(time)}"${selected}>${escapeHtml(time + suffix)}</option>`;
     });
     return `${blankOption}${rows.join('')}`;
 }
-
 function selectedActivityScheduleBaseTime() {
     return normalizeSelectedActivityScheduleTime(
         document.getElementById('bookingTime')?.value
@@ -13968,6 +14075,10 @@ async function handleBookingSubmit(e) {
                 )
                 : await apiUpdateBooking(booking.id, booking);
             if (!updateResult || updateResult.success === false) {
+                if (handleBookingOutsideWorkingHoursSaveError(updateResult || {})) {
+                    unlockSubmitBtn();
+                    return;
+                }
                 if (window.BookingTickets?.handleSaveConflict?.(updateResult || {})) {
                     showNotification('Тариф квитків змінився. Перевірте нову суму та підтвердьте її.', 'warning');
                     unlockSubmitBtn();
@@ -14151,6 +14262,10 @@ async function handleBookingSubmit(e) {
             }
 
             if (createResult && createResult.success === false) {
+                if (handleBookingOutsideWorkingHoursSaveError(createResult)) {
+                    unlockSubmitBtn();
+                    return;
+                }
                 if (createResult.conflictBookingId) revealHiddenBooking(createResult.conflictBookingId);
                 if (window.BookingTickets?.handleSaveConflict?.(createResult)) {
                     showNotification('Тариф квитків змінився. Перевірте нову суму та підтвердьте її.', 'warning');
@@ -17363,6 +17478,8 @@ async function editBooking(bookingId, options = {}) {
     }
     renderBookingPackageSummary();
     syncBookingCommentFieldPresentation(getBookingFormData());
+    setBookingLegacyWorkingHoursSnapshot(booking);
+    syncBookingTimeControlValue(booking.time, { syncTimeline: false });
     if (window.BookingForm?.markClean) BookingForm.markClean();
 }
 

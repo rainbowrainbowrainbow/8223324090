@@ -1127,6 +1127,15 @@ async function ensureSecondAnimatorLineForBooking(client, booking, businessConte
 }
 
 async function insertSecondAnimatorLinkedBooking(client, { booking, businessContext, mainBookingId, status, ensuredLine }) {
+    const workingHoursValidation = validateBookingWorkingHoursForWrite(booking, { businessContext });
+    if (!workingHoursValidation.valid) {
+        const error = new Error(workingHoursValidation.error || 'Booking is outside working hours');
+        error.statusCode = 400;
+        error.code = workingHoursValidation.code || 'BOOKING_OUTSIDE_WORKING_HOURS';
+        error.details = workingHoursValidation.details || null;
+        throw error;
+    }
+
     const linkedBooking = {
         ...booking,
         lineId: ensuredLine.lineId,
@@ -3491,7 +3500,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
     }
     b.duration = dur;
-    if (rejectBookingOutsideWorkingHours(res, b)) return;
+    if (rejectBookingOutsideWorkingHours(res, b, { businessContext })) return;
     if (rejectClientTicketSnapshotPayload(res, b)) return;
     if (
         String(b.linkedTo || b.linked_to || '').trim()
@@ -4123,7 +4132,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
         if (hh * 60 + mm + duration > 1440) {
             return res.status(400).json({ success: false, error: 'Заняття не може переходити через опівніч' });
         }
-        if (rejectBookingOutsideWorkingHours(res, candidate)) return;
+        if (rejectBookingOutsideWorkingHours(res, candidate, { businessContext })) return;
         const bookingDateTime = new Date(`${candidate.date}T${candidate.time}:00`);
         if (bookingDateTime < new Date()) {
             return res.status(400).json({ success: false, error: 'Неможливо створити заняття в минулому.' });
@@ -4376,7 +4385,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: 'Duration must be between 0 and 1440 minutes' });
         }
         main.duration = mainDuration;
-        if (rejectBookingOutsideWorkingHours(res, main)) return;
+        if (rejectBookingOutsideWorkingHours(res, main, { businessContext })) return;
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         const mainPastValidationError = bookingPastValidationError(main);
@@ -4395,7 +4404,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     return res.status(400).json({ success: false, error: 'Linked booking duration must be between 0 and 1440 minutes' });
                 }
                 lb.duration = linkedDuration;
-                if (rejectBookingOutsideWorkingHours(res, lb)) return;
+                if (rejectBookingOutsideWorkingHours(res, lb, { businessContext })) return;
                 if (!String(lb.room || '').trim()) lb.room = main.room;
                 if (!String(lb.roomResourceId || lb.room_resource_id || '').trim()) {
                     lb.roomResourceId = main.roomResourceId || main.room_resource_id || null;
@@ -4430,7 +4439,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 return res.status(400).json({ success: false, error: 'Activity duration must be between 1 and 1440 minutes' });
             }
             activity.duration = duration;
-            if (rejectBookingOutsideWorkingHours(res, activity)) return;
+            if (rejectBookingOutsideWorkingHours(res, activity, { businessContext })) return;
             await hydrateBookingRoomFromTimelineResource(pool, activity, businessContext);
             const activityRoomResourceError = await validateBookingRoomResourceForWrite(pool, activity, businessContext);
             if (activityRoomResourceError) return res.status(activityRoomResourceError.status).json(activityRoomResourceError.body);
@@ -5507,7 +5516,8 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
         const mainWorkingHoursValidation = validateBookingWorkingHoursForWrite(mainCandidate, {
             existingBooking: oldMain,
-            allowUnchangedLegacy: true
+            allowUnchangedLegacy: true,
+            businessContext
         });
         if (!mainWorkingHoursValidation.valid) {
             await client.query('ROLLBACK');
@@ -5538,7 +5548,8 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             }
             const workingHoursValidation = validateBookingWorkingHoursForWrite(candidate, {
                 existingBooking: row,
-                allowUnchangedLegacy: true
+                allowUnchangedLegacy: true,
+                businessContext
             });
             if (!workingHoursValidation.valid) {
                 await client.query('ROLLBACK');
@@ -6042,7 +6053,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         return res.status(400).json({ error: 'Duration must be between 0 and 1440 minutes' });
     }
     b.duration = workingHoursDuration;
-    if (rejectBookingOutsideWorkingHours(res, b, { existingBooking: old, allowUnchangedLegacy: true })) return;
+    if (rejectBookingOutsideWorkingHours(res, b, { existingBooking: old, allowUnchangedLegacy: true, businessContext })) return;
 
     const client = await pool.connect();
     try {

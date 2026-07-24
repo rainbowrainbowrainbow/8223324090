@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
+const { validateBookingWithinWorkingHours } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
 const ExcelJS = require('exceljs');
 const {
@@ -796,6 +797,22 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         const explicitDuration = durationBetweenTimes(time, endTime || q.event_end_time || null);
         const componentDuration = graduationSegmentExtent(graduationSegments) || graduationTimelineItems.reduce((sum, item) => sum + (Number(item.durationMin || 0) || 0), 0);
         const parentDuration = Math.max(15, explicitDuration, componentDuration);
+        const workingHoursValidation = validateBookingWithinWorkingHours({
+            businessContext: 'event_genix',
+            date,
+            time,
+            duration: parentDuration
+        }, {
+            businessContext: 'event_genix'
+        });
+        if (!workingHoursValidation.valid) {
+            return res.status(400).json({
+                success: false,
+                code: workingHoursValidation.code || 'BOOKING_OUTSIDE_WORKING_HOURS',
+                error: workingHoursValidation.error || 'Booking is outside working hours',
+                details: workingHoursValidation.details || null
+            });
+        }
 
         // Get package name if available
         let programName = 'Індивідуальний випускний';

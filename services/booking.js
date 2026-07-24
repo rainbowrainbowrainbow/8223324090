@@ -107,6 +107,30 @@ function bookingWorkingHoursForDate(dateStr) {
     };
 }
 
+function resolveBookingWorkingHoursPolicy(booking = {}, options = {}) {
+    const businessContext = normalizeTimelineContext(
+        options.businessContext
+        || options.business_context
+        || booking.businessContext
+        || booking.business_context
+        || DEFAULT_TIMELINE_CONTEXT
+    );
+    if (businessContext !== 'event_genix') {
+        return {
+            businessContext,
+            applies: false,
+            workingHours: null
+        };
+    }
+
+    const hours = bookingWorkingHoursForDate(String(booking.date || '').slice(0, 10));
+    return {
+        businessContext,
+        applies: true,
+        workingHours: hours
+    };
+}
+
 function bookingTimeShapeUnchanged(candidate = {}, existing = null) {
     if (!existing) return false;
     return String(candidate.date || '') === String(existing.date || '').slice(0, 10)
@@ -147,7 +171,7 @@ function validateBookingWithinWorkingHours(booking = {}, options = {}) {
             details: { date, time }
         };
     }
-    if (!Number.isFinite(duration) || duration < 0 || duration > 1440) {
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 1440) {
         return {
             valid: false,
             code: 'BOOKING_WORKING_HOURS_INVALID_DURATION',
@@ -156,7 +180,24 @@ function validateBookingWithinWorkingHours(booking = {}, options = {}) {
         };
     }
 
-    const hours = bookingWorkingHoursForDate(date);
+    const policy = resolveBookingWorkingHoursPolicy({ ...booking, date }, options);
+    if (!policy.applies) {
+        return {
+            valid: true,
+            legacyUnchanged: false,
+            code: null,
+            error: null,
+            details: {
+                date,
+                time,
+                duration,
+                businessContext: policy.businessContext,
+                workingHours: null
+            }
+        };
+    }
+
+    const hours = policy.workingHours;
     const startMinutes = timeToMinutes(time);
     const endMinutes = startMinutes + duration;
     if (startMinutes < hours.startMinutes || startMinutes > hours.endMinutes || endMinutes > hours.endMinutes) {
@@ -169,6 +210,7 @@ function validateBookingWithinWorkingHours(booking = {}, options = {}) {
                 time,
                 duration,
                 endTime: minutesToTime(Math.min(endMinutes, 1439)),
+                businessContext: policy.businessContext,
                 workingHours: {
                     start: hours.start,
                     end: hours.end,
@@ -187,6 +229,7 @@ function validateBookingWithinWorkingHours(booking = {}, options = {}) {
             date,
             time,
             duration,
+            businessContext: policy.businessContext,
             workingHours: {
                 start: hours.start,
                 end: hours.end,
@@ -1217,7 +1260,7 @@ function getKyivTimeStr() {
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     normalizeBanquetCreationContext, validateBanquetCreationContext,
-    BOOKING_WORKING_HOURS, bookingDateIsWeekend, bookingWorkingHoursForDate, validateBookingWithinWorkingHours,
+    BOOKING_WORKING_HOURS, bookingDateIsWeekend, bookingWorkingHoursForDate, resolveBookingWorkingHoursPolicy, validateBookingWithinWorkingHours,
     timeToMinutes, minutesToTime, MIN_PAUSE, VALID_BOOKING_STATUSES,
     parseAvailabilityWindows, isBookingWithinAvailabilityWindows, isMinuteWithinAvailabilityWindows, availabilityWindowsLabel,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,

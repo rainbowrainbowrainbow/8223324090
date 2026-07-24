@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.150 - QA: безпечне прибирання smoke
+
+### Release / Versioning / (24.07.2026) [codex]
+- **QA: безпечне прибирання smoke** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.149 - Бронювання: контроль робочих годин
 
 ### Release / Versioning / (24.07.2026) [codex]

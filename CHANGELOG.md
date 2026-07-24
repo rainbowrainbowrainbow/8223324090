@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.4 - Обране: компактний таймлайн
+
+### Sidebar / Keyboard hardening / (24.07.2026) [codex]
+- **Стабільний Enter і Space** — keyboard toggle явно виконує один synthetic click і ігнорує можливий другий native keyboard click, щоб «Обране» не згорталось назад.
+- **Live QA follow-up** — patch закриває сценарій reload у згорнутому стані та повторне розгортання з клавіатури.
+
+---
+
 ## v0.80.3 - Обране: компактний таймлайн
 
 ### Sidebar / Keyboard QA patch / (24.07.2026) [codex]

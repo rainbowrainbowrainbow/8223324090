@@ -420,9 +420,11 @@ async function pickSafeSlot(base, token) {
         const [rooms, bookings] = await Promise.all([loadRoomLines(base, token, date), fetchJson(base, scopedPath(`/api/bookings/${encodeURIComponent(date)}`, { timelineView: 'rooms' }), { token })]);
         for (const roomLine of rooms) {
             const room = roomNameFromLine(roomLine);
+            const roomResourceId = String(roomLine.resourceId || roomLine.resource_id || roomLine.id || '').trim();
+            if (!roomResourceId) continue;
             const roomBookings = activeBookingsForRoom(bookings, room);
             for (const time of candidateTimes) {
-                if (!roomBookings.some(booking => rangesOverlap(time, SMOKE_DURATION, booking.time, booking.duration || 60))) return { date, time, room, candidateTimes };
+                if (!roomBookings.some(booking => rangesOverlap(time, SMOKE_DURATION, booking.time, booking.duration || 60))) return { date, time, room, roomResourceId, candidateTimes };
             }
         }
     }
@@ -685,6 +687,7 @@ function safeBookingPayload(slot, cartPositions, session) {
         lineId: 'banquet-service',
         lineName: 'Banquet service',
         room: slot.room,
+        roomResourceId: slot.roomResourceId || null,
         label,
         programCode: 'CAKEDECOR-SMOKE',
         programName: label,

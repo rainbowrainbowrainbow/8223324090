@@ -20,7 +20,7 @@ test('cake live smoke rejects invalid time override before booking creation', ()
 });
 
 test('cake live smoke payload carries exact disposable QA marker', () => {
-    const payload = safeBookingPayload({ date: '2026-07-27', time: '12:00', room: 'Room A' }, [{
+    const payload = safeBookingPayload({ date: '2026-07-27', time: '12:00', room: 'Room A', roomResourceId: 'room-a' }, [{
         productId: 'cake_decor_sweets', title: 'Cake', quantity: 1, unitPrice: 950, subtotal: 950
     }], { user: { username: 'qa' } });
     const marker = payload.extraData.disposableQa;
@@ -29,6 +29,7 @@ test('cake live smoke payload carries exact disposable QA marker', () => {
     });
     assert.equal(inspection.ok, true);
     assert.equal(marker.cleanupExpected, true);
+    assert.equal(payload.roomResourceId, 'room-a');
 });
 
 

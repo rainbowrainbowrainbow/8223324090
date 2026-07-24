@@ -5075,6 +5075,23 @@ body.timeline-dashboard-page .header .btn-logout {
     flex: 0 0 auto;
 }
 
+/* v0.79.147: timeline logout must keep WCAG contrast in light mode. */
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout {
+    border-color: var(--header-actions-accent);
+    background: var(--header-actions-accent);
+    color: #fff;
+}
+
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible {
+    border-color: var(--header-actions-accent-hover);
+    background: var(--header-actions-accent-hover);
+    color: #fff;
+}
+
 body.timeline-dashboard-page .header .timeline-header-actions {
     flex: 0 0 auto;
     display: flex;

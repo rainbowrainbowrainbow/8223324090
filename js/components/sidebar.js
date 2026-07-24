@@ -1284,15 +1284,7 @@ const Sidebar = (() => {
         const sectionToggle = extras.querySelector('[data-sidebar-extra-toggle-section]');
         if (sectionToggle && sectionToggle.dataset.sidebarExtraSectionBound !== 'true') {
             sectionToggle.dataset.sidebarExtraSectionBound = 'true';
-            sectionToggle.addEventListener('click', (event) => {
-                if (sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick === 'true' && event.detail === 0) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    delete sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick;
-                    return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
+            const toggleExtraMenuSection = () => {
                 const editorWasOpen = _isExtraMenuEditorOpen();
                 if (editorWasOpen) {
                     _state.extraEditingId = '';
@@ -1303,16 +1295,17 @@ const Sidebar = (() => {
                     _setExtraMenuCollapsed(nextCollapsed);
                 }
                 _ensureCommandDeck();
+            };
+            sectionToggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleExtraMenuSection();
             });
             sectionToggle.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
                 event.stopPropagation();
-                sectionToggle.click();
-                sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick = 'true';
-                setTimeout(() => {
-                    delete sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick;
-                }, 0);
+                toggleExtraMenuSection();
             });
         }
 

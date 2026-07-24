@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.145",
+  "version": "0.79.146",
   "eventGenix": {
-    "releaseLabel": "Окремі попередження меню по факту"
+    "releaseLabel": "Банкет: квитки і завдаток"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

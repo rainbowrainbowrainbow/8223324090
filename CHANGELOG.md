@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.146 - Банкет: квитки і завдаток
+
+### Release / Versioning / (24.07.2026) [codex]
+- **Банкет: квитки і завдаток** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.145 - Окремі попередження меню по факту
 
 ### Release / Versioning / (24.07.2026) [codex]

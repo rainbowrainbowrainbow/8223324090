@@ -751,9 +751,10 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   z-index: 1;
   min-width: 0;
   min-height: 34px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
+  justify-content: stretch;
   gap: 4px;
   padding: 0 6px;
   border: 0;
@@ -822,9 +823,12 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-timeline-segment-label {
+  display: block;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: clip;
+  text-align: right;
   opacity: 0.78;
   transition: opacity var(--eg-timeline-launcher-duration) ease;
 }

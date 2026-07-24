@@ -8,8 +8,8 @@
  * Registration is owned by the authenticated runtime in js/auth.js.
  */
 
-const CACHE_NAME = 'event-genix-v0.79.151';
-const API_CACHE_NAME = 'event-genix-api-v0.79.151';
+const CACHE_NAME = 'event-genix-v0.80.0';
+const API_CACHE_NAME = 'event-genix-api-v0.80.0';
 
 // Minimal offline shell. Large CRM modules and images use runtime cache only
 // after a client actually requests them.

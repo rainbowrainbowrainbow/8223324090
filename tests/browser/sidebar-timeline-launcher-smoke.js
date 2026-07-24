@@ -461,6 +461,7 @@ async function assertLauncherSurfaceParity(page, base) {
         { name: 'desktop', viewport: { width: 1440, height: 960 } },
         { name: 'mobile', viewport: { width: 320, height: 800 } }
     ];
+    await page.goto(`${base}/dashboard?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
     for (const surface of surfaces) {
         await page.evaluate(() => {
             localStorage.setItem('pzp_dark_mode', 'true');

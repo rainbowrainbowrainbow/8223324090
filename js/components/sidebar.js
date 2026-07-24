@@ -1298,6 +1298,12 @@ const Sidebar = (() => {
                 }
                 _ensureCommandDeck();
             });
+            sectionToggle.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                event.stopPropagation();
+                sectionToggle.click();
+            });
         }
 
         const toggle = extras.querySelector('[data-sidebar-extra-toggle-editor]');

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { scheduleCandidateTimes, safeBookingPayload, QA_CLEANUP_SOURCE } = require('../scripts/live-cake-decorations-smoke');
+const { scheduleCandidateTimes, safeBookingPayload, cleanupPreflightPath, QA_CLEANUP_SOURCE } = require('../scripts/live-cake-decorations-smoke');
 const { inspectDisposableQaMarker } = require('../services/disposableQa');
 
 test('cake live smoke candidates start at EventGenix opening and respect duration', () => {
@@ -29,4 +29,10 @@ test('cake live smoke payload carries exact disposable QA marker', () => {
     });
     assert.equal(inspection.ok, true);
     assert.equal(marker.cleanupExpected, true);
+});
+
+
+test('cake live smoke preflight honors the selected cleanup mode', () => {
+    assert.match(cleanupPreflightPath(true), /permanent=true/);
+    assert.doesNotMatch(cleanupPreflightPath(false), /permanent=true/);
 });

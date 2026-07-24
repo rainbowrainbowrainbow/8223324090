@@ -356,10 +356,15 @@ function assertExactDisposableMarker(booking = {}) {
     return inspection.marker;
 }
 
+function cleanupPreflightPath(permanentCleanup = PERMANENT_CLEANUP) {
+    return scopedPath('/api/bookings/QA-CLEANUP-PREFLIGHT-NOT-FOUND', permanentCleanup ? { permanent: 'true' } : {});
+}
+
 async function assertCleanupTransportReady(base, token) {
     const marker = inspectDisposableQaMarker({ disposableQa: { schemaVersion: 1, runId: RUN_ID, source: QA_CLEANUP_SOURCE, cleanupExpected: true, testCustomerMarker: QA_TEST_CUSTOMER_MARKER, kind: 'cake_decorations', createdAt: new Date().toISOString() } }, { runId: RUN_ID, source: QA_CLEANUP_SOURCE, testCustomerMarker: QA_TEST_CUSTOMER_MARKER });
     if (!marker.ok) throw new Error(`cleanup marker preflight failed: ${marker.reasons.join(',')}`);
-    const probe = await fetchJsonAllowStatus(base, scopedPath('/api/bookings/QA-CLEANUP-PREFLIGHT-NOT-FOUND', { permanent: 'true' }), { method: 'DELETE', token });
+    const probePath = cleanupPreflightPath();
+    const probe = await fetchJsonAllowStatus(base, probePath, { method: 'DELETE', token });
     // The sentinel cannot match a generated booking id; 404 proves the canonical cleanup route and authorization without touching data.
     if (probe.status !== 404) throw new Error(`cleanup transport preflight returned unexpected status ${probe.status}`);
     return true;
@@ -843,4 +848,4 @@ if (require.main === module) {
     run().catch(error => fail(error?.stack || error?.message || String(error)));
 }
 
-module.exports = { scheduleCandidateTimes, safeBookingPayload, assertExactDisposableMarker, QA_CLEANUP_SOURCE };
+module.exports = { scheduleCandidateTimes, safeBookingPayload, assertExactDisposableMarker, cleanupPreflightPath, QA_CLEANUP_SOURCE };

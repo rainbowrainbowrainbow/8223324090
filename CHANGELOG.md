@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.147 - Банкет: нульові квитки
+
+### Release / Versioning / (24.07.2026) [codex]
+- **Банкет: нульові квитки** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.146 - Банкет: квитки і завдаток
 
 ### Release / Versioning / (24.07.2026) [codex]

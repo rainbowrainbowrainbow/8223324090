@@ -1281,9 +1281,12 @@ const Sidebar = (() => {
 
     function _bindExtraMenuEditor(extras) {
         if (!extras) return;
-        const sectionToggle = extras.querySelector('[data-sidebar-extra-toggle-section]');
-        if (sectionToggle && sectionToggle.dataset.sidebarExtraSectionBound !== 'true') {
-            sectionToggle.dataset.sidebarExtraSectionBound = 'true';
+        if (extras.dataset.sidebarExtraSectionBound !== 'true') {
+            extras.dataset.sidebarExtraSectionBound = 'true';
+            const isExtraSectionToggleEvent = (event) => {
+                const target = event.target?.closest?.('[data-sidebar-extra-toggle-section]');
+                return target && extras.contains(target) ? target : null;
+            };
             const toggleExtraMenuSection = () => {
                 const editorWasOpen = _isExtraMenuEditorOpen();
                 if (editorWasOpen) {
@@ -1296,13 +1299,15 @@ const Sidebar = (() => {
                 }
                 _ensureCommandDeck();
             };
-            sectionToggle.addEventListener('click', (event) => {
+            extras.addEventListener('click', (event) => {
+                if (!isExtraSectionToggleEvent(event)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 toggleExtraMenuSection();
             });
-            sectionToggle.addEventListener('keydown', (event) => {
+            extras.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
+                if (!isExtraSectionToggleEvent(event)) return;
                 event.preventDefault();
                 event.stopPropagation();
                 toggleExtraMenuSection();

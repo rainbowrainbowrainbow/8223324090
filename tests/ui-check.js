@@ -4092,6 +4092,15 @@ check('Sidebar alert center remains the concrete alert surface', sidebarCode.inc
 check('Sidebar light theme keeps profile name readable after compact density', sidebarAuroraCss.includes('v0.55.31: light theme sidebar completion') && sidebarAuroraCss.includes('grid-template-columns: 1fr !important') && sidebarAuroraCss.includes('overflow-wrap: break-word !important') && sidebarAuroraCss.includes('body:not(.dark-mode) .sidebar-nav') && sidebarAuroraCss.includes('body:not(.dark-mode) .sidebar-command-deck') && sidebarAuroraCss.includes('body:not(.dark-mode) .sidebar-identity-name'));
 check('Sidebar Additional and nav sections have stable ordered rerender slots', sidebarCode.includes('EXTRA_MENU_COLLAPSED_STORAGE_KEY') && sidebarCode.includes('function _syncSidebarSectionOrder') && sidebarCode.includes('data-sidebar-extra-toggle-section') && sidebarAuroraCss.includes('v0.55.39: stable sidebar section order') && sidebarAuroraCss.includes('.sidebar-command-deck') && sidebarAuroraCss.includes('order: 10 !important') && sidebarAuroraCss.includes('.sidebar-design-extras') && sidebarAuroraCss.includes('order: 20 !important') && sidebarAuroraCss.includes('.sidebar-links') && sidebarAuroraCss.includes('order: 30 !important'));
 check('Sidebar Additional menu has a persistent collapsed state and editable expanded state', sidebarCode.includes('_isExtraMenuCollapsed') && sidebarCode.includes('_setExtraMenuCollapsed(false)') && sidebarCode.includes('is-collapsed') && sidebarAuroraCss.includes('.sidebar-design-extras.is-collapsed .sidebar-design-extra-list') && sidebarAuroraCss.includes('.sidebar-design-extras.is-collapsed .sidebar-extra-editor'));
+const sidebarExtraListMarkupIndex = sidebarCode.indexOf('<div class="sidebar-design-extra-list"${extraListHidden ?');
+const sidebarTimelineSlotMarkupIndex = sidebarCode.indexOf('sidebar-design-timeline-slot', sidebarExtraListMarkupIndex);
+const sidebarExtraEditorMarkupIndex = sidebarCode.indexOf('${extraEditorOpen ? _renderExtraMenuEditor', sidebarExtraListMarkupIndex);
+check('Sidebar timeline launcher is inside the Favorites collapsible list',
+    sidebarExtraListMarkupIndex > -1
+    && sidebarTimelineSlotMarkupIndex > sidebarExtraListMarkupIndex
+    && sidebarExtraEditorMarkupIndex > sidebarTimelineSlotMarkupIndex
+    && sidebarCode.includes('${timelineExtraItem || extraItems.length ? extraItems.map')
+    && !sidebarCode.includes('</div>\n                ${timelineExtraItem ? `<div class="sidebar-design-timeline-slot"'));
 check('Sidebar Additional and group headers stay readable after compact density overrides', sidebarAuroraCss.includes('v0.56.3: sidebar menu readability polish') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-extras-head') && sidebarAuroraCss.includes('min-height: 42px !important') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-extras-dot::before') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-group-header') && sidebarAuroraCss.includes('grid-template-columns: 28px minmax(0, 1fr) 26px !important') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-group-header .nav-icon') && sidebarAuroraCss.includes('width: 26px !important'));
 check('Sidebar collapsed groups clip submenu tails and disable hidden hit areas', sidebarCode.includes('aria-hidden="${finalOpen ?') && sidebarCode.includes("items.setAttribute('inert'") && sidebarCode.includes('function _syncSidebarGroupPanelStates') && sidebarAuroraCss.includes('v0.73.42: collapsed sidebar groups are clipped/inert') && sidebarAuroraCss.includes('grid-template-rows: 0fr') && sidebarAuroraCss.includes('grid-template-rows: 1fr') && sidebarAuroraCss.includes('pointer-events: none') && sidebarAuroraCss.includes('visibility 0s linear 0.24s') && sidebarAuroraCss.includes('overflow: hidden'));
 check('Sidebar quick access header uses only Обране and replaces bulky Additional editor button', sidebarCode.includes('Обране') && sidebarCode.includes('sidebar-design-extras-gear') && sidebarCode.includes('Редагувати обране') && sidebarCode.includes('Сторінки обраного') && sidebarCode.includes('Знайти сторінку обраного') && !sidebarCode.includes('обране меню') && !sidebarCode.includes('Знайти сторінку швидкого доступу') && sidebarAuroraCss.includes('v0.57.1: Quick Access submenu polish') && sidebarAuroraCss.includes('grid-template-columns: minmax(0, 1fr) 34px !important') && sidebarAuroraCss.includes('v0.73.15: center the compact Favorites header') && sidebarAuroraCss.includes('display: grid !important') && sidebarAuroraCss.includes('grid-template-columns: 32px minmax(0, 1fr) 32px !important') && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-extras-copy') && sidebarAuroraCss.includes('text-align: center !important') && sidebarAuroraCss.includes('.sidebar-design-extras-manage-text') && sidebarAuroraCss.includes('sidebarQuickGearSpin') && sidebarAuroraCss.includes('.sidebar-design-extras:not(.is-collapsed) .sidebar-design-extra-list::before'));
@@ -4151,7 +4160,8 @@ check('Sidebar timeline launcher keeps mode, URL, semantic, sync and mobile-clos
     && sidebarAuroraCss.includes('.sidebar-design-timeline-inset')
     && sidebarAuroraCss.includes('.sidebar-design-timeline-inset::before')
     && sidebarAuroraCss.includes('.sidebar-design-timeline-segment')
-    && sidebarAuroraCss.includes('min-height: 40px')
+    && sidebarAuroraCss.includes('min-height: 34px')
+    && sidebarAuroraCss.includes('height: 16px')
     && sidebarAuroraCss.includes('font-variant-numeric: tabular-nums')
     && sidebarAuroraCss.includes('@media (prefers-reduced-motion: reduce)'));
 check('Sidebar timeline launcher active state is geometry-neutral',
@@ -4160,11 +4170,12 @@ check('Sidebar timeline launcher active state is geometry-neutral',
     && timelineLauncherActiveRule.includes('box-shadow:')
     && !timelineLauncherGeometryMutationPattern.test(timelineLauncherActiveRule)
     && sidebarAuroraCss.includes('.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher > .sidebar-design-timeline-main,')
-    && sidebarAuroraCss.includes('min-height: 44px')
-    && sidebarAuroraCss.includes('grid-template-columns: 30px minmax(0, 1fr) auto')
-    && sidebarAuroraCss.includes('padding: 7px 9px 0 10px')
+    && sidebarAuroraCss.includes('min-height: 38px')
+    && sidebarAuroraCss.includes('grid-template-columns: 28px minmax(0, 1fr) auto')
+    && sidebarAuroraCss.includes('padding: 0 2px 0 3px')
     && sidebarAuroraCss.includes('grid-template-columns: repeat(2, minmax(0, 1fr))')
-    && sidebarAuroraCss.includes('min-height: 40px'));
+    && sidebarAuroraCss.includes('min-height: 34px')
+    && sidebarAuroraCss.includes('height: 16px'));
 check('Sidebar timeline launcher shows mode counts instead of visible summary or checkmarks',
     !sidebarCode.includes('data-sidebar-timeline-summary="true"')
     && sidebarCode.includes('data-sidebar-timeline-count-mode="${_escAttr(mode.key)}"')
@@ -4190,7 +4201,8 @@ check('Sidebar timeline launcher shows mode counts instead of visible summary or
     && !sidebarCode.includes('sidebar-design-timeline-segment-check')
     && !sidebarAuroraCss.includes('sidebar-design-timeline-segment-check')
     && sidebarAuroraCss.includes('.sidebar-design-timeline-segment-count')
-    && sidebarAuroraCss.includes('min-width: 2.2ch')
+    && sidebarAuroraCss.includes('min-width: 2ch')
+    && sidebarAuroraCss.includes('font-size: 9.8px')
     && sidebarAuroraCss.includes('font-variant-numeric: tabular-nums')
     && !sidebarAuroraCss.includes('[data-sidebar-timeline-summary]')
     && !sidebarAuroraCss.includes('is-summary-changing')
@@ -4202,6 +4214,14 @@ check('Sidebar timeline launcher shows mode counts instead of visible summary or
     && timelineCode.includes("dispatchTimelineSummaryChanged({ date: formatDate(selectedDate), viewMode: 'week' })")
     && sidebarTimelineLauncherSmokeCode.includes('function assertLauncherSurfaceParity')
     && sidebarTimelineLauncherSmokeCode.includes('/dashboard?businessContext=${PARK_CONTEXT}')
+    && sidebarTimelineLauncherSmokeCode.includes('function assertFavoritesTimelineCollapseBehavior')
+    && sidebarTimelineLauncherSmokeCode.includes('eg_sidebar_extra_menu_collapsed_v1')
+    && sidebarTimelineLauncherSmokeCode.includes('Tab does not focus hidden timeline controls while Favorites is collapsed')
+    && sidebarTimelineLauncherSmokeCode.includes('Space expands Favorites')
+    && sidebarTimelineLauncherSmokeCode.includes('Enter collapses Favorites')
+    && sidebarTimelineLauncherSmokeCode.includes('closing editor returns Favorites to collapsed state')
+    && sidebarTimelineLauncherSmokeCode.includes('function assertCompactLauncherGeometry')
+    && sidebarTimelineLauncherSmokeCode.includes('launcher.rects.launcher.height <= launcherMax')
     && sidebarTimelineLauncherSmokeCode.includes('assertLauncherGeometryParity(dashboard, timeline')
     && sidebarTimelineLauncherSmokeCode.includes('tolerance = 1')
     && sidebarTimelineLauncherSmokeCode.includes('assertLauncherCountContract')

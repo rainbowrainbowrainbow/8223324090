@@ -3086,9 +3086,9 @@ const Sidebar = (() => {
                         <span class="sidebar-design-extras-manage-text">${extraEditorOpen ? 'Готово' : 'Редагувати'}</span>
                     </button>
                 </div>
-                ${timelineExtraItem ? `<div class="sidebar-design-timeline-slot">${_renderExtraMenuLink(timelineExtraItem, currentPath, currentHash)}</div>` : ''}
                 <div class="sidebar-design-extra-list"${extraListHidden ? ' hidden' : ''}>
-                    ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
+                    ${timelineExtraItem ? `<div class="sidebar-design-timeline-slot">${_renderExtraMenuLink(timelineExtraItem, currentPath, currentHash)}</div>` : ''}
+                    ${timelineExtraItem || extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
                 </div>
                 ${extraEditorOpen ? _renderExtraMenuEditor(editableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);

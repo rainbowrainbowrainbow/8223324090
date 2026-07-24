@@ -220,11 +220,12 @@ async function readLauncher(page) {
         const modes = modeLinks
             .map(link => {
                 const url = new URL(link.href, location.origin);
+                const labelEl = link.querySelector('.sidebar-design-timeline-segment-label');
                 const countEl = link.querySelector('[data-sidebar-timeline-count-mode]');
                 const countRect = countEl?.getBoundingClientRect?.();
                 return {
                     key: link.dataset.sidebarTimelineMode,
-                    label: link.querySelector('.sidebar-design-timeline-segment-label')?.textContent?.trim() || link.textContent.trim(),
+                    label: labelEl?.textContent?.trim() || link.textContent.trim(),
                     count: countEl?.textContent?.trim() || '',
                     countStatus: countEl?.dataset.sidebarTimelineCountStatus || '',
                     countVisible: Boolean(countEl && countRect && countRect.width > 0 && countRect.height > 0),
@@ -233,7 +234,9 @@ async function readLauncher(page) {
                     ariaPressed: link.getAttribute('aria-pressed'),
                     ariaCurrent: link.getAttribute('aria-current'),
                     ariaLabel: link.getAttribute('aria-label') || '',
-                    rect: rectFor(link)
+                    rect: rectFor(link),
+                    labelRect: rectFor(labelEl),
+                    countRect: rectFor(countEl)
                 };
             });
         const mainUrl = main ? new URL(main.href, location.origin) : null;
@@ -315,6 +318,25 @@ function assertLauncherGeometryParity(actual, expected, label) {
     });
 }
 
+function assertCompactLauncherGeometry(launcher, label, options = {}) {
+    assert.ok(launcher?.rects?.launcher, `${label}: launcher geometry is available`);
+    const mobile = options.mobile === true;
+    const launcherMax = mobile ? 104 : 96;
+    const mainMin = mobile ? 38 : 36;
+    const mainMax = mobile ? 44 : 42;
+    const segmentMin = mobile ? 36 : 32;
+    const segmentMax = mobile ? 42 : 36;
+    assert.ok(launcher.rects.launcher.height <= launcherMax, `${label}: launcher height ${launcher.rects.launcher.height}px is compact`);
+    assert.ok(launcher.rects.main.height >= mainMin && launcher.rects.main.height <= mainMax, `${label}: main height ${launcher.rects.main.height}px stays compact and tappable`);
+    assert.ok(launcher.rects.icon.height >= 26 && launcher.rects.icon.height <= 32, `${label}: icon height ${launcher.rects.icon.height}px matches Favorites density`);
+    assert.ok(launcher.rects.icon.width >= 26 && launcher.rects.icon.width <= 32, `${label}: icon width ${launcher.rects.icon.width}px matches Favorites density`);
+    launcher.modes.forEach(mode => {
+        assert.ok(mode.rect.height >= segmentMin && mode.rect.height <= segmentMax, `${label}: ${mode.key} segment height ${mode.rect.height}px stays compact and tappable`);
+        assert.ok(mode.countRect?.height >= 14 && mode.countRect.height <= 18, `${label}: ${mode.key} count badge height ${mode.countRect?.height}px is compact`);
+        assert.ok(mode.countRect?.width >= 14, `${label}: ${mode.key} count badge keeps visible width`);
+        assert.ok(mode.labelRect && mode.labelRect.right <= mode.countRect.left - 1, `${label}: ${mode.key} label and count do not overlap`);
+    });
+}
 async function waitForLauncherCounts(page) {
     await page.waitForFunction(() => {
         const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
@@ -430,6 +452,7 @@ async function captureParkLauncherSurface(page, base, pathname, viewport) {
     assert.equal(launcher.darkMode, true, `${pathname}: body has dark-mode class`);
     if (viewport.width <= 768) assert.equal(launcher.sidebarOpen, true, `${pathname}: mobile sidebar is open`);
     else assert.equal(launcher.sidebarCollapsed, false, `${pathname}: desktop sidebar is expanded`);
+    assertCompactLauncherGeometry(launcher, pathname, { mobile: viewport.width <= 768 });
     return launcher;
 }
 
@@ -463,6 +486,140 @@ async function assertLauncherSurfaceParity(page, base) {
     }
 }
 
+async function readFavoritesTimelineState(page) {
+    return page.evaluate(() => {
+        const extras = document.getElementById('sidebarDesignExtras');
+        const toggle = extras?.querySelector('[data-sidebar-extra-toggle-section]');
+        const editorToggle = extras?.querySelector('[data-sidebar-extra-toggle-editor]');
+        const list = extras?.querySelector('.sidebar-design-extra-list');
+        const editor = extras?.querySelector('[data-sidebar-extra-editor]');
+        const launcher = extras?.querySelector('[data-sidebar-timeline-launcher]');
+        const rectFor = element => {
+            if (!element) return { width: 0, height: 0, left: 0, right: 0 };
+            const rect = element.getBoundingClientRect();
+            return {
+                width: Number(rect.width.toFixed(2)),
+                height: Number(rect.height.toFixed(2)),
+                left: Number(rect.left.toFixed(2)),
+                right: Number(rect.right.toFixed(2))
+            };
+        };
+        const modeRects = Array.from(extras?.querySelectorAll('[data-sidebar-timeline-mode]') || []).map(rectFor);
+        const active = document.activeElement;
+        return {
+            hasExtras: Boolean(extras),
+            ariaExpanded: toggle?.getAttribute('aria-expanded') || '',
+            editorAriaExpanded: editorToggle?.getAttribute('aria-expanded') || '',
+            collapsedClass: Boolean(extras?.classList.contains('is-collapsed')),
+            editingClass: Boolean(extras?.classList.contains('is-editing')),
+            listHidden: Boolean(list?.hidden),
+            editorVisible: Boolean(editor && rectFor(editor).height > 0),
+            launcherPresent: Boolean(launcher),
+            launcherVisible: Boolean(launcher && rectFor(launcher).width > 0 && rectFor(launcher).height > 0),
+            modeVisibleCount: modeRects.filter(rect => rect.width > 0 && rect.height > 0).length,
+            localCollapsed: localStorage.getItem('eg_sidebar_extra_menu_collapsed_v1') || '',
+            localEditor: localStorage.getItem('eg_sidebar_extra_menu_edit_v1') || '',
+            focusedTimelineControl: Boolean(active?.matches?.('[data-sidebar-timeline-mode], .sidebar-design-timeline-main')),
+            focusedEditorToggle: Boolean(active === editorToggle),
+            focusedHref: active?.getAttribute?.('href') || '',
+            launcherRect: rectFor(launcher)
+        };
+    });
+}
+
+function assertFavoritesTimelineExpanded(state, label) {
+    assert.equal(state.hasExtras, true, `${label}: Favorites block exists`);
+    assert.equal(state.ariaExpanded, 'true', `${label}: Favorites aria-expanded is true`);
+    assert.equal(state.collapsedClass, false, `${label}: Favorites is not collapsed`);
+    assert.equal(state.listHidden, false, `${label}: Favorites list is visible`);
+    assert.equal(state.launcherPresent, true, `${label}: launcher remains mounted`);
+    assert.equal(state.launcherVisible, true, `${label}: launcher is visible`);
+    assert.equal(state.modeVisibleCount, 2, `${label}: both timeline modes have visible geometry`);
+}
+
+function assertFavoritesTimelineCollapsed(state, label) {
+    assert.equal(state.hasExtras, true, `${label}: Favorites block exists`);
+    assert.equal(state.ariaExpanded, 'false', `${label}: Favorites aria-expanded is false`);
+    assert.equal(state.collapsedClass, true, `${label}: Favorites has collapsed class`);
+    assert.equal(state.listHidden, true, `${label}: Favorites list is hidden`);
+    assert.equal(state.launcherPresent, true, `${label}: launcher remains mounted inside collapsible content`);
+    assert.equal(state.launcherVisible, false, `${label}: launcher has no visible geometry`);
+    assert.equal(state.modeVisibleCount, 0, `${label}: hidden timeline modes have no visible geometry`);
+    assert.equal(state.localCollapsed, 'true', `${label}: collapsed state is persisted`);
+}
+
+async function assertFavoritesTimelineCollapseBehavior(page, base) {
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.goto(`${base}/dashboard?businessContext=${PARK_CONTEXT}`, { waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    await page.evaluate(() => {
+        localStorage.setItem('pzp_dark_mode', 'true');
+        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.setItem('pzp_timeline_view', 'rooms');
+        localStorage.removeItem('eg_sidebar_extra_menu_collapsed_v1');
+        localStorage.removeItem('eg_sidebar_extra_menu_edit_v1');
+        localStorage.removeItem('eg_sidebar_extra_menu_items_v3');
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+    assertFavoritesTimelineExpanded(await readFavoritesTimelineState(page), 'initial expanded Favorites');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').click();
+    await page.waitForFunction(() => {
+        const extras = document.getElementById('sidebarDesignExtras');
+        return extras?.classList.contains('is-collapsed')
+            && extras.querySelector('.sidebar-design-extra-list')?.hidden === true;
+    });
+    assertFavoritesTimelineCollapsed(await readFavoritesTimelineState(page), 'click collapsed Favorites');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').focus();
+    await page.keyboard.press('Tab');
+    const afterTab = await readFavoritesTimelineState(page);
+    assert.equal(afterTab.focusedTimelineControl, false, 'Tab does not focus hidden timeline controls while Favorites is collapsed');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    assertFavoritesTimelineCollapsed(await readFavoritesTimelineState(page), 'reload keeps Favorites collapsed');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').focus();
+    await page.keyboard.press('Space');
+    await page.waitForFunction(() => document.querySelector('[data-sidebar-extra-toggle-section]')?.getAttribute('aria-expanded') === 'true');
+    assertFavoritesTimelineExpanded(await readFavoritesTimelineState(page), 'Space expands Favorites');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-sidebar-extra-toggle-section]')?.getAttribute('aria-expanded') === 'false');
+    assertFavoritesTimelineCollapsed(await readFavoritesTimelineState(page), 'Enter collapses Favorites');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').click();
+    await page.waitForFunction(() => document.querySelector('[data-sidebar-extra-toggle-section]')?.getAttribute('aria-expanded') === 'true');
+    await page.locator('[data-sidebar-extra-toggle-editor]').click();
+    await page.waitForFunction(() => {
+        const extras = document.getElementById('sidebarDesignExtras');
+        return extras?.classList.contains('is-editing')
+            && extras.querySelector('.sidebar-design-extra-list')?.hidden === true
+            && Boolean(extras.querySelector('[data-sidebar-extra-editor]'));
+    });
+    const editorOpen = await readFavoritesTimelineState(page);
+    assert.equal(editorOpen.editorAriaExpanded, 'true', 'Favorites editor toggle aria-expanded is true while editor is open');
+    assert.equal(editorOpen.editorVisible, true, 'Favorites editor is visible');
+    assert.equal(editorOpen.launcherVisible, false, 'Favorites editor hides timeline launcher with the shared hidden list');
+    assert.equal(editorOpen.modeVisibleCount, 0, 'Favorites editor hides timeline mode geometry');
+
+    await page.locator('[data-sidebar-extra-toggle-editor]').click();
+    await page.waitForFunction(() => {
+        const extras = document.getElementById('sidebarDesignExtras');
+        return !extras?.classList.contains('is-editing')
+            && extras?.classList.contains('is-collapsed')
+            && extras.querySelector('.sidebar-design-extra-list')?.hidden === true;
+    });
+    assertFavoritesTimelineCollapsed(await readFavoritesTimelineState(page), 'closing editor returns Favorites to collapsed state');
+
+    await page.locator('[data-sidebar-extra-toggle-section]').click();
+    await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+    assertFavoritesTimelineExpanded(await readFavoritesTimelineState(page), 'final click restores launcher');
+}
 async function assertParkLauncher(page, base) {
     await gotoContext(page, base, PARK_CONTEXT, 'rooms');
     await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
@@ -737,6 +894,7 @@ async function run() {
         if (EMPTY_DATE) await assertLauncherCountsForDate(page, base, EMPTY_DATE, 'empty');
         else console.log('  SKIP empty-date zero-count assertion: SIDEBAR_TIMELINE_SMOKE_EMPTY_DATE is not set');
         await assertLoadingLayoutStability(page, base, requestControl);
+        await assertFavoritesTimelineCollapseBehavior(page, base);
         await assertParkLauncher(page, base);
         if (singleContext) await assertSingleModeCard(page, base, singleContext);
         assert.deepEqual(blockedMutations, [], 'read-only launcher smoke attempted no non-read requests');
@@ -745,6 +903,7 @@ async function run() {
         if (DATA_DATE) console.log(`  OK data-date counts for ${DATA_DATE}`);
         if (EMPTY_DATE) console.log(`  OK empty-date zero counts for ${EMPTY_DATE}`);
         console.log('  OK loading-to-ready launcher geometry parity');
+        console.log('  OK Favorites collapse, reload persistence, editor and keyboard navigation');
         if (singleContext) console.log(`  OK ${singleContext} one-mode direct card`);
         else console.log('  SKIP one-mode direct card: test account has no Dar/Maysternya context');
         console.log('  Safety gate observed no non-read requests');

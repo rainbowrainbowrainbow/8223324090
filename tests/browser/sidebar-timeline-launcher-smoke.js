@@ -82,29 +82,7 @@ async function login(base) {
         const verified = await fetchJson(base, '/api/auth/verify', { token: envToken });
         return { token: envToken, user: verified.user || verified };
     }
-    const username = process.env.SIDEBAR_TIMELINE_SMOKE_USER
-        || process.env.TIMELINE_BROWSER_SMOKE_USER
-        || process.env.LIVE_SMOKE_USER
-        || process.env.TEST_USER;
-    const password = process.env.SIDEBAR_TIMELINE_SMOKE_PASS
-        || process.env.TIMELINE_BROWSER_SMOKE_PASS
-        || process.env.LIVE_SMOKE_PASS
-        || process.env.TEST_PASS;
-    if (!username || !password) {
-        fail('set SIDEBAR_TIMELINE_SMOKE_TOKEN or SIDEBAR_TIMELINE_SMOKE_USER/SIDEBAR_TIMELINE_SMOKE_PASS');
-    }
-    const body = await fetchJson(base, '/api/auth/login', {
-        method: 'POST',
-        body: { username, password }
-    });
-    const token = body.accessToken || body.token;
-    if (!token) throw new Error('/api/auth/login did not return an access token');
-    return {
-        token,
-        refreshToken: body.refreshToken || '',
-        refreshExpiresAt: body.refreshExpiresAt || '',
-        user: body.user || null
-    };
+    fail('set SIDEBAR_TIMELINE_SMOKE_TOKEN, TIMELINE_BROWSER_SMOKE_TOKEN, or LIVE_SMOKE_TOKEN; this smoke is read-only and does not call /api/auth/login');
 }
 
 function availableBusinessContexts(user) {
@@ -201,22 +179,48 @@ async function readLauncher(page) {
         if (!launcher) return null;
         const directLinks = Array.from(launcher.children).filter(child => child.matches('a[href]'));
         const inset = launcher.querySelector(':scope > .sidebar-design-timeline-inset');
+        const main = launcher.querySelector(':scope > .sidebar-design-timeline-main');
         const modeLinks = inset ? Array.from(inset.children).filter(child => child.matches('a[href][data-sidebar-timeline-mode]')) : [];
+        const launcherRect = launcher.getBoundingClientRect();
+        const rectFor = element => {
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            return {
+                left: Number(rect.left.toFixed(2)),
+                top: Number(rect.top.toFixed(2)),
+                width: Number(rect.width.toFixed(2)),
+                height: Number(rect.height.toFixed(2)),
+                relLeft: Number((rect.left - launcherRect.left).toFixed(2)),
+                relTop: Number((rect.top - launcherRect.top).toFixed(2))
+            };
+        };
         const modes = modeLinks
             .map(link => {
                 const url = new URL(link.href, location.origin);
+                const countEl = link.querySelector('[data-sidebar-timeline-count-mode]');
+                const countRect = countEl?.getBoundingClientRect?.();
                 return {
                     key: link.dataset.sidebarTimelineMode,
-                    label: link.textContent.trim(),
+                    label: link.querySelector('.sidebar-design-timeline-segment-label')?.textContent?.trim() || link.textContent.trim(),
+                    count: countEl?.textContent?.trim() || '',
+                    countStatus: countEl?.dataset.sidebarTimelineCountStatus || '',
+                    countVisible: Boolean(countEl && countRect && countRect.width > 0 && countRect.height > 0),
                     pathname: url.pathname,
                     timelineView: url.searchParams.get('timelineView'),
                     ariaPressed: link.getAttribute('aria-pressed'),
-                    ariaCurrent: link.getAttribute('aria-current')
+                    ariaCurrent: link.getAttribute('aria-current'),
+                    ariaLabel: link.getAttribute('aria-label') || '',
+                    rect: rectFor(link)
                 };
             });
-        const main = launcher.querySelector(':scope > .sidebar-design-timeline-main');
         const mainUrl = main ? new URL(main.href, location.origin) : null;
         return {
+            url: location.href,
+            pathname: location.pathname,
+            theme: document.documentElement.getAttribute('data-theme') || (document.body.classList.contains('dark-mode') ? 'dark' : 'light'),
+            darkMode: document.body.classList.contains('dark-mode'),
+            sidebarOpen: document.getElementById('sidebarNav')?.classList.contains('open') || false,
+            sidebarCollapsed: document.getElementById('sidebarNav')?.classList.contains('collapsed') || false,
             modeCount: Number(launcher.dataset.sidebarTimelineModeCount),
             activeMode: launcher.dataset.sidebarTimelineActiveMode || '',
             directLinkCount: directLinks.length,
@@ -225,11 +229,129 @@ async function readLauncher(page) {
             nestedInteractiveCount: launcher.querySelectorAll('a a, a button, button a, button button').length,
             mainPathname: mainUrl?.pathname || '',
             mainSearch: mainUrl?.search || '',
-            summaryText: launcher.querySelector('[data-sidebar-timeline-summary]')?.textContent?.trim() || '',
-            summaryLive: launcher.querySelector('[data-sidebar-timeline-summary]')?.getAttribute('aria-live') || '',
+            summaryCount: launcher.querySelectorAll('[data-sidebar-timeline-summary]').length,
+            checkCount: launcher.querySelectorAll('.sidebar-design-timeline-segment-check').length,
+            countElementCount: launcher.querySelectorAll('[data-sidebar-timeline-count-mode]').length,
+            rects: {
+                launcher: rectFor(launcher),
+                main: rectFor(main),
+                icon: rectFor(launcher.querySelector(':scope > .sidebar-design-timeline-main .sidebar-design-extra-icon')),
+                copy: rectFor(launcher.querySelector(':scope > .sidebar-design-timeline-main .sidebar-design-extra-copy')),
+                inset: rectFor(inset)
+            },
             modes
         };
     });
+}
+
+function assertLauncherCountContract(launcher, label = 'launcher') {
+    assert.ok(launcher, `${label}: launcher exists`);
+    assert.equal(launcher.summaryCount, 0, `${label}: old visible timeline summary is not rendered`);
+    assert.equal(launcher.checkCount, 0, `${label}: old checkmark elements are not rendered`);
+    assert.equal(launcher.countElementCount, 2, `${label}: both mode counts are rendered`);
+    assert.equal(launcher.modes.length, 2, `${label}: two mode links are present`);
+    launcher.modes.forEach(mode => {
+        assert.equal(mode.countVisible, true, `${label}: ${mode.key} count is visible`);
+        assert.match(mode.count, /^(?:\d+|–)$/, `${label}: ${mode.key} count is numeric or a stable placeholder`);
+        assert.match(mode.ariaLabel, /Відкрити таймлайн «.+»/, `${label}: ${mode.key} has accessible label`);
+    });
+}
+
+function assertLauncherCountsReady(launcher, label = 'launcher') {
+    launcher.modes.forEach(mode => {
+        assert.equal(mode.countStatus, 'ready', `${label}: ${mode.key} count reached ready status`);
+        assert.match(mode.count, /^\d+$/, `${label}: ${mode.key} count is numeric`);
+    });
+}
+
+function assertWithinPx(actual, expected, label, tolerance = 1) {
+    assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} differs from ${expected} by more than ${tolerance}px`);
+}
+
+function assertRectParity(actual, expected, label, tolerance = 1) {
+    ['width', 'height', 'relLeft', 'relTop'].forEach(key => {
+        assertWithinPx(actual[key], expected[key], `${label}.${key}`, tolerance);
+    });
+}
+
+function assertLauncherGeometryParity(actual, expected, label) {
+    ['launcher', 'main', 'icon', 'copy', 'inset'].forEach(key => {
+        assertRectParity(actual.rects[key], expected.rects[key], `${label}.${key}`);
+    });
+    assert.equal(actual.modes.length, expected.modes.length, `${label}: mode count changed`);
+    actual.modes.forEach((mode, index) => {
+        assert.equal(mode.key, expected.modes[index].key, `${label}: mode order changed at ${index}`);
+        assertRectParity(mode.rect, expected.modes[index].rect, `${label}.segment.${mode.key}`);
+    });
+}
+
+async function waitForLauncherCounts(page) {
+    await page.waitForFunction(() => {
+        const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
+        const counts = Array.from(launcher?.querySelectorAll('[data-sidebar-timeline-count-mode]') || []);
+        return counts.length === 2 && counts.every(el => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && /^\d+$/.test(el.textContent.trim()) && el.dataset.sidebarTimelineCountStatus === 'ready';
+        });
+    });
+}
+
+async function openMobileSidebar(page) {
+    await page.waitForFunction(() => Boolean(document.getElementById('sidebarToggle') && document.getElementById('sidebarNav')));
+    const isOpen = await page.evaluate(() => document.getElementById('sidebarNav')?.classList.contains('open'));
+    if (!isOpen) await page.locator('#sidebarToggle').click();
+    await page.waitForFunction(() => (
+        document.getElementById('sidebarNav')?.classList.contains('open')
+        && document.body.classList.contains('sidebar-mobile-open')
+    ));
+}
+
+async function captureParkLauncherSurface(page, base, pathname, viewport) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${base}${pathname}`, { waitUntil: 'domcontentloaded' });
+    await waitForSidebar(page);
+    if (viewport.width <= 768) await openMobileSidebar(page);
+    await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
+    await waitForLauncherCounts(page);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const launcher = await readLauncher(page);
+    assertLauncherCountContract(launcher, pathname);
+    assertLauncherCountsReady(launcher, pathname);
+    assert.equal(launcher.theme, 'dark', `${pathname}: dark theme is pinned for parity smoke`);
+    assert.equal(launcher.darkMode, true, `${pathname}: body has dark-mode class`);
+    if (viewport.width <= 768) assert.equal(launcher.sidebarOpen, true, `${pathname}: mobile sidebar is open`);
+    else assert.equal(launcher.sidebarCollapsed, false, `${pathname}: desktop sidebar is expanded`);
+    return launcher;
+}
+
+async function assertLauncherSurfaceParity(page, base) {
+    const surfaces = [
+        { name: 'desktop', viewport: { width: 1440, height: 960 } },
+        { name: 'mobile', viewport: { width: 320, height: 800 } }
+    ];
+    for (const surface of surfaces) {
+        await page.evaluate(() => {
+            localStorage.setItem('pzp_dark_mode', 'true');
+            localStorage.setItem('pzp_sidebar_collapsed', 'false');
+            localStorage.setItem('pzp_timeline_view', 'rooms');
+            localStorage.removeItem('eg_sidebar_extra_menu_items_v3');
+        });
+        const timeline = await captureParkLauncherSurface(page, base, `/?businessContext=${PARK_CONTEXT}&timelineView=rooms`, surface.viewport);
+        await page.evaluate(() => {
+            localStorage.setItem('pzp_dark_mode', 'true');
+            localStorage.setItem('pzp_sidebar_collapsed', 'false');
+            localStorage.setItem('pzp_timeline_view', 'rooms');
+        });
+        const dashboard = await captureParkLauncherSurface(page, base, `/dashboard?businessContext=${PARK_CONTEXT}`, surface.viewport);
+        assert.equal(timeline.activeMode, dashboard.activeMode, `${surface.name}: active mode parity`);
+        assert.equal(timeline.modeCount, dashboard.modeCount, `${surface.name}: mode count parity`);
+        assert.deepEqual(
+            timeline.modes.map(mode => [mode.key, mode.label, mode.timelineView]),
+            dashboard.modes.map(mode => [mode.key, mode.label, mode.timelineView]),
+            `${surface.name}: mode DOM contract parity`
+        );
+        assertLauncherGeometryParity(dashboard, timeline, `${surface.name} /dashboard vs /`);
+    }
 }
 
 async function assertParkLauncher(page, base) {
@@ -243,6 +365,7 @@ async function assertParkLauncher(page, base) {
     assert.equal(launcher.insetModeLinkCount, 2, 'two mode links are siblings inside the inset selector');
     assert.equal(launcher.modeLinksShareInset, true, 'mode links share one inset parent');
     assert.equal(launcher.nestedInteractiveCount, 0, 'launcher has no nested interactive elements');
+    assertLauncherCountContract(launcher, '/');
     assert.equal(launcher.mainPathname, '/');
     assert.equal(launcher.mainSearch, '', 'main Park link keeps the system/last-view URL');
     assert.deepEqual(
@@ -468,7 +591,7 @@ async function run() {
         const request = route.request();
         const method = request.method().toUpperCase();
         const pathname = new URL(request.url()).pathname;
-        if (['GET', 'HEAD', 'OPTIONS'].includes(method) || pathname === '/api/auth/refresh') {
+        if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
             await route.continue();
             return;
         }
@@ -479,16 +602,20 @@ async function run() {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);
         if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
+        localStorage.setItem('pzp_dark_mode', 'true');
+        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.setItem('pzp_timeline_view', 'rooms');
     }, session);
     const page = await context.newPage();
     page.setDefaultTimeout(TIMEOUT_MS);
 
     try {
+        await assertLauncherSurfaceParity(page, base);
         await assertParkLauncher(page, base);
         if (singleContext) await assertSingleModeCard(page, base, singleContext);
         assert.deepEqual(blockedMutations, [], 'read-only launcher smoke attempted no non-read API requests');
         console.log(`Sidebar timeline launcher smoke OK: ${base}`);
-        console.log(`  OK Park two-mode launcher, local switching, mobile close, keyboard, direct URLs and Back/Forward`);
+        console.log(`  OK Park two-mode launcher, / vs /dashboard parity, desktop/mobile geometry, local switching, mobile close, keyboard, direct URLs and Back/Forward`);
         if (singleContext) console.log(`  OK ${singleContext} one-mode direct card`);
         else console.log('  SKIP one-mode direct card: test account has no Dar/Maysternya context');
         console.log('  Safety gate observed no non-read API requests');

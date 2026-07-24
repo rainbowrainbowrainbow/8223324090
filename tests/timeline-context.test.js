@@ -467,8 +467,6 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.doesNotMatch(miniLinkBlock, /data-sidebar-timeline-mode/);
     assert.match(sidebarCode, /sidebar\.addEventListener\('click', _handleSidebarTimelineModeClick\)/);
     assert.match(sidebarCode, /sidebar\.addEventListener\('keydown', _handleSidebarTimelineModeKeydown\)/);
-    assert.match(sidebarCode, /_motionReduced\(\)/);
-    assert.doesNotMatch(sidebarCode, /_prefersReducedMotion/);
     assert.match(sidebarCode, /\[data-sidebar-rail-item\], \[data-sidebar-timeline-mode\]/);
     assert.match(sidebarCode, /const link = e\.target\.closest\([\s\S]*?\[data-sidebar-timeline-mode\][\s\S]*?if \(!link\) return;[\s\S]*?if \(isMobileSidebar\(\)\) setMobileSidebarOpen\(false\);/);
     assert.match(sidebarRhythmCss, /--eg-timeline-launcher-duration:\s*170ms/);
@@ -490,10 +488,14 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         handleModeClick: _handleSidebarTimelineModeClick,
         handleModeKeydown: _handleSidebarTimelineModeKeydown,
         syncLauncherState: _syncSidebarTimelineLauncherState,
+        currentView: _sidebarCurrentTimelineView,
         ensureBusinessProfile: _ensureSidebarBusinessProfile,
         summaryBuild: _sidebarTimelineBuildSummary,
         summaryCount: _sidebarTimelineCountBookings,
-        summaryText: _sidebarTimelineSummaryText,
+        countText: _sidebarTimelineModeCountText,
+        modeStatus: _sidebarTimelineModeStatus,
+        summaryCacheKey: _sidebarTimelineSummaryCacheKey,
+        fetchSummaryMode: _fetchSidebarTimelineSummaryMode,
         fetchSummary: _fetchSidebarTimelineSummary,
         refreshSummary: _refreshSidebarTimelineSummary,
         handleSummaryChanged: _handleTimelineSummaryChanged,
@@ -519,10 +521,11 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         href: 'https://crm.test/',
         assign: href => assignedHrefs.push(href)
     };
+    const storageValues = new Map();
     const localStorage = {
-        getItem: () => null,
-        setItem() {},
-        removeItem() {}
+        getItem: key => storageValues.has(key) ? storageValues.get(key) : null,
+        setItem(key, value) { storageValues.set(key, String(value)); },
+        removeItem(key) { storageValues.delete(key); }
     };
     const windowListeners = new Map();
     const fetchMock = (url, options) => {
@@ -623,8 +626,10 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.match(launcherHtml, /data-sidebar-timeline-active-mode="rooms"/);
     assert.match(launcherHtml, /href="\/\?timelineView=animators" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
     assert.match(launcherHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);
-    assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-check/g) || []).length, 2);
+    assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-check/g) || []).length, 0);
     assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-label/g) || []).length, 2);
+    assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-count/g) || []).length, 2);
+    assert.doesNotMatch(launcherHtml, /data-sidebar-timeline-summary/);
     assert.doesNotMatch(launcherHtml, /<button\b/i);
     assert.equal((launcherHtml.match(/<a\b/g) || []).length, 3);
     let anchorDepth = 0;
@@ -646,26 +651,63 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.equal(insetModeLinks.length, 2, 'mode links are siblings inside the inset selector');
     assert.equal(insetModeLinks.every(link => link.parentElement === inset), true);
     assert.equal(launcherElement.querySelectorAll('a a, a button, button a, button button').length, 0);
-    const summaryElement = launcherElement.querySelector('[data-sidebar-timeline-summary]');
-    assert.ok(summaryElement, 'timeline launcher exposes a compact summary');
-    assert.equal(summaryElement.getAttribute('aria-live'), 'off');
-    assert.match(summaryElement.getAttribute('aria-label') || '', /Статус таймлайна:/);
+    assert.equal(launcherElement.querySelector('[data-sidebar-timeline-summary]'), null, 'timeline launcher does not render the old visible summary');
+    const countElements = launcherElement.querySelectorAll('[data-sidebar-timeline-count-mode]');
+    assert.equal(countElements.length, 2, 'timeline launcher exposes one numeric count element per mode');
+    assert.deepEqual(Array.from(countElements).map(el => [el.dataset.sidebarTimelineCountMode, el.textContent.trim()]), [
+        ['animators', '–'],
+        ['rooms', '–']
+    ]);
 
+    assert.equal(api.currentView('', api.availableModes(rootItem)), 'rooms');
+    const runtimeTimelineView = window.TimelineView;
+    delete window.TimelineView;
+    location.pathname = '/dashboard';
+    location.search = '';
+    storageValues.set('pzp_timeline_view', 'rooms');
+    const offTimelineStoredHtml = api.renderExtraLink(rootItem, '/dashboard', '');
+    assert.match(offTimelineStoredHtml, /^<div class="sidebar-design-timeline-launcher"/);
+    assert.match(offTimelineStoredHtml, /data-sidebar-timeline-active-mode="rooms"/);
+    assert.match(offTimelineStoredHtml, /href="\/\?timelineView=animators" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
+    assert.match(offTimelineStoredHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);
+    storageValues.set('pzp_timeline_view', 'invalid');
+    state.profiles.event_genix.timeline.defaultTimelineView = 'rooms';
+    assert.match(api.renderExtraLink(rootItem, '/tasks', ''), /data-sidebar-timeline-active-mode="rooms"/);
+    assert.equal(api.currentView('rooms', ['animators']), 'animators', 'unavailable Rooms mode falls back to the visible segment');
+    delete state.profiles.event_genix.timeline.defaultTimelineView;
+    storageValues.clear();
+    location.pathname = '/';
+    window.TimelineView = runtimeTimelineView;
     assert.equal(api.summaryCount({ bookings: [] }), 0);
     assert.equal(api.summaryCount({ bookings: [{ id: 'A' }] }), 1);
     assert.equal(api.summaryCount({ bookings: [{ id: 'A' }, { id: 'B' }] }), 2);
     assert.equal(api.summaryCount({ bookings: [{ id: 'A' }, { id: 'A' }, { id: 'B', status: 'cancelled' }, { id: 'C', linkedTo: 'A' }] }), 1);
-    assert.equal(api.summaryBuild({ date: api.kyivToday(), viewMode: 'day', count: 1, status: 'ready' }).text, '1 запис · Сьогодні');
-    const stableSummaryDate = api.kyivToday() === '2026-07-22' ? '2026-08-22' : '2026-07-22';
-    const stableSummaryDateLabel = stableSummaryDate === '2026-08-22' ? '22 серп.' : '22 лип.';
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 0, status: 'ready' }).text, `0 записів · ${stableSummaryDateLabel}`);
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 1, status: 'ready' }).text, `1 запис · ${stableSummaryDateLabel}`);
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 2, status: 'ready' }).text, `2 записи · ${stableSummaryDateLabel}`);
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', count: 5, status: 'ready' }).text, `5 записів · ${stableSummaryDateLabel}`);
-    assert.equal(api.summaryBuild({ date: '2026-07-22', viewMode: 'week', status: 'ready' }).text, '✓ Тиждень · 22–28 лип.');
-    assert.doesNotMatch(api.summaryBuild({ date: '2026-07-22', viewMode: 'week', count: 5, status: 'ready' }).text, /запис/);
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', status: 'loading' }).text, `Завантаження · ${stableSummaryDateLabel}`);
-    assert.equal(api.summaryBuild({ date: stableSummaryDate, viewMode: 'day', status: 'error' }).text, `Не оновлено · ${stableSummaryDateLabel}`);
+    assert.equal(api.summaryCount({ bookings: [{ id: 'A' }, { id: 'B', timelineProjection: { displaySurface: 'hidden' } }, { id: 'C', timeline_projection: { display_surface: 'hidden' } }] }), 1);
+    const readyCountsModel = api.summaryBuild({ date: '2026-07-22', viewMode: 'day', counts: { animators: 2, rooms: 4 } });
+    assert.equal(api.countText(readyCountsModel, 'animators'), '2');
+    assert.equal(api.countText(readyCountsModel, 'rooms'), '4');
+    assert.equal(api.modeStatus(readyCountsModel, 'animators'), 'ready');
+    assert.equal(api.modeStatus(readyCountsModel, 'rooms'), 'ready');
+    const zeroCountsModel = api.summaryBuild({ date: '2026-07-22', viewMode: 'day', counts: { animators: 0, rooms: 0 } });
+    assert.equal(api.countText(zeroCountsModel, 'animators'), '0');
+    assert.equal(api.countText(zeroCountsModel, 'rooms'), '0');
+    assert.notEqual(
+        api.summaryCacheKey({ date: '2026-07-22', businessContext: 'event_genix' }, 'animators'),
+        api.summaryCacheKey({ date: '2026-07-22', businessContext: 'event_genix' }, 'rooms'),
+        'timeline summary cache key includes mode'
+    );
+    assert.notEqual(
+        api.summaryCacheKey({ date: '2026-07-22', businessContext: 'event_genix' }, 'animators'),
+        api.summaryCacheKey({ date: '2026-07-22', businessContext: 'dar' }, 'animators'),
+        'timeline summary cache key includes business context'
+    );
+    assert.notEqual(
+        api.summaryCacheKey({ date: '2026-07-22', businessContext: 'event_genix' }, 'animators'),
+        api.summaryCacheKey({ date: '2026-07-23', businessContext: 'event_genix' }, 'animators'),
+        'timeline summary cache key includes date'
+    );
+    assert.equal(api.countText(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', status: 'loading' }), 'animators'), '–');
+    assert.equal(api.countText(api.summaryBuild({ date: '2026-07-22', viewMode: 'day', statuses: { animators: 'error' } }), 'animators'), '–');
     sandbox.AppState.multiDayMode = false;
     sandbox.AppState.selectedDate = '2026-07-22';
     api.handleSummaryChanged({
@@ -673,24 +715,39 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
             date: '2026-07-22',
             viewMode: 'day',
             businessContext: 'event_genix',
+            timelineView: 'rooms',
             bookings: [{ id: 'READY-1' }]
         }
     });
     api.refreshSummary();
-    assert.equal(api.currentSummary().status, 'ready', 'same timeline state rerender preserves the ready summary');
-    assert.equal(api.currentSummary().count, 1);
+    assert.equal(api.currentSummary().modes.rooms.status, 'ready', 'same timeline state rerender preserves the active mode count');
+    assert.equal(api.currentSummary().modes.rooms.count, 1);
+    assert.equal(state.fetchRequests.length, 1, 'timeline summary event fetches only the missing mode');
+    state.fetchRequests[0].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'A1' }, { id: 'A2' }] }) });
+    await state.fetchRequests[0].promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(api.currentSummary().modes.animators.count, 2);
+    state.fetchRequests = [];
 
     const firstSummaryRequest = api.fetchSummary({ date: '2026-07-22', viewMode: 'day', businessContext: 'event_genix' }, { force: true });
     const secondSummaryRequest = api.fetchSummary({ date: '2026-07-23', viewMode: 'day', businessContext: 'event_genix' }, { force: true });
-    assert.equal(state.fetchRequests.length, 2);
-    state.fetchRequests[1].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'B' }, { id: 'C' }] }) });
+    assert.equal(state.fetchRequests.length, 4);
+    assert.ok(state.fetchRequests[0].url.includes('/api/bookings/2026-07-22') && state.fetchRequests[0].url.includes('timelineView=animators'));
+    assert.ok(state.fetchRequests[1].url.includes('/api/bookings/2026-07-22') && state.fetchRequests[1].url.includes('timelineView=rooms'));
+    assert.ok(state.fetchRequests[2].url.includes('/api/bookings/2026-07-23') && state.fetchRequests[2].url.includes('timelineView=animators'));
+    assert.ok(state.fetchRequests[3].url.includes('/api/bookings/2026-07-23') && state.fetchRequests[3].url.includes('timelineView=rooms'));
+    state.fetchRequests[2].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'B' }, { id: 'C' }] }) });
+    state.fetchRequests[3].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'R1' }, { id: 'R2' }, { id: 'R3' }, { id: 'R4' }] }) });
     await secondSummaryRequest;
     assert.equal(api.currentSummary().date, '2026-07-23');
-    assert.equal(api.currentSummary().count, 2);
+    assert.equal(api.currentSummary().modes.animators.count, 2);
+    assert.equal(api.currentSummary().modes.rooms.count, 4);
     state.fetchRequests[0].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'STALE-1' }, { id: 'STALE-2' }, { id: 'STALE-3' }, { id: 'STALE-4' }, { id: 'STALE-5' }] }) });
+    state.fetchRequests[1].resolve({ ok: true, json: async () => ({ bookings: [{ id: 'STALE-R1' }] }) });
     await firstSummaryRequest;
     assert.equal(api.currentSummary().date, '2026-07-23', 'stale summary response cannot overwrite the latest date');
-    assert.equal(api.currentSummary().count, 2);
+    assert.equal(api.currentSummary().modes.animators.count, 2);
+    assert.equal(api.currentSummary().modes.rooms.count, 4);
 
     const scheduleViewModeListener = windowListeners.get('timeline:schedule-view-mode-changed')?.at(-1);
     assert.equal(typeof scheduleViewModeListener, 'function');
@@ -698,7 +755,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     sandbox.AppState.selectedDate = '2026-07-22';
     scheduleViewModeListener({ detail: { viewMode: 'week' } });
     assert.equal(api.currentSummary().viewMode, 'week');
-    assert.equal(api.currentSummary().text, '✓ Тиждень · 22–28 лип.');
+    assert.equal(api.countText(api.currentSummary(), 'animators'), '–');
 
     const makeModeLink = (mode, href) => ({
         dataset: { sidebarTimelineMode: mode },

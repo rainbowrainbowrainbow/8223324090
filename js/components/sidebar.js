@@ -29,8 +29,7 @@ const Sidebar = (() => {
         timelineSummaryCache: new Map(),
         timelineSummaryCurrent: null,
         timelineSummaryRequestSeq: 0,
-        timelineSummaryPromiseKey: '',
-        timelineSummaryPromise: null
+        timelineSummaryPromises: new Map()
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/', '/staff', '/chat', '/certificates'];
@@ -119,6 +118,7 @@ const Sidebar = (() => {
         Object.freeze({ key: 'rooms', label: 'Кімнати' })
     ]);
     const SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL = 60 * 1000;
+    const SIDEBAR_TIMELINE_COUNT_PLACEHOLDER = '–';
     const SIDEBAR_TIMELINE_MONTHS_SHORT = Object.freeze(['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
@@ -1020,18 +1020,18 @@ const Sidebar = (() => {
         ];
     }
 
-    function _renderExtraMenuLinkBody(item) {
+    function _renderExtraMenuLinkBody(item, options = {}) {
         const statusText = _navStatusFor(item);
         const statusTone = _navStatusToneFor(item);
         const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
         const badgeType = _badgeTypeFor(item);
         const badgeClass = badgeType === 'alerts' ? ' sidebar-design-extra-badge alert' : ' sidebar-design-extra-badge';
-        const timelineSummary = _isSidebarTimelineItem(item) ? _sidebarTimelineSummaryModelForItem(item) : null;
-        const description = item.statusKey
-            ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusToneAttr}${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
-            : (timelineSummary
-                ? `<small data-sidebar-timeline-summary="true" data-sidebar-summary-status="${_escAttr(timelineSummary.status)}" data-sidebar-summary-date="${_escAttr(timelineSummary.date)}" data-sidebar-summary-view-mode="${_escAttr(timelineSummary.viewMode)}" aria-live="off" aria-label="${_escAttr(`Статус таймлайна: ${timelineSummary.text}`)}">${_escAttr(timelineSummary.text)}</small>`
-                : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`);
+        const showDescription = options.showDescription !== false;
+        const description = showDescription
+            ? (item.statusKey
+                ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusToneAttr}${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
+                : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`)
+            : '';
         const body = `
             ${_renderIcon(item.icon, 'sidebar-design-extra-icon')}
             <span class="sidebar-design-extra-copy">
@@ -1044,17 +1044,20 @@ const Sidebar = (() => {
 
     function _renderTimelineLauncher(item, timelineCard, currentPath, currentHash) {
         const isActive = _isSidebarItemActive(item, currentPath, currentHash);
-        const activeMode = _sidebarCurrentTimelineView();
+        const activeMode = _sidebarCurrentTimelineView('', timelineCard.modes);
+        const summaryModel = _sidebarTimelineSummaryModelForItem(item);
         const modeLinks = timelineCard.modes.map(mode => {
             const modeActive = mode.key === activeMode;
-            return `<a class="sidebar-design-timeline-segment${modeActive ? ' active' : ''}" href="${_escAttr(mode.href)}" data-sidebar-timeline-mode="${_escAttr(mode.key)}" aria-pressed="${modeActive ? 'true' : 'false'}"${modeActive ? ' aria-current="page"' : ''} aria-label="${_escAttr(`Відкрити таймлайн: ${mode.label}`)}">
-                <span class="sidebar-design-timeline-segment-check" aria-hidden="true"></span>
+            const countText = _sidebarTimelineModeCountText(summaryModel, mode.key);
+            const countStatus = _sidebarTimelineModeStatus(summaryModel, mode.key);
+            return `<a class="sidebar-design-timeline-segment${modeActive ? ' active' : ''}" href="${_escAttr(mode.href)}" data-sidebar-timeline-mode="${_escAttr(mode.key)}" aria-pressed="${modeActive ? 'true' : 'false'}"${modeActive ? ' aria-current="page"' : ''} aria-label="${_escAttr(_sidebarTimelineModeAriaLabel(mode, summaryModel))}">
                 <span class="sidebar-design-timeline-segment-label">${_escHtml(mode.label)}</span>
+                <span class="sidebar-design-timeline-segment-count" data-sidebar-timeline-count-mode="${_escAttr(mode.key)}" data-sidebar-timeline-count-status="${_escAttr(countStatus)}" aria-hidden="true">${_escHtml(countText)}</span>
             </a>`;
         }).join('');
         return `<div class="sidebar-design-timeline-launcher${isActive ? ' active' : ''}" data-sidebar-timeline-launcher data-sidebar-timeline-mode-count="${timelineCard.modeCount}" data-sidebar-timeline-active-mode="${_escAttr(activeMode)}" role="group" aria-label="Швидкий вибір таймлайна">
             <a class="sidebar-design-timeline-main${isActive ? ' active' : ''}" href="${_escAttr(timelineCard.href)}">
-                ${_renderExtraMenuLinkBody(item)}
+                ${_renderExtraMenuLinkBody(item, { showDescription: false })}
             </a>
             <div class="sidebar-design-timeline-inset" role="group" aria-label="Режим таймлайна">
                 ${modeLinks}
@@ -1740,18 +1743,69 @@ const Sidebar = (() => {
         return _sidebarHrefForBusinessItem(item, user);
     }
 
-    function _sidebarCurrentTimelineView(preferredView = '') {
+    function _sidebarNormalizeTimelineMode(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return SIDEBAR_TIMELINE_MODES.some(mode => mode.key === normalized) ? normalized : '';
+    }
+
+    function _sidebarTimelineViewFromUrl() {
+        try {
+            const params = new URLSearchParams(window.location?.search || '');
+            return _sidebarNormalizeTimelineMode(params.get('timelineView') || params.get('timeline_view'));
+        } catch {
+            return '';
+        }
+    }
+
+    function _sidebarStoredTimelineView() {
+        const keys = [];
+        try {
+            const scopedKey = window.TimelineBusinessContext?.storageKey?.('timeline_view');
+            if (scopedKey) keys.push(scopedKey);
+        } catch {}
+        keys.push('pzp_timeline_view');
+        for (const key of [...new Set(keys)]) {
+            try {
+                const mode = _sidebarNormalizeTimelineMode(localStorage.getItem(key));
+                if (mode) return mode;
+            } catch {}
+        }
+        return '';
+    }
+
+    function _sidebarDefaultTimelineView() {
+        const context = _sidebarTimelineContextValue();
+        const profile = _sidebarBusinessProfileForContext(context);
+        return _sidebarNormalizeTimelineMode(profile?.timeline?.defaultTimelineView);
+    }
+
+    function _sidebarTimelineModeKeys(availableModes = SIDEBAR_TIMELINE_MODES) {
+        const modes = Array.from(availableModes || [])
+            .map(mode => _sidebarNormalizeTimelineMode(mode?.key || mode))
+            .filter(Boolean);
+        return [...new Set(modes)];
+    }
+
+    function _sidebarCurrentTimelineView(preferredView = '', availableModes = SIDEBAR_TIMELINE_MODES) {
+        const availableKeys = _sidebarTimelineModeKeys(availableModes);
         const runtimeView = window.TimelineView?.current?.();
-        const candidates = [runtimeView, preferredView];
-        return String(candidates.find(value => SIDEBAR_TIMELINE_MODES.some(mode => mode.key === value)) || '');
+        const candidates = [
+            runtimeView,
+            preferredView,
+            _sidebarTimelineViewFromUrl(),
+            _sidebarStoredTimelineView(),
+            _sidebarDefaultTimelineView()
+        ].map(_sidebarNormalizeTimelineMode);
+        return candidates.find(value => value && availableKeys.includes(value)) || availableKeys[0] || '';
     }
 
     function _syncSidebarTimelineLauncherState(preferredView = '') {
-        const activeMode = _sidebarCurrentTimelineView(preferredView);
         document.querySelectorAll('[data-sidebar-timeline-launcher]').forEach(launcher => {
+            const modeLinks = Array.from(launcher.querySelectorAll('[data-sidebar-timeline-mode]'));
+            const activeMode = _sidebarCurrentTimelineView(preferredView, modeLinks.map(link => link.dataset.sidebarTimelineMode));
             launcher.dataset.sidebarTimelineActiveMode = activeMode;
             launcher.classList.toggle('has-active-mode', Boolean(activeMode));
-            launcher.querySelectorAll('[data-sidebar-timeline-mode]').forEach(link => {
+            modeLinks.forEach(link => {
                 const isActive = Boolean(activeMode) && link.dataset.sidebarTimelineMode === activeMode;
                 link.classList.toggle('active', isActive);
                 link.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -2044,8 +2098,8 @@ const Sidebar = (() => {
         return window.CrmBusinessContext?.current?.(user) || 'event_genix';
     }
 
-    function _sidebarTimelineSummaryCacheKey(model = {}) {
-        return `${model.businessContext || _sidebarTimelineContextValue()}|${model.viewMode || 'day'}|${model.date || _sidebarTimelineCurrentDate()}`;
+    function _sidebarTimelineSummaryCacheKey(model = {}, mode = '') {
+        return `${model.businessContext || _sidebarTimelineContextValue()}|${model.date || _sidebarTimelineCurrentDate()}|${_sidebarNormalizeTimelineMode(mode || model.timelineView) || 'all'}`;
     }
 
     function _sidebarTimelineDateLabel(dateKey) {
@@ -2098,6 +2152,12 @@ const Sidebar = (() => {
         return value === undefined || value === null ? '' : String(value).trim();
     }
 
+    function _sidebarTimelineBookingHidden(booking = {}) {
+        const projection = booking.timelineProjection || booking.timeline_projection || {};
+        const surface = projection.displaySurface || projection.display_surface || booking.displaySurface || booking.display_surface;
+        return String(surface || '').trim().toLowerCase() === 'hidden';
+    }
+
     function _sidebarTimelineBookingsFromPayload(payload) {
         if (Array.isArray(payload)) return payload;
         if (Array.isArray(payload?.bookings)) return payload.bookings;
@@ -2111,6 +2171,7 @@ const Sidebar = (() => {
         return _sidebarTimelineBookingsFromPayload(payload).reduce((count, booking) => {
             if (!booking || typeof booking !== 'object') return count;
             if (String(booking.status || '').toLowerCase() === 'cancelled') return count;
+            if (_sidebarTimelineBookingHidden(booking)) return count;
             const canonicalId = _sidebarTimelineBookingCanonicalId(booking);
             if (canonicalId) {
                 if (seen.has(canonicalId)) return count;
@@ -2120,29 +2181,49 @@ const Sidebar = (() => {
         }, 0);
     }
 
-    function _sidebarTimelineSummaryText(model = {}) {
-        const dateLabel = model.dateLabel || _sidebarTimelineDateLabel(model.date);
-        if (model.viewMode === 'week') return `✓ Тиждень · ${_sidebarTimelineWeekRangeLabel(model.date)}`;
-        if (model.status === 'loading') return `Завантаження · ${dateLabel}`;
-        if (model.status === 'error') return `Не оновлено · ${dateLabel}`;
-        return `${_sidebarTimelineBookingPlural(model.count)} · ${dateLabel}`;
+    function _sidebarTimelineCountStatus(value) {
+        const status = String(value || '').trim().toLowerCase();
+        return status === 'ready' || status === 'error' || status === 'loading' ? status : 'loading';
+    }
+
+    function _sidebarTimelineInputModeKeys(input = {}) {
+        const keys = [];
+        const directMode = _sidebarNormalizeTimelineMode(input.timelineView || input.timelineMode || input.mode || input.view);
+        if (directMode) keys.push(directMode);
+        [input.modes, input.counts, input.statuses].forEach(source => {
+            if (!source || typeof source !== 'object') return;
+            Object.keys(source).forEach(key => {
+                const normalized = _sidebarNormalizeTimelineMode(key);
+                if (normalized) keys.push(normalized);
+            });
+        });
+        return [...new Set(keys)];
     }
 
     function _sidebarTimelineBuildSummary(input = {}) {
         const date = _sidebarDateKey(input.date || _sidebarTimelineCurrentDate());
         const viewMode = input.viewMode === 'week' ? 'week' : 'day';
-        const status = input.status || (viewMode === 'week' ? 'ready' : 'loading');
-        const count = Number.isFinite(Number(input.count)) ? Math.max(0, Math.floor(Number(input.count))) : 0;
-        const model = {
-            date,
-            viewMode,
-            dateLabel: viewMode === 'week' ? _sidebarTimelineWeekRangeLabel(date) : _sidebarTimelineDateLabel(date),
-            count,
-            status,
-            businessContext: input.businessContext || _sidebarTimelineContextValue()
-        };
-        model.text = input.text || _sidebarTimelineSummaryText(model);
-        return model;
+        const businessContext = input.businessContext || _sidebarTimelineContextValue();
+        const inputModeKeys = _sidebarTimelineInputModeKeys(input);
+        const directMode = _sidebarNormalizeTimelineMode(input.timelineView || input.timelineMode || input.mode || input.view);
+        const modes = {};
+        SIDEBAR_TIMELINE_MODES.forEach(mode => {
+            const key = mode.key;
+            const modeInput = input.modes?.[key] && typeof input.modes[key] === 'object' ? input.modes[key] : {};
+            let countValue;
+            if (Object.prototype.hasOwnProperty.call(modeInput, 'count')) countValue = modeInput.count;
+            else if (input.counts && Object.prototype.hasOwnProperty.call(input.counts, key)) countValue = input.counts[key];
+            else if (directMode === key && Object.prototype.hasOwnProperty.call(input, 'count')) countValue = input.count;
+            const hasCount = Number.isFinite(Number(countValue));
+            let status = modeInput.status || input.statuses?.[key] || '';
+            if (!status && directMode === key) status = input.status || '';
+            if (!status && input.status && inputModeKeys.length === 0) status = input.status;
+            modes[key] = {
+                count: hasCount ? Math.max(0, Math.floor(Number(countValue))) : 0,
+                status: _sidebarTimelineCountStatus(status || (hasCount ? 'ready' : 'loading'))
+            };
+        });
+        return { date, viewMode, businessContext, modes };
     }
 
     function _sidebarTimelineSummaryModelForItem(item = {}) {
@@ -2162,61 +2243,115 @@ const Sidebar = (() => {
         return _sidebarTimelineBuildSummary(requested);
     }
 
-    function _applySidebarTimelineSummaryElement(el, model) {
-        el.textContent = model.text;
-        el.dataset.sidebarSummaryStatus = model.status;
-        el.dataset.sidebarSummaryDate = model.date;
-        el.dataset.sidebarSummaryViewMode = model.viewMode;
-        el.setAttribute('aria-label', 'Статус таймлайна: ' + model.text);
-        el.setAttribute('aria-live', 'off');
+    function _sidebarTimelineModeEntry(model = _state.timelineSummaryCurrent, modeKey = '') {
+        const normalized = _sidebarNormalizeTimelineMode(modeKey);
+        return normalized ? model?.modes?.[normalized] || null : null;
+    }
+
+    function _sidebarTimelineModeStatus(model = _state.timelineSummaryCurrent, modeKey = '') {
+        return _sidebarTimelineModeEntry(model, modeKey)?.status || 'loading';
+    }
+
+    function _sidebarTimelineModeCountText(model = _state.timelineSummaryCurrent, modeKey = '') {
+        const entry = _sidebarTimelineModeEntry(model, modeKey);
+        if (!entry || entry.status !== 'ready') return SIDEBAR_TIMELINE_COUNT_PLACEHOLDER;
+        return String(Math.max(0, Math.floor(Number(entry.count) || 0)));
+    }
+
+    function _sidebarTimelineModeLabel(modeKey = '') {
+        return SIDEBAR_TIMELINE_MODES.find(mode => mode.key === _sidebarNormalizeTimelineMode(modeKey))?.label || '';
+    }
+
+    function _sidebarTimelineModeAriaLabel(mode = {}, model = _state.timelineSummaryCurrent) {
+        const modeKey = _sidebarNormalizeTimelineMode(mode?.key || mode);
+        const label = mode?.label || _sidebarTimelineModeLabel(modeKey) || modeKey;
+        const text = _sidebarTimelineModeCountText(model, modeKey);
+        if (/^\d+$/.test(text)) return `Відкрити таймлайн «${label}», ${_sidebarTimelineBookingPlural(Number(text))}`;
+        return `Відкрити таймлайн «${label}», кількість оновлюється`;
     }
 
     function _syncSidebarTimelineSummaryDom(model = _state.timelineSummaryCurrent) {
         if (!model) return;
-        const token = `${model.businessContext || ''}|${model.viewMode}|${model.date}|${model.status}|${model.text}`;
-        document.querySelectorAll('[data-sidebar-timeline-summary]').forEach(el => {
-            if (el.textContent === model.text || _motionReduced()) {
-                _applySidebarTimelineSummaryElement(el, model);
-                el.classList.remove('is-summary-changing');
-                return;
-            }
-            el.dataset.sidebarSummaryToken = token;
-            el.classList.add('is-summary-changing');
-            window.setTimeout(() => {
-                if (el.dataset.sidebarSummaryToken !== token) return;
-                _applySidebarTimelineSummaryElement(el, model);
-                window.requestAnimationFrame?.(() => el.classList.remove('is-summary-changing'))
-                    || el.classList.remove('is-summary-changing');
-            }, 70);
+        document.querySelectorAll('[data-sidebar-timeline-count-mode]').forEach(el => {
+            const mode = _sidebarNormalizeTimelineMode(el.dataset.sidebarTimelineCountMode);
+            if (!mode) return;
+            const text = _sidebarTimelineModeCountText(model, mode);
+            const status = _sidebarTimelineModeStatus(model, mode);
+            if (el.textContent !== text) el.textContent = text;
+            el.dataset.sidebarTimelineCountStatus = status;
+            const link = el.closest?.('[data-sidebar-timeline-mode]');
+            if (link) link.setAttribute('aria-label', _sidebarTimelineModeAriaLabel({ key: mode, label: _sidebarTimelineModeLabel(mode) }, model));
         });
     }
 
     function _setSidebarTimelineSummary(model = {}) {
+        const incomingModes = _sidebarTimelineInputModeKeys(model);
         const next = _sidebarTimelineBuildSummary(model);
-        _state.timelineSummaryCurrent = next;
-        if (next.status === 'ready') {
-            _state.timelineSummaryCache.set(_sidebarTimelineSummaryCacheKey(next), {
-                model: next,
-                cachedAt: Date.now()
+        const current = _state.timelineSummaryCurrent;
+        const matchesCurrent = current
+            && current.date === next.date
+            && current.viewMode === next.viewMode
+            && current.businessContext === next.businessContext;
+        if (matchesCurrent && incomingModes.length) {
+            SIDEBAR_TIMELINE_MODES.forEach(mode => {
+                if (!incomingModes.includes(mode.key) && current.modes?.[mode.key]) {
+                    next.modes[mode.key] = current.modes[mode.key];
+                }
             });
         }
+        _state.timelineSummaryCurrent = next;
+        SIDEBAR_TIMELINE_MODES.forEach(mode => {
+            const entry = next.modes?.[mode.key];
+            if (entry?.status === 'ready') {
+                _state.timelineSummaryCache.set(_sidebarTimelineSummaryCacheKey(next, mode.key), {
+                    mode: mode.key,
+                    model: {
+                        date: next.date,
+                        viewMode: next.viewMode,
+                        businessContext: next.businessContext,
+                        timelineView: mode.key,
+                        count: entry.count,
+                        status: entry.status
+                    },
+                    cachedAt: Date.now()
+                });
+            }
+        });
         _syncSidebarTimelineSummaryDom(next);
         return next;
     }
 
-    async function _fetchSidebarTimelineSummary(requested, options = {}) {
-        const model = _sidebarTimelineBuildSummary({ ...requested, status: 'loading' });
-        const key = _sidebarTimelineSummaryCacheKey(model);
+    function _sidebarTimelineAvailableModeKeysFromDom() {
+        const keys = Array.from(document.querySelectorAll('[data-sidebar-timeline-mode]'))
+            .map(link => _sidebarNormalizeTimelineMode(link.dataset.sidebarTimelineMode))
+            .filter(Boolean);
+        return keys.length ? [...new Set(keys)] : _sidebarTimelineModeKeys(SIDEBAR_TIMELINE_MODES);
+    }
+
+    function _sidebarTimelineSummaryModeUrl(model = {}, modeKey = '') {
+        const scoped = _sidebarScopedApiUrl(`/api/bookings/${encodeURIComponent(model.date || _sidebarTimelineCurrentDate())}`);
+        const url = new URL(scoped, window.location?.origin || 'http://localhost');
+        url.searchParams.set('timelineView', _sidebarNormalizeTimelineMode(modeKey) || 'animators');
+        return /^https?:\/\//i.test(scoped) ? url.toString() : `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    async function _fetchSidebarTimelineSummaryMode(requested, modeKey, options = {}) {
+        const mode = _sidebarNormalizeTimelineMode(modeKey);
+        if (!mode) return null;
+        const model = _sidebarTimelineBuildSummary({ ...requested, timelineView: mode, status: 'loading' });
+        const key = _sidebarTimelineSummaryCacheKey(model, mode);
+        const pending = _state.timelineSummaryPromises.get(key);
+        if (pending && !options.force) return pending;
+        const seq = Number.isFinite(Number(options.seq)) ? Number(options.seq) : ++_state.timelineSummaryRequestSeq;
         if (!options.force) {
             const cached = _state.timelineSummaryCache.get(key);
             if (cached && Date.now() - cached.cachedAt < SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL) {
+                if (seq !== _state.timelineSummaryRequestSeq) return null;
                 return _setSidebarTimelineSummary(cached.model);
             }
         }
-        if (_state.timelineSummaryPromise && _state.timelineSummaryPromiseKey === key) return _state.timelineSummaryPromise;
-        const seq = ++_state.timelineSummaryRequestSeq;
-        _setSidebarTimelineSummary(model);
-        const url = _sidebarScopedApiUrl(`/api/bookings/${encodeURIComponent(model.date)}`);
+        _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'loading' });
+        const url = _sidebarTimelineSummaryModeUrl(model, mode);
         const request = fetch(url, { headers: _sidebarAuthHeaders() })
             .then(response => {
                 if (!response.ok) throw new Error(`bookings summary ${response.status}`);
@@ -2225,7 +2360,10 @@ const Sidebar = (() => {
             .then(payload => {
                 if (seq !== _state.timelineSummaryRequestSeq) return null;
                 return _setSidebarTimelineSummary({
-                    ...model,
+                    date: model.date,
+                    viewMode: model.viewMode,
+                    businessContext: model.businessContext,
+                    timelineView: mode,
                     count: _sidebarTimelineCountBookings(payload),
                     status: 'ready'
                 });
@@ -2233,17 +2371,22 @@ const Sidebar = (() => {
             .catch(error => {
                 if (seq !== _state.timelineSummaryRequestSeq) return null;
                 console.warn('[Sidebar] Timeline summary failed', error);
-                return _setSidebarTimelineSummary({ ...model, status: 'error' });
+                return _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'error' });
             })
             .finally(() => {
-                if (_state.timelineSummaryPromise === request) {
-                    _state.timelineSummaryPromise = null;
-                    _state.timelineSummaryPromiseKey = '';
+                if (_state.timelineSummaryPromises.get(key) === request) {
+                    _state.timelineSummaryPromises.delete(key);
                 }
             });
-        _state.timelineSummaryPromise = request;
-        _state.timelineSummaryPromiseKey = key;
+        _state.timelineSummaryPromises.set(key, request);
         return request;
+    }
+
+    async function _fetchSidebarTimelineSummary(requested, options = {}) {
+        const modes = _sidebarTimelineModeKeys(options.modes || _sidebarTimelineAvailableModeKeysFromDom());
+        const seq = Number.isFinite(Number(options.seq)) ? Number(options.seq) : ++_state.timelineSummaryRequestSeq;
+        _setSidebarTimelineSummary({ ...requested, status: 'loading' });
+        return Promise.all(modes.map(mode => _fetchSidebarTimelineSummaryMode(requested, mode, { ...options, seq })));
     }
 
     function _refreshSidebarTimelineSummary(options = {}) {
@@ -2253,18 +2396,13 @@ const Sidebar = (() => {
             viewMode: _sidebarTimelineCurrentViewMode(),
             businessContext: _sidebarTimelineContextValue()
         };
-        if (requested.viewMode === 'week') {
-            _state.timelineSummaryRequestSeq++;
-            _setSidebarTimelineSummary({ ...requested, status: 'ready' });
-            return;
-        }
         if (_sidebarTimelineIsTimelineSurface() && !options.allowTimelinePageFetch) {
             const current = _state.timelineSummaryCurrent;
             const matchesCurrent = current
                 && current.date === requested.date
                 && current.viewMode === requested.viewMode
                 && current.businessContext === requested.businessContext;
-            if (matchesCurrent && (current.status === 'ready' || current.status === 'error')) {
+            if (matchesCurrent) {
                 _syncSidebarTimelineSummaryDom(current);
                 return;
             }
@@ -2280,16 +2418,23 @@ const Sidebar = (() => {
         const viewMode = detail.viewMode === 'week' ? 'week' : 'day';
         const date = _sidebarDateKey(detail.date || _sidebarTimelineCurrentDate());
         const businessContext = detail.businessContext || _sidebarTimelineContextValue();
-        if (viewMode === 'week') {
-            _state.timelineSummaryRequestSeq++;
-            _setSidebarTimelineSummary({ date, viewMode, businessContext, status: 'ready' });
+        const requested = { date, viewMode, businessContext };
+        const mode = _sidebarNormalizeTimelineMode(detail.timelineView || detail.timelineMode || detail.mode || detail.view || _sidebarCurrentTimelineView('', _sidebarTimelineAvailableModeKeysFromDom()));
+        const availableModes = _sidebarTimelineAvailableModeKeysFromDom();
+        const seq = ++_state.timelineSummaryRequestSeq;
+        const hasCount = Number.isFinite(Number(detail.count)) || Array.isArray(detail.bookings) || Array.isArray(detail?.data?.bookings) || Array.isArray(detail?.data);
+        if (!mode || !hasCount) {
+            _setSidebarTimelineSummary({ ...requested, status: 'loading' });
+            void _fetchSidebarTimelineSummary(requested, { seq, modes: availableModes, force: false });
             return;
         }
         const count = Number.isFinite(Number(detail.count))
             ? Math.max(0, Math.floor(Number(detail.count)))
             : _sidebarTimelineCountBookings(detail.bookings || detail);
-        _state.timelineSummaryRequestSeq++;
-        _setSidebarTimelineSummary({ date, viewMode, businessContext, count, status: detail.status || 'ready' });
+        _setSidebarTimelineSummary({ date, viewMode, businessContext, timelineView: mode, count, status: detail.status || 'ready' });
+        availableModes
+            .filter(item => item !== mode)
+            .forEach(item => void _fetchSidebarTimelineSummaryMode(requested, item, { seq, force: false }));
     }
 
     function _sidebarTaskDateOnly(value) {

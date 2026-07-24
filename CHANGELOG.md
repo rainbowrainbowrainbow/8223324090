@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.3 - Обране: компактний таймлайн
+
+### Sidebar / Keyboard QA patch / (24.07.2026) [codex]
+- **Enter без подвійного toggle** — заголовок «Обране» лишає Enter нативній поведінці button, а кастомний click-handler використовується тільки для Space.
+- **Точні geometry assertions** — browser smoke тепер міряє right/bottom координати, тому перевірка label/count overlap працює по фактичному DOM.
+
+---
+
 ## v0.80.2 - Обране: компактний таймлайн
 
 ### Sidebar / Live QA patch / (24.07.2026) [codex]

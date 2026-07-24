@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.6 - Обране: компактний таймлайн
+
+### Release / Versioning / (25.07.2026) [codex]
+- **Обране: компактний таймлайн** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.5 - Обране: компактний таймлайн
 
 ### Release / Versioning / (24.07.2026) [codex]

@@ -11,11 +11,25 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'uploads', 'sounds']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'uploads', 'sounds', 'tmp', '.codex-temp', 'test-results', 'playwright-report', 'coverage']);
 const files = [];
 
+function relativePath(file) {
+    return path.relative(ROOT, file).split(path.sep).join('/');
+}
+
 function walk(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    let entries;
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (error) {
+        if (['EACCES', 'EPERM', 'ENOENT'].includes(error.code)) {
+            console.warn(`WARN skip unreadable directory ${relativePath(dir)}: ${error.code}`);
+            return;
+        }
+        throw error;
+    }
+    for (const entry of entries) {
         if (entry.isDirectory()) {
             if (!SKIP_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
             continue;
@@ -33,16 +47,17 @@ files.sort();
 const failures = [];
 
 for (const file of files) {
-    const rel = path.relative(ROOT, file).replace(/\\/g, '/');
+    const rel = relativePath(file);
     const result = spawnSync(process.execPath, ['--check', file], {
         encoding: 'utf8'
     });
 
     if (result.status !== 0) {
-        failures.push({ rel, output: (result.stderr || result.stdout || '').trim() });
+        const output = (result.stderr || result.stdout || result.error?.message || '').trim();
+        failures.push({ rel, output });
         console.error(`FAIL ${rel}`);
-        if (result.stderr || result.stdout) {
-            console.error((result.stderr || result.stdout).trim());
+        if (output) {
+            console.error(output);
         }
     }
 }

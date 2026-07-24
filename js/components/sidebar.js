@@ -1299,7 +1299,7 @@ const Sidebar = (() => {
                 _ensureCommandDeck();
             });
             sectionToggle.addEventListener('keydown', (event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
+                if (event.key !== ' ') return;
                 event.preventDefault();
                 event.stopPropagation();
                 sectionToggle.click();

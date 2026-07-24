@@ -211,6 +211,8 @@ async function readLauncher(page) {
             return {
                 left: Number(rect.left.toFixed(2)),
                 top: Number(rect.top.toFixed(2)),
+                right: Number(rect.right.toFixed(2)),
+                bottom: Number(rect.bottom.toFixed(2)),
                 width: Number(rect.width.toFixed(2)),
                 height: Number(rect.height.toFixed(2)),
                 relLeft: Number((rect.left - launcherRect.left).toFixed(2)),

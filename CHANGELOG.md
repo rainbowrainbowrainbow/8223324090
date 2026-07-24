@@ -4,6 +4,13 @@
 
 ---
 
+## v0.79.148 - Таймлайн у боковому меню: лічильники режимів
+
+### Release / Versioning / (24.07.2026) [codex]
+- **Таймлайн у боковому меню: лічильники режимів** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.79.147 - Банкет: нульові квитки
 
 ### Release / Versioning / (24.07.2026) [codex]

@@ -1285,6 +1285,12 @@ const Sidebar = (() => {
         if (sectionToggle && sectionToggle.dataset.sidebarExtraSectionBound !== 'true') {
             sectionToggle.dataset.sidebarExtraSectionBound = 'true';
             sectionToggle.addEventListener('click', (event) => {
+                if (sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick === 'true' && event.detail === 0) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    delete sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick;
+                    return;
+                }
                 event.preventDefault();
                 event.stopPropagation();
                 const editorWasOpen = _isExtraMenuEditorOpen();
@@ -1299,10 +1305,14 @@ const Sidebar = (() => {
                 _ensureCommandDeck();
             });
             sectionToggle.addEventListener('keydown', (event) => {
-                if (event.key !== ' ') return;
+                if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
                 event.stopPropagation();
                 sectionToggle.click();
+                sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick = 'true';
+                setTimeout(() => {
+                    delete sectionToggle.dataset.sidebarExtraIgnoreKeyboardClick;
+                }, 0);
             });
         }
 

@@ -55,9 +55,13 @@ function qaDepositCancelled(row = {}) {
     return String(row.status || '').trim().toLowerCase() === 'cancelled';
 }
 
-function qaDepositClearBlockers(row = {}) {
+function qaDepositClearBlockers(row = {}, options = {}) {
     if (qaDepositCancelled(row)) return [];
     const blockers = [];
+    const markerExpectations = { ...options, source: options.source || DISPOSABLE_QA_SOURCE };
+    const sourceMarker = qaMarkerInspection({ extra_data: row.source_payload }, markerExpectations);
+    const metaMarker = qaMarkerInspection({ extra_data: row.meta }, markerExpectations);
+    if (!sourceMarker.ok && !metaMarker.ok) blockers.push('deposit_marker');
     const paidAmount = Number(row.paid_amount);
     if (Number.isFinite(paidAmount) && paidAmount > 0) blockers.push('paid_amount');
     if (row.payment_method) blockers.push('payment_method');
@@ -216,7 +220,9 @@ async function loadQaCleanupDeposits(db, options, bookingIds, { forUpdate = fals
                 deposit.verified_at,
                 deposit.verified_by,
                 deposit.finance_transaction_id,
-                deposit.status
+                deposit.status,
+                deposit.source_payload,
+                deposit.meta
            FROM banquet_deposits deposit
           WHERE ${contextSql('deposit', '$3')}
             AND (
@@ -615,7 +621,7 @@ function inspectQaCleanupGroupState(state = {}, options = {}) {
     const removableDeposits = [];
     const blockingDeposits = [];
     for (const deposit of activeDeposits) {
-        const blockers = qaDepositClearBlockers(deposit);
+        const blockers = qaDepositClearBlockers(deposit, options);
         if (blockers.length) blockingDeposits.push({ ...deposit, blockers });
         else removableDeposits.push(deposit);
     }

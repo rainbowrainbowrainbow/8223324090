@@ -2524,8 +2524,8 @@ html[data-theme="dark"] body .header .user-panel.header-actions {
     --header-actions-border-hover: var(--eg-border-strong, rgba(148, 163, 184, 0.28));
     --header-actions-text: var(--eg-text-secondary, #CBD5E1);
     --header-actions-text-strong: var(--eg-text-primary, #F8FAFC);
-    --header-actions-accent: var(--eg-accent, #14B8A6);
-    --header-actions-accent-hover: var(--eg-accent-hover, #0D9488);
+    --header-actions-accent: #047857;
+    --header-actions-accent-hover: #065F46;
     --header-actions-accent-soft: var(--eg-accent-soft, rgba(20, 184, 166, 0.16));
     --header-actions-accent-border: var(--eg-accent-border, rgba(45, 212, 191, 0.34));
     --header-actions-focus: var(--eg-focus-ring, rgba(45, 212, 191, 0.18));

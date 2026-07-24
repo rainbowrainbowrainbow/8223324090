@@ -4020,8 +4020,7 @@ html[data-theme="dark"] body.timeline-dashboard-page .main-content {
 
 .timeline-dashboard-page .header .btn-search,
 .timeline-dashboard-page .header .header-search-btn,
-.timeline-dashboard-page .header .header-theme-toggle,
-.timeline-dashboard-page .header .btn-logout {
+.timeline-dashboard-page .header .header-theme-toggle {
     height: 40px !important;
     min-height: 40px !important;
     border-radius: 10px !important;
@@ -4033,8 +4032,7 @@ html[data-theme="dark"] body.timeline-dashboard-page .main-content {
 
 .timeline-dashboard-page .header .btn-search:hover,
 .timeline-dashboard-page .header .header-search-btn:hover,
-.timeline-dashboard-page .header .header-theme-toggle:hover,
-.timeline-dashboard-page .header .btn-logout:hover {
+.timeline-dashboard-page .header .header-theme-toggle:hover {
     background: var(--eg-surface-elevated) !important;
     border-color: var(--eg-border-strong) !important;
     color: var(--eg-text-primary) !important;

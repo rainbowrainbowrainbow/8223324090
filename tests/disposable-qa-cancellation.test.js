@@ -114,7 +114,7 @@ test('preflight allows one canonical booking income for strict finance synchroni
 });
 
 
-test('preflight allows safe unpaid manager-only deposit for strict QA cleanup', () => {
+test('preflight allows marked safe unpaid manager-only deposit for strict QA cleanup', () => {
     const inspection = inspectQaCleanupGroupState(groupState({
         deposits: [{
             id: 17,
@@ -125,7 +125,8 @@ test('preflight allows safe unpaid manager-only deposit for strict QA cleanup', 
             accountant_task_id: null,
             accounting_status: 'Не перевірено',
             verified_at: null,
-            verified_by: null
+            verified_by: null,
+            source_payload: marker('banquet_deposit')
         }]
     }), OPTIONS);
 
@@ -135,6 +136,30 @@ test('preflight allows safe unpaid manager-only deposit for strict QA cleanup', 
     assert.equal(inspection.removableDepositCount, 1);
     assert.equal(inspection.blockingDepositCount, 0);
     assert.deepEqual(inspection.removableDepositIds, [17]);
+});
+
+test('preflight blocks unmarked manager-only deposit even when unpaid', () => {
+    const inspection = inspectQaCleanupGroupState(groupState({
+        deposits: [{
+            id: 18,
+            status: 'manager_reported',
+            paid_amount: 0,
+            payment_method: null,
+            finance_transaction_id: null,
+            accountant_task_id: null,
+            accounting_status: 'Не перевірено',
+            verified_at: null,
+            verified_by: null,
+            source_payload: {}
+        }]
+    }), OPTIONS);
+
+    assert.equal(inspection.status, 'financial_dependencies_present');
+    assert.equal(inspection.depositCount, 1);
+    assert.equal(inspection.activeDepositCount, 1);
+    assert.equal(inspection.removableDepositCount, 0);
+    assert.equal(inspection.blockingDepositCount, 1);
+    assert.deepEqual(inspection.removableDepositIds, []);
 });
 test('preflight exposes sanitized compatibility link scope when cleanup blocks', () => {
     const inspection = inspectQaCleanupGroupState(groupState({
@@ -256,7 +281,8 @@ test('exact cancellation cancels safe unpaid deposits before booking status chan
             accountant_task_id: null,
             accounting_status: 'Не перевірено',
             verified_at: null,
-            verified_by: null
+            verified_by: null,
+            source_payload: marker('banquet_deposit')
         }]
     }), OPTIONS);
     const db = {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.79.148",
+  "version": "0.79.149",
   "eventGenix": {
-    "releaseLabel": "Таймлайн у боковому меню: лічильники режимів"
+    "releaseLabel": "Бронювання: контроль робочих годин"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

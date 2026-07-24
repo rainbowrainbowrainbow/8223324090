@@ -125,11 +125,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'services/booking.js',
         start: 'function mapBookingRow(row)',
         end: 'function lineColorForIndex(index, fallback)',
-        sha256: '152c2025e02ca5a145dfd7360ef15bbaaea8bc0c9a9e9a0552b2b56d42b93afa',
+        sha256: '0ffb4b37cbde15cd7ecbb4c627d9c5e168bf7d14f1d75153d229d994bd387c3b',
         approval: {
-            approvedBy: 'Product owner (explicit Codex task approval)',
-            approvedOn: '2026-07-17',
-            reason: 'Room identity Task 3 exposes the additive bookings.room_resource_id field to every frontend booking flow without changing legacy room text.'
+            approvedBy: 'Product owner (explicit Codex delivery approval)',
+            approvedOn: '2026-07-24',
+            reason: 'Booking row mapper must preserve explicit zero banquet ticket counts in detail and timeline projections.'
         },
         requiredNeedles: [
             'function mapBookingRow(row)',

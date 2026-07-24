@@ -5303,3 +5303,20 @@ html[data-theme="dark"] body.timeline-dashboard-page .booking-block:hover,
 html[data-theme="dark"] body.timeline-dashboard-page .mini-booking-block:hover {
     box-shadow: 0 10px 22px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
 }
+
+/* v0.79.147: light timeline logout contrast guard. */
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout {
+    border-color: #047857 !important;
+    background: #047857 !important;
+    color: #FFFFFF !important;
+}
+
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
+html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible {
+    border-color: #065F46 !important;
+    background: #065F46 !important;
+    color: #FFFFFF !important;
+}

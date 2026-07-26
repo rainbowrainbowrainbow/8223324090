@@ -197,6 +197,25 @@ async function assertPayrollPeriodOpen(month, db = pool) {
     return lock;
 }
 
+function payrollPeriodMutationLockKey(month) {
+    const normalizedMonth = requirePayrollMonth(month);
+    if (!normalizedMonth) {
+        const err = new Error('month required (YYYY-MM)');
+        err.statusCode = 400;
+        throw err;
+    }
+    return `eventgenix:payroll-period:${normalizedMonth}`;
+}
+
+async function acquirePayrollPeriodMutationLock(db, month) {
+    const lockKey = payrollPeriodMutationLockKey(month);
+    await db.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [lockKey]
+    );
+    return lockKey;
+}
+
 function normalizePayrollPeriodEvent(row = {}) {
     const type = row.event_type || '';
     return {
@@ -242,6 +261,7 @@ async function loadPayrollPeriodEvents(month, db = pool, limit = 12) {
 }
 
 async function setPayrollPeriodLock(month, locked, actor, note = '', db = pool) {
+    await acquirePayrollPeriodMutationLock(db, month);
     const result = await db.query(
         `INSERT INTO payroll_period_locks
             (period_month, is_locked, locked_at, locked_by, unlocked_at, unlocked_by, note, updated_at)
@@ -447,6 +467,7 @@ async function loadPayrollReconciliation(month, db = pool) {
 module.exports = {
     PAYROLL_EVENT_LABELS,
     PAYROLL_EVENT_TYPES,
+    acquirePayrollPeriodMutationLock,
     assertPayrollPeriodOpen,
     buildPayrollRateUnitWarnings,
     buildPayrollSourceReconciliation,

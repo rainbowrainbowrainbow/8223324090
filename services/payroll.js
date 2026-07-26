@@ -16,6 +16,8 @@ const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED = 'PAYROLL_SIMULTANEOUS
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE = 'Формула подвійної оплати для цієї схеми не налаштована';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE';
 const PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE = 'Додаткова оплата не може бути нульовою для оплачуваних хвилин';
+const PAYROLL_ADJUSTMENTS_UNAVAILABLE = 'PAYROLL_ADJUSTMENTS_UNAVAILABLE';
+const PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE = 'Не вдалося достовірно прочитати коригування зарплати';
 
 const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
@@ -56,6 +58,16 @@ function getMonthBounds(month) {
 
 function isMissingTableError(err) {
     return err && err.code === '42P01';
+}
+
+
+function payrollAdjustmentsUnavailableError(cause) {
+    const err = new Error(PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE);
+    err.status = 503;
+    err.statusCode = 503;
+    err.code = PAYROLL_ADJUSTMENTS_UNAVAILABLE;
+    err.cause = cause;
+    return err;
 }
 
 function isMissingPayrollProfileSchemaError(err) {
@@ -2359,24 +2371,13 @@ async function fetchTimeMetrics(month) {
 }
 
 async function fetchAdjustments(month) {
-    const readAdjustments = async (withStatusFilter) => {
-        const statusFilter = withStatusFilter ? "AND COALESCE(status, 'applied') = 'applied'" : '';
-        return pool.query(`
+    try {
+        const result = await pool.query(`
             SELECT staff_id, type, COALESCE(SUM(amount), 0)::numeric AS total
             FROM salary_adjustments
-            WHERE month = $1 ${statusFilter}
+            WHERE month = $1 AND COALESCE(status, 'applied') = 'applied'
             GROUP BY staff_id, type
         `, [month]);
-    };
-
-    try {
-        let result;
-        try {
-            result = await readAdjustments(true);
-        } catch (err) {
-            if (err.code !== '42703') throw err;
-            result = await readAdjustments(false);
-        }
         const map = new Map();
         for (const row of result.rows) {
             if (!map.has(row.staff_id)) map.set(row.staff_id, { bonus: 0, tip: 0, deduction: 0, penalty: 0, advance: 0 });
@@ -2384,8 +2385,8 @@ async function fetchAdjustments(month) {
         }
         return map;
     } catch (err) {
-        if (!isMissingTableError(err)) log.warn('salary_adjustments query failed:', err.message);
-        return new Map();
+        log.error('salary_adjustments query failed:', err);
+        throw payrollAdjustmentsUnavailableError(err);
     }
 }
 
@@ -3231,11 +3232,14 @@ module.exports = {
     PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_MESSAGE,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_NON_POSITIVE,
     PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE,
+    PAYROLL_ADJUSTMENTS_UNAVAILABLE,
+    PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE,
     assertPayrollRowsCommitReady,
     assertPayrollRowsGenerationReady,
     buildPayrollTransparencyMetrics,
     calculateProfessionPay,
     calculatePayroll,
+    payrollAdjustmentsUnavailableError,
     loadActivePayrollSchemeMap,
     loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,

@@ -1,4 +1,4 @@
-﻿const assert = require('node:assert/strict');
+const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -1358,7 +1358,7 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'window.voidZrsAdjustment = voidZrsAdjustment',
         'new URLSearchParams({',
         'status: zrsJournalStatusFilterValue()',
-        "include_periods: append ? '0' : '1'",
+        "include_periods: append || options.journalOnly ? '0' : '1'",
         "params.set('search', search)",
         'hrFetch(`/salary/adjustment/${id}/void`, \'PUT\'',
         "type: 'advance'",
@@ -1384,12 +1384,12 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'ZRS_VOID_TYPE_MISMATCH',
         'loadSalaryAdjustmentStaffTarget',
         'parsePositiveSafeInteger',
-        'code: payrollLockCode(err)',
+        'code: err.code || payrollLockCode(err)',
         'summary_rows',
         'pagination: {',
         'void_reason',
         'LEFT JOIN LATERAL',
-        'includeMonth: false',
+        'SELECT DISTINCT sa.month',
         "router.put('/salary/adjustment/:id/void'",
         "SET status = 'voided'",
         "type: 'advance', label: 'ЗРС'",

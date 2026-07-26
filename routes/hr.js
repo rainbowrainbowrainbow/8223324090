@@ -1,4 +1,4 @@
-﻿/**
+/**
  * routes/hr.js — HR module API (v30.7)
  *
  * Endpoints: staff HR data, shifts, clock-in/out, time records, reports, templates
@@ -113,6 +113,7 @@ const {
     formatVacancyForPlatform
 } = require('../services/hrVacancyPlatformFormatter');
 const {
+    acquirePayrollPeriodMutationLock,
     assertPayrollPeriodOpen,
     loadPayrollPeriodEvents,
     loadPayrollPeriodLock,
@@ -228,6 +229,12 @@ const requirePayrollControl = (req, res, next) => {
     }
     next();
 };
+const requireZrsManage = (req, res, next) => {
+    if (!req.user || !userHasAnyRole(req.user, PAYROLL_CONTROL_ROLES) || !canUseAction(req.user, 'manage_staff')) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+};
 const ZRS_ERROR_CODES = Object.freeze({
     INVALID_STAFF_ID: 'ZRS_INVALID_STAFF_ID',
     STAFF_NOT_FOUND: 'ZRS_STAFF_NOT_FOUND',
@@ -235,7 +242,9 @@ const ZRS_ERROR_CODES = Object.freeze({
     INVALID_AMOUNT: 'ZRS_INVALID_AMOUNT',
     INVALID_MONTH: 'ZRS_INVALID_MONTH',
     PERIOD_LOCKED: 'PAYROLL_PERIOD_LOCKED',
-    VOID_TYPE_MISMATCH: 'ZRS_VOID_TYPE_MISMATCH'
+    VOID_TYPE_MISMATCH: 'ZRS_VOID_TYPE_MISMATCH',
+    VOID_REASON_REQUIRED: 'ZRS_VOID_REASON_REQUIRED',
+    VOID_ALREADY_PROCESSED: 'ZRS_VOID_ALREADY_PROCESSED'
 });
 
 function salaryAdjustmentError(res, status, code, error, extra = {}) {
@@ -256,9 +265,18 @@ function parseNonNegativeSafeInteger(value, fallback = 0) {
     return Number.isSafeInteger(number) && number >= 0 ? number : fallback;
 }
 
+function escapeSqlLikePattern(value = '') {
+    return String(value || '').replace(/[\\\\%_]/g, match => `\\${match}`);
+}
+
 function normalizeZrsJournalStatusFilter(value = 'active') {
     const status = String(value || 'active').trim().toLowerCase();
     return ['active', 'voided', 'all'].includes(status) ? status : 'active';
+}
+
+function normalizeSalaryAdjustmentType(value = '') {
+    const rawType = String(value || '').trim().toLowerCase();
+    return rawType === 'zrs' ? 'advance' : rawType;
 }
 
 async function loadSalaryAdjustmentStaffTarget(staffId, db = pool) {
@@ -7315,19 +7333,29 @@ router.get('/salary', requirePayrollControl, async (req, res) => {
         });
     } catch (err) {
         log.error('GET /hr/salary error', err);
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null
+            });
+        }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
 
 // POST /api/hr/salary/adjustment — add bonus/deduction/depremium
-router.post('/salary/adjustment', requireHrManage, async (req, res) => {
+router.post('/salary/adjustment', (req, res, next) => {
+    const adjustmentType = normalizeSalaryAdjustmentType(req.body?.type);
+    const guard = adjustmentType === 'advance' ? requireZrsManage : requireHrManage;
+    return guard(req, res, next);
+}, async (req, res) => {
     try {
         const { staff_id, month, type, amount, reason, template_id, violation_date, evidence_note, evidence_url } = req.body;
-        const rawType = String(type || '').trim().toLowerCase();
-        const adjustmentType = rawType === 'zrs' ? 'advance' : rawType;
+        const adjustmentType = normalizeSalaryAdjustmentType(type);
         if (!staff_id || !month || !adjustmentType || amount === undefined) {
-            return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
+            return res.status(400).json({ success: false, error: 'Обовʘ?язкові: staff_id, month, type, amount' });
         }
         if (!['bonus', 'deduction', 'penalty', 'tip', 'advance'].includes(adjustmentType)) {
             return res.status(400).json({ success: false, error: 'Невідомий тип коригування зарплати' });
@@ -7340,31 +7368,73 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
             }
             return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
         }
-
-        let targetStaffId = staff_id;
-        let finalAmount;
         if (adjustmentType === 'advance') {
             const parsedStaffId = parsePositiveSafeInteger(staff_id);
             if (!parsedStaffId) {
                 return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_STAFF_ID, 'Виберіть коректного працівника');
             }
-            targetStaffId = parsedStaffId;
-            finalAmount = parsePositiveSafeInteger(amount);
-            if (!finalAmount) {
+            const zrsAmount = parsePositiveSafeInteger(amount);
+            if (!zrsAmount) {
                 return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_AMOUNT, 'Сума ЗРС має бути додатним цілим числом');
             }
-            const staffRow = await loadSalaryAdjustmentStaffTarget(targetStaffId);
-            if (!staffRow) {
-                return salaryAdjustmentError(res, 404, ZRS_ERROR_CODES.STAFF_NOT_FOUND, 'Працівника не знайдено');
+            const zrsReason = cleanStaffText(reason, 500) || 'ЗРС під зарплату';
+            const actor = payrollActor(req.user);
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await acquirePayrollPeriodMutationLock(client, payrollMonth);
+                await assertPayrollPeriodOpen(payrollMonth, client);
+                const staffResult = await client.query(
+                    'SELECT id, name, is_active FROM staff WHERE id = $1 FOR UPDATE',
+                    [parsedStaffId]
+                );
+                const staffRow = staffResult.rows[0];
+                if (!staffRow) {
+                    const err = new Error('Працівника не знайдено');
+                    err.statusCode = 404;
+                    err.code = ZRS_ERROR_CODES.STAFF_NOT_FOUND;
+                    throw err;
+                }
+                if (staffRow.is_active === false) {
+                    const err = new Error('ЗРС можна додати тільки активному працівнику');
+                    err.statusCode = 409;
+                    err.code = ZRS_ERROR_CODES.STAFF_INACTIVE;
+                    throw err;
+                }
+                const result = await client.query(
+                    `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by,
+                     template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
+                     violation_date, evidence_note, evidence_url)
+                     VALUES ($1,$2,'advance',$3,$4,$5,NULL,NULL,NULL,NULL,0,'custom','applied',NULL,NULL,NULL)
+                     RETURNING *`,
+                    [parsedStaffId, payrollMonth, zrsAmount, zrsReason, actor]
+                );
+                const adj = result.rows[0];
+                await client.query(
+                    `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
+                     VALUES ($1,$2,'create',$3,$4,NULL,$5)`,
+                    [adj.id, parsedStaffId, actor, req.user?.role || null, JSON.stringify({ amount: zrsAmount, reason: zrsReason, type: 'advance' })]
+                );
+                await auditLog('salary_adjustment', parsedStaffId, actor, {
+                    adjustment_id: Number(adj.id),
+                    type: 'advance',
+                    amount: zrsAmount,
+                    reason: zrsReason,
+                    month: payrollMonth
+                }, req.ip, client);
+                await client.query('COMMIT');
+                return res.json({ success: true, data: adj, needsReview: false });
+            } catch (err) {
+                await client.query('ROLLBACK').catch(() => {});
+                throw err;
+            } finally {
+                client.release();
             }
-            if (staffRow.is_active === false) {
-                return salaryAdjustmentError(res, 409, ZRS_ERROR_CODES.STAFF_INACTIVE, 'ЗРС можна додати тільки активному працівнику');
-            }
-        } else {
-            finalAmount = Math.abs(Number(amount));
-            if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
-                return res.status(400).json({ success: false, error: 'Сума має бути більшою за 0' });
-            }
+        }
+        const targetStaffId = staff_id;
+        let finalAmount = Math.abs(Number(amount));
+        if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+            return res.status(400).json({ success: false, error: 'Сума має бути більшою за 0' });
         }
         await assertPayrollPeriodOpen(payrollMonth);
 
@@ -7424,7 +7494,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
 
         await auditLog('salary_adjustment', targetStaffId, req.user?.username, { type: adjustmentType, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
 
-        // Dry notification to staff (fire-and-forget, no word "штраф")
+        // Dry notification to staff (fire-and-forget, no word "С€С‚СЂР°С„")
         if ((adjustmentType === 'penalty' || adjustmentType === 'deduction') && status === 'applied') {
             setImmediate(async () => {
                 try {
@@ -7448,7 +7518,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         if (err.statusCode) {
             return res.status(err.statusCode).json({
                 success: false,
-                code: payrollLockCode(err),
+                code: err.code || payrollLockCode(err),
                 error: err.message,
                 details: err.details || null,
                 period_lock: err.payrollLock || null
@@ -7495,13 +7565,25 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
                 conds.push(`sa.type = $${params.length}`);
             }
             if (search) {
-                params.push(`%${search}%`);
-                conds.push(`s.name ILIKE $${params.length}`);
+                const likeSearch = `%${escapeSqlLikePattern(search)}%`;
+                params.push(likeSearch);
+                const likeParam = params.length;
+                const searchConds = [
+                    `s.name ILIKE $${likeParam} ESCAPE '\\'`,
+                    `COALESCE(sa.reason, '') ILIKE $${likeParam} ESCAPE '\\'`
+                ];
+                const exactId = /^#?\d+$/.test(search) ? parsePositiveSafeInteger(search.replace(/^#/, '')) : null;
+                if (exactId) {
+                    params.push(exactId);
+                    searchConds.push(`sa.id = $${params.length}`);
+                    searchConds.push(`sa.staff_id = $${params.length}`);
+                }
+                conds.push(`(${searchConds.join(' OR ')})`);
             }
             if (forceActive) {
-                conds.push("COALESCE(sa.status, 'applied') IN ('applied', 'pending_review')");
+                conds.push("COALESCE(sa.status, 'applied') = 'applied'");
             } else if (includeStatus) {
-                if (statusFilter === 'active') conds.push("COALESCE(sa.status, 'applied') IN ('applied', 'pending_review')");
+                if (statusFilter === 'active') conds.push("COALESCE(sa.status, 'applied') = 'applied'");
                 if (statusFilter === 'voided') conds.push("COALESCE(sa.status, 'applied') = 'voided'");
             }
             return { params, where: conds.length ? `WHERE ${conds.join(' AND ')}` : '' };
@@ -7518,13 +7600,25 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
         const total = Number(countResult.rows[0]?.total || 0);
         const dataParams = [...journalFilter.params, limit, offset];
         const result = await pool.query(
-            `SELECT sa.*, s.name AS staff_name,
+            `SELECT sa.*, sa.id AS adjustment_id,
+                    s.name AS staff_name,
+                    s.role_type AS staff_role,
+                    s.department AS staff_department,
+                    create_log.actor_role AS created_by_role,
                     COALESCE(void_log.actor_username, audit_void.performed_by, sa.approved_by) AS voided_by,
                     COALESCE(void_log.actor_role, NULL) AS voided_by_role,
                     COALESCE(void_log.created_at, audit_void.created_at, sa.approved_at) AS voided_at,
-                    COALESCE(void_log.payload->>'reason', audit_void.details->>'reason') AS void_reason
+                    COALESCE(void_log.payload->>'reason', audit_void.details->>'reason') AS void_reason,
+                    (sa.type = 'advance' AND COALESCE(sa.status, 'applied') = 'applied') AS affects_payroll
              FROM salary_adjustments sa
              JOIN staff s ON s.id = sa.staff_id
+             LEFT JOIN LATERAL (
+                SELECT dal.actor_username, dal.actor_role, dal.created_at, dal.payload
+                FROM discipline_actions_log dal
+                WHERE dal.adjustment_id = sa.id AND dal.action_type = 'create'
+                ORDER BY dal.created_at DESC, dal.id DESC
+                LIMIT 1
+             ) create_log ON TRUE
              LEFT JOIN LATERAL (
                 SELECT dal.actor_username, dal.actor_role, dal.created_at, dal.payload
                 FROM discipline_actions_log dal
@@ -7561,25 +7655,41 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
             summaryFilter.params
         );
 
+        const totalsFilter = buildFilters({ includeStatus: false });
+        const totalsResult = await pool.query(
+            `SELECT
+                COALESCE(SUM(sa.amount) FILTER (WHERE COALESCE(sa.status, 'applied') = 'applied'), 0)::numeric AS active_amount,
+                COUNT(*) FILTER (WHERE COALESCE(sa.status, 'applied') = 'applied')::int AS active_count,
+                COALESCE(SUM(sa.amount) FILTER (WHERE COALESCE(sa.status, 'applied') = 'voided'), 0)::numeric AS voided_amount,
+                COUNT(*) FILTER (WHERE COALESCE(sa.status, 'applied') = 'voided')::int AS voided_count,
+                COUNT(*) FILTER (WHERE COALESCE(sa.status, 'applied') = 'pending_review')::int AS pending_count
+             FROM salary_adjustments sa
+             JOIN staff s ON s.id = sa.staff_id
+             ${totalsFilter.where}`,
+            totalsFilter.params
+        );
+        const zrsTotals = totalsResult.rows[0] || {};
+
         let periods = [];
         if (includePeriods) {
-            const periodFilter = buildFilters({ includeStatus: false, includeMonth: false });
             const periodResult = await pool.query(
                 `SELECT DISTINCT sa.month
                  FROM salary_adjustments sa
-                 JOIN staff s ON s.id = sa.staff_id
-                 ${periodFilter.where}
-                 ORDER BY sa.month DESC`,
-                periodFilter.params
+                 WHERE sa.type = 'advance'
+                 ORDER BY sa.month DESC`
             );
             periods = periodResult.rows.map(row => row.month).filter(Boolean);
         }
+
+        const periodLock = payrollMonth ? await loadPayrollPeriodLock(payrollMonth) : null;
 
         res.json({
             success: true,
             data: result.rows,
             summary_rows: summaryResult.rows,
+            totals: zrsTotals,
             periods,
+            period_lock: periodLock,
             pagination: {
                 limit,
                 offset,
@@ -7594,11 +7704,25 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
 });
 
 // PUT /api/hr/salary/adjustment/:id/void — cancel mistaken ZRS before payroll close
-router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
+router.put('/salary/adjustment/:id/void', requireZrsManage, async (req, res) => {
+    const reason = cleanStaffText(req.body?.reason, 500);
+    if (!reason) {
+        return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.VOID_REASON_REQUIRED, 'Вкажіть причину скасування ЗРС');
+    }
     const client = await pool.connect();
     try {
-        const reason = cleanStaffText(req.body?.reason, 500) || 'Скасовано вручну';
+        const actor = payrollActor(req.user);
         await client.query('BEGIN');
+        const monthProbe = await client.query(
+            'SELECT id, month FROM salary_adjustments WHERE id = $1',
+            [req.params.id]
+        );
+        const probedAdjustment = monthProbe.rows[0];
+        if (!probedAdjustment) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Коригування не знайдено' });
+        }
+        await acquirePayrollPeriodMutationLock(client, probedAdjustment.month);
         const current = await client.query(
             `SELECT *
              FROM salary_adjustments
@@ -7615,9 +7739,9 @@ router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.VOID_TYPE_MISMATCH, 'Цей сценарій скасування доступний тільки для ЗРС/авансу');
         }
-        if (!['applied', 'pending_review'].includes(adjustment.status || 'applied')) {
+        if ((adjustment.status || 'applied') !== 'applied') {
             await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: 'Цей ЗРС вже оброблено або скасовано' });
+            return salaryAdjustmentError(res, 409, ZRS_ERROR_CODES.VOID_ALREADY_PROCESSED, 'Цей ЗРС вже оброблено або скасовано');
         }
         await assertPayrollPeriodOpen(adjustment.month, client);
         const result = await client.query(
@@ -7627,41 +7751,46 @@ router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
                  approved_at = NOW()
              WHERE id = $2
              RETURNING *`,
-            [req.user?.username || null, req.params.id]
+            [actor, req.params.id]
         );
+        const voided = result.rows[0];
         await client.query(
             `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
              VALUES ($1,$2,'void',$3,$4,$5,$6)`,
             [
-                result.rows[0].id,
-                result.rows[0].staff_id,
-                req.user?.username,
-                req.user?.role,
-                result.rows[0].template_id,
+                voided.id,
+                voided.staff_id,
+                actor,
+                req.user?.role || null,
+                voided.template_id,
                 JSON.stringify({ reason, previousStatus: adjustment.status || 'applied', type: adjustment.type })
             ]
-        ).catch(e => log.warn('Discipline void log failed:', e.message));
-        await client.query('COMMIT');
-        await auditLog('salary_adjustment_void', Number(result.rows[0].staff_id), req.user?.username, {
-            adjustment_id: Number(result.rows[0].id),
-            type: result.rows[0].type,
-            amount: Number(result.rows[0].amount || 0),
-            month: result.rows[0].month,
+        );
+        await auditLog('salary_adjustment_void', Number(voided.staff_id), actor, {
+            adjustment_id: Number(voided.id),
+            type: voided.type,
+            amount: Number(voided.amount || 0),
+            month: voided.month,
             reason
-        }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        }, req.ip, client);
+        await client.query('COMMIT');
+        res.json({ success: true, data: voided });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/salary/adjustment/:id/void error', err);
         if (err.statusCode) {
-            return res.status(err.statusCode).json({ success: false, code: payrollLockCode(err), error: err.message, period_lock: err.payrollLock || null });
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || payrollLockCode(err),
+                error: err.message,
+                period_lock: err.payrollLock || null
+            });
         }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();
     }
 });
-
 // ==========================================
 // COSTUMES (#8)
 // ==========================================
@@ -7886,23 +8015,27 @@ router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => 
 });
 
 router.post('/salary/period-lock', requirePayrollControl, async (req, res) => {
+    const client = await pool.connect();
     try {
         const month = requirePayrollMonth(req.body?.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
         const actor = payrollActor(req.user);
         const locked = req.body?.locked !== false;
-        const periodLock = await setPayrollPeriodLock(month, locked, actor, req.body?.note || '');
-        const [reconciliation, events] = await Promise.all([
-            loadPayrollReconciliation(month),
-            loadPayrollPeriodEvents(month)
-        ]);
+        await client.query('BEGIN');
+        await acquirePayrollPeriodMutationLock(client, month);
+        const periodLock = await setPayrollPeriodLock(month, locked, actor, req.body?.note || '', client);
+        const reconciliation = await loadPayrollReconciliation(month, client);
+        const events = await loadPayrollPeriodEvents(month, client);
+        await client.query('COMMIT');
         res.json({ success: true, month, period_lock: periodLock, reconciliation, events });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/salary/period-lock error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
-
 router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
     const client = await pool.connect();
     try {

@@ -676,8 +676,8 @@
                 <p class="hr-kpi-subtitle">Суми нижче рахуються тільки з активних записів журналу ЗРС за вибраний місяць.</p>
                 <div class="hr-payroll-filters" id="zrsJournalControls" aria-label="Фільтри журналу ЗРС">
                     <label>
-                        <span class="sr-only">Пошук ЗРС за ПІБ</span>
-                        <input id="zrsSearch" class="hr-payroll-search" type="search" placeholder="Пошук за ПІБ" autocomplete="off" aria-label="Пошук ЗРС за ПІБ">
+                        <span class="sr-only">Пошук ЗРС за ПІБ, ID операції, staff ID або коментарем</span>
+                        <input id="zrsSearch" class="hr-payroll-search" type="search" placeholder="Пошук за ПІБ, #ID, staff ID або коментарем" autocomplete="off" aria-label="Пошук ЗРС за ПІБ, ID операції, staff ID або коментарем">
                     </label>
                     <select id="zrsStatusFilter" class="hr-team-select" aria-label="Статус записів ЗРС">
                         <option value="active">Активні</option>
@@ -697,7 +697,7 @@
                 </div>
                 <h3 class="hr-kpi-title" style="margin-top:16px;">Журнал операцій</h3>
                 <div class="hr-report-table-wrap" style="margin-top:16px;">
-                    <table class="hr-report-table">
+                    <table class="hr-report-table zrs-journal-table">
                         <thead id="zrsJournalHead"></thead>
                         <tbody id="zrsJournalBody"></tbody>
                     </table>

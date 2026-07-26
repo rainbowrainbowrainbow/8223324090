@@ -10237,3 +10237,28 @@ body.dark-mode .hr-print-operation-item strong { color: #e2e8f0 !important; }
     .hr-print-documents-actions #hrPrintOpenButton { grid-column: 1 / -1; }
     .hr-print-documents-actions button { width: 100%; }
 }
+
+#tab-zrs {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+#tab-zrs .hr-report-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#tab-zrs .zrs-journal-table {
+    min-width: 1280px;
+}
+
+#tab-zrs .zrs-journal-table th,
+#tab-zrs .zrs-journal-table td {
+    vertical-align: top;
+}
+
+#tab-zrs .zrs-entry-id {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

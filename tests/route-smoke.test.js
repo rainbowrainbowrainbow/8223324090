@@ -1,4 +1,4 @@
-﻿const { describe, it, before, after, beforeEach } = require('node:test');
+const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -251,15 +251,30 @@ function createFakePool() {
                 department: 'Operations',
                 position: 'Animator',
                 role_type: 'animator'
+            }],
+            [52, {
+                id: 52,
+                name: 'HR Onboarding Newbie',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: '',
+                department: 'Finance',
+                position: 'Accountant',
+                role_type: 'admin'
             }]
         ]),
         salaryAdjustments: new Map([
-            [901, { id: 901, staff_id: 45, month: '2026-05', type: 'advance', amount: 100, reason: 'Existing ZRS', created_by: 'route-smoke', status: 'applied', created_at: '2026-05-12T10:00:00Z' }],
+            [901, { id: 901, staff_id: 45, month: '2026-05', type: 'advance', amount: 100, reason: 'Existing ZRS', created_by: 'route-smoke', created_by_role: 'creator', status: 'applied', created_at: '2026-05-12T10:00:00Z' }],
             [902, { id: 902, staff_id: 45, month: '2026-05', type: 'bonus', amount: 25, reason: 'Existing bonus', created_by: 'route-smoke', status: 'applied', created_at: '2026-05-13T10:00:00Z' }],
             [903, { id: 903, staff_id: 45, month: '2026-04', type: 'advance', amount: 75, reason: 'Locked ZRS', created_by: 'route-smoke', status: 'applied', created_at: '2026-04-12T10:00:00Z' }],
-            [904, { id: 904, staff_id: 45, month: '2026-05', type: 'advance', amount: 40, reason: 'Duplicate ZRS', created_by: 'route-smoke', status: 'voided', created_at: '2026-05-11T10:00:00Z', approved_by: 'route-voider', approved_at: '2026-05-11T11:00:00Z', voided_by: 'route-voider', voided_at: '2026-05-11T11:00:00Z', void_reason: 'Duplicate entry' }]
+            [904, { id: 904, staff_id: 45, month: '2026-05', type: 'advance', amount: 40, reason: 'Duplicate ZRS', created_by: 'route-smoke', status: 'voided', created_at: '2026-05-11T10:00:00Z', approved_by: 'route-voider', approved_at: '2026-05-11T11:00:00Z', voided_by: 'route-voider', voided_at: '2026-05-11T11:00:00Z', void_reason: 'Duplicate entry', voided_by_role: 'admin' }],
+            [905, { id: 905, staff_id: 45, month: '2026-05', type: 'advance', amount: 200, reason: 'Pending ZRS', created_by: 'route-smoke', status: 'pending_review', created_at: '2026-05-10T10:00:00Z' }],
+            [906, { id: 906, staff_id: 51, month: '2024-01', type: 'advance', amount: 60, reason: 'Old ZRS history', created_by: 'route-smoke', status: 'applied', created_at: '2024-01-12T10:00:00Z' }],
+            [907, { id: 907, staff_id: 45, month: '2023-02', type: 'bonus', amount: 25, reason: 'Bonus-only old month', created_by: 'route-smoke', status: 'applied', created_at: '2023-02-12T10:00:00Z' }],
+            [908, { id: 908, staff_id: 52, month: '2026-05', type: 'advance', amount: 30, reason: 'Duplicate name ZRS', created_by: 'director-user', created_by_role: 'director', status: 'applied', created_at: '2026-05-12T09:30:00Z' }]
         ]),
-        nextSalaryAdjustmentId: 905,
+        nextSalaryAdjustmentId: 909,
         payrollPeriodLocks: new Map([
             ['2026-04', { period_month: '2026-04', is_locked: true, locked_at: '2026-04-30T20:00:00Z', locked_by: 'route-smoke', unlocked_at: null, unlocked_by: null, note: 'Route smoke locked period', meta_json: {} }]
         ]),        resourcesByStaff: new Map([
@@ -1886,8 +1901,9 @@ function createFakePool() {
             }
             const salaryAdjustmentRowsForQuery = () => {
                 let rows = Array.from(hrState.salaryAdjustments.values());
-                if (/sa\.staff_id = \$\d+/i.test(text)) {
-                    const index = Number(text.match(/sa\.staff_id = \$(\d+)/i)[1]) - 1;
+                const explicitStaffFilter = text.match(/WHERE\s+sa\.staff_id = \$(\d+)/i);
+                if (explicitStaffFilter) {
+                    const index = Number(explicitStaffFilter[1]) - 1;
                     rows = rows.filter(row => Number(row.staff_id) === Number(params[index]));
                 }
                 if (/sa\.month = \$\d+/i.test(text)) {
@@ -1898,27 +1914,56 @@ function createFakePool() {
                     const index = Number(text.match(/sa\.type = \$(\d+)/i)[1]) - 1;
                     rows = rows.filter(row => String(row.type) === String(params[index]));
                 }
-                if (/s\.name ILIKE \$\d+/i.test(text)) {
-                    const index = Number(text.match(/s\.name ILIKE \$(\d+)/i)[1]) - 1;
-                    const needle = String(params[index] || '').replace(/%/g, '').toLowerCase();
-                    rows = rows.filter(row => String(hrState.staff.get(Number(row.staff_id))?.name || row.staff_name || '').toLowerCase().includes(needle));
+                if (/s\.name ILIKE \$\d+/i.test(text) || /COALESCE\(sa\.reason, ''\) ILIKE \$\d+/i.test(text)) {
+                    const likeMatch = text.match(/s\.name ILIKE \$(\d+)/i) || text.match(/COALESCE\(sa\.reason, ''\) ILIKE \$(\d+)/i);
+                    const index = Number(likeMatch[1]) - 1;
+                    const needle = String(params[index] || '')
+                        .replace(/^%|%$/g, '')
+                        .replace(/\\([\\%_])/g, '$1')
+                        .toLowerCase();
+                    const exactMatch = text.match(/sa\.id = \$(\d+)\s+OR\s+sa\.staff_id = \$\d+/i);
+                    const exactValue = exactMatch ? Number(params[Number(exactMatch[1]) - 1]) : null;
+                    rows = rows.filter(row => {
+                        const staff = hrState.staff.get(Number(row.staff_id)) || {};
+                        const name = String(staff.name || row.staff_name || '').toLowerCase();
+                        const reason = String(row.reason || '').toLowerCase();
+                        return (needle && (name.includes(needle) || reason.includes(needle)))
+                            || (Number.isFinite(exactValue) && (Number(row.id) === exactValue || Number(row.staff_id) === exactValue));
+                    });
                 }
-                if (/COALESCE\(sa\.status, 'applied'\) IN \('applied', 'pending_review'\)/i.test(text)) {
-                    rows = rows.filter(row => ['applied', 'pending_review'].includes(String(row.status || 'applied')));
+                const lastWhereIndex = text.toUpperCase().lastIndexOf('WHERE');
+                const whereText = lastWhereIndex >= 0 ? text.slice(lastWhereIndex) : '';
+                if (/COALESCE\(sa\.status, 'applied'\) = 'applied'/i.test(whereText)) {
+                    rows = rows.filter(row => String(row.status || 'applied') === 'applied');
                 }
-                if (/COALESCE\(sa\.status, 'applied'\) = 'voided'/i.test(text)) {
+                if (/COALESCE\(sa\.status, 'applied'\) = 'voided'/i.test(whereText)) {
                     rows = rows.filter(row => String(row.status || 'applied') === 'voided');
-                }
-                return rows;
+                }                return rows;
             };
             if (/SELECT COUNT\(\*\)::int AS total\s+FROM salary_adjustments sa/i.test(text)) {
                 const rows = salaryAdjustmentRowsForQuery();
                 return { rows: [{ total: rows.length }], rowCount: 1 };
             }
             if (/SELECT DISTINCT sa\.month\s+FROM salary_adjustments sa/i.test(text)) {
-                const rows = salaryAdjustmentRowsForQuery();
+                const rows = /WHERE sa\.type = 'advance'/i.test(text)
+                    ? Array.from(hrState.salaryAdjustments.values()).filter(row => row.type === 'advance')
+                    : salaryAdjustmentRowsForQuery();
                 const months = Array.from(new Set(rows.map(row => row.month).filter(Boolean))).sort().reverse();
                 return { rows: months.map(month => ({ month })), rowCount: months.length };
+            }
+            if (/AS active_amount/i.test(text) && /AS voided_amount/i.test(text) && /AS pending_count/i.test(text)) {
+                const rows = salaryAdjustmentRowsForQuery();
+                const totalFor = status => rows
+                    .filter(row => String(row.status || 'applied') === status)
+                    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+                const countFor = status => rows.filter(row => String(row.status || 'applied') === status).length;
+                return { rows: [{
+                    active_amount: totalFor('applied'),
+                    active_count: countFor('applied'),
+                    voided_amount: totalFor('voided'),
+                    voided_count: countFor('voided'),
+                    pending_count: countFor('pending_review')
+                }], rowCount: 1 };
             }
             if (/SELECT sa\.staff_id,[\s\S]+SUM\(sa\.amount\)::numeric AS zrs_amount/i.test(text)) {
                 const rows = salaryAdjustmentRowsForQuery();
@@ -1933,7 +1978,7 @@ function createFakePool() {
                 const resultRows = Array.from(byStaff.values()).sort((left, right) => String(left.staff_name || '').localeCompare(String(right.staff_name || '')));
                 return { rows: resultRows, rowCount: resultRows.length };
             }
-            if (/SELECT sa\.\*, s\.name AS staff_name/i.test(text) && /FROM salary_adjustments sa/i.test(text)) {
+            if (/SELECT sa\.\*[\s\S]+s\.name AS staff_name/i.test(text) && /FROM salary_adjustments sa/i.test(text)) {
                 let rows = salaryAdjustmentRowsForQuery();
                 const limitIndex = text.match(/LIMIT \$(\d+)/i) ? Number(text.match(/LIMIT \$(\d+)/i)[1]) - 1 : -1;
                 const offsetIndex = text.match(/OFFSET \$(\d+)/i) ? Number(text.match(/OFFSET \$(\d+)/i)[1]) - 1 : -1;
@@ -1943,9 +1988,15 @@ function createFakePool() {
                     .map(row => ({
                         ...row,
                         staff_name: hrState.staff.get(Number(row.staff_id))?.name || null,
+                        staff_role: hrState.staff.get(Number(row.staff_id))?.role_type || null,
+                        staff_department: hrState.staff.get(Number(row.staff_id))?.department || null,
+                        adjustment_id: row.id,
+                        created_by_role: row.created_by_role || null,
                         voided_by: row.voided_by || row.approved_by || null,
+                        voided_by_role: row.voided_by_role || null,
                         voided_at: row.voided_at || row.approved_at || null,
-                        void_reason: row.void_reason || null
+                        void_reason: row.void_reason || null,
+                        affects_payroll: row.type === 'advance' && String(row.status || 'applied') === 'applied'
                     }))
                     .sort((left, right) => String(right.created_at || '').localeCompare(String(left.created_at || '')) || Number(right.id) - Number(left.id))
                     .slice(offset, offset + limit);
@@ -1953,7 +2004,27 @@ function createFakePool() {
             }
             if (/INSERT INTO salary_adjustments \(staff_id, month, type, amount, reason, created_by,/i.test(text)) {
                 const id = hrState.nextSalaryAdjustmentId++;
-                const row = {
+                const literalAdvance = /VALUES \(\$1,\$2,'advance',\$3,\$4,\$5/i.test(text);
+                const row = literalAdvance ? {
+                    id,
+                    staff_id: Number(params[0]),
+                    month: params[1],
+                    type: 'advance',
+                    amount: Number(params[2]),
+                    reason: params[3] || null,
+                    created_by: params[4] || null,
+                    template_id: null,
+                    rule_code: null,
+                    discipline_category: null,
+                    severity: null,
+                    repeat_index: 0,
+                    decision_mode: 'custom',
+                    status: 'applied',
+                    violation_date: null,
+                    evidence_note: null,
+                    evidence_url: null,
+                    created_at: '2026-05-14T10:00:00Z'
+                } : {
                     id,
                     staff_id: Number(params[0]),
                     month: params[1],
@@ -1976,6 +2047,10 @@ function createFakePool() {
                 hrState.salaryAdjustments.set(id, row);
                 return { rows: [{ ...row }], rowCount: 1 };
             }
+            if (/SELECT id, month FROM salary_adjustments WHERE id = \$1/i.test(text)) {
+                const row = hrState.salaryAdjustments.get(Number(params[0]));
+                return { rows: row ? [{ id: row.id, month: row.month }] : [], rowCount: row ? 1 : 0 };
+            }
             if (/SELECT \* FROM salary_adjustments WHERE id = \$1 FOR UPDATE/i.test(text)) {
                 const row = hrState.salaryAdjustments.get(Number(params[0]));
                 return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
@@ -1989,6 +2064,7 @@ function createFakePool() {
                 return { rows: [{ ...row }], rowCount: 1 };
             }
             if (/INSERT INTO discipline_actions_log/i.test(text)) {
+                if (params.some(param => String(param || '').includes('ROUTE_SMOKE_AUDIT_FAIL'))) throw new Error('route smoke ZRS discipline audit failure');
                 return { rows: [], rowCount: 1 };
             }
             if (/SELECT id, staff_id, profession_key, is_primary, status, admission_status, internship_status FROM staff_role_assignments WHERE staff_id = \$1 AND profession_key = \$2(?: FOR SHARE)?$/i.test(text)) {
@@ -2662,6 +2738,7 @@ function createFakePool() {
                 return { rows: [{ id: 990 }], rowCount: 1 };
             }
             if (/INSERT INTO hr_audit_log/i.test(text)) {
+                if (params.some(param => String(param || '').includes('ROUTE_SMOKE_AUDIT_FAIL'))) throw new Error('route smoke ZRS HR audit failure');
                 return { rows: [{ id: 991 }], rowCount: 1 };
             }
             if (/SELECT id FROM leads/i.test(text) && /external_id = \$2/i.test(text)) {
@@ -6520,6 +6597,8 @@ describe('route-level API safety smoke', () => {
             );
             assert.equal(zrsJournal.status, 200, `${role}: ${JSON.stringify(zrsJournal.data)}`);
             assert.equal(zrsJournal.data.success, true);
+            assert.equal(zrsJournal.data.period_lock.period_month, '2026-05');
+            assert.equal(zrsJournal.data.period_lock.is_locked, false);
             assert.equal(zrsJournal.data.data.every(row => row.type === 'advance'), true);
             assert.equal(zrsJournal.data.data.every(row => row.status !== 'voided'), true);
         }
@@ -6536,9 +6615,138 @@ describe('route-level API safety smoke', () => {
         assert.equal(voidedJournal.data.data[0].voided_by, 'route-voider');
         assert.equal(voidedJournal.data.data[0].void_reason, 'Duplicate entry');
         assert.equal(voidedJournal.data.pagination.total, 1);
-        assert.deepEqual(voidedJournal.data.periods, ['2026-05', '2026-04']);
+        assert.deepEqual(voidedJournal.data.periods, ['2026-05', '2026-04', '2024-01']);
         assert.equal(voidedJournal.data.summary_rows[0].staff_id, 45);
         assert.equal(Number(voidedJournal.data.summary_rows[0].zrs_amount), 100);
+        assert.equal(voidedJournal.data.data[0].adjustment_id, 904);
+        assert.equal(voidedJournal.data.data[0].staff_id, 45);
+        assert.equal(voidedJournal.data.data[0].staff_role, 'animator');
+        assert.equal(voidedJournal.data.data[0].staff_department, 'Operations');
+        assert.equal(voidedJournal.data.data[0].voided_by_role, 'admin');
+        assert.equal(voidedJournal.data.data[0].affects_payroll, false);
+        assert.equal(Number(voidedJournal.data.totals.active_amount), 130);
+        assert.equal(Number(voidedJournal.data.totals.voided_amount), 40);
+        assert.equal(Number(voidedJournal.data.totals.voided_count), 1);
+        assert.equal(Number(voidedJournal.data.totals.pending_count), 1);
+
+        const allJournal = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=all&search=Onboarding',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(allJournal.status, 200, JSON.stringify(allJournal.data));
+        assert.ok(allJournal.data.data.some(row => row.status === 'pending_review'));
+        assert.equal(Number(allJournal.data.summary_rows[0].zrs_amount), 100);
+        const byAdjustmentId = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=all&search=%23904',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(byAdjustmentId.status, 200, JSON.stringify(byAdjustmentId.data));
+        assert.equal(byAdjustmentId.data.data.length, 1);
+        assert.equal(byAdjustmentId.data.data[0].adjustment_id, 904);
+
+        const byStaffId = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=all&search=52',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(byStaffId.status, 200, JSON.stringify(byStaffId.data));
+        assert.equal(byStaffId.data.data.length, 1);
+        assert.equal(byStaffId.data.data[0].staff_id, 52);
+        assert.equal(byStaffId.data.data[0].staff_role, 'admin');
+        assert.equal(byStaffId.data.data[0].staff_department, 'Finance');
+
+        const byReason = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=all&search=Pending',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(byReason.status, 200, JSON.stringify(byReason.data));
+        assert.ok(byReason.data.data.some(row => row.adjustment_id === 905));
+
+        const duplicateNames = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=active&search=Onboarding',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(duplicateNames.status, 200, JSON.stringify(duplicateNames.data));
+        assert.ok(duplicateNames.data.data.some(row => row.staff_id === 45 && row.staff_role === 'animator' && row.staff_department === 'Operations'));
+        assert.ok(duplicateNames.data.data.some(row => row.staff_id === 52 && row.staff_role === 'admin' && row.staff_department === 'Finance'));
+        assert.equal(Number(duplicateNames.data.totals.active_amount), 130);
+        assert.equal(Number(duplicateNames.data.totals.voided_amount), 40);
+    });
+
+    it('keeps ZRS read/create/void inside the payroll role matrix', async () => {
+        const allowedRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
+        for (const role of allowedRoles) {
+            const headers = withAuth({}, role);
+            const journal = await request('GET', '/api/hr/salary/adjustments?month=2026-05&type=advance', undefined, headers);
+            assert.equal(journal.status, 200, `${role} GET: ${JSON.stringify(journal.data)}`);
+
+            const createGuardProbe = await request('POST', '/api/hr/salary/adjustment', {
+                staff_id: 'not-a-number',
+                month: '2026-05',
+                type: 'advance',
+                amount: 10
+            }, headers);
+            assert.equal(createGuardProbe.status, 400, `${role} POST: ${JSON.stringify(createGuardProbe.data)}`);
+            assert.equal(createGuardProbe.data.code, 'ZRS_INVALID_STAFF_ID');
+
+            const voidGuardProbe = await request('PUT', '/api/hr/salary/adjustment/999999/void', {
+                reason: 'Guard probe'
+            }, headers);
+            assert.equal(voidGuardProbe.status, 404, `${role} PUT: ${JSON.stringify(voidGuardProbe.data)}`);
+        }
+
+        for (const role of ['manager', 'hr', 'security', 'animator']) {
+            const headers = withAuth({}, role);
+            const journal = await request('GET', '/api/hr/salary/adjustments?month=2026-05&type=advance', undefined, headers);
+            assert.equal(journal.status, 403, `${role} GET: ${JSON.stringify(journal.data)}`);
+            assert.equal(journal.data.error, 'Insufficient permissions');
+
+            for (const type of ['advance', 'zrs']) {
+                const create = await request('POST', '/api/hr/salary/adjustment', {
+                    staff_id: 45,
+                    month: '2026-05',
+                    type,
+                    amount: 10
+                }, headers);
+                assert.equal(create.status, 403, `${role} POST ${type}: ${JSON.stringify(create.data)}`);
+                assert.equal(create.data.error, 'Insufficient permissions');
+            }
+
+            const voided = await request('PUT', '/api/hr/salary/adjustment/901/void', {
+                reason: 'Should stay blocked'
+            }, headers);
+            assert.equal(voided.status, 403, `${role} PUT: ${JSON.stringify(voided.data)}`);
+            assert.equal(voided.data.error, 'Insufficient permissions');
+        }
+
+        for (const role of ['manager', 'hr']) {
+            const bonusCreate = await request('POST', '/api/hr/salary/adjustment', {
+                staff_id: 45,
+                month: '2026-05',
+                type: 'bonus',
+                amount: 5
+            }, withAuth({}, role));
+            assert.equal(bonusCreate.status, 200, `${role} bonus: ${JSON.stringify(bonusCreate.data)}`);
+            assert.equal(bonusCreate.data.data.type, 'bonus');
+        }
+
+        const securityBonus = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'bonus',
+            amount: 5
+        }, withAuth({}, 'security'));
+        assert.equal(securityBonus.status, 403, JSON.stringify(securityBonus.data));
+        assert.equal(securityBonus.data.error, 'Insufficient permissions');
     });
 
     it('hardens ZRS create and void validation without breaking other salary adjustments', async () => {
@@ -6596,6 +6804,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(lockedCreate.data.code, 'PAYROLL_PERIOD_LOCKED');
         assert.equal(lockedCreate.data.period_lock.is_locked, true);
 
+        queries.length = 0;
         const validCreate = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-05',
@@ -6607,7 +6816,35 @@ describe('route-level API safety smoke', () => {
         assert.equal(validCreate.data.success, true);
         assert.equal(validCreate.data.data.staff_id, 45);
         assert.equal(Number(validCreate.data.data.amount), 10);
+        assert.equal(validCreate.data.data.type, 'advance');
+        assert.equal(validCreate.data.data.status, 'applied');
+        assert.equal(validCreate.data.data.reason, 'ЗРС під зарплату');
+        const zrsCreateBeginIndex = queries.findIndex(q => /^BEGIN$/i.test(q.text));
+        const zrsCreateLockIndex = queries.findIndex(q => /pg_advisory_xact_lock\(hashtextextended/i.test(q.text));
+        const zrsCreateStaffIndex = queries.findIndex(q => /SELECT id, name, is_active FROM staff WHERE id = \$1 FOR UPDATE/i.test(q.text));
+        const zrsCreateInsertIndex = queries.findIndex(q => /INSERT INTO salary_adjustments/i.test(q.text));
+        const zrsCreateDisciplineIndex = queries.findIndex(q => /INSERT INTO discipline_actions_log/i.test(q.text));
+        const zrsCreateAuditIndex = queries.findIndex(q => /INSERT INTO hr_audit_log/i.test(q.text));
+        const zrsCreateCommitIndex = queries.findIndex(q => /^COMMIT$/i.test(q.text));
+        assert.ok(zrsCreateBeginIndex >= 0, 'ZRS create starts a transaction');
+        assert.ok(zrsCreateLockIndex > zrsCreateBeginIndex, 'ZRS create acquires month advisory lock inside transaction');
+        assert.ok(zrsCreateStaffIndex > zrsCreateLockIndex, 'ZRS create checks staff after the month lock');
+        assert.ok(zrsCreateInsertIndex > zrsCreateStaffIndex, 'ZRS create inserts after staff validation');
+        assert.ok(zrsCreateDisciplineIndex > zrsCreateInsertIndex, 'ZRS create writes discipline audit after insert');
+        assert.ok(zrsCreateAuditIndex > zrsCreateDisciplineIndex, 'ZRS create writes HR audit before commit');
+        assert.ok(zrsCreateCommitIndex > zrsCreateAuditIndex, 'ZRS create commits only after required audit');
 
+        queries.length = 0;
+        const createAuditFailure = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'advance',
+            amount: 11,
+            reason: 'ROUTE_SMOKE_AUDIT_FAIL create'
+        }, withAuth());
+        assert.equal(createAuditFailure.status, 500, JSON.stringify(createAuditFailure.data));
+        assert.equal(queries.some(q => /^ROLLBACK$/i.test(q.text)), true, 'ZRS create audit failure rolls back');
+        assert.equal(queries.some(q => /^COMMIT$/i.test(q.text)), false, 'ZRS create audit failure does not commit');
         const bonusCreate = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-05',
@@ -6630,12 +6867,52 @@ describe('route-level API safety smoke', () => {
         assert.equal(lockedVoid.status, 423, JSON.stringify(lockedVoid.data));
         assert.equal(lockedVoid.data.code, 'PAYROLL_PERIOD_LOCKED');
 
+        queries.length = 0;
+        const missingVoidReason = await request('PUT', '/api/hr/salary/adjustment/901/void', {}, withAuth());
+        assert.equal(missingVoidReason.status, 400, JSON.stringify(missingVoidReason.data));
+        assert.equal(missingVoidReason.data.code, 'ZRS_VOID_REASON_REQUIRED');
+        assert.equal(queries.some(q => /^BEGIN$/i.test(q.text)), false, 'missing void reason is rejected before transaction');
+
+        queries.length = 0;
         const validVoid = await request('PUT', '/api/hr/salary/adjustment/901/void', {
             reason: 'Valid void route smoke'
         }, withAuth());
         assert.equal(validVoid.status, 200, JSON.stringify(validVoid.data));
         assert.equal(validVoid.data.success, true);
         assert.equal(validVoid.data.data.status, 'voided');
+        assert.equal(validVoid.data.data.approved_by, 'route-smoke');
+        const zrsVoidBeginIndex = queries.findIndex(q => /^BEGIN$/i.test(q.text));
+        const zrsVoidProbeIndex = queries.findIndex(q => /SELECT id, month FROM salary_adjustments WHERE id = \$1/i.test(q.text));
+        const zrsVoidLockIndex = queries.findIndex(q => /pg_advisory_xact_lock\(hashtextextended/i.test(q.text));
+        const zrsVoidForUpdateIndex = queries.findIndex(q => /SELECT \* FROM salary_adjustments WHERE id = \$1 FOR UPDATE/i.test(q.text));
+        const zrsVoidUpdateIndex = queries.findIndex(q => /UPDATE salary_adjustments SET status = 'voided'/i.test(q.text));
+        const zrsVoidDisciplineIndex = queries.findIndex(q => /INSERT INTO discipline_actions_log/i.test(q.text));
+        const zrsVoidAuditIndex = queries.findIndex(q => /INSERT INTO hr_audit_log/i.test(q.text));
+        const zrsVoidCommitIndex = queries.findIndex(q => /^COMMIT$/i.test(q.text));
+        assert.ok(zrsVoidBeginIndex >= 0, 'ZRS void starts a transaction');
+        assert.ok(zrsVoidProbeIndex > zrsVoidBeginIndex, 'ZRS void probes month inside transaction');
+        assert.ok(zrsVoidLockIndex > zrsVoidProbeIndex, 'ZRS void locks month before row update');
+        assert.ok(zrsVoidForUpdateIndex > zrsVoidLockIndex, 'ZRS void locks adjustment row after month lock');
+        assert.ok(zrsVoidUpdateIndex > zrsVoidForUpdateIndex, 'ZRS void updates after row lock');
+        assert.ok(zrsVoidDisciplineIndex > zrsVoidUpdateIndex, 'ZRS void writes discipline audit after update');
+        assert.ok(zrsVoidAuditIndex > zrsVoidDisciplineIndex, 'ZRS void writes HR audit before commit');
+        assert.ok(zrsVoidCommitIndex > zrsVoidAuditIndex, 'ZRS void commits only after required audit');
+
+        queries.length = 0;
+        const voidAuditFailure = await request('PUT', `/api/hr/salary/adjustment/${validCreate.data.data.id}/void`, {
+            reason: 'ROUTE_SMOKE_AUDIT_FAIL void'
+        }, withAuth());
+        assert.equal(voidAuditFailure.status, 500, JSON.stringify(voidAuditFailure.data));
+        assert.equal(queries.some(q => /^ROLLBACK$/i.test(q.text)), true, 'ZRS void audit failure rolls back');
+        assert.equal(queries.some(q => /^COMMIT$/i.test(q.text)), false, 'ZRS void audit failure does not commit');
+        queries.length = 0;
+        const duplicateVoid = await request('PUT', '/api/hr/salary/adjustment/901/void', {
+            reason: 'Duplicate void route smoke'
+        }, withAuth());
+        assert.equal(duplicateVoid.status, 409, JSON.stringify(duplicateVoid.data));
+        assert.equal(duplicateVoid.data.code, 'ZRS_VOID_ALREADY_PROCESSED');
+        assert.equal(queries.some(q => /INSERT INTO discipline_actions_log/i.test(q.text)), false, 'duplicate void does not write another discipline audit');
+        assert.equal(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text)), false, 'duplicate void does not write another HR audit');
     });
 
     it('persists HR company structure as editable org chart nodes', async () => {

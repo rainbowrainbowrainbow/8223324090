@@ -35,7 +35,8 @@ const MODES = {
     hr: ['tests/integration/hr-disposable.integration.test.js'],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
-        'tests/integration/payroll-simultaneous-additional.integration.test.js'
+        'tests/integration/payroll-simultaneous-additional.integration.test.js',
+        'tests/integration/zrs-payroll-period-lock.integration.test.js'
     ],
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
@@ -278,6 +279,7 @@ async function runSuite(testDb, testFile) {
         RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION: testFile.includes('banquet-production-recovery.integration') ? 'true' : 'false',
         RUN_PAYROLL_PROFILES_INTEGRATION: testFile.includes('payroll-profiles') ? 'true' : 'false',
         RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION: testFile.includes('payroll-simultaneous-additional') ? 'true' : 'false',
+        RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION: testFile.includes('zrs-payroll-period-lock') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',

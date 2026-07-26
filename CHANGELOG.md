@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.9 - Релізні запобіжники ЗРС
+
+### Release / ZRS QA / (26.07.2026) [codex]
+- **Чистий Railway deploy** — `release:railway-up` тепер за замовчуванням деплоїть clean `git archive` export точного HEAD, а не потенційно брудну робочу папку.
+- **Надійний version smoke** — live version check отримав retry, timeout і backoff для тимчасових 5xx/network збоїв після deploy.
+- **Fail-closed write QA ЗРС** — додано opt-in smoke для створення двох тестових ЗРС і обовʼязкового cleanup через void; без explicit confirm і QA staff ID він не робить записів.
+- **Стабільні QA selectors** — вкладка ЗРС отримала `data-testid` для місяця, пошуку, статусу, таблиць, retry і pagination controls.
+
+---
+
 ## v0.80.8 - ЗРС: фінансова цілісність
 
 ### HR / ЗП та KPI / ЗРС / (26.07.2026) [codex]

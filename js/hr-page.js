@@ -1,4 +1,4 @@
-/**
+﻿/**
  * hr-page.js — HR module frontend (v30.7)
  *
  * Grouped sections: company pulse, people, structure, salary/KPI, temporary leftovers.
@@ -2658,7 +2658,11 @@ function initNewTabs() {
         syncSalaryPeriodInputsToMonth();
         loadSalary();
     });
-    document.getElementById('zrsMonth')?.addEventListener('change', loadZrs);
+    document.getElementById('zrsMonth')?.addEventListener('change', () => loadZrs());
+    document.getElementById('zrsSearch')?.addEventListener('input', scheduleZrsLoad);
+    document.getElementById('zrsStatusFilter')?.addEventListener('change', () => loadZrs());
+    document.getElementById('zrsRetry')?.addEventListener('click', () => loadZrs());
+    document.getElementById('zrsLoadMore')?.addEventListener('click', loadMoreZrsJournal);
     document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnAddZrs')?.addEventListener('click', showZrsForm);
@@ -16094,7 +16098,7 @@ async function loadSalary() {
     const month = monthSelect?.value || '';
     ensureSalaryPeriodInputs(month);
     const zrsMonth = document.getElementById('zrsMonth');
-    if (zrsMonth) ensurePayrollMonthOptions(zrsMonth, month);
+    if (zrsMonth && !zrsMonth.options.length) ensurePayrollMonthOptions(zrsMonth, month);
     const query = salaryPeriodQueryString();
     if (!query) return;
     const [data] = await Promise.all([
@@ -17510,6 +17514,15 @@ function bindPayrollProfileCatalogControls() {
     });
 }
 
+let zrsLoadRequestId = 0;
+let zrsSearchDebounceTimer = null;
+const ZRS_JOURNAL_PAGE_SIZE = 50;
+const zrsJournalState = {
+    rows: [],
+    pagination: { limit: ZRS_JOURNAL_PAGE_SIZE, offset: 0, total: 0, has_more: false },
+    periods: []
+};
+
 function formatZrsDate(value) {
     if (!value) return '—';
     const date = new Date(value);
@@ -17517,15 +17530,27 @@ function formatZrsDate(value) {
     return date.toLocaleString('uk-UA', {
         day: '2-digit',
         month: '2-digit',
+        year: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         timeZone: 'Europe/Kyiv'
     });
 }
 
+function formatZrsMonth(value) {
+    const month = String(value || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(month)) return '—';
+    const [year, mon] = month.split('-').map(Number);
+    return `${MONTHS_SHORT[mon - 1] || String(mon).padStart(2, '0')} ${year}`;
+}
+
 function zrsAdjustmentActive(row = {}) {
-    const status = String(row.status || 'applied');
+    const status = String(row.status || 'applied').trim().toLowerCase();
     return status === 'applied' || status === 'pending_review';
+}
+
+function zrsAdjustmentIsAdvance(row = {}) {
+    return String(row.type || '').trim().toLowerCase() === 'advance';
 }
 
 function zrsStatusLabel(status) {
@@ -17538,32 +17563,142 @@ function zrsStatusLabel(status) {
     }[normalized] || normalized;
 }
 
-function renderZrs(adjustmentsData = {}, salaryData = {}) {
-    const adjustments = Array.isArray(adjustmentsData.data) ? adjustmentsData.data : [];
-    const activeAdjustments = adjustments.filter(zrsAdjustmentActive);
+function zrsJournalStatusFilterValue() {
+    const value = String(document.getElementById('zrsStatusFilter')?.value || 'active').trim().toLowerCase();
+    return ['active', 'voided', 'all'].includes(value) ? value : 'active';
+}
+
+function currentZrsSearchQuery() {
+    return String(document.getElementById('zrsSearch')?.value || '').trim();
+}
+
+function normalizeZrsPeriods(periods = [], selectedMonth = '') {
+    const seen = new Set();
+    return [selectedMonth, ...periods]
+        .map(period => String(period || '').trim())
+        .filter(period => /^\d{4}-\d{2}$/.test(period))
+        .filter(period => {
+            if (seen.has(period)) return false;
+            seen.add(period);
+            return true;
+        })
+        .sort((left, right) => right.localeCompare(left));
+}
+
+function renderZrsPeriodOptions(monthSelect, periods = [], selectedMonth = '') {
+    if (!monthSelect) return;
+    const normalizedPeriods = normalizeZrsPeriods(periods, selectedMonth || monthSelect.value || currentSalaryMonth());
+    if (!normalizedPeriods.length) return;
+    monthSelect.innerHTML = normalizedPeriods
+        .map(period => `<option value="${escapeHtml(period)}">${escapeHtml(formatZrsMonth(period))}</option>`)
+        .join('');
+    const nextValue = normalizedPeriods.includes(selectedMonth) ? selectedMonth : normalizedPeriods[0];
+    monthSelect.value = nextValue;
+}
+
+function zrsSummaryRowsFromAdjustments(adjustments = []) {
+    const byStaff = new Map();
+    (Array.isArray(adjustments) ? adjustments : [])
+        .filter(row => zrsAdjustmentIsAdvance(row) && zrsAdjustmentActive(row))
+        .forEach(row => {
+            const staffKey = String(row.staff_id || '').trim();
+            if (!staffKey) return;
+            const current = byStaff.get(staffKey) || {
+                staff_id: row.staff_id,
+                staff_name: row.staff_name || '',
+                zrs_amount: 0,
+                active_entry_count: 0
+            };
+            current.zrs_amount += Number(row.amount || row.zrs_amount || 0);
+            current.active_entry_count += 1;
+            if (!current.staff_name && row.staff_name) current.staff_name = row.staff_name;
+            byStaff.set(staffKey, current);
+        });
+    return Array.from(byStaff.values());
+}
+
+function buildZrsViewModel(adjustmentsData = {}, salaryData = {}) {
+    const adjustments = (Array.isArray(adjustmentsData.data) ? adjustmentsData.data : []).filter(zrsAdjustmentIsAdvance);
     const salaryRows = Array.isArray(salaryData.data) ? salaryData.data : [];
-    const zrsRows = salaryRows.filter(row => Number(row.advances || 0) > 0);
-    const totalZrs = Number(salaryData.totals?.total_advances || activeAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0));
-    const affectedCount = zrsRows.length || new Set(activeAdjustments.map(row => row.staff_id)).size;
-    const netAfterZrs = salaryRows.reduce((sum, row) => sum + Number(row.total_salary || 0), 0);
+    const salaryByStaff = new Map(salaryRows.map(row => [String(row.staff_id), row]));
+    const summaryRowsSource = Array.isArray(adjustmentsData.summary_rows) && adjustmentsData.summary_rows.length
+        ? adjustmentsData.summary_rows
+        : zrsSummaryRowsFromAdjustments(adjustments);
+
+    const zrsRows = summaryRowsSource.map(entry => {
+        const staffKey = String(entry.staff_id);
+        const salaryRow = salaryByStaff.get(staffKey) || null;
+        const amount = Number(entry.zrs_amount ?? entry.amount ?? 0);
+        return {
+            ...(salaryRow || {}),
+            staff_id: entry.staff_id,
+            staff_name: salaryRow?.staff_name || entry.staff_name || '',
+            advances: amount,
+            zrs_amount: amount,
+            active_entry_count: Number(entry.active_entry_count || entry.entry_count || 0),
+            salary_missing: !salaryRow
+        };
+    }).filter(row => Number(row.zrs_amount || 0) > 0);
+    const totalZrs = zrsRows.reduce((sum, row) => sum + Number(row.zrs_amount || 0), 0);
+    const activeEntryCount = zrsRows.reduce((sum, row) => sum + Number(row.active_entry_count || 0), 0)
+        || adjustments.filter(row => zrsAdjustmentActive(row)).length;
+    const netAfterZrs = zrsRows.reduce((sum, row) => (
+        sum + (row.salary_missing ? 0 : Number(row.total_salary || 0))
+    ), 0);
+
+    return {
+        adjustments,
+        activeAdjustments: adjustments.filter(row => zrsAdjustmentActive(row)),
+        zrsRows,
+        totalZrs,
+        affectedCount: zrsRows.length,
+        activeEntryCount,
+        netAfterZrs,
+        periods: Array.isArray(adjustmentsData.periods) ? adjustmentsData.periods : [],
+        pagination: adjustmentsData.pagination || { limit: adjustments.length, offset: 0, total: adjustments.length, has_more: false }
+    };
+}
+
+function zrsEmptyRow(message, colspan = 1, tone = '') {
+    const color = tone === 'error' ? '#EF4444' : '#94A3B8';
+    return `<tr><td colspan="${Number(colspan) || 1}" style="text-align:center;color:${color};">${escapeHtml(message)}</td></tr>`;
+}
+
+function renderZrs(adjustmentsData = {}, salaryData = {}) {
+    const { adjustments, zrsRows, totalZrs, affectedCount, activeEntryCount, netAfterZrs, pagination } =
+        buildZrsViewModel(adjustmentsData, salaryData);
     const lock = salaryData.period_lock || { is_locked: false };
     const isLocked = lock.is_locked === true;
     const addBtn = document.getElementById('btnAddZrs');
     const statusEl = document.getElementById('zrsStatus');
+    const infoEl = document.getElementById('zrsJournalInfo');
+    const retryBtn = document.getElementById('zrsRetry');
+    const loadMoreBtn = document.getElementById('zrsLoadMore');
+    const paginationEl = document.getElementById('zrsPagination');
+    const search = currentZrsSearchQuery();
+    const statusFilter = zrsJournalStatusFilterValue();
+    const totalJournal = Number(pagination.total ?? adjustments.length);
 
     if (addBtn) addBtn.disabled = isLocked;
+    if (retryBtn) retryBtn.hidden = true;
     if (statusEl) {
         statusEl.classList.toggle('is-locked', isLocked);
         statusEl.textContent = isLocked
             ? `Період закрито${lock.locked_by ? ` · ${lock.locked_by}` : ''}`
             : 'Період відкрито: ЗРС можна додавати до нарахування зарплати.';
     }
+    if (infoEl) {
+        const statusLabel = { active: 'активні', voided: 'скасовані', all: 'усі' }[statusFilter] || 'активні';
+        const searchPart = search ? ` · пошук: “${search}”` : '';
+        infoEl.textContent = `Журнал: ${statusLabel} · показано ${adjustments.length} з ${totalJournal}${searchPart}`;
+    }
 
     document.getElementById('zrsSummary').innerHTML = `
         <div class="hr-summary">
-            <div class="hr-summary-card red"><div class="value">${fmtMoney(totalZrs)}</div><div class="label">ЗРС до вирахування</div></div>
-            <div class="hr-summary-card"><div class="value">${affectedCount}</div><div class="label">Співробітників</div></div>
-            <div class="hr-summary-card green"><div class="value">${fmtMoney(netAfterZrs)}</div><div class="label">Зарплата після ЗРС</div></div>
+            <div class="hr-summary-card red"><div class="value">${fmtMoney(totalZrs)}</div><div class="label">Активна сума ЗРС</div></div>
+            <div class="hr-summary-card"><div class="value">${affectedCount}</div><div class="label">Працівників із активним ЗРС</div></div>
+            <div class="hr-summary-card"><div class="value">${activeEntryCount}</div><div class="label">Активних записів</div></div>
+            <div class="hr-summary-card green"><div class="value">${fmtMoney(netAfterZrs)}</div><div class="label">До виплати цим працівникам</div></div>
         </div>
     `;
 
@@ -17573,48 +17708,183 @@ function renderZrs(adjustmentsData = {}, salaryData = {}) {
     document.getElementById('zrsBody').innerHTML = zrsRows.length ? zrsRows.map(row => {
         const advances = Number(row.advances || 0);
         const otherDeductions = Number(row.deductions || 0) + Number(row.penalties || 0);
-        const beforeZrs = Number(row.total_salary || 0) + advances;
+        const beforeZrs = row.salary_missing ? null : Number(row.total_salary || 0) + advances;
         return `<tr>
-            <td><strong>${escapeHtml(row.staff_name)}</strong></td>
-            <td>${ROLE_LABELS[row.role_type] || row.role_type || ''}</td>
+            <td><strong>${escapeHtml(row.staff_name)}</strong>${row.salary_missing ? '<div class="hr-filter-info">Немає в розрахунку зарплати</div>' : ''}</td>
+            <td>${escapeHtml(ROLE_LABELS[row.role_type] || row.role_type || '—')}</td>
             <td style="color:#EF4444;">-${fmtMoney(advances)}</td>
             <td>${otherDeductions ? '-' + fmtMoney(otherDeductions) : '—'}</td>
-            <td>${fmtMoney(beforeZrs)}</td>
-            <td><strong>${fmtMoney(Number(row.total_salary || 0))}</strong></td>
+            <td>${beforeZrs === null ? 'Немає в розрахунку' : fmtMoney(beforeZrs)}</td>
+            <td><strong>${row.salary_missing ? '—' : fmtMoney(Number(row.total_salary || 0))}</strong></td>
         </tr>`;
-    }).join('') : '<tr><td colspan="6" style="text-align:center;color:#94A3B8;">ЗРС за цей місяць ще немає</td></tr>';
+    }).join('') : zrsEmptyRow(search ? 'За цим пошуком активних ЗРС немає' : 'Активних ЗРС за цей місяць ще немає', 6);
 
     document.getElementById('zrsJournalHead').innerHTML = `<tr>
-        <th>Дата</th><th>Співробітник</th><th>Сума</th><th>Статус</th><th>Причина</th><th>Додав</th><th>Дія</th>
+        <th>Дата</th><th>Працівник</th><th>Сума</th><th>Payroll month</th><th>Статус</th><th>Коментар</th><th>Хто додав</th><th>Скасування</th><th>Причина скасування</th><th>Дія</th>
     </tr>`;
     document.getElementById('zrsJournalBody').innerHTML = adjustments.length ? adjustments.map(row => {
         const status = String(row.status || 'applied');
         const active = zrsAdjustmentActive(row);
         const canVoid = !isLocked && active;
+        const voidedBy = row.voided_by || row.approved_by || '';
+        const voidedAt = row.voided_at || row.approved_at || '';
+        const voidMeta = voidedBy || voidedAt ? `${voidedBy ? escapeHtml(voidedBy) : '—'}${voidedAt ? `<br><span class="hr-filter-info">${escapeHtml(formatZrsDate(voidedAt))}</span>` : ''}` : '—';
         return `<tr class="${active ? '' : 'is-muted'}">
-            <td>${formatZrsDate(row.created_at)}</td>
+            <td>${escapeHtml(formatZrsDate(row.created_at))}</td>
             <td><strong>${escapeHtml(row.staff_name || '')}</strong></td>
-            <td style="color:#EF4444;">${active ? '-' : ''}${fmtMoney(Number(row.amount || 0))}</td>
+            <td style="color:#EF4444;">-${fmtMoney(Number(row.amount || 0))}</td>
+            <td>${escapeHtml(row.month || '—')}</td>
             <td><span class="zrs-status-badge${active ? '' : ' is-muted'}">${escapeHtml(zrsStatusLabel(status))}</span></td>
             <td>${escapeHtml(row.reason || 'ЗРС під зарплату')}</td>
             <td>${escapeHtml(row.created_by || '—')}</td>
-            <td>${canVoid ? `<button type="button" class="zrs-action-btn" onclick="voidZrsAdjustment(${Number(row.id)})">Скасувати</button>` : '—'}</td>
+            <td>${voidMeta}</td>
+            <td>${escapeHtml(row.void_reason || '—')}</td>
+            <td>${canVoid ? `<button type="button" class="zrs-action-btn" aria-label="Скасувати ЗРС ${escapeHtml(row.staff_name || '')}" onclick="voidZrsAdjustment(${Number(row.id)})">Скасувати</button>` : '—'}</td>
         </tr>`;
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:#94A3B8;">Журнал ЗРС порожній</td></tr>';
+    }).join('') : zrsEmptyRow(search ? 'У журналі немає записів за цим пошуком' : 'Журнал ЗРС порожній для вибраного статусу', 10);
+
+    if (paginationEl) {
+        paginationEl.textContent = totalJournal > adjustments.length
+            ? `Показано ${adjustments.length} з ${totalJournal}`
+            : (totalJournal ? `Показано всі ${totalJournal}` : '');
+    }
+    if (loadMoreBtn) {
+        loadMoreBtn.hidden = !pagination.has_more;
+        loadMoreBtn.disabled = false;
+    }
 }
 
-async function loadZrs() {
+function renderZrsLoadingState({ append = false } = {}) {
+    const statusEl = document.getElementById('zrsStatus');
+    const addBtn = document.getElementById('btnAddZrs');
+    const retryBtn = document.getElementById('zrsRetry');
+    const loadMoreBtn = document.getElementById('zrsLoadMore');
+    if (statusEl) {
+        statusEl.classList.remove('is-locked');
+        statusEl.textContent = append ? 'Завантаження наступної сторінки ЗРС...' : 'Завантаження ЗРС...';
+    }
+    if (addBtn) addBtn.disabled = true;
+    if (retryBtn) retryBtn.hidden = true;
+    if (loadMoreBtn) loadMoreBtn.disabled = true;
+    if (append) return;
+    const summaryEl = document.getElementById('zrsSummary');
+    const bodyEl = document.getElementById('zrsBody');
+    const journalBodyEl = document.getElementById('zrsJournalBody');
+    const infoEl = document.getElementById('zrsJournalInfo');
+    const paginationEl = document.getElementById('zrsPagination');
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (infoEl) infoEl.textContent = 'Оновлення журналу...';
+    if (paginationEl) paginationEl.textContent = '';
+    if (bodyEl) bodyEl.innerHTML = zrsEmptyRow('Завантаження...', 6);
+    if (journalBodyEl) journalBodyEl.innerHTML = zrsEmptyRow('Завантаження...', 10);
+}
+
+function renderZrsError(message = 'Не вдалося завантажити ЗРС') {
+    const statusEl = document.getElementById('zrsStatus');
+    const addBtn = document.getElementById('btnAddZrs');
+    const retryBtn = document.getElementById('zrsRetry');
+    const loadMoreBtn = document.getElementById('zrsLoadMore');
+    const summaryEl = document.getElementById('zrsSummary');
+    const bodyEl = document.getElementById('zrsBody');
+    const journalBodyEl = document.getElementById('zrsJournalBody');
+    const infoEl = document.getElementById('zrsJournalInfo');
+    const paginationEl = document.getElementById('zrsPagination');
+    if (statusEl) {
+        statusEl.classList.remove('is-locked');
+        statusEl.textContent = message;
+    }
+    if (addBtn) addBtn.disabled = false;
+    if (retryBtn) retryBtn.hidden = false;
+    if (loadMoreBtn) loadMoreBtn.hidden = true;
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (infoEl) infoEl.textContent = 'Помилка завантаження';
+    if (paginationEl) paginationEl.textContent = '';
+    if (bodyEl) bodyEl.innerHTML = zrsEmptyRow('Не вдалося завантажити підсумок', 6, 'error');
+    if (journalBodyEl) journalBodyEl.innerHTML = zrsEmptyRow('Не вдалося завантажити журнал. Натисніть “Повторити”.', 10, 'error');
+}
+
+async function loadZrs(options = {}) {
+    const append = options?.append === true;
+    const requestId = ++zrsLoadRequestId;
     const monthSelect = document.getElementById('zrsMonth');
-    ensurePayrollMonthOptions(monthSelect, currentSalaryMonth());
-    const month = monthSelect?.value || currentSalaryMonth();
-    const salaryMonth = document.getElementById('salaryMonth');
-    if (salaryMonth) ensurePayrollMonthOptions(salaryMonth, month);
+    const selectedMonth = monthSelect?.value || currentSalaryMonth();
+    ensurePayrollMonthOptions(monthSelect, selectedMonth);
+    const month = monthSelect?.value || selectedMonth;
+    const offset = append ? zrsJournalState.rows.length : 0;
+    const params = new URLSearchParams({
+        month,
+        type: 'advance',
+        status: zrsJournalStatusFilterValue(),
+        limit: String(ZRS_JOURNAL_PAGE_SIZE),
+        offset: String(offset),
+        include_periods: append ? '0' : '1'
+    });
+    const search = currentZrsSearchQuery();
+    if (search) params.set('search', search);
+
+    renderZrsLoadingState({ append });
     const [adjustments, salary] = await Promise.all([
-        hrFetch(`/salary/adjustments?month=${month}&type=advance`),
-        hrFetch(`/salary?month=${month}`)
+        hrFetch(`/salary/adjustments?${params.toString()}`),
+        hrFetch(`/salary?month=${encodeURIComponent(month)}`)
     ]);
-    if (!adjustments?.success || !salary?.success) return;
-    renderZrs(adjustments, salary);
+    if (requestId !== zrsLoadRequestId) return;
+    if (!adjustments?.success || !salary?.success) {
+        const message = adjustments?.error || salary?.error || 'Не вдалося завантажити ЗРС. Оновіть вкладку та повторіть.';
+        renderZrsError(message);
+        showNotification(message, 'error');
+        return;
+    }
+
+    const rows = Array.isArray(adjustments.data) ? adjustments.data : [];
+    zrsJournalState.rows = append ? [...zrsJournalState.rows, ...rows] : rows;
+    zrsJournalState.pagination = adjustments.pagination || { limit: ZRS_JOURNAL_PAGE_SIZE, offset, total: zrsJournalState.rows.length, has_more: false };
+    if (Array.isArray(adjustments.periods) && adjustments.periods.length) {
+        zrsJournalState.periods = adjustments.periods;
+        renderZrsPeriodOptions(monthSelect, zrsJournalState.periods, month);
+    }
+    renderZrs({ ...adjustments, data: zrsJournalState.rows }, salary);
+}
+
+function scheduleZrsLoad() {
+    clearTimeout(zrsSearchDebounceTimer);
+    zrsSearchDebounceTimer = setTimeout(() => loadZrs(), 180);
+}
+
+function loadMoreZrsJournal() {
+    loadZrs({ append: true });
+}
+
+function buildZrsStaffOptions(rows = []) {
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const normalizedRows = sourceRows.map(row => {
+        const value = String(row.id || '').trim();
+        const name = String(row.name || '').trim();
+        const role = ROLE_LABELS[row.role_type] || row.role_type || '';
+        const department = row.department ? departmentLabel(row.department) : '';
+        return { value, name, role, department, searchText: name };
+    }).filter(row => row.value && row.name);
+    const nameCounts = normalizedRows.reduce((counts, row) => {
+        const key = normalizeSearchText(row.name);
+        counts.set(key, (counts.get(key) || 0) + 1);
+        return counts;
+    }, new Map());
+    return normalizedRows.map(row => {
+        const duplicateName = nameCounts.get(normalizeSearchText(row.name)) > 1;
+        const details = duplicateName ? [row.role, row.department].filter(Boolean) : [];
+        return {
+            value: row.value,
+            label: details.length ? `${row.name} · ${details.join(' · ')}` : row.name,
+            searchText: row.searchText
+        };
+    });
+}
+
+function zrsStaffOptionMatchesQuery(option = {}, query = '') {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return false;
+    const normalizedName = normalizeSearchText(option.searchText || option.label);
+    return normalizedName.includes(normalizedQuery)
+        || normalizedName.split(' ').some(part => part.startsWith(normalizedQuery));
 }
 
 async function showZrsForm() {
@@ -17622,17 +17892,43 @@ async function showZrsForm() {
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     const staff = await hrFetch('/staff?active=true');
     if (!staff?.success) return;
-    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const staffOptions = buildZrsStaffOptions(staff.data);
+    if (!staffOptions.length) {
+        showNotification('Немає активних співробітників для ЗРС', 'error');
+        return;
+    }
+    const filteredStaffOptions = query => {
+        const normalizedQuery = normalizeSearchText(query);
+        const matches = normalizedQuery ? staffOptions.filter(option => zrsStaffOptionMatchesQuery(option, normalizedQuery)) : [];
+        const prompt = normalizedQuery
+            ? (matches.length ? `Знайдено: ${matches.length}` : 'Нікого не знайдено')
+            : 'Введіть літеру або частину ПІБ';
+        return [{ value: '', label: prompt, selected: true, disabled: true }, ...matches];
+    };
+    const validateZrsFormValues = values => {
+        const staffIdValue = String(values.staffId || '').trim();
+        if (!/^\d+$/.test(staffIdValue) || !staffOptions.some(option => option.value === staffIdValue)) {
+            return { key: 'staffId', message: 'Виберіть співробітника зі списку' };
+        }
+        const amountValue = String(values.amount || '').trim();
+        const amount = Number(amountValue);
+        if (!/^\d+$/.test(amountValue) || !Number.isSafeInteger(amount) || amount <= 0) {
+            return { key: 'amount', message: 'Вкажіть позитивну цілу суму ЗРС' };
+        }
+        return null;
+    };
     const result = await formModal('ЗРС під зарплату', [
-        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
+        { key: 'staffQuery', label: 'Пошук співробітника', type: 'search', required: true, placeholder: 'Введіть першу літеру або частину ПІБ', hint: 'Список співробітників нижче оновлюється під час введення.' },
+        { key: 'staffId', label: 'Співробітник', type: 'select', options: filteredStaffOptions(''), dependsOn: 'staffQuery', optionsFor: filteredStaffOptions, required: true },
         { key: 'amount', label: 'Сума ЗРС (₴)', type: 'number', required: true, placeholder: '1000' },
         { key: 'reason', label: 'Коментар', placeholder: 'Наприклад: ЗРС під зарплату' }
-    ], { icon: '💸' });
+    ], { icon: '💸', validate: validateZrsFormValues });
     if (!result) return;
-    const amount = Math.abs(parseInt(result.amount, 10));
-    if (!amount) { showNotification('Вкажіть суму ЗРС', 'error'); return; }
+    const staffIdValue = String(result.staffId || '').trim();
+    const staffId = Number(staffIdValue);
+    const amount = Number(String(result.amount || '').trim());
     const data = await hrFetch('/salary/adjustment', 'POST', {
-        staff_id: parseInt(result.staffId, 10),
+        staff_id: staffId,
         month,
         type: 'advance',
         amount,

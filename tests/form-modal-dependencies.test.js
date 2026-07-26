@@ -1,4 +1,4 @@
-const test = require('node:test');
+﻿const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -199,4 +199,37 @@ test('account password validator treats formModal context as context, not passwo
         validate({ newPassword: 'short', confirmPassword: 'short' }, 'newPassword'),
         { key: 'newPassword', message: 'Пароль має бути не менше 6 символів' }
     );
+});
+test('formModal rebuilds dependent employee select on input events', async () => {
+    const { window } = createDom();
+    const staffOptions = [
+        { value: '1', label: '\u0410\u043b\u043b\u0430 \u041a\u043e\u0432\u0430\u043b\u044c' },
+        { value: '2', label: '\u041e\u043b\u0435\u043d\u0430 \u0410\u043b\u0435\u0439\u043d\u0438\u043a\u043e\u0432\u0430' },
+        { value: '3', label: '\u041c\u0430\u0440\u0456\u044f \u041f\u0435\u0442\u0440\u0435\u043d\u043a\u043e' }
+    ];
+    const optionsFor = query => {
+        const normalized = String(query || '').trim().toLocaleLowerCase('uk-UA');
+        const matches = normalized ? staffOptions.filter(option => option.label.toLocaleLowerCase('uk-UA').includes(normalized)) : [];
+        return [{ value: '', label: normalized ? `Found: ${matches.length}` : 'Type a name', selected: true, disabled: true }, ...matches];
+    };
+    const resultPromise = window.formModal('ZRS', [
+        { key: 'staffQuery', label: 'Search', type: 'search', required: true },
+        { key: 'staffId', label: 'Staff', type: 'select', dependsOn: 'staffQuery', options: optionsFor(''), optionsFor, required: true }
+    ], { type: 'info' });
+    const overlay = window.document.querySelector('.form-modal-overlay');
+    const input = overlay.querySelector('#fm_staffQuery');
+    const select = overlay.querySelector('#fm_staffId');
+
+    assert.deepEqual(Array.from(select.options).map(option => option.value), ['']);
+    input.value = '\u0430\u043b';
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    assert.deepEqual(Array.from(select.options).map(option => option.value), ['', '1', '2']);
+    assert.equal(select.value, '');
+
+    select.value = '1';
+    overlay.querySelector('.confirm-ok').click();
+    const result = await resultPromise;
+    assert.equal(result.staffQuery, input.value);
+    assert.equal(result.staffId, '1');
 });

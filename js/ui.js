@@ -2092,6 +2092,9 @@ function formModal(title, fields, options = {}) {
 
                 dependentRebuilders.push(rebuild);
                 parent.addEventListener('change', rebuild);
+                if (parent.matches?.('input:not([type="checkbox"]):not([type="radio"]), textarea')) {
+                    parent.addEventListener('input', rebuild);
+                }
                 rebuild();
             });
         fields
@@ -2113,6 +2116,9 @@ function formModal(title, fields, options = {}) {
 
                 dependentRebuilders.push(rebuild);
                 parent.addEventListener('change', rebuild);
+                if (parent.matches?.('input:not([type="checkbox"]):not([type="radio"]), textarea')) {
+                    parent.addEventListener('input', rebuild);
+                }
                 rebuild();
             });
         const rebuildDependentFields = () => dependentRebuilders.forEach(rebuild => rebuild());

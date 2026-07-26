@@ -1,4 +1,4 @@
-const { describe, it, before, after, beforeEach } = require('node:test');
+﻿const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -240,9 +240,29 @@ function createFakePool() {
                 hr_pool_status: 'core',
                 blacklist_reason: null,
                 notes: ''
+            }],
+            [51, {
+                id: 51,
+                name: 'Inactive ZRS Fixture',
+                is_active: false,
+                hr_pool_status: 'dismissed',
+                blacklist_reason: null,
+                notes: '',
+                department: 'Operations',
+                position: 'Animator',
+                role_type: 'animator'
             }]
         ]),
-        resourcesByStaff: new Map([
+        salaryAdjustments: new Map([
+            [901, { id: 901, staff_id: 45, month: '2026-05', type: 'advance', amount: 100, reason: 'Existing ZRS', created_by: 'route-smoke', status: 'applied', created_at: '2026-05-12T10:00:00Z' }],
+            [902, { id: 902, staff_id: 45, month: '2026-05', type: 'bonus', amount: 25, reason: 'Existing bonus', created_by: 'route-smoke', status: 'applied', created_at: '2026-05-13T10:00:00Z' }],
+            [903, { id: 903, staff_id: 45, month: '2026-04', type: 'advance', amount: 75, reason: 'Locked ZRS', created_by: 'route-smoke', status: 'applied', created_at: '2026-04-12T10:00:00Z' }],
+            [904, { id: 904, staff_id: 45, month: '2026-05', type: 'advance', amount: 40, reason: 'Duplicate ZRS', created_by: 'route-smoke', status: 'voided', created_at: '2026-05-11T10:00:00Z', approved_by: 'route-voider', approved_at: '2026-05-11T11:00:00Z', voided_by: 'route-voider', voided_at: '2026-05-11T11:00:00Z', void_reason: 'Duplicate entry' }]
+        ]),
+        nextSalaryAdjustmentId: 905,
+        payrollPeriodLocks: new Map([
+            ['2026-04', { period_month: '2026-04', is_locked: true, locked_at: '2026-04-30T20:00:00Z', locked_by: 'route-smoke', unlocked_at: null, unlocked_by: null, note: 'Route smoke locked period', meta_json: {} }]
+        ]),        resourcesByStaff: new Map([
             [42, [{
                 id: 501,
                 resource_kind: 'warehouse_stock',
@@ -1859,6 +1879,117 @@ function createFakePool() {
             if (/SELECT id, name, is_active FROM staff WHERE id = \$1(?: FOR UPDATE)?$/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [{ id: staff.id, name: staff.name, is_active: staff.is_active }] : [], rowCount: staff ? 1 : 0 };
+            }
+            if (/FROM payroll_period_locks\s+WHERE period_month = \$1/i.test(text)) {
+                const lock = hrState.payrollPeriodLocks.get(String(params[0]));
+                return { rows: lock ? [{ ...lock }] : [], rowCount: lock ? 1 : 0 };
+            }
+            const salaryAdjustmentRowsForQuery = () => {
+                let rows = Array.from(hrState.salaryAdjustments.values());
+                if (/sa\.staff_id = \$\d+/i.test(text)) {
+                    const index = Number(text.match(/sa\.staff_id = \$(\d+)/i)[1]) - 1;
+                    rows = rows.filter(row => Number(row.staff_id) === Number(params[index]));
+                }
+                if (/sa\.month = \$\d+/i.test(text)) {
+                    const index = Number(text.match(/sa\.month = \$(\d+)/i)[1]) - 1;
+                    rows = rows.filter(row => String(row.month) === String(params[index]));
+                }
+                if (/sa\.type = \$\d+/i.test(text)) {
+                    const index = Number(text.match(/sa\.type = \$(\d+)/i)[1]) - 1;
+                    rows = rows.filter(row => String(row.type) === String(params[index]));
+                }
+                if (/s\.name ILIKE \$\d+/i.test(text)) {
+                    const index = Number(text.match(/s\.name ILIKE \$(\d+)/i)[1]) - 1;
+                    const needle = String(params[index] || '').replace(/%/g, '').toLowerCase();
+                    rows = rows.filter(row => String(hrState.staff.get(Number(row.staff_id))?.name || row.staff_name || '').toLowerCase().includes(needle));
+                }
+                if (/COALESCE\(sa\.status, 'applied'\) IN \('applied', 'pending_review'\)/i.test(text)) {
+                    rows = rows.filter(row => ['applied', 'pending_review'].includes(String(row.status || 'applied')));
+                }
+                if (/COALESCE\(sa\.status, 'applied'\) = 'voided'/i.test(text)) {
+                    rows = rows.filter(row => String(row.status || 'applied') === 'voided');
+                }
+                return rows;
+            };
+            if (/SELECT COUNT\(\*\)::int AS total\s+FROM salary_adjustments sa/i.test(text)) {
+                const rows = salaryAdjustmentRowsForQuery();
+                return { rows: [{ total: rows.length }], rowCount: 1 };
+            }
+            if (/SELECT DISTINCT sa\.month\s+FROM salary_adjustments sa/i.test(text)) {
+                const rows = salaryAdjustmentRowsForQuery();
+                const months = Array.from(new Set(rows.map(row => row.month).filter(Boolean))).sort().reverse();
+                return { rows: months.map(month => ({ month })), rowCount: months.length };
+            }
+            if (/SELECT sa\.staff_id,[\s\S]+SUM\(sa\.amount\)::numeric AS zrs_amount/i.test(text)) {
+                const rows = salaryAdjustmentRowsForQuery();
+                const byStaff = new Map();
+                rows.forEach(row => {
+                    const key = Number(row.staff_id);
+                    const current = byStaff.get(key) || { staff_id: key, staff_name: hrState.staff.get(key)?.name || row.staff_name || null, zrs_amount: 0, active_entry_count: 0 };
+                    current.zrs_amount += Number(row.amount || 0);
+                    current.active_entry_count += 1;
+                    byStaff.set(key, current);
+                });
+                const resultRows = Array.from(byStaff.values()).sort((left, right) => String(left.staff_name || '').localeCompare(String(right.staff_name || '')));
+                return { rows: resultRows, rowCount: resultRows.length };
+            }
+            if (/SELECT sa\.\*, s\.name AS staff_name/i.test(text) && /FROM salary_adjustments sa/i.test(text)) {
+                let rows = salaryAdjustmentRowsForQuery();
+                const limitIndex = text.match(/LIMIT \$(\d+)/i) ? Number(text.match(/LIMIT \$(\d+)/i)[1]) - 1 : -1;
+                const offsetIndex = text.match(/OFFSET \$(\d+)/i) ? Number(text.match(/OFFSET \$(\d+)/i)[1]) - 1 : -1;
+                const limit = limitIndex >= 0 ? Number(params[limitIndex]) : rows.length;
+                const offset = offsetIndex >= 0 ? Number(params[offsetIndex]) : 0;
+                rows = rows
+                    .map(row => ({
+                        ...row,
+                        staff_name: hrState.staff.get(Number(row.staff_id))?.name || null,
+                        voided_by: row.voided_by || row.approved_by || null,
+                        voided_at: row.voided_at || row.approved_at || null,
+                        void_reason: row.void_reason || null
+                    }))
+                    .sort((left, right) => String(right.created_at || '').localeCompare(String(left.created_at || '')) || Number(right.id) - Number(left.id))
+                    .slice(offset, offset + limit);
+                return { rows, rowCount: rows.length };
+            }
+            if (/INSERT INTO salary_adjustments \(staff_id, month, type, amount, reason, created_by,/i.test(text)) {
+                const id = hrState.nextSalaryAdjustmentId++;
+                const row = {
+                    id,
+                    staff_id: Number(params[0]),
+                    month: params[1],
+                    type: params[2],
+                    amount: Number(params[3]),
+                    reason: params[4] || null,
+                    created_by: params[5] || null,
+                    template_id: params[6] || null,
+                    rule_code: params[7] || null,
+                    discipline_category: params[8] || null,
+                    severity: params[9] || null,
+                    repeat_index: params[10] || 0,
+                    decision_mode: params[11] || 'custom',
+                    status: params[12] || 'applied',
+                    violation_date: params[13] || null,
+                    evidence_note: params[14] || null,
+                    evidence_url: params[15] || null,
+                    created_at: '2026-05-14T10:00:00Z'
+                };
+                hrState.salaryAdjustments.set(id, row);
+                return { rows: [{ ...row }], rowCount: 1 };
+            }
+            if (/SELECT \* FROM salary_adjustments WHERE id = \$1 FOR UPDATE/i.test(text)) {
+                const row = hrState.salaryAdjustments.get(Number(params[0]));
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/UPDATE salary_adjustments SET status = 'voided'/i.test(text)) {
+                const row = hrState.salaryAdjustments.get(Number(params[1]));
+                if (!row) return { rows: [], rowCount: 0 };
+                row.status = 'voided';
+                row.approved_by = params[0] || null;
+                row.approved_at = '2026-05-14T10:05:00Z';
+                return { rows: [{ ...row }], rowCount: 1 };
+            }
+            if (/INSERT INTO discipline_actions_log/i.test(text)) {
+                return { rows: [], rowCount: 1 };
             }
             if (/SELECT id, staff_id, profession_key, is_primary, status, admission_status, internship_status FROM staff_role_assignments WHERE staff_id = \$1 AND profession_key = \$2(?: FOR SHARE)?$/i.test(text)) {
                 const assignment = hrState.staffRoleAssignments.get(`${Number(params[0])}:${String(params[1])}`);
@@ -6369,7 +6500,142 @@ describe('route-level API safety smoke', () => {
             );
             assert.equal(reconciliation.status, 403, `${role}: ${JSON.stringify(reconciliation.data)}`);
             assert.equal(reconciliation.data.error, 'Insufficient permissions');
+
+            const zrsJournal = await request(
+                'GET',
+                '/api/hr/salary/adjustments?month=2026-05&type=advance',
+                undefined,
+                headers
+            );
+            assert.equal(zrsJournal.status, 403, `${role}: ${JSON.stringify(zrsJournal.data)}`);
+            assert.equal(zrsJournal.data.error, 'Insufficient permissions');
         }
+
+        for (const role of ['creator', 'admin']) {
+            const zrsJournal = await request(
+                'GET',
+                '/api/hr/salary/adjustments?month=2026-05&type=advance',
+                undefined,
+                withAuth({}, role)
+            );
+            assert.equal(zrsJournal.status, 200, `${role}: ${JSON.stringify(zrsJournal.data)}`);
+            assert.equal(zrsJournal.data.success, true);
+            assert.equal(zrsJournal.data.data.every(row => row.type === 'advance'), true);
+            assert.equal(zrsJournal.data.data.every(row => row.status !== 'voided'), true);
+        }
+
+        const voidedJournal = await request(
+            'GET',
+            '/api/hr/salary/adjustments?month=2026-05&type=advance&status=voided&search=Onboarding&include_periods=1&limit=1',
+            undefined,
+            withAuth({}, 'creator')
+        );
+        assert.equal(voidedJournal.status, 200, JSON.stringify(voidedJournal.data));
+        assert.equal(voidedJournal.data.data.length, 1);
+        assert.equal(voidedJournal.data.data[0].status, 'voided');
+        assert.equal(voidedJournal.data.data[0].voided_by, 'route-voider');
+        assert.equal(voidedJournal.data.data[0].void_reason, 'Duplicate entry');
+        assert.equal(voidedJournal.data.pagination.total, 1);
+        assert.deepEqual(voidedJournal.data.periods, ['2026-05', '2026-04']);
+        assert.equal(voidedJournal.data.summary_rows[0].staff_id, 45);
+        assert.equal(Number(voidedJournal.data.summary_rows[0].zrs_amount), 100);
+    });
+
+    it('hardens ZRS create and void validation without breaking other salary adjustments', async () => {
+        const securityCreate = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'advance',
+            amount: 10
+        }, withAuth({}, 'security'));
+        assert.equal(securityCreate.status, 403, JSON.stringify(securityCreate.data));
+
+        const invalidStaff = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 'not-a-number',
+            month: '2026-05',
+            type: 'advance',
+            amount: 10
+        }, withAuth());
+        assert.equal(invalidStaff.status, 400, JSON.stringify(invalidStaff.data));
+        assert.equal(invalidStaff.data.code, 'ZRS_INVALID_STAFF_ID');
+
+        const missingStaff = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 999,
+            month: '2026-05',
+            type: 'advance',
+            amount: 10
+        }, withAuth());
+        assert.equal(missingStaff.status, 404, JSON.stringify(missingStaff.data));
+        assert.equal(missingStaff.data.code, 'ZRS_STAFF_NOT_FOUND');
+
+        const inactiveStaff = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 51,
+            month: '2026-05',
+            type: 'advance',
+            amount: 10
+        }, withAuth());
+        assert.equal(inactiveStaff.status, 409, JSON.stringify(inactiveStaff.data));
+        assert.equal(inactiveStaff.data.code, 'ZRS_STAFF_INACTIVE');
+
+        const invalidAmount = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'advance',
+            amount: -10
+        }, withAuth());
+        assert.equal(invalidAmount.status, 400, JSON.stringify(invalidAmount.data));
+        assert.equal(invalidAmount.data.code, 'ZRS_INVALID_AMOUNT');
+
+        const lockedCreate = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-04',
+            type: 'advance',
+            amount: 10
+        }, withAuth());
+        assert.equal(lockedCreate.status, 423, JSON.stringify(lockedCreate.data));
+        assert.equal(lockedCreate.data.code, 'PAYROLL_PERIOD_LOCKED');
+        assert.equal(lockedCreate.data.period_lock.is_locked, true);
+
+        const validCreate = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'advance',
+            amount: 10,
+            reason: ''
+        }, withAuth());
+        assert.equal(validCreate.status, 200, JSON.stringify(validCreate.data));
+        assert.equal(validCreate.data.success, true);
+        assert.equal(validCreate.data.data.staff_id, 45);
+        assert.equal(Number(validCreate.data.data.amount), 10);
+
+        const bonusCreate = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'bonus',
+            amount: -25
+        }, withAuth());
+        assert.equal(bonusCreate.status, 200, JSON.stringify(bonusCreate.data));
+        assert.equal(bonusCreate.data.data.type, 'bonus');
+        assert.equal(Number(bonusCreate.data.data.amount), 25);
+
+        const voidOtherType = await request('PUT', '/api/hr/salary/adjustment/902/void', {
+            reason: 'Wrong type route smoke'
+        }, withAuth());
+        assert.equal(voidOtherType.status, 400, JSON.stringify(voidOtherType.data));
+        assert.equal(voidOtherType.data.code, 'ZRS_VOID_TYPE_MISMATCH');
+
+        const lockedVoid = await request('PUT', '/api/hr/salary/adjustment/903/void', {
+            reason: 'Locked period route smoke'
+        }, withAuth());
+        assert.equal(lockedVoid.status, 423, JSON.stringify(lockedVoid.data));
+        assert.equal(lockedVoid.data.code, 'PAYROLL_PERIOD_LOCKED');
+
+        const validVoid = await request('PUT', '/api/hr/salary/adjustment/901/void', {
+            reason: 'Valid void route smoke'
+        }, withAuth());
+        assert.equal(validVoid.status, 200, JSON.stringify(validVoid.data));
+        assert.equal(validVoid.data.success, true);
+        assert.equal(validVoid.data.data.status, 'voided');
     });
 
     it('persists HR company structure as editable org chart nodes', async () => {

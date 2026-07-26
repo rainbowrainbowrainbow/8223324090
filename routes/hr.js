@@ -1,4 +1,4 @@
-/**
+﻿/**
  * routes/hr.js — HR module API (v30.7)
  *
  * Endpoints: staff HR data, shifts, clock-in/out, time records, reports, templates
@@ -228,7 +228,50 @@ const requirePayrollControl = (req, res, next) => {
     }
     next();
 };
-// Operational caps keep Cartesian bulk work bounded while preserving the existing 500-row API ceiling.
+const ZRS_ERROR_CODES = Object.freeze({
+    INVALID_STAFF_ID: 'ZRS_INVALID_STAFF_ID',
+    STAFF_NOT_FOUND: 'ZRS_STAFF_NOT_FOUND',
+    STAFF_INACTIVE: 'ZRS_STAFF_INACTIVE',
+    INVALID_AMOUNT: 'ZRS_INVALID_AMOUNT',
+    INVALID_MONTH: 'ZRS_INVALID_MONTH',
+    PERIOD_LOCKED: 'PAYROLL_PERIOD_LOCKED',
+    VOID_TYPE_MISMATCH: 'ZRS_VOID_TYPE_MISMATCH'
+});
+
+function salaryAdjustmentError(res, status, code, error, extra = {}) {
+    return res.status(status).json({ success: false, code, error, ...extra });
+}
+
+function parsePositiveSafeInteger(value) {
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const number = Number(text);
+    return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+function parseNonNegativeSafeInteger(value, fallback = 0) {
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return fallback;
+    const number = Number(text);
+    return Number.isSafeInteger(number) && number >= 0 ? number : fallback;
+}
+
+function normalizeZrsJournalStatusFilter(value = 'active') {
+    const status = String(value || 'active').trim().toLowerCase();
+    return ['active', 'voided', 'all'].includes(status) ? status : 'active';
+}
+
+async function loadSalaryAdjustmentStaffTarget(staffId, db = pool) {
+    const result = await db.query(
+        'SELECT id, name, is_active FROM staff WHERE id = $1',
+        [staffId]
+    );
+    return result.rows[0] || null;
+}
+
+function payrollLockCode(err) {
+    return err?.code || (err?.statusCode === 423 ? ZRS_ERROR_CODES.PERIOD_LOCKED : null);
+}// Operational caps keep Cartesian bulk work bounded while preserving the existing 500-row API ceiling.
 const HR_SHIFT_BULK_MAX_ENTRIES = 500;
 const HR_SHIFT_BULK_MAX_STAFF = 500;
 const HR_SHIFT_BULK_MAX_DATES = 31;
@@ -7291,14 +7334,41 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         }
 
         const payrollMonth = requirePayrollMonth(month);
-        if (!payrollMonth) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        if (!payrollMonth) {
+            if (adjustmentType === 'advance') {
+                return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_MONTH, 'month required (YYYY-MM)');
+            }
+            return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        }
+
+        let targetStaffId = staff_id;
+        let finalAmount;
+        if (adjustmentType === 'advance') {
+            const parsedStaffId = parsePositiveSafeInteger(staff_id);
+            if (!parsedStaffId) {
+                return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_STAFF_ID, 'Виберіть коректного працівника');
+            }
+            targetStaffId = parsedStaffId;
+            finalAmount = parsePositiveSafeInteger(amount);
+            if (!finalAmount) {
+                return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_AMOUNT, 'Сума ЗРС має бути додатним цілим числом');
+            }
+            const staffRow = await loadSalaryAdjustmentStaffTarget(targetStaffId);
+            if (!staffRow) {
+                return salaryAdjustmentError(res, 404, ZRS_ERROR_CODES.STAFF_NOT_FOUND, 'Працівника не знайдено');
+            }
+            if (staffRow.is_active === false) {
+                return salaryAdjustmentError(res, 409, ZRS_ERROR_CODES.STAFF_INACTIVE, 'ЗРС можна додати тільки активному працівнику');
+            }
+        } else {
+            finalAmount = Math.abs(Number(amount));
+            if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+                return res.status(400).json({ success: false, error: 'Сума має бути більшою за 0' });
+            }
+        }
         await assertPayrollPeriodOpen(payrollMonth);
 
         let finalReason = reason;
-        let finalAmount = Math.abs(Number(amount));
-        if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
-            return res.status(400).json({ success: false, error: 'Сума має бути більшою за 0' });
-        }
         let ruleCode = null, disciplineCategory = null, severity = null;
         let repeatIndex = 0, decisionMode = 'custom', needsReview = false;
         let tplId = adjustmentType === 'advance' ? null : template_id || null;
@@ -7326,7 +7396,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
                 `SELECT COUNT(*)::int AS c FROM salary_adjustments
                  WHERE staff_id = $1 AND type IN ('penalty','deduction')
                  AND (template_id = $2 OR rule_code = $3 OR discipline_category = $4)`,
-                [staff_id, tpl.id, tpl.code, tpl.discipline_category]
+                [targetStaffId, tpl.id, tpl.code, tpl.discipline_category]
             );
             repeatIndex = (repeatRes.rows[0]?.c || 0) + 1;
             if (tpl.is_repeat_offense || repeatIndex > 1 || severity === 'critical') needsReview = true;
@@ -7338,7 +7408,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
              template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
              violation_date, evidence_note, evidence_url)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-            [staff_id, payrollMonth, adjustmentType, finalAmount, finalReason, req.user?.username,
+            [targetStaffId, payrollMonth, adjustmentType, finalAmount, finalReason, req.user?.username,
              tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status,
              violation_date || null, evidence_note || null, evidence_url || null]
         );
@@ -7348,11 +7418,11 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         await pool.query(
             `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [adj.id, staff_id, 'create', req.user?.username, req.user?.role, tplId,
+            [adj.id, targetStaffId, 'create', req.user?.username, req.user?.role, tplId,
              JSON.stringify({ amount: finalAmount, reason: finalReason, severity, repeatIndex, needsReview })]
         ).catch(e => log.warn('Discipline log failed:', e.message));
 
-        await auditLog('salary_adjustment', staff_id, req.user?.username, { type: adjustmentType, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
+        await auditLog('salary_adjustment', targetStaffId, req.user?.username, { type: adjustmentType, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
 
         // Dry notification to staff (fire-and-forget, no word "штраф")
         if ((adjustmentType === 'penalty' || adjustmentType === 'deduction') && status === 'applied') {
@@ -7378,7 +7448,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         if (err.statusCode) {
             return res.status(err.statusCode).json({
                 success: false,
-                code: err.code || null,
+                code: payrollLockCode(err),
                 error: err.message,
                 details: err.details || null,
                 period_lock: err.payrollLock || null
@@ -7389,22 +7459,134 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
 });
 
 // GET /api/hr/salary/adjustments — list adjustments
-router.get('/salary/adjustments', async (req, res) => {
+router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
     try {
         const { staff_id, month } = req.query;
         const requestedType = String(req.query.type || '').trim().toLowerCase();
         const adjustmentType = requestedType === 'zrs' ? 'advance' : requestedType;
-        let sql = `SELECT sa.*, s.name AS staff_name FROM salary_adjustments sa
-                   JOIN staff s ON s.id = sa.staff_id`;
-        const params = [];
-        const conds = [];
-        if (staff_id) { params.push(parseInt(staff_id)); conds.push(`sa.staff_id = $${params.length}`); }
-        if (month) { params.push(month); conds.push(`sa.month = $${params.length}`); }
-        if (adjustmentType) { params.push(adjustmentType); conds.push(`sa.type = $${params.length}`); }
-        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-        sql += ' ORDER BY sa.created_at DESC';
-        const result = await pool.query(sql, params);
-        res.json({ success: true, data: result.rows });
+        const statusFilter = normalizeZrsJournalStatusFilter(req.query.status);
+        const search = (cleanStaffText(req.query.search || req.query.q || '', 120) || '').trim();
+        const limit = Math.min(parsePositiveSafeInteger(req.query.limit) || 50, 100);
+        const offset = parseNonNegativeSafeInteger(req.query.offset, 0);
+        const includePeriods = ['1', 'true', 'yes'].includes(String(req.query.include_periods || '').trim().toLowerCase());
+        const parsedStaffId = staff_id ? parsePositiveSafeInteger(staff_id) : null;
+        const payrollMonth = month ? requirePayrollMonth(month) : '';
+
+        if (staff_id && !parsedStaffId) {
+            return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_STAFF_ID, 'Виберіть коректного працівника');
+        }
+        if (month && !payrollMonth) {
+            return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_MONTH, 'month required (YYYY-MM)');
+        }
+
+        const buildFilters = ({ includeStatus = true, forceActive = false, includeMonth = true } = {}) => {
+            const params = [];
+            const conds = [];
+            if (parsedStaffId) {
+                params.push(parsedStaffId);
+                conds.push(`sa.staff_id = $${params.length}`);
+            }
+            if (payrollMonth && includeMonth) {
+                params.push(payrollMonth);
+                conds.push(`sa.month = $${params.length}`);
+            }
+            if (adjustmentType) {
+                params.push(adjustmentType);
+                conds.push(`sa.type = $${params.length}`);
+            }
+            if (search) {
+                params.push(`%${search}%`);
+                conds.push(`s.name ILIKE $${params.length}`);
+            }
+            if (forceActive) {
+                conds.push("COALESCE(sa.status, 'applied') IN ('applied', 'pending_review')");
+            } else if (includeStatus) {
+                if (statusFilter === 'active') conds.push("COALESCE(sa.status, 'applied') IN ('applied', 'pending_review')");
+                if (statusFilter === 'voided') conds.push("COALESCE(sa.status, 'applied') = 'voided'");
+            }
+            return { params, where: conds.length ? `WHERE ${conds.join(' AND ')}` : '' };
+        };
+
+        const journalFilter = buildFilters();
+        const countResult = await pool.query(
+            `SELECT COUNT(*)::int AS total
+             FROM salary_adjustments sa
+             JOIN staff s ON s.id = sa.staff_id
+             ${journalFilter.where}`,
+            journalFilter.params
+        );
+        const total = Number(countResult.rows[0]?.total || 0);
+        const dataParams = [...journalFilter.params, limit, offset];
+        const result = await pool.query(
+            `SELECT sa.*, s.name AS staff_name,
+                    COALESCE(void_log.actor_username, audit_void.performed_by, sa.approved_by) AS voided_by,
+                    COALESCE(void_log.actor_role, NULL) AS voided_by_role,
+                    COALESCE(void_log.created_at, audit_void.created_at, sa.approved_at) AS voided_at,
+                    COALESCE(void_log.payload->>'reason', audit_void.details->>'reason') AS void_reason
+             FROM salary_adjustments sa
+             JOIN staff s ON s.id = sa.staff_id
+             LEFT JOIN LATERAL (
+                SELECT dal.actor_username, dal.actor_role, dal.created_at, dal.payload
+                FROM discipline_actions_log dal
+                WHERE dal.adjustment_id = sa.id AND dal.action_type = 'void'
+                ORDER BY dal.created_at DESC, dal.id DESC
+                LIMIT 1
+             ) void_log ON TRUE
+             LEFT JOIN LATERAL (
+                SELECT hal.performed_by, hal.created_at, hal.details
+                FROM hr_audit_log hal
+                WHERE hal.action = 'salary_adjustment_void'
+                  AND hal.staff_id = sa.staff_id
+                  AND hal.details->>'adjustment_id' = sa.id::text
+                ORDER BY hal.created_at DESC, hal.id DESC
+                LIMIT 1
+             ) audit_void ON TRUE
+             ${journalFilter.where}
+             ORDER BY sa.created_at DESC, sa.id DESC
+             LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+            dataParams
+        );
+
+        const summaryFilter = buildFilters({ includeStatus: false, forceActive: true });
+        const summaryResult = await pool.query(
+            `SELECT sa.staff_id,
+                    MAX(s.name) AS staff_name,
+                    SUM(sa.amount)::numeric AS zrs_amount,
+                    COUNT(*)::int AS active_entry_count
+             FROM salary_adjustments sa
+             JOIN staff s ON s.id = sa.staff_id
+             ${summaryFilter.where}
+             GROUP BY sa.staff_id
+             ORDER BY MAX(s.name) ASC`,
+            summaryFilter.params
+        );
+
+        let periods = [];
+        if (includePeriods) {
+            const periodFilter = buildFilters({ includeStatus: false, includeMonth: false });
+            const periodResult = await pool.query(
+                `SELECT DISTINCT sa.month
+                 FROM salary_adjustments sa
+                 JOIN staff s ON s.id = sa.staff_id
+                 ${periodFilter.where}
+                 ORDER BY sa.month DESC`,
+                periodFilter.params
+            );
+            periods = periodResult.rows.map(row => row.month).filter(Boolean);
+        }
+
+        res.json({
+            success: true,
+            data: result.rows,
+            summary_rows: summaryResult.rows,
+            periods,
+            pagination: {
+                limit,
+                offset,
+                total,
+                has_more: offset + result.rows.length < total
+            }
+        });
     } catch (err) {
         log.error('GET /hr/salary/adjustments error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -7431,7 +7613,7 @@ router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
         }
         if (adjustment.type !== 'advance') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, error: 'Цей сценарій скасування доступний тільки для ЗРС/авансу' });
+            return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.VOID_TYPE_MISMATCH, 'Цей сценарій скасування доступний тільки для ЗРС/авансу');
         }
         if (!['applied', 'pending_review'].includes(adjustment.status || 'applied')) {
             await client.query('ROLLBACK');
@@ -7472,7 +7654,7 @@ router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/salary/adjustment/:id/void error', err);
         if (err.statusCode) {
-            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+            return res.status(err.statusCode).json({ success: false, code: payrollLockCode(err), error: err.message, period_lock: err.payrollLock || null });
         }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {

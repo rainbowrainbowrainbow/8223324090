@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -1347,18 +1347,28 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'id="btnAddZrs"',
         'id="zrsMonth"',
         'id="zrsSummary"',
+        'id="zrsSearch"',
+        'id="zrsStatusFilter"',
+        'id="zrsRetry"',
+        'id="zrsLoadMore"',
         'async function loadZrs',
         'function renderZrs',
         'async function showZrsForm',
         'async function voidZrsAdjustment',
         'window.voidZrsAdjustment = voidZrsAdjustment',
-        'hrFetch(`/salary/adjustments?month=${month}&type=advance`)',
+        'new URLSearchParams({',
+        'status: zrsJournalStatusFilterValue()',
+        "include_periods: append ? '0' : '1'",
+        "params.set('search', search)",
         'hrFetch(`/salary/adjustment/${id}/void`, \'PUT\'',
         "type: 'advance'",
         'zrs-status-badge',
         'zrs-action-btn',
-        'ЗРС до вирахування',
-        'Зарплата після ЗРС'
+        'function renderZrsError',
+        'function zrsEmptyRow',
+        'function loadMoreZrsJournal',
+        'Активна сума ЗРС',
+        'До виплати цим працівникам'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
@@ -1368,6 +1378,18 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         '- COALESCE(at.advances, 0)',
         'total_advances',
         "requestedType === 'zrs' ? 'advance'",
+        "router.get('/salary/adjustments', requirePayrollControl",
+        'ZRS_INVALID_AMOUNT',
+        'ZRS_STAFF_INACTIVE',
+        'ZRS_VOID_TYPE_MISMATCH',
+        'loadSalaryAdjustmentStaffTarget',
+        'parsePositiveSafeInteger',
+        'code: payrollLockCode(err)',
+        'summary_rows',
+        'pagination: {',
+        'void_reason',
+        'LEFT JOIN LATERAL',
+        'includeMonth: false',
         "router.put('/salary/adjustment/:id/void'",
         "SET status = 'voided'",
         "type: 'advance', label: 'ЗРС'",

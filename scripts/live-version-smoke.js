@@ -21,6 +21,9 @@ const VALID_METADATA_STATUSES = new Set([
     'unavailable',
     'conflict'
 ]);
+const DEFAULT_FETCH_RETRIES = 3;
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+const DEFAULT_FETCH_RETRY_DELAY_MS = 1500;
 
 function fail(message) {
     console.error(`Version smoke failed: ${message}`);
@@ -44,10 +47,53 @@ function htmlEscape(text) {
         .replace(/'/g, '&#39;');
 }
 
+function positiveIntegerEnv(name, fallback) {
+    const value = Number(process.env[name]);
+    return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchTextOnce(url, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, {
+            headers: { Accept: 'text/html,application/json' },
+            signal: controller.signal
+        });
+        if (!res.ok) {
+            const err = new Error(`${url} returned HTTP ${res.status}`);
+            err.statusCode = res.status;
+            throw err;
+        }
+        return await res.text();
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 async function fetchText(url) {
-    const res = await fetch(url, { headers: { Accept: 'text/html,application/json' } });
-    if (!res.ok) fail(`${url} returned HTTP ${res.status}`);
-    return res.text();
+    const attempts = positiveIntegerEnv('VERSION_SMOKE_RETRIES', DEFAULT_FETCH_RETRIES);
+    const timeoutMs = positiveIntegerEnv('VERSION_SMOKE_TIMEOUT_MS', DEFAULT_FETCH_TIMEOUT_MS);
+    const retryDelayMs = positiveIntegerEnv('VERSION_SMOKE_RETRY_DELAY_MS', DEFAULT_FETCH_RETRY_DELAY_MS);
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+            return await fetchTextOnce(url, timeoutMs);
+        } catch (err) {
+            lastError = err;
+            const statusCode = Number(err?.statusCode || 0);
+            const retryable = !statusCode || statusCode >= 500;
+            if (!retryable || attempt === attempts) break;
+            await sleep(retryDelayMs);
+        }
+    }
+
+    fail(lastError?.message || `${url} request failed`);
 }
 
 function assertDeploymentMetadata(versionJson, options = {}) {

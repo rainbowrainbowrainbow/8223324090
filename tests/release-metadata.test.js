@@ -181,6 +181,17 @@ test('version smoke requires stable complete metadata by default', () => {
     );
 });
 
+
+test('version smoke retries transient fetch failures with timeout controls', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'scripts', 'live-version-smoke.js'), 'utf8');
+
+    assert.match(script, /VERSION_SMOKE_RETRIES/);
+    assert.match(script, /VERSION_SMOKE_TIMEOUT_MS/);
+    assert.match(script, /VERSION_SMOKE_RETRY_DELAY_MS/);
+    assert.match(script, /AbortController/);
+    assert.match(script, /async function fetchTextOnce/);
+    assert.match(script, /statusCode >= 500/);
+});
 test('/api/version remains a public response from the canonical release service', () => {
     const route = fs.readFileSync(path.join(ROOT, 'routes', 'settings.js'), 'utf8');
     const routeBlock = route.match(/router\.get\('\/version'[\s\S]*?\n\}\);/)?.[0] || '';

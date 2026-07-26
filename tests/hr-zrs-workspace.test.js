@@ -333,3 +333,34 @@ test('ZRS month and staff search contracts stay wired', () => {
     assert.ok(hrHtml.includes(TXT.summaryTitle));
     assert.ok(hrHtml.includes(TXT.journalTitle));
 });
+test('ZRS exposes stable QA selectors and fail-closed write smoke guardrails', () => {
+    for (const testId of [
+        'zrs-month',
+        'zrs-add-button',
+        'zrs-search',
+        'zrs-status-filter',
+        'zrs-retry',
+        'zrs-journal-info',
+        'zrs-summary',
+        'zrs-summary-table-wrap',
+        'zrs-summary-table',
+        'zrs-journal-scroll',
+        'zrs-journal-table',
+        'zrs-load-more'
+    ]) {
+        assert.match(hrHtml, new RegExp(`data-testid="${testId}"`));
+    }
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const smoke = fs.readFileSync(path.join(ROOT, 'scripts', 'live-zrs-write-smoke.js'), 'utf8');
+
+    assert.equal(pkg.scripts['smoke:zrs:write'], 'node scripts/live-zrs-write-smoke.js');
+    assert.match(smoke, /I_CONFIRM_ZRS_QA_WRITES/);
+    assert.match(smoke, /LIVE_ZRS_QA_STAFF_ID/);
+    assert.match(smoke, /QA\|Codex\|Test\|Smoke/);
+    assert.match(smoke, /\/api\/hr\/salary\/adjustment'/);
+    assert.match(smoke, /\/void`/);
+    assert.match(smoke, /finally/);
+    assert.match(smoke, /status: 'all'/);
+    assert.match(smoke, /created_adjustment_ids/);
+});

@@ -17,7 +17,12 @@ test('Railway release helper deploys the pushed clean worktree as root', () => {
     assert.match(script, /git\(\['ls-remote', 'origin'/);
     assert.match(script, /RELEASE_DEPLOY_BRANCH/);
     assert.match(script, /RELEASE_DEPLOY_COMMIT/);
-    assert.match(script, /'up',\s*\n\s*'\.',\s*\n\s*'--path-as-root'/);
+    assert.match(script, /git archive/);
+    assert.match(script, /createCleanExport/);
+    assert.match(script, /validateExport/);
+    assert.match(script, /RELEASE_RAILWAY_CLEAN_EXPORT/);
+    assert.match(script, /--no-clean-export/);
+    assert.match(script, /'up',\s*\n\s*deploySource,\s*\n\s*'--path-as-root'/);
     assert.match(script, /'variable',\s*\n\s*'set'/);
     assert.match(script, /shell:\s*false/);
     assert.doesNotMatch(script, /shell:\s*process\.platform/);

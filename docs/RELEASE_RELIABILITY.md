@@ -57,7 +57,7 @@ node scripts/railway-release-up.js --branch codex/production --service 822332409
 
 The helper resolves the bundled native Railway CLI on Windows. For a non-standard installation, set `RELEASE_RAILWAY_BIN` to the exact `railway.exe` path.
 
-The helper fails closed when the worktree is dirty, when local HEAD is not the same SHA as origin/<branch>, or when the deploy branch is missing. It always deploys with railway up . --path-as-root and sets the non-secret RELEASE_DEPLOY_COMMIT / RELEASE_DEPLOY_BRANCH metadata before deploy. Use raw railway up only if the helper itself is unavailable, and then manually include . --path-as-root plus the metadata variables.
+The helper fails closed when the worktree is dirty, when local HEAD is not the same SHA as origin/<branch>, or when the deploy branch is missing. By default it creates a clean `git archive` export of the exact HEAD, validates release assets in that export, then deploys that export path with `railway up <clean-export> --path-as-root`. It sets the non-secret `RELEASE_DEPLOY_COMMIT` / `RELEASE_DEPLOY_BRANCH` metadata before the deploy. Use raw `railway up` only if the helper itself is unavailable, and then deploy a clean archive/export path, not a dirty workspace directory, plus the metadata variables.
 
 ## Production Branch Rule Exception
 

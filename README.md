@@ -242,8 +242,7 @@ the repository.
 - Do not deploy unless explicitly asked.
 - Railway GitHub auto-deploy is disabled for the production app service.
   Production deploys must be promoted manually only after the required GitHub
-  CI checks are green for the exact release SHA. Deploy the exact validated SHA;
-  do not rely on an implicit local-directory upload for production release.
+  CI checks are green for the exact release SHA. Deploy the exact validated SHA; use `npm run release:railway-up`, which deploys a clean git-archive export by default, and do not rely on an implicit local-directory upload for production release.
 - Manual Railway deploys must leave exact deploy evidence in `/api/version`:
   valid Railway git metadata or explicit `RELEASE_DEPLOY_COMMIT=<exact-sha>` and
   `RELEASE_DEPLOY_BRANCH=<branch>` runtime metadata. `npm run version:smoke` and

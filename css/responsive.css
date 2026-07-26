@@ -5078,6 +5078,8 @@ body.timeline-dashboard-page .header .btn-logout {
 /* v0.79.147: timeline logout must keep WCAG contrast in light mode. */
 html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout,
 html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout {
+    --header-actions-accent: #047857;
+    --header-actions-accent-hover: #065F46;
     border-color: var(--header-actions-accent);
     background: var(--header-actions-accent);
     color: #fff;

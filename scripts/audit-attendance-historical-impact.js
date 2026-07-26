@@ -17,13 +17,56 @@ const CATEGORY_OVERTIME_GRACE = 'overtime-grace';
 const CATEGORY_MISSING_PLAN_SOURCE = 'missing-plan-source';
 const CATEGORY_INFERRED_PROFESSION_CARD = 'inferred-profession-card';
 const CATEGORY_NULL_ZERO_NEGATIVE_LATE = 'null-zero-negative-late';
+const CATEGORY_LEGACY_STATUS_CONFLICT = 'legacy-status-conflict';
 const READONLY_CATEGORIES = new Set([
     CATEGORY_LATE_GRACE,
     CATEGORY_OVERTIME_GRACE,
     CATEGORY_MISSING_PLAN_SOURCE,
     CATEGORY_INFERRED_PROFESSION_CARD,
-    CATEGORY_NULL_ZERO_NEGATIVE_LATE
+    CATEGORY_NULL_ZERO_NEGATIVE_LATE,
+    CATEGORY_LEGACY_STATUS_CONFLICT
 ]);
+const INFORMATIONAL_CATEGORIES = new Set([
+    CATEGORY_MISSING_PLAN_SOURCE,
+    CATEGORY_INFERRED_PROFESSION_CARD
+]);
+const ALLOWED_CONNECTION_VARIABLES = [
+    'ATTENDANCE_AUDIT_DATABASE_URL',
+    'PRODUCTION_READONLY_DATABASE_URL'
+];
+const FORBIDDEN_CONNECTION_VARIABLES = new Set([
+    'ATTENDANCE_DATA_FIX_DATABASE_URL',
+    'DATABASE_URL'
+]);
+const LEGACY_STATUS_CONFLICT_SQL = `(
+    (status = 'late' AND (late_minutes IS NULL OR late_minutes <= 5))
+    OR (
+        status = 'early_leave'
+        AND (
+            COALESCE(late_minutes, 0) > 5
+            OR COALESCE(early_leave_minutes, 0) <= 0
+        )
+    )
+    OR (
+        status IN ('present', 'unscheduled', 'clocked_in')
+        AND (
+            COALESCE(late_minutes, 0) > 5
+            OR (
+                COALESCE(late_minutes, 0) <= 5
+                AND COALESCE(early_leave_minutes, 0) > 0
+            )
+        )
+    )
+)`;
+const READONLY_ROLE_TABLES = [
+    'hr_time_records',
+    'hr_audit_log',
+    'payroll_reports',
+    'payroll_period_locks',
+    'payroll_entries',
+    'salary_adjustments',
+    'finance_transactions'
+];
 
 function usage() {
     return [
@@ -31,10 +74,11 @@ function usage() {
         '  node scripts/audit-attendance-historical-impact.js [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--business-context key] [--categories late-grace,overtime-grace] [--format json|markdown]',
         '',
         'Connection:',
-        '  ATTENDANCE_AUDIT_DATABASE_URL, PRODUCTION_READONLY_DATABASE_URL, DATABASE_URL, or PG* environment variables.',
+        '  ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL.',
+        '  DATABASE_URL, ATTENDANCE_DATA_FIX_DATABASE_URL, and generic PG* variables are refused.',
         '',
         'Categories:',
-        '  late-grace, overtime-grace, missing-plan-source, inferred-profession-card, null-zero-negative-late',
+        '  late-grace, overtime-grace, legacy-status-conflict, null-zero-negative-late, missing-plan-source, inferred-profession-card',
         '',
         'Safety:',
         '  Read-only only. --apply/--fix/--write/--execute/--update are refused.'
@@ -48,6 +92,7 @@ function normalizeCategory(value) {
     if (['missing-audit-plan-source', 'missing-plan-source', 'plan-source'].includes(text)) return CATEGORY_MISSING_PLAN_SOURCE;
     if (['inferred-profession-card', 'profession-card-inference'].includes(text)) return CATEGORY_INFERRED_PROFESSION_CARD;
     if (['null-zero-negative-late', 'null-late', 'zero-late', 'negative-late'].includes(text)) return CATEGORY_NULL_ZERO_NEGATIVE_LATE;
+    if (['legacy-status-conflict', 'status-conflict', 'conflicting-status'].includes(text)) return CATEGORY_LEGACY_STATUS_CONFLICT;
     return text;
 }
 
@@ -74,8 +119,9 @@ function parseArgs(argv) {
             options.help = true;
             continue;
         }
-        if (BLOCKED_FLAGS.has(arg)) {
-            throw new Error(`${arg} is not supported: this audit is read-only only`);
+        const flagName = String(arg).split('=', 1)[0];
+        if (BLOCKED_FLAGS.has(flagName)) {
+            throw new Error(`${flagName} is not supported: this audit is read-only only`);
         }
         const readValue = name => {
             const value = argv[index + 1];
@@ -105,29 +151,33 @@ function parseArgs(argv) {
     return options;
 }
 
-function poolConfig() {
-    const connectionString = process.env.ATTENDANCE_AUDIT_DATABASE_URL
-        || process.env.PRODUCTION_READONLY_DATABASE_URL
-        || process.env.DATABASE_URL
-        || '';
-    if (connectionString) {
-        return {
-            connectionString,
-            ssl: { rejectUnauthorized: false },
-            application_name: 'attendance_historical_readonly_audit'
-        };
+function poolConfig(env = process.env) {
+    const forbidden = Object.keys(env)
+        .filter(name => String(env[name] || '').trim())
+        .filter(name => FORBIDDEN_CONNECTION_VARIABLES.has(name) || /^PG/i.test(name));
+    if (forbidden.length) {
+        throw new Error(
+            `Unsafe database environment variables are set: ${forbidden.sort().join(', ')}. `
+            + `Use exactly one of ${ALLOWED_CONNECTION_VARIABLES.join(' or ')} with a dedicated read-only role.`
+        );
     }
-    if (!process.env.PGDATABASE) {
-        throw new Error('Set ATTENDANCE_AUDIT_DATABASE_URL, PRODUCTION_READONLY_DATABASE_URL, DATABASE_URL, or PGDATABASE/PG* before running the audit');
+
+    const configured = ALLOWED_CONNECTION_VARIABLES
+        .filter(name => String(env[name] || '').trim())
+        .map(name => ({ name, value: String(env[name]).trim() }));
+    if (configured.length !== 1) {
+        throw new Error(`Set exactly one of ${ALLOWED_CONNECTION_VARIABLES.join(' or ')} before running the audit`);
     }
+
     return {
-        host: process.env.PGHOST,
-        port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
-        database: process.env.PGDATABASE,
-        user: process.env.PGUSER,
-        password: process.env.PGPASSWORD,
+        connectionString: configured[0].value,
+        ssl: { rejectUnauthorized: false },
         application_name: 'attendance_historical_readonly_audit'
     };
+}
+
+function anomalyCategories(categories = []) {
+    return categories.filter(category => !INFORMATIONAL_CATEGORIES.has(category));
 }
 
 function scopeWhere(options, alias = 'tr', startIndex = 1) {
@@ -211,6 +261,12 @@ function issueSelects(categories = []) {
             FROM audited
             WHERE status = 'late'
               AND (late_minutes IS NULL OR late_minutes = 0 OR late_minutes < 0)`);
+    }
+    if (selected.has(CATEGORY_LEGACY_STATUS_CONFLICT)) {
+        selects.push(`
+            SELECT id, staff_id, record_date, period_month, 'legacy_status_conflict' AS issue
+            FROM audited
+            WHERE ${LEGACY_STATUS_CONFLICT_SQL}`);
     }
     if (selected.has(CATEGORY_MISSING_PLAN_SOURCE)) {
         selects.push(`
@@ -376,6 +432,30 @@ async function loadIssueMatrix(client, options) {
     }));
 }
 
+async function loadAnomalySummary(client, options) {
+    const where = scopeWhere(options);
+    const result = await client.query(
+        `${candidateCte(where, anomalyCategories(options.categories))},
+         dedup AS (
+            SELECT DISTINCT id, staff_id, record_date
+            FROM candidates
+         )
+         SELECT COUNT(*)::int AS unique_records,
+                COUNT(DISTINCT staff_id)::int AS distinct_staff,
+                MIN(record_date)::text AS min_date,
+                MAX(record_date)::text AS max_date
+         FROM dedup`,
+        where.values
+    );
+    const row = result.rows[0] || {};
+    return {
+        uniqueRecords: Number(row.unique_records || 0),
+        distinctStaff: Number(row.distinct_staff || 0),
+        minDate: row.min_date || null,
+        maxDate: row.max_date || null
+    };
+}
+
 async function loadPayrollImpact(client, options) {
     const hasReports = await tableExists(client, 'payroll_reports');
     const hasLocks = await tableExists(client, 'payroll_period_locks');
@@ -387,11 +467,12 @@ async function loadPayrollImpact(client, options) {
         };
     }
     const where = scopeWhere(options);
+    const categories = anomalyCategories(options.categories);
     const lockJoin = hasLocks
         ? 'LEFT JOIN payroll_period_locks pl ON pl.period_month = ps.period_month'
         : 'LEFT JOIN (SELECT NULL::varchar AS period_month, false::boolean AS is_locked, NULL::timestamptz AS locked_at) pl ON false';
     const result = await client.query(
-        `${candidateCte(where, options.categories)},
+        `${candidateCte(where, categories)},
          dedup AS (
             SELECT DISTINCT id, staff_id, period_month
             FROM candidates
@@ -435,7 +516,7 @@ async function loadPayrollImpact(client, options) {
         where.values
     );
     const statusRows = await client.query(
-        `${candidateCte(where, options.categories)},
+        `${candidateCte(where, categories)},
          dedup AS (
             SELECT DISTINCT staff_id, period_month
             FROM candidates
@@ -483,6 +564,50 @@ function riskFromPayrollImpact(payrollImpact) {
     return 'none_detected';
 }
 
+function severityFromAudit(anomalySummary, payrollImpact) {
+    if (Number(anomalySummary?.uniqueRecords || 0) === 0) return 'none_detected';
+    const payrollRisk = riskFromPayrollImpact(payrollImpact);
+    if (payrollRisk === 'high' || payrollRisk === 'medium') return 'high';
+    return 'warning';
+}
+
+function assertReadOnlyConnectionState({ transactionReadOnly, defaultTransactionReadOnly, writePrivileges = [] }) {
+    if (transactionReadOnly !== 'on') {
+        throw new Error('PostgreSQL transaction is not read-only; aborting');
+    }
+    if (defaultTransactionReadOnly !== 'on') {
+        throw new Error('PostgreSQL role does not default to read-only; use a dedicated read-only audit role');
+    }
+    const writableRelations = writePrivileges
+        .filter(row => row.can_insert || row.can_update || row.can_delete || row.can_truncate)
+        .map(row => row.table_name);
+    if (writableRelations.length) {
+        throw new Error(`PostgreSQL audit role has write privileges on protected tables: ${writableRelations.join(', ')}`);
+    }
+}
+
+async function assertDedicatedReadOnlySession(client) {
+    const transaction = await client.query('SHOW transaction_read_only');
+    const roleDefault = await client.query('SHOW default_transaction_read_only');
+    const privileges = await client.query(
+        `SELECT table_name,
+                has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'INSERT') AS can_insert,
+                has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'UPDATE') AS can_update,
+                has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'DELETE') AS can_delete,
+                has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'TRUNCATE') AS can_truncate
+         FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_name = ANY($1::text[])
+         ORDER BY table_name`,
+        [READONLY_ROLE_TABLES]
+    );
+    assertReadOnlyConnectionState({
+        transactionReadOnly: transaction.rows[0]?.transaction_read_only,
+        defaultTransactionReadOnly: roleDefault.rows[0]?.default_transaction_read_only,
+        writePrivileges: privileges.rows
+    });
+}
+
 async function runAudit(options) {
     const pool = new Pool(poolConfig());
     const client = await pool.connect();
@@ -490,16 +615,14 @@ async function runAudit(options) {
         await client.query('BEGIN READ ONLY');
         await client.query(`SET LOCAL statement_timeout = '30s'`);
         await client.query(`SET LOCAL idle_in_transaction_session_timeout = '30s'`);
-        const readonly = await client.query('SHOW transaction_read_only');
-        if (readonly.rows[0]?.transaction_read_only !== 'on') {
-            throw new Error('PostgreSQL transaction is not read-only; aborting');
-        }
+        await assertDedicatedReadOnlySession(client);
 
         const overview = await loadOverview(client, options);
         const metricLoaders = {
             [CATEGORY_LATE_GRACE]: () => loadMetric(client, options, 'late_status_within_grace', "status = 'late' AND late_minutes BETWEEN 1 AND 5"),
             [CATEGORY_OVERTIME_GRACE]: () => loadMetric(client, options, 'overtime_within_grace', 'COALESCE(overtime_minutes, 0) BETWEEN 1 AND 15'),
             [CATEGORY_NULL_ZERO_NEGATIVE_LATE]: () => loadMetric(client, options, 'null_zero_negative_late', "status = 'late' AND (late_minutes IS NULL OR late_minutes = 0 OR late_minutes < 0)"),
+            [CATEGORY_LEGACY_STATUS_CONFLICT]: () => loadMetric(client, options, 'legacy_status_conflict', LEGACY_STATUS_CONFLICT_SQL),
             [CATEGORY_MISSING_PLAN_SOURCE]: () => loadMetric(
                 client,
                 options,
@@ -517,6 +640,7 @@ async function runAudit(options) {
         for (const category of options.categories) {
             metrics.push(await metricLoaders[category]());
         }
+        const anomalySummary = await loadAnomalySummary(client, options);
         const payrollImpact = await loadPayrollImpact(client, options);
         const report = {
             generatedAt: new Date().toISOString(),
@@ -528,6 +652,7 @@ async function runAudit(options) {
                 categories: options.categories
             },
             overview,
+            anomalySummary,
             metrics,
             auditPlanSourceBreakdown: await loadAuditSourceBreakdown(client, options),
             inferredProfessionCardAuditBreakdown: await loadInferredProfessionBreakdown(client, options),
@@ -536,6 +661,7 @@ async function runAudit(options) {
                 ...payrollImpact,
                 risk: riskFromPayrollImpact(payrollImpact)
             },
+            severity: severityFromAudit(anomalySummary, payrollImpact),
             writeMode: {
                 supported: false,
                 note: 'This script never updates attendance, audit, payroll, or any other table.'
@@ -562,6 +688,7 @@ function renderMarkdown(report) {
         '',
         `Generated: ${report.generatedAt}`,
         `Mode: ${report.mode}`,
+        `Severity: ${report.severity}`,
         `Filters: from=${report.filters.from || 'all'}, to=${report.filters.to || 'all'}, businessContext=${report.filters.businessContext || 'all'}, categories=${(report.filters.categories || []).join(', ') || 'all'}`,
         '',
         '## Overview',
@@ -571,6 +698,12 @@ function renderMarkdown(report) {
         `- Rows with clock-out: ${report.overview.rowsWithClockOut}`,
         `- Distinct staff: ${report.overview.distinctStaff}`,
         `- Date range: ${report.overview.minDate || '—'} to ${report.overview.maxDate || '—'}`,
+        '',
+        '## Anomaly summary',
+        '',
+        `- Unique records: ${report.anomalySummary.uniqueRecords}`,
+        `- Distinct staff: ${report.anomalySummary.distinctStaff}`,
+        `- Date range: ${report.anomalySummary.minDate || '-'} to ${report.anomalySummary.maxDate || '-'}`,
         '',
         '## Metrics',
         '',
@@ -613,11 +746,19 @@ if (require.main === module) {
 
 module.exports = {
     CATEGORY_LATE_GRACE,
+    CATEGORY_LEGACY_STATUS_CONFLICT,
+    CATEGORY_MISSING_PLAN_SOURCE,
     CATEGORY_NULL_ZERO_NEGATIVE_LATE,
     CATEGORY_OVERTIME_GRACE,
+    LEGACY_STATUS_CONFLICT_SQL,
+    anomalyCategories,
+    assertReadOnlyConnectionState,
     candidateCte,
     normalizeCategories,
     parseArgs,
+    poolConfig,
+    riskFromPayrollImpact,
     runAudit,
-    renderMarkdown
+    renderMarkdown,
+    severityFromAudit
 };

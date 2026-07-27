@@ -272,6 +272,7 @@ test('ZRS month and staff search contracts stay wired', () => {
     assert.match(hrHtml, /id="zrsStatusFilter"/);
     assert.match(hrHtml, /id="zrsRetry"/);
     assert.match(hrHtml, /id="zrsLoadMore"/);
+    assert.match(hrCss, /#tab-zrs #zrsRetry\[hidden\],[\s\S]*#tab-zrs #zrsLoadMore\[hidden\][\s\S]*display:\s*none !important/);
     assert.match(hrSource, /function renderZrsError/);
     assert.match(hrSource, /function renderZrsLoadingState/);
     assert.match(hrSource, /function loadMoreZrsJournal/);

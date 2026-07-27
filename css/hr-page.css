@@ -10243,6 +10243,11 @@ body.dark-mode .hr-print-operation-item strong { color: #e2e8f0 !important; }
     overflow-x: hidden;
 }
 
+#tab-zrs #zrsRetry[hidden],
+#tab-zrs #zrsLoadMore[hidden] {
+    display: none !important;
+}
+
 #tab-zrs .hr-report-table-wrap {
     max-width: 100%;
     overflow-x: auto;

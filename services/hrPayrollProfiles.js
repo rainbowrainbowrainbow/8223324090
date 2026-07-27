@@ -1740,11 +1740,9 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
         metrics.hoursWorked = Math.round((metrics.totalMinutes / 60) * 10) / 10;
         metrics.reconciliation = { days: metrics.attendanceDays, warnings: [] };
     }
-    const [schemeMap, professionRateMap, profileContext] = await Promise.all([
-        loadActivePayrollSchemeMap(staffIds, period.month, db),
-        loadProfessionRateMap(staffIds, db),
-        loadPayrollProfileContext(staffIds, period, db)
-    ]);
+    const schemeMap = await loadActivePayrollSchemeMap(staffIds, period.month, db);
+    const professionRateMap = await loadProfessionRateMap(staffIds, db);
+    const profileContext = await loadPayrollProfileContext(staffIds, period, db);
     if (options.profileOverride) {
         applyProfileOverrideToContext(profileContext, options.profileOverride.profile, options.profileOverride.version);
     }
@@ -1944,11 +1942,9 @@ async function diagnosePayrollProfiles(options = {}, serviceOptions = {}) {
     const issues = [];
     const staffProfessionRows = await loadActiveStaffProfessionRows(db, asOfDate);
     const staffIds = [...new Set(staffProfessionRows.map(row => row.staffId))];
-    const [profileContext, professionRateMap, schemeMap] = await Promise.all([
-        loadPayrollProfileContext(staffIds, { from: asOfDate, to: asOfDate }, db),
-        loadProfessionRateMap(staffIds, db),
-        loadActivePayrollSchemeMap(staffIds, asOfDate.slice(0, 7), db)
-    ]);
+    const profileContext = await loadPayrollProfileContext(staffIds, { from: asOfDate, to: asOfDate }, db);
+    const professionRateMap = await loadProfessionRateMap(staffIds, db);
+    const schemeMap = await loadActivePayrollSchemeMap(staffIds, asOfDate.slice(0, 7), db);
 
     for (const row of staffProfessionRows) {
         const staff = {
@@ -2202,24 +2198,22 @@ async function impactPayrollProfilePreview(profileId, payload = {}, options = {}
     const draftVersion = buildDraftVersionForImpact(profile, payload, period);
     const affectedStaff = await loadAffectedStaffForProfile(db, profile, period.from);
     const staffIds = affectedStaff.map(row => row.staffId);
-    const [current, projected, personalExceptionsResult] = await Promise.all([
-        forecastPayrollProfiles({ from: period.from, to: period.to, staffIds }, { db }),
-        forecastPayrollProfiles({
-            from: period.from,
-            to: period.to,
-            staffIds,
-            profileOverride: { profile, version: draftVersion }
-        }, { db }),
-        db.query(
-            `SELECT id, title, owner_staff_id, status
-             FROM payroll_profiles
-             WHERE source_profile_id = $1
-               AND profile_kind = 'personal'
-               AND status <> 'archived'
-             ORDER BY title, id`,
-            [Number(profile.id)]
-        )
-    ]);
+    const current = await forecastPayrollProfiles({ from: period.from, to: period.to, staffIds }, { db });
+    const projected = await forecastPayrollProfiles({
+        from: period.from,
+        to: period.to,
+        staffIds,
+        profileOverride: { profile, version: draftVersion }
+    }, { db });
+    const personalExceptionsResult = await db.query(
+        `SELECT id, title, owner_staff_id, status
+         FROM payroll_profiles
+         WHERE source_profile_id = $1
+           AND profile_kind = 'personal'
+           AND status <> 'archived'
+         ORDER BY title, id`,
+        [Number(profile.id)]
+    );
     const currentFund = Number(current.totals?.total_salary || 0);
     const projectedFund = Number(projected.totals?.total_salary || 0);
     return {

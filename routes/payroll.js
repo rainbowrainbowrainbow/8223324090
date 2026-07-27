@@ -4,24 +4,35 @@
 
 const router = require('express').Router();
 const ExcelJS = require('exceljs');
-const { requireRole } = require('../middleware/auth');
+const { pool } = require('../db');
+const { requireAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const {
     SCHEME_TYPES,
     REPORT_STATUSES,
+    approvePayrollInstallment,
+    cancelPayrollAdvanceInstallment,
+    confirmPayrollInstallmentPayment,
     getSalaryReport,
+    getPayrollSettlement,
     getPayrollWorkspace,
     getPayrollPreview,
+    getPayrollRangePreview,
     createPayrollScheme,
     updatePayrollScheme,
     generatePayrollReports,
+    reversePayrollPaymentMovement,
+    updatePayrollInstallmentScheduledDate,
     updatePayrollReportStatus,
     normalizePayrollMonth
 } = require('../services/payroll');
+const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
+const {
+    requireWritableBusinessScope,
+    resolveBusinessScope
+} = require('../services/businessContext');
 
 const log = createLogger('PayrollRoutes');
-
-router.use(requireRole('creator', 'director', 'accountant'));
 
 function sendError(res, err, fallback = 'Internal server error') {
     const status = err.status || err.statusCode || 500;
@@ -153,7 +164,88 @@ function offRosterStaffStatus(row = {}) {
     ].filter(Boolean).join('|');
 }
 
-router.get('/schemes', async (req, res) => {
+function payrollReportStatusExportFields(row = {}) {
+    const settlement = row.payrollSettlement || row.payroll_settlement || {};
+    const legacy = settlement.legacy || null;
+    const rawStatus = row.status || row.reportStatus || row.report_status || '';
+    return {
+        report_status: legacy?.historicalStatus || legacy?.historical_status || rawStatus,
+        legacy_report_status: legacy
+            ? (legacy.reportStatus || legacy.report_status || rawStatus)
+            : ''
+    };
+}
+
+function writablePayrollBusinessContext(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireWritableBusinessScope(req, res, scope)) return null;
+    return scope.activeContext;
+}
+
+function payrollInstallmentsForExport(row = {}) {
+    const installments = Array.isArray(row.installments) ? row.installments : [];
+    return installments.length ? installments : [null];
+}
+
+function payrollMovementRows(row = {}) {
+    return (Array.isArray(row.installments) ? row.installments : [])
+        .flatMap(installment => (installment.movements || installment.paymentMovements || [])
+            .map(movement => ({ installment, movement })));
+}
+
+function payrollInstallmentExportFields(installment = null) {
+    if (!installment) {
+        return {
+            installment_kind: '',
+            earning_range: '',
+            scheduled_payment_date: '',
+            actual_payment_dates: '',
+            calculated_amount: '',
+            locked_amount: '',
+            paid_amount: '',
+            balance_amount: '',
+            installment_status: '',
+            approver: '',
+            confirmer: '',
+            approved_at: '',
+            confirmed_at: '',
+            finance_transaction_ids: '',
+            reversal_transaction_ids: ''
+        };
+    }
+    const movements = installment.movements || installment.paymentMovements || [];
+    const payments = movements.filter(movement => movement.movementType === 'payment');
+    const reversals = movements.filter(movement => movement.movementType === 'reversal');
+    const actualDates = [...new Set(payments.map(movement => movement.actualPaymentDate).filter(Boolean))];
+    const approver = [
+        installment.approvedByUsername || '',
+        installment.approvedByRole ? `(${installment.approvedByRole})` : ''
+    ].filter(Boolean).join(' ');
+    const confirmer = [...new Set(payments.map(movement => [
+        movement.actorUsername || movement.actor_username || '',
+        (movement.actorRole || movement.actor_role) ? `(${movement.actorRole || movement.actor_role})` : ''
+    ].filter(Boolean).join(' ')).filter(Boolean))].join('|');
+    const confirmedAt = [...new Set(payments.map(movement => movement.createdAt || movement.created_at).filter(Boolean))].join('|');
+    return {
+        installment_kind: installment.kind || '',
+        earning_range: [installment.earningFrom, installment.earningTo].filter(Boolean).join(' — '),
+        scheduled_payment_date: installment.scheduledPaymentDate || '',
+        actual_payment_dates: actualDates.join('|'),
+        calculated_amount: installment.calculatedAmount ?? '',
+        locked_amount: installment.lockedAmount ?? '',
+        paid_amount: installment.paidAmount ?? 0,
+        balance_amount: installment.outstandingAmount ?? installment.balanceAmount ?? 0,
+        installment_status: installment.settlementStatus || installment.workflowStatus || '',
+        approver,
+        confirmer,
+        approved_at: installment.approvedAt || '',
+        confirmed_at: confirmedAt,
+        finance_transaction_ids: payments.map(movement => movement.financeTransactionId).filter(Boolean).join('|'),
+        reversal_transaction_ids: reversals.map(movement => movement.financeTransactionId).filter(Boolean).join('|')
+    };
+}
+
+router.get('/schemes', requireAction('view_payroll'), async (req, res) => {
     try {
         const month = normalizePayrollMonth(req.query.month);
         const data = await getPayrollWorkspace(month);
@@ -171,25 +263,72 @@ router.get('/schemes', async (req, res) => {
     }
 });
 
-router.post('/schemes', async (req, res) => {
+router.post('/schemes', requireAction('manage_payroll_rules'), async (req, res) => {
     try {
         const scheme = await createPayrollScheme(req.body || {}, req.user);
-        res.status(201).json({ success: true, scheme });
+        res.status(201).json({
+            success: true,
+            versionCreated: true,
+            supersedesSchemeId: scheme.supersedesSchemeId || null,
+            scheme
+        });
     } catch (err) {
         sendError(res, err);
     }
 });
 
-router.patch('/schemes/:id', async (req, res) => {
+router.patch('/schemes/:id', requireAction('manage_payroll_rules'), async (req, res) => {
     try {
         const scheme = await updatePayrollScheme(req.params.id, req.body || {}, req.user);
-        res.json({ success: true, scheme });
+        res.json({
+            success: true,
+            versionCreated: true,
+            supersedesSchemeId: Number(req.params.id),
+            scheme
+        });
     } catch (err) {
         sendError(res, err);
     }
 });
 
-router.get('/preview', async (req, res) => {
+router.get('/payment-options', requireAction('confirm_payroll_payment'), async (req, res) => {
+    try {
+        const businessContext = businessContextFromRequest(req);
+        const [categories, accounts] = await Promise.all([
+            pool.query(
+                `SELECT id, name, type, icon, color
+                 FROM finance_categories
+                 WHERE is_active = true
+                   AND type IN ('expense', 'income')
+                   AND COALESCE(business_context, 'event_genix') = $1
+                 ORDER BY type, sort_order, name`,
+                [businessContext]
+            ),
+            pool.query(
+                `SELECT id, name, emoji, type
+                 FROM finance_accounts
+                 WHERE is_active = true
+                   AND COALESCE(business_context, 'event_genix') = $1
+                 ORDER BY sort_order, name`,
+                [businessContext]
+            )
+        ]);
+        res.json({
+            success: true,
+            businessContext,
+            paymentMethods: ['cash', 'card', 'transfer', 'mixed'],
+            categories: {
+                expense: categories.rows.filter(row => row.type === 'expense'),
+                income: categories.rows.filter(row => row.type === 'income')
+            },
+            accounts: accounts.rows
+        });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.get('/preview', requireAction('view_payroll'), async (req, res) => {
     try {
         const staffId = Number(req.query.staffId || req.query.staff_id);
         const month = String(req.query.month || '').trim();
@@ -203,7 +342,27 @@ router.get('/preview', async (req, res) => {
     }
 });
 
-router.get('/export', async (req, res) => {
+router.get('/range-preview', requireAction('view_payroll'), async (req, res) => {
+    try {
+        const month = String(req.query.month || String(req.query.from || '').slice(0, 7) || '').trim();
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(month) || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+            return res.status(400).json({ success: false, error: 'month (YYYY-MM), from and to (YYYY-MM-DD) required' });
+        }
+        const preview = await getPayrollRangePreview({
+            month,
+            from,
+            to,
+            staffId: req.query.staffId || req.query.staff_id
+        });
+        res.json({ success: true, ...preview });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.get('/export', requireAction('view_payroll'), async (req, res) => {
     try {
         const month = String(req.query.month || '').trim();
         if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -212,16 +371,23 @@ router.get('/export', async (req, res) => {
         const report = await getSalaryReport(month);
         const header = [
             'Staff ID', 'Працівник', 'Днів відпрацьовано', 'Фактичні години',
-            'База', 'Overtime', 'Нараховано', 'Утримання', 'Аванси', 'До виплати',
+            'База', 'Overtime', 'Нараховано', 'Утримання', 'ЗРС', 'До виплати',
             'Розподіл за професіями', 'Payroll source refs',
             'physical_hours', 'base_role_hours', 'additional_role_hours',
             'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount',
             'payroll_blocking_codes', 'payroll_blocking_details',
             'additional_line_status', 'blocker_code', 'blocker_message',
-            'reconciliation_scope', 'payroll_report_id', 'report_status', 'off_roster_reason', 'staff_status'
+            'reconciliation_scope', 'payroll_report_id', 'report_status', 'legacy_report_status',
+            'installment_kind', 'earning_range', 'scheduled_payment_date', 'actual_payment_dates',
+            'calculated_amount', 'locked_amount', 'paid_amount', 'balance_amount',
+            'installment_status', 'approver', 'approved_at', 'confirmer', 'confirmed_at',
+            'finance_transaction_ids', 'reversal_transaction_ids',
+            'off_roster_reason', 'staff_status'
         ];
-        const rows = report.staff.map(row => {
+        const rows = report.staff.flatMap(row => payrollInstallmentsForExport(row).map(installment => {
             const exportFields = payrollExportFields(row);
+            const installmentFields = payrollInstallmentExportFields(installment);
+            const reportStatusFields = payrollReportStatusExportFields(row);
             const professionBreakdown = (row.professionRateSummary || []).map(item => [
                 item.profession_key || '',
                 item.kind || 'base',
@@ -270,13 +436,29 @@ router.get('/export', async (req, res) => {
                 exportFields.blocker_message,
                 'active_roster',
                 row.reportId || row.report_id || '',
-                row.status || '',
+                reportStatusFields.report_status,
+                reportStatusFields.legacy_report_status,
+                installmentFields.installment_kind,
+                installmentFields.earning_range,
+                installmentFields.scheduled_payment_date,
+                installmentFields.actual_payment_dates,
+                installmentFields.calculated_amount,
+                installmentFields.locked_amount,
+                installmentFields.paid_amount,
+                installmentFields.balance_amount,
+                installmentFields.installment_status,
+                installmentFields.approver,
+                installmentFields.approved_at,
+                installmentFields.confirmer,
+                installmentFields.confirmed_at,
+                installmentFields.finance_transaction_ids,
+                installmentFields.reversal_transaction_ids,
                 '',
                 ''
             ].map(csvCell).join(';');
-        });
+        }));
         for (const row of offRosterDraftReports(report)) {
-            rows.push([
+            const offRosterValues = [
                 row.staffId ?? row.staff_id ?? '',
                 '',
                 '', '', '', '', '', '', '', '',
@@ -288,9 +470,17 @@ router.get('/export', async (req, res) => {
                 'off_active_roster',
                 row.reportId ?? row.report_id ?? '',
                 row.reportStatus || row.report_status || 'draft',
+                row.reportStatus || row.report_status || 'draft',
+                '', '', '', '',
+                '', '', '', '',
+                '', '', '', '', '',
                 row.reason || '',
                 offRosterStaffStatus(row)
-            ].map(csvCell).join(';'));
+            ];
+            while (offRosterValues.length < header.length) {
+                offRosterValues.splice(offRosterValues.length - 2, 0, '');
+            }
+            rows.push(offRosterValues.map(csvCell).join(';'));
         }
         const csv = '\uFEFF' + [header.map(csvCell).join(';'), ...rows].join('\r\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -301,7 +491,7 @@ router.get('/export', async (req, res) => {
     }
 });
 
-router.get('/export-xlsx', async (req, res) => {
+router.get('/export-xlsx', requireAction('view_payroll'), async (req, res) => {
     try {
         const month = String(req.query.month || '').trim();
         if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -321,7 +511,7 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'Overtime', key: 'overtime_amount', width: 14 },
             { header: 'Нараховано', key: 'gross_amount', width: 14 },
             { header: 'Утримання', key: 'deductions_amount', width: 14 },
-            { header: 'Аванси', key: 'advances_amount', width: 14 },
+            { header: 'ЗРС', key: 'advances_amount', width: 14 },
             { header: 'До виплати', key: 'net_amount', width: 14 },
             { header: 'physical_hours', key: 'physical_hours', width: 16 },
             { header: 'base_role_hours', key: 'base_role_hours', width: 18 },
@@ -338,32 +528,53 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'reconciliation_scope', key: 'reconciliation_scope', width: 24 },
             { header: 'payroll_report_id', key: 'payroll_report_id', width: 18 },
             { header: 'report_status', key: 'report_status', width: 18 },
+            { header: 'legacy_report_status', key: 'legacy_report_status', width: 22 },
+            { header: 'installment_kind', key: 'installment_kind', width: 18 },
+            { header: 'earning_range', key: 'earning_range', width: 26 },
+            { header: 'scheduled_payment_date', key: 'scheduled_payment_date', width: 22 },
+            { header: 'actual_payment_dates', key: 'actual_payment_dates', width: 28 },
+            { header: 'calculated_amount', key: 'calculated_amount', width: 18 },
+            { header: 'locked_amount', key: 'locked_amount', width: 18 },
+            { header: 'paid_amount', key: 'paid_amount', width: 18 },
+            { header: 'balance_amount', key: 'balance_amount', width: 18 },
+            { header: 'installment_status', key: 'installment_status', width: 22 },
+            { header: 'approver', key: 'approver', width: 28 },
+            { header: 'approved_at', key: 'approved_at', width: 28 },
+            { header: 'confirmer', key: 'confirmer', width: 28 },
+            { header: 'confirmed_at', key: 'confirmed_at', width: 28 },
+            { header: 'finance_transaction_ids', key: 'finance_transaction_ids', width: 28 },
+            { header: 'reversal_transaction_ids', key: 'reversal_transaction_ids', width: 28 },
             { header: 'off_roster_reason', key: 'off_roster_reason', width: 24 },
             { header: 'staff_status', key: 'staff_status', width: 36 }
         ];
         for (const row of report.staff) {
-            const exportFields = payrollExportFields(row);
-            summary.addRow({
-                staff_id: row.staffId,
-                staff_name: row.name,
-                days_worked: row.daysWorked,
-                hours_worked: row.hoursWorked,
-                base_amount: row.baseAmount,
-                overtime_amount: row.overtimeAmount || 0,
-                gross_amount: row.grossAmount,
-                deductions_amount: row.deductionsAmount,
-                advances_amount: row.advancesAmount,
-                net_amount: row.netAmount,
-                ...exportFields,
-                reconciliation_scope: 'active_roster',
-                payroll_report_id: row.reportId || null,
-                report_status: row.status || null,
-                off_roster_reason: null,
-                staff_status: null
-            });
+            for (const installment of payrollInstallmentsForExport(row)) {
+                const exportFields = payrollExportFields(row);
+                const installmentFields = payrollInstallmentExportFields(installment);
+                const reportStatusFields = payrollReportStatusExportFields(row);
+                summary.addRow({
+                    staff_id: row.staffId,
+                    staff_name: row.name,
+                    days_worked: row.daysWorked,
+                    hours_worked: row.hoursWorked,
+                    base_amount: row.baseAmount,
+                    overtime_amount: row.overtimeAmount || 0,
+                    gross_amount: row.grossAmount,
+                    deductions_amount: row.deductionsAmount,
+                    advances_amount: row.advancesAmount,
+                    net_amount: row.netAmount,
+                    ...exportFields,
+                    reconciliation_scope: 'active_roster',
+                    payroll_report_id: row.reportId || null,
+                    ...reportStatusFields,
+                    ...installmentFields,
+                    off_roster_reason: null,
+                    staff_status: null
+                });
+            }
         }
         summary.views = [{ state: 'frozen', ySplit: 1 }];
-        summary.autoFilter = { from: 'A1', to: 'AA1' };
+        summary.autoFilter = { from: 'A1', to: 'AQ1' };
         summary.getRow(1).font = { bold: true };
 
         const additionalLines = workbook.addWorksheet('Additional lines');
@@ -415,6 +626,51 @@ router.get('/export-xlsx', async (req, res) => {
         additionalLines.autoFilter = { from: 'A1', to: 'R1' };
         additionalLines.getRow(1).font = { bold: true };
 
+        const paymentsSheet = workbook.addWorksheet('Payments');
+        paymentsSheet.columns = [
+            { header: 'payroll_report_id', key: 'payroll_report_id', width: 18 },
+            { header: 'staff_id', key: 'staff_id', width: 12 },
+            { header: 'staff_name', key: 'staff_name', width: 28 },
+            { header: 'installment_id', key: 'installment_id', width: 16 },
+            { header: 'installment_kind', key: 'installment_kind', width: 18 },
+            { header: 'earning_range', key: 'earning_range', width: 26 },
+            { header: 'movement_id', key: 'movement_id', width: 16 },
+            { header: 'movement_type', key: 'movement_type', width: 18 },
+            { header: 'amount', key: 'amount', width: 14 },
+            { header: 'actual_payment_date', key: 'actual_payment_date', width: 22 },
+            { header: 'actor', key: 'actor', width: 28 },
+            { header: 'actor_role', key: 'actor_role', width: 18 },
+            { header: 'reason', key: 'reason', width: 36 },
+            { header: 'finance_transaction_id', key: 'finance_transaction_id', width: 24 },
+            { header: 'reverses_movement_id', key: 'reverses_movement_id', width: 22 },
+            { header: 'created_at', key: 'created_at', width: 28 }
+        ];
+        for (const row of report.staff) {
+            for (const { installment, movement } of payrollMovementRows(row)) {
+                paymentsSheet.addRow({
+                    payroll_report_id: row.reportId || null,
+                    staff_id: row.staffId,
+                    staff_name: row.name,
+                    installment_id: installment.id,
+                    installment_kind: installment.kind,
+                    earning_range: [installment.earningFrom, installment.earningTo].filter(Boolean).join(' — '),
+                    movement_id: movement.id,
+                    movement_type: movement.movementType,
+                    amount: movement.amount,
+                    actual_payment_date: movement.actualPaymentDate,
+                    actor: movement.actorUsername,
+                    actor_role: movement.actorRole,
+                    reason: movement.reason,
+                    finance_transaction_id: movement.financeTransactionId,
+                    reverses_movement_id: movement.reversesMovementId,
+                    created_at: movement.createdAt
+                });
+            }
+        }
+        paymentsSheet.views = [{ state: 'frozen', ySplit: 1 }];
+        paymentsSheet.autoFilter = { from: 'A1', to: 'P1' };
+        paymentsSheet.getRow(1).font = { bold: true };
+
         const reconciliationSheet = workbook.addWorksheet('Reconciliation');
         reconciliationSheet.columns = [
             { header: 'reconciliation_scope', key: 'reconciliation_scope', width: 24 },
@@ -454,7 +710,7 @@ router.get('/export-xlsx', async (req, res) => {
     }
 });
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireAction('manage_payroll_accrual'), async (req, res) => {
     try {
         const month = String(req.query.month || req.body?.month || '').trim();
         if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -467,7 +723,124 @@ router.post('/generate', async (req, res) => {
     }
 });
 
-router.patch('/report/:id', async (req, res) => {
+router.get('/settlement', requireAction('view_payroll'), async (req, res) => {
+    try {
+        const month = String(req.query.month || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+            return res.status(400).json({ success: false, error: 'month (YYYY-MM) required' });
+        }
+        const settlement = await getPayrollSettlement(month);
+        res.json({ success: true, settlement });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/installments/calculate', requireAction('manage_payroll_accrual'), async (req, res) => {
+    try {
+        const month = String(req.query.month || req.body?.month || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+            return res.status(400).json({ success: false, error: 'month (YYYY-MM) required' });
+        }
+        const result = await generatePayrollReports(month, req.user);
+        const settlement = await getPayrollSettlement(month);
+        res.json({
+            ...result,
+            operation: 'calculate_draft',
+            settlement,
+            financeChanged: false
+        });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/installments/:id/approve', requireAction('approve_payroll_installment'), async (req, res) => {
+    try {
+        const businessContext = writablePayrollBusinessContext(req, res);
+        if (!businessContext) return;
+        const installment = await approvePayrollInstallment(req.params.id, req.user, {
+            businessContext
+        });
+        res.json({ success: true, operation: 'approve_installment', installment, financeChanged: false });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/installments/:id/cancel', requireAction('approve_payroll_installment'), async (req, res) => {
+    try {
+        const result = await cancelPayrollAdvanceInstallment(req.params.id, req.user, req.body || {});
+        res.json({ success: true, operation: 'cancel_advance', financeChanged: false, ...result });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.patch('/installments/:id/schedule', requireAction('manage_payroll_accrual'), async (req, res) => {
+    try {
+        const installment = await updatePayrollInstallmentScheduledDate(req.params.id, req.user, req.body || {});
+        res.json({ success: true, operation: 'update_scheduled_payment_date', installment, financeChanged: false });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/installments/:id/payments/confirm', requireAction('confirm_payroll_payment'), async (req, res) => {
+    try {
+        const businessContext = writablePayrollBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await confirmPayrollInstallmentPayment(req.params.id, req.user, {
+            ...(req.body || {}),
+            businessContext,
+            idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotencyKey || req.body?.idempotency_key
+        });
+        res.status(result.idempotent ? 200 : 201).json({
+            success: true,
+            operation: 'confirm_payment',
+            financeChanged: !result.idempotent,
+            ...result
+        });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/payments/:id/reverse', requireAction('reverse_payroll_payment'), async (req, res) => {
+    try {
+        const businessContext = writablePayrollBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await reversePayrollPaymentMovement(req.params.id, req.user, {
+            ...(req.body || {}),
+            businessContext,
+            idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotencyKey || req.body?.idempotency_key
+        });
+        res.status(result.idempotent ? 200 : 201).json({
+            success: true,
+            operation: 'reverse_payment',
+            financeChanged: !result.idempotent,
+            ...result
+        });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.post('/period/close', requireAction('close_payroll_period'), async (req, res) => {
+    try {
+        const month = String(req.body?.month || req.query.month || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+            return res.status(400).json({ success: false, error: 'month (YYYY-MM) required' });
+        }
+        const actor = req.user?.username || req.user?.name || req.user?.email || 'crm';
+        const result = await closePayrollPeriod(month, actor, req.body?.note || '');
+        res.json({ success: true, operation: 'close_month', ...result });
+    } catch (err) {
+        sendError(res, err);
+    }
+});
+
+router.patch('/report/:id', requireAction('manage_payroll_accrual'), async (req, res) => {
     try {
         const status = String(req.body?.status || '').trim();
         const report = await updatePayrollReportStatus(req.params.id, status, req.user);
@@ -478,3 +851,6 @@ router.patch('/report/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.__payrollExportTestHooks = Object.freeze({
+    payrollReportStatusExportFields
+});

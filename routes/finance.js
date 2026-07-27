@@ -69,6 +69,48 @@ function businessScopeSql(alias = '', paramRef = '$1') {
     return `COALESCE(${column}, ${BUSINESS_SQL_DEFAULT}) = ${paramRef}`;
 }
 
+function financeRecognitionDateSql(alias = 'ft') {
+    const prefix = alias ? `${alias}.` : '';
+    return `COALESCE(${prefix}recognition_date, ${prefix}date::date)`;
+}
+
+function sendFinanceError(res, err) {
+    if (err?.code === 'PAYROLL_PAYMENT_MANAGED' || err?.code === '55000') {
+        return res.status(409).json({
+            success: false,
+            code: 'PAYROLL_PAYMENT_MANAGED',
+            error: 'Payroll-linked finance transactions are managed by payroll payment/reversal workflow'
+        });
+    }
+    if (err?.status) return res.status(err.status).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+}
+
+async function assertFinanceTransactionNotPayrollManaged(transactionId, businessContext) {
+    const result = await pool.query(
+        `SELECT ft.id, ft.source, ppm.id AS payroll_movement_id,
+                pr.id AS legacy_payroll_report_id
+         FROM finance_transactions ft
+         LEFT JOIN payroll_payment_movements ppm ON ppm.finance_transaction_id = ft.id
+         LEFT JOIN payroll_reports pr
+                ON pr.finance_transaction_id = ft.id
+                OR pr.reversal_transaction_id = ft.id
+         WHERE ft.id = $1
+           AND ${businessScopeSql('ft', '$2')}
+         LIMIT 1`,
+        [transactionId, businessContext]
+    );
+    if (!result.rowCount) return false;
+    const row = result.rows[0];
+    if (row.payroll_movement_id || row.legacy_payroll_report_id || row.source === 'payroll') {
+        const error = new Error('Payroll-linked finance transaction is managed by payroll workflow');
+        error.status = 409;
+        error.code = 'PAYROLL_PAYMENT_MANAGED';
+        throw error;
+    }
+    return true;
+}
+
 async function validateFinanceCategory(categoryId, businessContext, expectedType = null) {
     if (!categoryId) return null;
     const result = await pool.query(
@@ -266,6 +308,10 @@ router.get('/transactions', async (req, res) => {
                 description: r.description,
                 date: r.date,
                 paymentMethod: r.payment_method,
+                accountId: r.account_id,
+                accountName: r.account_name,
+                source: r.source || 'manual',
+                recognitionDate: r.recognition_date || null,
                 bookingId: r.booking_id,
                 staffId: r.staff_id,
                 certificateId: r.certificate_id,
@@ -287,7 +333,7 @@ router.post('/transactions', async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
-        const { type, categoryId, amount, description, date, paymentMethod, bookingId, staffId, certificateId } = req.body;
+        const { type, categoryId, amount, description, date, paymentMethod, bookingId, staffId, certificateId, accountId } = req.body;
         if (!type || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'type (income|expense) required' });
         }
@@ -298,13 +344,22 @@ router.post('/transactions', async (req, res) => {
             return res.status(400).json({ error: 'valid date (YYYY-MM-DD) required' });
         }
         await validateFinanceCategory(categoryId, businessContext, type);
+        let accountName = null;
+        if (accountId) {
+            const account = await pool.query(
+                `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+                [accountId, businessContext]
+            );
+            if (!account.rowCount) return res.status(400).json({ error: 'Account not found in selected business' });
+            accountName = account.rows[0].name;
+        }
 
         const result = await pool.query(
-            `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, staff_id, certificate_id, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+            `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, staff_id, certificate_id, account_id, account_name, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
             [businessContext, type, categoryId || null, parseInt(amount), description || null, date,
              paymentMethod || null, bookingId || null, staffId || null, certificateId || null,
-             req.user?.username]
+             accountId || null, accountName, req.user?.username]
         );
 
         const r = result.rows[0];
@@ -321,12 +376,13 @@ router.post('/transactions', async (req, res) => {
         res.status(201).json({
             id: r.id, type: r.type, categoryId: r.category_id, amount: r.amount,
             description: r.description, date: r.date, paymentMethod: r.payment_method,
+            accountId: r.account_id, accountName: r.account_name, source: r.source || 'manual',
+            recognitionDate: r.recognition_date || null,
             createdBy: r.created_by, createdAt: r.created_at
         });
     } catch (err) {
         log.error('POST /transactions error', err);
-        if (err.status) return res.status(err.status).json({ error: err.message });
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -336,14 +392,28 @@ router.put('/transactions/:id', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const { id } = req.params;
-        const { type, categoryId, amount, description, date, paymentMethod } = req.body;
+        const { type, categoryId, amount, description, date, paymentMethod, accountId } = req.body;
 
         const existing = await pool.query(
             `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
             [id, businessContext]
         );
         if (existing.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+        await assertFinanceTransactionNotPayrollManaged(id, businessContext);
         await validateFinanceCategory(categoryId, businessContext, type || existing.rows[0].type);
+        let accountName = undefined;
+        if (accountId !== undefined) {
+            if (accountId === null || accountId === '') {
+                accountName = null;
+            } else {
+                const account = await pool.query(
+                    `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+                    [accountId, businessContext]
+                );
+                if (!account.rowCount) return res.status(400).json({ error: 'Account not found in selected business' });
+                accountName = account.rows[0].name;
+            }
+        }
 
         await pool.query(
             `UPDATE finance_transactions SET
@@ -353,15 +423,18 @@ router.put('/transactions/:id', async (req, res) => {
                 description = COALESCE($4, description),
                 date = COALESCE($5, date),
                 payment_method = COALESCE($6, payment_method),
+                account_id = COALESCE($9, account_id),
+                account_name = COALESCE($10, account_name),
                 updated_at = NOW()
              WHERE id = $7 AND ${businessScopeSql('', '$8')}`,
-            [type, categoryId, amount ? parseInt(amount) : null, description, date, paymentMethod, id, businessContext]
+            [type, categoryId, amount ? parseInt(amount) : null, description, date, paymentMethod, id, businessContext,
+                accountId === undefined ? null : (accountId || null),
+                accountId === undefined ? null : accountName]
         );
         res.json({ success: true });
     } catch (err) {
         log.error('PUT /transactions/:id error', err);
-        if (err.status) return res.status(err.status).json({ error: err.message });
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -376,12 +449,13 @@ router.delete('/transactions/:id', async (req, res) => {
             [id, businessContext]
         );
         if (existing.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+        await assertFinanceTransactionNotPayrollManaged(id, businessContext);
 
         await pool.query(`DELETE FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]);
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /transactions/:id error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -412,7 +486,8 @@ router.get('/dashboard', async (req, res) => {
                 COUNT(*) FILTER (WHERE type = 'income')::int AS income_count,
                 COUNT(*) FILTER (WHERE type = 'expense')::int AS expense_count
             FROM finance_transactions
-            WHERE date >= $1 AND date <= $2
+            WHERE ${financeRecognitionDateSql('')} >= $1::date
+              AND ${financeRecognitionDateSql('')} <= $2::date
               AND ${businessScopeSql('', '$3')}
         `, [from, to, businessContext]);
 
@@ -434,7 +509,9 @@ router.get('/dashboard', async (req, res) => {
                 COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
             JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
-            WHERE ft.type = 'income' AND ft.date >= $1 AND ft.date <= $2
+            WHERE ft.type = 'income'
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
             GROUP BY fc.id, fc.name, fc.icon, fc.color
             ORDER BY total DESC
@@ -446,7 +523,9 @@ router.get('/dashboard', async (req, res) => {
                 COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
             JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
-            WHERE ft.type = 'expense' AND ft.date >= $1 AND ft.date <= $2
+            WHERE ft.type = 'expense'
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
             GROUP BY fc.id, fc.name, fc.icon, fc.color
             ORDER BY total DESC
@@ -518,11 +597,11 @@ router.get('/report/monthly', async (req, res) => {
 
         const result = await pool.query(`
             SELECT
-                EXTRACT(MONTH FROM date::date)::int AS month,
+                EXTRACT(MONTH FROM ${financeRecognitionDateSql('finance_transactions')})::int AS month,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
             FROM finance_transactions
-            WHERE EXTRACT(YEAR FROM date::date) = $1
+            WHERE EXTRACT(YEAR FROM ${financeRecognitionDateSql('finance_transactions')}) = $1
               AND ${businessScopeSql('', '$2')}
             GROUP BY month
             ORDER BY month
@@ -697,7 +776,8 @@ router.get('/budget/comparison', async (req, res) => {
                 COALESCE(SUM(amount), 0)::int AS actual_amount,
                 COUNT(*)::int AS transaction_count
             FROM finance_transactions
-            WHERE date >= $1 AND date <= $2
+            WHERE ${financeRecognitionDateSql('')} >= $1::date
+              AND ${financeRecognitionDateSql('')} <= $2::date
               AND ${businessScopeSql('', '$3')}
             GROUP BY category_id
         `, [range.from, range.to, businessContext]);
@@ -1100,10 +1180,17 @@ router.get('/expense-allocation', async (req, res) => {
                 COALESCE(SUM(ft.amount), 0)::int AS total,
                 COUNT(ft.id)::int AS count,
                 ROUND(COALESCE(SUM(ft.amount), 0) * 100.0 /
-                    NULLIF((SELECT SUM(amount) FROM finance_transactions WHERE type = 'expense' AND date >= $1 AND date <= $2 AND ${businessScopeSql('', '$3')}), 0)
+                    NULLIF((SELECT SUM(amount) FROM finance_transactions
+                            WHERE type = 'expense'
+                              AND ${financeRecognitionDateSql('')} >= $1::date
+                              AND ${financeRecognitionDateSql('')} <= $2::date
+                              AND ${businessScopeSql('', '$3')}), 0)
                 )::int AS percentage
             FROM finance_categories fc
-            LEFT JOIN finance_transactions ft ON ft.category_id = fc.id AND ft.date >= $1 AND ft.date <= $2 AND ${businessScopeSql('ft', '$3')}
+            LEFT JOIN finance_transactions ft ON ft.category_id = fc.id
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
+              AND ${businessScopeSql('ft', '$3')}
             WHERE fc.type = 'expense' AND fc.is_active = true AND ${businessScopeSql('fc', '$3')}
             GROUP BY fc.id, fc.name, fc.icon, fc.color, fc.type
             ORDER BY total DESC
@@ -1152,7 +1239,9 @@ router.get('/report/pnl', async (req, res) => {
             SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
             JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
-            WHERE ft.type = 'income' AND ft.date >= $1 AND ft.date <= $2
+            WHERE ft.type = 'income'
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
             GROUP BY fc.id, fc.name, fc.icon ORDER BY total DESC
         `, [from, to, businessContext]);
@@ -1162,7 +1251,9 @@ router.get('/report/pnl', async (req, res) => {
             SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
             JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
-            WHERE ft.type = 'expense' AND ft.date >= $1 AND ft.date <= $2
+            WHERE ft.type = 'expense'
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
             GROUP BY fc.id, fc.name, fc.icon ORDER BY total DESC
         `, [from, to, businessContext]);
@@ -1197,7 +1288,9 @@ router.get('/report/pnl', async (req, res) => {
             SELECT
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
-            FROM finance_transactions WHERE date >= $1 AND date <= $2
+            FROM finance_transactions
+            WHERE ${financeRecognitionDateSql('')} >= $1::date
+              AND ${financeRecognitionDateSql('')} <= $2::date
               AND ${businessScopeSql('', '$3')}
         `, [prevFrom, prevTo, businessContext]);
 
@@ -1525,11 +1618,11 @@ router.get('/advanced-dashboard', async (req, res) => {
         if (!businessContext) return;
         // Revenue trend (last 6 months)
         const revenueTrend = await pool.query(`
-            SELECT TO_CHAR(date::date, 'YYYY-MM') AS month,
+            SELECT TO_CHAR(${financeRecognitionDateSql('')}, 'YYYY-MM') AS month,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
             FROM finance_transactions
-            WHERE date::date >= (CURRENT_DATE - INTERVAL '6 months')
+            WHERE ${financeRecognitionDateSql('')} >= (CURRENT_DATE - INTERVAL '6 months')
               AND ${businessScopeSql('', '$1')}
             GROUP BY month ORDER BY month
         `, [businessContext]);
@@ -1552,7 +1645,9 @@ router.get('/advanced-dashboard', async (req, res) => {
             SELECT ft.description, ft.amount, ft.date, fc.name AS category_name, fc.icon
             FROM finance_transactions ft
             LEFT JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
-            WHERE ft.type = 'expense' AND ft.date >= $1 AND ft.date <= $2
+            WHERE ft.type = 'expense'
+              AND ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
             ORDER BY ft.amount DESC LIMIT 5
         `, [range.from, range.to, businessContext]);
@@ -1571,8 +1666,8 @@ router.get('/advanced-dashboard', async (req, res) => {
         // Key metrics
         const metrics = await pool.query(`
             SELECT
-                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'income' AND date >= $1 AND date <= $2 AND ${businessScopeSql('', '$3')}) AS month_income,
-                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'expense' AND date >= $1 AND date <= $2 AND ${businessScopeSql('', '$3')}) AS month_expense,
+                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'income' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_income,
+                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'expense' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_expense,
                 (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_revenue,
                 (SELECT COUNT(*)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_count,
                 (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND price > 0 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS avg_booking_price

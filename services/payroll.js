@@ -1,13 +1,44 @@
+const { createHash } = require('node:crypto');
 const { pool } = require('../db');
+const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { attendanceFactMinutes, hydrateAttendanceRecords } = require('./hrAttendance');
-const { buildPayrollRateUnitWarnings, buildPayrollSourceReconciliation } = require('./hrPayrollPeriod');
+const {
+    assertPayrollPeriodOpen,
+    buildPayrollRateUnitWarnings,
+    buildPayrollSourceReconciliation,
+    loadPayrollPeriodLock,
+    lockPayrollPeriodMutation,
+    payrollMonthRange,
+    setPayrollPeriodLock
+} = require('./hrPayrollPeriod');
+const {
+    PAYROLL_SETTLEMENT_MODELS,
+    configuredPayrollInstallmentsActivationMonth,
+    isPayrollInstallmentsActivationMonth,
+    loadPayrollSettlementReadModels,
+    mapPayrollInstallment
+} = require('./payrollSettlement');
+const { canAccessBusinessContext } = require('./businessContext');
 const { normalizeProfessionKey } = require('./professions');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const log = createLogger('Payroll');
 const OVERTIME_MULTIPLIER = 1.5;
 const WORKED_ATTENDANCE_STATUSES = new Set(['present', 'late', 'early_leave', 'auto_closed', 'unscheduled', 'clocked_in']);
+const OPEN_ATTENDANCE_STATUSES = new Set(['clocked_in']);
+const LEAVE_ATTENDANCE_STATUSES_REQUIRING_POLICY = new Set([
+    'absent',
+    'no_show',
+    'vacation',
+    'sick',
+    'day_off',
+    'dayoff',
+    'unpaid'
+]);
+const LEAVE_PAYROLL_POLICIES = Object.freeze({
+    unpaid_v1: { statuses: new Set(['unpaid']), paidPlannedFactor: 0 }
+});
 const SIMULTANEOUS_ADDITIONAL_LINE_TYPE = 'simultaneous_additional';
 const EXPLICIT_ADDITIONAL_RATE_SOURCES = new Set(['staff_profession_rates.hourly_rate']);
 const SIMULTANEOUS_PROFESSION_PAY_EFFECTIVE_FROM = '2026-07-18';
@@ -19,17 +50,28 @@ const PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE = 'Додаткова оп�
 const PAYROLL_ADJUSTMENTS_UNAVAILABLE = 'PAYROLL_ADJUSTMENTS_UNAVAILABLE';
 const PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE = 'Не вдалося достовірно прочитати коригування зарплати';
 
-const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual'];
+const SCHEME_TYPES = ['per_shift', 'hourly', 'monthly_fixed', 'percent', 'hybrid', 'manual', 'piece'];
 const REPORT_STATUSES = ['draft', 'reviewed', 'approved', 'paid'];
+const MANUAL_PAYROLL_REPORT_STATUSES = ['draft', 'reviewed', 'approved'];
+const PAYROLL_INSTALLMENT_KINDS = ['advance', 'final'];
+const PAYROLL_ZRS_TYPE = 'zrs';
+const LEGACY_ZRS_TYPE = 'advance';
+const PAYROLL_KPI_BONUS_TYPE = 'kpi_bonus';
+const PAYROLL_KPI_BONUS_RULE_VERSION = 'manual_kpi_bonus_v1';
 const PAYROLL_LINE_GROUPS = {
     base: 'base',
     bonus: 'bonus',
+    kpi_bonus: 'bonus',
     percent: 'percent',
     manual: 'manual',
+    piece: 'base',
     deduction: 'deduction',
-    advance: 'advance',
+    zrs: 'zrs',
+    advance: 'zrs',
     adjustment: 'bonus'
 };
+const MONTHLY_ADJUSTMENT_GROUPS = new Set(['bonus', 'deduction', 'zrs', PAYROLL_KPI_BONUS_TYPE]);
+const ADVANCE_EARNING_GROUPS = new Set(['base', 'additional', 'overtime', 'percent', 'manual']);
 
 function normalizePayrollMonth(month) {
     const value = String(month || '').trim();
@@ -39,12 +81,15 @@ function normalizePayrollMonth(month) {
 }
 
 function assertPayrollMonth(month) {
-    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    const value = String(month || '').trim();
+    const match = value.match(/^(\d{4})-(\d{2})$/);
+    const monthNumber = match ? Number(match[2]) : 0;
+    if (!match || monthNumber < 1 || monthNumber > 12) {
         const err = new Error('month (YYYY-MM) required');
         err.status = 400;
         throw err;
     }
-    return month;
+    return value;
 }
 
 function getMonthBounds(month) {
@@ -54,6 +99,15 @@ function getMonthBounds(month) {
         from: `${year}-${String(mon).padStart(2, '0')}-01`,
         to: `${year}-${String(mon).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     };
+}
+
+function employmentOverlapsPayrollRange(staff = {}, range = {}) {
+    const from = normalizeDateValue(range.from);
+    const to = normalizeDateValue(range.to);
+    if (!from || !to || from > to) return false;
+    const hireDate = normalizeDateValue(staff.hireDate ?? staff.hire_date);
+    const terminationDate = normalizeDateValue(staff.terminationDate ?? staff.termination_date);
+    return (!hireDate || hireDate <= to) && (!terminationDate || terminationDate > from);
 }
 
 function isMissingTableError(err) {
@@ -90,6 +144,18 @@ function roundMoney(value) {
     return Math.round(toNumber(value, 0));
 }
 
+function normalizePayrollAdjustmentType(value) {
+    const type = String(value || '').trim().toLowerCase();
+    if (type === LEGACY_ZRS_TYPE) return PAYROLL_ZRS_TYPE;
+    return type;
+}
+
+function normalizePayrollEntryLineType(value) {
+    const type = String(value || '').trim().toLowerCase();
+    if (type === LEGACY_ZRS_TYPE) return PAYROLL_ZRS_TYPE;
+    return type;
+}
+
 function roundHoursFromMinutes(value) {
     return Math.round((Math.max(0, toNumber(value, 0)) / 60) * 100) / 100;
 }
@@ -105,10 +171,69 @@ function parseConfig(value) {
     try { return JSON.parse(value); } catch { return {}; }
 }
 
+function stablePayrollJson(value) {
+    if (Array.isArray(value)) return `[${value.map(stablePayrollJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value)
+            .sort()
+            .map(key => `${JSON.stringify(key)}:${stablePayrollJson(value[key])}`)
+            .join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function payrollSchemeConfigHash(value) {
+    return createHash('sha256')
+        .update(stablePayrollJson(parseConfig(value)))
+        .digest('hex');
+}
+
 function normalizeDateValue(value) {
     if (!value) return null;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (value instanceof Date) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
     return String(value).slice(0, 10);
+}
+
+function normalizePayrollSchemeEffectiveDate(value, field, required = false) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        if (!required) return null;
+        throw payrollWorkflowError(
+            `${field} is required for an immutable payroll scheme version`,
+            400,
+            'PAYROLL_SCHEME_EFFECTIVE_FROM_REQUIRED',
+            { field }
+        );
+    }
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+        throw payrollWorkflowError(
+            `${field} must be a valid YYYY-MM-DD date`,
+            400,
+            'PAYROLL_SCHEME_EFFECTIVE_DATE_INVALID',
+            { field, value: raw }
+        );
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (parsed.getUTCFullYear() !== year
+        || parsed.getUTCMonth() !== month - 1
+        || parsed.getUTCDate() !== day) {
+        throw payrollWorkflowError(
+            `${field} must be a valid calendar date`,
+            400,
+            'PAYROLL_SCHEME_EFFECTIVE_DATE_INVALID',
+            { field, value: raw }
+        );
+    }
+    return raw;
 }
 
 function isPostSimultaneousPayActivationDate(value) {
@@ -127,13 +252,15 @@ function segmentHasPaidHourlyAdditionalRole(segment = {}) {
 
 function mapScheme(row) {
     if (!row) return null;
+    const config = parseConfig(row.config_json ?? row.config);
     return {
         id: row.id,
         staffId: row.staff_id,
         schemeType: row.scheme_type,
         title: row.title || '',
         isActive: row.is_active === true,
-        config: parseConfig(row.config_json),
+        config,
+        configHash: payrollSchemeConfigHash(config),
         effectiveFrom: normalizeDateValue(row.effective_from),
         effectiveTo: normalizeDateValue(row.effective_to),
         createdAt: row.created_at,
@@ -149,7 +276,26 @@ function mapStaff(row) {
         position: row.position || row.role_type || '',
         roleType: row.role_type || '',
         hourlyRate: toNumber(row.hourly_rate),
-        rateUnit: normalizeStaffRateUnit(row.rate_unit)
+        rateUnit: normalizeStaffRateUnit(row.rate_unit),
+        hireDate: normalizeDateValue(row.hire_date),
+        terminationDate: normalizeDateValue(row.termination_date),
+        isActive: row.is_active === undefined ? null : row.is_active === true,
+        isFreelance: row.is_freelance === undefined ? null : row.is_freelance === true,
+        hrPoolStatus: row.hr_pool_status || null
+    };
+}
+
+function payrollSchemeSnapshotMetadata(scheme = {}) {
+    const config = parseConfig(scheme.config ?? scheme.config_json);
+    return {
+        versionId: scheme.id ?? null,
+        id: scheme.id ?? null,
+        type: scheme.schemeType || scheme.scheme_type || null,
+        title: scheme.title || '',
+        effectiveFrom: normalizeDateValue(scheme.effectiveFrom ?? scheme.effective_from),
+        effectiveTo: normalizeDateValue(scheme.effectiveTo ?? scheme.effective_to),
+        configHash: scheme.configHash || scheme.config_hash || payrollSchemeConfigHash(config),
+        updatedAt: scheme.updatedAt || scheme.updated_at || null
     };
 }
 
@@ -201,7 +347,8 @@ function schemeTypeLabel(type) {
         monthly_fixed: 'Фікс за місяць',
         percent: 'Відсоток',
         hybrid: 'Гібридна',
-        manual: 'Ручна'
+        manual: 'Ручна',
+        piece: 'За одиницю'
     }[type] || 'Погодинна';
 }
 
@@ -230,6 +377,285 @@ function periodMetricBase(config, metrics) {
     return toNumber(config.baseAmount ?? config.percentBase ?? config.manualBase, 0);
 }
 
+function resolvePieceQuantity(metrics = {}) {
+    const direct = [
+        ['pieceQuantity', metrics.pieceQuantity],
+        ['piece_quantity', metrics.piece_quantity],
+        ['pieceUnits', metrics.pieceUnits],
+        ['piece_units', metrics.piece_units],
+        ['unitsProduced', metrics.unitsProduced],
+        ['units_produced', metrics.units_produced]
+    ];
+    for (const [source, value] of direct) {
+        if (value === null || value === undefined || value === '') continue;
+        const quantity = Number(value);
+        if (Number.isFinite(quantity) && quantity >= 0) {
+            return { quantity, source: `metrics.${source}` };
+        }
+    }
+    const snapshots = [
+        ['pieceSnapshot', metrics.pieceSnapshot],
+        ['piece_snapshot', metrics.piece_snapshot],
+        ['compensationSnapshot', metrics.compensationSnapshot],
+        ['compensation_snapshot', metrics.compensation_snapshot]
+    ];
+    for (const [sourceName, rawSnapshot] of snapshots) {
+        const snapshot = parseConfig(rawSnapshot);
+        const rawQuantity = snapshot.pieceQuantity
+            ?? snapshot.piece_quantity
+            ?? snapshot.pieceUnits
+            ?? snapshot.piece_units
+            ?? snapshot.unitsProduced
+            ?? snapshot.units_produced;
+        if (rawQuantity === null || rawQuantity === undefined || rawQuantity === '') continue;
+        const quantity = Number(rawQuantity);
+        if (Number.isFinite(quantity) && quantity >= 0) {
+            return { quantity, source: `metrics.${sourceName}` };
+        }
+    }
+    return { quantity: 0, source: null };
+}
+
+function pieceRateFromConfig(config = {}, staff = {}) {
+    return toNumber(
+        config.pieceRate
+        ?? config.piece_rate
+        ?? config.rate
+        ?? config.amount
+        ?? staff.pieceRate
+        ?? staff.piece_rate,
+        0
+    );
+}
+
+function buildPieceLine(staff, config, metrics, label = 'Оплата за одиницю') {
+    const rate = pieceRateFromConfig(config, staff);
+    const { quantity, source } = resolvePieceQuantity(metrics);
+    return line('base', 'piece', label, quantity * rate, {
+        quantity,
+        rate,
+        source: source || 'missing_explicit_piece_quantity',
+        meta: {
+            formula: 'quantity * rate',
+            quantitySource: source,
+            requiresExplicitQuantity: true
+        }
+    });
+}
+
+function schemeUsesFinanceIncome(schemeType, config = {}) {
+    const usesIncome = rule => {
+        const source = rule?.sourceMetric || rule?.percentSource || rule?.source;
+        return source === 'finance_income';
+    };
+    if (schemeType === 'percent') return usesIncome(config);
+    if (schemeType !== 'hybrid') return false;
+    const rules = [
+        parseConfig(config.base || {}),
+        ...(Array.isArray(config.percentRules) ? config.percentRules : []),
+        ...(Array.isArray(config.bonusRules) ? config.bonusRules : []),
+        ...(Array.isArray(config.deductions) ? config.deductions : []),
+        ...(Array.isArray(config.zrsRules) ? config.zrsRules : []),
+        ...(Array.isArray(config.advances) ? config.advances : [])
+    ];
+    return rules.some(rule => {
+        const parsed = parseConfig(rule);
+        return (parsed.kind || parsed.type) === 'percent' && usesIncome(parsed);
+    });
+}
+
+function payrollCalculationBlockers(staff = {}, scheme = {}, metrics = {}) {
+    const schemeType = scheme?.schemeType || scheme?.scheme_type || 'hourly';
+    const config = parseConfig(scheme?.config || scheme?.config_json);
+    const blockers = [];
+    const periodSchemeVersions = Array.isArray(scheme?.periodSchemeVersions)
+        ? scheme.periodSchemeVersions
+        : [];
+    if (periodSchemeVersions.length > 1) {
+        blockers.push(payrollIssue(
+            'PAYROLL_SCHEME_CHANGE_IN_PERIOD_UNSUPPORTED',
+            'Payroll scheme or rate changes inside one earning month require an explicit segmented calculation policy',
+            {
+                staffId: staff.id ?? staff.staffId ?? null,
+                schemeIds: periodSchemeVersions.map(item => item.id).filter(Boolean),
+                effectiveRanges: periodSchemeVersions.map(item => ({
+                    effectiveFrom: item.effectiveFrom || null,
+                    effectiveTo: item.effectiveTo || null
+                }))
+            },
+            'error'
+        ));
+    }
+    if (schemeUsesFinanceIncome(schemeType, config) && metrics.periodIncomeUnavailableReason) {
+        blockers.push(payrollIssue(
+            metrics.periodIncomeUnavailableReason === 'mixed_business_contexts'
+                ? 'PAYROLL_PERCENT_BUSINESS_CONTEXT_MIXED'
+                : 'PAYROLL_PERCENT_BUSINESS_CONTEXT_REQUIRED',
+            metrics.periodIncomeUnavailableReason === 'mixed_business_contexts'
+                ? 'Finance-income payroll cannot combine multiple business contexts'
+                : 'Finance-income payroll requires one explicit business context',
+            {
+                staffId: staff.id ?? staff.staffId ?? null,
+                businessContexts: metrics.businessContexts || [],
+                earningFrom: metrics.periodFrom || null,
+                earningTo: metrics.periodTo || null
+            },
+            'error'
+        ));
+    }
+    const hybridBase = parseConfig(config.base || {});
+    const monthlyFixedConfig = schemeType === 'monthly_fixed'
+        ? config
+        : (schemeType === 'hybrid' && (hybridBase.kind || hybridBase.type) === 'monthly_fixed'
+            ? hybridBase
+            : null);
+    if (monthlyFixedConfig) {
+        const basis = monthlyFixedProrationBasis(
+            staff,
+            { schemeType: 'monthly_fixed', config: monthlyFixedConfig },
+            metrics
+        );
+        if (!basis.valid) {
+            blockers.push(payrollIssue(
+                basis.code,
+                basis.message,
+                {
+                    staffId: staff.id ?? staff.staffId ?? null,
+                    plannedMinutes: basis.plannedMinutes,
+                    paidPlannedMinutes: basis.paidPlannedMinutes,
+                    monthlyNormMinutes: basis.monthlyNormMinutes,
+                    monthlyNormSource: basis.monthlyNormSource || null,
+                    monthlyNormConfirmed: basis.monthlyNormConfirmed === true,
+                    monthlyNormMonth: basis.monthlyNormMonth || null,
+                    periodFrom: basis.periodFrom,
+                    periodTo: basis.periodTo
+                },
+                'error'
+            ));
+        }
+    }
+    if (schemeType === 'piece') {
+        const rate = pieceRateFromConfig(config, staff);
+        const { quantity, source } = resolvePieceQuantity(metrics);
+        if (rate <= 0) {
+            blockers.push(payrollIssue(
+                'PAYROLL_PIECE_RATE_REQUIRED',
+                'Piece-rate payroll requires an explicit positive rate',
+                { staffId: staff.id ?? staff.staffId ?? null, schemeType, rate },
+                'error'
+            ));
+        }
+        if (quantity < 0 || !source) {
+            blockers.push(payrollIssue(
+                'PAYROLL_PIECE_QUANTITY_REQUIRED',
+                'Piece-rate payroll requires an explicit non-negative quantity from payroll metrics or immutable snapshot',
+                { staffId: staff.id ?? staff.staffId ?? null, schemeType, quantity, quantitySource: source },
+                'error'
+            ));
+        }
+    }
+    return blockers;
+}
+
+function monthlyFixedProrationBasis(staff = {}, scheme = {}, metrics = {}) {
+    const config = parseConfig(scheme?.config || scheme?.config_json);
+    const plannedMinutes = Math.max(0, toNumber(metrics.plannedMinutes, 0));
+    const paidPlannedMinutes = Math.max(
+        0,
+        toNumber(metrics.paidPlannedMinutes ?? metrics.paid_planned_minutes ?? plannedMinutes, 0)
+    );
+    const explicitMonthlyNormMinutes = toNumber(
+        metrics.monthlyNormMinutes
+        ?? metrics.monthly_norm_minutes
+        ?? config.monthlyNormMinutes
+        ?? config.monthly_norm_minutes,
+        0
+    );
+    const monthlyNormSource = String(
+        metrics.monthlyNormSource
+        ?? metrics.monthly_norm_source
+        ?? config.monthlyNormSource
+        ?? config.monthly_norm_source
+        ?? ''
+    ).trim();
+    const monthlyNormConfirmed = (
+        metrics.monthlyNormConfirmed
+        ?? metrics.monthly_norm_confirmed
+        ?? config.monthlyNormConfirmed
+        ?? config.monthly_norm_confirmed
+    ) === true;
+    const monthlyNormMonth = String(
+        metrics.monthlyNormMonth
+        ?? metrics.monthly_norm_month
+        ?? config.monthlyNormMonth
+        ?? config.monthly_norm_month
+        ?? ''
+    ).trim();
+    const periodFrom = normalizeDateValue(metrics.periodFrom ?? metrics.period_from);
+    const periodTo = normalizeDateValue(metrics.periodTo ?? metrics.period_to);
+    const hireDate = normalizeDateValue(staff.hireDate ?? staff.hire_date);
+    const terminationDate = normalizeDateValue(staff.terminationDate ?? staff.termination_date);
+    const employmentBoundaryInsidePeriod = Boolean(
+        (periodFrom && periodTo && hireDate && hireDate > periodFrom && hireDate <= periodTo)
+        || (periodFrom && periodTo && terminationDate && terminationDate > periodFrom && terminationDate <= periodTo)
+    );
+    const expectedNormMonth = periodFrom ? periodFrom.slice(0, 7) : '';
+    const monthlyNormMinutes = explicitMonthlyNormMinutes;
+
+    if (monthlyNormMinutes <= 0
+        || !monthlyNormConfirmed
+        || !monthlyNormSource
+        || (expectedNormMonth && monthlyNormMonth !== expectedNormMonth)) {
+        return {
+            valid: false,
+            code: 'PAYROLL_MONTHLY_NORM_REQUIRED',
+            message: 'Monthly fixed payroll requires a confirmed full-month norm with source and matching month',
+            plannedMinutes,
+            paidPlannedMinutes,
+            monthlyNormMinutes,
+            monthlyNormSource: monthlyNormSource || null,
+            monthlyNormConfirmed,
+            monthlyNormMonth: monthlyNormMonth || null,
+            periodFrom,
+            periodTo
+        };
+    }
+    if (paidPlannedMinutes > monthlyNormMinutes) {
+        return {
+            valid: false,
+            code: 'PAYROLL_MONTHLY_NORM_INVALID',
+            message: 'Paid planned minutes cannot exceed the full-month norm',
+            plannedMinutes,
+            paidPlannedMinutes,
+            monthlyNormMinutes,
+            periodFrom,
+            periodTo
+        };
+    }
+    return {
+        valid: true,
+        plannedMinutes,
+        paidPlannedMinutes,
+        monthlyNormMinutes,
+        monthlyNormSource,
+        monthlyNormConfirmed,
+        monthlyNormMonth,
+        employmentBoundaryInsidePeriod,
+        ratio: paidPlannedMinutes / monthlyNormMinutes,
+        periodFrom,
+        periodTo
+    };
+}
+
+function monthlyFixedAmount(fullMonthlyRate, staff = {}, scheme = {}, metrics = {}) {
+    const basis = monthlyFixedProrationBasis(staff, scheme, metrics);
+    return {
+        ...basis,
+        fullMonthlyRate: toNumber(fullMonthlyRate, 0),
+        amount: basis.valid ? roundMoney(toNumber(fullMonthlyRate, 0) * basis.ratio) : 0
+    };
+}
+
 function buildBaseLines(base, staff, metrics, labelPrefix = 'База') {
     const cfg = parseConfig(base);
     const kind = cfg.kind || cfg.type || 'hourly';
@@ -241,7 +667,13 @@ function buildBaseLines(base, staff, metrics, labelPrefix = 'База') {
     }
 
     if (kind === 'monthly_fixed') {
-        const amount = toNumber(cfg.amount ?? cfg.fixedAmount ?? cfg.monthlyAmount, 0);
+        const fullMonthlyRate = toNumber(cfg.amount ?? cfg.fixedAmount ?? cfg.monthlyAmount, 0);
+        const amount = monthlyFixedAmount(
+            fullMonthlyRate,
+            staff,
+            { schemeType: 'monthly_fixed', config: cfg },
+            metrics
+        ).amount;
         return [line('base', 'base', `${labelPrefix}: фікс`, amount, { source: 'scheme' })];
     }
 
@@ -254,6 +686,10 @@ function buildBaseLines(base, staff, metrics, labelPrefix = 'База') {
     if (kind === 'manual') {
         const amount = toNumber(cfg.amount ?? cfg.manualAmount, 0);
         return [line('manual', 'manual', `${labelPrefix}: ручна сума`, amount, { source: 'scheme' })];
+    }
+
+    if (kind === 'piece') {
+        return [buildPieceLine(staff, cfg, metrics, `${labelPrefix}: за одиницю`)];
     }
 
     const rate = toNumber(cfg.rate ?? cfg.hourlyRate ?? staff.hourlyRate, 0);
@@ -287,7 +723,7 @@ function buildAmountRuleLines(rules, group, lineType, defaultLabel, metrics) {
 }
 
 function buildSchemeLines(staff, scheme, metrics) {
-    const config = parseConfig(scheme?.config);
+    const config = parseConfig(scheme?.config || scheme?.config_json);
     const type = scheme?.schemeType || scheme?.scheme_type || 'hourly';
 
     if (type === 'per_shift') {
@@ -303,7 +739,8 @@ function buildSchemeLines(staff, scheme, metrics) {
     }
 
     if (type === 'monthly_fixed') {
-        const amount = toNumber(config.monthlyAmount ?? config.fixedAmount ?? config.amount, 0);
+        const fullMonthlyRate = toNumber(config.monthlyAmount ?? config.fixedAmount ?? config.amount, 0);
+        const amount = monthlyFixedAmount(fullMonthlyRate, staff, scheme, metrics).amount;
         return [line('base', 'base', 'Фікс за місяць', amount, { source: 'scheme' })];
     }
 
@@ -322,6 +759,10 @@ function buildSchemeLines(staff, scheme, metrics) {
         return [line('manual', 'manual', 'Ручна схема', amount, { source: 'scheme' })];
     }
 
+    if (type === 'piece') {
+        return [buildPieceLine(staff, config, metrics)];
+    }
+
     const lines = [];
     lines.push(...buildBaseLines(config.base || {
         kind: config.baseKind || 'hourly',
@@ -333,13 +774,17 @@ function buildSchemeLines(staff, scheme, metrics) {
 
     const bonusRules = normalizeRuleArray(config, 'bonusRules', 'bonusAmount', 'Бонус');
     const deductions = normalizeRuleArray(config, 'deductions', 'deductionAmount', 'Утримання');
-    const advances = normalizeRuleArray(config, 'advances', 'advanceAmount', 'Аванс');
+    const zrsRules = Array.isArray(config.zrsRules)
+        ? config.zrsRules
+        : (Array.isArray(config.zrs)
+            ? config.zrs
+            : normalizeRuleArray(config, 'advances', 'advanceAmount', 'ЗРС'));
     const percentRules = Array.isArray(config.percentRules) ? config.percentRules : [];
 
     lines.push(...buildAmountRuleLines(bonusRules, 'bonus', 'bonus', 'Бонус', metrics));
     lines.push(...buildAmountRuleLines(percentRules, 'percent', 'percent', 'Відсоток', metrics));
     lines.push(...buildAmountRuleLines(deductions, 'deduction', 'deduction', 'Утримання', metrics));
-    lines.push(...buildAmountRuleLines(advances, 'advance', 'advance', 'Аванс', metrics));
+    lines.push(...buildAmountRuleLines(zrsRules, 'zrs', 'zrs', 'ЗРС', metrics));
     return lines;
 }
 
@@ -355,20 +800,47 @@ function buildAdjustmentLines(adjustments) {
     if (tip) result.push(line('bonus', 'adjustment', 'Чайові з HR', tip, { source: 'salary_adjustments' }));
     if (deduction) result.push(line('deduction', 'adjustment', 'Утримання з HR', deduction, { source: 'salary_adjustments' }));
     if (penalty) result.push(line('deduction', 'adjustment', 'Депреміювання з HR', penalty, { source: 'salary_adjustments' }));
-    if (advance) result.push(line('advance', 'adjustment', 'ЗРС з HR', advance, { source: 'salary_adjustments' }));
+    if (advance) result.push(line('zrs', 'zrs', 'ЗРС з HR', advance, { source: 'salary_adjustments' }));
     return result;
 }
 
 function buildEntryLines(entries) {
     return entries.map(entry => {
-        const group = PAYROLL_LINE_GROUPS[entry.line_type] || 'bonus';
-        return line(group, entry.line_type, entry.label || entry.line_type, entry.amount, {
+        const lineType = normalizePayrollEntryLineType(entry.line_type);
+        const group = PAYROLL_LINE_GROUPS[lineType] || 'bonus';
+        return line(group, lineType, entry.label || lineType, entry.amount, {
             quantity: entry.quantity,
             rate: entry.rate,
             source: 'payroll_entries',
             meta: parseConfig(entry.meta_json)
         });
     }).filter(item => item.amount !== 0);
+}
+
+function buildCanonicalAdjustmentLines(adjustments = {}) {
+    const normalized = {
+        bonus: toNumber(adjustments.bonus, 0),
+        kpiBonus: toNumber(adjustments[PAYROLL_KPI_BONUS_TYPE], 0),
+        tip: toNumber(adjustments.tip, 0),
+        deduction: toNumber(adjustments.deduction, 0),
+        penalty: toNumber(adjustments.penalty, 0),
+        zrs: toNumber(adjustments.zrs, 0) + toNumber(adjustments.advance, 0)
+    };
+    const result = [];
+    if (normalized.bonus) result.push(line('bonus', 'adjustment', 'HR bonus', normalized.bonus, { source: 'salary_adjustments' }));
+    if (normalized.kpiBonus) result.push(line('bonus', PAYROLL_KPI_BONUS_TYPE, 'Manual KPI bonus', normalized.kpiBonus, {
+        source: 'salary_adjustments',
+        meta: {
+            finalOnly: true,
+            formula: null,
+            ruleVersion: PAYROLL_KPI_BONUS_RULE_VERSION
+        }
+    }));
+    if (normalized.tip) result.push(line('bonus', 'adjustment', 'HR tips', normalized.tip, { source: 'salary_adjustments' }));
+    if (normalized.deduction) result.push(line('deduction', 'adjustment', 'HR deduction', normalized.deduction, { source: 'salary_adjustments' }));
+    if (normalized.penalty) result.push(line('deduction', 'adjustment', 'HR depremium', normalized.penalty, { source: 'salary_adjustments' }));
+    if (normalized.zrs) result.push(line('zrs', 'zrs', 'ZRS from HR', normalized.zrs, { source: 'salary_adjustments' }));
+    return result;
 }
 
 function calcPayrollPreview(lines) {
@@ -380,6 +852,9 @@ function calcPayrollPreview(lines) {
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const bonuses = lines
         .filter(item => item.group === 'bonus')
+        .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
+    const kpiBonus = lines
+        .filter(item => item.lineType === PAYROLL_KPI_BONUS_TYPE || item.line_type === PAYROLL_KPI_BONUS_TYPE)
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
     const overtime = lines
         .filter(item => item.group === 'overtime')
@@ -396,8 +871,8 @@ function calcPayrollPreview(lines) {
     const deductions = lines
         .filter(item => item.group === 'deduction')
         .reduce((sum, item) => sum + Math.abs(toNumber(item.amount, 0)), 0);
-    const advances = lines
-        .filter(item => item.group === 'advance')
+    const zrs = lines
+        .filter(item => item.group === 'zrs' || item.group === 'advance')
         .reduce((sum, item) => sum + Math.abs(toNumber(item.amount, 0)), 0);
 
     return {
@@ -405,17 +880,21 @@ function calcPayrollPreview(lines) {
         additional: roundMoney(additional),
         overtime: roundMoney(overtime),
         bonuses: roundMoney(bonuses),
+        kpiBonus: roundMoney(kpiBonus),
+        kpi_bonus: roundMoney(kpiBonus),
         percent: roundMoney(percent),
         manual: roundMoney(manual),
         gross: roundMoney(gross),
         deductions: roundMoney(deductions),
-        advances: roundMoney(advances),
-        net: roundMoney(gross - deductions - advances)
+        zrs: roundMoney(zrs),
+        advances: roundMoney(zrs),
+        net: roundMoney(gross - deductions - zrs)
     };
 }
 
-function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
+function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
+    const calculationBlockers = payrollCalculationBlockers(staff, activeScheme, metrics);
     const baseLines = professionPay?.applies
         ? [
             ...professionPay.baseLines,
@@ -425,33 +904,293 @@ function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = []
         : buildSchemeLines(staff, activeScheme, metrics);
     const lines = [
         ...baseLines,
-        ...buildAdjustmentLines(adjustments),
+        ...buildCanonicalAdjustmentLines(adjustments),
         ...buildEntryLines(entries)
     ].filter(item => item.amount !== 0 || ['base', 'manual'].includes(item.group));
     const summary = calcPayrollPreview(lines);
-    return { scheme: activeScheme, lines, summary, professionPay };
+    const blockingIssues = compactAllocationIssues([
+        ...(professionPay?.blockingIssues || []),
+        ...calculationBlockers
+    ]);
+    return {
+        scheme: activeScheme,
+        lines,
+        summary,
+        professionPay,
+        calculationMode: 'monthly',
+        calculationBlockers,
+        blockers: blockingIssues,
+        blockingIssues
+    };
 }
 
-async function fetchStaffList(month) {
+function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
+    return calculateMonthlyPayroll(staff, scheme, metrics, adjustments, entries, professionPay);
+}
+
+function effectiveMonthlyFixedAmount(staff, scheme, monthlyCalculation = null) {
+    const schemeType = scheme?.schemeType || scheme?.scheme_type || fallbackSchemeForStaff(staff).schemeType;
+    if (schemeType !== 'monthly_fixed') return null;
+    const config = parseConfig(scheme?.config || scheme?.config_json);
+    const configuredRate = toNumber(config.monthlyAmount ?? config.fixedAmount ?? config.amount ?? staff?.hourlyRate, 0);
+    if (configuredRate > 0) return configuredRate;
+    return toNumber(monthlyCalculation?.summary?.base, 0);
+}
+
+function calculationEarningAmount(calculation = {}) {
+    const lines = Array.isArray(calculation.lines) ? calculation.lines : [];
+    return roundMoney(lines
+        .filter(item => ADVANCE_EARNING_GROUPS.has(item.group))
+        .reduce((sum, item) => sum + toNumber(item.amount, 0), 0));
+}
+
+function payrollInstallmentBlocker(code, message, details = {}) {
+    return { code, message, severity: 'error', ...details };
+}
+
+function calculateAdvanceInstallment(options = {}) {
+    const staff = options.staff || {};
+    const scheme = options.scheme || fallbackSchemeForStaff(staff);
+    const schemeType = scheme?.schemeType || scheme?.scheme_type || 'hourly';
+    const advanceMetrics = options.advanceMetrics || options.metrics || {};
+    const monthMetrics = options.monthMetrics || {};
+    const blockers = [];
+    let amount = 0;
+
+    if (schemeType === 'monthly_fixed') {
+        const monthlyAmount = effectiveMonthlyFixedAmount(staff, scheme, options.monthlyCalculation);
+        const basis = monthlyFixedProrationBasis(staff, scheme, monthMetrics);
+        const fullNorm = basis.monthlyNormMinutes;
+        const hasAdvanceNorm = Object.prototype.hasOwnProperty.call(advanceMetrics, 'paidPlannedMinutes')
+            || Object.prototype.hasOwnProperty.call(advanceMetrics, 'paid_planned_minutes')
+            || Object.prototype.hasOwnProperty.call(advanceMetrics, 'plannedMinutes')
+            || Object.prototype.hasOwnProperty.call(advanceMetrics, 'planned_minutes');
+        const advanceNorm = toNumber(
+            advanceMetrics.paidPlannedMinutes
+            ?? advanceMetrics.paid_planned_minutes
+            ?? advanceMetrics.plannedMinutes
+            ?? advanceMetrics.planned_minutes,
+            0
+        );
+        if (!basis.valid) {
+            blockers.push(payrollInstallmentBlocker(
+                basis.code,
+                basis.message,
+                {
+                    staffId: staff.id ?? staff.staffId ?? null,
+                    fullNormMinutes: fullNorm,
+                    monthlyNormSource: basis.monthlyNormSource || null,
+                    monthlyNormMonth: basis.monthlyNormMonth || null
+                }
+            ));
+        } else if (!hasAdvanceNorm || advanceNorm < 0) {
+            blockers.push(payrollInstallmentBlocker(
+                'PAYROLL_ADVANCE_PLANNED_NORM_REQUIRED',
+                'Monthly fixed advance requires explicit paid planned norm for days 1-15',
+                { staffId: staff.id ?? staff.staffId ?? null, fullNormMinutes: fullNorm, advanceNormMinutes: advanceNorm }
+            ));
+        } else {
+            amount = monthlyAmount * advanceNorm / fullNorm;
+        }
+    } else {
+        const rangeCalculation = options.rangeCalculation || calculateMonthlyPayroll(
+            staff,
+            scheme,
+            advanceMetrics,
+            {},
+            [],
+            options.rangeProfessionPay || null
+        );
+        const rangeBlockers = Array.isArray(rangeCalculation.blockers)
+            ? rangeCalculation.blockers
+            : (Array.isArray(rangeCalculation.blockingIssues) ? rangeCalculation.blockingIssues : []);
+        blockers.push(...rangeBlockers);
+        amount = calculationEarningAmount(rangeCalculation);
+    }
+
+    const lockedAmount = roundMoney(amount);
+    return {
+        kind: 'advance',
+        earningFrom: options.earningFrom || null,
+        earningTo: options.earningTo || null,
+        amount: lockedAmount,
+        calculatedAmount: lockedAmount,
+        lockedAmount,
+        blockers,
+        confirmable: blockers.length === 0,
+        excludesMonthlyAdjustments: true,
+        calculationSnapshot: {
+            schemaVersion: 1,
+            kind: 'advance',
+            schemeType,
+            roundedOnce: true,
+            excludedGroups: [...MONTHLY_ADJUSTMENT_GROUPS]
+        }
+    };
+}
+
+function approvedAdvanceAmount(advanceInstallment = {}) {
+    if (!advanceInstallment) return 0;
+    const status = String(
+        advanceInstallment.workflowStatus
+        || advanceInstallment.workflow_status
+        || advanceInstallment.status
+        || ''
+    ).trim();
+    if (!['approved', 'paid', 'partially_paid'].includes(status)) return 0;
+    return roundMoney(
+        advanceInstallment.lockedAmount
+        ?? advanceInstallment.locked_amount
+        ?? advanceInstallment.amount
+        ?? advanceInstallment.calculatedAmount
+        ?? advanceInstallment.calculated_amount
+        ?? 0
+    );
+}
+
+function calculatedAdvanceAmount(advanceInstallment = {}) {
+    if (!advanceInstallment) return 0;
+    return roundMoney(
+        advanceInstallment.amount
+        ?? advanceInstallment.calculatedAmount
+        ?? advanceInstallment.calculated_amount
+        ?? 0
+    );
+}
+
+function calculateFinalInstallment(options = {}) {
+    const monthlyPayroll = options.monthlyPayroll || options.monthlyCalculation || {};
+    const blockers = Array.isArray(monthlyPayroll.blockers)
+        ? monthlyPayroll.blockers
+        : (Array.isArray(monthlyPayroll.blockingIssues) ? monthlyPayroll.blockingIssues : []);
+    const monthlyNet = roundMoney(monthlyPayroll.summary?.net ?? monthlyPayroll.netAmount ?? monthlyPayroll.net_amount ?? 0);
+    const approvedAdvance = approvedAdvanceAmount(options.advanceInstallment);
+    const plannedAdvance = calculatedAdvanceAmount(options.plannedAdvanceInstallment);
+    const deductedAdvance = approvedAdvance || plannedAdvance;
+    const currentAdvanceAmount = options.currentAdvanceInstallment
+        ? roundMoney(
+            options.currentAdvanceInstallment.amount
+            ?? options.currentAdvanceInstallment.calculatedAmount
+            ?? options.currentAdvanceInstallment.calculated_amount
+            ?? 0
+        )
+        : null;
+    const advanceCorrectionDelta = currentAdvanceAmount === null || approvedAdvance <= 0
+        ? 0
+        : roundMoney(currentAdvanceAmount - approvedAdvance);
+    const paidAdvance = roundMoney(
+        options.advancePaidAmount
+        ?? options.advanceInstallment?.paidAmount
+        ?? options.advanceInstallment?.paid_amount
+        ?? 0
+    );
+    const finalAmount = Math.max(monthlyNet - deductedAdvance, 0);
+    return {
+        kind: 'final',
+        amount: finalAmount,
+        calculatedAmount: finalAmount,
+        lockedAdvanceAmount: approvedAdvance,
+        plannedAdvanceAmount: plannedAdvance,
+        deductedAdvanceAmount: deductedAdvance,
+        currentAdvanceAmount,
+        advanceCorrectionDeltaAmount: advanceCorrectionDelta,
+        advancePaidAmount: paidAdvance,
+        advanceOutstandingAmount: Math.max(approvedAdvance - paidAdvance, 0),
+        overpaidAmount: Math.max(paidAdvance - monthlyNet, 0),
+        lockedAdvanceOverMonthlyNetAmount: Math.max(approvedAdvance - monthlyNet, 0),
+        monthlyNetAmount: monthlyNet,
+        blockers,
+        confirmable: blockers.length === 0,
+        corrections: advanceCorrectionDelta === 0 ? [] : [{
+            type: 'advance_recalculation_delta',
+            amount: advanceCorrectionDelta,
+            lockedAdvanceAmount: approvedAdvance,
+            plannedAdvanceAmount: plannedAdvance,
+            deductedAdvanceAmount: deductedAdvance,
+            currentAdvanceAmount,
+            note: 'Advance amount is locked; this delta is absorbed by the final installment.'
+        }],
+        calculationSnapshot: {
+            schemaVersion: 1,
+            kind: 'final',
+            monthlyNetAmount: monthlyNet,
+            lockedAdvanceAmount: approvedAdvance,
+            plannedAdvanceAmount: plannedAdvance,
+            deductedAdvanceAmount: deductedAdvance,
+            currentAdvanceAmount,
+            advanceCorrectionDeltaAmount: advanceCorrectionDelta,
+            advancePaidAmount: paidAdvance,
+            advanceOutstandingAmount: Math.max(approvedAdvance - paidAdvance, 0),
+            overpaidAmount: Math.max(paidAdvance - monthlyNet, 0),
+            lockedAdvanceOverMonthlyNetAmount: Math.max(approvedAdvance - monthlyNet, 0),
+            blockers
+        }
+    };
+}
+
+function calculatePayrollRangePreview(options = {}) {
+    const from = normalizeDateValue(options.from);
+    const to = normalizeDateValue(options.to);
+    const month = normalizePayrollMonth(options.month || (from ? from.slice(0, 7) : ''));
     const bounds = getMonthBounds(month);
+    const crossMonth = Boolean(from && to && from.slice(0, 7) !== to.slice(0, 7));
+    const fullMonth = from === bounds.from && to === bounds.to;
+    return {
+        month,
+        from,
+        to,
+        previewMode: true,
+        confirmable: fullMonth && !crossMonth,
+        confirmationBlockedReason: fullMonth && !crossMonth
+            ? null
+            : 'Only a full payroll month can be confirmed; custom or cross-month ranges are preview-only.',
+        staff: Array.isArray(options.staff) ? options.staff : [],
+        totals: options.totals || null
+    };
+}
+
+async function fetchStaffList(month, periodOptions = {}, db = pool) {
+    const bounds = getMonthBounds(month);
+    const from = normalizeDateValue(periodOptions.from) || bounds.from;
+    const to = normalizeDateValue(periodOptions.to) || bounds.to;
     const readStaff = async () => {
-        return pool.query(`
-            SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit
+        return db.query(`
+            SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate,
+                   COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                   s.hire_date,
+                   s.termination_date,
+                   s.is_active,
+                   s.is_freelance,
+                   s.hr_pool_status
             FROM staff s
-            WHERE ${scheduleableStaffWhere('s', { dateExpression: '$1' })}
+            WHERE COALESCE(s.is_freelance, false) IS NOT TRUE
+              AND (
+                    COALESCE(NULLIF(s.hr_pool_status, ''), 'core') NOT IN ('reserve','blacklisted','archived','dismissed')
+                    OR NULLIF(s.termination_date::text, '') IS NOT NULL
+              )
+              AND (NULLIF(s.hire_date::text, '') IS NULL OR NULLIF(s.hire_date::text, '')::date <= $2::date)
+              AND (NULLIF(s.termination_date::text, '') IS NULL OR NULLIF(s.termination_date::text, '')::date > $1::date)
             ORDER BY s.name
-        `, [bounds.to]);
+        `, [from, to]);
     };
 
     try {
         const result = await readStaff();
         return result.rows.map(mapStaff);
     } catch (err) {
+        if (err.code === '42703') {
+            const fallback = await db.query(`
+                SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit
+                FROM staff s
+                WHERE ${scheduleableStaffWhere('s', { dateExpression: '$1' })}
+                ORDER BY s.name
+            `, [to]);
+            return fallback.rows.map(mapStaff);
+        }
         const reason = isMissingTableError(err)
-            ? 'payroll staff current-core query unavailable'
-            : 'payroll staff current-core query failed';
+            ? 'payroll staff employment-overlap query unavailable'
+            : 'payroll staff employment-overlap query failed';
         log.warn(`${reason}:`, err.message);
-        // Fail closed: never resurrect reserve/blacklisted/freelance staff through an active-only fallback.
         throw err;
     }
 }
@@ -463,6 +1202,7 @@ function payrollMetricBucket(staffId) {
         totalMinutes: 0,
         allocatedMinutes: 0,
         plannedMinutes: 0,
+        paidPlannedMinutes: 0,
         overtimeMinutes: 0,
         daysWorked: 0,
         hoursWorked: 0,
@@ -476,6 +1216,7 @@ function payrollMetricBucket(staffId) {
         primaryDays: [],
         attendanceDays: [],
         breakPolicies: [],
+        businessContexts: [],
         allocationIssues: [],
         payrollBlockingIssues: [],
         reconciliation: { days: [], warnings: [] }
@@ -484,6 +1225,37 @@ function payrollMetricBucket(staffId) {
 
 function payrollIssue(code, message, details = {}, severity = 'warning') {
     return { code, message, severity, ...details };
+}
+
+function explicitLeavePolicy(row = {}, compensationSnapshot = null) {
+    const direct = row.leave_policy
+        || row.leavePolicy
+        || row.payroll_leave_policy
+        || row.payrollLeavePolicy
+        || row.leave_compensation_policy
+        || row.leaveCompensationPolicy;
+    const snapshot = compensationSnapshot?.leavePolicy
+        || compensationSnapshot?.leave_policy
+        || compensationSnapshot?.payrollLeavePolicy
+        || compensationSnapshot?.payroll_leave_policy;
+    const policy = direct || snapshot || null;
+    return policy ? String(policy).trim().toLowerCase() : '';
+}
+
+function resolveLeavePayrollPolicy(status, row = {}, compensationSnapshot = null) {
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    if (!LEAVE_ATTENDANCE_STATUSES_REQUIRING_POLICY.has(normalizedStatus)) {
+        return { required: false, policy: null, supported: true, paidPlannedFactor: 1 };
+    }
+    const policy = explicitLeavePolicy(row, compensationSnapshot);
+    const rule = LEAVE_PAYROLL_POLICIES[policy] || null;
+    const supported = Boolean(rule?.statuses?.has(normalizedStatus));
+    return {
+        required: true,
+        policy: policy || null,
+        supported,
+        paidPlannedFactor: supported ? rule.paidPlannedFactor : 0
+    };
 }
 
 function explicitAdditionalRateSource(value) {
@@ -610,6 +1382,11 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const overtimeMinutes = attendanceFactMinutes(row).overtimeMinutes;
         const plannedMinutes = Math.max(0, toNumber(row.plannedMinutes ?? row.planned_minutes, 0));
         const status = String(row.status || row.time_status || '').trim();
+        const leavePolicy = resolveLeavePayrollPolicy(status, row, compensationSnapshot);
+        const businessContext = String(row.business_context || row.businessContext || '').trim();
+        if (businessContext && !bucket.businessContexts.includes(businessContext)) {
+            bucket.businessContexts.push(businessContext);
+        }
         const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
         if (worked && date) workedDates.get(staffId).add(date);
 
@@ -618,6 +1395,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         bucket.allocatedMinutes += allocatedMinutes;
         bucket.overtimeMinutes += overtimeMinutes;
         bucket.plannedMinutes += plannedMinutes;
+        bucket.paidPlannedMinutes += Math.round(plannedMinutes * leavePolicy.paidPlannedFactor);
 
         for (const allocation of segmentAllocations) {
             const professionKey = normalizeProfessionKey(allocation.professionKey || allocation.profession_key);
@@ -682,6 +1460,37 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
                 'error'
             ));
         }
+        if ((OPEN_ATTENDANCE_STATUSES.has(status) || (row.clock_in && !row.clock_out))
+            && !['auto_closed'].includes(status)) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_ATTENDANCE_OPEN',
+                'Payroll approval requires closed attendance records',
+                { date, attendanceRef },
+                'error'
+            ));
+        }
+        if (leavePolicy.required && !leavePolicy.policy) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_LEAVE_POLICY_UNDEFINED',
+                'Vacation, sick, day off, and unpaid records require an explicit payroll policy',
+                { date, attendanceRef, status },
+                'error'
+            ));
+        } else if (leavePolicy.required && !leavePolicy.supported) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_LEAVE_POLICY_UNSUPPORTED',
+                'The attendance leave policy is not supported by the canonical payroll calculator',
+                { date, attendanceRef, status, leavePolicy: leavePolicy.policy },
+                'error'
+            ));
+        } else if (plannedMinutes > 0 && actualMinutes === 0 && !status) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_ATTENDANCE_STATUS_UNRESOLVED',
+                'Planned payroll time without worked minutes requires a resolved attendance status',
+                { date, attendanceRef, plannedMinutes },
+                'error'
+            ));
+        }
         for (const allocation of additionalAllocations) {
             bucket.additionalProfessionAllocations.push({
                 allocationType: SIMULTANEOUS_ADDITIONAL_LINE_TYPE,
@@ -742,6 +1551,9 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             segmentRefs: segmentAllocations.map(allocation => allocation.segmentId ?? allocation.segment_id)
                 .filter(ref => ref !== null && ref !== undefined),
             plannedMinutes,
+            paidPlannedMinutes: Math.round(plannedMinutes * leavePolicy.paidPlannedFactor),
+            leavePolicy: leavePolicy.policy,
+            businessContext: businessContext || null,
             physicalMinutes: actualMinutes,
             baseProfessionMinutes: actualMinutes,
             additionalProfessionMinutes,
@@ -905,54 +1717,52 @@ async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) 
     if (!ids.length) return context;
 
     try {
-        const [assignmentResult, defaultResult] = await Promise.all([
-            db.query(
-                `SELECT assignment.id AS assignment_id,
-                        assignment.staff_id,
-                        assignment.profession_key AS assignment_profession_key,
-                        assignment.profile_id,
-                        assignment.assignment_kind,
-                        assignment.effective_from,
-                        assignment.effective_to,
-                        profile.id AS profile_id,
-                        profile.title AS profile_title,
-                        profile.profession_key AS profile_profession_key,
-                        profile.profile_kind,
-                        profile.owner_staff_id,
-                        profile.is_default_for_profession,
-                        profile.source_profile_id,
-                        profile.source_version_id,
-                        profile.status AS profile_status
-                 FROM staff_payroll_profile_assignments assignment
-                 JOIN payroll_profiles profile ON profile.id = assignment.profile_id
-                 WHERE assignment.staff_id = ANY($1::int[])
-                   AND profile.status = 'active'
-                   AND assignment.effective_from <= $3::date
-                   AND (assignment.effective_to IS NULL OR assignment.effective_to >= $2::date)
-                 ORDER BY assignment.staff_id,
-                          assignment.profession_key,
-                          assignment.assignment_kind DESC,
-                          assignment.effective_from DESC,
-                          assignment.id DESC`,
-                [ids, range.from, range.to]
-            ),
-            db.query(
-                `SELECT profile.id AS profile_id,
-                        profile.title AS profile_title,
-                        profile.profession_key AS profile_profession_key,
-                        profile.profile_kind,
-                        profile.owner_staff_id,
-                        profile.is_default_for_profession,
-                        profile.source_profile_id,
-                        profile.source_version_id,
-                        profile.status AS profile_status
-                 FROM payroll_profiles profile
-                 WHERE profile.status = 'active'
-                   AND profile.profile_kind = 'shared'
-                   AND profile.is_default_for_profession = true
-                 ORDER BY profile.profession_key, profile.updated_at DESC, profile.id DESC`
-            )
-        ]);
+        const assignmentResult = await db.query(
+            `SELECT assignment.id AS assignment_id,
+                    assignment.staff_id,
+                    assignment.profession_key AS assignment_profession_key,
+                    assignment.profile_id,
+                    assignment.assignment_kind,
+                    assignment.effective_from,
+                    assignment.effective_to,
+                    profile.id AS profile_id,
+                    profile.title AS profile_title,
+                    profile.profession_key AS profile_profession_key,
+                    profile.profile_kind,
+                    profile.owner_staff_id,
+                    profile.is_default_for_profession,
+                    profile.source_profile_id,
+                    profile.source_version_id,
+                    profile.status AS profile_status
+             FROM staff_payroll_profile_assignments assignment
+             JOIN payroll_profiles profile ON profile.id = assignment.profile_id
+             WHERE assignment.staff_id = ANY($1::int[])
+               AND profile.status = 'active'
+               AND assignment.effective_from <= $3::date
+               AND (assignment.effective_to IS NULL OR assignment.effective_to >= $2::date)
+             ORDER BY assignment.staff_id,
+                      assignment.profession_key,
+                      assignment.assignment_kind DESC,
+                      assignment.effective_from DESC,
+                      assignment.id DESC`,
+            [ids, range.from, range.to]
+        );
+        const defaultResult = await db.query(
+            `SELECT profile.id AS profile_id,
+                    profile.title AS profile_title,
+                    profile.profession_key AS profile_profession_key,
+                    profile.profile_kind,
+                    profile.owner_staff_id,
+                    profile.is_default_for_profession,
+                    profile.source_profile_id,
+                    profile.source_version_id,
+                    profile.status AS profile_status
+             FROM payroll_profiles profile
+             WHERE profile.status = 'active'
+               AND profile.profile_kind = 'shared'
+               AND profile.is_default_for_profession = true
+             ORDER BY profile.profession_key, profile.updated_at DESC, profile.id DESC`
+        );
 
         for (const row of assignmentResult.rows || []) {
             const profile = addPayrollProfileToContext(context, row);
@@ -1971,10 +2781,11 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
 
     const monthlyResolution = resolveRate(fallbackProfessionKey, periodStart, legacyRateUnit);
     if (monthlyResolution.rateUnit === 'month') {
-        const amount = roundMoney(monthlyResolution.rate);
-        const formula = payrollFormula('month', 1, monthlyResolution.rate);
+        const fixed = monthlyFixedAmount(monthlyResolution.rate, staff, activeScheme, metrics);
+        const amount = fixed.amount;
+        const formula = payrollFormula('month', fixed.valid ? fixed.ratio : 0, monthlyResolution.rate);
         baseLines.push(line('base', 'profession_month', 'Monthly profile salary', amount, {
-            quantity: 1,
+            quantity: fixed.valid ? fixed.ratio : 0,
             rate: monthlyResolution.rate,
             source: monthlyResolution.rateSource,
             meta: {
@@ -2302,7 +3113,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
         }
     } else {
         const resolved = resolveProfessionPayRate(staff, fallbackProfessionKey, activeScheme, professionRateMap, rateUnit);
-        const amount = roundMoney(resolved.rate);
+        const amount = monthlyFixedAmount(resolved.rate, staff, activeScheme, metrics).amount;
         baseLines.push(line('base', 'profession_month', 'Місячний оклад', amount, {
             quantity: 1,
             rate: resolved.rate,
@@ -2360,19 +3171,23 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     }, metrics, schemeType);
 }
 
-async function fetchTimeMetrics(month) {
-    const bounds = getMonthBounds(month);
+async function fetchTimeMetrics(month, periodOptions = {}, db = pool) {
+    const monthBounds = getMonthBounds(month);
+    const bounds = {
+        from: normalizeDateValue(periodOptions.from) || monthBounds.from,
+        to: normalizeDateValue(periodOptions.to) || monthBounds.to
+    };
     try {
-        return await loadPayrollAttendanceMetrics(bounds);
+        return await loadPayrollAttendanceMetrics(bounds, db);
     } catch (err) {
         if (!isMissingTableError(err)) log.warn('time metrics query failed:', err.message);
         return new Map();
     }
 }
 
-async function fetchAdjustments(month) {
+async function fetchAdjustments(month, db = pool) {
     try {
-        const result = await pool.query(`
+        const result = await db.query(`
             SELECT staff_id, type, COALESCE(SUM(amount), 0)::numeric AS total
             FROM salary_adjustments
             WHERE month = $1 AND COALESCE(status, 'applied') = 'applied'
@@ -2380,8 +3195,15 @@ async function fetchAdjustments(month) {
         `, [month]);
         const map = new Map();
         for (const row of result.rows) {
-            if (!map.has(row.staff_id)) map.set(row.staff_id, { bonus: 0, tip: 0, deduction: 0, penalty: 0, advance: 0 });
-            map.get(row.staff_id)[row.type] = toNumber(row.total, 0);
+            if (!map.has(row.staff_id)) {
+                map.set(row.staff_id, { bonus: 0, kpi_bonus: 0, tip: 0, deduction: 0, penalty: 0, zrs: 0, advance: 0 });
+            }
+            const type = normalizePayrollAdjustmentType(row.type);
+            if (type === PAYROLL_ZRS_TYPE) {
+                map.get(row.staff_id).zrs += toNumber(row.total, 0);
+            } else {
+                map.get(row.staff_id)[type] = toNumber(row.total, 0);
+            }
         }
         return map;
     } catch (err) {
@@ -2390,9 +3212,9 @@ async function fetchAdjustments(month) {
     }
 }
 
-async function fetchPayrollEntries(month) {
+async function fetchPayrollEntries(month, db = pool) {
     try {
-        const result = await pool.query(`
+        const result = await db.query(`
             SELECT *
             FROM payroll_entries
             WHERE period_month = $1
@@ -2410,19 +3232,141 @@ async function fetchPayrollEntries(month) {
     }
 }
 
-async function fetchPeriodIncome(month) {
+async function fetchPayrollKpiAuditSnapshots(month, staffIds = [], db = pool) {
+    const ids = [...new Set((Array.isArray(staffIds) ? staffIds : [])
+        .map(id => Number(id))
+        .filter(id => Number.isInteger(id) && id > 0))];
+    if (!ids.length) return new Map();
     const bounds = getMonthBounds(month);
     try {
-        const result = await pool.query(`
-            SELECT COALESCE(SUM(amount), 0)::numeric AS total
-            FROM finance_transactions
-            WHERE type = 'income' AND date >= $1 AND date <= $2
-        `, [bounds.from, bounds.to]);
-        return toNumber(result.rows[0]?.total, 0);
+        const result = await db.query(`
+            WITH params AS (
+                SELECT $1::varchar(7) AS month,
+                       $2::date AS date_from,
+                       $3::date AS date_to
+            ),
+            scoped_staff AS (
+                SELECT s.id, s.name
+                FROM staff s
+                WHERE s.id = ANY($4::int[])
+            ),
+            task_stats AS (
+                SELECT ep.staff_id,
+                       COUNT(t.id)::int AS tasks_assigned,
+                       COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done', 'completed'))::int AS tasks_done,
+                       COUNT(t.id) FILTER (
+                           WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+                             AND t.deadline IS NOT NULL
+                             AND t.deadline::date <= p.date_to
+                       )::int AS tasks_overdue,
+                       MAX(GREATEST(t.created_at, COALESCE(t.completed_at, t.created_at))) AS source_timestamp
+                FROM tasks t
+                JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
+                JOIN scoped_staff ss ON ss.id = ep.staff_id
+                JOIN params p ON (
+                    t.created_at::date BETWEEN p.date_from AND p.date_to
+                    OR t.completed_at::date BETWEEN p.date_from AND p.date_to
+                )
+                WHERE t.owner_user_id IS NOT NULL
+                GROUP BY ep.staff_id
+            ),
+            onboarding_stats AS (
+                SELECT op.staff_id,
+                       COUNT(*)::int AS onboarding_total,
+                       COUNT(*) FILTER (WHERE op.status = 'completed')::int AS onboarding_completed,
+                       COUNT(*) FILTER (WHERE op.status <> 'completed')::int AS onboarding_active,
+                       COALESCE(SUM(op.total_items), 0)::int AS onboarding_total_items,
+                       COALESCE(SUM(op.completed_items), 0)::int AS onboarding_completed_items,
+                       MAX(GREATEST(op.started_at, COALESCE(op.completed_at, op.started_at))) AS source_timestamp
+                FROM onboarding_progress op
+                JOIN scoped_staff ss ON ss.id = op.staff_id
+                JOIN params p ON op.started_at::date <= p.date_to
+                    AND (op.completed_at IS NULL OR op.completed_at::date >= p.date_from)
+                GROUP BY op.staff_id
+            ),
+            contribution_stats AS (
+                SELECT ss.id AS staff_id,
+                       COUNT(DISTINCT b.id)::int AS events_period,
+                       MAX(b.date::timestamp) AS source_timestamp
+                FROM scoped_staff ss
+                CROSS JOIN params p
+                LEFT JOIN bookings b ON (
+                    b.line_id = ss.id::text
+                    OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(ss.name))
+                    OR BTRIM(COALESCE(b.second_animator, '')) = ss.id::text
+                )
+                    AND b.status IN ('completed', 'confirmed')
+                    AND b.date::date >= p.date_from AND b.date::date <= p.date_to
+                GROUP BY ss.id
+            )
+            SELECT ss.id AS staff_id,
+                   COALESCE(ts.tasks_assigned, 0)::int AS tasks_assigned,
+                   COALESCE(ts.tasks_done, 0)::int AS tasks_done,
+                   COALESCE(ts.tasks_overdue, 0)::int AS tasks_overdue,
+                   COALESCE(os.onboarding_total, 0)::int AS onboarding_total,
+                   COALESCE(os.onboarding_completed, 0)::int AS onboarding_completed,
+                   COALESCE(os.onboarding_active, 0)::int AS onboarding_active,
+                   COALESCE(os.onboarding_total_items, 0)::int AS onboarding_total_items,
+                   COALESCE(os.onboarding_completed_items, 0)::int AS onboarding_completed_items,
+                   COALESCE(cs.events_period, 0)::int AS events_period,
+                   GREATEST(ts.source_timestamp, os.source_timestamp, cs.source_timestamp) AS source_timestamp
+            FROM scoped_staff ss
+            LEFT JOIN task_stats ts ON ts.staff_id = ss.id
+            LEFT JOIN onboarding_stats os ON os.staff_id = ss.id
+            LEFT JOIN contribution_stats cs ON cs.staff_id = ss.id
+        `, [month, bounds.from, bounds.to, ids]);
+        return new Map(result.rows.map(row => [Number(row.staff_id), {
+            month,
+            sourceTimestamp: row.source_timestamp ? new Date(row.source_timestamp).toISOString() : null,
+            metrics: {
+                tasks: {
+                    assigned: Number(row.tasks_assigned || 0),
+                    done: Number(row.tasks_done || 0),
+                    overdue: Number(row.tasks_overdue || 0)
+                },
+                onboarding: {
+                    total: Number(row.onboarding_total || 0),
+                    completed: Number(row.onboarding_completed || 0),
+                    active: Number(row.onboarding_active || 0),
+                    totalItems: Number(row.onboarding_total_items || 0),
+                    completedItems: Number(row.onboarding_completed_items || 0)
+                },
+                contribution: {
+                    eventsPeriod: Number(row.events_period || 0),
+                    ratingsSource: 'disabled_no_period_source',
+                    totalRatings: 0,
+                    avgRating: null
+                }
+            }
+        }]));
     } catch (err) {
-        log.warn('finance income metric query failed:', err.message);
-        return 0;
+        if (!isMissingTableError(err)) log.warn('payroll KPI audit snapshot query failed:', err.message);
+        return new Map();
     }
+}
+
+async function fetchPeriodIncome(month, periodOptions = {}, db = pool) {
+    const bounds = getMonthBounds(month);
+    const from = normalizeDateValue(periodOptions.from) || bounds.from;
+    const to = normalizeDateValue(periodOptions.to) || bounds.to;
+    const result = await db.query(`
+        SELECT COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix') AS business_context,
+               COALESCE(SUM(amount), 0)::numeric AS total
+        FROM finance_transactions
+        WHERE type = 'income'
+          AND COALESCE(recognition_date, date::date) >= $1::date
+          AND COALESCE(recognition_date, date::date) <= $2::date
+          AND COALESCE(source, '') <> 'payroll'
+        GROUP BY COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix')
+    `, [from, to]);
+    return {
+        from,
+        to,
+        byBusinessContext: new Map(result.rows.map(row => [
+            String(row.business_context),
+            toNumber(row.total, 0)
+        ]))
+    };
 }
 
 async function loadActivePayrollSchemeMap(staffIds, month, db = pool) {
@@ -2430,22 +3374,57 @@ async function loadActivePayrollSchemeMap(staffIds, month, db = pool) {
     const bounds = getMonthBounds(month);
     try {
         const result = await db.query(`
-            SELECT DISTINCT ON (staff_id) *
+            SELECT *
             FROM payroll_schemes
             WHERE staff_id = ANY($1::int[])
-              AND is_active = true
-              AND (effective_from IS NULL OR effective_from <= $3::date)
-              AND (effective_to IS NULL OR effective_to >= $2::date)
-            ORDER BY staff_id, effective_from DESC NULLS LAST, updated_at DESC, id DESC
-        `, [staffIds, bounds.from, bounds.to]);
-        return new Map(result.rows.map(row => [row.staff_id, mapScheme(row)]));
+            ORDER BY staff_id, effective_from ASC NULLS FIRST, created_at ASC NULLS FIRST, id ASC
+        `, [staffIds]);
+        const rowsByStaff = new Map();
+        for (const row of result.rows) {
+            const staffId = Number(row.staff_id);
+            if (!rowsByStaff.has(staffId)) rowsByStaff.set(staffId, []);
+            rowsByStaff.get(staffId).push(mapScheme(row));
+        }
+        const schemeMap = new Map();
+        for (const [staffId, schemes] of rowsByStaff.entries()) {
+            // Copy-on-write corrections may supersede a draft version on the same
+            // effective date. Keep the newest row for that date while retaining
+            // older rows as immutable audit history.
+            const effectiveVersions = schemes.filter((scheme, index) => {
+                const effectiveKey = scheme.effectiveFrom || '__legacy_unbounded__';
+                return !schemes.slice(index + 1).some(candidate => (
+                    (candidate.effectiveFrom || '__legacy_unbounded__') === effectiveKey
+                ));
+            });
+            const periodVersions = effectiveVersions.filter((scheme, index) => {
+                const nextEffectiveFrom = effectiveVersions.slice(index + 1)
+                    .map(item => item.effectiveFrom)
+                    .find(Boolean) || null;
+                const startsBeforePeriodEnd = !scheme.effectiveFrom || scheme.effectiveFrom <= bounds.to;
+                const explicitEndOverlaps = !scheme.effectiveTo || scheme.effectiveTo >= bounds.from;
+                const impliedEndOverlaps = !nextEffectiveFrom || nextEffectiveFrom > bounds.from;
+                return startsBeforePeriodEnd && explicitEndOverlaps && impliedEndOverlaps;
+            });
+            if (!periodVersions.length) continue;
+            const chosen = periodVersions[periodVersions.length - 1];
+            schemeMap.set(staffId, {
+                ...chosen,
+                periodSchemeVersions: periodVersions.map(item => ({
+                    id: item.id,
+                    schemeType: item.schemeType,
+                    effectiveFrom: item.effectiveFrom,
+                    effectiveTo: item.effectiveTo
+                }))
+            });
+        }
+        return schemeMap;
     } catch (err) {
-        if (!isMissingTableError(err)) log.warn('payroll_schemes query failed:', err.message);
-        return new Map();
+        if (isMissingTableError(err)) return new Map();
+        throw err;
     }
 }
 
-async function fetchAllSchemes(staffId = null) {
+async function fetchAllSchemes(staffId = null, db = pool) {
     try {
         const params = [];
         let where = '';
@@ -2453,7 +3432,7 @@ async function fetchAllSchemes(staffId = null) {
             params.push(staffId);
             where = 'WHERE staff_id = $1';
         }
-        const result = await pool.query(`
+        const result = await db.query(`
             SELECT *
             FROM payroll_schemes
             ${where}
@@ -2466,9 +3445,9 @@ async function fetchAllSchemes(staffId = null) {
     }
 }
 
-async function fetchReportsByMonth(month) {
+async function fetchReportsByMonth(month, db = pool) {
     try {
-        const result = await pool.query(`
+        const result = await db.query(`
             SELECT *
             FROM payroll_reports
             WHERE period_month = $1
@@ -2590,6 +3569,7 @@ async function loadOffRosterDraftReportReconciliation(month, activeStaffIds = []
 function applyReportSnapshot(row, report) {
     if (!report || !['reviewed', 'approved', 'paid'].includes(report.status)) return row;
     const breakdown = parseConfig(report.breakdown_json);
+    const snapshotScheme = breakdown.scheme || {};
     const snapshotMetrics = {
         physicalMinutes: breakdown.metrics?.physicalMinutes ?? row.physicalMinutes,
         baseProfessionAllocations: breakdown.metrics?.baseProfessionAllocations ?? row.baseProfessionAllocations,
@@ -2602,6 +3582,15 @@ function applyReportSnapshot(row, report) {
         });
     return {
         ...row,
+        schemeId: snapshotScheme.versionId ?? snapshotScheme.id ?? row.schemeId,
+        schemeVersionId: snapshotScheme.versionId ?? snapshotScheme.id ?? row.schemeVersionId ?? row.schemeId,
+        schemeType: snapshotScheme.type ?? row.schemeType,
+        schemeTypeLabel: schemeTypeLabel(snapshotScheme.type ?? row.schemeType),
+        schemeTitle: snapshotScheme.title ?? row.schemeTitle,
+        schemeConfigHash: snapshotScheme.configHash ?? row.schemeConfigHash ?? null,
+        schemeEffectiveFrom: snapshotScheme.effectiveFrom ?? row.schemeEffectiveFrom ?? null,
+        schemeEffectiveTo: snapshotScheme.effectiveTo ?? row.schemeEffectiveTo ?? null,
+        schemeUpdatedAt: snapshotScheme.updatedAt ?? row.schemeUpdatedAt ?? null,
         baseAmount: roundMoney(breakdown.summary?.base ?? row.baseAmount),
         additionalAmount: roundMoney(breakdown.summary?.additional ?? row.additionalAmount),
         bonusesAmount: roundMoney(breakdown.summary?.bonuses ?? row.bonusesAmount),
@@ -2626,6 +3615,12 @@ function applyReportSnapshot(row, report) {
         payrollBlockingIssues: Array.isArray(breakdown.payrollBlockingIssues)
             ? breakdown.payrollBlockingIssues
             : row.payrollBlockingIssues,
+        plannedMinutes: toNumber(breakdown.metrics?.plannedMinutes ?? row.plannedMinutes, 0),
+        paidPlannedMinutes: toNumber(breakdown.metrics?.paidPlannedMinutes ?? row.paidPlannedMinutes, 0),
+        monthlyNormMinutes: toNumber(breakdown.metrics?.monthlyNormMinutes ?? row.monthlyNormMinutes, 0),
+        monthlyNormSource: breakdown.metrics?.monthlyNormSource ?? row.monthlyNormSource ?? null,
+        monthlyNormConfirmed: (breakdown.metrics?.monthlyNormConfirmed ?? row.monthlyNormConfirmed) === true,
+        monthlyNormMonth: breakdown.metrics?.monthlyNormMonth ?? row.monthlyNormMonth ?? null,
         physicalMinutes: toNumber(breakdown.metrics?.physicalMinutes ?? row.physicalMinutes, 0),
         baseProfessionAllocations: Array.isArray(breakdown.metrics?.baseProfessionAllocations)
             ? breakdown.metrics.baseProfessionAllocations
@@ -2648,31 +3643,109 @@ function applyReportSnapshot(row, report) {
         additionalMultiplier: transparency.additionalMultiplier,
         additional_multiplier: transparency.additionalMultiplier,
         additionalRoles: transparency.additionalRoles,
-        additional_roles: transparency.additionalRoles
+        additional_roles: transparency.additionalRoles,
+        summary: breakdown.summary || row.summary
     };
 }
 
-async function buildPayrollContext(month) {
+async function buildPayrollContext(month, options = {}, db = pool) {
     const normalizedMonth = assertPayrollMonth(normalizePayrollMonth(month));
-    const staff = await fetchStaffList(normalizedMonth);
+    const periodOptions = {
+        from: normalizeDateValue(options.from),
+        to: normalizeDateValue(options.to)
+    };
+    const monthBounds = getMonthBounds(normalizedMonth);
+    const isFullMonth = (!periodOptions.from || periodOptions.from === monthBounds.from)
+        && (!periodOptions.to || periodOptions.to === monthBounds.to);
+    const includeMonthlyAdjustments = options.includeMonthlyAdjustments !== undefined
+        ? options.includeMonthlyAdjustments === true
+        : isFullMonth;
+    const includeReports = options.includeReports !== undefined
+        ? options.includeReports === true
+        : isFullMonth;
+    const staff = await fetchStaffList(normalizedMonth, periodOptions, db);
     const staffIds = staff.map(item => item.id);
-    const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap, payrollProfileContext] = await Promise.all([
-        fetchTimeMetrics(normalizedMonth),
-        fetchAdjustments(normalizedMonth),
-        fetchPayrollEntries(normalizedMonth),
-        loadActivePayrollSchemeMap(staffIds, normalizedMonth),
-        fetchReportsByMonth(normalizedMonth),
-        fetchPeriodIncome(normalizedMonth),
-        fetchAllSchemes(),
-        loadProfessionRateMap(staffIds),
-        loadPayrollProfileContext(staffIds, normalizedMonth)
-    ]);
+    const timeMap = await fetchTimeMetrics(normalizedMonth, periodOptions, db);
+    const adjustmentMap = includeMonthlyAdjustments ? await fetchAdjustments(normalizedMonth, db) : new Map();
+    const entryMap = includeMonthlyAdjustments ? await fetchPayrollEntries(normalizedMonth, db) : new Map();
+    const schemeMap = await loadActivePayrollSchemeMap(staffIds, normalizedMonth, db);
+    const reportMap = includeReports ? await fetchReportsByMonth(normalizedMonth, db) : new Map();
+    const periodIncome = await fetchPeriodIncome(normalizedMonth, {
+        from: periodOptions.from || monthBounds.from,
+        to: periodOptions.to || monthBounds.to
+    }, db);
+    const allSchemes = await fetchAllSchemes(null, db);
+    const professionRateMap = await loadProfessionRateMap(staffIds, db);
+    const payrollProfileContext = await loadPayrollProfileContext(staffIds, {
+        from: periodOptions.from || monthBounds.from,
+        to: periodOptions.to || monthBounds.to
+    }, db);
+    const kpiAuditSnapshotMap = includeMonthlyAdjustments
+        ? await fetchPayrollKpiAuditSnapshots(normalizedMonth, staffIds, db)
+        : new Map();
 
-    return { month: normalizedMonth, staff, timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes, professionRateMap, payrollProfileContext };
+    return {
+        month: normalizedMonth,
+        period: {
+            from: periodOptions.from || monthBounds.from,
+            to: periodOptions.to || monthBounds.to,
+            fullMonth: isFullMonth
+        },
+        staff,
+        timeMap,
+        adjustmentMap,
+        entryMap,
+        schemeMap,
+        reportMap,
+        periodIncome,
+        allSchemes,
+        professionRateMap,
+        payrollProfileContext,
+        kpiAuditSnapshotMap
+    };
+}
+
+function payrollLineTypeAmount(lines = [], type) {
+    return roundMoney((Array.isArray(lines) ? lines : [])
+        .filter(item => (item.lineType || item.line_type) === type)
+        .reduce((sum, item) => sum + toNumber(item.amount, 0), 0));
+}
+
+function buildPayrollKpiAuditSnapshot(month, row = {}, kpiSnapshot = null) {
+    const metrics = kpiSnapshot?.metrics || {};
+    return {
+        schemaVersion: 1,
+        kpiMonth: month || row.periodMonth || row.month || null,
+        source: 'payroll_kpi_audit_snapshot',
+        sourceTimestamp: kpiSnapshot?.sourceTimestamp || null,
+        ruleVersion: PAYROLL_KPI_BONUS_RULE_VERSION,
+        metrics: {
+            attendance: {
+                daysWorked: Number(row.daysWorked ?? row.days_worked ?? 0),
+                plannedHours: Number(row.plannedHours ?? row.planned_hours ?? 0),
+                overtimeHours: Number(row.overtimeHours ?? row.overtime_hours ?? 0)
+            },
+            tasks: metrics.tasks || { assigned: 0, done: 0, overdue: 0 },
+            onboarding: metrics.onboarding || { total: 0, completed: 0, active: 0, totalItems: 0, completedItems: 0 },
+            contribution: metrics.contribution || {
+                eventsPeriod: 0,
+                ratingsSource: 'disabled_no_period_source',
+                totalRatings: 0,
+                avgRating: null
+            }
+        },
+        approvedBonusAmount: payrollLineTypeAmount(row.lines || row.payroll_lines || [], PAYROLL_KPI_BONUS_TYPE),
+        bonusAdjustmentType: PAYROLL_KPI_BONUS_TYPE,
+        appliesToInstallmentKind: 'final',
+        formula: null,
+        formulaStatus: 'not_configured'
+    };
 }
 
 function rowFromCalculation(staff, calculation, metrics, report) {
     const scheme = calculation.scheme;
+    const schemeConfig = parseConfig(scheme?.config || scheme?.config_json);
+    const schemeSnapshot = payrollSchemeSnapshotMetadata(scheme);
     const summary = calculation.summary;
     const transparency = buildPayrollTransparencyMetrics(metrics, {
         ...(calculation.professionPay || {}),
@@ -2685,10 +3758,15 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         department: staff.department,
         position: staff.position,
         roleType: staff.roleType,
-        schemeId: scheme.id,
-        schemeType: scheme.schemeType,
-        schemeTypeLabel: schemeTypeLabel(scheme.schemeType),
-        schemeTitle: scheme.title || schemeTypeLabel(scheme.schemeType),
+        schemeId: schemeSnapshot.id,
+        schemeVersionId: schemeSnapshot.versionId,
+        schemeType: schemeSnapshot.type,
+        schemeTypeLabel: schemeTypeLabel(schemeSnapshot.type),
+        schemeTitle: schemeSnapshot.title || schemeTypeLabel(schemeSnapshot.type),
+        schemeConfigHash: schemeSnapshot.configHash,
+        schemeEffectiveFrom: schemeSnapshot.effectiveFrom,
+        schemeEffectiveTo: schemeSnapshot.effectiveTo,
+        schemeUpdatedAt: schemeSnapshot.updatedAt,
         isFallbackScheme: !!scheme.isFallback,
         hourlyRate: staff.hourlyRate,
         rateUnit: calculation.professionPay?.rateUnit || staff.rateUnit,
@@ -2700,14 +3778,42 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         shifts: metrics.daysWorked || 0,
         daysWorked: metrics.daysWorked || 0,
         plannedMinutes: metrics.plannedMinutes || 0,
+        paidPlannedMinutes: metrics.paidPlannedMinutes ?? metrics.plannedMinutes ?? 0,
+        monthlyNormMinutes: metrics.monthlyNormMinutes
+            ?? metrics.monthly_norm_minutes
+            ?? schemeConfig.monthlyNormMinutes
+            ?? schemeConfig.monthly_norm_minutes
+            ?? 0,
+        monthlyNormSource: metrics.monthlyNormSource
+            ?? metrics.monthly_norm_source
+            ?? schemeConfig.monthlyNormSource
+            ?? schemeConfig.monthly_norm_source
+            ?? null,
+        monthlyNormConfirmed: (
+            metrics.monthlyNormConfirmed
+            ?? metrics.monthly_norm_confirmed
+            ?? schemeConfig.monthlyNormConfirmed
+            ?? schemeConfig.monthly_norm_confirmed
+        ) === true,
+        monthlyNormMonth: metrics.monthlyNormMonth
+            ?? metrics.monthly_norm_month
+            ?? schemeConfig.monthlyNormMonth
+            ?? schemeConfig.monthly_norm_month
+            ?? null,
+        businessContexts: metrics.businessContexts || [],
+        periodIncomeBusinessContext: metrics.periodIncomeBusinessContext || null,
         allocatedMinutes: metrics.allocatedMinutes || 0,
         overtimeMinutes: metrics.overtimeMinutes || 0,
         baseAmount: summary.base,
         additionalAmount: summary.additional || 0,
         overtimeAmount: summary.overtime || 0,
         bonusesAmount: summary.bonuses + summary.percent + summary.manual,
+        kpiBonusAmount: summary.kpiBonus || 0,
+        kpi_bonus_amount: summary.kpiBonus || 0,
         percentAmount: summary.percent,
         deductionsAmount: summary.deductions,
+        zrsAmount: summary.zrs,
+        zrs_amount: summary.zrs,
         advancesAmount: summary.advances,
         grossAmount: summary.gross,
         netAmount: summary.net,
@@ -2721,8 +3827,8 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         profession_rate_summary: calculation.professionPay?.professionRateSummary || [],
         allocationIssues: calculation.professionPay?.allocationIssues || [],
         allocation_issues: calculation.professionPay?.allocationIssues || [],
-        payrollBlockingIssues: calculation.professionPay?.blockingIssues || [],
-        payroll_blocking_issues: calculation.professionPay?.blockingIssues || [],
+        payrollBlockingIssues: calculation.blockingIssues || calculation.professionPay?.blockingIssues || [],
+        payroll_blocking_issues: calculation.blockingIssues || calculation.professionPay?.blockingIssues || [],
         baseProfessionAllocations: metrics.baseProfessionAllocations || metrics.professionAllocations || [],
         additionalProfessionAllocations: metrics.additionalProfessionAllocations || [],
         compensationMinutes: metrics.compensationMinutes ?? metrics.totalMinutes ?? 0,
@@ -2750,12 +3856,27 @@ function rowFromCalculation(staff, calculation, metrics, report) {
     return applyReportSnapshot(row, report);
 }
 
-async function getSalaryReport(month) {
-    const context = await buildPayrollContext(month);
+function buildPayrollRowsFromContext(context) {
     const staffRows = context.staff.map(staff => {
+        const attendanceMetrics = context.timeMap.get(staff.id)
+            || { totalMinutes: 0, overtimeMinutes: 0, hoursWorked: 0, overtimeHours: 0, daysWorked: 0 };
+        const businessContexts = Array.isArray(attendanceMetrics.businessContexts)
+            ? attendanceMetrics.businessContexts.filter(Boolean)
+            : [];
+        const incomeBusinessContext = businessContexts.length === 1 ? businessContexts[0] : null;
+        const periodIncome = incomeBusinessContext
+            ? toNumber(context.periodIncome?.byBusinessContext?.get(incomeBusinessContext), 0)
+            : null;
         const metrics = {
-            ...(context.timeMap.get(staff.id) || { totalMinutes: 0, overtimeMinutes: 0, hoursWorked: 0, overtimeHours: 0, daysWorked: 0 }),
-            periodIncome: context.periodIncome
+            ...attendanceMetrics,
+            periodFrom: context.period.from,
+            periodTo: context.period.to,
+            periodIncome,
+            periodIncomeBusinessContext: incomeBusinessContext,
+            periodIncomeSource: incomeBusinessContext ? 'finance_transactions.recognition_date' : null,
+            periodIncomeUnavailableReason: businessContexts.length > 1
+                ? 'mixed_business_contexts'
+                : (businessContexts.length === 0 ? 'business_context_required' : null)
         };
         const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
         const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
@@ -2767,7 +3888,14 @@ async function getSalaryReport(month) {
             context.entryMap.get(staff.id) || [],
             professionPay
         );
-        return rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
+        const row = rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
+        row.kpiAuditSnapshot = buildPayrollKpiAuditSnapshot(
+            context.month,
+            row,
+            context.kpiAuditSnapshotMap?.get(staff.id) || null
+        );
+        row.kpi_audit_snapshot = row.kpiAuditSnapshot;
+        return row;
     });
 
     const totals = staffRows.reduce((acc, row) => ({
@@ -2776,184 +3904,450 @@ async function getSalaryReport(month) {
         bonuses: acc.bonuses + row.bonusesAmount,
         deductions: acc.deductions + row.deductionsAmount,
         advances: acc.advances + row.advancesAmount,
+        zrs: acc.zrs + row.zrsAmount,
         gross: acc.gross + row.grossAmount,
         net: acc.net + row.netAmount
-    }), { base: 0, additional: 0, bonuses: 0, deductions: 0, advances: 0, gross: 0, net: 0 });
+    }), { base: 0, additional: 0, bonuses: 0, deductions: 0, advances: 0, zrs: 0, gross: 0, net: 0 });
+    return { staffRows, totals };
+}
+
+async function getSalaryReport(month, db = pool) {
+    const context = await buildPayrollContext(month, {}, db);
+    const { staffRows, totals } = buildPayrollRowsFromContext(context);
     const offRosterDraftReports = await loadOffRosterDraftReportReconciliation(
         context.month,
-        staffRows.map(row => row.staffId)
+        staffRows.map(row => row.staffId),
+        db
     );
+    const settlement = await loadPayrollSettlementReadModels(context.month, db);
+    const settlementByReportId = new Map((settlement.reports || [])
+        .map(report => [Number(report.reportId), report]));
+    const staffRowsWithSettlement = staffRows.map(row => {
+        const rowSettlement = row.reportId ? settlementByReportId.get(Number(row.reportId)) : null;
+        const settlementTotals = rowSettlement?.totals || null;
+        const hasVerifiedMovementTotals = rowSettlement?.settlementModel === PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS
+            && settlementTotals !== null;
+        return {
+            ...row,
+            settlementModel: rowSettlement?.settlementModel || null,
+            payrollSettlement: rowSettlement || null,
+            installments: rowSettlement?.installments || [],
+            paidAmount: hasVerifiedMovementTotals ? settlementTotals.paidAmount : null,
+            paid_amount: hasVerifiedMovementTotals ? settlementTotals.paidAmount : null,
+            balanceAmount: hasVerifiedMovementTotals ? settlementTotals.balanceAmount : null,
+            balance_amount: hasVerifiedMovementTotals ? settlementTotals.balanceAmount : null,
+            outstandingAmount: hasVerifiedMovementTotals ? settlementTotals.outstandingAmount : null,
+            outstanding_amount: hasVerifiedMovementTotals ? settlementTotals.outstandingAmount : null,
+            overpaidAmount: hasVerifiedMovementTotals ? settlementTotals.overpaidAmount : null,
+            overpaid_amount: hasVerifiedMovementTotals ? settlementTotals.overpaidAmount : null
+        };
+    });
 
     return {
         month: context.month,
-        staff: staffRows.sort((a, b) => b.netAmount - a.netAmount || String(a.name || '').localeCompare(String(b.name || ''), 'uk')),
+        staff: staffRowsWithSettlement.sort((a, b) => b.netAmount - a.netAmount || String(a.name || '').localeCompare(String(b.name || ''), 'uk')),
         totalSalary: roundMoney(totals.net),
         totals: {
             base: roundMoney(totals.base),
             additional: roundMoney(totals.additional),
             bonuses: roundMoney(totals.bonuses),
             deductions: roundMoney(totals.deductions),
+            zrs: roundMoney(totals.zrs),
             advances: roundMoney(totals.advances),
             gross: roundMoney(totals.gross),
-            net: roundMoney(totals.net)
+            net: roundMoney(totals.net),
+            paid: settlement.totals ? roundMoney(settlement.totals.paidAmount) : null,
+            balance: settlement.totals ? roundMoney(settlement.totals.outstandingAmount) : null,
+            overpaid: settlement.totals ? roundMoney(settlement.totals.overpaidAmount) : null
         },
         schemeTypes: SCHEME_TYPES,
         reconciliation: {
             offRosterDraftReports
-        }
+        },
+        settlement
     };
 }
 
-async function getPayrollWorkspace(month) {
-    const report = await getSalaryReport(month);
-    const schemes = await fetchAllSchemes();
+async function getPayrollWorkspace(month, db = pool) {
+    const report = await getSalaryReport(month, db);
+    const schemes = await fetchAllSchemes(null, db);
     return { ...report, schemes };
 }
 
-async function getPayrollPreview(staffId, month) {
-    const context = await buildPayrollContext(month);
-    const staff = context.staff.find(item => item.id === Number(staffId));
-    if (!staff) {
+async function getPayrollPreview(staffId, month, db = pool) {
+    const context = await buildPayrollContext(month, {}, db);
+    const { staffRows } = buildPayrollRowsFromContext(context);
+    const row = staffRows.find(item => item.staffId === Number(staffId));
+    if (!row) {
         const err = new Error('staff not found');
         err.status = 404;
         throw err;
     }
-    const metrics = {
-        ...(context.timeMap.get(staff.id) || { totalMinutes: 0, overtimeMinutes: 0, hoursWorked: 0, overtimeHours: 0, daysWorked: 0 }),
-        periodIncome: context.periodIncome
-    };
-    const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-    const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
-    const calculation = calculatePayroll(
-        staff,
-        scheme,
-        metrics,
-        context.adjustmentMap.get(staff.id),
-        context.entryMap.get(staff.id) || [],
-        professionPay
-    );
-    return rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
+    return row;
 }
 
-async function createPayrollScheme(payload, user) {
-    const staffId = Number(payload.staffId || payload.staff_id);
-    const schemeType = String(payload.schemeType || payload.scheme_type || '').trim();
-    if (!staffId || !SCHEME_TYPES.includes(schemeType)) {
-        const err = new Error('staffId and valid schemeType are required');
-        err.status = 400;
-        throw err;
-    }
+async function getPayrollRangePreview(options = {}, db = pool) {
+    const month = normalizePayrollMonth(options.month || String(options.from || '').slice(0, 7));
+    const bounds = getMonthBounds(month);
+    const from = normalizeDateValue(options.from) || bounds.from;
+    const to = normalizeDateValue(options.to) || bounds.to;
+    const crossMonth = Boolean(from && to && from.slice(0, 7) !== to.slice(0, 7));
+    const fullMonth = from === bounds.from && to === bounds.to && !crossMonth;
+    const context = await buildPayrollContext(month, {
+        from,
+        to,
+        includeMonthlyAdjustments: fullMonth,
+        includeReports: fullMonth
+    }, db);
+    const { staffRows, totals } = buildPayrollRowsFromContext(context);
+    const staffId = Number(options.staffId || options.staff_id || 0);
+    const filteredRows = staffId
+        ? staffRows.filter(row => Number(row.staffId) === staffId)
+        : staffRows;
+    const scopedTotals = filteredRows.reduce((acc, row) => ({
+        base: acc.base + row.baseAmount,
+        additional: acc.additional + row.additionalAmount,
+        bonuses: acc.bonuses + row.bonusesAmount,
+        deductions: acc.deductions + row.deductionsAmount,
+        zrs: acc.zrs + row.zrsAmount,
+        advances: acc.advances + row.advancesAmount,
+        gross: acc.gross + row.grossAmount,
+        net: acc.net + row.netAmount
+    }), { base: 0, additional: 0, bonuses: 0, deductions: 0, zrs: 0, advances: 0, gross: 0, net: 0 });
 
-    const staffCheck = await pool.query('SELECT id FROM staff WHERE id = $1', [staffId]);
-    if (!staffCheck.rowCount) {
-        const err = new Error('staff not found');
-        err.status = 404;
-        throw err;
-    }
+    return calculatePayrollRangePreview({
+        month,
+        from,
+        to,
+        staff: filteredRows.sort((a, b) => b.netAmount - a.netAmount || String(a.name || '').localeCompare(String(b.name || ''), 'uk')),
+        totals: {
+            base: roundMoney(scopedTotals.base),
+            additional: roundMoney(scopedTotals.additional),
+            bonuses: roundMoney(scopedTotals.bonuses),
+            deductions: roundMoney(scopedTotals.deductions),
+            zrs: roundMoney(scopedTotals.zrs),
+            advances: roundMoney(scopedTotals.advances),
+            gross: roundMoney(scopedTotals.gross),
+            net: roundMoney(scopedTotals.net)
+        }
+    });
+}
 
-    const isActive = payload.isActive !== false && payload.is_active !== false;
-    const client = await pool.connect();
+async function buildCanonicalPayrollInstallmentPreview(options = {}, db = pool) {
+    const month = normalizePayrollMonth(options.month || String(options.from || '').slice(0, 7));
+    const staffId = Number(options.staffId || options.staff_id || 0);
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        throw payrollWorkflowError(
+            'valid staffId is required for payroll installment preview',
+            400,
+            'PAYROLL_SHADOW_STAFF_ID_REQUIRED',
+            { staffId: options.staffId || options.staff_id || null }
+        );
+    }
+    const monthRange = payrollMonthRange(month);
+    const monthlyPreview = await getPayrollRangePreview({
+        month,
+        from: monthRange.from,
+        to: monthRange.to,
+        staffId
+    }, db);
+    const advancePreview = await getPayrollRangePreview({
+        month,
+        from: monthRange.from,
+        to: `${month}-15`,
+        staffId
+    }, db);
+    const monthlyRow = monthlyPreview.staff?.[0] || null;
+    if (!monthlyRow) {
+        throw payrollWorkflowError(
+            'canonical payroll preview has no staff row for this month',
+            404,
+            'PAYROLL_SHADOW_SOURCE_STAFF_MISSING',
+            { month, staffId }
+        );
+    }
+    const advanceRow = advancePreview.staff?.[0] || {};
+    const advanceInstallment = calculateAdvanceInstallment({
+        staff: {
+            id: monthlyRow.staffId,
+            hourlyRate: monthlyRow.hourlyRate,
+            rateUnit: monthlyRow.rateUnit
+        },
+        scheme: {
+            id: monthlyRow.schemeId,
+            schemeType: monthlyRow.schemeType,
+            title: monthlyRow.schemeTitle,
+            config: monthlyRow.schemeConfig
+        },
+        monthMetrics: {
+            plannedMinutes: monthlyRow.plannedMinutes,
+            paidPlannedMinutes: monthlyRow.paidPlannedMinutes,
+            monthlyNormMinutes: monthlyRow.monthlyNormMinutes,
+            monthlyNormSource: monthlyRow.monthlyNormSource,
+            monthlyNormConfirmed: monthlyRow.monthlyNormConfirmed,
+            monthlyNormMonth: monthlyRow.monthlyNormMonth
+        },
+        advanceMetrics: {
+            plannedMinutes: advanceRow.plannedMinutes,
+            paidPlannedMinutes: advanceRow.paidPlannedMinutes,
+            pieceQuantity: advanceRow.summary?.base && monthlyRow.schemeType === 'piece'
+                ? advanceRow.lines?.find(item => item.lineType === 'piece')?.quantity
+                : undefined
+        },
+        monthlyCalculation: { summary: { base: monthlyRow.baseAmount } },
+        rangeCalculation: {
+            lines: advanceRow.lines || [],
+            blockers: payrollCommitBlockingIssues(advanceRow)
+        },
+        earningFrom: monthRange.from,
+        earningTo: `${month}-15`
+    });
+    const lockedAdvance = options.lockedAdvanceInstallment || options.locked_advance_installment || null;
+    const finalInstallment = calculateFinalInstallment({
+        monthlyPayroll: {
+            summary: { net: monthlyRow.netAmount },
+            blockers: payrollCommitBlockingIssues(monthlyRow)
+        },
+        advanceInstallment: lockedAdvance,
+        plannedAdvanceInstallment: lockedAdvance ? null : advanceInstallment,
+        currentAdvanceInstallment: advanceInstallment
+    });
+    const blockers = compactAllocationIssues([
+        ...payrollCommitBlockingIssues(monthlyRow),
+        ...(advanceInstallment.blockers || []),
+        ...(finalInstallment.blockers || [])
+    ]);
+    return {
+        month,
+        staffId,
+        monthlyNetAmount: roundMoney(monthlyRow.netAmount),
+        advanceAmount: roundMoney(advanceInstallment.calculatedAmount),
+        finalAmount: roundMoney(finalInstallment.calculatedAmount),
+        combinedAmount: roundMoney(advanceInstallment.calculatedAmount + finalInstallment.calculatedAmount),
+        monthlyPreview,
+        advancePreview,
+        monthlyRow,
+        advanceRow,
+        advanceInstallment,
+        finalInstallment,
+        blockers
+    };
+}
+
+function payrollSchemeVersionInput(payload = {}, current = null) {
+    const staffId = Number(payload.staffId || payload.staff_id || current?.staff_id);
+    const schemeType = String(payload.schemeType || payload.scheme_type || current?.scheme_type || '').trim();
+    if (!Number.isInteger(staffId) || staffId <= 0 || !SCHEME_TYPES.includes(schemeType)) {
+        throw payrollWorkflowError(
+            'staffId and valid schemeType are required',
+            400,
+            'PAYROLL_SCHEME_INPUT_INVALID'
+        );
+    }
+    const effectiveFrom = normalizePayrollSchemeEffectiveDate(
+        payload.effectiveFrom ?? payload.effective_from,
+        'effectiveFrom',
+        true
+    );
+    const hasEffectiveTo = Object.prototype.hasOwnProperty.call(payload, 'effectiveTo')
+        || Object.prototype.hasOwnProperty.call(payload, 'effective_to');
+    const effectiveTo = hasEffectiveTo
+        ? normalizePayrollSchemeEffectiveDate(payload.effectiveTo ?? payload.effective_to, 'effectiveTo')
+        : normalizeDateValue(current?.effective_to);
+    if (effectiveTo && effectiveTo < effectiveFrom) {
+        throw payrollWorkflowError(
+            'effectiveTo cannot precede effectiveFrom',
+            400,
+            'PAYROLL_SCHEME_EFFECTIVE_RANGE_INVALID',
+            { effectiveFrom, effectiveTo }
+        );
+    }
+    const hasConfig = Object.prototype.hasOwnProperty.call(payload, 'config')
+        || Object.prototype.hasOwnProperty.call(payload, 'config_json');
+    return {
+        staffId,
+        schemeType,
+        title: payload.title !== undefined
+            ? String(payload.title || '').trim().slice(0, 160)
+            : (current?.title || schemeTypeLabel(schemeType)),
+        requestedActive: payload.isActive !== undefined
+            ? payload.isActive === true
+            : (payload.is_active !== undefined ? payload.is_active === true : true),
+        config: hasConfig
+            ? parseConfig(payload.config ?? payload.config_json)
+            : parseConfig(current?.config_json),
+        effectiveFrom,
+        effectiveTo
+    };
+}
+
+async function assertPayrollSchemeVersionPeriodMutable(client, staffId, effectiveFrom) {
+    const month = effectiveFrom.slice(0, 7);
+    await lockPayrollPeriodMutation(month, client);
+    await assertPayrollPeriodOpen(month, client);
+    const report = await client.query(
+        `SELECT pr.id, pr.status,
+                EXISTS (
+                    SELECT 1
+                    FROM payroll_installments pi
+                    WHERE pi.payroll_report_id = pr.id
+                      AND (
+                          pi.workflow_status <> 'draft'
+                          OR EXISTS (
+                              SELECT 1
+                              FROM payroll_payment_movements ppm
+                              WHERE ppm.installment_id = pi.id
+                          )
+                      )
+                ) AS immutable_installment
+         FROM payroll_reports pr
+         WHERE pr.staff_id = $1
+           AND pr.period_month = $2
+         FOR UPDATE OF pr`,
+        [staffId, month]
+    );
+    const immutable = report.rows.find(row => (
+        ['reviewed', 'approved', 'paid'].includes(row.status) || row.immutable_installment === true
+    ));
+    if (immutable) {
+        throw payrollWorkflowError(
+            'Payroll scheme history is immutable after review, approval, or payment',
+            409,
+            'PAYROLL_SCHEME_HISTORY_LOCKED',
+            { staffId, month, reportId: Number(immutable.id), status: immutable.status }
+        );
+    }
+}
+
+async function createPayrollSchemeVersion(payload, user, sourceSchemeId = null, db = pool) {
+    const normalizedSourceId = sourceSchemeId === null || sourceSchemeId === undefined || sourceSchemeId === ''
+        ? null
+        : Number(sourceSchemeId);
+    if (normalizedSourceId !== null && (!Number.isInteger(normalizedSourceId) || normalizedSourceId <= 0)) {
+        throw payrollWorkflowError('invalid source scheme id', 400, 'PAYROLL_SCHEME_ID_INVALID');
+    }
+    const sourcePreview = normalizedSourceId === null
+        ? null
+        : await db.query('SELECT staff_id FROM payroll_schemes WHERE id = $1', [normalizedSourceId]);
+    if (normalizedSourceId !== null && !sourcePreview.rowCount) {
+        throw payrollWorkflowError('scheme not found', 404, 'PAYROLL_SCHEME_NOT_FOUND');
+    }
+    const requestedStaffId = Number(payload.staffId || payload.staff_id || sourcePreview?.rows[0]?.staff_id);
+    if (!Number.isInteger(requestedStaffId) || requestedStaffId <= 0) {
+        throw payrollWorkflowError(
+            'staffId and valid schemeType are required',
+            400,
+            'PAYROLL_SCHEME_INPUT_INVALID'
+        );
+    }
+    const client = await db.connect();
     try {
         await client.query('BEGIN');
+        const staff = await client.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [requestedStaffId]);
+        if (!staff.rowCount) throw payrollWorkflowError('staff not found', 404, 'PAYROLL_SCHEME_STAFF_NOT_FOUND');
+        const source = normalizedSourceId === null
+            ? null
+            : await client.query('SELECT * FROM payroll_schemes WHERE id = $1 FOR UPDATE', [normalizedSourceId]);
+        if (normalizedSourceId !== null && !source.rowCount) {
+            throw payrollWorkflowError('scheme not found', 404, 'PAYROLL_SCHEME_NOT_FOUND');
+        }
+        const current = source?.rows[0] || null;
+        if (current && Number(current.staff_id) !== requestedStaffId) {
+            throw payrollWorkflowError(
+                'source scheme belongs to a different staff member',
+                409,
+                'PAYROLL_SCHEME_STAFF_CONFLICT'
+            );
+        }
+        const version = payrollSchemeVersionInput(payload, current);
+        const sourceEffectiveFrom = normalizeDateValue(current?.effective_from);
+        if (sourceEffectiveFrom && version.effectiveFrom <= sourceEffectiveFrom) {
+            throw payrollWorkflowError(
+                'A superseding payroll scheme version must start after its source version',
+                409,
+                'PAYROLL_SCHEME_EFFECTIVE_FROM_NOT_AFTER_SOURCE',
+                {
+                    sourceSchemeId: normalizedSourceId,
+                    sourceEffectiveFrom,
+                    effectiveFrom: version.effectiveFrom
+                }
+            );
+        }
+        await assertPayrollSchemeVersionPeriodMutable(client, version.staffId, version.effectiveFrom);
+
+        const sameDate = await client.query(
+            `SELECT id
+             FROM payroll_schemes
+             WHERE staff_id = $1
+               AND effective_from = $2
+             ORDER BY created_at DESC NULLS LAST, id DESC
+             LIMIT 1`,
+            [version.staffId, version.effectiveFrom]
+        );
+        if (sameDate.rowCount) {
+            throw payrollWorkflowError(
+                'A payroll scheme version already exists for effectiveFrom',
+                409,
+                'PAYROLL_SCHEME_EFFECTIVE_DATE_CONFLICT',
+                { staffId: version.staffId, effectiveFrom: version.effectiveFrom }
+            );
+        }
+        const laterVersion = await client.query(
+            `SELECT id
+             FROM payroll_schemes
+             WHERE staff_id = $1
+               AND effective_from > $2
+             ORDER BY effective_from ASC, id ASC
+             LIMIT 1`,
+            [version.staffId, version.effectiveFrom]
+        );
+        const isActive = version.requestedActive && !laterVersion.rowCount;
         if (isActive) {
             await client.query(
-                'UPDATE payroll_schemes SET is_active = false, updated_at = NOW(), updated_by = $2 WHERE staff_id = $1 AND is_active = true',
-                [staffId, user?.username || null]
+                'UPDATE payroll_schemes SET is_active = false WHERE staff_id = $1 AND is_active = true',
+                [version.staffId]
             );
         }
-        const result = await client.query(`
-            INSERT INTO payroll_schemes
+        const result = await client.query(
+            `INSERT INTO payroll_schemes
                 (staff_id, scheme_type, title, is_active, config_json, effective_from, effective_to, created_by, updated_by)
-            VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$8)
-            RETURNING *
-        `, [
-            staffId,
-            schemeType,
-            payload.title ? String(payload.title).trim().slice(0, 160) : schemeTypeLabel(schemeType),
-            isActive,
-            JSON.stringify(parseConfig(payload.config || payload.config_json)),
-            payload.effectiveFrom || payload.effective_from || null,
-            payload.effectiveTo || payload.effective_to || null,
-            user?.username || null
-        ]);
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$8)
+             RETURNING *`,
+            [
+                version.staffId,
+                version.schemeType,
+                version.title,
+                isActive,
+                JSON.stringify(version.config),
+                version.effectiveFrom,
+                version.effectiveTo,
+                user?.username || null
+            ]
+        );
         await client.query('COMMIT');
-        return mapScheme(result.rows[0]);
+        return {
+            ...mapScheme(result.rows[0]),
+            supersedesSchemeId: normalizedSourceId
+        };
     } catch (err) {
-        await client.query('ROLLBACK');
+        await client.query('ROLLBACK').catch(() => {});
         throw err;
     } finally {
         client.release();
     }
 }
 
-async function updatePayrollScheme(id, payload, user) {
-    const schemeId = Number(id);
-    if (!schemeId) {
-        const err = new Error('invalid scheme id');
-        err.status = 400;
-        throw err;
-    }
-
-    const existing = await pool.query('SELECT * FROM payroll_schemes WHERE id = $1', [schemeId]);
-    if (!existing.rowCount) {
-        const err = new Error('scheme not found');
-        err.status = 404;
-        throw err;
-    }
-
-    const current = existing.rows[0];
-    const nextType = payload.schemeType || payload.scheme_type || current.scheme_type;
-    if (!SCHEME_TYPES.includes(nextType)) {
-        const err = new Error('invalid schemeType');
-        err.status = 400;
-        throw err;
-    }
-
-    const nextActive = payload.isActive !== undefined ? payload.isActive === true : (
-        payload.is_active !== undefined ? payload.is_active === true : current.is_active
+async function createPayrollScheme(payload, user, options = {}) {
+    return createPayrollSchemeVersion(
+        payload,
+        user,
+        payload.supersedesSchemeId ?? payload.supersedes_scheme_id ?? null,
+        options.db || pool
     );
+}
 
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        if (nextActive) {
-            await client.query(
-                'UPDATE payroll_schemes SET is_active = false, updated_at = NOW(), updated_by = $2 WHERE staff_id = $1 AND id <> $3 AND is_active = true',
-                [current.staff_id, user?.username || null, schemeId]
-            );
-        }
-        const result = await client.query(`
-            UPDATE payroll_schemes SET
-                scheme_type = $1,
-                title = $2,
-                is_active = $3,
-                config_json = $4::jsonb,
-                effective_from = $5,
-                effective_to = $6,
-                updated_by = $7,
-                updated_at = NOW()
-            WHERE id = $8
-            RETURNING *
-        `, [
-            nextType,
-            payload.title !== undefined ? String(payload.title || '').trim().slice(0, 160) : current.title,
-            nextActive,
-            JSON.stringify(payload.config !== undefined || payload.config_json !== undefined
-                ? parseConfig(payload.config || payload.config_json)
-                : parseConfig(current.config_json)),
-            payload.effectiveFrom !== undefined ? (payload.effectiveFrom || null) : current.effective_from,
-            payload.effectiveTo !== undefined ? (payload.effectiveTo || null) : current.effective_to,
-            user?.username || null,
-            schemeId
-        ]);
-        await client.query('COMMIT');
-        return mapScheme(result.rows[0]);
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+async function updatePayrollScheme(id, payload, user, options = {}) {
+    return createPayrollSchemeVersion(payload, user, id, options.db || pool);
 }
 
 function assertPayrollRowsGenerationReady(rows = []) {
@@ -3024,58 +4418,610 @@ async function auditBlockedPayrollGeneration(month, error, user) {
     }
 }
 
-async function generatePayrollReports(month, user) {
-    const report = await getSalaryReport(month);
-    try {
-        assertPayrollRowsGenerationReady(report.staff);
-    } catch (error) {
-        await auditBlockedPayrollGeneration(report.month, error, user)
-            .catch(auditError => log.error('blocked payroll generation audit failed', auditError));
-        throw error;
+function payrollWorkflowError(message, statusCode = 400, code = 'PAYROLL_WORKFLOW_INVALID', details = null) {
+    const err = new Error(message);
+    err.status = statusCode;
+    err.statusCode = statusCode;
+    err.code = code;
+    if (details) err.details = details;
+    return err;
+}
+
+async function assertPayrollInstallmentMonthWritable(month, db = pool) {
+    const normalizedMonth = assertPayrollMonth(month);
+    const activationMonth = configuredPayrollInstallmentsActivationMonth();
+    if (!isPayrollInstallmentsActivationMonth(normalizedMonth)) {
+        throw payrollWorkflowError(
+            'Payroll installment workflow is not active for this month',
+            409,
+            'PAYROLL_INSTALLMENTS_NOT_ACTIVE',
+            { month: normalizedMonth, activationMonth }
+        );
     }
+    await assertPayrollPeriodOpen(normalizedMonth, db);
+    return normalizedMonth;
+}
+
+function assertPayrollBusinessContextAccess(user, businessContext) {
+    if (!canAccessBusinessContext(user, businessContext)) {
+        throw payrollWorkflowError(
+            'Business context is not available for this payroll action',
+            403,
+            'PAYROLL_BUSINESS_CONTEXT_FORBIDDEN',
+            { businessContext }
+        );
+    }
+    return businessContext;
+}
+
+function normalizePayrollInstallmentKind(kind) {
+    const value = String(kind || '').trim().toLowerCase();
+    if (!PAYROLL_INSTALLMENT_KINDS.includes(value)) {
+        throw payrollWorkflowError('valid installment kind is required', 400, 'PAYROLL_INSTALLMENT_KIND_INVALID');
+    }
+    return value;
+}
+
+function payrollWorkflowActor(user = {}) {
+    const username = String(user.username || user.name || user.email || '').trim();
+    const role = String(user.role || '').trim();
+    const userId = Number(user.id || user.userId || user.user_id);
+    if (!Number.isInteger(userId) || userId <= 0 || !username || !role) {
+        throw payrollWorkflowError(
+            'Payroll approval requires authenticated actor id, username, and role',
+            403,
+            'PAYROLL_APPROVER_REQUIRED'
+        );
+    }
+    return { userId, username, role };
+}
+
+function assertPayrollActionPermission(user, action, actor, code = 'PAYROLL_PERMISSION_DENIED') {
+    if (!canUseAction(user, action)) {
+        throw payrollWorkflowError(
+            'Payroll workflow action requires payroll permission',
+            403,
+            code,
+            { action, role: actor.role }
+        );
+    }
+}
+
+function normalizePayrollWorkflowDate(value, code = 'PAYROLL_PAYMENT_DATE_INVALID') {
+    const date = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw payrollWorkflowError('valid actual payment date is required (YYYY-MM-DD)', 400, code);
+    }
+    return date;
+}
+
+function normalizePositiveMoneyAmount(value, fallback = null, code = 'PAYROLL_PAYMENT_AMOUNT_INVALID') {
+    if ((value === null || value === undefined || value === '') && fallback !== null) return roundMoney(fallback);
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        throw payrollWorkflowError('payment amount must be a positive integer', 400, code);
+    }
+    return roundMoney(amount);
+}
+
+function normalizePayrollIdempotencyKey(value) {
+    const key = String(value || '').trim();
+    if (!key || key.length > 128) {
+        throw payrollWorkflowError(
+            'idempotency key is required and must be at most 128 characters',
+            400,
+            'PAYROLL_PAYMENT_IDEMPOTENCY_KEY_INVALID'
+        );
+    }
+    return key;
+}
+
+function normalizePayrollPaymentMethod(value) {
+    const method = String(value || '').trim().toLowerCase();
+    if (!method) {
+        throw payrollWorkflowError('real payment method is required', 400, 'PAYROLL_PAYMENT_METHOD_REQUIRED');
+    }
+    if (method === 'salary' || method === 'salary_reversal') {
+        throw payrollWorkflowError(
+            'payment method must be real cash/bank/card method, not payroll source',
+            400,
+            'PAYROLL_PAYMENT_METHOD_SOURCE_INVALID'
+        );
+    }
+    return method;
+}
+
+function normalizePayrollReason(value, fallback, requiredCode = 'PAYROLL_PAYMENT_REASON_REQUIRED') {
+    const reason = String(value || '').trim() || fallback;
+    if (!reason) throw payrollWorkflowError('payment reason is required', 400, requiredCode);
+    return reason;
+}
+
+function normalizePayrollPaymentBusinessContext(value) {
+    const context = String(value || '').trim();
+    if (!context) {
+        throw payrollWorkflowError(
+            'business context is required for payroll payment',
+            400,
+            'PAYROLL_BUSINESS_CONTEXT_REQUIRED'
+        );
+    }
+    return context;
+}
+
+function payrollRecognitionDate(row = {}) {
+    return normalizeDateValue(row.earning_to || row.earningTo);
+}
+
+function movementDescription(row = {}, movementType = 'payment') {
+    const month = row.period_month || String(row.earning_from || '').slice(0, 7);
+    const kind = row.kind === 'advance' ? 'advance' : 'final';
+    return movementType === 'reversal'
+        ? `Payroll ${kind} reversal ${month}`
+        : `Payroll ${kind} payment ${month}`;
+}
+
+async function loadPayrollPaymentIdempotency(client, idempotencyKey) {
+    const existing = await client.query(
+        `SELECT ppm.*, pi.kind, pi.payroll_report_id, pr.period_month, pr.staff_id,
+                ft.category_id, ft.account_id, ft.payment_method, ft.business_context,
+                ft.description AS finance_description, ft.recognition_date
+         FROM payroll_payment_movements ppm
+         JOIN payroll_installments pi ON pi.id = ppm.installment_id
+         JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+         JOIN finance_transactions ft ON ft.id = ppm.finance_transaction_id
+         WHERE ppm.idempotency_key = $1`,
+        [idempotencyKey]
+    );
+    return existing.rows[0] || null;
+}
+
+function payrollIdempotencyRequestAmount(options = {}, existingAmount = 0) {
+    if (options.amount === null || options.amount === undefined || options.amount === '') {
+        return roundMoney(existingAmount);
+    }
+    const amount = Number(options.amount);
+    return Number.isFinite(amount) ? roundMoney(amount) : Number.NaN;
+}
+
+function assertPayrollMovementIdempotentReplay(existing, request = {}, options = {}) {
+    const movementType = request.movementType;
+    const targetField = movementType === 'reversal' ? 'reverses_movement_id' : 'installment_id';
+    const expectedDescription = String(options.description || movementDescription(existing, movementType));
+    const expected = {
+        movementType,
+        target: Number(request.targetId),
+        amount: payrollIdempotencyRequestAmount(options, existing.amount),
+        actualPaymentDate: request.actualPaymentDate,
+        businessContext: request.businessContext,
+        paymentMethod: request.paymentMethod,
+        categoryId: Number(options.categoryId || options.category_id),
+        accountId: Number(options.accountId || options.account_id),
+        reason: request.reason,
+        description: expectedDescription
+    };
+    const actual = {
+        movementType: existing.movement_type,
+        target: Number(existing[targetField]),
+        amount: roundMoney(existing.amount),
+        actualPaymentDate: normalizeDateValue(existing.actual_payment_date),
+        businessContext: String(existing.business_context || ''),
+        paymentMethod: String(existing.payment_method || '').trim().toLowerCase(),
+        categoryId: Number(existing.category_id),
+        accountId: Number(existing.account_id),
+        reason: String(existing.reason || ''),
+        description: String(existing.finance_description || '')
+    };
+    const mismatchedFields = Object.keys(expected).filter(field => (
+        !Number.isNaN(expected[field])
+            ? actual[field] !== expected[field]
+            : true
+    ));
+    if (mismatchedFields.length) {
+        throw payrollWorkflowError(
+            'idempotency key was already used with a different payroll movement request',
+            409,
+            'PAYROLL_PAYMENT_IDEMPOTENCY_CONFLICT',
+            {
+                idempotencyKey: existing.idempotency_key,
+                mismatchedFields
+            }
+        );
+    }
+    return existing;
+}
+
+function payrollIdempotentMovementResult(existing) {
+    return {
+        success: true,
+        idempotent: true,
+        movement: mapPayrollPaymentMovement(existing),
+        financeTransactionId: Number(existing.finance_transaction_id)
+    };
+}
+
+async function loadPayrollInstallmentForPayment(client, installmentId) {
+    const current = await client.query(
+        `WITH movement_totals AS (
+            SELECT installment_id,
+                   COALESCE(SUM(amount) FILTER (WHERE movement_type = 'payment'), 0)::numeric AS payment_total,
+                   COALESCE(SUM(amount) FILTER (WHERE movement_type = 'reversal'), 0)::numeric AS reversal_total
+            FROM payroll_payment_movements
+            WHERE installment_id = $1
+            GROUP BY installment_id
+         )
+         SELECT pi.*, pr.period_month, pr.staff_id, pr.status AS report_status, pr.settlement_model,
+                s.name AS staff_name,
+                COALESCE(mt.payment_total, 0)::numeric AS payment_total,
+                COALESCE(mt.reversal_total, 0)::numeric AS reversal_total
+         FROM payroll_installments pi
+         JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+         LEFT JOIN staff s ON s.id = pr.staff_id
+         LEFT JOIN movement_totals mt ON mt.installment_id = pi.id
+         WHERE pi.id = $1
+         FOR UPDATE OF pi, pr`,
+        [installmentId]
+    );
+    if (!current.rowCount) {
+        throw payrollWorkflowError('payroll installment not found', 404, 'PAYROLL_INSTALLMENT_NOT_FOUND');
+    }
+    return current.rows[0];
+}
+
+async function assertFinanceCategoryForPayroll(client, categoryId, businessContext, expectedType) {
+    const id = Number(categoryId);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw payrollWorkflowError('finance category is required for payroll payment', 400, 'PAYROLL_FINANCE_CATEGORY_REQUIRED');
+    }
+    const category = await client.query(
+        `SELECT id, type, name
+         FROM finance_categories
+         WHERE id = $1
+           AND is_active = true
+           AND COALESCE(business_context, 'event_genix') = $2
+         FOR SHARE`,
+        [id, businessContext]
+    );
+    if (!category.rowCount) {
+        throw payrollWorkflowError('finance category not found in selected business', 400, 'PAYROLL_FINANCE_CATEGORY_NOT_FOUND');
+    }
+    if (category.rows[0].type !== expectedType) {
+        throw payrollWorkflowError('finance category type does not match payroll transaction type', 400, 'PAYROLL_FINANCE_CATEGORY_TYPE_INVALID', {
+            expectedType,
+            actualType: category.rows[0].type
+        });
+    }
+    return category.rows[0];
+}
+
+async function assertFinanceAccountForPayroll(client, accountId, businessContext) {
+    const id = Number(accountId);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw payrollWorkflowError('finance account is required for payroll payment', 400, 'PAYROLL_FINANCE_ACCOUNT_REQUIRED');
+    }
+    const account = await client.query(
+        `SELECT id, name, type
+         FROM finance_accounts
+         WHERE id = $1
+           AND is_active = true
+           AND COALESCE(business_context, 'event_genix') = $2
+         FOR SHARE`,
+        [id, businessContext]
+    );
+    if (!account.rowCount) {
+        throw payrollWorkflowError('finance account not found in selected business', 400, 'PAYROLL_FINANCE_ACCOUNT_NOT_FOUND');
+    }
+    return account.rows[0];
+}
+
+function assertPayrollInstallmentPayable(row, businessContext) {
+    if (row.settlement_model !== PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS) {
+        throw payrollWorkflowError('legacy payroll report cannot be paid through installment workflow', 409, 'PAYROLL_LEGACY_PAYMENT_BLOCKED');
+    }
+    if (row.workflow_status !== 'approved' || row.locked_amount === null || row.locked_amount === undefined) {
+        throw payrollWorkflowError('payroll installment must be approved before payment', 409, 'PAYROLL_INSTALLMENT_NOT_APPROVED');
+    }
+    if (row.allocation_status !== 'single' || !row.business_context) {
+        throw payrollWorkflowError('payroll installment allocation must be resolved before payment', 409, 'PAYROLL_ALLOCATION_UNRESOLVED', {
+            installmentId: Number(row.id),
+            allocationStatus: row.allocation_status
+        });
+    }
+    if (row.business_context !== businessContext) {
+        throw payrollWorkflowError('payroll installment business context does not match request', 409, 'PAYROLL_BUSINESS_CONTEXT_MISMATCH', {
+            installmentBusinessContext: row.business_context,
+            requestedBusinessContext: businessContext
+        });
+    }
+}
+
+function mapPayrollPaymentMovement(row = {}) {
+    return {
+        id: Number(row.id),
+        installmentId: Number(row.installment_id ?? row.installmentId),
+        movementType: row.movement_type ?? row.movementType,
+        amount: Number(row.amount || 0),
+        actualPaymentDate: normalizeDateValue(row.actual_payment_date ?? row.actualPaymentDate),
+        actorUserId: row.actor_user_id === null || row.actor_user_id === undefined ? null : Number(row.actor_user_id),
+        actorUsername: row.actor_username ?? row.actorUsername ?? null,
+        actorRole: row.actor_role ?? row.actorRole ?? null,
+        reason: row.reason || '',
+        idempotencyKey: row.idempotency_key ?? row.idempotencyKey ?? null,
+        financeTransactionId: Number(row.finance_transaction_id ?? row.financeTransactionId),
+        reversesMovementId: row.reverses_movement_id === null || row.reverses_movement_id === undefined
+            ? null
+            : Number(row.reverses_movement_id),
+        createdAt: row.created_at ?? row.createdAt ?? null
+    };
+}
+
+function payrollInstallmentSchedule(month, kind) {
+    const range = payrollMonthRange(month);
+    if (kind === 'advance') {
+        return {
+            earningFrom: range.from,
+            earningTo: `${month}-15`,
+            scheduledPaymentDate: `${month}-20`
+        };
+    }
+    const year = Number(month.slice(0, 4));
+    const monthIndex = Number(month.slice(5, 7));
+    const scheduled = new Date(Date.UTC(year, monthIndex, 10));
+    return {
+        earningFrom: `${month}-16`,
+        earningTo: range.to,
+        scheduledPaymentDate: scheduled.toISOString().slice(0, 10)
+    };
+}
+
+function payrollFormulaFingerprintSnapshot(kind, value = {}) {
+    const snapshot = { ...parseConfig(value) };
+    if (kind === 'final') {
+        delete snapshot.advancePaidAmount;
+        delete snapshot.advanceOutstandingAmount;
+    }
+    return snapshot;
+}
+
+function payrollRowSchemeSnapshotMetadata(row = {}, fallback = {}) {
+    const versionId = row.schemeVersionId ?? row.schemeId ?? fallback.schemeVersionId ?? fallback.schemeId ?? null;
+    return {
+        versionId,
+        id: versionId,
+        schemeId: versionId,
+        type: row.schemeType ?? fallback.schemeType ?? null,
+        title: row.schemeTitle ?? fallback.schemeTitle ?? '',
+        effectiveFrom: row.schemeEffectiveFrom ?? fallback.schemeEffectiveFrom ?? null,
+        effectiveTo: row.schemeEffectiveTo ?? fallback.schemeEffectiveTo ?? null,
+        configHash: row.schemeConfigHash ?? fallback.schemeConfigHash ?? null,
+        updatedAt: row.schemeUpdatedAt ?? fallback.schemeUpdatedAt ?? null
+    };
+}
+
+function payrollInstallmentSnapshot(kind, monthlyRow = {}, installment = {}, extra = {}, fingerprintRow = monthlyRow) {
+    const sourceRow = fingerprintRow || monthlyRow;
+    const sourceScheme = payrollRowSchemeSnapshotMetadata(sourceRow, monthlyRow);
+    const monthlyScheme = payrollRowSchemeSnapshotMetadata(monthlyRow, sourceRow);
+    const sourcePayload = {
+        schemaVersion: 2,
+        kind,
+        payrollReport: {
+            staffId: sourceRow.staffId ?? monthlyRow.staffId,
+            ...sourceScheme,
+            ...(kind === 'final' ? { monthlyNetAmount: monthlyRow.netAmount } : {})
+        },
+        metrics: {
+            totalMinutes: sourceRow.totalMinutes,
+            physicalMinutes: sourceRow.physicalMinutes,
+            allocatedMinutes: sourceRow.allocatedMinutes,
+            overtimeMinutes: sourceRow.overtimeMinutes,
+            plannedMinutes: sourceRow.plannedMinutes,
+            paidPlannedMinutes: sourceRow.paidPlannedMinutes,
+            monthlyNormMinutes: sourceRow.monthlyNormMinutes,
+            monthlyNormSource: sourceRow.monthlyNormSource,
+            monthlyNormConfirmed: sourceRow.monthlyNormConfirmed,
+            monthlyNormMonth: sourceRow.monthlyNormMonth,
+            businessContexts: sourceRow.businessContexts || [],
+            periodIncomeBusinessContext: sourceRow.periodIncomeBusinessContext || null,
+            daysWorked: sourceRow.daysWorked
+        },
+        lines: sourceRow.lines || [],
+        payrollBlockingIssues: sourceRow.payrollBlockingIssues || [],
+        amount: installment.amount ?? installment.calculatedAmount ?? 0,
+        blockers: installment.blockers || [],
+        corrections: installment.corrections || [],
+        calculation: payrollFormulaFingerprintSnapshot(kind, installment.calculationSnapshot || {}),
+        kpiAuditSnapshot: kind === 'final'
+            ? (monthlyRow.kpiAuditSnapshot || monthlyRow.kpi_audit_snapshot || null)
+            : null
+    };
+    const snapshot = {
+        schemaVersion: 2,
+        kind,
+        source: 'services/payroll.generatePayrollReports',
+        generatedAt: new Date().toISOString(),
+        sourceFingerprint: createHash('sha256')
+            .update(stablePayrollJson(sourcePayload))
+            .digest('hex'),
+        payrollReport: {
+            staffId: monthlyRow.staffId,
+            staffName: monthlyRow.name,
+            ...monthlyScheme,
+            monthlyNetAmount: monthlyRow.netAmount
+        },
+        businessContexts: sourceRow.businessContexts || [],
+        periodIncomeBusinessContext: sourceRow.periodIncomeBusinessContext || null,
+        amount: installment.amount ?? installment.calculatedAmount ?? 0,
+        blockers: installment.blockers || [],
+        corrections: installment.corrections || [],
+        calculation: installment.calculationSnapshot || {},
+        ...extra
+    };
+    if (kind === 'final' && (monthlyRow.kpiAuditSnapshot || monthlyRow.kpi_audit_snapshot)) {
+        snapshot.kpiAuditSnapshot = monthlyRow.kpiAuditSnapshot || monthlyRow.kpi_audit_snapshot;
+    }
+    return snapshot;
+}
+
+function payrollReportBreakdown(row = {}) {
+    return {
+        scheme: payrollRowSchemeSnapshotMetadata(row),
+        metrics: {
+            hoursWorked: row.hoursWorked,
+            daysWorked: row.daysWorked,
+            totalMinutes: row.totalMinutes,
+            physicalMinutes: row.physicalMinutes,
+            allocatedMinutes: row.allocatedMinutes,
+            overtimeMinutes: row.overtimeMinutes,
+            plannedMinutes: row.plannedMinutes,
+            paidPlannedMinutes: row.paidPlannedMinutes,
+            monthlyNormMinutes: row.monthlyNormMinutes,
+            monthlyNormSource: row.monthlyNormSource,
+            monthlyNormConfirmed: row.monthlyNormConfirmed,
+            monthlyNormMonth: row.monthlyNormMonth,
+            compensationMinutes: row.compensationMinutes,
+            roleMinutes: row.roleMinutes,
+            baseProfessionAllocations: row.baseProfessionAllocations,
+            additionalProfessionAllocations: row.additionalProfessionAllocations
+        },
+        professionRateSummary: row.professionRateSummary,
+        reconciliation: row.reconciliation,
+        allocationIssues: row.allocationIssues,
+        payrollBlockingIssues: row.payrollBlockingIssues,
+        kpiAuditSnapshot: row.kpiAuditSnapshot || row.kpi_audit_snapshot || null,
+        transparency: row.payrollTransparency,
+        lines: row.lines,
+        summary: row.summary
+    };
+}
+
+async function upsertDraftPayrollInstallment(client, reportId, row, kind, installment, user, fingerprintRow = row) {
+    const schedule = payrollInstallmentSchedule(row.periodMonth || row.month, kind);
+    const snapshot = payrollInstallmentSnapshot(kind, row, installment, {
+        earningFrom: schedule.earningFrom,
+        earningTo: schedule.earningTo,
+        scheduledPaymentDate: schedule.scheduledPaymentDate
+    }, fingerprintRow);
+    const result = await client.query(
+        `INSERT INTO payroll_installments
+            (payroll_report_id, kind, earning_from, earning_to, scheduled_payment_date,
+             calculated_amount, locked_amount, calculation_snapshot, workflow_status,
+             allocation_status, business_context, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, NULL, $7::jsonb, 'draft', 'unresolved', NULL, $8, $8)
+         ON CONFLICT (payroll_report_id, kind) DO UPDATE SET
+            earning_from = EXCLUDED.earning_from,
+            earning_to = EXCLUDED.earning_to,
+            scheduled_payment_date = EXCLUDED.scheduled_payment_date,
+            calculated_amount = EXCLUDED.calculated_amount,
+            calculation_snapshot = EXCLUDED.calculation_snapshot,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW()
+         WHERE payroll_installments.workflow_status = 'draft'
+         RETURNING *`,
+        [
+            reportId,
+            kind,
+            schedule.earningFrom,
+            schedule.earningTo,
+            schedule.scheduledPaymentDate,
+            installment.calculatedAmount ?? installment.amount ?? 0,
+            JSON.stringify(snapshot),
+            user?.username || null
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+async function loadAdvanceInstallmentDecisions(month, db = pool) {
+    const result = await db.query(
+        `WITH movement_totals AS (
+            SELECT installment_id,
+                   COALESCE(SUM(amount) FILTER (WHERE movement_type = 'payment'), 0)::numeric AS payment_total,
+                   COALESCE(SUM(amount) FILTER (WHERE movement_type = 'reversal'), 0)::numeric AS reversal_total
+            FROM payroll_payment_movements
+            GROUP BY installment_id
+         )
+         SELECT pi.*, pr.staff_id,
+                COALESCE(mt.payment_total, 0)::numeric AS payment_total,
+                COALESCE(mt.reversal_total, 0)::numeric AS reversal_total
+         FROM payroll_installments pi
+         JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+         LEFT JOIN movement_totals mt ON mt.installment_id = pi.id
+         WHERE pr.period_month = $1
+           AND pr.settlement_model = $2
+           AND pi.kind = 'advance'
+           AND pi.workflow_status IN ('approved', 'cancelled')`,
+        [month, PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS]
+    );
+    return new Map(result.rows.map(row => [Number(row.staff_id), mapPayrollInstallment(row)]));
+}
+
+async function generatePayrollReports(month, user) {
+    const normalizedMonth = await assertPayrollInstallmentMonthWritable(month);
     const client = await pool.connect();
     const generated = [];
     const skipped = [];
+    let report;
 
     try {
         await client.query('BEGIN');
+        await lockPayrollPeriodMutation(normalizedMonth, client);
+        await assertPayrollPeriodOpen(normalizedMonth, client);
+        report = await getSalaryReport(normalizedMonth, client);
+        const monthRange = payrollMonthRange(report.month);
+        const advancePreview = await getPayrollRangePreview({
+            month: report.month,
+            from: monthRange.from,
+            to: `${report.month}-15`
+        }, client);
+        const advanceRowMap = new Map((advancePreview.staff || []).map(row => [Number(row.staffId), row]));
+        const advanceDecisionMap = await loadAdvanceInstallmentDecisions(report.month, client);
         for (const row of report.staff) {
             const existing = await client.query(
                 'SELECT * FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
                 [report.month, row.staffId]
             );
-            if (existing.rowCount && ['approved', 'paid'].includes(existing.rows[0].status)) {
+            if (existing.rowCount && (
+                existing.rows[0].voided_at
+                || ['approved', 'paid', 'voided'].includes(existing.rows[0].status)
+            )) {
                 skipped.push({ staffId: row.staffId, status: existing.rows[0].status });
                 continue;
             }
+            if (existing.rowCount
+                && existing.rows[0].settlement_model === PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS
+                && existing.rows[0].status !== 'draft') {
+                throw payrollWorkflowError(
+                    'Installment payroll report status drift must be resolved before recalculation',
+                    409,
+                    'PAYROLL_REPORT_STATE_DRIFT',
+                    {
+                        reportId: Number(existing.rows[0].id),
+                        status: existing.rows[0].status
+                    }
+                );
+            }
+            if (existing.rowCount && (
+                existing.rows[0].finance_transaction_id
+                || existing.rows[0].reversal_transaction_id
+            )) {
+                throw payrollWorkflowError(
+                    'Legacy payroll report finance links require reconciliation before installment conversion',
+                    409,
+                    'PAYROLL_LEGACY_FINANCE_LINK_CONFLICT',
+                    {
+                        reportId: Number(existing.rows[0].id),
+                        financeTransactionId: existing.rows[0].finance_transaction_id
+                            ? Number(existing.rows[0].finance_transaction_id)
+                            : null,
+                        reversalTransactionId: existing.rows[0].reversal_transaction_id
+                            ? Number(existing.rows[0].reversal_transaction_id)
+                            : null
+                    }
+                );
+            }
 
-            const breakdown = {
-                scheme: {
-                    id: row.schemeId,
-                    type: row.schemeType,
-                    title: row.schemeTitle
-                },
-                metrics: {
-                    hoursWorked: row.hoursWorked,
-                    daysWorked: row.daysWorked,
-                    totalMinutes: row.totalMinutes,
-                    physicalMinutes: row.physicalMinutes,
-                    allocatedMinutes: row.allocatedMinutes,
-                    overtimeMinutes: row.overtimeMinutes,
-                    plannedMinutes: row.plannedMinutes,
-                    compensationMinutes: row.compensationMinutes,
-                    roleMinutes: row.roleMinutes,
-                    baseProfessionAllocations: row.baseProfessionAllocations,
-                    additionalProfessionAllocations: row.additionalProfessionAllocations
-                },
-                professionRateSummary: row.professionRateSummary,
-                reconciliation: row.reconciliation,
-                allocationIssues: row.allocationIssues,
-                payrollBlockingIssues: row.payrollBlockingIssues,
-                transparency: row.payrollTransparency,
-                lines: row.lines,
-                summary: row.summary
-            };
+            const breakdown = payrollReportBreakdown(row);
 
             let result;
             if (existing.rowCount) {
@@ -3087,6 +5033,7 @@ async function generatePayrollReports(month, user) {
                         advances_amount = $4,
                         net_amount = $5,
                         status = 'draft',
+                        settlement_model = $9,
                         breakdown_json = $6::jsonb,
                         generated_at = NOW(),
                         updated_by = $7,
@@ -3094,17 +5041,57 @@ async function generatePayrollReports(month, user) {
                     WHERE id = $8
                     RETURNING *
                 `, [row.schemeId, row.grossAmount, row.deductionsAmount, row.advancesAmount, row.netAmount,
-                    JSON.stringify(breakdown), user?.username || null, existing.rows[0].id]);
+                    JSON.stringify(breakdown), user?.username || null, existing.rows[0].id,
+                    PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS]);
             } else {
                 result = await client.query(`
                     INSERT INTO payroll_reports
                         (period_month, staff_id, scheme_id, gross_amount, deductions_amount, advances_amount,
-                         net_amount, status, breakdown_json, generated_at, created_by, updated_by)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8::jsonb,NOW(),$9,$9)
+                         net_amount, status, settlement_model, breakdown_json, generated_at, created_by, updated_by)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9::jsonb,NOW(),$10,$10)
                     RETURNING *
                 `, [report.month, row.staffId, row.schemeId, row.grossAmount, row.deductionsAmount,
-                    row.advancesAmount, row.netAmount, JSON.stringify(breakdown), user?.username || null]);
+                    row.advancesAmount, row.netAmount, PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS,
+                    JSON.stringify(breakdown), user?.username || null]);
             }
+            const reportId = Number(result.rows[0].id);
+            const advanceRow = advanceRowMap.get(Number(row.staffId)) || {};
+            const advanceInstallment = calculateAdvanceInstallment({
+                staff: { id: row.staffId, hourlyRate: row.hourlyRate, rateUnit: row.rateUnit },
+                scheme: { id: row.schemeId, schemeType: row.schemeType, title: row.schemeTitle },
+                monthMetrics: {
+                    plannedMinutes: row.plannedMinutes,
+                    paidPlannedMinutes: row.paidPlannedMinutes,
+                    monthlyNormMinutes: row.monthlyNormMinutes,
+                    monthlyNormSource: row.monthlyNormSource,
+                    monthlyNormConfirmed: row.monthlyNormConfirmed,
+                    monthlyNormMonth: row.monthlyNormMonth
+                },
+                advanceMetrics: {
+                    plannedMinutes: advanceRow.plannedMinutes,
+                    paidPlannedMinutes: advanceRow.paidPlannedMinutes
+                },
+                monthlyCalculation: { summary: { base: row.baseAmount } },
+                rangeCalculation: {
+                    lines: advanceRow.lines || [],
+                    blockers: payrollCommitBlockingIssues(advanceRow)
+                },
+                earningFrom: monthRange.from,
+                earningTo: `${report.month}-15`
+            });
+            const advanceDecision = advanceDecisionMap.get(Number(row.staffId));
+            const finalInstallment = calculateFinalInstallment({
+                monthlyPayroll: {
+                    summary: { net: row.netAmount },
+                    blockers: payrollCommitBlockingIssues(row)
+                },
+                advanceInstallment: advanceDecision || null,
+                plannedAdvanceInstallment: advanceDecision ? null : advanceInstallment,
+                currentAdvanceInstallment: advanceInstallment
+            });
+            row.periodMonth = report.month;
+            await upsertDraftPayrollInstallment(client, reportId, row, 'advance', advanceInstallment, user, advanceRow);
+            await upsertDraftPayrollInstallment(client, reportId, row, 'final', finalInstallment, user);
             const additionalLines = (row.lines || []).filter(lineItem =>
                 lineItem.lineType === SIMULTANEOUS_ADDITIONAL_LINE_TYPE
                 || lineItem.line_type === SIMULTANEOUS_ADDITIONAL_LINE_TYPE);
@@ -3149,6 +5136,821 @@ async function generatePayrollReports(month, user) {
     };
 }
 
+async function calculateCurrentPayrollInstallment(row, advanceDecisionRow = null, db = pool) {
+    const month = normalizePayrollMonth(row.period_month);
+    const staffId = Number(row.staff_id);
+    const monthRange = payrollMonthRange(month);
+    const monthlyRow = await getPayrollPreview(staffId, month, db);
+    const advancePreview = await getPayrollRangePreview({
+        month,
+        from: monthRange.from,
+        to: `${month}-15`,
+        staffId
+    }, db);
+    monthlyRow.periodMonth = month;
+    const advanceRow = advancePreview.staff?.[0] || {};
+    const currentAdvance = calculateAdvanceInstallment({
+        staff: {
+            id: monthlyRow.staffId,
+            hourlyRate: monthlyRow.hourlyRate,
+            rateUnit: monthlyRow.rateUnit
+        },
+        scheme: {
+            id: monthlyRow.schemeId,
+            schemeType: monthlyRow.schemeType,
+            title: monthlyRow.schemeTitle
+        },
+        monthMetrics: {
+            plannedMinutes: monthlyRow.plannedMinutes,
+            paidPlannedMinutes: monthlyRow.paidPlannedMinutes,
+            monthlyNormMinutes: monthlyRow.monthlyNormMinutes,
+            monthlyNormSource: monthlyRow.monthlyNormSource,
+            monthlyNormConfirmed: monthlyRow.monthlyNormConfirmed,
+            monthlyNormMonth: monthlyRow.monthlyNormMonth
+        },
+        advanceMetrics: {
+            plannedMinutes: advanceRow.plannedMinutes,
+            paidPlannedMinutes: advanceRow.paidPlannedMinutes
+        },
+        monthlyCalculation: { summary: { base: monthlyRow.baseAmount } },
+        rangeCalculation: {
+            lines: advanceRow.lines || [],
+            blockers: payrollCommitBlockingIssues(advanceRow)
+        },
+        earningFrom: monthRange.from,
+        earningTo: `${month}-15`
+    });
+    const advanceDecision = advanceDecisionRow
+        ? mapPayrollInstallment(advanceDecisionRow)
+        : null;
+    const installment = row.kind === 'advance'
+        ? currentAdvance
+        : calculateFinalInstallment({
+            monthlyPayroll: {
+                summary: { net: monthlyRow.netAmount },
+                blockers: payrollCommitBlockingIssues(monthlyRow)
+            },
+            advanceInstallment: advanceDecision,
+            plannedAdvanceInstallment: advanceDecision ? null : currentAdvance,
+            currentAdvanceInstallment: currentAdvance
+        });
+    const snapshot = payrollInstallmentSnapshot(row.kind, monthlyRow, installment, {
+        earningFrom: normalizeDateValue(row.earning_from),
+        earningTo: normalizeDateValue(row.earning_to),
+        scheduledPaymentDate: normalizeDateValue(row.scheduled_payment_date)
+    }, row.kind === 'advance' ? advanceRow : monthlyRow);
+    return { monthlyRow, currentAdvance, installment, snapshot };
+}
+
+async function lockPayrollInstallmentPeriodFirst(client, installmentId) {
+    const owner = await client.query(
+        `SELECT pr.period_month
+         FROM payroll_installments pi
+         JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+         WHERE pi.id = $1`,
+        [installmentId]
+    );
+    if (!owner.rowCount) {
+        throw payrollWorkflowError('payroll installment not found', 404, 'PAYROLL_INSTALLMENT_NOT_FOUND');
+    }
+    const month = owner.rows[0].period_month;
+    await lockPayrollPeriodMutation(month, client);
+    return month;
+}
+
+async function lockPayrollMovementPeriodFirst(client, movementId) {
+    const owner = await client.query(
+        `SELECT pr.period_month
+         FROM payroll_payment_movements ppm
+         JOIN payroll_installments pi ON pi.id = ppm.installment_id
+         JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+         WHERE ppm.id = $1`,
+        [movementId]
+    );
+    if (!owner.rowCount) {
+        throw payrollWorkflowError('payroll payment movement not found', 404, 'PAYROLL_PAYMENT_MOVEMENT_NOT_FOUND');
+    }
+    const month = owner.rows[0].period_month;
+    await lockPayrollPeriodMutation(month, client);
+    return month;
+}
+
+async function lockPayrollReportPeriodFirst(client, reportId) {
+    const owner = await client.query(
+        'SELECT period_month FROM payroll_reports WHERE id = $1',
+        [reportId]
+    );
+    if (!owner.rowCount) {
+        const err = new Error('report not found');
+        err.status = 404;
+        throw err;
+    }
+    const month = owner.rows[0].period_month;
+    await lockPayrollPeriodMutation(month, client);
+    return month;
+}
+
+async function approvePayrollInstallment(id, user, options = {}) {
+    const installmentId = Number(id);
+    if (!Number.isInteger(installmentId) || installmentId <= 0) {
+        throw payrollWorkflowError('valid installment id is required', 400, 'PAYROLL_INSTALLMENT_ID_INVALID');
+    }
+    const actor = payrollWorkflowActor(user);
+    assertPayrollActionPermission(user, 'approve_payroll_installment', actor, 'PAYROLL_APPROVAL_PERMISSION_DENIED');
+    const businessContext = String(options.businessContext || options.business_context || '').trim();
+    if (!businessContext) {
+        throw payrollWorkflowError('business context is required to approve payroll installment', 400, 'PAYROLL_BUSINESS_CONTEXT_REQUIRED');
+    }
+    assertPayrollBusinessContextAccess(user, businessContext);
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await lockPayrollInstallmentPeriodFirst(client, installmentId);
+        const current = await client.query(
+            `SELECT pi.*, pr.period_month, pr.staff_id, pr.status AS report_status, pr.settlement_model,
+                    pr.net_amount AS report_net_amount
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pi.id = $1
+             FOR UPDATE OF pi, pr`,
+            [installmentId]
+        );
+        if (!current.rowCount) throw payrollWorkflowError('payroll installment not found', 404, 'PAYROLL_INSTALLMENT_NOT_FOUND');
+        const row = current.rows[0];
+        if (row.settlement_model !== PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS) {
+            throw payrollWorkflowError('legacy payroll report cannot be approved through installment workflow', 409, 'PAYROLL_LEGACY_REPORT_APPROVAL_BLOCKED');
+        }
+        if (row.workflow_status !== 'draft') {
+            throw payrollWorkflowError('only draft payroll installments can be approved', 409, 'PAYROLL_INSTALLMENT_APPROVAL_TRANSITION_INVALID', {
+                installmentId,
+                workflowStatus: row.workflow_status
+            });
+        }
+        await assertPayrollPeriodOpen(row.period_month, client);
+        const asOfDate = normalizeDateValue(options.asOfDate || options.as_of_date || new Date());
+        const earningTo = normalizeDateValue(row.earning_to);
+        if (!asOfDate || !earningTo || earningTo > asOfDate) {
+            throw payrollWorkflowError(
+                'Payroll earning range must be closed before installment approval',
+                409,
+                'PAYROLL_EARNING_RANGE_OPEN',
+                { installmentId, earningTo, asOfDate }
+            );
+        }
+        const snapshot = parseConfig(row.calculation_snapshot);
+        const calculationBusinessContexts = Array.isArray(snapshot.businessContexts)
+            ? snapshot.businessContexts.filter(Boolean)
+            : [];
+        if (calculationBusinessContexts.length > 1) {
+            throw payrollWorkflowError(
+                'Payroll installment contains unresolved mixed business contexts',
+                409,
+                'PAYROLL_ALLOCATION_UNRESOLVED',
+                { installmentId, businessContexts: calculationBusinessContexts }
+            );
+        }
+        if (calculationBusinessContexts.length === 1 && calculationBusinessContexts[0] !== businessContext) {
+            throw payrollWorkflowError(
+                'Payroll calculation business context does not match approval context',
+                409,
+                'PAYROLL_BUSINESS_CONTEXT_MISMATCH',
+                {
+                    installmentId,
+                    calculationBusinessContext: calculationBusinessContexts[0],
+                    requestedBusinessContext: businessContext
+                }
+            );
+        }
+        const storedBlockers = Array.isArray(snapshot.blockers) ? snapshot.blockers : [];
+        let advanceRow = null;
+        if (row.kind === 'final') {
+            const advance = await client.query(
+                `SELECT id, workflow_status, calculated_amount, locked_amount
+                 FROM payroll_installments
+                 WHERE payroll_report_id = $1 AND kind = 'advance'
+                 FOR UPDATE`,
+                [row.payroll_report_id]
+            );
+            advanceRow = advance.rows[0] || null;
+            if (advanceRow?.workflow_status === 'draft') {
+                throw payrollWorkflowError(
+                    'final payroll installment requires an approved or cancelled advance decision',
+                    409,
+                    'PAYROLL_ADVANCE_DECISION_REQUIRED',
+                    { installmentId, advanceInstallmentId: Number(advanceRow.id) }
+                );
+            }
+            const advanceDue = advanceRow?.workflow_status === 'approved'
+                ? roundMoney(advanceRow.locked_amount ?? advanceRow.calculated_amount)
+                : 0;
+            const expectedFinalAmount = Math.max(roundMoney(row.report_net_amount) - advanceDue, 0);
+            if (roundMoney(row.calculated_amount) !== expectedFinalAmount) {
+                throw payrollWorkflowError(
+                    'final payroll installment must be recalculated after the advance decision',
+                    409,
+                    'PAYROLL_FINAL_RECALCULATION_REQUIRED',
+                    {
+                        installmentId,
+                        calculatedAmount: roundMoney(row.calculated_amount),
+                        expectedFinalAmount,
+                        advanceDueAmount: advanceDue
+                    }
+                );
+            }
+        }
+        const fresh = await calculateCurrentPayrollInstallment(row, advanceRow, client);
+        const freshBlockers = Array.isArray(fresh.installment.blockers)
+            ? fresh.installment.blockers
+            : [];
+        if (freshBlockers.length) {
+            throw payrollWorkflowError('payroll installment approval is blocked by unresolved calculation issues', 409, 'PAYROLL_INSTALLMENT_APPROVAL_BLOCKED', {
+                installmentId,
+                blockers: freshBlockers
+            });
+        }
+        const calculatedAmount = roundMoney(row.calculated_amount);
+        const freshAmount = roundMoney(fresh.installment.calculatedAmount ?? fresh.installment.amount);
+        if (calculatedAmount !== freshAmount
+            || !snapshot.sourceFingerprint
+            || snapshot.sourceFingerprint !== fresh.snapshot.sourceFingerprint
+            || storedBlockers.length > 0) {
+            throw payrollWorkflowError(
+                'Payroll installment sources changed; recalculate before approval',
+                409,
+                row.kind === 'final'
+                    ? 'PAYROLL_FINAL_RECALCULATION_REQUIRED'
+                    : 'PAYROLL_INSTALLMENT_RECALCULATION_REQUIRED',
+                {
+                    installmentId,
+                    calculatedAmount,
+                    freshAmount,
+                    sourceFingerprintChanged: snapshot.sourceFingerprint !== fresh.snapshot.sourceFingerprint,
+                    storedBlockers
+                }
+            );
+        }
+        const approved = await client.query(
+            `UPDATE payroll_installments
+             SET workflow_status = 'approved',
+                 locked_amount = ROUND(calculated_amount)::int,
+                 allocation_status = 'single',
+                 business_context = $1,
+                 approved_by_user_id = $2,
+                 approved_by_username = $3,
+                 approved_by_role = $4,
+                 approved_at = NOW(),
+                 updated_by = $3,
+                 updated_at = NOW()
+             WHERE id = $5
+               AND workflow_status = 'draft'
+             RETURNING *`,
+            [businessContext, actor.userId, actor.username, actor.role, installmentId]
+        );
+        if (!approved.rowCount) {
+            throw payrollWorkflowError('payroll installment approval transition failed', 409, 'PAYROLL_INSTALLMENT_APPROVAL_CONFLICT');
+        }
+        await client.query(
+            `UPDATE payroll_reports pr
+             SET status = CASE
+                    WHEN pr.status = 'draft'
+                     AND NOT EXISTS (
+                        SELECT 1
+                        FROM payroll_installments pending
+                        WHERE pending.payroll_report_id = pr.id
+                          AND pending.workflow_status = 'draft'
+                     )
+                    THEN 'approved'
+                    ELSE pr.status
+                 END,
+                  updated_by = $1,
+                  updated_at = NOW()
+             WHERE pr.id = $2
+               AND pr.status <> 'paid'`,
+            [actor.username, row.payroll_report_id]
+        );
+        await client.query('COMMIT');
+        return mapPayrollInstallment(approved.rows[0]);
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function cancelPayrollAdvanceInstallment(id, user, options = {}) {
+    const installmentId = Number(id);
+    if (!Number.isInteger(installmentId) || installmentId <= 0) {
+        throw payrollWorkflowError('valid installment id is required', 400, 'PAYROLL_INSTALLMENT_ID_INVALID');
+    }
+    const actor = payrollWorkflowActor(user);
+    assertPayrollActionPermission(user, 'approve_payroll_installment', actor, 'PAYROLL_APPROVAL_PERMISSION_DENIED');
+    const reason = normalizePayrollReason(options.reason, '', 'PAYROLL_ADVANCE_CANCEL_REASON_REQUIRED');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await lockPayrollInstallmentPeriodFirst(client, installmentId);
+        const current = await client.query(
+            `SELECT pi.*, pr.period_month, pr.staff_id, pr.status AS report_status, pr.settlement_model
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pi.id = $1
+             FOR UPDATE OF pi, pr`,
+            [installmentId]
+        );
+        if (!current.rowCount) {
+            throw payrollWorkflowError('payroll installment not found', 404, 'PAYROLL_INSTALLMENT_NOT_FOUND');
+        }
+        const row = current.rows[0];
+        if (row.settlement_model !== PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS || row.kind !== 'advance') {
+            throw payrollWorkflowError(
+                'only installment-workflow advance can be cancelled',
+                409,
+                'PAYROLL_ADVANCE_CANCEL_TARGET_INVALID'
+            );
+        }
+        if (row.workflow_status !== 'draft') {
+            throw payrollWorkflowError(
+                'only a draft advance can be cancelled',
+                409,
+                'PAYROLL_ADVANCE_CANCEL_TRANSITION_INVALID',
+                { installmentId, workflowStatus: row.workflow_status }
+            );
+        }
+        await assertPayrollPeriodOpen(row.period_month, client);
+        const finalResult = await client.query(
+            `SELECT pi.*, pr.period_month, pr.staff_id
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pi.payroll_report_id = $1
+               AND pi.kind = 'final'
+             FOR UPDATE OF pi`,
+            [row.payroll_report_id]
+        );
+        const finalRow = finalResult.rows[0] || null;
+        if (!finalRow || finalRow.workflow_status !== 'draft') {
+            throw payrollWorkflowError(
+                'advance cancellation requires a draft final installment',
+                409,
+                'PAYROLL_ADVANCE_CANCEL_FINAL_IMMUTABLE',
+                { finalWorkflowStatus: finalRow?.workflow_status || null }
+            );
+        }
+        const cancelledAdvance = { ...row, workflow_status: 'cancelled' };
+        const freshFinal = await calculateCurrentPayrollInstallment(finalRow, cancelledAdvance, client);
+        const cancelledSnapshot = {
+            ...parseConfig(row.calculation_snapshot),
+            cancellation: {
+                reason,
+                actorUserId: actor.userId,
+                actorUsername: actor.username,
+                actorRole: actor.role,
+                cancelledAt: new Date().toISOString()
+            }
+        };
+        const cancelled = await client.query(
+            `UPDATE payroll_installments
+             SET workflow_status = 'cancelled',
+                 calculation_snapshot = $1::jsonb,
+                 updated_by = $2,
+                 updated_at = NOW()
+             WHERE id = $3
+               AND workflow_status = 'draft'
+             RETURNING *`,
+            [JSON.stringify(cancelledSnapshot), actor.username, installmentId]
+        );
+        if (!cancelled.rowCount) {
+            throw payrollWorkflowError('advance cancellation conflict', 409, 'PAYROLL_ADVANCE_CANCEL_CONFLICT');
+        }
+        const finalUpdated = await client.query(
+            `UPDATE payroll_installments
+             SET calculated_amount = $1,
+                 calculation_snapshot = $2::jsonb,
+                 updated_by = $3,
+                 updated_at = NOW()
+             WHERE id = $4
+               AND workflow_status = 'draft'
+             RETURNING *`,
+            [
+                roundMoney(freshFinal.installment.calculatedAmount ?? freshFinal.installment.amount),
+                JSON.stringify(freshFinal.snapshot),
+                actor.username,
+                Number(finalRow.id)
+            ]
+        );
+        if (!finalUpdated.rowCount) {
+            throw payrollWorkflowError('final installment update conflict', 409, 'PAYROLL_ADVANCE_CANCEL_FINAL_CONFLICT');
+        }
+        await client.query(
+            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+             VALUES ('payroll_advance_cancelled', $1, $2, $3::jsonb, NULL)`,
+            [
+                Number(row.staff_id),
+                actor.username,
+                JSON.stringify({
+                    eventVersion: 1,
+                    month: row.period_month,
+                    reportId: Number(row.payroll_report_id),
+                    installmentId,
+                    finalInstallmentId: Number(finalRow.id),
+                    reason,
+                    actorUserId: actor.userId,
+                    actorRole: actor.role
+                })
+            ]
+        );
+        await client.query('COMMIT');
+        return {
+            advance: mapPayrollInstallment(cancelled.rows[0]),
+            final: mapPayrollInstallment(finalUpdated.rows[0])
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function getPayrollSettlement(month, db = pool) {
+    return loadPayrollSettlementReadModels(month, db);
+}
+
+async function confirmPayrollInstallmentPayment(id, user, options = {}) {
+    const installmentId = Number(id);
+    if (!Number.isInteger(installmentId) || installmentId <= 0) {
+        throw payrollWorkflowError('valid installment id is required', 400, 'PAYROLL_INSTALLMENT_ID_INVALID');
+    }
+    const actor = payrollWorkflowActor(user);
+    assertPayrollActionPermission(user, 'confirm_payroll_payment', actor, 'PAYROLL_PAYMENT_PERMISSION_DENIED');
+    const idempotencyKey = normalizePayrollIdempotencyKey(options.idempotencyKey || options.idempotency_key);
+    const businessContext = normalizePayrollPaymentBusinessContext(options.businessContext || options.business_context);
+    const actualPaymentDate = normalizePayrollWorkflowDate(
+        options.actualPaymentDate || options.actual_payment_date || options.date
+    );
+    const paymentMethod = normalizePayrollPaymentMethod(options.paymentMethod || options.payment_method);
+    const reason = normalizePayrollReason(options.reason, 'Payroll installment payment');
+    const idempotencyRequest = {
+        movementType: 'payment',
+        targetId: installmentId,
+        actualPaymentDate,
+        businessContext,
+        paymentMethod,
+        reason
+    };
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const idempotent = await loadPayrollPaymentIdempotency(client, idempotencyKey);
+        if (idempotent) {
+            assertPayrollMovementIdempotentReplay(idempotent, idempotencyRequest, options);
+            assertPayrollBusinessContextAccess(user, businessContext);
+            await client.query('COMMIT');
+            return payrollIdempotentMovementResult(idempotent);
+        }
+        assertPayrollBusinessContextAccess(user, businessContext);
+
+        await lockPayrollInstallmentPeriodFirst(client, installmentId);
+        const lockedIdempotent = await loadPayrollPaymentIdempotency(client, idempotencyKey);
+        if (lockedIdempotent) {
+            assertPayrollMovementIdempotentReplay(lockedIdempotent, idempotencyRequest, options);
+            await client.query('COMMIT');
+            return payrollIdempotentMovementResult(lockedIdempotent);
+        }
+        const row = await loadPayrollInstallmentForPayment(client, installmentId);
+        await assertPayrollPeriodOpen(row.period_month, client);
+        assertPayrollInstallmentPayable(row, businessContext);
+        const readModel = mapPayrollInstallment(row);
+        const balance = Number(readModel.outstandingAmount || 0);
+        if (balance <= 0) {
+            throw payrollWorkflowError('payroll installment has no outstanding balance', 409, 'PAYROLL_INSTALLMENT_BALANCE_EMPTY', {
+                installmentId,
+                settlementStatus: readModel.settlementStatus
+            });
+        }
+        const amount = normalizePositiveMoneyAmount(options.amount, balance);
+        if (amount > balance) {
+            throw payrollWorkflowError('payroll payment exceeds installment balance', 409, 'PAYROLL_PAYMENT_EXCEEDS_BALANCE', {
+                installmentId,
+                amount,
+                balance
+            });
+        }
+
+        const category = await assertFinanceCategoryForPayroll(client, options.categoryId || options.category_id, businessContext, 'expense');
+        const account = await assertFinanceAccountForPayroll(client, options.accountId || options.account_id, businessContext);
+        const recognitionDate = payrollRecognitionDate(row);
+        const description = options.description || movementDescription(row, 'payment');
+        const finance = await client.query(
+            `INSERT INTO finance_transactions
+                (business_context, type, category_id, amount, description, date, payment_method,
+                 staff_id, account_id, account_name, object_name, source, recognition_date, created_by)
+             VALUES ($1, 'expense', $2, $3, $4, $5, $6, $7, $8, $9, $10, 'payroll', $11, $12)
+             RETURNING *`,
+            [
+                businessContext,
+                Number(category.id),
+                amount,
+                description,
+                actualPaymentDate,
+                paymentMethod,
+                Number(row.staff_id),
+                Number(account.id),
+                account.name,
+                row.staff_name || null,
+                recognitionDate,
+                actor.username
+            ]
+        );
+
+        const movement = await client.query(
+            `INSERT INTO payroll_payment_movements
+                (installment_id, movement_type, amount, actual_payment_date, actor_user_id,
+                 actor_username, actor_role, reason, idempotency_key, finance_transaction_id)
+             VALUES ($1, 'payment', $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING *`,
+            [
+                installmentId,
+                amount,
+                actualPaymentDate,
+                actor.userId,
+                actor.username,
+                actor.role,
+                reason,
+                idempotencyKey,
+                Number(finance.rows[0].id)
+            ]
+        );
+        await client.query('COMMIT');
+        return {
+            success: true,
+            idempotent: false,
+            movement: mapPayrollPaymentMovement(movement.rows[0]),
+            financeTransaction: finance.rows[0]
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err.code === '23505') {
+            const existing = await loadPayrollPaymentIdempotency(pool, idempotencyKey).catch(() => null);
+            if (existing) {
+                assertPayrollMovementIdempotentReplay(existing, idempotencyRequest, options);
+                return payrollIdempotentMovementResult(existing);
+            }
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function reversePayrollPaymentMovement(id, user, options = {}) {
+    const reversesMovementId = Number(id);
+    if (!Number.isInteger(reversesMovementId) || reversesMovementId <= 0) {
+        throw payrollWorkflowError('valid payment movement id is required', 400, 'PAYROLL_PAYMENT_MOVEMENT_ID_INVALID');
+    }
+    const actor = payrollWorkflowActor(user);
+    assertPayrollActionPermission(user, 'reverse_payroll_payment', actor, 'PAYROLL_REVERSAL_PERMISSION_DENIED');
+    const idempotencyKey = normalizePayrollIdempotencyKey(options.idempotencyKey || options.idempotency_key);
+    const businessContext = normalizePayrollPaymentBusinessContext(options.businessContext || options.business_context);
+    const actualPaymentDate = normalizePayrollWorkflowDate(
+        options.actualPaymentDate || options.actual_payment_date || options.date
+    );
+    const paymentMethod = normalizePayrollPaymentMethod(options.paymentMethod || options.payment_method);
+    const reason = normalizePayrollReason(options.reason, '', 'PAYROLL_REVERSAL_REASON_REQUIRED');
+    const idempotencyRequest = {
+        movementType: 'reversal',
+        targetId: reversesMovementId,
+        actualPaymentDate,
+        businessContext,
+        paymentMethod,
+        reason
+    };
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const idempotent = await loadPayrollPaymentIdempotency(client, idempotencyKey);
+        if (idempotent) {
+            assertPayrollMovementIdempotentReplay(idempotent, idempotencyRequest, options);
+            assertPayrollBusinessContextAccess(user, businessContext);
+            await client.query('COMMIT');
+            return payrollIdempotentMovementResult(idempotent);
+        }
+        assertPayrollBusinessContextAccess(user, businessContext);
+        await lockPayrollMovementPeriodFirst(client, reversesMovementId);
+        const lockedIdempotent = await loadPayrollPaymentIdempotency(client, idempotencyKey);
+        if (lockedIdempotent) {
+            assertPayrollMovementIdempotentReplay(lockedIdempotent, idempotencyRequest, options);
+            await client.query('COMMIT');
+            return payrollIdempotentMovementResult(lockedIdempotent);
+        }
+        const target = await client.query(
+            `WITH target_reversals AS (
+                SELECT reverses_movement_id,
+                       COALESCE(SUM(amount), 0)::numeric AS reversed_amount
+                FROM payroll_payment_movements
+                WHERE movement_type = 'reversal'
+                  AND reverses_movement_id = $1
+                GROUP BY reverses_movement_id
+             )
+             SELECT ppm.*, pi.kind, pi.earning_from, pi.earning_to, pi.business_context,
+                    pi.workflow_status, pi.locked_amount, pi.allocation_status,
+                    pr.period_month, pr.staff_id, pr.settlement_model,
+                    s.name AS staff_name,
+                    COALESCE(tr.reversed_amount, 0)::numeric AS reversed_amount
+             FROM payroll_payment_movements ppm
+             JOIN payroll_installments pi ON pi.id = ppm.installment_id
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             LEFT JOIN staff s ON s.id = pr.staff_id
+             LEFT JOIN target_reversals tr ON tr.reverses_movement_id = ppm.id
+             WHERE ppm.id = $1
+             FOR UPDATE OF ppm, pi, pr`,
+            [reversesMovementId]
+        );
+        if (!target.rowCount) throw payrollWorkflowError('payroll payment movement not found', 404, 'PAYROLL_PAYMENT_MOVEMENT_NOT_FOUND');
+        const row = target.rows[0];
+        if (row.movement_type !== 'payment') {
+            throw payrollWorkflowError('only payment movements can be reversed', 409, 'PAYROLL_REVERSAL_TARGET_INVALID');
+        }
+        assertPayrollInstallmentPayable(row, businessContext);
+        const remaining = Math.max(0, Number(row.amount || 0) - Number(row.reversed_amount || 0));
+        if (remaining <= 0) {
+            throw payrollWorkflowError('payroll payment movement is already fully reversed', 409, 'PAYROLL_PAYMENT_ALREADY_REVERSED');
+        }
+        const amount = normalizePositiveMoneyAmount(options.amount, remaining, 'PAYROLL_REVERSAL_AMOUNT_INVALID');
+        if (amount > remaining) {
+            throw payrollWorkflowError('payroll reversal exceeds remaining payment amount', 409, 'PAYROLL_REVERSAL_EXCEEDS_PAYMENT', {
+                reversesMovementId,
+                amount,
+                remaining
+            });
+        }
+        const paymentDate = normalizeDateValue(row.actual_payment_date);
+        if (actualPaymentDate < paymentDate) {
+            throw payrollWorkflowError('payroll reversal date cannot precede payment date', 400, 'PAYROLL_REVERSAL_DATE_BEFORE_PAYMENT', {
+                paymentDate,
+                actualPaymentDate
+            });
+        }
+        const periodLock = await loadPayrollPeriodLock(row.period_month, client);
+        if (periodLock.is_locked) {
+            await setPayrollPeriodLock(
+                row.period_month,
+                false,
+                actor.username,
+                `Automatically reopened for append-only payroll reversal ${reversesMovementId}`,
+                client
+            );
+        }
+        const category = await assertFinanceCategoryForPayroll(client, options.categoryId || options.category_id, businessContext, 'income');
+        const account = await assertFinanceAccountForPayroll(client, options.accountId || options.account_id, businessContext);
+        const recognitionDate = payrollRecognitionDate(row);
+        const description = options.description || movementDescription(row, 'reversal');
+        const finance = await client.query(
+            `INSERT INTO finance_transactions
+                (business_context, type, category_id, amount, description, date, payment_method,
+                 staff_id, account_id, account_name, object_name, source, recognition_date, created_by)
+             VALUES ($1, 'income', $2, $3, $4, $5, $6, $7, $8, $9, $10, 'payroll', $11, $12)
+             RETURNING *`,
+            [
+                businessContext,
+                Number(category.id),
+                amount,
+                description,
+                actualPaymentDate,
+                paymentMethod,
+                Number(row.staff_id),
+                Number(account.id),
+                account.name,
+                row.staff_name || null,
+                recognitionDate,
+                actor.username
+            ]
+        );
+        const movement = await client.query(
+            `INSERT INTO payroll_payment_movements
+                (installment_id, movement_type, amount, actual_payment_date, actor_user_id,
+                 actor_username, actor_role, reason, idempotency_key, finance_transaction_id, reverses_movement_id)
+             VALUES ($1, 'reversal', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING *`,
+            [
+                Number(row.installment_id),
+                amount,
+                actualPaymentDate,
+                actor.userId,
+                actor.username,
+                actor.role,
+                reason,
+                idempotencyKey,
+                Number(finance.rows[0].id),
+                reversesMovementId
+            ]
+        );
+        await client.query('COMMIT');
+        return {
+            success: true,
+            idempotent: false,
+            movement: mapPayrollPaymentMovement(movement.rows[0]),
+            financeTransaction: finance.rows[0]
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err.code === '23505') {
+            const existing = await loadPayrollPaymentIdempotency(pool, idempotencyKey).catch(() => null);
+            if (existing) {
+                assertPayrollMovementIdempotentReplay(existing, idempotencyRequest, options);
+                return payrollIdempotentMovementResult(existing);
+            }
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function updatePayrollInstallmentScheduledDate(id, user, options = {}) {
+    const installmentId = Number(id);
+    if (!Number.isInteger(installmentId) || installmentId <= 0) {
+        throw payrollWorkflowError('valid installment id is required', 400, 'PAYROLL_INSTALLMENT_ID_INVALID');
+    }
+    const actor = payrollWorkflowActor(user);
+    assertPayrollActionPermission(user, 'manage_payroll_accrual', actor, 'PAYROLL_SCHEDULE_PERMISSION_DENIED');
+    const scheduledPaymentDate = normalizePayrollWorkflowDate(
+        options.scheduledPaymentDate || options.scheduled_payment_date || options.date,
+        'PAYROLL_SCHEDULE_DATE_INVALID'
+    );
+    const reason = normalizePayrollReason(options.reason, 'Manual payroll scheduled date change');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await lockPayrollInstallmentPeriodFirst(client, installmentId);
+        const current = await client.query(
+            `SELECT pi.*, pr.period_month, pr.staff_id, pr.settlement_model
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pi.id = $1
+             FOR UPDATE OF pi, pr`,
+            [installmentId]
+        );
+        if (!current.rowCount) throw payrollWorkflowError('payroll installment not found', 404, 'PAYROLL_INSTALLMENT_NOT_FOUND');
+        const row = current.rows[0];
+        await assertPayrollPeriodOpen(row.period_month, client);
+        if (row.settlement_model !== PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS) {
+            throw payrollWorkflowError('legacy payroll report has no installment schedule', 409, 'PAYROLL_LEGACY_SCHEDULE_BLOCKED');
+        }
+        if (row.workflow_status !== 'draft') {
+            throw payrollWorkflowError('scheduled payment date can be changed only while installment is draft', 409, 'PAYROLL_SCHEDULE_IMMUTABLE', {
+                installmentId,
+                workflowStatus: row.workflow_status
+            });
+        }
+        const previousDate = normalizeDateValue(row.scheduled_payment_date);
+        const updated = await client.query(
+            `UPDATE payroll_installments
+             SET scheduled_payment_date = $1,
+                 updated_by = $2,
+                 updated_at = NOW()
+             WHERE id = $3
+               AND workflow_status = 'draft'
+             RETURNING *`,
+            [scheduledPaymentDate, actor.username, installmentId]
+        );
+        if (!updated.rowCount) {
+            throw payrollWorkflowError('payroll scheduled date update conflict', 409, 'PAYROLL_SCHEDULE_UPDATE_CONFLICT');
+        }
+        await client.query(
+            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+             VALUES ('payroll_installment_schedule_changed', $1, $2, $3::jsonb, NULL)`,
+            [
+                row.staff_id,
+                actor.username,
+                JSON.stringify({
+                    eventVersion: 1,
+                    payrollReportId: Number(row.payroll_report_id),
+                    installmentId,
+                    kind: row.kind,
+                    month: row.period_month,
+                    previousScheduledPaymentDate: previousDate,
+                    scheduledPaymentDate,
+                    actorUserId: actor.userId,
+                    actorRole: actor.role,
+                    reason
+                })
+            ]
+        );
+        await client.query('COMMIT');
+        return mapPayrollInstallment(updated.rows[0]);
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 function payrollCommitBlockingIssues(value = {}) {
     const breakdown = value.breakdown_json !== undefined
         ? parseConfig(value.breakdown_json)
@@ -3191,9 +5993,18 @@ async function updatePayrollReportStatus(id, status, user) {
         err.status = 400;
         throw err;
     }
+    if (!MANUAL_PAYROLL_REPORT_STATUSES.includes(status)) {
+        throw payrollWorkflowError(
+            'Payroll report paid status can only be derived from payment movements',
+            409,
+            'PAYROLL_REPORT_PAID_STATUS_MANUAL_BLOCKED',
+            { status }
+        );
+    }
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await lockPayrollReportPeriodFirst(client, reportId);
         const current = await client.query(
             'SELECT * FROM payroll_reports WHERE id = $1 FOR UPDATE',
             [reportId]
@@ -3203,7 +6014,25 @@ async function updatePayrollReportStatus(id, status, user) {
             err.status = 404;
             throw err;
         }
-        if (['approved', 'paid'].includes(status)) {
+        const currentReport = current.rows[0];
+        await assertPayrollPeriodOpen(currentReport.period_month, client);
+        if (currentReport.status === 'paid' && status !== 'paid') {
+            throw payrollWorkflowError(
+                'Paid payroll reports cannot be moved back through PATCH',
+                409,
+                'PAYROLL_REPORT_PAID_TRANSITION_BLOCKED',
+                { reportId, currentStatus: currentReport.status, requestedStatus: status }
+            );
+        }
+        if (currentReport.settlement_model === PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS) {
+            throw payrollWorkflowError(
+                'Installment payroll report status is derived from installment and movement transitions',
+                409,
+                'PAYROLL_REPORT_INSTALLMENT_STATUS_MANUAL_BLOCKED',
+                { reportId, requestedStatus: status }
+            );
+        }
+        if (status === 'approved') {
             assertPayrollRowsCommitReady(current.rows);
         }
         const result = await client.query(`
@@ -3234,12 +6063,28 @@ module.exports = {
     PAYROLL_SIMULTANEOUS_ADDITIONAL_AMOUNT_MESSAGE,
     PAYROLL_ADJUSTMENTS_UNAVAILABLE,
     PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE,
+    PAYROLL_INSTALLMENT_KINDS,
+    PAYROLL_KPI_BONUS_TYPE,
+    PAYROLL_KPI_BONUS_RULE_VERSION,
+    applyReportSnapshot,
     assertPayrollRowsCommitReady,
     assertPayrollRowsGenerationReady,
+    assertPayrollBusinessContextAccess,
+    assertPayrollInstallmentMonthWritable,
+    approvePayrollInstallment,
+    cancelPayrollAdvanceInstallment,
+    buildPayrollKpiAuditSnapshot,
     buildPayrollTransparencyMetrics,
+    calculateAdvanceInstallment,
+    calculateFinalInstallment,
+    calculateMonthlyPayroll,
+    buildCanonicalPayrollInstallmentPreview,
     calculateProfessionPay,
     calculatePayroll,
     payrollAdjustmentsUnavailableError,
+    calculatePayrollRangePreview,
+    confirmPayrollInstallmentPayment,
+    getPayrollSettlement,
     loadActivePayrollSchemeMap,
     loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
@@ -3249,12 +6094,22 @@ module.exports = {
     resolveProfessionPayRate,
     resolveSimultaneousAdditionalRate,
     normalizePayrollMonth,
+    normalizePayrollAdjustmentType,
+    normalizePayrollEntryLineType,
+    employmentOverlapsPayrollRange,
+    payrollInstallmentSchedule,
+    payrollCalculationBlockers,
+    payrollInstallmentSnapshot,
+    payrollSchemeConfigHash,
     getSalaryReport,
+    getPayrollRangePreview,
     getPayrollWorkspace,
     getPayrollPreview,
     createPayrollScheme,
     updatePayrollScheme,
     generatePayrollReports,
+    reversePayrollPaymentMovement,
+    updatePayrollInstallmentScheduledDate,
     updatePayrollReportStatus,
     calcPayrollPreview
 };

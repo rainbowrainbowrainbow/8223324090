@@ -72,7 +72,8 @@ function payrollSchemeTypeTitle(type) {
         monthly_fixed: 'Фікс за місяць',
         percent: 'Відсоток',
         hybrid: 'Гібридна',
-        manual: 'Ручна'
+        manual: 'Ручна',
+        piece: 'За одиницю'
     }[type] || 'Погодинна';
 }
 
@@ -92,6 +93,21 @@ function positivePayrollNumber(value, fallback = 0) {
     return Math.max(0, number);
 }
 
+function normalizedMonthlyNormConfig(source = {}) {
+    const config = parseJsonObject(source);
+    const month = cleanPayrollSchemeText(config.monthlyNormMonth ?? config.monthly_norm_month, 7);
+    const normSource = cleanPayrollSchemeText(config.monthlyNormSource ?? config.monthly_norm_source, 120);
+    return {
+        monthlyNormMinutes: positivePayrollNumber(
+            config.monthlyNormMinutes ?? config.monthly_norm_minutes,
+            0
+        ),
+        monthlyNormMonth: /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : null,
+        monthlyNormSource: normSource || null,
+        monthlyNormConfirmed: (config.monthlyNormConfirmed ?? config.monthly_norm_confirmed) === true
+    };
+}
+
 function replaceSinglePayrollRule(sourceRules, body, amountKeys, labelKeys, defaultLabel) {
     const hasAmount = amountKeys.some(key => body[key] !== undefined);
     if (!hasAmount) return Array.isArray(sourceRules) ? sourceRules : [];
@@ -106,11 +122,19 @@ function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
     const amount = numberOrNull(body.amount ?? body.rate ?? body.value);
     const rate = amount === null ? Math.max(0, Number(fallbackRate || 0)) : Math.max(0, amount);
     if (type === 'per_shift') return { ...source, perShiftRate: rate };
-    if (type === 'monthly_fixed') return { ...source, monthlyAmount: rate };
+    if (type === 'monthly_fixed') {
+        return {
+            ...source,
+            ...normalizedMonthlyNormConfig(source),
+            monthlyAmount: rate
+        };
+    }
     if (type === 'percent') return { ...source, percentRate: rate, sourceMetric: source.sourceMetric || 'manual' };
     if (type === 'manual') return { ...source, manualAmount: rate };
+    if (type === 'piece') return { ...source, pieceRate: rate, quantitySource: source.quantitySource || 'payroll_metrics' };
     if (type === 'hybrid') {
         const sourceBase = parseJsonObject(source.base);
+        const baseKind = normalizePayrollBaseKind(body.base_kind ?? body.baseKind ?? sourceBase.kind ?? source.baseKind);
         const baseRate = positivePayrollNumber(
             body.base_rate ?? body.baseRate ?? body.amount ?? body.rate ?? sourceBase.rate ?? sourceBase.amount ?? source.baseRate,
             fallbackRate
@@ -131,7 +155,8 @@ function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
             ...source,
             base: {
                 ...sourceBase,
-                kind: normalizePayrollBaseKind(body.base_kind ?? body.baseKind ?? sourceBase.kind ?? source.baseKind),
+                ...(baseKind === 'monthly_fixed' ? normalizedMonthlyNormConfig(sourceBase) : {}),
+                kind: baseKind,
                 rate: baseRate,
                 amount: baseRate,
                 ...(baseQuantity ? { quantity: baseQuantity } : {})
@@ -156,7 +181,7 @@ function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
                 body,
                 ['advance_amount', 'advanceAmount'],
                 ['advance_label', 'advanceLabel'],
-                'Аванс'
+                'ЗРС'
             )
         };
     }

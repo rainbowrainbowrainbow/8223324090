@@ -1419,7 +1419,8 @@ const TERMINAL_ATTENDANCE_STATUSES = new Set([
     'no_show',
     'sick',
     'vacation',
-    'day_off'
+    'day_off',
+    'unpaid'
 ]);
 
 function zeroAttendancePhysicalAllocation(plan = {}) {
@@ -1481,11 +1482,25 @@ async function recordAttendanceStatus(db, input = {}) {
         plan,
         capturedAt
     });
-    const compensationSnapshot = finalizeAttendanceCompensationSnapshot(
-        plannedSnapshot,
-        zeroAttendancePhysicalAllocation(plannedSnapshot.plan),
-        { finalizedAt: capturedAt }
-    );
+    const leavePolicy = String(input.leavePolicy ?? input.leave_policy ?? '').trim().toLowerCase();
+    const leaveRequestId = Number(input.leaveRequestId ?? input.leave_request_id) || null;
+    const leavePolicySnapshot = leaveRequestId ? {
+        leaveRequestId,
+        leaveType: String(input.leaveType ?? input.leave_type ?? status).trim().toLowerCase(),
+        policyVersion: leavePolicy || null,
+        decidedByUserId: Number(input.leaveDecidedByUserId ?? input.leave_decided_by_user_id) || null,
+        decidedByUsername: input.leaveDecidedByUsername ?? input.leave_decided_by_username ?? null,
+        decidedAt: input.leaveDecidedAt ?? input.leave_decided_at ?? null
+    } : null;
+    const compensationSnapshot = {
+        ...finalizeAttendanceCompensationSnapshot(
+            plannedSnapshot,
+            zeroAttendancePhysicalAllocation(plannedSnapshot.plan),
+            { finalizedAt: capturedAt }
+        ),
+        ...(leavePolicy ? { leavePolicy } : {}),
+        ...(leavePolicySnapshot ? { leavePolicySnapshot } : {})
+    };
     const businessContext = normalizeBusinessContext(
         input.businessContext ?? input.business_context
     );

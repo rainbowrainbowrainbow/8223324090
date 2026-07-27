@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.9",
+  "version": "0.80.10",
   "eventGenix": {
-    "releaseLabel": "Релізні запобіжники ЗРС"
+    "releaseLabel": "Безпечний старт сесії"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

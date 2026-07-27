@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.10 - Безпечний старт сесії
+
+### Frontend / Auth bootstrap / (28.07.2026) [codex]
+- **Сесія перед даними** — захищені sidebar, timeline та booking loaders більше не стартують із кешованого користувача до успішної серверної перевірки сесії.
+- **Чистий екран входу** — відкриття CRM без авторизації не створює фонових `401` для currency, business profile, timeline resources, banquet rules і center prices.
+- **Одноразовий запуск після входу** — захищений runtime ініціалізується після auth-ready події та не дублює завантаження при повторних сигналах.
+- **Regression coverage** — додано контракти для auth gate і оновлено authenticated sidebar timeline harness; повний unit/UI gate проходить.
+
+---
+
 ## v0.80.9 - Релізні запобіжники ЗРС
 
 ### Release / ZRS QA / (26.07.2026) [codex]

@@ -36,7 +36,8 @@ const MODES = {
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
-        'tests/integration/zrs-payroll-period-lock.integration.test.js'
+        'tests/integration/zrs-payroll-period-lock.integration.test.js',
+        'tests/integration/payroll-installments.integration.test.js'
     ],
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
@@ -199,13 +200,22 @@ async function waitForServer(baseUrl, child, output, getSpawnError) {
 }
 
 async function stopServer(child) {
-    if (!child || child.exitCode !== null) return;
-    const exited = new Promise(resolve => child.once('exit', resolve));
+    if (!child) return;
+    if (child.exitCode !== null) return;
+    // `close` is emitted after the process exits and its stdio streams close.
+    // Waiting for it keeps a restarted suite from mixing late output from the
+    // previous server process into the next startup diagnostics.
+    const closed = new Promise(resolve => child.once('close', resolve));
     child.kill('SIGTERM');
-    const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS));
-    if (await Promise.race([exited, timeout]) === 'timeout' && child.exitCode === null) {
+    let timeoutId;
+    const timeout = new Promise(resolve => {
+        timeoutId = setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS);
+    });
+    const outcome = await Promise.race([closed, timeout]);
+    clearTimeout(timeoutId);
+    if (outcome === 'timeout' && child.exitCode === null) {
         child.kill('SIGKILL');
-        await exited;
+        await closed;
     }
 }
 
@@ -262,6 +272,10 @@ async function runSuite(testDb, testFile) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
+    delete serverEnv.PAYROLL_INSTALLMENTS_ACTIVATION_MONTH;
+    if (testFile.includes('payroll-')) {
+        serverEnv.PAYROLL_INSTALLMENTS_ACTIVATION_MONTH = '2000-01';
+    }
     const testEnv = {
         ...serverEnv,
         TEST_URL: baseUrl,
@@ -280,6 +294,7 @@ async function runSuite(testDb, testFile) {
         RUN_PAYROLL_PROFILES_INTEGRATION: testFile.includes('payroll-profiles') ? 'true' : 'false',
         RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION: testFile.includes('payroll-simultaneous-additional') ? 'true' : 'false',
         RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION: testFile.includes('zrs-payroll-period-lock') ? 'true' : 'false',
+        RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
@@ -322,7 +337,9 @@ async function runSuite(testDb, testFile) {
         await resetPublicSchema(testDb);
         await launchServerOnce();
 
-        if (testFile.includes('fresh-db-startup')) {
+        const verifyInitializedDatabaseRestart = testFile.includes('fresh-db-startup')
+            || testFile.includes('payroll-installments.integration');
+        if (verifyInitializedDatabaseRestart) {
             const firstLedger = await loadMigrationLedger(testDb);
             await stopServer(server);
             server = null;

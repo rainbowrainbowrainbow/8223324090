@@ -13,8 +13,8 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { authRequest } = require('../helpers');
 
 const enabled = process.env.RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION === 'true';
-const MONTH = '2099-07';
-const WORK_DATE = '2099-07-22';
+const MONTH = '2026-03';
+const WORK_DATE = '2026-03-12';
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION=true');
@@ -48,6 +48,27 @@ function createPool(testDb) {
 function jsonValue(value) {
     if (!value) return {};
     return typeof value === 'string' ? JSON.parse(value) : value;
+}
+
+async function deleteDraftPayrollArtifacts(db, month, staffId) {
+    const reports = await db.query(
+        `SELECT id
+         FROM payroll_reports
+         WHERE period_month = $1 AND staff_id = $2`,
+        [month, staffId]
+    );
+    const reportIds = reports.rows.map(row => Number(row.id));
+    if (!reportIds.length) return;
+    await db.query(
+        `DELETE FROM payroll_installments
+         WHERE payroll_report_id = ANY($1::bigint[])
+           AND workflow_status = 'draft'`,
+        [reportIds]
+    );
+    await db.query(
+        'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
+        [month, staffId]
+    );
 }
 
 describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enabled, concurrency: 1 }, () => {
@@ -227,7 +248,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                  late_minutes, early_leave_minutes, overtime_minutes, total_worked_minutes,
                  status, compensation_snapshot)
              VALUES
-                ($1, $2, '2099-07-22T08:00:00.000Z', '2099-07-22T17:00:00.000Z',
+                ($1, $2, '2026-03-12T08:00:00.000Z', '2026-03-12T17:00:00.000Z',
                  '11:00', '20:00', 0, 0, 0, 540, 'present', $3::jsonb)`,
             [staffId, WORK_DATE, JSON.stringify(compensationSnapshot)]
         );
@@ -237,7 +258,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         if (pool) await pool.end();
     });
 
-    test('draft, approval, finance commit, reversal, and fail-closed review preserve payroll truth', async () => {
+    test('draft calculation, immutable installment ownership, and legacy write guards preserve payroll truth', async () => {
         const firstGeneration = await authRequest('POST', `/api/payroll/generate?month=${MONTH}`, { month: MONTH });
         assert.equal(firstGeneration.status, 200, JSON.stringify(firstGeneration.data));
         const firstReport = firstGeneration.data.reports.find(row => Number(row.staff_id) === staffId);
@@ -321,149 +342,91 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             [MONTH, staffId]
         );
         assert.equal(reportCount.rows[0].count, 1);
+        const generatedInstallments = await pool.query(
+            `SELECT kind, calculated_amount, workflow_status
+             FROM payroll_installments
+             WHERE payroll_report_id = $1
+             ORDER BY kind`,
+            [Number(regeneratedReport.id)]
+        );
+        assert.deepEqual(generatedInstallments.rows.map(row => row.kind).sort(), ['advance', 'final']);
+        assert.equal(generatedInstallments.rows.every(row => row.workflow_status === 'draft'), true);
 
-        const approval = await authRequest(
+        const manualReportApproval = await authRequest(
             'PATCH',
             `/api/payroll/report/${regeneratedReport.id}`,
             { status: 'approved' }
         );
-        assert.equal(approval.status, 200, JSON.stringify(approval.data));
-        assert.equal(approval.data.report.status, 'approved');
+        assert.equal(manualReportApproval.status, 409, JSON.stringify(manualReportApproval.data));
+        assert.equal(manualReportApproval.data.code, 'PAYROLL_REPORT_INSTALLMENT_STATUS_MANUAL_BLOCKED');
+        const manualPaidStatus = await authRequest(
+            'PATCH',
+            `/api/payroll/report/${regeneratedReport.id}`,
+            { status: 'paid' }
+        );
+        assert.equal(manualPaidStatus.status, 409, JSON.stringify(manualPaidStatus.data));
+        assert.equal(manualPaidStatus.data.code, 'PAYROLL_REPORT_PAID_STATUS_MANUAL_BLOCKED');
 
-        const approvedRegeneration = await authRequest(
+        const commitAdapter = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
+        assert.equal(commitAdapter.status, 409, JSON.stringify(commitAdapter.data));
+        assert.equal(commitAdapter.data.code, 'PAYROLL_LEGACY_COMMIT_DISABLED');
+        assert.equal(commitAdapter.data.financeChanged, false);
+
+        const storedDraftReport = await pool.query(
+            `SELECT status, settlement_model, gross_amount, net_amount, breakdown_json,
+                    finance_transaction_id
+             FROM payroll_reports
+             WHERE period_month = $1 AND staff_id = $2`,
+            [MONTH, staffId]
+        );
+        assert.equal(storedDraftReport.rows[0].status, 'draft');
+        assert.equal(storedDraftReport.rows[0].settlement_model, 'installments_v1');
+        assert.equal(storedDraftReport.rows[0].finance_transaction_id, null);
+        assert.equal(Number(storedDraftReport.rows[0].gross_amount), 2600);
+        assert.equal(Number(storedDraftReport.rows[0].net_amount), 2600);
+        assert.equal(
+            jsonValue(storedDraftReport.rows[0].breakdown_json).transparency.additionalAmount,
+            1700
+        );
+
+        const draftRegeneration = await authRequest(
             'POST',
             `/api/payroll/generate?month=${MONTH}`,
             { month: MONTH }
         );
-        assert.equal(approvedRegeneration.status, 200, JSON.stringify(approvedRegeneration.data));
+        assert.equal(draftRegeneration.status, 200, JSON.stringify(draftRegeneration.data));
+        const regeneratedDraft = draftRegeneration.data.reports.find(row => Number(row.staff_id) === staffId);
+        assert.equal(Number(regeneratedDraft.id), Number(regeneratedReport.id));
+        assert.equal(Number(regeneratedDraft.net_amount), 2600);
         assert.equal(
-            approvedRegeneration.data.reports.some(row => Number(row.staff_id) === staffId),
-            false
-        );
-        assert.deepEqual(
-            approvedRegeneration.data.skipped.find(row => Number(row.staffId) === staffId),
-            { staffId, status: 'approved' },
-            'approved regeneration must skip immutable report'
-        );
-        const approvedStoredReport = await pool.query(
-            `SELECT status, gross_amount, net_amount, breakdown_json
-             FROM payroll_reports
-             WHERE period_month = $1 AND staff_id = $2`,
-            [MONTH, staffId]
-        );
-        assert.equal(approvedStoredReport.rows[0].status, 'approved');
-        assert.equal(Number(approvedStoredReport.rows[0].gross_amount), 2600);
-        assert.equal(Number(approvedStoredReport.rows[0].net_amount), 2600);
-        assert.equal(
-            jsonValue(approvedStoredReport.rows[0].breakdown_json).transparency.additionalAmount,
-            1700
-        );
-
-        const commit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
-        assert.equal(commit.status, 200, JSON.stringify(commit.data));
-        const committedFixture = commit.data.transactions.find(row => Number(row.staffId) === staffId);
-        assert.equal(Number(committedFixture.amount), 2600);
-
-        const paidReportResult = await pool.query(
-            `SELECT status, gross_amount, net_amount, breakdown_json, finance_transaction_id
-             FROM payroll_reports
-             WHERE period_month = $1 AND staff_id = $2`,
-            [MONTH, staffId]
-        );
-        const paidReport = paidReportResult.rows[0];
-        const paidBreakdown = jsonValue(paidReport.breakdown_json);
-        assert.equal(paidReport.status, 'paid');
-        assert.equal(Number(paidReport.gross_amount), 2600);
-        assert.equal(Number(paidReport.net_amount), 2600);
-        assert.equal(paidBreakdown.metrics.physicalMinutes, 540);
-        assert.equal(paidBreakdown.additional_pay, 1700);
-        assert.equal(paidBreakdown.transparency.physicalHours, 9);
-        assert.equal(paidBreakdown.transparency.baseRoleHours, 9);
-        assert.equal(paidBreakdown.transparency.additionalRoleHours, 8.5);
-        assert.equal(
-            paidBreakdown.lines.find(line => line.lineType === 'simultaneous_additional').amount,
-            1700
-        );
-
-        const paidRegeneration = await authRequest(
-            'POST',
-            `/api/payroll/generate?month=${MONTH}`,
-            { month: MONTH }
-        );
-        assert.equal(paidRegeneration.status, 200, JSON.stringify(paidRegeneration.data));
-        assert.equal(
-            paidRegeneration.data.reports.some(row => Number(row.staff_id) === staffId),
-            false
-        );
-        assert.deepEqual(
-            paidRegeneration.data.skipped.find(row => Number(row.staffId) === staffId),
-            { staffId, status: 'paid' },
-            'paid regeneration must skip immutable report'
-        );
-        const paidStoredReport = await pool.query(
-            `SELECT status, gross_amount, net_amount, breakdown_json
-             FROM payroll_reports
-             WHERE period_month = $1 AND staff_id = $2`,
-            [MONTH, staffId]
-        );
-        assert.equal(paidStoredReport.rows[0].status, 'paid');
-        assert.equal(Number(paidStoredReport.rows[0].gross_amount), 2600);
-        assert.equal(Number(paidStoredReport.rows[0].net_amount), 2600);
-        assert.equal(
-            jsonValue(paidStoredReport.rows[0].breakdown_json).transparency.additionalAmount,
+            jsonValue(regeneratedDraft.breakdown_json).transparency.additionalAmount,
             1700
         );
 
         const financeExpense = await pool.query(
-            `SELECT type, amount, payment_method
+            `SELECT COUNT(*)::int AS count
              FROM finance_transactions
-             WHERE id = $1`,
-            [paidReport.finance_transaction_id]
+             WHERE staff_id = $1 AND source = 'payroll'`,
+            [staffId]
         );
-        assert.deepEqual(
-            {
-                type: financeExpense.rows[0].type,
-                amount: Number(financeExpense.rows[0].amount),
-                paymentMethod: financeExpense.rows[0].payment_method
-            },
-            { type: 'expense', amount: 2600, paymentMethod: 'salary' }
-        );
+        assert.equal(financeExpense.rows[0].count, 0);
 
         const additionalEntry = await pool.query(
-            `SELECT line_type, amount, meta_json
+            `SELECT COUNT(*)::int AS count
              FROM payroll_entries
              WHERE staff_id = $1
                AND period_month = $2
                AND meta_json->>'payrollLineType' = 'simultaneous_additional'`,
             [staffId, MONTH]
         );
-        assert.equal(additionalEntry.rowCount, 1);
-        assert.equal(additionalEntry.rows[0].line_type, 'adjustment');
-        assert.equal(Number(additionalEntry.rows[0].amount), 1700);
+        assert.equal(additionalEntry.rows[0].count, 0);
 
         const reversal = await authRequest('POST', '/api/hr/salary/reverse', {
             month: MONTH,
-            reason: 'isolated integration verification'
+            reason: 'must not reverse an unpaid installment draft'
         });
-        assert.equal(reversal.status, 200, JSON.stringify(reversal.data));
-        const reversedFixture = reversal.data.reversed.find(row => Number(row.staffId) === staffId);
-        assert.equal(Number(reversedFixture.amount), 2600);
-
-        const reversalTransaction = await pool.query(
-            `SELECT type, amount, payment_method
-             FROM finance_transactions
-             WHERE id = $1`,
-            [reversedFixture.reversalTransactionId]
-        );
-        assert.deepEqual(
-            {
-                type: reversalTransaction.rows[0].type,
-                amount: Number(reversalTransaction.rows[0].amount),
-                paymentMethod: reversalTransaction.rows[0].payment_method
-            },
-            { type: 'income', amount: 2600, paymentMethod: 'salary_reversal' }
-        );
-        assert.ok(Number(reversal.data.removedPayrollEntries) > 0);
+        assert.equal(reversal.status, 409, JSON.stringify(reversal.data));
+        assert.equal(reversal.data.code, 'PAYROLL_LEGACY_REVERSE_DISABLED');
 
         const entriesAfterReverse = await pool.query(
             `SELECT COUNT(*)::int AS count
@@ -486,40 +449,18 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             0
         );
 
-        const generationAfterReverse = await authRequest(
-            'POST',
-            `/api/payroll/generate?month=${MONTH}`,
-            { month: MONTH }
-        );
-        assert.equal(generationAfterReverse.status, 200, JSON.stringify(generationAfterReverse.data));
-        const regeneratedAfterReverse = generationAfterReverse.data.reports
-            .find(row => Number(row.staff_id) === staffId);
-        assert.equal(Number(regeneratedAfterReverse.net_amount), 2600);
-        assert.equal(
-            jsonValue(regeneratedAfterReverse.breakdown_json).lines
-                .filter(line => line.source === 'payroll_entries').length,
-            0
-        );
-        const entriesAfterRegeneration = await pool.query(
-            `SELECT COUNT(*)::int AS count
-             FROM payroll_entries
-             WHERE staff_id = $1 AND period_month = $2`,
-            [staffId, MONTH]
-        );
-        assert.equal(entriesAfterRegeneration.rows[0].count, 0);
-
-        const secondReversal = await authRequest('POST', '/api/hr/salary/reverse', {
-            month: MONTH,
-            reason: 'must not reverse twice'
-        });
-        assert.equal(secondReversal.status, 404);
         const reversalCount = await pool.query(
             `SELECT COUNT(*)::int AS count
-             FROM finance_transactions
-             WHERE staff_id = $1 AND payment_method = 'salary_reversal'`,
-            [staffId]
+             FROM payroll_payment_movements
+             WHERE installment_id IN (
+                SELECT pi.id
+                FROM payroll_installments pi
+                JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+                WHERE pr.staff_id = $1 AND pr.period_month = $2
+             ) AND movement_type = 'reversal'`,
+            [staffId, MONTH]
         );
-        assert.equal(reversalCount.rows[0].count, 1);
+        assert.equal(reversalCount.rows[0].count, 0);
 
         await pool.query(
             `UPDATE hr_time_records
@@ -527,11 +468,24 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
              WHERE staff_id = $1 AND record_date = $2`,
             [staffId, WORK_DATE]
         );
-        const blockedCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
-        assert.equal(blockedCommit.status, 409, JSON.stringify(blockedCommit.data));
-        assert.equal(blockedCommit.data.code, 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED');
+        const blockedGeneration = await authRequest('POST', `/api/payroll/generate?month=${MONTH}`, { month: MONTH });
+        assert.equal(blockedGeneration.status, 200, JSON.stringify(blockedGeneration.data));
+        const blockedAdvance = await pool.query(
+            `SELECT pi.id
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pr.period_month = $1 AND pr.staff_id = $2 AND pi.kind = 'advance'`,
+            [MONTH, staffId]
+        );
+        const blockedApproval = await authRequest(
+            'POST',
+            `/api/payroll/installments/${blockedAdvance.rows[0].id}/approve?businessContext=event_genix`,
+            {}
+        );
+        assert.equal(blockedApproval.status, 409, JSON.stringify(blockedApproval.data));
+        assert.equal(blockedApproval.data.code, 'PAYROLL_INSTALLMENT_APPROVAL_BLOCKED');
         assert.equal(
-            blockedCommit.data.details.blockingIssues[0].code,
+            blockedApproval.data.details.blockers[0].code,
             'PAYROLL_COMPENSATION_SNAPSHOT_MANUAL_REVIEW'
         );
         const activePaidReports = await pool.query(
@@ -546,52 +500,41 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         assert.equal(activePaidReports.rows[0].count, 0);
     });
 
-    test('per-shift and monthly-fixed preserve base pay through generation, commit, and reversal while unsupported schemes fail closed', async () => {
+    test('supported and unsupported schemes create reviewable drafts while approval fails closed on blockers', async () => {
         await pool.query(
             `UPDATE hr_time_records
              SET compensation_snapshot = jsonb_set(compensation_snapshot, '{manualReview}', 'false'::jsonb, false)
              WHERE staff_id = $1 AND record_date = $2`,
             [staffId, WORK_DATE]
         );
-        await pool.query(
-            'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
-            [MONTH, staffId]
-        );
-        await pool.query(
-            `DELETE FROM finance_transactions
-             WHERE staff_id = $1
-               AND payment_method IN ('salary', 'salary_reversal')
-               AND date::date >= $2::date
-               AND date::date < ($2::date + INTERVAL '1 month')`,
-            [staffId, `${MONTH}-01`]
-        );
+        await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
 
         const activateScheme = async (schemeType, config) => {
             await pool.query('DELETE FROM payroll_schemes WHERE staff_id = $1', [staffId]);
             await pool.query(
                 `INSERT INTO payroll_schemes
                     (staff_id, scheme_type, title, is_active, config_json, effective_from, created_by, updated_by)
-                 VALUES ($1, $2, $3, true, $4::jsonb, '2099-07-01', 'integration_test', 'integration_test')`,
+                 VALUES ($1, $2, $3, true, $4::jsonb, '2026-03-01', 'integration_test', 'integration_test')`,
                 [staffId, schemeType, `${schemeType} integration`, JSON.stringify(config)]
             );
         };
 
         for (const scenario of [
             { schemeType: 'per_shift', config: { perShiftRate: 900 }, baseAmount: 900, totalAmount: 2600 },
-            { schemeType: 'monthly_fixed', config: { monthlyAmount: 30000 }, baseAmount: 30000, totalAmount: 31700 }
+            {
+                schemeType: 'monthly_fixed',
+                config: {
+                    monthlyAmount: 30000,
+                    monthlyNormMinutes: 540,
+                    monthlyNormMonth: MONTH,
+                    monthlyNormSource: 'integration_full_month_schedule',
+                    monthlyNormConfirmed: true
+                },
+                baseAmount: 30000,
+                totalAmount: 31700
+            }
         ]) {
-            await pool.query(
-                'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
-                [MONTH, staffId]
-            );
-            await pool.query(
-                `DELETE FROM finance_transactions
-                 WHERE staff_id = $1
-                   AND payment_method IN ('salary', 'salary_reversal')
-                   AND date::date >= $2::date
-                   AND date::date < ($2::date + INTERVAL '1 month')`,
-                [staffId, `${MONTH}-01`]
-            );
+            await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
             await activateScheme(scenario.schemeType, scenario.config);
 
             const preview = await authRequest(
@@ -657,40 +600,28 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             assert.equal(Number(regeneratedReport.id), Number(firstReport.id));
             assert.equal(Number(regeneratedReport.net_amount), scenario.totalAmount);
 
-            const approval = await authRequest(
+            const manualReportApproval = await authRequest(
                 'PATCH',
                 `/api/payroll/report/${regeneratedReport.id}`,
                 { status: 'approved' }
             );
-            assert.equal(approval.status, 200, JSON.stringify(approval.data));
+            assert.equal(manualReportApproval.status, 409, JSON.stringify(manualReportApproval.data));
+            assert.equal(manualReportApproval.data.code, 'PAYROLL_REPORT_INSTALLMENT_STATUS_MANUAL_BLOCKED');
 
-            const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
-            assert.equal(financeCommit.status, 200, JSON.stringify(financeCommit.data));
-            const committed = financeCommit.data.transactions.find(row => Number(row.staffId) === staffId);
-            assert.equal(Number(committed.amount), scenario.totalAmount);
-
-            const reversal = await authRequest('POST', '/api/hr/salary/reverse', {
-                month: MONTH,
-                reason: `${scenario.schemeType} isolated verification`
-            });
-            assert.equal(reversal.status, 200, JSON.stringify(reversal.data));
-            const reversed = reversal.data.reversed.find(row => Number(row.staffId) === staffId);
-            assert.equal(Number(reversed.amount), scenario.totalAmount);
-            const reversedFinance = await pool.query(
-                `SELECT type, amount, payment_method
-                 FROM finance_transactions
-                 WHERE id = $1`,
-                [reversed.reversalTransactionId]
+            const calculateAdapter = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
+            assert.equal(calculateAdapter.status, 409, JSON.stringify(calculateAdapter.data));
+            assert.equal(calculateAdapter.data.code, 'PAYROLL_LEGACY_COMMIT_DISABLED');
+            assert.equal(calculateAdapter.data.financeChanged, false);
+            const stored = await pool.query(
+                `SELECT status, settlement_model, net_amount, finance_transaction_id
+                 FROM payroll_reports
+                 WHERE period_month = $1 AND staff_id = $2`,
+                [MONTH, staffId]
             );
-            assert.deepEqual({
-                type: reversedFinance.rows[0].type,
-                amount: Number(reversedFinance.rows[0].amount),
-                paymentMethod: reversedFinance.rows[0].payment_method
-            }, {
-                type: 'income',
-                amount: scenario.totalAmount,
-                paymentMethod: 'salary_reversal'
-            });
+            assert.equal(stored.rows[0].status, 'draft');
+            assert.equal(stored.rows[0].settlement_model, 'installments_v1');
+            assert.equal(Number(stored.rows[0].net_amount), scenario.totalAmount);
+            assert.equal(stored.rows[0].finance_transaction_id, null);
         }
 
         for (const scenario of [
@@ -698,18 +629,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             { schemeType: 'percent', config: { percentRate: 10 } },
             { schemeType: 'manual', config: {} }
         ]) {
-            await pool.query(
-                'DELETE FROM payroll_reports WHERE period_month = $1 AND staff_id = $2',
-                [MONTH, staffId]
-            );
-            await pool.query(
-                `DELETE FROM finance_transactions
-                 WHERE staff_id = $1
-                   AND payment_method IN ('salary', 'salary_reversal')
-                   AND date::date >= $2::date
-                   AND date::date < ($2::date + INTERVAL '1 month')`,
-                [staffId, `${MONTH}-01`]
-            );
+            await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
             await activateScheme(scenario.schemeType, scenario.config);
 
             const preview = await authRequest(
@@ -730,40 +650,31 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                 `/api/payroll/generate?month=${MONTH}`,
                 { month: MONTH }
             );
-            assert.equal(generation.status, 409, JSON.stringify(generation.data));
+            assert.equal(generation.status, 200, JSON.stringify(generation.data));
+            const generatedReport = generation.data.reports.find(row => Number(row.staff_id) === staffId);
+            assert.ok(generatedReport);
+            const advanceInstallment = await pool.query(
+                `SELECT pi.id, pi.calculation_snapshot
+                 FROM payroll_installments pi
+                 WHERE pi.payroll_report_id = $1 AND pi.kind = 'advance'`,
+                [generatedReport.id]
+            );
+            const advanceSnapshot = jsonValue(advanceInstallment.rows[0].calculation_snapshot);
             assert.equal(
-                generation.data.code,
+                advanceSnapshot.blockers[0].code,
                 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
             );
-            const blockedAudit = await pool.query(
-                `SELECT details
-                 FROM hr_audit_log
-                 WHERE staff_id = $1
-                   AND action = 'payroll_generation_blocked'
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT 1`,
-                [staffId]
+            const blockedApproval = await authRequest(
+                'POST',
+                `/api/payroll/installments/${advanceInstallment.rows[0].id}/approve?businessContext=event_genix`,
+                {}
             );
-            assert.equal(blockedAudit.rowCount, 1);
-            const blockedAuditDetails = jsonValue(blockedAudit.rows[0].details);
-            assert.equal(blockedAuditDetails.eventVersion, 1);
-            assert.equal(
-                blockedAuditDetails.blockerCode,
-                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
-            );
-            assert.equal(
-                blockedAuditDetails.issues[0].code,
-                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
-            );
-            assert.equal(blockedAuditDetails.issues[0].professionKey, additionalProfessionKey);
+            assert.equal(blockedApproval.status, 409, JSON.stringify(blockedApproval.data));
+            assert.equal(blockedApproval.data.code, 'PAYROLL_INSTALLMENT_APPROVAL_BLOCKED');
 
             const financeCommit = await authRequest('POST', '/api/hr/salary/commit', { month: MONTH });
             assert.equal(financeCommit.status, 409, JSON.stringify(financeCommit.data));
-            assert.equal(financeCommit.data.code, 'PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED');
-            assert.equal(
-                financeCommit.data.details.blockingIssues[0].code,
-                'PAYROLL_SIMULTANEOUS_ADDITIONAL_SCHEME_UNSUPPORTED'
-            );
+            assert.equal(financeCommit.data.code, 'PAYROLL_LEGACY_COMMIT_DISABLED');
 
             const reports = await pool.query(
                 `SELECT COUNT(*)::int AS count
@@ -771,7 +682,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                  WHERE period_month = $1 AND staff_id = $2`,
                 [MONTH, staffId]
             );
-            assert.equal(reports.rows[0].count, 0);
+            assert.equal(reports.rows[0].count, 1);
         }
 
         await activateScheme('hourly', { hourlyRate: 100 });
@@ -794,5 +705,162 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             { month: MONTH }
         );
         assert.equal(hourlyGeneration.status, 200, JSON.stringify(hourlyGeneration.data));
+    });
+
+    test('calculation with real attendance in two business contexts fails closed at approval', async () => {
+        await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
+        const extraDate = '2026-03-13';
+        let extraTimeRecordId = null;
+        try {
+            const extraRecord = await pool.query(
+                `INSERT INTO hr_time_records
+                    (staff_id, record_date, clock_in, clock_out, planned_start, planned_end,
+                     late_minutes, early_leave_minutes, overtime_minutes, total_worked_minutes,
+                     status, compensation_snapshot, business_context)
+                 SELECT staff_id, $2::date,
+                        '2026-03-13T08:00:00.000Z'::timestamptz,
+                        '2026-03-13T17:00:00.000Z'::timestamptz,
+                        planned_start, planned_end, late_minutes, early_leave_minutes,
+                        overtime_minutes, total_worked_minutes, status, compensation_snapshot, 'dar'
+                 FROM hr_time_records
+                 WHERE staff_id = $1 AND record_date = $3::date
+                 RETURNING id`,
+                [staffId, extraDate, WORK_DATE]
+            );
+            extraTimeRecordId = Number(extraRecord.rows[0].id);
+
+            const calculation = await authRequest(
+                'POST',
+                `/api/payroll/installments/calculate?month=${MONTH}`,
+                { month: MONTH }
+            );
+            assert.equal(calculation.status, 200, JSON.stringify(calculation.data));
+            const stored = await pool.query(
+                `SELECT pi.id, pi.workflow_status, pi.allocation_status, pi.business_context,
+                        pi.calculation_snapshot
+                 FROM payroll_installments pi
+                 JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+                 WHERE pr.period_month = $1 AND pr.staff_id = $2 AND pi.kind = 'advance'`,
+                [MONTH, staffId]
+            );
+            assert.equal(stored.rowCount, 1);
+            const snapshot = jsonValue(stored.rows[0].calculation_snapshot);
+            assert.deepEqual([...snapshot.businessContexts].sort(), ['dar', 'event_genix']);
+            assert.equal(stored.rows[0].workflow_status, 'draft');
+            assert.equal(stored.rows[0].allocation_status, 'unresolved');
+            assert.equal(stored.rows[0].business_context, null);
+
+            const approval = await authRequest(
+                'POST',
+                `/api/payroll/installments/${stored.rows[0].id}/approve?businessContext=event_genix`,
+                {}
+            );
+            assert.equal(approval.status, 409, JSON.stringify(approval.data));
+            assert.equal(approval.data.code, 'PAYROLL_ALLOCATION_UNRESOLVED');
+            assert.deepEqual([...approval.data.details.businessContexts].sort(), ['dar', 'event_genix']);
+
+            const unchanged = await pool.query(
+                'SELECT workflow_status, allocation_status, business_context FROM payroll_installments WHERE id = $1',
+                [stored.rows[0].id]
+            );
+            assert.equal(unchanged.rows[0].workflow_status, 'draft');
+            assert.equal(unchanged.rows[0].allocation_status, 'unresolved');
+            assert.equal(unchanged.rows[0].business_context, null);
+            const sideEffects = await pool.query(
+                `SELECT
+                    (SELECT COUNT(*)::int FROM payroll_payment_movements WHERE installment_id = $1) AS movements,
+                    (SELECT COUNT(*)::int FROM finance_transactions WHERE staff_id = $2 AND source = 'payroll') AS finance`,
+                [stored.rows[0].id, staffId]
+            );
+            assert.equal(sideEffects.rows[0].movements, 0);
+            assert.equal(sideEffects.rows[0].finance, 0);
+        } finally {
+            await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
+            if (extraTimeRecordId) {
+                await pool.query('DELETE FROM hr_time_records WHERE id = $1', [extraTimeRecordId]);
+            }
+        }
+    });
+
+    test('approved final keeps its KPI snapshot after source KPI data changes', async () => {
+        await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
+        const onboarding = await pool.query(
+            `INSERT INTO onboarding_progress
+                (staff_id, items, completed_items, total_items, status, started_at)
+             VALUES ($1, '[]'::jsonb, 1, 2, 'in_progress', '2026-03-01')
+             RETURNING id`,
+            [staffId]
+        );
+        const onboardingId = Number(onboarding.rows[0].id);
+        const adjustment = await authRequest('POST', '/api/hr/salary/adjustment', {
+            staff_id: staffId,
+            month: MONTH,
+            type: 'kpi_bonus',
+            amount: 500,
+            reason: 'KPI immutable snapshot integration fixture'
+        });
+        assert.equal(adjustment.status, 200, JSON.stringify(adjustment.data));
+
+        const calculation = await authRequest(
+            'POST',
+            `/api/payroll/installments/calculate?month=${MONTH}`,
+            { month: MONTH }
+        );
+        assert.equal(calculation.status, 200, JSON.stringify(calculation.data));
+        const installments = await pool.query(
+            `SELECT pi.id, pi.kind
+             FROM payroll_installments pi
+             JOIN payroll_reports pr ON pr.id = pi.payroll_report_id
+             WHERE pr.period_month = $1 AND pr.staff_id = $2
+             ORDER BY pi.kind`,
+            [MONTH, staffId]
+        );
+        const advanceId = Number(installments.rows.find(row => row.kind === 'advance').id);
+        const finalId = Number(installments.rows.find(row => row.kind === 'final').id);
+
+        const cancelled = await authRequest(
+            'POST',
+            `/api/payroll/installments/${advanceId}/cancel`,
+            { reason: 'KPI immutable snapshot fixture uses final-only settlement' }
+        );
+        assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+        const approval = await authRequest(
+            'POST',
+            `/api/payroll/installments/${finalId}/approve?businessContext=event_genix`,
+            {}
+        );
+        assert.equal(approval.status, 200, JSON.stringify(approval.data));
+        const approvedFinal = approval.data.installment;
+        assert.equal(approvedFinal.workflowStatus, 'approved');
+        const lockedAmount = approvedFinal.lockedAmount;
+        const approvedSnapshot = approvedFinal.calculationSnapshot.kpiAuditSnapshot;
+        assert.equal(approvedSnapshot.kpiMonth, MONTH);
+        assert.equal(approvedSnapshot.ruleVersion, 'manual_kpi_bonus_v1');
+        assert.equal(approvedSnapshot.metrics.onboarding.completedItems, 1);
+        assert.equal(approvedSnapshot.approvedBonusAmount, 500);
+
+        await pool.query(
+            `UPDATE onboarding_progress
+             SET completed_items = 2,
+                 total_items = 2,
+                 status = 'completed',
+                 completed_at = '2026-03-20'
+             WHERE id = $1`,
+            [onboardingId]
+        );
+        const liveKpi = await authRequest('GET', `/api/hr/kpi?month=${MONTH}`);
+        assert.equal(liveKpi.status, 200, JSON.stringify(liveKpi.data));
+        const liveKpiRow = liveKpi.data.data.find(row => Number(row.staff_id) === staffId);
+        assert.equal(liveKpiRow.development_kpi.completed_items, 2);
+
+        const settlement = await authRequest('GET', `/api/payroll/settlement?month=${MONTH}`);
+        assert.equal(settlement.status, 200, JSON.stringify(settlement.data));
+        const storedFinal = settlement.data.settlement.reports
+            .flatMap(report => report.installments || [])
+            .find(installment => Number(installment.id) === finalId);
+        assert.ok(storedFinal);
+        assert.equal(storedFinal.workflowStatus, 'approved');
+        assert.equal(storedFinal.lockedAmount, lockedAmount);
+        assert.deepEqual(storedFinal.calculationSnapshot.kpiAuditSnapshot, approvedSnapshot);
     });
 });

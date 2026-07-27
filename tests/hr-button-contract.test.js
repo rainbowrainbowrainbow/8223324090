@@ -20,7 +20,8 @@ const {
     createStaffPayrollScheme,
     loadStaffPayrollSchemeWorkspace,
     payrollSchemeConfigFromRequest,
-    payrollSchemeMeta
+    payrollSchemeMeta,
+    payrollSchemeTypeTitle
 } = require('../services/hrPayrollSchemes');
 const {
     archiveStaffDocument,
@@ -162,6 +163,8 @@ const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'
 const PAGES_CSS = readCssWithImports('css/pages.css');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
 const ZRS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '255_payroll_zrs_advances.sql'), 'utf8');
+const CANONICAL_ZRS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '303_payroll_zrs_canonical_type.sql'), 'utf8');
+const KPI_BONUS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '305_payroll_kpi_bonus_adjustments.sql'), 'utf8');
 
 function lineNumber(source, index) {
     return source.slice(0, index).split(/\r?\n/).length;
@@ -599,8 +602,8 @@ test('HR payroll period service owns range, lock, and event normalization', asyn
 test('HR payroll scheme service owns staff scheme config and metadata mapping', async () => {
     for (const token of [
         "require('../services/hrPayrollSchemes')",
-        "router.get('/staff/:id/payroll-scheme', requireHrManage",
-        "router.put('/staff/:id/payroll-scheme', requireHrManage",
+        "router.get('/staff/:id/payroll-scheme', requirePayrollRules",
+        "router.put('/staff/:id/payroll-scheme', requirePayrollRules",
         'loadStaffPayrollSchemeWorkspace(req.params.id)',
         'createStaffPayrollScheme(req.params.id, req.body, req.user)',
         "auditLog('staff_payroll_scheme_update'"
@@ -609,12 +612,15 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     }
     for (const token of [
         'function payrollSchemeConfigFromRequest',
+        'function normalizedMonthlyNormConfig',
         'function payrollSchemeMeta',
         'async function loadPayrollSchemesForStaff',
         'async function loadStaffPayrollSchemeWorkspace',
         'async function createStaffPayrollScheme',
         'SCHEME_TYPES: PAYROLL_SCHEME_TYPES',
         'createPayrollScheme',
+        "piece: 'За одиницю'",
+        "if (type === 'piece') return { ...source, pieceRate: rate",
         'bonusRules',
         'deductions',
         'advances'
@@ -624,6 +630,12 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     assert.equal(HR_ROUTE.includes('function payrollSchemeConfigFromRequest'), false, 'route must not own payroll scheme config normalization');
     assert.equal(HR_ROUTE.includes('PAYROLL_SCHEME_TYPES.map'), false, 'route must not own payroll scheme type metadata');
     assert.equal(HR_ROUTE.includes('createPayrollScheme({'), false, 'route must not construct payroll scheme payloads directly');
+    assert.ok(HR_HTML.includes('<option value="piece">'), 'HR scheme form should expose piece as a selectable canonical scheme');
+    assert.ok(HR_JS.includes("piece: 'За одиницю'"), 'HR frontend should label piece without owning its formula');
+    assert.ok(HR_JS.includes('config.pieceRate ?? config.rate ?? config.amount'), 'HR frontend should pass piece rate config, not calculate payroll');
+    assert.ok(HR_HTML.includes('id="editPayrollMonthlyNormMonth"'), 'monthly fixed form should require an explicit norm month');
+    assert.ok(HR_HTML.includes('id="editPayrollMonthlyNormConfirmed"'), 'monthly fixed form should expose explicit norm confirmation');
+    assert.ok(HR_JS.includes('function collectPayrollMonthlyNormFromForm'), 'HR frontend should submit norm metadata without calculating salary');
 
     const queries = [];
     const fakeDb = {
@@ -658,6 +670,7 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     assert.equal(workspace.data.fallback_hourly_rate, 120);
     assert.equal(workspace.data.fallback_rate_unit, 'hour');
     assert.ok(workspace.data.scheme_types.some(type => type.value === 'hybrid'));
+    assert.ok(workspace.data.scheme_types.some(type => type.value === 'piece' && type.label));
     assert.match(queries.at(-1).sql, /ORDER BY is_active DESC/);
 
     const hybridConfig = payrollSchemeConfigFromRequest('hybrid', {
@@ -677,6 +690,38 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     assert.equal(hybridConfig.bonusRules[0].amount, 25);
     assert.equal(hybridConfig.deductions[0].amount, 10);
     assert.equal(hybridConfig.advances[0].amount, 5);
+
+    const pieceConfig = payrollSchemeConfigFromRequest('piece', { amount: 25 }, 120);
+    assert.equal(pieceConfig.pieceRate, 25);
+    assert.equal(pieceConfig.quantitySource, 'payroll_metrics');
+    assert.ok(payrollSchemeTypeTitle('piece'));
+
+    const fixedConfig = payrollSchemeConfigFromRequest('monthly_fixed', {
+        amount: 30000,
+        config: {
+            monthlyNormMinutes: 10560,
+            monthlyNormMonth: '2026-07',
+            monthlyNormSource: 'approved_schedule',
+            monthlyNormConfirmed: true
+        }
+    }, 120);
+    assert.equal(fixedConfig.monthlyAmount, 30000);
+    assert.equal(fixedConfig.monthlyNormMinutes, 10560);
+    assert.equal(fixedConfig.monthlyNormMonth, '2026-07');
+    assert.equal(fixedConfig.monthlyNormSource, 'approved_schedule');
+    assert.equal(fixedConfig.monthlyNormConfirmed, true);
+
+    const invalidFixedNorm = payrollSchemeConfigFromRequest('monthly_fixed', {
+        amount: 30000,
+        config: {
+            monthlyNormMinutes: -1,
+            monthlyNormMonth: '2026-99',
+            monthlyNormConfirmed: 'true'
+        }
+    }, 120);
+    assert.equal(invalidFixedNorm.monthlyNormMinutes, 0);
+    assert.equal(invalidFixedNorm.monthlyNormMonth, null);
+    assert.equal(invalidFixedNorm.monthlyNormConfirmed, false);
 
     const meta = payrollSchemeMeta({
         id: 8,
@@ -721,6 +766,28 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     assert.equal(createCalls[0].payload.effectiveFrom, '2026-06-01');
     assert.equal(createCalls[0].payload.effectiveTo, null);
     assert.equal(createCalls[0].user.username, 'creator');
+
+    createCalls.length = 0;
+    const pieceCreated = await createStaffPayrollScheme(42, {
+        scheme_type: 'piece',
+        title: 'Piece plan',
+        amount: 30,
+        effective_from: '2026-06-01'
+    }, { username: 'creator' }, {
+        db: fakeDb,
+        async createScheme(payload, user) {
+            createCalls.push({ payload, user });
+            return {
+                id: 10,
+                staffId: Number(payload.staffId),
+                schemeType: payload.schemeType,
+                title: payload.title
+            };
+        }
+    });
+    assert.equal(pieceCreated.audit.scheme_type, 'piece');
+    assert.equal(createCalls[0].payload.schemeType, 'piece');
+    assert.equal(createCalls[0].payload.config.pieceRate, 30);
 });
 
 test('HR grouped nav buttons expose routing and future visibility contract', () => {
@@ -985,6 +1052,8 @@ test('HR KPI surface labels backend snapshot sources explicitly', () => {
         'Онбординг',
         'Події / внесок',
         'Підсумковий KPI',
+        'KPI score є інформаційним',
+        'грошовий KPI bonus додається вручну',
         'hrFetch(`/kpi?month=${month}`)',
         'даних ще немає'
     ]) {
@@ -995,6 +1064,38 @@ test('HR KPI surface labels backend snapshot sources explicitly', () => {
     assert.equal(loadKpiBlock.includes("hrFetch('/ratings')"), false);
     assert.equal(HR_JS.includes('monthly report'), false);
     assert.equal(HR_JS.includes('ratings context'), false);
+    const kpiRouteBlock = HR_ROUTE.slice(HR_ROUTE.indexOf('async function loadKpiSnapshot'), HR_ROUTE.indexOf('function normalizeAuditValue'));
+    assert.match(kpiRouteBlock, /t\.deadline::date <= p\.date_to/);
+    assert.match(kpiRouteBlock, /op\.started_at::date <= p\.date_to/);
+    assert.match(kpiRouteBlock, /ratingsSource: 'disabled_no_period_source'/);
+    assert.doesNotMatch(kpiRouteBlock, /s\.avg_rating,\s*s\.total_ratings/);
+});
+
+test('HR payroll exposes manual final-only KPI bonus without automatic KPI money formula', () => {
+    for (const token of [
+        "{ value: 'kpi_bonus', label: 'Ручний KPI bonus' }",
+        "result.type === 'kpi_bonus'",
+        'Для KPI-бонусу обовʼязково вкажіть причину',
+        'Ручний KPI-бонус додано до фінальної зарплати',
+        'KPI score',
+        'Не конвертується в гроші автоматично',
+        'Ручний KPI bonus',
+        'Тільки фінальна зарплата',
+        'Загальна бонусна частина'
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing KPI bonus UI token ${token}`);
+    }
+    for (const token of [
+        "'kpi_bonus'",
+        "ruleVersion: adjustmentType === 'kpi_bonus' ? 'manual_kpi_bonus_v1'",
+        "formula: adjustmentType === 'kpi_bonus' ? null",
+        "approved_by, approved_at"
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing KPI bonus route token ${token}`);
+    }
+    assert.match(KPI_BONUS_MIGRATION, /type IN \('bonus', 'deduction', 'penalty', 'tip', 'advance', 'zrs', 'kpi_bonus'\)/);
+    assert.match(KPI_BONUS_MIGRATION, /idx_salary_adj_kpi_bonus_month_staff/);
+    assert.doesNotMatch(KPI_BONUS_MIGRATION.replace(/^\s*--.*$/gm, ''), /\bUPDATE\s+salary_adjustments\b/i);
 });
 
 test('HR salary surface exposes payroll lock, reconciliation, and reversal controls', () => {
@@ -1019,10 +1120,16 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
         'function refreshSalaryReconciliation',
         'function setSalaryPeriodLock',
         'function reverseSalaryPeriod',
+        'function normalizeSalaryPayrollActivation',
+        'function salaryPayrollLegacyBlockedMessage',
         'hrFetch(`/salary?${query}`)',
         'hrFetch(`/salary/reconciliation?month=${month}`)',
         "hrFetch('/salary/period-lock', 'POST'",
         "hrFetch('/salary/reverse', 'POST'",
+        "hrFetch('/salary/installments/calculate', 'POST'",
+        'PAYROLL_LEGACY_COMMIT_DISABLED',
+        'PAYROLL_LEGACY_REVERSE_DISABLED',
+        'PAYROLL_LEGACY_PERIOD_REOPEN_DISABLED',
         "period.mode === 'range'",
         'Нарахування зарплати доступне тільки для повного місяця',
         'Період закрито',
@@ -1361,7 +1468,7 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         "include_periods: append || options.journalOnly ? '0' : '1'",
         "params.set('search', search)",
         'hrFetch(`/salary/adjustment/${id}/void`, \'PUT\'',
-        "type: 'advance'",
+        "type: 'zrs'",
         'zrs-status-badge',
         'zrs-action-btn',
         'function renderZrsError',
@@ -1374,11 +1481,10 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
     }
 
     for (const token of [
-        "FILTER (WHERE sa.type = 'advance')",
-        '- COALESCE(at.advances, 0)',
+        "sa.type IN ('zrs', 'advance')",
         'total_advances',
-        "requestedType === 'zrs' ? 'advance'",
-        "router.get('/salary/adjustments', requirePayrollControl",
+        'normalizePayrollAdjustmentType(requestedType)',
+        "router.get('/salary/adjustments', requirePayrollView",
         'ZRS_INVALID_AMOUNT',
         'ZRS_STAFF_INACTIVE',
         'ZRS_VOID_TYPE_MISMATCH',
@@ -1392,46 +1498,43 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'SELECT DISTINCT sa.month',
         "router.put('/salary/adjustment/:id/void'",
         "SET status = 'voided'",
-        "type: 'advance', label: 'ЗРС'",
-        'advances_amount = EXCLUDED.advances_amount'
+        "router.post('/salary/installments/calculate'",
+        "router.post('/salary/installments/:id/approve'",
+        'Historical payroll months are read-only',
+        'financeChanged: false'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
     }
 
     for (const token of [
-        "CHECK (type IN ('bonus', 'deduction', 'penalty', 'tip', 'advance'))",
-        'idx_salary_adj_advance_month_staff',
+        "CHECK (type IN ('bonus', 'deduction', 'penalty', 'tip', 'advance', 'zrs'))",
+        'idx_salary_adj_zrs_month_staff',
         'MIGRATION_KIND: schema'
     ]) {
-        assert.ok(ZRS_MIGRATION.includes(token), `missing migration token ${token}`);
+        assert.ok(CANONICAL_ZRS_MIGRATION.includes(token), `missing migration token ${token}`);
     }
 });
 
-test('HR payroll uses current active core staff only and does not resurrect inactive workers', () => {
-    const routeStart = HR_ROUTE.indexOf('active_staff AS (');
-    const routeEnd = HR_ROUTE.indexOf('time_segments AS', routeStart);
-    const activeStaffCte = routeStart >= 0 && routeEnd > routeStart
-        ? HR_ROUTE.slice(routeStart, routeEnd)
+test('HR payroll discovers staff by employment-period overlap without mixing calculation joins', () => {
+    const activeStart = HR_ROUTE.indexOf('async function loadPayrollCalculation(monthValue');
+    const activeEnd = HR_ROUTE.indexOf('async function loadKpiSnapshot', activeStart);
+    const activeLoader = activeStart >= 0 && activeEnd > activeStart
+        ? HR_ROUTE.slice(activeStart, activeEnd)
         : '';
+    assert.match(activeLoader, /getSalaryReport\(month, db\)/);
+    assert.match(activeLoader, /getPayrollRangePreview/);
+    assert.doesNotMatch(activeLoader, /active_staff AS \(/);
 
-    assert.match(activeStaffCte, /scheduleableStaffWhere\('s', \{ dateExpression: 'p\.date_to' \}\)/);
-    for (const token of [
-        'FROM hr_time_records tr',
-        'FROM hr_shifts hs',
-        'FROM salary_adjustments sa',
-        'FROM payroll_reports pr'
-    ]) {
-        assert.ok(!activeStaffCte.includes(token), `legacy roster resurrection token remains in HR salary CTE ${token}`);
-    }
-
-    const serviceStart = PAYROLL_SERVICE.indexOf('async function fetchStaffList(month)');
+    const serviceStart = PAYROLL_SERVICE.indexOf('async function fetchStaffList(month, periodOptions = {}, db = pool)');
     const serviceEnd = PAYROLL_SERVICE.indexOf('function payrollMetricBucket', serviceStart);
     const fetchStaffListSource = serviceStart >= 0 && serviceEnd > serviceStart
         ? PAYROLL_SERVICE.slice(serviceStart, serviceEnd)
         : '';
 
-    assert.match(fetchStaffListSource, /scheduleableStaffWhere\('s', \{ dateExpression: '\$1' \}\)/);
-    assert.ok(fetchStaffListSource.includes('fetchStaffList(month)'), 'shared payroll service still owns staff discovery');
+    assert.match(fetchStaffListSource, /NULLIF\(s\.hire_date::text, ''\)::date <= \$2::date/);
+    assert.match(fetchStaffListSource, /NULLIF\(s\.termination_date::text, ''\)::date > \$1::date/);
+    assert.match(fetchStaffListSource, /COALESCE\(s\.is_freelance, false\) IS NOT TRUE/);
+    assert.match(fetchStaffListSource, /hr_pool_status/);
     for (const token of [
         'FROM hr_time_records tr',
         'FROM hr_shifts hs',
@@ -1445,21 +1548,29 @@ test('HR payroll uses current active core staff only and does not resurrect inac
 
 test('HR salary backend owns payroll period lock, reconciliation, and reversal APIs', () => {
     for (const token of [
-        'const PAYROLL_CONTROL_ROLES',
+        "const requirePayrollView = requireAction('view_payroll')",
+        "const requirePayrollAccrual = requireAction('manage_payroll_accrual')",
+        "const requirePayrollReverse = requireAction('reverse_payroll_payment')",
+        "const requirePayrollClose = requireAction('close_payroll_period')",
         "require('../services/hrPayrollPeriod')",
         "router.get('/salary/reconciliation'",
         "router.post('/salary/period-lock'",
         "router.post('/salary/reverse'",
-        "router.post('/salary/commit', requirePayrollControl",
-        'finance_transaction_id',
-        'salary_reversal',
-        'await assertPayrollPeriodOpen(month, client)',
+        "router.post('/salary/commit', requirePayrollAccrual",
+        "router.post('/salary/installments/calculate', requirePayrollAccrual",
+        'PAYROLL_LEGACY_COMMIT_DISABLED',
+        'PAYROLL_LEGACY_REVERSE_DISABLED',
+        'PAYROLL_LEGACY_PERIOD_REOPEN_DISABLED',
+        'await assertPayrollPeriodOpen(month)',
+        'closePayrollPeriod(month, actor',
+        'getPayrollSettlement(month)',
         'await assertPayrollPeriodOpen(payrollMonth)',
         '$2::date AS date_from',
         '$3::date AS date_to',
         "sa.month >= p.month_from AND sa.month <= p.month_to",
         "pr.period_month >= p.month_from AND pr.period_month <= p.month_to",
-        'period_lock: periodLock, reconciliation',
+        'period_lock: closed.periodLock',
+        'reconciliation: closed.reconciliation',
         'events'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);

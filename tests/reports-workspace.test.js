@@ -135,6 +135,12 @@ async function setupReportsDom(setupOptions = {}) {
                 taskContract: { sourceType: 'report', sourceEntityType: 'report' }
             });
         }
+        if (target.startsWith('/api/payroll/export-xlsx')) {
+            return jsonResponse({ success: true, source: 'canonical_payroll_xlsx' });
+        }
+        if (target.startsWith('/api/payroll/export')) {
+            return jsonResponse({ success: true, source: 'canonical_payroll_csv' });
+        }
         if (target === '/api/reports/table/close' && fetchOptions.method === 'POST') {
             const body = JSON.parse(fetchOptions.body || '{}');
             const rawData = JSON.parse(JSON.stringify(body.tableJson || {}));
@@ -195,31 +201,6 @@ async function setupReportsDom(setupOptions = {}) {
     window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
     await waitFor(() => window.document.querySelectorAll('.rpt-sheet-input').length > 0, 'reports workspace init');
     return { window, requests };
-}
-
-async function createPayrollReportForSchedule(scheduleData, date = '2026-06-28') {
-    const context = await setupReportsDom({ scheduleData, attendanceData: [] });
-    const { window, requests } = context;
-    const document = window.document;
-    const picker = document.getElementById('reportTemplatePicker');
-    picker.value = 'payroll-staff';
-    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
-    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll fixture template switch');
-
-    const dateInput = document.querySelector('[data-row-index="0"][data-column-key="date"]');
-    dateInput.value = date;
-    dateInput.dispatchEvent(new window.Event('input', { bubbles: true }));
-    const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
-    staffSelect.value = '42';
-    staffSelect.dispatchEvent(new window.Event('input', { bubbles: true }));
-    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
-    total.value = '100';
-    total.dispatchEvent(new window.Event('input', { bubbles: true }));
-
-    document.getElementById('reportTemplateSaveBtn').click();
-    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'payroll fixture create request');
-    const request = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
-    return { ...context, body: JSON.parse(request.options.body) };
 }
 
 test('reports workspace protects dirty table state and manages rows/columns', async () => {
@@ -368,7 +349,107 @@ test('staff report fields preserve legacy snapshot text without staff id', async
     assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.operations_owner_staff_id_missing, 1);
 });
 
-test('payroll report template stores canonical staff id with display snapshot', async () => {
+test('payroll report template is read-only and exports through canonical payroll API', async () => {
+    const { window, requests } = await setupReportsDom({
+        backendTemplates: [{
+            id: 700,
+            code: 'canonical-payroll-template',
+            title: 'Canonical payroll template',
+            category: 'HR',
+            layout: 'payroll',
+            source: 'backend',
+            defaultReport: { type: 'expense', category: 'ЗП', hashtag: 'table-payroll', amountColumn: 'total' },
+            columns: [
+                { key: 'date', label: 'Дата', type: 'date' },
+                { key: 'employee', label: 'Працівник', type: 'staff', staffIdKey: 'employee_staff_id' },
+                { key: 'total', label: 'До виплати', type: 'number' }
+            ],
+            rows: [{ date: '2026-06-28', employee: 'Оля', employee_staff_id: '42', total: '1200' }]
+        }]
+    });
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'canonical-payroll-template';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch');
+
+    assert.equal(document.getElementById('reportTemplateSaveBtn').disabled, true);
+    assert.equal(document.getElementById('reportTemplateCloseBtn').disabled, true);
+    assert.match(document.getElementById('reportTemplateStatus').textContent, /canonical Payroll API|read-only/i);
+    assert.match(document.getElementById('reportSheetSummary').textContent, /Payroll read-only|Canonical API/i);
+
+    document.getElementById('reportTemplateExportCsvBtn').click();
+    await waitFor(() => requests.some(req => req.url.startsWith('/api/payroll/export?month=2026-06')), 'canonical payroll CSV export request');
+
+    document.getElementById('reportTemplateExportXlsxBtn').click();
+    await waitFor(() => requests.some(req => req.url.startsWith('/api/payroll/export-xlsx?month=2026-06')), 'canonical payroll XLSX export request');
+    await waitFor(() => /XLSX payroll export from canonical API/i.test(document.getElementById('reportTemplateStatus').textContent), 'canonical payroll export completion');
+
+    assert.equal(requests.some(req => req.url === '/api/reports/table/export-csv'), false);
+    assert.equal(requests.some(req => req.url === '/api/reports/table/export-xlsx'), false);
+    assert.equal(requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/schedule')), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/attendance')), false);
+    window.close();
+});
+
+test('payroll report template keeps legacy advance columns labeled as ZRS', async () => {
+    const { window } = await setupReportsDom({
+        backendTemplates: [{
+            id: 701,
+            code: 'legacy-payroll-template',
+            title: 'Legacy payroll template',
+            category: 'HR',
+            layout: 'payroll',
+            source: 'backend',
+            defaultReport: { type: 'expense', category: 'ЗП', hashtag: 'table-payroll', amountColumn: 'total' },
+            columns: [
+                { key: 'date', label: 'Дата', type: 'date' },
+                { key: 'advance', label: 'Аванси', type: 'number' },
+                { key: 'total', label: 'До виплати', type: 'number' }
+            ],
+            rows: [{ date: '2026-06-28', advance: '100', total: '500' }]
+        }]
+    });
+    const document = window.document;
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'legacy-payroll-template';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /Legacy payroll template/.test(document.getElementById('reportSheetTitle').textContent), 'legacy payroll template switch');
+
+    assert.match(document.getElementById('reportSheetTable').textContent, /ЗРС/);
+    assert.doesNotMatch(document.getElementById('reportSheetTable').textContent, /Аванси/);
+    assert.equal(document.getElementById('reportTemplateSaveBtn').disabled, true);
+    window.close();
+});
+
+test('canonical Reports payroll projection replaces legacy staff reconciliation writes', async () => {
+    const { window, requests } = await setupReportsDom();
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch');
+
+    assert.equal(document.getElementById('reportTemplateSaveBtn').disabled, true);
+    assert.equal(document.getElementById('reportTemplateCloseBtn').disabled, true);
+    assert.match(document.getElementById('reportSheetSummary').textContent, /Payroll read-only|Canonical API/i);
+
+    assert.equal(requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), false);
+    assert.equal(requests.some(req => req.url === '/api/reports/table/export-csv'), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/schedule')), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/attendance')), false);
+    window.close();
+});
+
+test('legacy Reports payroll reconciliation stored canonical staff id with display snapshot is obsolete', async () => {
+    const reportsPage = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
+    assert.match(reportsPage, /reportsPayrollDeprecatedMessage/);
+    assert.match(reportsPage, /canonical Payroll API/);
+    assert.match(reportsPage, /api\/payroll\/export/);
+    return;
     const { window, requests } = await setupReportsDom();
     const document = window.document;
 
@@ -457,7 +538,11 @@ test('payroll report template stores canonical staff id with display snapshot', 
     assert.equal(body.amount, 1200);
 });
 
-test('payroll attendance ignores one-to-five minute legacy late status and warns on profession fallback', async () => {
+test('legacy Reports payroll attendance ignored one-to-five minute legacy late status and warned on profession fallback is obsolete', async () => {
+    const reportsPage = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
+    assert.match(reportsPage, /Payroll read-only/);
+    assert.match(reportsPage, /loadPayrollReconciliationSources/);
+    return;
     const { window, requests } = await setupReportsDom({
         scheduleData: [],
         attendanceData: [{
@@ -511,7 +596,11 @@ test('payroll attendance ignores one-to-five minute legacy late status and warns
     window.close();
 });
 
-test('payroll workspace ignores allocation overtime as an attendance event', async () => {
+test('legacy Reports payroll workspace ignored allocation overtime as an attendance event is obsolete', async () => {
+    const reportsPage = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
+    assert.match(reportsPage, /isPayrollTableState/);
+    assert.match(reportsPage, /Use canonical Payroll API\/export/);
+    return;
     const { window, requests } = await setupReportsDom({
         scheduleData: [{
             id: 810,
@@ -581,7 +670,11 @@ test('payroll workspace ignores allocation overtime as an attendance event', asy
     window.close();
 });
 
-test('payroll planned hours prefer segments over envelope and keep legacy fallback', async t => {
+test('legacy Reports payroll planned hours preferred segments over envelope and kept legacy fallback is obsolete', async t => {
+    const reportsPage = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
+    assert.match(reportsPage, /Payroll read-only/);
+    assert.match(reportsPage, /canonical API/);
+    return;
     await t.test('adjacent segments sum without duplicating an additional role', async () => {
         const context = await createPayrollReportForSchedule([{
             id: 720,
@@ -665,7 +758,28 @@ test('payroll planned hours prefer segments over envelope and keep legacy fallba
     });
 });
 
-test('payroll report workspace keeps working when staff options API is unavailable', async () => {
+test('legacy Reports payroll report workspace no longer depends on staff options API', async () => {
+    const { window, requests } = await setupReportsDom({ staffApiFails: true });
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch without staff options');
+
+    assert.equal(document.getElementById('reportTemplateSaveBtn').disabled, true);
+    assert.match(document.getElementById('reportSheetSummary').textContent, /Payroll read-only|Canonical API/i);
+
+    assert.equal(requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/schedule')), false);
+    assert.equal(requests.some(req => req.url.startsWith('/api/staff/attendance')), false);
+    window.close();
+});
+
+test('legacy Reports payroll report workspace kept working when staff options API was unavailable is obsolete', async () => {
+    const reportsPage = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
+    assert.match(reportsPage, /reportsPayrollDeprecatedMessage/);
+    return;
     const { window, requests } = await setupReportsDom({ staffApiFails: true });
     const document = window.document;
 
@@ -698,24 +812,16 @@ test('payroll report workspace keeps working when staff options API is unavailab
     assert.equal(body.amount, 500);
 });
 
-test('reports API keeps payroll reconciliation inside rawData without a new report schema', () => {
+test('reports API keeps payroll templates deprecated read-only without a new report schema', () => {
     const reportsRoute = fs.readFileSync(path.join(ROOT, 'routes/reports.js'), 'utf8');
     assert.match(reportsRoute, /function normalizeReportRawPayload/);
     assert.match(reportsRoute, /function normalizePayrollRows/);
-    assert.match(reportsRoute, /reports_rawData_payroll_reconciliation_v1/);
-    assert.match(reportsRoute, /staff_id = staffId/);
-    assert.match(reportsRoute, /display_snapshot/);
-    assert.match(reportsRoute, /role_snapshot/);
-    assert.match(reportsRoute, /planned_shift_ref/);
-    assert.match(reportsRoute, /normalizeSegmentRefs/);
-    assert.match(reportsRoute, /primary_profession_key/);
-    assert.match(reportsRoute, /planned_allocation_source/);
-    assert.match(reportsRoute, /attendance_ref/);
-    assert.match(reportsRoute, /actual_paid_hours_mismatch/);
-    assert.match(reportsRoute, /duplicate_payroll_row/);
-    assert.match(reportsRoute, /amount_missing_or_zero/);
-    assert.match(reportsRoute, /offboarded_staff/);
-    assert.match(reportsRoute, /rawData \? JSON\.stringify\(normalizeReportRawPayload\(rawData\)\)/);
+    assert.match(reportsRoute, /reportsPayrollReadOnlyPayload/);
+    assert.match(reportsRoute, /REPORTS_PAYROLL_READ_ONLY/);
+    assert.match(reportsRoute, /canonical_payroll_service_required/);
+    assert.match(reportsRoute, /\/api\/payroll\/export/);
+    assert.match(reportsRoute, /\/api\/payroll\/export-xlsx/);
+    assert.doesNotMatch(reportsRoute, /reports_rawData_payroll_reconciliation_v1/);
     assert.doesNotMatch(reportsRoute, /ALTER TABLE reports[\s\S]*staff_id|CREATE TABLE IF NOT EXISTS payroll_reconciliation/i);
 });
 

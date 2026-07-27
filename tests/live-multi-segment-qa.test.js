@@ -307,8 +307,9 @@ test('policy, QA documentation, PostgreSQL fixture, and CI share the active v1 c
     assert.match(integration, /physicalMinutes\), 540/);
     assert.match(integration, /paidAllocation\.actualMinutes \?\? paidAllocation\.actual_minutes\), 510/);
 
-    assert.match(payrollIntegration, /approved regeneration must skip immutable report/);
-    assert.match(payrollIntegration, /paid regeneration must skip immutable report/);
+    assert.match(payrollIntegration, /PAYROLL_REPORT_INSTALLMENT_STATUS_MANUAL_BLOCKED/);
+    assert.match(payrollIntegration, /PAYROLL_REPORT_PAID_STATUS_MANUAL_BLOCKED/);
+    assert.match(payrollIntegration, /approved final keeps its KPI snapshot after source KPI data changes/);
     assert.match(payrollIntegration, /schemeType: 'per_shift'/);
     assert.match(payrollIntegration, /schemeType: 'monthly_fixed'/);
     assert.match(payrollIntegration, /schemeType: 'hybrid'/);

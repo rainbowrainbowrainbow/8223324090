@@ -8,6 +8,9 @@ const {
     buildPayrollProfileVersionDiff,
     mergePayrollProfileSyncVersion
 } = require('../services/hrPayrollProfiles');
+const {
+    payrollSchemeConfigFromRequest
+} = require('../services/hrPayrollSchemes');
 
 const ROOT = path.resolve(__dirname, '..');
 const serviceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollProfiles.js'), 'utf8');
@@ -16,6 +19,25 @@ const hrPageCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const hrHtmlCode = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const hrCssCode = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
 const hrTeamBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'hr-team-browser-smoke.js'), 'utf8');
+
+function functionBlock(source, name) {
+    const start = source.indexOf(`async function ${name}`);
+    assert.notEqual(start, -1, `missing async function ${name}`);
+    const signature = source.slice(start).match(new RegExp(`async function ${name}([\\s\\S]*?)\\) \\{`));
+    assert.ok(signature, `missing function body for ${name}`);
+    const braceStart = start + signature[0].lastIndexOf('{');
+    assert.notEqual(braceStart, -1, `missing function body for ${name}`);
+    let depth = 0;
+    for (let index = braceStart; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === '{') depth += 1;
+        if (char === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(start, index + 1);
+        }
+    }
+    assert.fail(`unterminated async function ${name}`);
+}
 
 function version(overrides = {}) {
     return {
@@ -101,24 +123,24 @@ test('payroll profile sync merge clears weekday overrides when selected rate uni
     assert.deepEqual(merged.dayRates, []);
 });
 
-test('payroll profile routes expose the requested HR-manage API surface', () => {
+test('payroll profile routes expose the requested payroll-rules API surface', () => {
     for (const route of [
-        "router.get('/payroll-profiles', requireHrManage",
-        "router.get('/payroll-profiles/diagnostics', requireHrManage",
-        "router.post('/payroll-profiles/simulator', requireHrManage",
-        "router.get('/payroll-profiles/forecast', requireHrManage",
-        "router.post('/payroll-profiles/bulk/preview', requireHrManage",
-        "router.post('/payroll-profiles/bulk/apply', requireHrManage",
-        "router.get('/payroll-profiles/:id', requireHrManage",
-        "router.post('/payroll-profiles/:id/impact-preview', requireHrManage",
-        "router.post('/payroll-profiles', requireHrManage",
-        "router.post('/payroll-profiles/:id/clone', requireHrManage",
-        "router.post('/payroll-profiles/:id/versions', requireHrManage",
-        "router.post('/payroll-profiles/:id/sync-from-base', requireHrManage",
-        "router.put('/payroll-profiles/:id/archive', requireHrManage",
-        "router.get('/staff/:id/payroll-profile-assignments', requireHrManage",
-        "router.put('/staff/:id/payroll-profile-assignments', requireHrManage",
-        "router.get('/staff/:id/payroll-profile-history', requireHrManage"
+        "router.get('/payroll-profiles', requirePayrollRules",
+        "router.get('/payroll-profiles/diagnostics', requirePayrollRules",
+        "router.post('/payroll-profiles/simulator', requirePayrollRules",
+        "router.get('/payroll-profiles/forecast', requirePayrollRules",
+        "router.post('/payroll-profiles/bulk/preview', requirePayrollRules",
+        "router.post('/payroll-profiles/bulk/apply', requirePayrollRules",
+        "router.get('/payroll-profiles/:id', requirePayrollRules",
+        "router.post('/payroll-profiles/:id/impact-preview', requirePayrollRules",
+        "router.post('/payroll-profiles', requirePayrollRules",
+        "router.post('/payroll-profiles/:id/clone', requirePayrollRules",
+        "router.post('/payroll-profiles/:id/versions', requirePayrollRules",
+        "router.post('/payroll-profiles/:id/sync-from-base', requirePayrollRules",
+        "router.put('/payroll-profiles/:id/archive', requirePayrollRules",
+        "router.get('/staff/:id/payroll-profile-assignments', requirePayrollRules",
+        "router.put('/staff/:id/payroll-profile-assignments', requirePayrollRules",
+        "router.get('/staff/:id/payroll-profile-history', requirePayrollRules"
     ]) {
         assert.match(hrRouteCode, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
@@ -146,6 +168,40 @@ test('payroll profile service is transactional, audited, and isolated from legac
     assert.doesNotMatch(serviceCode, /\bUPDATE payroll_schemes\b/i);
     assert.doesNotMatch(serviceCode, /\bUPDATE payroll_reports\b/i);
     assert.doesNotMatch(serviceCode, /\bDELETE FROM payroll_reports\b/i);
+});
+
+test('payroll profile and canonical payroll reads avoid concurrent query calls on a reused client', () => {
+    const payrollServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
+    const profileContextBlock = functionBlock(payrollServiceCode, 'loadPayrollProfileContext');
+    const buildContextBlock = functionBlock(payrollServiceCode, 'buildPayrollContext');
+    const canonicalPreviewBlock = functionBlock(payrollServiceCode, 'buildCanonicalPayrollInstallmentPreview');
+    const currentInstallmentBlock = functionBlock(payrollServiceCode, 'calculateCurrentPayrollInstallment');
+    const forecastBlock = functionBlock(serviceCode, 'forecastPayrollProfiles');
+    const diagnosticsBlock = functionBlock(serviceCode, 'diagnosePayrollProfiles');
+    const impactBlock = functionBlock(serviceCode, 'impactPayrollProfilePreview');
+
+    for (const block of [
+        profileContextBlock,
+        buildContextBlock,
+        canonicalPreviewBlock,
+        currentInstallmentBlock,
+        forecastBlock,
+        diagnosticsBlock,
+        impactBlock
+    ]) {
+        assert.ok(block.length > 100);
+        assert.doesNotMatch(block, /Promise\.all\(\[/);
+    }
+});
+
+test('legacy payroll scheme advance compatibility label is user-facing ZRS only', () => {
+    const config = payrollSchemeConfigFromRequest('hybrid', {
+        baseKind: 'hourly',
+        baseRate: 100,
+        advanceAmount: 250
+    }, 100);
+
+    assert.deepEqual(config.advances, [{ kind: 'fixed', label: 'ЗРС', amount: 250 }]);
 });
 
 test('payroll profile catalog is wired into the existing HR payroll workspace', () => {

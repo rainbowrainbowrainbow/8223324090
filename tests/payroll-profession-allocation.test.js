@@ -469,6 +469,14 @@ test('per-shift and monthly preserve base pay and add snapshot hourly pay while 
         physicalMinutes: 540,
         totalMinutes: 540,
         allocatedMinutes: 540,
+        plannedMinutes: 540,
+        paidPlannedMinutes: 540,
+        monthlyNormMinutes: 540,
+        monthlyNormSource: 'test_full_month_schedule',
+        monthlyNormConfirmed: true,
+        monthlyNormMonth: '2026-07',
+        periodFrom: '2026-07-01',
+        periodTo: '2026-07-31',
         hoursWorked: 9,
         daysWorked: 1,
         professionAllocations: [
@@ -1140,7 +1148,7 @@ test('active payroll scheme map preserves the configured rate unit source for pr
     const db = {
         async query(sql, params) {
             assert.match(sql, /FROM payroll_schemes/);
-            assert.deepEqual(params, [[7], '2026-07-01', '2026-07-31']);
+            assert.deepEqual(params, [[7]]);
             return { rows: [{
                 id: 91,
                 staff_id: 7,
@@ -1267,7 +1275,16 @@ test('monthly rate stays one fixed amount regardless of segment count', () => {
     const result = calculateProfessionPay(
         staff({ rateUnit: 'month', hourlyRate: 30000 }),
         { schemeType: 'monthly_fixed', config: {}, isFallback: true },
-        metrics(),
+        metrics({
+            plannedMinutes: 660,
+            paidPlannedMinutes: 660,
+            monthlyNormMinutes: 660,
+            monthlyNormSource: 'test_full_month_schedule',
+            monthlyNormConfirmed: true,
+            monthlyNormMonth: '2026-07',
+            periodFrom: '2026-07-01',
+            periodTo: '2026-07-31'
+        }),
         rateMap({ reception: 800, manager: 1200 })
     );
 
@@ -1715,8 +1732,24 @@ test('payroll blocks paid simultaneous role without snapshot before it can settl
 });
 
 test('payroll reconciliation remains in attention while allocation warnings exist', async () => {
+    let queryIndex = 0;
     const result = await loadPayrollReconciliation('2026-07', {
         async query(sql) {
+            queryIndex += 1;
+            if (queryIndex === 1) {
+                assert.match(sql, /report_installments/);
+                return { rows: [{
+                    report_id: 1,
+                    period_month: '2026-07',
+                    report_status: 'paid',
+                    settlement_model: 'legacy_v1',
+                    finance_transaction_id: 10,
+                    reversal_transaction_id: null,
+                    committed_at: null,
+                    committed_by: null,
+                    installment_id: null
+                }] };
+            }
             assert.match(sql, /source_warnings/);
             return { rows: [{
                 payroll_count: 1,
@@ -1738,8 +1771,24 @@ test('payroll reconciliation remains in attention while allocation warnings exis
 });
 
 test('payroll reconciliation accounts for stored freelance drafts without mixing them into active staff', async () => {
+    let queryIndex = 0;
     const result = await loadPayrollReconciliation('2026-05', {
         async query(sql) {
+            queryIndex += 1;
+            if (queryIndex === 1) {
+                assert.match(sql, /report_installments/);
+                return { rows: [{
+                    report_id: 1,
+                    period_month: '2026-05',
+                    report_status: 'draft',
+                    settlement_model: 'legacy_v1',
+                    finance_transaction_id: null,
+                    reversal_transaction_id: null,
+                    committed_at: null,
+                    committed_by: null,
+                    installment_id: null
+                }] };
+            }
             assert.match(sql, /stored_report_coverage/);
             assert.match(sql, /COALESCE\(s\.is_freelance, false\)/);
             return { rows: [{
@@ -1871,7 +1920,7 @@ test('off-roster payroll draft reconciliation exposes safe categories without PI
     assert.equal(result.reports[0].staffId, 7);
 });
 
-test('payroll routes use the shared allocation service and export one employee row with breakdown', () => {
+test('payroll routes use the shared allocation service and export installment rows with breakdown', () => {
     const root = path.join(__dirname, '..');
     const hrRoute = fs.readFileSync(path.join(root, 'routes', 'hr.js'), 'utf8');
     const payrollRoute = fs.readFileSync(path.join(root, 'routes', 'payroll.js'), 'utf8');
@@ -1884,10 +1933,11 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(hrRoute, /loadPayrollProfileContext\(staffIds, \{ from: period\.from, to: period\.to \}, db\)/);
     assert.match(hrRoute, /calculateProfessionPay\(staff, scheme, metrics, professionRateMap, payrollProfileContext\)/);
     assert.match(hrRoute, /applyHrPayrollSnapshot\(calculatedRow, row\)/);
-    assert.match(hrRoute, /router\.get\('\/salary', requirePayrollControl[\s\S]*loadPayrollCalculation\(req\.query\.month, pool/);
-    assert.match(hrRoute, /router\.get\('\/salary\/reconciliation', requirePayrollControl/);
-    assert.match(hrRoute, /router\.post\('\/salary\/commit'[\s\S]*const calculation = await loadPayrollCalculation\(month, client\)/);
-    assert.match(hrRoute, /assertPayrollRowsCommitReady\(calculation\.data\)/);
+    assert.match(hrRoute, /router\.get\('\/salary', requirePayrollView[\s\S]*loadPayrollCalculation\(req\.query\.month, pool/);
+    assert.match(hrRoute, /router\.get\('\/salary\/reconciliation', requirePayrollView/);
+    assert.match(hrRoute, /router\.post\('\/salary\/commit'[\s\S]*PAYROLL_LEGACY_COMMIT_DISABLED/);
+    assert.doesNotMatch(hrRoute, /router\.post\('\/salary\/commit'[\s\S]*generatePayrollReports\(month, req\.user\)/);
+    assert.match(hrRoute, /replacementEndpoint: isPayrollInstallmentsActivationMonth\(month\)[\s\S]*'\/api\/hr\/salary\/installments\/calculate'/);
     assert.match(hrRoute, /loadOffRosterDraftReportReconciliation\(\s*month,\s*data\.map\(row => row\.staff_id\),\s*db\s*\)/);
     assert.match(hrRoute, /offRosterDraftReports/);
     assert.match(hrRoute, /PAYROLL_COMPENSATION_SNAPSHOT_BLOCKED|err\.code \|\| null/);
@@ -1895,7 +1945,9 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(hrRoute, /loadActivePayrollSchemeMap\(staffIds, month, db\)/);
     assert.match(hrRoute, /reconciliation: row\.reconciliation/);
     assert.match(payrollRoute, /router\.get\('\/export'/);
-    assert.match(payrollRoute, /report\.staff\.map\(row =>/);
+    assert.match(payrollRoute, /report\.staff\.flatMap\(row =>/);
+    assert.match(payrollRoute, /payrollInstallmentsForExport\(row\)/);
+    assert.match(payrollRoute, /payrollInstallmentExportFields\(installment\)/);
     assert.match(payrollRoute, /professionRateSummary/);
     assert.match(payrollRoute, /item\.rate_source/);
     assert.match(payrollRoute, /item\.profile_title/);
@@ -1905,10 +1957,15 @@ test('payroll routes use the shared allocation service and export one employee r
     assert.match(payrollRoute, /'additional_profession', 'additional_rate', 'additional_multiplier', 'additional_amount'/);
     assert.match(payrollRoute, /'payroll_blocking_codes', 'payroll_blocking_details'/);
     assert.match(payrollRoute, /'additional_line_status', 'blocker_code', 'blocker_message'/);
-    assert.match(payrollRoute, /'reconciliation_scope', 'payroll_report_id', 'report_status', 'off_roster_reason', 'staff_status'/);
+    assert.match(payrollRoute, /'reconciliation_scope', 'payroll_report_id', 'report_status'/);
+    assert.match(payrollRoute, /'installment_kind', 'earning_range', 'scheduled_payment_date', 'actual_payment_dates'/);
+    assert.match(payrollRoute, /'calculated_amount', 'locked_amount', 'paid_amount', 'balance_amount'/);
+    assert.match(payrollRoute, /'off_roster_reason', 'staff_status'/);
     assert.match(payrollRoute, /offRosterDraftReports\(report\)/);
     assert.match(payrollRoute, /workbook\.addWorksheet\('Reconciliation'\)/);
-    assert.match(payrollRoute, /router\.use\(requireRole\('creator', 'director', 'accountant'\)\)/);
+    assert.doesNotMatch(payrollRoute, /router\.use\(requireRole/);
+    assert.match(payrollRoute, /router\.get\('\/schemes', requireAction\('view_payroll'\)/);
+    assert.match(payrollRoute, /router\.post\('\/generate', requireAction\('manage_payroll_accrual'\)/);
     assert.match(payrollRoute, /router\.get\('\/export-xlsx'/);
     assert.match(payrollRoute, /workbook\.addWorksheet\('Additional lines'\)/);
     assert.match(payrollRoute, /function payrollAdditionalLineRows/);
@@ -1968,7 +2025,9 @@ test('payroll profile resolver keeps profile query budget batched by staff and p
     assert.match(contextLoader, /assignment\.staff_id = ANY\(\$1::int\[\]\)/);
     assert.match(contextLoader, /profile_id = ANY\(\$1::bigint\[\]\)/);
     assert.match(contextLoader, /profile_version_id = ANY\(\$1::bigint\[\]\)/);
-    assert.match(contextLoader, /Promise\.all\(\[/);
+    assert.doesNotMatch(contextLoader, /Promise\.all\(\[/);
+    assert.match(contextLoader, /const assignmentResult = await db\.query/);
+    assert.match(contextLoader, /const defaultResult = await db\.query/);
     assert.doesNotMatch(contextLoader, /for\s*\([^)]*staffId[^)]*\)[\s\S]*db\.query/);
     assert.doesNotMatch(contextLoader, /for\s*\([^)]*profileId[^)]*\)[\s\S]*db\.query/);
 });

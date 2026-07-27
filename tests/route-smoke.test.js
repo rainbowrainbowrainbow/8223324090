@@ -1914,6 +1914,9 @@ function createFakePool() {
                     const index = Number(text.match(/sa\.type = \$(\d+)/i)[1]) - 1;
                     rows = rows.filter(row => String(row.type) === String(params[index]));
                 }
+                if (/sa\.type IN \('zrs', 'advance'\)/i.test(text)) {
+                    rows = rows.filter(row => ['zrs', 'advance'].includes(String(row.type)));
+                }
                 if (/s\.name ILIKE \$\d+/i.test(text) || /COALESCE\(sa\.reason, ''\) ILIKE \$\d+/i.test(text)) {
                     const likeMatch = text.match(/s\.name ILIKE \$(\d+)/i) || text.match(/COALESCE\(sa\.reason, ''\) ILIKE \$(\d+)/i);
                     const index = Number(likeMatch[1]) - 1;
@@ -1938,7 +1941,8 @@ function createFakePool() {
                 }
                 if (/COALESCE\(sa\.status, 'applied'\) = 'voided'/i.test(whereText)) {
                     rows = rows.filter(row => String(row.status || 'applied') === 'voided');
-                }                return rows;
+                }
+                return rows;
             };
             if (/SELECT COUNT\(\*\)::int AS total\s+FROM salary_adjustments sa/i.test(text)) {
                 const rows = salaryAdjustmentRowsForQuery();
@@ -3907,6 +3911,17 @@ function createFakePool() {
                         || Number(b.id || 0) - Number(a.id || 0)
                     );
                 return { rows: rows.slice(0, 1).map(row => ({ ...row })), rowCount: rows.length ? 1 : 0 };
+            }
+            if (/to_regclass\('public\.payroll_reports'\)/i.test(text)
+                && /to_regclass\('public\.payroll_installments'\)/i.test(text)
+                && /to_regclass\('public\.payroll_payment_movements'\)/i.test(text)) {
+                return {
+                    rows: [{
+                        reports_rel: null,
+                        installments_rel: null,
+                        movements_rel: null
+                    }]
+                };
             }
 
             throw new Error(`Unexpected route-smoke DB query: ${text}`);
@@ -6557,8 +6572,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(deniedMutation.data.error, 'Insufficient permissions');
     });
 
-    it('keeps HR salary and reconciliation unavailable to HR viewers without payroll control', async () => {
-        for (const role of ['manager', 'hr', 'security']) {
+    it('keeps HR salary and reconciliation unavailable without payroll-specific actions', async () => {
+        for (const role of ['manager', 'security', 'admin']) {
             const headers = withAuth({}, role);
             const salary = await request(
                 'GET',
@@ -6588,7 +6603,7 @@ describe('route-level API safety smoke', () => {
             assert.equal(zrsJournal.data.error, 'Insufficient permissions');
         }
 
-        for (const role of ['creator', 'admin']) {
+        for (const role of ['creator', 'director', 'hr']) {
             const zrsJournal = await request(
                 'GET',
                 '/api/hr/salary/adjustments?month=2026-05&type=advance',
@@ -6758,10 +6773,20 @@ describe('route-level API safety smoke', () => {
         }, withAuth({}, 'security'));
         assert.equal(securityCreate.status, 403, JSON.stringify(securityCreate.data));
 
+        const legacyAdvanceCreate = await request('POST', '/api/hr/salary/adjustment', {
+            staff_id: 45,
+            month: '2026-05',
+            type: 'advance',
+            amount: 10
+        }, withAuth());
+        assert.equal(legacyAdvanceCreate.status, 400, JSON.stringify(legacyAdvanceCreate.data));
+        assert.equal(legacyAdvanceCreate.data.code, 'PAYROLL_LEGACY_ADVANCE_WRITE_BLOCKED');
+        assert.equal(legacyAdvanceCreate.data.replacementType, 'zrs');
+
         const invalidStaff = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 'not-a-number',
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: 10
         }, withAuth());
         assert.equal(invalidStaff.status, 400, JSON.stringify(invalidStaff.data));
@@ -6770,7 +6795,7 @@ describe('route-level API safety smoke', () => {
         const missingStaff = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 999,
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: 10
         }, withAuth());
         assert.equal(missingStaff.status, 404, JSON.stringify(missingStaff.data));
@@ -6779,7 +6804,7 @@ describe('route-level API safety smoke', () => {
         const inactiveStaff = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 51,
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: 10
         }, withAuth());
         assert.equal(inactiveStaff.status, 409, JSON.stringify(inactiveStaff.data));
@@ -6788,7 +6813,7 @@ describe('route-level API safety smoke', () => {
         const invalidAmount = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: -10
         }, withAuth());
         assert.equal(invalidAmount.status, 400, JSON.stringify(invalidAmount.data));
@@ -6797,7 +6822,7 @@ describe('route-level API safety smoke', () => {
         const lockedCreate = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-04',
-            type: 'advance',
+            type: 'zrs',
             amount: 10
         }, withAuth());
         assert.equal(lockedCreate.status, 423, JSON.stringify(lockedCreate.data));
@@ -6808,7 +6833,7 @@ describe('route-level API safety smoke', () => {
         const validCreate = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: 10,
             reason: ''
         }, withAuth());

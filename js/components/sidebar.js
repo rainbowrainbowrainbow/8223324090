@@ -136,6 +136,14 @@ const Sidebar = (() => {
         hotLeads: 0,
         newLeads: 0
     };
+
+    function _isAuthenticatedSidebarRuntimeReady() {
+        if (typeof window.isAuthenticatedRuntimeReady === 'function') {
+            return window.isAuthenticatedRuntimeReady();
+        }
+        return Boolean(typeof AppState !== 'undefined' && AppState.currentUser);
+    }
+
     const _commandState = { ...COMMAND_DEFAULT_STATE };
     const SIDEBAR_COMPONENTS = Object.freeze({
         SidebarShell: 'sidebar-nav',
@@ -1489,6 +1497,7 @@ const Sidebar = (() => {
     }
 
     function _refreshSidebarOperationalWidgets() {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         _fetchLiveBadges();
         _refreshTaskMiniWidget();
         _refreshFunnelWidget();
@@ -1672,6 +1681,7 @@ const Sidebar = (() => {
     }
 
     function _ensureSidebarBusinessProfile(user = _getCurrentSidebarUser()) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return null;
         const api = window.CrmBusinessContext;
         if (typeof api?.hydrateProfile !== 'function') return null;
         const context = api.current?.(user) || 'event_genix';
@@ -2350,6 +2360,7 @@ const Sidebar = (() => {
     }
 
     async function _fetchSidebarTimelineSummaryMode(requested, modeKey, options = {}) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return null;
         const mode = _sidebarNormalizeTimelineMode(modeKey);
         if (!mode) return null;
         const model = _sidebarTimelineBuildSummary({ ...requested, timelineView: mode, status: 'loading' });
@@ -2404,6 +2415,7 @@ const Sidebar = (() => {
     }
 
     function _refreshSidebarTimelineSummary(options = {}) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (options.clearCache) _state.timelineSummaryCache.clear();
         const requested = {
             date: _sidebarTimelineCurrentDate(),
@@ -2870,6 +2882,7 @@ const Sidebar = (() => {
 
     // ═══ LIVE BADGES ═══
     async function _fetchLiveBadges() {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.badgeTimer) {
             clearTimeout(_state.badgeTimer);
             _state.badgeTimer = null;
@@ -3496,6 +3509,7 @@ const Sidebar = (() => {
     }
 
     async function _fetchSidebarWidget(type) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) throw new Error('sidebar runtime is not authenticated');
         const url = SIDEBAR_IDENTITY_WIDGETS[type];
         if (!url) throw new Error(`unknown sidebar widget ${type}`);
         const token = localStorage.getItem('pzp_token');
@@ -3507,6 +3521,7 @@ const Sidebar = (() => {
     }
 
     async function _fetchSidebarCurrencyFallback() {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return null;
         if (!_canUseSidebarFinanceCurrencyFallback()) return null;
         const token = localStorage.getItem('pzp_token');
         const response = await fetch('/api/finance/currency/rates', {
@@ -3557,6 +3572,7 @@ const Sidebar = (() => {
     }
 
     async function _loadSidebarIdentityMeta(force = false) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (!_isSidebarCurrencySignalEnabled()) {
             _state.identityMetaDetails.currency = null;
             return;
@@ -3848,6 +3864,7 @@ const Sidebar = (() => {
     }
 
     async function _refreshTaskMiniWidget() {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.taskWidgetTimer) {
             clearTimeout(_state.taskWidgetTimer);
             _state.taskWidgetTimer = null;
@@ -3924,6 +3941,7 @@ const Sidebar = (() => {
     }
 
     async function _refreshFunnelWidget() {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.funnelWidgetTimer) {
             clearTimeout(_state.funnelWidgetTimer);
             _state.funnelWidgetTimer = null;
@@ -4589,6 +4607,13 @@ const Sidebar = (() => {
     });
     window.addEventListener('crm:tasks-updated', () => {
         _refreshTaskMiniWidget();
+    });
+    window.addEventListener('crm:authenticated-runtime-ready', () => {
+        void _ensureSidebarBusinessProfile();
+        _refreshSidebarOperationalWidgets();
+        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        void _loadSidebarIdentityMeta(true);
+        initUserCard();
     });
     window.addEventListener('crmBusinessContextChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

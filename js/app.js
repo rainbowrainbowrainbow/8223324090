@@ -76,6 +76,26 @@ const ProductSalesState = {
 // ==========================================
 
 let _appBootstrapInitialized = false;
+let _authenticatedAppRuntimeInitialized = false;
+
+function isAuthenticatedAppRuntimeReady() {
+    if (typeof window.isAuthenticatedRuntimeReady === 'function') {
+        return window.isAuthenticatedRuntimeReady();
+    }
+    return Boolean(typeof AppState !== 'undefined' && AppState.currentUser);
+}
+
+function initializeAuthenticatedAppRuntime() {
+    if (_authenticatedAppRuntimeInitialized) return true;
+    if (!isAuthenticatedAppRuntimeReady()) return false;
+
+    _authenticatedAppRuntimeInitialized = true;
+    if (typeof initBookingPackageWorkspace === 'function') initBookingPackageWorkspace();
+    return true;
+}
+
+window.addEventListener('crm:authenticated-runtime-ready', initializeAuthenticatedAppRuntime);
+
 function bootstrapInitializeApp() {
     if (_appBootstrapInitialized) return;
     _appBootstrapInitialized = true;
@@ -273,7 +293,6 @@ function initializeApp() {
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
     if (typeof initCustomerCRM === 'function') initCustomerCRM();
-    if (typeof initBookingPackageWorkspace === 'function') initBookingPackageWorkspace();
     // v20.11.0: Initialize form validation
     if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
     // v30.3: Timeline search + keyboard shortcuts + redo
@@ -288,7 +307,9 @@ function initializeApp() {
     // Protected deep links may open only after the server has accepted the session.
     Promise.resolve(sessionCheck)
         .then(authenticated => {
-            if (authenticated) _checkAutoOpen();
+            if (!authenticated) return;
+            initializeAuthenticatedAppRuntime();
+            _checkAutoOpen();
         })
         .catch(error => console.warn('[app] Session initialization failed', error));
 }

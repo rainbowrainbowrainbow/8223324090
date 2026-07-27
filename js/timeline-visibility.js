@@ -203,6 +203,9 @@
     }
 
     function hasAuthenticatedTimelineUser() {
+        if (typeof window.isAuthenticatedRuntimeReady === 'function') {
+            return window.isAuthenticatedRuntimeReady();
+        }
         return Boolean(window.AppState?.currentUser);
     }
 
@@ -1050,6 +1053,7 @@
         applyVisibility();
         refreshAccess();
         window.addEventListener('app:user-changed', refreshAccess);
+        window.addEventListener('crm:authenticated-runtime-ready', refreshAccess);
         window.addEventListener('timeline:visibility-refresh', applyVisibility);
         window.addEventListener('timeline:view-changed', () => {
             loadServerSettings().then(() => {

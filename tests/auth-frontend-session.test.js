@@ -10,6 +10,8 @@ const AUTH_CODE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 const ALERTS_CODE = fs.readFileSync(path.join(ROOT, 'js', 'alerts.js'), 'utf8');
 const APP_CODE = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
 const TIMELINE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
+const TIMELINE_VISIBILITY_CODE = fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8');
+const SIDEBAR_CODE = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
@@ -442,8 +444,8 @@ test('timeline and deep-link loaders wait for successful session verification', 
     const renderTimelineBlock = TIMELINE_CODE.slice(renderTimelineStart, renderTimelineEnd);
 
     assert.match(initializeAppBlock, /const sessionCheck = checkSession\(\)/);
-    assert.match(initializeAppBlock, /Promise\.resolve\(sessionCheck\)[\s\S]*if \(authenticated\) _checkAutoOpen\(\)/);
-    assert.doesNotMatch(initializeAppBlock, /AppState\.nowLineInterval[^]*\n\s*_checkAutoOpen\(\);/);
+    assert.match(initializeAppBlock, /Promise\.resolve\(sessionCheck\)[\s\S]*if \(!authenticated\) return;[\s\S]*initializeAuthenticatedAppRuntime\(\);[\s\S]*_checkAutoOpen\(\)/);
+    assert.doesNotMatch(initializeAppBlock, /initBookingPackageWorkspace\(\)/);
     assert.match(
         renderTimelineBlock,
         /if \(typeof window\.isAuthenticatedRuntimeReady === 'function' && !window\.isAuthenticatedRuntimeReady\(\)\) \{\s*queueTimelineRenderAfterAuthenticatedRuntimeReady\(\);\s*return false;/
@@ -451,6 +453,43 @@ test('timeline and deep-link loaders wait for successful session verification', 
     assert.ok(
         renderTimelineBlock.indexOf('isAuthenticatedRuntimeReady') < renderTimelineBlock.indexOf('getBookingsForDate'),
         'auth guard must run before protected timeline API loaders'
+    );
+});
+
+test('shared protected bootstrap waits for authenticated runtime readiness', () => {
+    const authenticatedRuntimeStart = APP_CODE.indexOf('function initializeAuthenticatedAppRuntime()');
+    const authenticatedRuntimeEnd = APP_CODE.indexOf('function bootstrapInitializeApp()', authenticatedRuntimeStart);
+    const authenticatedRuntimeBlock = APP_CODE.slice(authenticatedRuntimeStart, authenticatedRuntimeEnd);
+
+    assert.ok(authenticatedRuntimeStart >= 0);
+    assert.match(authenticatedRuntimeBlock, /if \(!isAuthenticatedAppRuntimeReady\(\)\) return false;/);
+    assert.match(authenticatedRuntimeBlock, /initBookingPackageWorkspace\(\)/);
+    assert.match(APP_CODE, /window\.addEventListener\('crm:authenticated-runtime-ready', initializeAuthenticatedAppRuntime\)/);
+
+    assert.match(
+        SIDEBAR_CODE,
+        /function _isAuthenticatedSidebarRuntimeReady\(\) \{[\s\S]*window\.isAuthenticatedRuntimeReady\(\)/
+    );
+    for (const functionName of [
+        '_ensureSidebarBusinessProfile',
+        '_refreshSidebarOperationalWidgets',
+        '_refreshSidebarTimelineSummary',
+        '_loadSidebarIdentityMeta'
+    ]) {
+        const start = SIDEBAR_CODE.indexOf(`function ${functionName}(`);
+        const next = SIDEBAR_CODE.indexOf('\n    function ', start + 1);
+        const block = SIDEBAR_CODE.slice(start, next > start ? next : undefined);
+        assert.ok(start >= 0, `${functionName} is missing`);
+        assert.match(block, /_isAuthenticatedSidebarRuntimeReady\(\)/, `${functionName} must be auth-ready gated`);
+    }
+    assert.match(SIDEBAR_CODE, /window\.addEventListener\('crm:authenticated-runtime-ready', \(\) => \{/);
+    assert.match(
+        TIMELINE_VISIBILITY_CODE,
+        /function hasAuthenticatedTimelineUser\(\) \{[\s\S]*window\.isAuthenticatedRuntimeReady\(\)/
+    );
+    assert.match(
+        TIMELINE_VISIBILITY_CODE,
+        /window\.addEventListener\('crm:authenticated-runtime-ready', refreshAccess\)/
     );
 });
 

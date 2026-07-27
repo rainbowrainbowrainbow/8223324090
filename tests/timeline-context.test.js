@@ -548,6 +548,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     const window = {
         location,
         localStorage,
+        isAuthenticatedRuntimeReady: () => true,
         addEventListener(type, listener) {
             const listeners = windowListeners.get(type) || [];
             listeners.push(listener);

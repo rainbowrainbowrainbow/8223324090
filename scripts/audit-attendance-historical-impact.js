@@ -11,7 +11,7 @@
 const { Pool } = require('pg');
 
 const VALID_PLAN_SOURCES = new Set(['hr_shift', 'profession_card', 'unscheduled', 'attendance_snapshot']);
-const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update']);
+const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update', '--backfill']);
 const CATEGORY_LATE_GRACE = 'late-grace';
 const CATEGORY_OVERTIME_GRACE = 'overtime-grace';
 const CATEGORY_MISSING_PLAN_SOURCE = 'missing-plan-source';
@@ -31,13 +31,13 @@ function usage() {
         '  node scripts/audit-attendance-historical-impact.js [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--business-context key] [--categories late-grace,overtime-grace] [--format json|markdown]',
         '',
         'Connection:',
-        '  ATTENDANCE_AUDIT_DATABASE_URL, PRODUCTION_READONLY_DATABASE_URL, DATABASE_URL, or PG* environment variables.',
+        '  ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL.',
         '',
         'Categories:',
         '  late-grace, overtime-grace, missing-plan-source, inferred-profession-card, null-zero-negative-late',
         '',
         'Safety:',
-        '  Read-only only. --apply/--fix/--write/--execute/--update are refused.'
+        '  Read-only only. --apply/--fix/--write/--execute/--update/--backfill are refused.'
     ].join('\n');
 }
 
@@ -105,27 +105,22 @@ function parseArgs(argv) {
     return options;
 }
 
-function poolConfig() {
-    const connectionString = process.env.ATTENDANCE_AUDIT_DATABASE_URL
-        || process.env.PRODUCTION_READONLY_DATABASE_URL
-        || process.env.DATABASE_URL
-        || '';
-    if (connectionString) {
-        return {
-            connectionString,
-            ssl: { rejectUnauthorized: false },
-            application_name: 'attendance_historical_readonly_audit'
-        };
-    }
-    if (!process.env.PGDATABASE) {
-        throw new Error('Set ATTENDANCE_AUDIT_DATABASE_URL, PRODUCTION_READONLY_DATABASE_URL, DATABASE_URL, or PGDATABASE/PG* before running the audit');
+function poolConfig(env = process.env) {
+    const connectionString = String(
+        env.ATTENDANCE_AUDIT_DATABASE_URL
+        || env.PRODUCTION_READONLY_DATABASE_URL
+        || ''
+    ).trim();
+    if (!connectionString) {
+        const error = new Error(
+            'Set ATTENDANCE_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL before running the read-only attendance audit'
+        );
+        error.code = 'ATTENDANCE_AUDIT_READ_ONLY_DATABASE_REQUIRED';
+        throw error;
     }
     return {
-        host: process.env.PGHOST,
-        port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
-        database: process.env.PGDATABASE,
-        user: process.env.PGUSER,
-        password: process.env.PGPASSWORD,
+        connectionString,
+        ssl: env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
         application_name: 'attendance_historical_readonly_audit'
     };
 }
@@ -378,10 +373,14 @@ async function loadIssueMatrix(client, options) {
 
 async function loadPayrollImpact(client, options) {
     const hasReports = await tableExists(client, 'payroll_reports');
+    const hasInstallments = await tableExists(client, 'payroll_installments');
+    const hasMovements = await tableExists(client, 'payroll_payment_movements');
     const hasLocks = await tableExists(client, 'payroll_period_locks');
     if (!hasReports) {
         return {
             payrollReportsTablePresent: false,
+            payrollInstallmentsTablePresent: hasInstallments,
+            payrollPaymentMovementsTablePresent: hasMovements,
             payrollPeriodLocksTablePresent: hasLocks,
             periods: []
         };
@@ -458,8 +457,59 @@ async function loadPayrollImpact(client, options) {
         if (!statusesByMonth.has(month)) statusesByMonth.set(month, {});
         statusesByMonth.get(month)[row.status] = Number(row.reports || 0);
     }
+    const outstandingByMonth = new Map();
+    if (hasInstallments && hasMovements) {
+        const outstandingRows = await client.query(
+            `${candidateCte(where, options.categories)},
+             dedup AS (
+                SELECT DISTINCT staff_id, period_month
+                FROM candidates
+             ),
+             installments AS (
+                SELECT pr.period_month,
+                       pi.id,
+                       GREATEST(COALESCE(pi.locked_amount, 0), 0)::numeric AS due_amount
+                FROM dedup d
+                JOIN payroll_reports pr
+                     ON pr.period_month = d.period_month
+                    AND pr.staff_id = d.staff_id
+                JOIN payroll_installments pi ON pi.payroll_report_id = pr.id
+                WHERE pr.voided_at IS NULL
+                  AND COALESCE(pr.settlement_model, 'legacy_v1') = 'installments_v1'
+                  AND pi.workflow_status = 'approved'
+             ),
+             movement_totals AS (
+                SELECT ppm.installment_id,
+                       COALESCE(SUM(ppm.amount) FILTER (WHERE ppm.movement_type = 'payment'), 0)::numeric AS payments,
+                       COALESCE(SUM(ppm.amount) FILTER (WHERE ppm.movement_type = 'reversal'), 0)::numeric AS reversals
+                FROM payroll_payment_movements ppm
+                JOIN installments i ON i.id = ppm.installment_id
+                GROUP BY ppm.installment_id
+             ),
+             balances AS (
+                SELECT i.period_month,
+                       GREATEST(i.due_amount - GREATEST(COALESCE(mt.payments, 0) - COALESCE(mt.reversals, 0), 0), 0)::numeric AS outstanding_amount
+                FROM installments i
+                LEFT JOIN movement_totals mt ON mt.installment_id = i.id
+             )
+             SELECT period_month,
+                    COUNT(*) FILTER (WHERE outstanding_amount > 0)::int AS outstanding_installments,
+                    COALESCE(SUM(outstanding_amount) FILTER (WHERE outstanding_amount > 0), 0)::numeric AS outstanding_amount
+             FROM balances
+             GROUP BY period_month`,
+            where.values
+        );
+        for (const row of outstandingRows.rows) {
+            outstandingByMonth.set(row.period_month, {
+                outstandingInstallments: Number(row.outstanding_installments || 0),
+                outstandingInstallmentAmount: Number(row.outstanding_amount || 0)
+            });
+        }
+    }
     return {
         payrollReportsTablePresent: true,
+        payrollInstallmentsTablePresent: hasInstallments,
+        payrollPaymentMovementsTablePresent: hasMovements,
         payrollPeriodLocksTablePresent: hasLocks,
         periods: result.rows.map(row => ({
             month: row.period_month,
@@ -470,6 +520,8 @@ async function loadPayrollImpact(client, options) {
             payrollReports: Number(row.payroll_reports || 0),
             closedPayrollReports: Number(row.closed_payroll_reports || 0),
             paidPayrollReports: Number(row.paid_payroll_reports || 0),
+            outstandingInstallments: outstandingByMonth.get(row.period_month)?.outstandingInstallments || 0,
+            outstandingInstallmentAmount: outstandingByMonth.get(row.period_month)?.outstandingInstallmentAmount || 0,
             payrollReportStatuses: statusesByMonth.get(row.period_month) || {}
         }))
     };
@@ -477,7 +529,7 @@ async function loadPayrollImpact(client, options) {
 
 function riskFromPayrollImpact(payrollImpact) {
     const periods = payrollImpact.periods || [];
-    if (periods.some(period => period.payrollPeriodLocked || period.paidPayrollReports > 0)) return 'high';
+    if (periods.some(period => period.payrollPeriodLocked || period.paidPayrollReports > 0 || period.outstandingInstallments > 0)) return 'high';
     if (periods.some(period => period.closedPayrollReports > 0)) return 'medium';
     if (periods.some(period => period.payrollReports > 0)) return 'low';
     return 'none_detected';
@@ -618,6 +670,7 @@ module.exports = {
     candidateCte,
     normalizeCategories,
     parseArgs,
+    poolConfig,
     runAudit,
     renderMarkdown
 };

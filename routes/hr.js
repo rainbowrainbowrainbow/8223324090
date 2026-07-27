@@ -24,7 +24,9 @@ const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 const {
     DEFAULT_BUSINESS_CONTEXT,
-    businessContextFromRequest
+    businessContextFromRequest,
+    requireWritableBusinessScope,
+    resolveBusinessScope
 } = require('../services/businessContext');
 const {
     lockAttendanceWriteMaintenance,
@@ -115,25 +117,35 @@ const {
 const {
     acquirePayrollPeriodMutationLock,
     assertPayrollPeriodOpen,
+    closePayrollPeriod,
     loadPayrollPeriodEvents,
     loadPayrollPeriodLock,
     loadPayrollReconciliation,
     payrollMonthRange,
     payrollPeriodRange,
-    recordPayrollPeriodEvent,
-    requirePayrollMonth,
-    setPayrollPeriodLock
+    requirePayrollMonth
 } = require('../services/hrPayrollPeriod');
 const {
-    assertPayrollRowsCommitReady,
+    approvePayrollInstallment,
+    cancelPayrollAdvanceInstallment,
     buildPayrollTransparencyMetrics,
     calculateProfessionPay,
+    generatePayrollReports,
+    getPayrollSettlement,
+    getPayrollRangePreview,
+    getSalaryReport,
     loadActivePayrollSchemeMap,
     loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
     loadPayrollProfileContext,
-    loadProfessionRateMap
+    loadProfessionRateMap,
+    normalizePayrollAdjustmentType
 } = require('../services/payroll');
+const {
+    isPayrollInstallmentsActivationMonth,
+    loadStaffOutstandingPayrollInstallments,
+    PAYROLL_SETTLEMENT_MODELS
+} = require('../services/payrollSettlement');
 const {
     createStaffPayrollScheme,
     loadStaffPayrollSchemeWorkspace
@@ -221,20 +233,27 @@ const {
 // RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
 const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
-const PAYROLL_CONTROL_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
 const requireHrManage = requireAction('manage_staff');
-const requirePayrollControl = (req, res, next) => {
-    if (!req.user || !userHasAnyRole(req.user, PAYROLL_CONTROL_ROLES)) {
-        return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-};
-const requireZrsManage = (req, res, next) => {
-    if (!req.user || !userHasAnyRole(req.user, PAYROLL_CONTROL_ROLES) || !canUseAction(req.user, 'manage_staff')) {
-        return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-};
+const requirePayrollView = requireAction('view_payroll');
+const requirePayrollAccrual = requireAction('manage_payroll_accrual');
+const requirePayrollApproval = requireAction('approve_payroll_installment');
+const requirePayrollReverse = requireAction('reverse_payroll_payment');
+const requirePayrollClose = requireAction('close_payroll_period');
+const requirePayrollRules = requireAction('manage_payroll_rules');
+
+function payrollActivationPayload(month) {
+    const active = isPayrollInstallmentsActivationMonth(month);
+    return {
+        active,
+        readOnly: !active,
+        settlementModel: active ? PAYROLL_SETTLEMENT_MODELS.INSTALLMENTS : PAYROLL_SETTLEMENT_MODELS.LEGACY,
+        calculateEndpoint: active ? '/api/hr/salary/installments/calculate' : null,
+        legacyCommitDisabled: true,
+        legacyReverseDisabled: true,
+        legacyReopenDisabled: true,
+        movementReversalEndpoint: '/api/payroll/payments/:id/reverse'
+    };
+}
 const ZRS_ERROR_CODES = Object.freeze({
     INVALID_STAFF_ID: 'ZRS_INVALID_STAFF_ID',
     STAFF_NOT_FOUND: 'ZRS_STAFF_NOT_FOUND',
@@ -302,7 +321,7 @@ router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) 
 const log = createLogger('HR');
 
 function canViewPayrollDetails(user = {}) {
-    return userHasAnyRole(user, PAYROLL_CONTROL_ROLES);
+    return canUseAction(user, 'view_payroll');
 }
 
 function attendanceKpiOvertimeMinutesSql(alias = 'tr') {
@@ -790,6 +809,7 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
          LIMIT 10`,
         [staffId]
     );
+    const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(staffId, db);
 
     const accounts = activeAccounts.rows.map(row => staffOffboardingAccountMeta(row, currentUserId));
     const openResourceCount = openResources.rows[0]?.total_count || 0;
@@ -808,10 +828,14 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
         active_accounts: accounts,
         document_alert_count: documentAlertCount,
         document_alerts: documentAlerts.rows.map(staffOffboardingDocumentAlertMeta),
+        outstanding_payroll_installment_count: Number(outstandingInstallments.count || 0),
+        outstanding_payroll_installment_amount: Number(outstandingInstallments.amount || 0),
         disable_available: blockedAccounts.length === 0,
         disable_blockers: blockedAccounts,
         disable_requires_manage_accounts: accounts.length > 0,
-        ready_for_closure: openResourceCount === 0 && documentAlertCount === 0
+        ready_for_closure: openResourceCount === 0
+            && documentAlertCount === 0
+            && Number(outstandingInstallments.count || 0) === 0
     };
 }
 
@@ -884,6 +908,7 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
         shiftResult,
         openTimeResult,
         payrollResult,
+        outstandingPayrollInstallments,
         offboardingEventResult,
         applicationResult,
         onboardingProgress,
@@ -961,6 +986,10 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
              WHERE staff_id = $1`,
             [id]
         ),
+        loadStaffOutstandingPayrollInstallments(id, db).catch(err => {
+            log.warn(`Lifecycle outstanding payroll installments skipped for staff ${id}: ${err.message}`);
+            return { count: 0, amount: 0, missing_table: true };
+        }),
         db.query(
             `SELECT id, status, effective_date, reason, target_pool_status, account_action, notes, completed_at, created_at
              FROM staff_offboarding_events
@@ -999,6 +1028,8 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
     const shifts = shiftResult.rows[0] || {};
     const openTime = openTimeResult.rows[0] || {};
     const payroll = payrollResult.rows[0] || {};
+    const outstandingInstallmentCount = Number(outstandingPayrollInstallments?.count || 0);
+    const outstandingInstallmentAmount = Number(outstandingPayrollInstallments?.amount || 0);
     const latestOffboarding = offboardingEventResult.rows[0] || null;
     const hiringApplication = applicationResult.rows[0] || null;
     const onboarding = onboardingProgress ? onboardingProgressMeta(onboardingProgress) : null;
@@ -1119,6 +1150,16 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
             detail: openPayrollCount ? `Незакритих payroll reports: ${openPayrollCount}.` : 'Незакритих payroll reports немає.',
             source: 'payroll_reports'
         }),
+        lifecycleChecklistItem('payroll_installments_settled', 'Payroll-виплати врегульовані', outstandingInstallmentCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'payroll',
+            count: outstandingInstallmentCount,
+            detail: outstandingInstallmentCount
+                ? `Outstanding installments: ${outstandingInstallmentCount}, залишок ${Math.round(outstandingInstallmentAmount)}.`
+                : 'Outstanding installments немає.',
+            source: 'payroll_installments + payroll_payment_movements'
+        }),
         lifecycleChecklistItem('account_disabled_or_unlinked', 'Акаунт вимкнений або відвʼязаний', activeAccountCount === 0, {
             applicable: isOffboardingFlow,
             severity: 'critical',
@@ -1192,6 +1233,8 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
             future_schedule_count: futureScheduleCount,
             open_time_record_count: openTimeRecordCount,
             open_payroll_count: openPayrollCount,
+            outstanding_payroll_installment_count: outstandingInstallmentCount,
+            outstanding_payroll_installment_amount: outstandingInstallmentAmount,
             readiness_percent: readinessPercent,
             readiness_total: readinessTotal,
             onboarding_percent: onboarding?.percent ?? null,
@@ -1265,13 +1308,39 @@ async function loadStaffDeleteReadiness(staffId, db = pool, options = {}) {
         Promise.all(STAFF_DELETE_BLOCKER_CHECKS.map(check => countStaffRowsIfTableExists(db, check, staffId))),
         Promise.all(STAFF_DELETE_CLEANUP_CHECKS.map(check => countStaffRowsIfTableExists(db, check, staffId)))
     ]);
+    const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(staffId, db);
+    const installmentBlocker = outstandingInstallments.count > 0
+        ? {
+            key: 'payroll_installments_outstanding',
+            label: 'неврегульовані payroll installments',
+            count: outstandingInstallments.count,
+            amount: outstandingInstallments.amount
+        }
+        : null;
     const activeBlockers = blockers.filter(item => item.count > 0);
+    if (installmentBlocker) activeBlockers.push(installmentBlocker);
     return {
         staff: staffResult.rows[0],
         can_delete: activeBlockers.length === 0,
         required_confirmation: STAFF_DELETE_CONFIRMATION,
-        blockers: activeBlockers.map(({ key, label, count }) => ({ key, label, count })),
+        blockers: activeBlockers.map(({ key, label, count, amount }) => ({ key, label, count, ...(amount !== undefined ? { amount } : {}) })),
         cleanup: cleanup.filter(item => item.count > 0).map(({ key, label, count }) => ({ key, label, count }))
+    };
+}
+
+function staffPayrollOutstandingBlockerPayload(outstandingInstallments = {}) {
+    return {
+        success: false,
+        code: 'PAYROLL_INSTALLMENTS_OUTSTANDING',
+        error: 'Працівника не можна завершити або видалити: є неврегульовані payroll installments',
+        blocker: {
+            key: 'payroll_installments_outstanding',
+            label: 'неврегульовані payroll installments',
+            count: Number(outstandingInstallments.count || 0),
+            amount: Number(outstandingInstallments.amount || 0)
+        },
+        outstanding_payroll_installment_count: Number(outstandingInstallments.count || 0),
+        outstanding_payroll_installment_amount: Number(outstandingInstallments.amount || 0)
     };
 }
 
@@ -2252,23 +2321,50 @@ function normalizePayrollMonth(value) {
 }
 
 function payrollTotals(rows = []) {
-    return rows.reduce((acc, row) => ({
+    const paymentFactsAvailable = rows.length > 0 && rows.every(row => (
+        row.paid_amount !== null && row.paid_amount !== undefined
+        && row.balance_amount !== null && row.balance_amount !== undefined
+    ));
+    const totals = rows.reduce((acc, row) => ({
         total_base: acc.total_base + Number(row.base_salary || 0),
         total_additional: acc.total_additional + Number(row.additional_pay || 0),
         total_overtime: acc.total_overtime + Number(row.overtime_pay || 0),
         total_bonuses: acc.total_bonuses + Number(row.bonuses || 0) + Number(row.tips || 0),
+        total_kpi_bonus: acc.total_kpi_bonus + Number(row.kpi_bonus || row.kpi_bonus_amount || 0),
         total_deductions: acc.total_deductions + Number(row.deductions || 0) + Number(row.penalties || 0),
         total_advances: acc.total_advances + Number(row.advances || 0),
-        total_salary: acc.total_salary + Number(row.total_salary || 0)
+        total_salary: acc.total_salary + Number(row.total_salary || 0),
+        total_paid: acc.total_paid + Number(row.paid_amount || 0),
+        total_balance: acc.total_balance + Number(row.outstanding_amount ?? row.balance_amount ?? 0),
+        total_overpaid: acc.total_overpaid + Number(row.overpaid_amount || 0)
     }), {
         total_base: 0,
         total_additional: 0,
         total_overtime: 0,
         total_bonuses: 0,
+        total_kpi_bonus: 0,
         total_deductions: 0,
         total_advances: 0,
-        total_salary: 0
+        total_salary: 0,
+        total_paid: 0,
+        total_balance: 0,
+        total_overpaid: 0
     });
+    if (!paymentFactsAvailable) {
+        totals.total_paid = null;
+        totals.total_balance = null;
+        totals.total_overpaid = null;
+    }
+    return totals;
+}
+
+function nullablePayrollAmount(...values) {
+    for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const amount = Number(value);
+        if (Number.isFinite(amount)) return amount;
+    }
+    return null;
 }
 
 function payrollActor(user = {}) {
@@ -2380,7 +2476,7 @@ function payrollStaffStructurePayload(row = {}, structureNodeById = new Map()) {
     };
 }
 
-async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {}) {
+async function loadPayrollCalculationLegacyReference(monthValue, db = pool, periodOptions = {}) {
     const month = normalizePayrollMonth(monthValue);
     const period = payrollPeriodRange(month, periodOptions.from, periodOptions.to);
     const result = await db.query(`
@@ -2450,7 +2546,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'tip'), 0)::numeric AS tips,
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'deduction'), 0)::numeric AS deductions,
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'penalty'), 0)::numeric AS penalties,
-                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'advance'), 0)::numeric AS advances
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type IN ('advance', 'zrs')), 0)::numeric AS advances
             FROM salary_adjustments sa
             JOIN params p ON sa.month >= p.month_from AND sa.month <= p.month_to
             WHERE COALESCE(sa.status, 'applied') = 'applied'
@@ -2623,6 +2719,97 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
     };
 }
 
+function hrPayrollRowFromCanonical(row = {}) {
+    const zrsAmount = Number(row.zrsAmount ?? row.zrs_amount ?? row.advancesAmount ?? 0);
+    return {
+        staff_id: row.staffId ?? row.staff_id ?? row.id,
+        staff_name: row.name ?? row.staff_name ?? '',
+        role_type: row.roleType ?? row.role_type ?? '',
+        department: row.department ?? null,
+        company_structure_node_id: row.company_structure_node_id ?? row.companyStructureNodeId ?? null,
+        structure_node_title: row.structure_node_title ?? row.structureNodeTitle ?? null,
+        staff_department_label: row.staff_department_label ?? row.staffDepartmentLabel ?? null,
+        hourly_rate: Number(row.hourlyRate ?? row.hourly_rate ?? 0),
+        rate_unit: row.rateUnit ?? row.rate_unit ?? 'hour',
+        profession_rate_summary: row.professionRateSummary ?? row.profession_rate_summary ?? [],
+        days_worked: Number(row.daysWorked ?? row.days_worked ?? 0),
+        hours_worked: Number(row.hoursWorked ?? row.hours_worked ?? row.totalHours ?? 0),
+        physical_minutes: Number(row.physicalMinutes ?? row.physical_minutes ?? 0),
+        base_profession_allocations: row.baseProfessionAllocations ?? row.base_profession_allocations ?? [],
+        additional_profession_allocations: row.additionalProfessionAllocations ?? row.additional_profession_allocations ?? [],
+        compensation_minutes: Number(row.compensationMinutes ?? row.compensation_minutes ?? 0),
+        role_minutes: Number(row.roleMinutes ?? row.role_minutes ?? 0),
+        payroll_transparency: row.payrollTransparency ?? row.payroll_transparency ?? {},
+        physical_hours: Number(row.physicalHours ?? row.physical_hours ?? 0),
+        base_role_hours: Number(row.baseRoleHours ?? row.base_role_hours ?? 0),
+        additional_role_hours: Number(row.additionalRoleHours ?? row.additional_role_hours ?? 0),
+        additional_profession: row.additionalProfession ?? row.additional_profession ?? null,
+        additional_rate: row.additionalRate ?? row.additional_rate ?? null,
+        additional_multiplier: row.additionalMultiplier ?? row.additional_multiplier ?? null,
+        additional_roles: row.additionalRoles ?? row.additional_roles ?? [],
+        planned_hours: Math.round((Number(row.plannedMinutes ?? row.planned_minutes ?? 0) / 60) * 10) / 10,
+        overtime_hours: Math.round((Number(row.overtimeMinutes ?? row.overtime_minutes ?? 0) / 60) * 10) / 10,
+        base_salary: Number(row.baseAmount ?? row.base_salary ?? 0),
+        additional_pay: Number(row.additionalAmount ?? row.additional_pay ?? 0),
+        overtime_pay: Number(row.overtimeAmount ?? row.overtime_pay ?? 0),
+        bonuses: Number(row.bonusesAmount ?? row.bonuses ?? 0),
+        kpi_bonus: Number(row.kpiBonusAmount ?? row.kpi_bonus_amount ?? row.summary?.kpiBonus ?? row.summary?.kpi_bonus ?? 0),
+        kpi_bonus_amount: Number(row.kpiBonusAmount ?? row.kpi_bonus_amount ?? row.summary?.kpiBonus ?? row.summary?.kpi_bonus ?? 0),
+        tips: Number(row.tips ?? 0),
+        deductions: Number(row.deductionsAmount ?? row.deductions ?? 0),
+        penalties: Number(row.penalties ?? 0),
+        zrs: zrsAmount,
+        advances: zrsAmount,
+        total_salary: Number(row.netAmount ?? row.totalSalary ?? row.total_salary ?? 0),
+        allocation_issues: row.allocationIssues ?? row.allocation_issues ?? [],
+        payroll_blocking_issues: row.payrollBlockingIssues ?? row.payroll_blocking_issues ?? [],
+        payroll_lines: row.lines ?? row.payroll_lines ?? [],
+        kpi_audit_snapshot: row.kpiAuditSnapshot ?? row.kpi_audit_snapshot ?? null,
+        reconciliation: row.reconciliation ?? {},
+        payroll_status: row.status ?? row.payroll_status ?? null,
+        payroll_report_id: row.reportId ?? row.payroll_report_id ?? null,
+        settlement_model: row.settlementModel ?? row.settlement_model ?? null,
+        payroll_settlement: row.payrollSettlement ?? row.payroll_settlement ?? null,
+        installments: row.installments ?? [],
+        paid_amount: nullablePayrollAmount(row.paidAmount, row.paid_amount),
+        balance_amount: nullablePayrollAmount(row.balanceAmount, row.balance_amount, row.outstandingAmount, row.outstanding_amount),
+        outstanding_amount: nullablePayrollAmount(row.outstandingAmount, row.outstanding_amount, row.balanceAmount, row.balance_amount),
+        overpaid_amount: nullablePayrollAmount(row.overpaidAmount, row.overpaid_amount)
+    };
+}
+
+async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {}) {
+    const month = normalizePayrollMonth(monthValue);
+    const period = payrollPeriodRange(month, periodOptions.from, periodOptions.to);
+    const monthBounds = payrollMonthRange(month);
+    const fullMonth = period.from === monthBounds.from
+        && period.to === monthBounds.to
+        && period.month_from === month
+        && period.month_to === month;
+    const report = fullMonth
+        ? await getSalaryReport(month, db)
+        : await getPayrollRangePreview({
+            month,
+            from: period.from,
+            to: period.to
+        }, db);
+    const canonicalRows = Array.isArray(report.staff) ? report.staff : [];
+    const data = canonicalRows.map(hrPayrollRowFromCanonical);
+
+    return {
+        month,
+        period,
+        data,
+        totals: payrollTotals(data),
+        preview_mode: !fullMonth,
+        confirmable: fullMonth,
+        confirmation_blocked_reason: fullMonth ? null : report.confirmationBlockedReason,
+        reconciliation: report.reconciliation || {
+            offRosterDraftReports: { reports: [] }
+        }
+    };
+}
+
 async function loadKpiSnapshot(monthValue, db = pool) {
     const month = normalizePayrollMonth(monthValue);
     const result = await db.query(`
@@ -2663,7 +2850,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COUNT(t.id) FILTER (
                        WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
                          AND t.deadline IS NOT NULL
-                         AND t.deadline < NOW()
+                         AND t.deadline::date <= p.date_to
                    )::int AS tasks_overdue
             FROM tasks t
             JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
@@ -2682,6 +2869,8 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COALESCE(SUM(op.total_items), 0)::int AS onboarding_total_items,
                    COALESCE(SUM(op.completed_items), 0)::int AS onboarding_completed_items
             FROM onboarding_progress op
+            JOIN params p ON op.started_at::date <= p.date_to
+                AND (op.completed_at IS NULL OR op.completed_at::date >= p.date_from)
             GROUP BY op.staff_id
         ),
         contribution_stats AS (
@@ -2722,8 +2911,8 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COALESCE(os.onboarding_total_items, 0)::int AS onboarding_total_items,
                    COALESCE(os.onboarding_completed_items, 0)::int AS onboarding_completed_items,
                    COALESCE(cs.events_period, 0)::int AS events_period,
-                   s.avg_rating,
-                   s.total_ratings
+                   0::numeric AS avg_rating,
+                   0::int AS total_ratings
             FROM active_staff s
             LEFT JOIN shift_stats ss ON ss.staff_id = s.id
             LEFT JOIN time_stats ts ON ts.staff_id = s.id
@@ -2802,7 +2991,9 @@ async function loadKpiSnapshot(monthValue, db = pool) {
             scheduleRows: data.filter(row => row.days_scheduled > 0).length,
             taskRows: data.filter(row => row.task_kpi.tasks_assigned > 0).length,
             onboardingRows: data.filter(row => row.development_kpi.total > 0).length,
-            contributionRows: data.filter(row => row.contribution_kpi.events_period > 0 || row.contribution_kpi.total_ratings > 0).length
+            contributionRows: data.filter(row => row.contribution_kpi.events_period > 0).length,
+            ratingsSource: 'disabled_no_period_source',
+            ruleVersion: 'manual_kpi_bonus_v1'
         }
     };
 }
@@ -3802,7 +3993,7 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
     }
 });
 
-router.get('/payroll-profiles', requireHrManage, async (req, res) => {
+router.get('/payroll-profiles', requirePayrollRules, async (req, res) => {
     try {
         const data = await listPayrollProfiles(req.query);
         res.json({ success: true, data });
@@ -3811,7 +4002,7 @@ router.get('/payroll-profiles', requireHrManage, async (req, res) => {
     }
 });
 
-router.get('/payroll-profiles/diagnostics', requireHrManage, async (req, res) => {
+router.get('/payroll-profiles/diagnostics', requirePayrollRules, async (req, res) => {
     try {
         const data = await diagnosePayrollProfiles(req.query);
         res.json({ success: true, data });
@@ -3820,7 +4011,7 @@ router.get('/payroll-profiles/diagnostics', requireHrManage, async (req, res) =>
     }
 });
 
-router.post('/payroll-profiles/simulator', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/simulator', requirePayrollRules, async (req, res) => {
     try {
         const data = await simulatePayrollProfiles(req.body || {});
         res.json({ success: true, data });
@@ -3829,7 +4020,7 @@ router.post('/payroll-profiles/simulator', requireHrManage, async (req, res) => 
     }
 });
 
-router.get('/payroll-profiles/forecast', requireHrManage, async (req, res) => {
+router.get('/payroll-profiles/forecast', requirePayrollRules, async (req, res) => {
     try {
         const data = await forecastPayrollProfiles(payrollProfileQueryWithIds(req.query));
         res.json({ success: true, data });
@@ -3838,7 +4029,7 @@ router.get('/payroll-profiles/forecast', requireHrManage, async (req, res) => {
     }
 });
 
-router.post('/payroll-profiles/bulk/preview', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/bulk/preview', requirePayrollRules, async (req, res) => {
     try {
         const data = await previewPayrollProfileBulk(req.body || {});
         res.json({ success: true, data });
@@ -3847,7 +4038,7 @@ router.post('/payroll-profiles/bulk/preview', requireHrManage, async (req, res) 
     }
 });
 
-router.post('/payroll-profiles/bulk/apply', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/bulk/apply', requirePayrollRules, async (req, res) => {
     try {
         const data = await applyPayrollProfileBulk(req.body || {}, payrollProfileActor(req));
         res.json({ success: true, data });
@@ -3856,7 +4047,7 @@ router.post('/payroll-profiles/bulk/apply', requireHrManage, async (req, res) =>
     }
 });
 
-router.get('/payroll-profiles/:id', requireHrManage, async (req, res) => {
+router.get('/payroll-profiles/:id', requirePayrollRules, async (req, res) => {
     try {
         const data = await getPayrollProfile(req.params.id, {
             asOfDate: req.query.asOfDate || req.query.as_of_date
@@ -3867,7 +4058,7 @@ router.get('/payroll-profiles/:id', requireHrManage, async (req, res) => {
     }
 });
 
-router.post('/payroll-profiles', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles', requirePayrollRules, async (req, res) => {
     try {
         const data = await createPayrollProfile(req.body, payrollProfileActor(req));
         res.status(201).json({ success: true, data });
@@ -3876,7 +4067,7 @@ router.post('/payroll-profiles', requireHrManage, async (req, res) => {
     }
 });
 
-router.post('/payroll-profiles/:id/impact-preview', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/:id/impact-preview', requirePayrollRules, async (req, res) => {
     try {
         const data = await impactPayrollProfilePreview(req.params.id, req.body || {});
         res.json({ success: true, data });
@@ -3885,7 +4076,7 @@ router.post('/payroll-profiles/:id/impact-preview', requireHrManage, async (req,
     }
 });
 
-router.post('/payroll-profiles/:id/clone', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/:id/clone', requirePayrollRules, async (req, res) => {
     try {
         const data = await createPayrollProfileClone(req.params.id, req.body, payrollProfileActor(req));
         res.status(201).json({ success: true, data });
@@ -3894,7 +4085,7 @@ router.post('/payroll-profiles/:id/clone', requireHrManage, async (req, res) => 
     }
 });
 
-router.post('/payroll-profiles/:id/versions', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/:id/versions', requirePayrollRules, async (req, res) => {
     try {
         const data = await createPayrollProfileVersion(req.params.id, req.body, payrollProfileActor(req));
         res.status(201).json({ success: true, data });
@@ -3903,7 +4094,7 @@ router.post('/payroll-profiles/:id/versions', requireHrManage, async (req, res) 
     }
 });
 
-router.post('/payroll-profiles/:id/sync-from-base', requireHrManage, async (req, res) => {
+router.post('/payroll-profiles/:id/sync-from-base', requirePayrollRules, async (req, res) => {
     try {
         const data = await syncPayrollProfileFromBase(req.params.id, req.body, payrollProfileActor(req));
         res.json({ success: true, data });
@@ -3912,7 +4103,7 @@ router.post('/payroll-profiles/:id/sync-from-base', requireHrManage, async (req,
     }
 });
 
-router.put('/payroll-profiles/:id/archive', requireHrManage, async (req, res) => {
+router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res) => {
     try {
         const data = await archivePayrollProfile(req.params.id, req.body, payrollProfileActor(req));
         res.json({ success: true, data });
@@ -3921,7 +4112,7 @@ router.put('/payroll-profiles/:id/archive', requireHrManage, async (req, res) =>
     }
 });
 
-router.get('/staff/:id/payroll-profile-assignments', requireHrManage, async (req, res) => {
+router.get('/staff/:id/payroll-profile-assignments', requirePayrollRules, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileAssignments(req.params.id, {
             includePast: req.query.include_past !== 'false'
@@ -3932,7 +4123,7 @@ router.get('/staff/:id/payroll-profile-assignments', requireHrManage, async (req
     }
 });
 
-router.put('/staff/:id/payroll-profile-assignments', requireHrManage, async (req, res) => {
+router.put('/staff/:id/payroll-profile-assignments', requirePayrollRules, async (req, res) => {
     try {
         const data = await saveStaffPayrollProfileAssignments(req.params.id, req.body, payrollProfileActor(req));
         res.json({ success: true, data });
@@ -3941,7 +4132,7 @@ router.put('/staff/:id/payroll-profile-assignments', requireHrManage, async (req
     }
 });
 
-router.get('/staff/:id/payroll-profile-history', requireHrManage, async (req, res) => {
+router.get('/staff/:id/payroll-profile-history', requirePayrollRules, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileHistory(req.params.id, {
             limit: req.query.limit
@@ -3952,7 +4143,7 @@ router.get('/staff/:id/payroll-profile-history', requireHrManage, async (req, re
     }
 });
 
-router.get('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
+router.get('/staff/:id/payroll-scheme', requirePayrollRules, async (req, res) => {
     try {
         const workspace = await loadStaffPayrollSchemeWorkspace(req.params.id);
         if (!workspace) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -3963,7 +4154,7 @@ router.get('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
     }
 });
 
-router.put('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
+router.put('/staff/:id/payroll-scheme', requirePayrollRules, async (req, res) => {
     try {
         const scheme = await createStaffPayrollScheme(req.params.id, req.body, req.user);
         if (!scheme) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -4188,6 +4379,11 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         }
         const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id, actor: req.user });
         const openResourceCount = readiness.open_resource_count || 0;
+        const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);
+        if (outstandingInstallments.count > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json(staffPayrollOutstandingBlockerPayload(outstandingInstallments));
+        }
         if (accountAction === 'disable' && !readiness.disable_available) {
             await client.query('ROLLBACK');
             const blockers = readiness.disable_blockers || [];
@@ -4574,6 +4770,13 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
         if (!before.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        if (!isActive) {
+            const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);
+            if (outstandingInstallments.count > 0) {
+                await client.query('ROLLBACK');
+                return res.status(409).json(staffPayrollOutstandingBlockerPayload(outstandingInstallments));
+            }
         }
 
         const result = isActive
@@ -6828,7 +7031,7 @@ router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
         await client.query('BEGIN');
         const result = await client.query(
             `UPDATE leave_requests SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_comment = $3
-             WHERE id = $4 RETURNING *`,
+             WHERE id = $4 AND status = 'pending' RETURNING *`,
             [status, req.user?.id, comment, req.params.id]
         );
         if (result.rows.length === 0) {
@@ -6853,10 +7056,19 @@ router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
             );
 
             for (const dateStr of attendanceDates) {
+                const attendanceStatus = lr.type === 'vacation'
+                    ? 'vacation'
+                    : (lr.type === 'sick' ? 'sick' : (lr.type === 'unpaid' ? 'unpaid' : 'day_off'));
                 await recordAttendanceStatus(client, {
                     staffId: lr.staff_id,
                     recordDate: dateStr,
-                    status: lr.type === 'vacation' ? 'vacation' : lr.type === 'sick' ? 'sick' : 'day_off',
+                    status: attendanceStatus,
+                    leavePolicy: lr.type === 'unpaid' ? 'unpaid_v1' : null,
+                    leaveRequestId: lr.id,
+                    leaveType: lr.type,
+                    leaveDecidedByUserId: req.user?.id,
+                    leaveDecidedByUsername: req.user?.username,
+                    leaveDecidedAt: lr.reviewed_at,
                     notes: `Заявка #${lr.id}`,
                     businessContext: businessContextFromRequest(req),
                     performedBy: req.user?.username,
@@ -7310,7 +7522,7 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 // ==========================================
 
 // GET /api/hr/salary — full salary calculation
-router.get('/salary', requirePayrollControl, async (req, res) => {
+router.get('/salary', requirePayrollView, async (req, res) => {
     try {
         const calculation = await loadPayrollCalculation(req.query.month, pool, {
             from: req.query.from,
@@ -7324,6 +7536,7 @@ router.get('/salary', requirePayrollControl, async (req, res) => {
         res.json({
             success: true,
             ...calculation,
+            payroll_activation: payrollActivationPayload(calculation.month),
             period_lock: periodLock,
             reconciliation: {
                 ...reconciliation,
@@ -7346,29 +7559,34 @@ router.get('/salary', requirePayrollControl, async (req, res) => {
 });
 
 // POST /api/hr/salary/adjustment — add bonus/deduction/depremium
-router.post('/salary/adjustment', (req, res, next) => {
-    const adjustmentType = normalizeSalaryAdjustmentType(req.body?.type);
-    const guard = adjustmentType === 'advance' ? requireZrsManage : requireHrManage;
-    return guard(req, res, next);
-}, async (req, res) => {
+router.post('/salary/adjustment', requirePayrollAccrual, async (req, res) => {
     try {
         const { staff_id, month, type, amount, reason, template_id, violation_date, evidence_note, evidence_url } = req.body;
-        const adjustmentType = normalizeSalaryAdjustmentType(type);
+        const rawType = String(type || '').trim().toLowerCase();
+        if (rawType === 'advance') {
+            return res.status(400).json({
+                success: false,
+                code: 'PAYROLL_LEGACY_ADVANCE_WRITE_BLOCKED',
+                error: 'Тип advance є лише legacy-позначенням ЗРС. Для нового запису використовуйте zrs.',
+                replacementType: 'zrs'
+            });
+        }
+        const adjustmentType = normalizePayrollAdjustmentType(rawType);
         if (!staff_id || !month || !adjustmentType || amount === undefined) {
             return res.status(400).json({ success: false, error: 'Обовʘ?язкові: staff_id, month, type, amount' });
         }
-        if (!['bonus', 'deduction', 'penalty', 'tip', 'advance'].includes(adjustmentType)) {
+        if (!['bonus', 'kpi_bonus', 'deduction', 'penalty', 'tip', 'zrs'].includes(adjustmentType)) {
             return res.status(400).json({ success: false, error: 'Невідомий тип коригування зарплати' });
         }
 
         const payrollMonth = requirePayrollMonth(month);
         if (!payrollMonth) {
-            if (adjustmentType === 'advance') {
+            if (adjustmentType === 'zrs') {
                 return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_MONTH, 'month required (YYYY-MM)');
             }
             return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
         }
-        if (adjustmentType === 'advance') {
+        if (adjustmentType === 'zrs') {
             const parsedStaffId = parsePositiveSafeInteger(staff_id);
             if (!parsedStaffId) {
                 return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_STAFF_ID, 'Виберіть коректного працівника');
@@ -7405,7 +7623,7 @@ router.post('/salary/adjustment', (req, res, next) => {
                     `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by,
                      template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
                      violation_date, evidence_note, evidence_url)
-                     VALUES ($1,$2,'advance',$3,$4,$5,NULL,NULL,NULL,NULL,0,'custom','applied',NULL,NULL,NULL)
+                     VALUES ($1,$2,'zrs',$3,$4,$5,NULL,NULL,NULL,NULL,0,'custom','applied',NULL,NULL,NULL)
                      RETURNING *`,
                     [parsedStaffId, payrollMonth, zrsAmount, zrsReason, actor]
                 );
@@ -7413,11 +7631,11 @@ router.post('/salary/adjustment', (req, res, next) => {
                 await client.query(
                     `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
                      VALUES ($1,$2,'create',$3,$4,NULL,$5)`,
-                    [adj.id, parsedStaffId, actor, req.user?.role || null, JSON.stringify({ amount: zrsAmount, reason: zrsReason, type: 'advance' })]
+                    [adj.id, parsedStaffId, actor, req.user?.role || null, JSON.stringify({ amount: zrsAmount, reason: zrsReason, type: 'zrs' })]
                 );
                 await auditLog('salary_adjustment', parsedStaffId, actor, {
                     adjustment_id: Number(adj.id),
-                    type: 'advance',
+                    type: 'zrs',
                     amount: zrsAmount,
                     reason: zrsReason,
                     month: payrollMonth
@@ -7439,9 +7657,12 @@ router.post('/salary/adjustment', (req, res, next) => {
         await assertPayrollPeriodOpen(payrollMonth);
 
         let finalReason = reason;
+        if (adjustmentType === 'kpi_bonus' && !String(finalReason || '').trim()) {
+            return res.status(400).json({ success: false, error: 'Для KPI-бонусу обовʼязково вкажіть причину' });
+        }
         let ruleCode = null, disciplineCategory = null, severity = null;
         let repeatIndex = 0, decisionMode = 'custom', needsReview = false;
-        let tplId = adjustmentType === 'advance' ? null : template_id || null;
+        let tplId = adjustmentType === 'zrs' || adjustmentType === 'kpi_bonus' ? null : template_id || null;
 
         // Template-based depremium flow
         if ((adjustmentType === 'penalty' || adjustmentType === 'deduction') && tplId) {
@@ -7473,14 +7694,16 @@ router.post('/salary/adjustment', (req, res, next) => {
         }
 
         const status = needsReview ? 'pending_review' : 'applied';
+        const immediateApprovalBy = adjustmentType === 'kpi_bonus' ? req.user?.username : null;
         const result = await pool.query(
             `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by,
              template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
-             violation_date, evidence_note, evidence_url)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+             violation_date, evidence_note, evidence_url, approved_by, approved_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::text,
+                CASE WHEN $17::text IS NULL THEN NULL ELSE NOW() END) RETURNING *`,
             [targetStaffId, payrollMonth, adjustmentType, finalAmount, finalReason, req.user?.username,
              tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status,
-             violation_date || null, evidence_note || null, evidence_url || null]
+             violation_date || null, evidence_note || null, evidence_url || null, immediateApprovalBy]
         );
         const adj = result.rows[0];
 
@@ -7489,7 +7712,17 @@ router.post('/salary/adjustment', (req, res, next) => {
             `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
             [adj.id, targetStaffId, 'create', req.user?.username, req.user?.role, tplId,
-             JSON.stringify({ amount: finalAmount, reason: finalReason, severity, repeatIndex, needsReview })]
+             JSON.stringify({
+                 amount: finalAmount,
+                 reason: finalReason,
+                 severity,
+                 repeatIndex,
+                 needsReview,
+                 type: adjustmentType,
+                 finalOnly: adjustmentType === 'kpi_bonus',
+                 ruleVersion: adjustmentType === 'kpi_bonus' ? 'manual_kpi_bonus_v1' : null,
+                 formula: adjustmentType === 'kpi_bonus' ? null : undefined
+             })]
         ).catch(e => log.warn('Discipline log failed:', e.message));
 
         await auditLog('salary_adjustment', targetStaffId, req.user?.username, { type: adjustmentType, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
@@ -7529,11 +7762,11 @@ router.post('/salary/adjustment', (req, res, next) => {
 });
 
 // GET /api/hr/salary/adjustments — list adjustments
-router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
+router.get('/salary/adjustments', requirePayrollView, async (req, res) => {
     try {
         const { staff_id, month } = req.query;
         const requestedType = String(req.query.type || '').trim().toLowerCase();
-        const adjustmentType = requestedType === 'zrs' ? 'advance' : requestedType;
+        const adjustmentType = requestedType ? normalizePayrollAdjustmentType(requestedType) : '';
         const statusFilter = normalizeZrsJournalStatusFilter(req.query.status);
         const search = (cleanStaffText(req.query.search || req.query.q || '', 120) || '').trim();
         const limit = Math.min(parsePositiveSafeInteger(req.query.limit) || 50, 100);
@@ -7560,7 +7793,9 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
                 params.push(payrollMonth);
                 conds.push(`sa.month = $${params.length}`);
             }
-            if (adjustmentType) {
+            if (adjustmentType === 'zrs') {
+                conds.push("sa.type IN ('zrs', 'advance')");
+            } else if (adjustmentType) {
                 params.push(adjustmentType);
                 conds.push(`sa.type = $${params.length}`);
             }
@@ -7609,7 +7844,7 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
                     COALESCE(void_log.actor_role, NULL) AS voided_by_role,
                     COALESCE(void_log.created_at, audit_void.created_at, sa.approved_at) AS voided_at,
                     COALESCE(void_log.payload->>'reason', audit_void.details->>'reason') AS void_reason,
-                    (sa.type = 'advance' AND COALESCE(sa.status, 'applied') = 'applied') AS affects_payroll
+                    (sa.type IN ('zrs', 'advance') AND COALESCE(sa.status, 'applied') = 'applied') AS affects_payroll
              FROM salary_adjustments sa
              JOIN staff s ON s.id = sa.staff_id
              LEFT JOIN LATERAL (
@@ -7672,20 +7907,33 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
 
         let periods = [];
         if (includePeriods) {
+            const periodFilter = buildFilters({ includeStatus: false, includeMonth: false });
             const periodResult = await pool.query(
                 `SELECT DISTINCT sa.month
                  FROM salary_adjustments sa
-                 WHERE sa.type = 'advance'
-                 ORDER BY sa.month DESC`
+                 JOIN staff s ON s.id = sa.staff_id
+                 ${periodFilter.where}
+                 ORDER BY sa.month DESC`,
+                periodFilter.params
             );
             periods = periodResult.rows.map(row => row.month).filter(Boolean);
         }
 
         const periodLock = payrollMonth ? await loadPayrollPeriodLock(payrollMonth) : null;
+        const zrsResponseType = adjustmentType === 'zrs'
+            ? (requestedType === 'advance' ? 'advance' : 'zrs')
+            : null;
+        const dataRows = zrsResponseType
+            ? result.rows.map(row => (
+                normalizePayrollAdjustmentType(row.type) === 'zrs'
+                    ? { ...row, type: zrsResponseType, canonical_type: 'zrs', legacy_type: row.type }
+                    : row
+            ))
+            : result.rows;
 
         res.json({
             success: true,
-            data: result.rows,
+            data: dataRows,
             summary_rows: summaryResult.rows,
             totals: zrsTotals,
             periods,
@@ -7694,7 +7942,7 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
                 limit,
                 offset,
                 total,
-                has_more: offset + result.rows.length < total
+                has_more: offset + dataRows.length < total
             }
         });
     } catch (err) {
@@ -7704,7 +7952,7 @@ router.get('/salary/adjustments', requirePayrollControl, async (req, res) => {
 });
 
 // PUT /api/hr/salary/adjustment/:id/void — cancel mistaken ZRS before payroll close
-router.put('/salary/adjustment/:id/void', requireZrsManage, async (req, res) => {
+router.put('/salary/adjustment/:id/void', requirePayrollAccrual, async (req, res) => {
     const reason = cleanStaffText(req.body?.reason, 500);
     if (!reason) {
         return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.VOID_REASON_REQUIRED, 'Вкажіть причину скасування ЗРС');
@@ -7735,7 +7983,7 @@ router.put('/salary/adjustment/:id/void', requireZrsManage, async (req, res) => 
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Коригування не знайдено' });
         }
-        if (adjustment.type !== 'advance') {
+        if (normalizePayrollAdjustmentType(adjustment.type) !== 'zrs') {
             await client.query('ROLLBACK');
             return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.VOID_TYPE_MISMATCH, 'Цей сценарій скасування доступний тільки для ЗРС/авансу');
         }
@@ -7988,7 +8236,7 @@ router.get('/shifts-summary', async (req, res) => {
     }
 });
 
-router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => {
+router.get('/salary/reconciliation', requirePayrollView, async (req, res) => {
     try {
         const month = requirePayrollMonth(req.query.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
@@ -8001,6 +8249,7 @@ router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => 
         res.json({
             success: true,
             month,
+            payroll_activation: payrollActivationPayload(month),
             period_lock: periodLock,
             reconciliation: {
                 ...reconciliation,
@@ -8014,331 +8263,66 @@ router.get('/salary/reconciliation', requirePayrollControl, async (req, res) => 
     }
 });
 
-router.post('/salary/period-lock', requirePayrollControl, async (req, res) => {
-    const client = await pool.connect();
+router.post('/salary/period-lock', requirePayrollClose, async (req, res) => {
     try {
         const month = requirePayrollMonth(req.body?.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
         const actor = payrollActor(req.user);
         const locked = req.body?.locked !== false;
-        await client.query('BEGIN');
-        await acquirePayrollPeriodMutationLock(client, month);
-        const periodLock = await setPayrollPeriodLock(month, locked, actor, req.body?.note || '', client);
-        const reconciliation = await loadPayrollReconciliation(month, client);
-        const events = await loadPayrollPeriodEvents(month, client);
-        await client.query('COMMIT');
-        res.json({ success: true, month, period_lock: periodLock, reconciliation, events });
+        if (locked) {
+            const closed = await closePayrollPeriod(month, actor, req.body?.note || '');
+            return res.json({
+                success: true,
+                month,
+                operation: 'close_month',
+                payroll_activation: payrollActivationPayload(month),
+                period_lock: closed.periodLock,
+                reconciliation: closed.reconciliation,
+                settlement: closed.settlement,
+                events: await loadPayrollPeriodEvents(month)
+            });
+        }
+        if (!locked) {
+            return res.status(409).json({
+                success: false,
+                code: 'PAYROLL_LEGACY_PERIOD_REOPEN_DISABLED',
+                error: 'Direct payroll period reopen is disabled. Confirmed history can only change through controlled reversal or correction.',
+                month,
+                replacementEndpoint: '/api/payroll/period/close',
+                financeChanged: false
+            });
+        }
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/salary/period-lock error', err);
+        if (err.statusCode || err.status) {
+            return res.status(err.statusCode || err.status).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null,
+                period_lock: err.payrollLock || null
+            });
+        }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
-    } finally {
-        client.release();
     }
 });
-router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
-    const client = await pool.connect();
+
+router.post('/salary/installments/calculate', requirePayrollAccrual, async (req, res) => {
     try {
-        const month = requirePayrollMonth(req.body?.month);
+        const month = requirePayrollMonth(req.body?.month || req.query?.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
-        const reason = String(req.body?.reason || '').trim() || 'Сторно зарплатного періоду';
-        const actor = payrollActor(req.user);
-        const range = payrollMonthRange(month);
-
-        await client.query('BEGIN');
-        const reports = await client.query(
-            `SELECT pr.id, pr.staff_id, pr.net_amount, pr.finance_transaction_id, s.name AS staff_name,
-                    ft.category_id, ft.date AS finance_date
-             FROM payroll_reports pr
-             JOIN staff s ON s.id = pr.staff_id
-             LEFT JOIN finance_transactions ft ON ft.id = pr.finance_transaction_id
-             WHERE pr.period_month = $1
-               AND pr.status = 'paid'
-               AND pr.voided_at IS NULL
-             ORDER BY s.name
-             FOR UPDATE OF pr`,
-            [month]
-        );
-        if (!reports.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, error: `Немає активних нарахувань зарплати за ${month}` });
-        }
-
-        const reversed = [];
-        for (const report of reports.rows) {
-            const amount = Math.round(Number(report.net_amount || 0));
-            let reversalTransactionId = null;
-            if (amount > 0) {
-                const tx = await client.query(
-                    `INSERT INTO finance_transactions
-                        (type, category_id, amount, description, date, payment_method, staff_id, created_by)
-                     VALUES ('income', $1, $2, $3, $4, 'salary_reversal', $5, $6)
-                     RETURNING id`,
-                    [
-                        report.category_id || null,
-                        amount,
-                        `Сторно зарплати ${report.staff_name} за ${month}: ${reason}`,
-                        range.to,
-                        report.staff_id,
-                        actor
-                    ]
-                );
-                reversalTransactionId = tx.rows[0].id;
-            }
-            await client.query(
-                `UPDATE payroll_reports
-                 SET status = 'voided',
-                     voided_at = NOW(),
-                     voided_by = $1,
-                     void_reason = $2,
-                     reversal_transaction_id = $3,
-                     updated_by = $1,
-                     updated_at = NOW()
-                 WHERE id = $4`,
-                [actor, reason, reversalTransactionId, report.id]
-            );
-            reversed.push({ staffId: report.staff_id, name: report.staff_name, amount, reversalTransactionId });
-        }
-
-        const reversedStaffIds = [...new Set(reports.rows.map(report => Number(report.staff_id)).filter(Number.isInteger))];
-        const removedEntries = reversedStaffIds.length
-            ? await client.query(
-                `DELETE FROM payroll_entries
-                 WHERE period_month = $1
-                   AND staff_id = ANY($2::int[])`,
-                [month, reversedStaffIds]
-            )
-            : { rowCount: 0 };
-        const removedPayrollEntries = Number(removedEntries.rowCount || 0);
-        const reversedTotal = reversed.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-        const periodLock = await setPayrollPeriodLock(month, false, actor, `Сторновано: ${reason}`, client);
-        await recordPayrollPeriodEvent(month, 'reverse', actor, reason, {
-            count: reversed.length,
-            amount: reversedTotal,
-            removedPayrollEntries
-        }, client);
-        const reconciliation = await loadPayrollReconciliation(month, client);
-        const events = await loadPayrollPeriodEvents(month, client);
-        await client.query('COMMIT');
-
+        await assertPayrollPeriodOpen(month);
+        const result = await generatePayrollReports(month, req.user);
+        const settlement = await getPayrollSettlement(month);
         res.json({
-            success: true,
-            month,
-            reversed,
-            count: reversed.length,
-            removedPayrollEntries,
-            period_lock: periodLock,
-            reconciliation,
-            events
+            ...result,
+            operation: 'calculate_draft',
+            payroll_activation: payrollActivationPayload(month),
+            settlement,
+            financeChanged: false
         });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        log.error('POST /hr/salary/reverse error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    } finally {
-        client.release();
-    }
-});
-
-// ==========================================
-// v33.8.0 Integration 9: Salary commit to finance
-// ==========================================
-
-// POST /api/hr/salary/commit — record calculated salaries as finance transactions
-router.post('/salary/commit', requirePayrollControl, async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const month = requirePayrollMonth(req.body?.month);
-        if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
-        const actor = payrollActor(req.user);
-
-        await client.query('BEGIN');
-        await assertPayrollPeriodOpen(month, client);
-
-        const activeReports = await client.query(
-            `SELECT COUNT(*)::int AS c
-             FROM payroll_reports
-             WHERE period_month = $1
-               AND status = 'paid'
-               AND voided_at IS NULL`,
-            [month]
-        );
-        if (parseInt(activeReports.rows[0].c, 10) > 0) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: `Зарплати за ${month} вже мають активні payroll-звіти (${activeReports.rows[0].c})` });
-        }
-
-        // Check if already committed
-        const already = await client.query(
-            `SELECT COUNT(*)::int AS c
-             FROM finance_transactions ft
-             LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = ft.id AND pr.period_month = $2
-             WHERE ft.payment_method = 'salary'
-               AND ft.date::date >= $1::date
-               AND ft.date::date <= ($1::date + INTERVAL '1 month - 1 day')
-               AND (pr.id IS NULL OR pr.voided_at IS NULL)`,
-            [`${month}-01`, month]
-        );
-        if (parseInt(already.rows[0].c) > 0) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, error: `Зарплати за ${month} вже нараховано (${already.rows[0].c} транзакцій)` });
-        }
-
-        const calculation = await loadPayrollCalculation(month, client);
-        assertPayrollRowsCommitReady(calculation.data);
-
-        // Find salary expense category
-        const salCat = await client.query(
-            `SELECT id FROM finance_categories WHERE name ILIKE '%зарплат%' AND type = 'expense' LIMIT 1`
-        );
-        const catId = salCat.rows[0]?.id || null;
-
-        const inserted = [];
-        for (const row of calculation.data) {
-            const totalSalary = Number(row.total_salary || 0);
-            if (totalSalary <= 0) continue;
-            const grossAmount = Number(row.base_salary || 0)
-                + Number(row.additional_pay || 0)
-                + Number(row.overtime_pay || 0)
-                + Number(row.bonuses || 0)
-                + Number(row.tips || 0);
-            const deductionsAmount = Number(row.deductions || 0) + Number(row.penalties || 0);
-            const advancesAmount = Number(row.advances || 0);
-            const breakdown = {
-                base_salary: row.base_salary,
-                additional_pay: row.additional_pay,
-                overtime_pay: row.overtime_pay,
-                bonuses: row.bonuses,
-                tips: row.tips,
-                deductions: row.deductions,
-                penalties: row.penalties,
-                advances: row.advances,
-                hours_worked: row.hours_worked,
-                planned_hours: row.planned_hours,
-                overtime_hours: row.overtime_hours,
-                metrics: {
-                    physicalMinutes: row.physical_minutes,
-                    compensationMinutes: row.compensation_minutes,
-                    roleMinutes: row.role_minutes,
-                    baseProfessionAllocations: row.base_profession_allocations,
-                    additionalProfessionAllocations: row.additional_profession_allocations
-                },
-                transparency: row.payroll_transparency,
-                profession_rates: row.profession_rate_summary,
-                professionRateSummary: row.profession_rate_summary,
-                lines: row.payroll_lines,
-                reconciliation: row.reconciliation,
-                allocationIssues: row.allocation_issues,
-                payrollBlockingIssues: row.payroll_blocking_issues
-            };
-
-            const reportResult = await client.query(
-                `INSERT INTO payroll_reports
-                    (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status,
-                     breakdown_json, generated_at, committed_at, committed_by, created_by, updated_by, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'paid', $7::jsonb, NOW(), NOW(), $8, $8, $8, NOW())
-                 ON CONFLICT (period_month, staff_id) DO UPDATE SET
-                    gross_amount = EXCLUDED.gross_amount,
-                    deductions_amount = EXCLUDED.deductions_amount,
-                    advances_amount = EXCLUDED.advances_amount,
-                    net_amount = EXCLUDED.net_amount,
-                    status = 'paid',
-                    breakdown_json = EXCLUDED.breakdown_json,
-                    generated_at = NOW(),
-                    committed_at = NOW(),
-                    committed_by = EXCLUDED.committed_by,
-                    finance_transaction_id = NULL,
-                    reversal_transaction_id = NULL,
-                    voided_at = NULL,
-                    voided_by = NULL,
-                    void_reason = NULL,
-                    updated_by = EXCLUDED.updated_by,
-                    updated_at = NOW()
-                 RETURNING id`,
-                [month, row.staff_id, grossAmount, deductionsAmount, advancesAmount, totalSalary, JSON.stringify(breakdown), actor]
-            );
-            const generatedAdditionalLines = (row.payroll_lines || [])
-                .filter(line => line.lineType === 'simultaneous_additional');
-            if (generatedAdditionalLines.length) {
-                await auditLog('payroll_additional_line_generated', row.staff_id, actor, {
-                    eventVersion: 1,
-                    month,
-                    reportId: Number(reportResult.rows[0].id),
-                    reportStatus: 'paid',
-                    physicalMinutes: row.physical_minutes,
-                    baseRoleMinutes: row.payroll_transparency?.baseRoleMinutes,
-                    additionalRoleMinutes: row.payroll_transparency?.additionalRoleMinutes,
-                    additionalAmount: row.additional_pay,
-                    lines: generatedAdditionalLines
-                }, req.ip, client);
-            }
-
-            await client.query('DELETE FROM payroll_entries WHERE staff_id = $1 AND period_month = $2', [row.staff_id, month]);
-            const entryRows = [
-                {
-                    type: 'adjustment',
-                    label: 'Simultaneous additional pay',
-                    amount: row.additional_pay,
-                    quantity: (row.additional_profession_allocations || []).length,
-                    meta: {
-                        payrollLineType: 'simultaneous_additional',
-                        lines: (row.payroll_lines || [])
-                            .filter(line => line.lineType === 'simultaneous_additional')
-                    }
-                },
-                { type: 'base', label: 'Базова зарплата', amount: row.base_salary, quantity: row.hours_worked, meta: { profession_rates: row.profession_rate_summary } },
-                { type: 'adjustment', label: 'Переробка', amount: row.overtime_pay, quantity: row.overtime_hours },
-                { type: 'bonus', label: 'Бонуси', amount: row.bonuses },
-                { type: 'bonus', label: 'Чайові', amount: row.tips },
-                { type: 'deduction', label: 'Вирахування', amount: row.deductions },
-                { type: 'deduction', label: 'Депреміювання', amount: row.penalties },
-                { type: 'advance', label: 'ЗРС', amount: row.advances }
-            ].filter(entry => Number(entry.amount || 0) !== 0);
-            for (const entry of entryRows) {
-                await client.query(
-                    `INSERT INTO payroll_entries
-                        (staff_id, period_month, line_type, label, amount, quantity, rate, meta_json, created_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, NULL, $7::jsonb, $8)`,
-                    [row.staff_id, month, entry.type, entry.label, Number(entry.amount || 0), entry.quantity || null, JSON.stringify(entry.meta || {}), actor]
-                );
-            }
-
-            const r = await client.query(
-                `INSERT INTO finance_transactions
-                    (type, category_id, amount, description, date, payment_method, staff_id, created_by)
-                 VALUES ('expense', $1, $2, $3, $4, 'salary', $5, $6)
-                 RETURNING id`,
-                [
-                    catId,
-                    totalSalary,
-                    `Зарплата ${row.staff_name} за ${month} (${Math.round(Number(row.hours_worked || 0))}г, ставки: ${(row.profession_rate_summary || []).map(segment => `${segment.profession_key} ${segment.rate} грн/${rateUnitLabel(segment.rate_unit)}`).join(', ') || `${row.hourly_rate} грн/${rateUnitLabel(row.rate_unit)}`})`,
-                    new Date(parseInt(month.split('-')[0], 10), parseInt(month.split('-')[1], 10), 0).toISOString().slice(0, 10),
-                    row.staff_id,
-                    actor
-                ]
-            );
-            await client.query(
-                `UPDATE payroll_reports
-                 SET finance_transaction_id = $1,
-                     updated_by = $2,
-                     updated_at = NOW()
-                 WHERE id = $3`,
-                [r.rows[0].id, actor, reportResult.rows[0].id]
-            );
-            inserted.push({ staffId: row.staff_id, name: row.staff_name, amount: totalSalary, transactionId: r.rows[0].id });
-        }
-
-        const periodLock = await setPayrollPeriodLock(month, true, actor, 'Автоматично закрито після нарахування зарплати', client);
-        const committedTotal = inserted.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-        await recordPayrollPeriodEvent(month, 'commit', actor, 'Зарплату нараховано у фінанси', { count: inserted.length, amount: committedTotal }, client);
-        const reconciliation = await loadPayrollReconciliation(month, client);
-        const events = await loadPayrollPeriodEvents(month, client);
-        await client.query('COMMIT');
-        log.info(`[SalaryCommit] Committed ${inserted.length} salaries for ${month}`);
-        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals, period_lock: periodLock, reconciliation, events });
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        log.error('[SalaryCommit] Error', err);
+        log.error('POST /hr/salary/installments/calculate error', err);
         if (err.statusCode) {
             return res.status(err.statusCode).json({
                 success: false,
@@ -8348,10 +8332,80 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 period_lock: err.payrollLock || null
             });
         }
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    } finally {
-        client.release();
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
+});
+
+router.post('/salary/installments/:id/approve', requirePayrollApproval, async (req, res) => {
+    try {
+        const businessScope = resolveBusinessScope(req);
+        if (!requireWritableBusinessScope(req, res, businessScope)) return;
+        const installment = await approvePayrollInstallment(req.params.id, req.user, {
+            businessContext: businessScope.activeContext
+        });
+        res.json({ success: true, operation: 'approve_installment', installment, financeChanged: false });
+    } catch (err) {
+        log.error('POST /hr/salary/installments/:id/approve error', err);
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null
+            });
+        }
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/salary/installments/:id/cancel', requirePayrollApproval, async (req, res) => {
+    try {
+        const result = await cancelPayrollAdvanceInstallment(req.params.id, req.user, req.body || {});
+        res.json({ success: true, operation: 'cancel_advance', financeChanged: false, ...result });
+    } catch (err) {
+        log.error('POST /hr/salary/installments/:id/cancel error', err);
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({
+                success: false,
+                code: err.code || null,
+                error: err.message,
+                details: err.details || null
+            });
+        }
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/salary/reverse', requirePayrollReverse, async (req, res) => {
+    const month = requirePayrollMonth(req.body?.month);
+    if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+    return res.status(409).json({
+        success: false,
+        code: 'PAYROLL_LEGACY_REVERSE_DISABLED',
+        error: 'Legacy salary/reverse is disabled because it rewrites payroll history. Use append-only payroll payment movement reversal for installment months.',
+        month,
+        replacementEndpoint: '/api/payroll/payments/:id/reverse',
+        financeChanged: false
+    });
+});
+
+// POST /api/hr/salary/commit is retained only as a fail-closed compatibility endpoint.
+// Historical months are read-only; activation months must use the canonical installment calculator.
+router.post('/salary/commit', requirePayrollAccrual, async (req, res) => {
+    const month = requirePayrollMonth(req.body?.month);
+    if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+    return res.status(409).json({
+        success: false,
+        code: 'PAYROLL_LEGACY_COMMIT_DISABLED',
+        error: isPayrollInstallmentsActivationMonth(month)
+            ? 'Legacy salary/commit is disabled for payroll installment activation months'
+            : 'Historical payroll months are read-only; legacy salary/commit is disabled',
+        month,
+        replacementEndpoint: isPayrollInstallmentsActivationMonth(month)
+            ? '/api/hr/salary/installments/calculate'
+            : null,
+        financeChanged: false
+    });
 });
 
 // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ

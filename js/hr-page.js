@@ -190,7 +190,8 @@ const PAYROLL_SCHEME_LABELS = {
     monthly_fixed: 'Фікс за місяць',
     percent: 'Відсоток',
     hybrid: 'Гібридна',
-    manual: 'Ручна'
+    manual: 'Ручна',
+    piece: 'За одиницю'
 };
 
 const STAFF_OFFBOARDING_ACCOUNT_LABELS = {
@@ -637,6 +638,8 @@ const STAFF_PROFILE_SCOPE_SELECTORS = {
     rates: ['#editRateUnit', '#editHourlyRate', '[data-profession-rate]'],
     payroll: [
         '#editPayrollSchemeType', '#editPayrollSchemeAmount', '#editPayrollBaseKind',
+        '#editPayrollMonthlyNormMonth', '#editPayrollMonthlyNormHours',
+        '#editPayrollMonthlyNormSource', '#editPayrollMonthlyNormConfirmed',
         '#editPayrollBaseQuantity', '#editPayrollBonusLabel', '#editPayrollBonusAmount',
         '#editPayrollHybridPercentRate', '#editPayrollHybridPercentBase',
         '#editPayrollDeductionLabel', '#editPayrollDeductionAmount',
@@ -2733,6 +2736,7 @@ function initNewTabs() {
     });
     document.getElementById('editResourceSourceId')?.addEventListener('change', syncResourceTitleFromOption);
     document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollAdvancedVisibility);
+    document.getElementById('editPayrollBaseKind')?.addEventListener('change', updatePayrollAdvancedVisibility);
     const autoLayoutButton = document.getElementById('hrOrgAutoLayoutBtn');
     if (autoLayoutButton) autoLayoutButton.onclick = autoArrangeCompanyOrgChart;
     initCompanyOrgChart();
@@ -9580,6 +9584,7 @@ function payrollSchemeAmount(scheme = {}, fallbackRate = 0) {
     if (type === 'monthly_fixed') return Number(config.monthlyAmount ?? config.fixedAmount ?? config.amount ?? 0);
     if (type === 'percent') return Number(config.percentRate ?? config.rate ?? 0);
     if (type === 'manual') return Number(config.manualAmount ?? config.amount ?? 0);
+    if (type === 'piece') return Number(config.pieceRate ?? config.rate ?? config.amount ?? 0);
     if (type === 'hybrid') return Number(config.base?.rate ?? config.baseRate ?? fallbackRate ?? 0);
     return Number(config.hourlyRate ?? config.rate ?? fallbackRate ?? 0);
 }
@@ -9591,7 +9596,8 @@ function payrollSchemeAmountLabel(type = 'hourly') {
         monthly_fixed: 'Фікс за місяць',
         percent: 'Відсоток',
         hybrid: 'Базова ставка',
-        manual: 'Ручна сума'
+        manual: 'Ручна сума',
+        piece: 'Ставка за одиницю'
     }[type] || 'Ставка';
 }
 
@@ -9604,8 +9610,11 @@ function updatePayrollSchemeAmountLabel() {
 function updatePayrollAdvancedVisibility() {
     updatePayrollSchemeAmountLabel();
     const type = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
+    const baseKind = document.getElementById('editPayrollBaseKind')?.value || 'hourly';
     const hybridConfig = document.getElementById('editPayrollHybridConfig');
+    const monthlyNormConfig = document.getElementById('editPayrollMonthlyNormConfig');
     if (hybridConfig) hybridConfig.hidden = type !== 'hybrid';
+    if (monthlyNormConfig) monthlyNormConfig.hidden = !(type === 'monthly_fixed' || (type === 'hybrid' && baseKind === 'monthly_fixed'));
 }
 
 function numberFromInput(id, fallback = 0) {
@@ -9627,7 +9636,10 @@ function setPayrollHybridForm(config = {}, fallbackRate = 0) {
     const bonus = (Array.isArray(config.bonusRules) && config.bonusRules[0]) || {};
     const percent = (Array.isArray(config.percentRules) && config.percentRules[0]) || {};
     const deduction = (Array.isArray(config.deductions) && config.deductions[0]) || {};
-    const advance = (Array.isArray(config.advances) && config.advances[0]) || {};
+    const advance = (Array.isArray(config.zrsRules) && config.zrsRules[0])
+        || (Array.isArray(config.zrs) && config.zrs[0])
+        || (Array.isArray(config.advances) && config.advances[0])
+        || {};
     setInputValue('editPayrollBaseKind', base.kind || config.baseKind || 'hourly');
     setInputValue('editPayrollBaseQuantity', base.quantity ?? config.baseQuantity ?? '');
     setInputValue('editPayrollHybridPercentRate', percent.rate ?? percent.percentRate ?? '');
@@ -9636,21 +9648,52 @@ function setPayrollHybridForm(config = {}, fallbackRate = 0) {
     setInputValue('editPayrollBonusAmount', bonus.amount ?? config.bonusAmount ?? '');
     setInputValue('editPayrollDeductionLabel', deduction.label || 'Утримання');
     setInputValue('editPayrollDeductionAmount', deduction.amount ?? config.deductionAmount ?? '');
-    setInputValue('editPayrollAdvanceLabel', advance.label || 'Аванс');
+    setInputValue('editPayrollAdvanceLabel', advance.label || 'ЗРС');
     setInputValue('editPayrollAdvanceAmount', advance.amount ?? config.advanceAmount ?? '');
     const amount = document.getElementById('editPayrollSchemeAmount');
     if (amount && amount.value === '') amount.value = String(base.rate ?? base.amount ?? config.baseRate ?? fallbackRate ?? 0);
 }
 
+function payrollMonthlyNormConfig(config = {}, type = 'monthly_fixed') {
+    const source = type === 'hybrid' ? (config.base || {}) : config;
+    return {
+        month: source.monthlyNormMonth || source.monthly_norm_month || '',
+        hours: Number(source.monthlyNormMinutes ?? source.monthly_norm_minutes ?? 0) / 60,
+        source: source.monthlyNormSource || source.monthly_norm_source || '',
+        confirmed: (source.monthlyNormConfirmed ?? source.monthly_norm_confirmed) === true
+    };
+}
+
+function setPayrollMonthlyNormForm(config = {}, type = 'monthly_fixed') {
+    const norm = payrollMonthlyNormConfig(config, type);
+    setInputValue('editPayrollMonthlyNormMonth', norm.month);
+    setInputValue('editPayrollMonthlyNormHours', norm.hours || '');
+    setInputValue('editPayrollMonthlyNormSource', norm.source);
+    const confirmed = document.getElementById('editPayrollMonthlyNormConfirmed');
+    if (confirmed) confirmed.checked = norm.confirmed;
+}
+
+function collectPayrollMonthlyNormFromForm() {
+    return {
+        monthlyNormMinutes: Math.round(numberFromInput('editPayrollMonthlyNormHours') * 60),
+        monthlyNormMonth: textFromInput('editPayrollMonthlyNormMonth') || null,
+        monthlyNormSource: textFromInput('editPayrollMonthlyNormSource') || null,
+        monthlyNormConfirmed: document.getElementById('editPayrollMonthlyNormConfirmed')?.checked === true
+    };
+}
+
 function collectPayrollSchemeConfigFromForm(type, amount) {
+    if (type === 'monthly_fixed') return collectPayrollMonthlyNormFromForm();
     if (type !== 'hybrid') return {};
     const bonusAmount = numberFromInput('editPayrollBonusAmount');
     const percentRate = numberFromInput('editPayrollHybridPercentRate');
     const deductionAmount = numberFromInput('editPayrollDeductionAmount');
     const advanceAmount = numberFromInput('editPayrollAdvanceAmount');
+    const baseKind = document.getElementById('editPayrollBaseKind')?.value || 'hourly';
     return {
         base: {
-            kind: document.getElementById('editPayrollBaseKind')?.value || 'hourly',
+            ...(baseKind === 'monthly_fixed' ? collectPayrollMonthlyNormFromForm() : {}),
+            kind: baseKind,
             rate: amount,
             amount,
             quantity: numberFromInput('editPayrollBaseQuantity')
@@ -9658,7 +9701,7 @@ function collectPayrollSchemeConfigFromForm(type, amount) {
         bonusRules: bonusAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollBonusLabel', 'Премія'), amount: bonusAmount }] : [],
         percentRules: percentRate ? [{ kind: 'percent', label: 'Відсоток', rate: percentRate, baseAmount: numberFromInput('editPayrollHybridPercentBase') }] : [],
         deductions: deductionAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollDeductionLabel', 'Утримання'), amount: deductionAmount }] : [],
-        advances: advanceAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollAdvanceLabel', 'Аванс'), amount: advanceAmount }] : []
+        zrsRules: advanceAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollAdvanceLabel', 'ЗРС'), amount: advanceAmount }] : []
     };
 }
 
@@ -9992,6 +10035,8 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
     const openResources = Number(payload.open_resource_count || 0);
     const activeAccounts = Number(payload.active_account_count || 0);
     const documentAlerts = Number(payload.document_alert_count || 0);
+    const outstandingPayroll = Number(payload.outstanding_payroll_installment_count || 0);
+    const outstandingPayrollAmount = Number(payload.outstanding_payroll_installment_amount || 0);
     const lifecycleMetrics = lifecycle?.metrics || null;
     const futureScheduleCount = Number(lifecycleMetrics?.future_schedule_count || 0);
     const openTimeRecordCount = Number(lifecycleMetrics?.open_time_record_count || 0);
@@ -10001,7 +10046,7 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
     const blockerAlert = hasPermissionBlocker
         ? 'Автоматичне вимкнення акаунта потребує доступу manage_accounts.'
         : 'Автоматичне вимкнення акаунта заблоковано для поточного або protected-акаунта.';
-    const summaryTone = openResources || documentAlerts || hasBlockers || activeChanges ? 'is-warning' : 'is-ok';
+    const summaryTone = openResources || documentAlerts || outstandingPayroll || hasBlockers || activeChanges ? 'is-warning' : 'is-ok';
     const resourceList = (payload.open_resources || []).slice(0, 3).map(item => {
         const due = item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
         return `<span>${escapeHtml(item.title || 'Ресурс')} · ${escapeHtml(String(item.quantity || 1))} шт.${escapeHtml(due)}</span>`;
@@ -10019,17 +10064,22 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
     const changeList = lifecycleMetrics
         ? `<span>Майбутніх змін: ${futureScheduleCount}. Активних тайм-записів: ${openTimeRecordCount}.</span>`
         : '<span>Стан майбутніх і активних змін поки не завантажено.</span>';
+    const payrollList = outstandingPayroll
+        ? `<span>Неврегульованих payroll installments: ${outstandingPayroll} · ${outstandingPayrollAmount.toLocaleString('uk-UA')} ₴.</span>`
+        : '<span>Неврегульованих payroll installments немає.</span>';
     const details = [
         resourceList || '<span>Неповернутих ресурсів немає.</span>',
         accountList || '<span>Активного CRM-акаунта не знайдено.</span>',
         documentList || '<span>Критичних строків документів на 30 днів немає.</span>',
-        changeList
+        changeList,
+        payrollList
     ].join('');
     return `<div class="hr-offboarding-readiness-card ${summaryTone}">
         <div class="hr-offboarding-readiness-grid">
             <div class="${openResources ? 'is-warning' : 'is-ok'}"><b>${openResources}</b><span>ресурси</span></div>
             <div class="${activeAccounts ? 'is-info' : 'is-muted'}"><b>${activeAccounts}</b><span>акаунти</span></div>
             <div class="${documentAlerts ? 'is-warning' : 'is-ok'}"><b>${documentAlerts}</b><span>документи</span></div>
+            <div class="${outstandingPayroll ? 'is-warning' : 'is-ok'}"><b>${outstandingPayroll}</b><span>payroll борги</span></div>
             <div class="${lifecycleMetrics ? (activeChanges ? 'is-warning' : 'is-ok') : 'is-muted'}"><b>${lifecycleMetrics ? activeChanges : '—'}</b><span>активні зміни</span></div>
         </div>
         <div class="hr-offboarding-readiness-detail">${details}</div>
@@ -10054,6 +10104,8 @@ function getStaffOffboardingPreview() {
     const activeAccounts = Number(readiness?.active_account_count || 0);
     const openResources = Number(readiness?.open_resource_count || 0);
     const documentAlerts = Number(readiness?.document_alert_count || 0);
+    const outstandingPayroll = Number(readiness?.outstanding_payroll_installment_count || 0);
+    const outstandingPayrollAmount = Number(readiness?.outstanding_payroll_installment_amount || 0);
     const futureScheduleCount = Number(lifecycleMetrics?.future_schedule_count || 0);
     const openTimeRecordCount = Number(lifecycleMetrics?.open_time_record_count || 0);
     const needsAccountAccess = (readiness?.disable_blockers || []).some(item => item.block_reason === 'requires_manage_accounts');
@@ -10061,6 +10113,9 @@ function getStaffOffboardingPreview() {
         blockers.push(needsAccountAccess
             ? 'Вимкнення CRM-акаунта потребує доступу manage_accounts.'
             : 'Вибраний CRM-акаунт захищений або є поточним користувачем.');
+    }
+    if (outstandingPayroll > 0) {
+        blockers.push(`Спочатку врегулюйте payroll installments: ${outstandingPayroll} на суму ${outstandingPayrollAmount.toLocaleString('uk-UA')} ₴.`);
     }
 
     const accountText = accountAction === 'disable'
@@ -10081,7 +10136,10 @@ function getStaffOffboardingPreview() {
             : 'Стан майбутніх та активних змін ще перевіряється.',
         openResources || documentAlerts
             ? `Попередження не блокують серверну операцію: ресурси ${openResources}, документи ${documentAlerts}.`
-            : 'Ресурсів і критичних документів у readiness не знайдено.'
+            : 'Ресурсів і критичних документів у readiness не знайдено.',
+        outstandingPayroll
+            ? `Payroll блокує завершення: ${outstandingPayroll} installments, ${outstandingPayrollAmount.toLocaleString('uk-UA')} ₴.`
+            : 'Неврегульованих payroll installments немає.'
     ];
     return {
         date,
@@ -10091,6 +10149,8 @@ function getStaffOffboardingPreview() {
         activeAccounts,
         openResources,
         documentAlerts,
+        outstandingPayroll,
+        outstandingPayrollAmount,
         futureScheduleCount,
         openTimeRecordCount,
         blockers,
@@ -10475,9 +10535,10 @@ function setPayrollSchemeForm(payload = {}) {
     const toInput = document.getElementById('editPayrollSchemeEffectiveTo');
     const summary = document.getElementById('editPayrollSchemeSummary');
     if (typeSelect) typeSelect.value = type;
-    updatePayrollAdvancedVisibility();
     if (amountInput) amountInput.value = String(payrollSchemeAmount(scheme || { scheme_type: type, config: {} }, fallbackRate) || 0);
     setPayrollHybridForm(scheme?.config || {}, fallbackRate);
+    setPayrollMonthlyNormForm(scheme?.config || {}, type);
+    updatePayrollAdvancedVisibility();
     if (titleInput) titleInput.value = scheme?.title || PAYROLL_SCHEME_LABELS[type] || '';
     if (fromInput) fromInput.value = staffDateInputValue(scheme?.effective_from || scheme?.effectiveFrom);
     if (toInput) toInput.value = staffDateInputValue(scheme?.effective_to || scheme?.effectiveTo);
@@ -12365,6 +12426,7 @@ async function openStaffEdit(staffId, options = {}) {
     const payrollAmount = document.getElementById('editPayrollSchemeAmount');
     if (payrollAmount) payrollAmount.value = String(s.hourly_rate || 0);
     setPayrollHybridForm({}, s.hourly_rate || 0);
+    setPayrollMonthlyNormForm({}, payrollType?.value || 'hourly');
     const payrollTitle = document.getElementById('editPayrollSchemeTitle');
     if (payrollTitle) payrollTitle.value = '';
     ['editPayrollSchemeEffectiveFrom', 'editPayrollSchemeEffectiveTo'].forEach(id => {
@@ -15949,12 +16011,25 @@ function bindPayrollDetailToggles(root) {
     root.dataset.payrollDetailToggleBound = 'true';
 }
 
+function bindPayrollInstallmentActions(root) {
+    if (!root || root.dataset.payrollInstallmentActionsBound === 'true') return;
+    root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-payroll-installment-action]');
+        if (!button || !root.contains(button)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        handlePayrollInstallmentAction(button);
+    });
+    root.dataset.payrollInstallmentActionsBound = 'true';
+}
+
 function renderPayrollGroupedList(view, root, rows = [], options = {}) {
     if (!root) return;
     if (!rows.length) {
         root.innerHTML = `<div class="hr-payroll-empty-state">${escapeHtml(options.emptyMessage || '')}</div>`;
         bindPayrollGroupToggles(view, root);
         bindPayrollDetailToggles(root);
+        if (view === 'salary') bindPayrollInstallmentActions(root);
         return;
     }
     const renderItem = typeof options.renderItem === 'function' ? options.renderItem : () => '';
@@ -15970,6 +16045,7 @@ function renderPayrollGroupedList(view, root, rows = [], options = {}) {
     }).join('');
     bindPayrollGroupToggles(view, root);
     bindPayrollDetailToggles(root);
+    if (view === 'salary') bindPayrollInstallmentActions(root);
 }
 
 function renderPayrollVisibleRows(view) {
@@ -16104,6 +16180,45 @@ function applySalaryPeriodFilter() {
     loadSalary();
 }
 
+let salaryPayrollActivationState = {
+    active: false,
+    readOnly: true,
+    calculateEndpoint: null,
+    legacyCommitDisabled: true,
+    legacyReverseDisabled: true,
+    legacyReopenDisabled: true,
+    movementReversalEndpoint: '/api/payroll/payments/:id/reverse'
+};
+
+function normalizeSalaryPayrollActivation(data = {}) {
+    const activation = data.payroll_activation || data.payrollActivation || {};
+    salaryPayrollActivationState = {
+        active: activation.active === true,
+        readOnly: activation.readOnly === true || activation.read_only === true || activation.active !== true,
+        calculateEndpoint: activation.calculateEndpoint || activation.calculate_endpoint || (activation.active === true ? '/api/hr/salary/installments/calculate' : null),
+        legacyCommitDisabled: activation.legacyCommitDisabled !== false && activation.legacy_commit_disabled !== false,
+        legacyReverseDisabled: activation.legacyReverseDisabled !== false && activation.legacy_reverse_disabled !== false,
+        legacyReopenDisabled: activation.legacyReopenDisabled !== false && activation.legacy_reopen_disabled !== false,
+        movementReversalEndpoint: activation.movementReversalEndpoint || activation.movement_reversal_endpoint || '/api/payroll/payments/:id/reverse'
+    };
+    return salaryPayrollActivationState;
+}
+
+function salaryPayrollLegacyBlockedMessage(data = {}) {
+    if (data.code === 'PAYROLL_LEGACY_COMMIT_DISABLED') {
+        return data.replacementEndpoint
+            ? 'Для цього місяця увімкнено новий payroll workflow. Розрахунок виконується через installments без Finance-транзакцій.'
+            : 'Історичний payroll-період доступний тільки для перегляду. Старе нарахування вимкнено.';
+    }
+    if (data.code === 'PAYROLL_LEGACY_REVERSE_DISABLED') {
+        return 'Для цього місяця month-level сторно вимкнено. Сторно робиться тільки в конкретному рядку виплати через append-only movement.';
+    }
+    if (data.code === 'PAYROLL_LEGACY_PERIOD_REOPEN_DISABLED') {
+        return 'Для цього місяця legacy відкриття періоду вимкнено. Після фінальної виплати корекції мають йти окремим payroll movement/adjustment.';
+    }
+    return data.error || 'Payroll дія заблокована для цього періоду';
+}
+
 async function loadSalary() {
     const monthSelect = document.getElementById('salaryMonth');
     ensurePayrollMonthOptions(monthSelect);
@@ -16118,6 +16233,7 @@ async function loadSalary() {
         ensureProfessionsLoaded({ silent: true })
     ]);
     if (!data || !data.success) return;
+    normalizeSalaryPayrollActivation(data);
     if (!currentSalaryPeriod()?.isCustom) zrsSalaryContextCache.set(zrsSalaryCacheKey(month), data);
     renderSalary(data);
 }
@@ -16271,7 +16387,14 @@ function renderSalaryOffRosterDraftReports(reconciliation = {}) {
     </section>`;
 }
 
+function hrCanUsePayrollAction(action) {
+    if (typeof canUseAction === 'function') return canUseAction(action) === true;
+    if (typeof canAccess === 'function') return canAccess(action) === true;
+    return false;
+}
+
 function renderSalaryPeriodControls(data = {}) {
+    const activation = normalizeSalaryPayrollActivation(data);
     const lock = data.period_lock || { is_locked: false };
     const reconciliation = data.reconciliation || {};
     const events = Array.isArray(data.events) ? data.events : [];
@@ -16290,6 +16413,10 @@ function renderSalaryPeriodControls(data = {}) {
     const unlockBtn = document.getElementById('btnUnlockSalaryPeriod');
     const reverseBtn = document.getElementById('btnReverseSalary');
     const isLocked = lock.is_locked === true;
+    const canViewPayroll = hrCanUsePayrollAction('view_payroll');
+    const canManageAccrual = hrCanUsePayrollAction('manage_payroll_accrual');
+    const canClosePeriod = hrCanUsePayrollAction('close_payroll_period');
+    const canReversePayment = hrCanUsePayrollAction('reverse_payroll_payment');
 
     if (statusEl) {
         statusEl.classList.toggle('is-locked', isLocked);
@@ -16298,17 +16425,36 @@ function renderSalaryPeriodControls(data = {}) {
             ? `Фільтр періоду: ${escapeHtml(periodLabel)} · дії з нарахуванням доступні для повного місяця`
             : isLocked
             ? `Період закрито${actor}${lock.note ? ` · ${escapeHtml(lock.note)}` : ''}`
-            : `Період відкрито${lock.unlocked_by ? ` · ${escapeHtml(lock.unlocked_by)}` : ''}`;
+            : activation.readOnly
+            ? 'Історичний payroll-період · тільки перегляд'
+            : `Період відкрито${lock.unlocked_by ? ` · ${escapeHtml(lock.unlocked_by)}` : ''} · новий payroll workflow`;
     }
 
-    if (commitBtn) commitBtn.disabled = isLocked || isCustomPeriod;
-    if (adjustmentBtn) adjustmentBtn.disabled = isLocked || isCustomPeriod;
-    if (refreshBtn) refreshBtn.disabled = isCustomPeriod;
-    if (lockBtn) lockBtn.hidden = isLocked;
-    if (unlockBtn) unlockBtn.hidden = !isLocked;
-    if (lockBtn) lockBtn.disabled = isCustomPeriod;
-    if (unlockBtn) unlockBtn.disabled = isCustomPeriod;
-    if (reverseBtn) reverseBtn.disabled = isCustomPeriod || (Number(reconciliation.finance_salary_count || 0) === 0 && Number(reconciliation.payroll_count || 0) === 0);
+    if (commitBtn) {
+        commitBtn.textContent = 'Розрахувати';
+        commitBtn.hidden = !canManageAccrual;
+        commitBtn.disabled = !canManageAccrual || isLocked || isCustomPeriod || activation.readOnly;
+    }
+    if (adjustmentBtn) {
+        adjustmentBtn.hidden = !canManageAccrual;
+        adjustmentBtn.disabled = !canManageAccrual || isLocked || isCustomPeriod || activation.readOnly;
+    }
+    if (refreshBtn) {
+        refreshBtn.hidden = !canViewPayroll;
+        refreshBtn.disabled = !canViewPayroll || isCustomPeriod;
+    }
+    if (lockBtn) {
+        lockBtn.hidden = !canClosePeriod || isLocked || activation.readOnly;
+        lockBtn.disabled = !canClosePeriod || isCustomPeriod || activation.readOnly;
+    }
+    if (unlockBtn) {
+        unlockBtn.hidden = !canClosePeriod || !isLocked || activation.legacyReopenDisabled;
+        unlockBtn.disabled = !canClosePeriod || isCustomPeriod || activation.legacyReopenDisabled;
+    }
+    if (reverseBtn) {
+        reverseBtn.hidden = !canReversePayment;
+        reverseBtn.disabled = !canReversePayment || activation.legacyReverseDisabled || isCustomPeriod || (Number(reconciliation.finance_salary_count || 0) === 0 && Number(reconciliation.payroll_count || 0) === 0);
+    }
 
     if (reconciliationEl) {
         if (isCustomPeriod) {
@@ -16409,6 +16555,366 @@ function renderSalaryAdditionalRoleDetails(row = {}) {
     return lines.join('');
 }
 
+const PAYROLL_INSTALLMENT_KIND_LABELS = {
+    advance: 'Аванс',
+    final: 'Фінальна зарплата'
+};
+
+const PAYROLL_INSTALLMENT_STATUS_LABELS = {
+    draft: 'Чернетка',
+    approved: 'Погоджено',
+    due: 'До сплати',
+    overdue: 'Прострочено',
+    partially_paid: 'Частково виплачено',
+    paid: 'Виплачено',
+    overpaid: 'Переплата',
+    reversed: 'Сторновано',
+    not_due: 'Не до сплати',
+    cancelled: 'Скасовано',
+    invalid_ledger: 'Конфлікт'
+};
+
+const PAYROLL_BLOCKER_MESSAGES = {
+    PAYROLL_LEAVE_POLICY_UNDEFINED: 'Для відпустки, лікарняного, вихідного або неоплачуваного дня потрібно явно вказати payroll policy. Погодження заблоковано без правила оплати.',
+    PAYROLL_LEAVE_POLICY_UNSUPPORTED: 'Вказана payroll policy для відсутності не підтримується canonical payroll calculator. Погодження заблоковано.',
+    PAYROLL_ATTENDANCE_OPEN: 'Є незакритий запис відвідування. Погодження payroll можливе тільки після закриття табеля.',
+    PAYROLL_MONTHLY_NORM_REQUIRED: 'Не визначена місячна норма для розрахунку зарплати. Погодження заблоковано.',
+    PAYROLL_ADVANCE_PLANNED_NORM_REQUIRED: 'Не визначена планова норма для авансу. Погодження заблоковано.'
+};
+
+function payrollBlockerMessage(issue = {}) {
+    const code = String(issue.code || '').trim();
+    return PAYROLL_BLOCKER_MESSAGES[code] || issue.message || 'Payroll потребує перевірки перед погодженням.';
+}
+
+function payrollInstallmentBlockers(installment = {}) {
+    const direct = Array.isArray(installment.blockers) ? installment.blockers : [];
+    const blocking = Array.isArray(installment.blockingIssues) ? installment.blockingIssues : [];
+    const payroll = Array.isArray(installment.payrollBlockingIssues) ? installment.payrollBlockingIssues : [];
+    const snapshot = installment.calculationSnapshot || installment.calculation_snapshot || {};
+    const snapshotBlockers = Array.isArray(snapshot.blockers) ? snapshot.blockers : [];
+    return [...direct, ...blocking, ...payroll, ...snapshotBlockers];
+}
+
+function renderPayrollInstallmentBlockers(installment = {}) {
+    const blockers = payrollInstallmentBlockers(installment);
+    if (!blockers.length) return '';
+    return `<div class="hr-payroll-additional-warning" role="alert">
+        ${blockers.map(issue => `<div><code>${escapeHtml(issue.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(payrollBlockerMessage(issue))}</div>`).join('')}
+    </div>`;
+}
+
+function payrollStatusTone(status = '') {
+    if (['paid', 'approved', 'not_due'].includes(status)) return 'is-positive';
+    if (['overdue', 'overpaid', 'invalid_ledger'].includes(status)) return 'is-negative';
+    if (['partially_paid', 'draft'].includes(status)) return 'is-warning';
+    if (status === 'reversed') return 'is-muted';
+    return '';
+}
+
+function payrollInstallments(row = {}) {
+    const direct = Array.isArray(row.installments) ? row.installments : [];
+    const settlement = row.payroll_settlement || row.payrollSettlement || {};
+    const nested = Array.isArray(settlement.installments) ? settlement.installments : [];
+    return direct.length ? direct : nested;
+}
+
+function payrollMovements(installment = {}) {
+    return Array.isArray(installment.movements)
+        ? installment.movements
+        : (Array.isArray(installment.paymentMovements) ? installment.paymentMovements : []);
+}
+
+function payrollAmount(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function nullablePayrollAmount(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function formatPayrollFactAmount(value) {
+    const amount = nullablePayrollAmount(value);
+    return amount === null ? '—' : fmtMoney(amount);
+}
+
+function payrollIsoDate(value) {
+    return value ? String(value).slice(0, 10) : '';
+}
+
+function payrollDisplayDate(value) {
+    const date = payrollIsoDate(value);
+    return date ? formatSalaryPeriodDate(date) : '—';
+}
+
+function defaultPayrollBusinessContext() {
+    if (typeof getCrmBusinessContext === 'function') return getCrmBusinessContext() || 'event_genix';
+    return 'event_genix';
+}
+
+function payrollApiPath(path, businessContext = '') {
+    const context = businessContext || defaultPayrollBusinessContext();
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}businessContext=${encodeURIComponent(context)}`;
+}
+
+function payrollIdempotencyKey(prefix, id) {
+    const random = Math.random().toString(36).slice(2, 10);
+    return `${prefix}-${id}-${Date.now()}-${random}`;
+}
+
+async function fetchPayrollPaymentOptions(businessContext = defaultPayrollBusinessContext()) {
+    const data = await crmApiFetch(payrollApiPath('/api/payroll/payment-options', businessContext));
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося завантажити рахунки і категорії');
+    return data;
+}
+
+function payrollOptionRows(rows = []) {
+    return rows.map(row => ({
+        value: String(row.id),
+        label: `${row.emoji || row.icon || ''} ${row.name || `#${row.id}`}`.trim()
+    }));
+}
+
+async function approvePayrollInstallmentFromUi(installmentId) {
+    const businessContext = defaultPayrollBusinessContext();
+    const confirmed = await formModal('Погодити частину зарплати', [
+        { key: 'businessContext', label: 'Business context', defaultValue: businessContext, required: true },
+        { key: 'note', type: 'note', text: 'Погодження фіксує locked amount. Після цього сума не перераховується заднім числом.' }
+    ], { okText: 'Погодити' });
+    if (!confirmed) return false;
+    const data = await crmApiFetch(payrollApiPath(`/api/payroll/installments/${Number(installmentId)}/approve`, confirmed.businessContext), {
+        method: 'POST',
+        body: {}
+    });
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося погодити');
+    return true;
+}
+
+async function cancelPayrollAdvanceFromUi(installmentId) {
+    const reason = await promptModal('Причина скасування авансу', {
+        placeholder: 'Наприклад: аванс цього місяця не виплачується'
+    });
+    if (reason === null) return false;
+    if (!String(reason).trim()) throw new Error('Причина скасування авансу обов’язкова');
+    const data = await crmApiFetch(`/api/payroll/installments/${Number(installmentId)}/cancel`, {
+        method: 'POST',
+        body: { reason: String(reason).trim() }
+    });
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося скасувати аванс');
+    return true;
+}
+
+async function updatePayrollScheduleFromUi(installmentId, currentDate = '') {
+    const result = await formModal('Змінити планову дату виплати', [
+        { key: 'scheduledPaymentDate', label: 'Планова дата', type: 'date', defaultValue: payrollIsoDate(currentDate), required: true },
+        { key: 'reason', label: 'Причина', required: true, placeholder: 'Наприклад: погоджено з директором' },
+        { key: 'note', type: 'note', text: 'Автоматичного перенесення вихідних немає. Approved installments не змінюються.' }
+    ], { okText: 'Зберегти дату' });
+    if (!result) return false;
+    const data = await crmApiFetch(`/api/payroll/installments/${Number(installmentId)}/schedule`, {
+        method: 'PATCH',
+        body: {
+            scheduledPaymentDate: result.scheduledPaymentDate,
+            reason: result.reason
+        }
+    });
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося змінити планову дату');
+    return true;
+}
+
+async function confirmPayrollPaymentFromUi(installmentId, defaultAmount = 0) {
+    const businessContext = defaultPayrollBusinessContext();
+    const options = await fetchPayrollPaymentOptions(businessContext);
+    const expenseCategories = payrollOptionRows(options.categories?.expense || []);
+    const accounts = payrollOptionRows(options.accounts || []);
+    if (!expenseCategories.length || !accounts.length) {
+        throw new Error('Для підтвердження потрібні активні expense category і рахунок у Finance');
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await formModal('Підтвердити виплату зарплати', [
+        { key: 'actualPaymentDate', label: 'Фактична дата', type: 'date', defaultValue: today, required: true },
+        { key: 'amount', label: 'Сума', type: 'number', defaultValue: Math.max(0, Math.round(defaultAmount)), required: true },
+        { key: 'accountId', label: 'Рахунок', type: 'select', options: accounts, required: true },
+        { key: 'paymentMethod', label: 'Спосіб оплати', type: 'select', options: (options.paymentMethods || ['cash', 'card', 'transfer', 'mixed']).map(method => ({ value: method, label: method })), required: true },
+        { key: 'categoryId', label: 'Finance category', type: 'select', options: expenseCategories, required: true },
+        { key: 'businessContext', label: 'Business context', defaultValue: options.businessContext || businessContext, required: true },
+        { key: 'reason', label: 'Коментар', placeholder: 'Підтверджено директором / бухгалтерією' }
+    ], { okText: 'Підтвердити виплату' });
+    if (!result) return false;
+    const data = await crmApiFetch(payrollApiPath(`/api/payroll/installments/${Number(installmentId)}/payments/confirm`, result.businessContext), {
+        method: 'POST',
+        headers: { 'Idempotency-Key': payrollIdempotencyKey('payroll-confirm', installmentId) },
+        body: {
+            actualPaymentDate: result.actualPaymentDate,
+            amount: Number(result.amount),
+            accountId: Number(result.accountId),
+            paymentMethod: result.paymentMethod,
+            categoryId: Number(result.categoryId),
+            reason: result.reason || 'Payroll payment confirmed from UI'
+        }
+    });
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося підтвердити виплату');
+    return true;
+}
+
+async function reversePayrollMovementFromUi(movementId, defaultAmount = 0) {
+    const businessContext = defaultPayrollBusinessContext();
+    const options = await fetchPayrollPaymentOptions(businessContext);
+    const incomeCategories = payrollOptionRows(options.categories?.income || []);
+    const accounts = payrollOptionRows(options.accounts || []);
+    if (!incomeCategories.length || !accounts.length) {
+        throw new Error('Для сторно потрібні active income category і рахунок у Finance');
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await formModal('Сторнувати зарплатну виплату', [
+        { key: 'actualPaymentDate', label: 'Дата сторно', type: 'date', defaultValue: today, required: true },
+        { key: 'amount', label: 'Сума сторно', type: 'number', defaultValue: Math.max(0, Math.round(defaultAmount)), required: true },
+        { key: 'accountId', label: 'Рахунок', type: 'select', options: accounts, required: true },
+        { key: 'paymentMethod', label: 'Спосіб оплати', type: 'select', options: (options.paymentMethods || ['cash', 'card', 'transfer', 'mixed']).map(method => ({ value: method, label: method })), required: true },
+        { key: 'categoryId', label: 'Finance income category', type: 'select', options: incomeCategories, required: true },
+        { key: 'businessContext', label: 'Business context', defaultValue: options.businessContext || businessContext, required: true },
+        { key: 'reason', label: 'Причина сторно', required: true }
+    ], { type: 'warning', okText: 'Створити сторно' });
+    if (!result) return false;
+    const data = await crmApiFetch(payrollApiPath(`/api/payroll/payments/${Number(movementId)}/reverse`, result.businessContext), {
+        method: 'POST',
+        headers: { 'Idempotency-Key': payrollIdempotencyKey('payroll-reverse', movementId) },
+        body: {
+            actualPaymentDate: result.actualPaymentDate,
+            amount: Number(result.amount),
+            accountId: Number(result.accountId),
+            paymentMethod: result.paymentMethod,
+            categoryId: Number(result.categoryId),
+            reason: result.reason
+        }
+    });
+    if (!data?.success) throw new Error(data?.error || 'Не вдалося створити сторно');
+    return true;
+}
+
+async function handlePayrollInstallmentAction(button) {
+    if (button.disabled) return;
+    const action = button.dataset.payrollInstallmentAction;
+    const id = Number(button.dataset.installmentId || button.dataset.movementId || 0);
+    if (!action || !id) return;
+    button.disabled = true;
+    try {
+        if (action === 'approve') await approvePayrollInstallmentFromUi(id);
+        if (action === 'cancel') await cancelPayrollAdvanceFromUi(id);
+        if (action === 'schedule') await updatePayrollScheduleFromUi(id, button.dataset.currentDate || '');
+        if (action === 'confirm') await confirmPayrollPaymentFromUi(id, Number(button.dataset.balance || 0));
+        if (action === 'reverse') await reversePayrollMovementFromUi(id, Number(button.dataset.amount || 0));
+        showNotification('Payroll дію виконано', 'success');
+        await loadSalary();
+    } catch (error) {
+        const message = error?.message || 'Payroll дія не виконана';
+        showNotification(message.includes('409') ? 'Конфлікт payroll дії. Оновіть дані і повторіть.' : message, 'error');
+    } finally {
+        if (button.isConnected) button.disabled = false;
+    }
+}
+
+function renderPayrollInstallmentActions(installment = {}) {
+    const id = Number(installment.id || 0);
+    if (!id) return '';
+    const workflow = installment.workflowStatus || installment.workflow_status || 'draft';
+    const status = installment.settlementStatus || workflow;
+    const balance = payrollAmount(installment.outstandingAmount ?? installment.outstanding_amount ?? installment.balanceAmount ?? 0);
+    const canAccrual = hrCanUsePayrollAction('manage_payroll_accrual');
+    const canApprove = hrCanUsePayrollAction('approve_payroll_installment');
+    const canConfirm = hrCanUsePayrollAction('confirm_payroll_payment');
+    const blockers = payrollInstallmentBlockers(installment);
+    const blockerTitle = blockers.length ? blockers.map(payrollBlockerMessage).join(' ') : '';
+    const buttons = [];
+    if (canAccrual && workflow === 'draft') {
+        buttons.push(`<button type="button" class="hr-payroll-installment-action" data-payroll-installment-action="schedule" data-installment-id="${id}" data-current-date="${escapeHtml(installment.scheduledPaymentDate || '')}">Планова дата</button>`);
+    }
+    if (canApprove && workflow === 'draft') {
+        buttons.push(`<button type="button" class="hr-payroll-installment-action" data-payroll-installment-action="approve" data-installment-id="${id}" ${blockers.length ? `disabled title="${escapeHtml(blockerTitle)}" aria-disabled="true"` : ''}>Погодити</button>`);
+        if (installment.kind === 'advance') {
+            buttons.push(`<button type="button" class="hr-payroll-installment-action is-danger" data-payroll-installment-action="cancel" data-installment-id="${id}">Скасувати аванс</button>`);
+        }
+    }
+    if (canConfirm && ['approved', 'overdue', 'partially_paid'].includes(status) && balance > 0) {
+        buttons.push(`<button type="button" class="hr-payroll-installment-action is-primary" data-payroll-installment-action="confirm" data-installment-id="${id}" data-balance="${balance}">Підтвердити виплату</button>`);
+    }
+    return buttons.length ? `<div class="hr-payroll-installment-actions">${buttons.join('')}</div>` : '';
+}
+
+function renderPayrollMovementHistory(installment = {}) {
+    const movements = payrollMovements(installment);
+    if (!movements.length) return '<div class="hr-payroll-installment-empty">Фактичних виплат ще немає.</div>';
+    const canReverse = hrCanUsePayrollAction('reverse_payroll_payment');
+    return `<div class="hr-payroll-payment-history">${movements.map(movement => {
+        const isPayment = movement.movementType === 'payment';
+        const amount = payrollAmount(movement.amount);
+        const recordedAt = formatPayrollEventTime(movement.createdAt || movement.created_at) || '—';
+        const recordedAtLabel = isPayment ? 'підтверджено' : 'сторно створено';
+        return `<div class="hr-payroll-payment-row ${isPayment ? '' : 'is-reversal'}">
+            <span>${escapeHtml(isPayment ? 'payment' : 'reversal')} · ${payrollDisplayDate(movement.actualPaymentDate)}</span>
+            <strong>${isPayment ? '' : '−'}${fmtMoney(amount)}</strong>
+            <small>${escapeHtml(movement.actorUsername || '—')} · ${escapeHtml(recordedAtLabel)} ${escapeHtml(recordedAt)} · finance #${escapeHtml(movement.financeTransactionId || '—')}</small>
+            ${canReverse && isPayment ? `<button type="button" class="hr-payroll-installment-action is-danger" data-payroll-installment-action="reverse" data-movement-id="${Number(movement.id)}" data-amount="${amount}">Сторно</button>` : ''}
+        </div>`;
+    }).join('')}</div>`;
+}
+
+function renderSalaryInstallments(row = {}) {
+    const installments = payrollInstallments(row);
+    if (!installments.length) {
+        const reportId = row.payroll_report_id ?? row.reportId ?? null;
+        const settlement = row.payroll_settlement || row.payrollSettlement || {};
+        const legacy = settlement.legacy || null;
+        if (!reportId) {
+            return '<section class="hr-payroll-installments is-legacy"><div class="hr-payroll-installment-empty">Нарахування за цей місяць ще не створено.</div></section>';
+        }
+        const legacyMessage = legacy?.message
+            || (legacy?.historicalStatus === 'legacy_accounted'
+                ? 'Історично враховано; факт виплати користувачем не підтверджено'
+                : `Історичний статус: ${legacy?.historicalStatus || legacy?.reportStatus || row.payroll_status || 'невідомий'}. Факт виплати не підтверджено.`);
+        return `<section class="hr-payroll-installments is-legacy">
+            <div class="hr-payroll-installment-empty">${escapeHtml(legacyMessage)}</div>
+        </section>`;
+    }
+    return `<section class="hr-payroll-installments" aria-label="Факт виплати зарплати">
+        ${installments.map(installment => {
+            const status = installment.settlementStatus || installment.workflowStatus || 'draft';
+            const movements = payrollMovements(installment);
+            const paidDates = [...new Set(movements
+                .filter(movement => movement.movementType === 'payment')
+                .map(movement => payrollDisplayDate(movement.actualPaymentDate))
+                .filter(date => date && date !== '—'))];
+            const approvedBy = installment.approvedByUsername
+                ? `${installment.approvedByUsername}${installment.approvedByRole ? ` · ${installment.approvedByRole}` : ''}`
+                : '—';
+            return `<article class="hr-payroll-installment ${payrollStatusTone(status)}">
+                <header>
+                    <div>
+                        <strong>${escapeHtml(PAYROLL_INSTALLMENT_KIND_LABELS[installment.kind] || installment.kind || 'Частина')}</strong>
+                        <span>${payrollDisplayDate(installment.earningFrom)} – ${payrollDisplayDate(installment.earningTo)}</span>
+                    </div>
+                    <span class="hr-payroll-installment-status">${escapeHtml(PAYROLL_INSTALLMENT_STATUS_LABELS[status] || status)}</span>
+                </header>
+                <div class="hr-payroll-installment-grid">
+                    <div><span>calculated</span><strong>${fmtMoney(payrollAmount(installment.calculatedAmount))}</strong></div>
+                    <div><span>paid</span><strong>${fmtMoney(payrollAmount(installment.paidAmount))}</strong></div>
+                    <div><span>balance</span><strong>${fmtMoney(payrollAmount(installment.outstandingAmount))}</strong></div>
+                    <div><span>план</span><strong>${payrollDisplayDate(installment.scheduledPaymentDate)}</strong></div>
+                    <div><span>факт</span><strong>${escapeHtml(paidDates.join(', ') || '—')}</strong></div>
+                    <div><span>погодив</span><strong>${escapeHtml(approvedBy)}</strong><small>${escapeHtml(formatPayrollEventTime(installment.approvedAt) || '')}</small></div>
+                </div>
+                ${renderPayrollInstallmentBlockers(installment)}
+                ${renderPayrollInstallmentActions(installment)}
+                ${renderPayrollMovementHistory(installment)}
+            </article>`;
+        }).join('')}
+    </section>`;
+}
+
 function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
     const staffDepartment = payrollStaffDepartmentSubtitle(s);
     const daysWorked = Number(s.days_worked || 0);
@@ -16416,10 +16922,13 @@ function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
     const baseSalary = Number(s.base_salary || 0);
     const additionalPay = Number(s.additional_pay || 0);
     const overtimePay = Number(s.overtime_pay || 0);
+    const kpiBonus = Number(s.kpi_bonus || s.kpi_bonus_amount || 0);
     const bonuses = Number(s.bonuses || 0) + Number(s.tips || 0);
     const deductions = Number(s.deductions || 0) + Number(s.penalties || 0);
     const advances = Number(s.advances || 0);
     const totalSalary = Number(s.total_salary || 0);
+    const paidAmount = nullablePayrollAmount(s.paid_amount);
+    const balanceAmount = nullablePayrollAmount(s.outstanding_amount ?? s.balance_amount);
     const transparency = salaryTransparency(s);
     const detailId = `payroll-salary-detail-${groupIndex}-${itemIndex}`;
 
@@ -16438,8 +16947,16 @@ function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
                 <strong>${fmtMoney(baseSalary)}</strong>
             </div>
             <div class="hr-payroll-primary-metric hr-payroll-primary-metric--total">
-                <span class="hr-payroll-field-label">До виплати</span>
+                <span class="hr-payroll-field-label">Нараховано</span>
                 <strong>${fmtMoney(totalSalary)}</strong>
+            </div>
+            <div class="hr-payroll-primary-metric">
+                <span class="hr-payroll-field-label">Виплачено</span>
+                <strong>${formatPayrollFactAmount(paidAmount)}</strong>
+            </div>
+            <div class="hr-payroll-primary-metric">
+                <span class="hr-payroll-field-label">Залишок</span>
+                <strong>${formatPayrollFactAmount(balanceAmount)}</strong>
             </div>
             <button type="button" class="hr-payroll-detail-toggle" data-payroll-detail-toggle aria-expanded="false" aria-controls="${detailId}">
                 <span data-payroll-detail-label>Деталі</span>
@@ -16461,10 +16978,13 @@ function renderSalaryEmployeeItem(s = {}, itemIndex = 0, groupIndex = 0) {
                 <span class="hr-payroll-field-label">Одночасна додаткова оплата</span>
                 ${renderSalaryAdditionalRoleDetails(s)}
             </section>
+            ${renderSalaryInstallments(s)}
             <div class="hr-payroll-detail-grid">
                 <div class="hr-payroll-detail-card is-positive"><span>Додаткова професія</span><strong>${additionalPay ? `+${fmtMoney(additionalPay)}` : '—'}</strong></div>
                 <div class="hr-payroll-detail-card"><span>Переробки</span><strong>${overtimePay ? fmtMoney(overtimePay) : '—'}</strong></div>
-                <div class="hr-payroll-detail-card is-positive"><span>Бонуси та чайові</span><strong>${bonuses ? `+${fmtMoney(bonuses)}` : '—'}</strong></div>
+                <div class="hr-payroll-detail-card is-positive"><span>KPI score</span><strong>інфо</strong><small>Не конвертується в гроші автоматично</small></div>
+                <div class="hr-payroll-detail-card is-positive"><span>Ручний KPI bonus</span><strong>${kpiBonus ? `+${fmtMoney(kpiBonus)}` : '—'}</strong><small>Тільки фінальна зарплата</small></div>
+                <div class="hr-payroll-detail-card is-positive"><span>Бонуси та чайові</span><strong>${bonuses ? `+${fmtMoney(bonuses)}` : '—'}</strong><small>Загальна бонусна частина</small></div>
                 <div class="hr-payroll-detail-card is-negative"><span>Утримання та штрафи</span><strong>${deductions ? `−${fmtMoney(deductions)}` : '—'}</strong></div>
                 <div class="hr-payroll-detail-card is-negative"><span>ЗРС</span><strong>${advances ? `−${fmtMoney(advances)}` : '—'}</strong></div>
             </div>
@@ -16493,8 +17013,11 @@ function renderSalary(data) {
             <div class="hr-summary-card green"><div class="value">${(totals.total_additional || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Одночасна доплата</div></div>
             <div class="hr-summary-card"><div class="value">${(totals.total_overtime || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Переробки</div></div>
             <div class="hr-summary-card green"><div class="value">${(totals.total_bonuses || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Бонуси</div></div>
+            <div class="hr-summary-card green"><div class="value">${(totals.total_kpi_bonus || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Ручний KPI bonus</div></div>
             <div class="hr-summary-card red"><div class="value">${(totals.total_deductions || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Утримання</div></div>
             <div class="hr-summary-card red"><div class="value">${(totals.total_advances || 0).toLocaleString('uk-UA')} ₴</div><div class="label">ЗРС</div></div>
+            <div class="hr-summary-card green"><div class="value">${formatPayrollFactAmount(totals.total_paid)}</div><div class="label">Виплачено</div></div>
+            <div class="hr-summary-card"><div class="value">${formatPayrollFactAmount(totals.total_balance)}</div><div class="label">Залишок</div></div>
         </div>
     `;
 
@@ -17574,7 +18097,8 @@ function zrsAdjustmentActive(row = {}) {
 }
 
 function zrsAdjustmentIsAdvance(row = {}) {
-    return String(row.type || '').trim().toLowerCase() === 'advance';
+    const type = String(row.type || '').trim().toLowerCase();
+    return type === 'zrs' || type === 'advance';
 }
 
 function zrsStatusLabel(status) {
@@ -18003,7 +18527,7 @@ async function loadZrs(options = {}) {
     const offset = append ? zrsJournalState.rows.length : 0;
     const params = new URLSearchParams({
         month,
-        type: 'advance',
+        type: 'zrs',
         status: zrsJournalStatusFilterValue(),
         limit: String(ZRS_JOURNAL_PAGE_SIZE),
         offset: String(offset),
@@ -18204,7 +18728,10 @@ function zrsConfirmationText(preview = {}, month = '', reason = '') {
 }
 
 async function showZrsForm() {
-    if (!canManageZrsAdjustments()) { showNotification('Недостатньо прав для створення ЗРС', 'error'); return; }
+    if (!hrCanUsePayrollAction('manage_payroll_accrual')) {
+        showNotification('Недостатньо прав для коригування зарплати', 'error');
+        return;
+    }
     if (zrsCreateRequestInFlight) { showNotification('ЗРС уже зберігається. Дочекайтесь завершення.', 'warning'); return; }
     const month = currentZrsMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
@@ -18277,7 +18804,7 @@ async function showZrsForm() {
         const data = await hrFetch('/salary/adjustment', 'POST', {
             staff_id: staffId,
             month,
-            type: 'advance',
+            type: 'zrs',
             amount,
             reason
         });
@@ -18295,11 +18822,14 @@ async function showZrsForm() {
 }
 
 async function voidZrsAdjustment(adjustmentId) {
-    if (!canManageZrsAdjustments()) { showNotification('Недостатньо прав для скасування ЗРС', 'error'); return; }
+    if (!hrCanUsePayrollAction('manage_payroll_accrual')) {
+        showNotification('Недостатньо прав для скасування ЗРС', 'error');
+        return;
+    }
     const id = Number(adjustmentId);
     if (!Number.isFinite(id) || id <= 0) return;
     const result = await formModal('Скасувати ЗРС', [
-        { key: 'reason', label: 'Причина', type: 'textarea', required: true, placeholder: 'Наприклад: помилково доданий аванс' }
+        { key: 'reason', label: 'Причина', type: 'textarea', required: true, placeholder: 'Наприклад: помилково доданий ЗРС' }
     ], { icon: '!', type: 'warning', okText: 'Скасувати ЗРС' });
     if (!result?.reason?.trim()) return;
     const data = await hrFetch(`/salary/adjustment/${id}/void`, 'PUT', { reason: result.reason.trim() });
@@ -18316,11 +18846,16 @@ async function voidZrsAdjustment(adjustmentId) {
 window.voidZrsAdjustment = voidZrsAdjustment;
 
 window.showAdjustmentForm = async function() {
+    if (!hrCanUsePayrollAction('manage_payroll_accrual')) {
+        showNotification('Недостатньо прав для коригування зарплати', 'error');
+        return;
+    }
     const staff = await hrFetch('/staff?active=true');
     if (!staff?.success) return;
     const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
     const typeOptions = [
         { value: 'bonus', label: 'Бонус' },
+        { value: 'kpi_bonus', label: 'Ручний KPI bonus' },
         { value: 'deduction', label: 'Утримання' },
         { value: 'penalty', label: 'Депреміювання' },
         { value: 'tip', label: 'Чайові' }
@@ -18335,6 +18870,10 @@ window.showAdjustmentForm = async function() {
     const amount = parseInt(result.amount);
     if (!amount) return;
     const month = document.getElementById('salaryMonth')?.value || '';
+    if (result.type === 'kpi_bonus' && !String(result.reason || '').trim()) {
+        showNotification('Для KPI-бонусу обовʼязково вкажіть причину', 'error');
+        return;
+    }
 
     // For penalty/deduction — show template picker
     if (result.type === 'penalty' || result.type === 'deduction') {
@@ -18355,7 +18894,10 @@ window.showAdjustmentForm = async function() {
     }
 
     const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(result.staffId), month, type: result.type, amount, reason: result.reason || '' });
-    if (data?.success) { showNotification('Коригування додано', 'success'); loadSalary(); }
+    if (data?.success) {
+        showNotification(result.type === 'kpi_bonus' ? 'Ручний KPI-бонус додано до фінальної зарплати' : 'Коригування додано', 'success');
+        loadSalary();
+    }
 };
 
 // v43.0: Depremium template picker with decision panel
@@ -18857,6 +19399,10 @@ window.showStartOnboarding = async function() {
 };
 
 async function refreshSalaryReconciliation() {
+    if (!hrCanUsePayrollAction('view_payroll')) {
+        showNotification('Недостатньо прав для перегляду звірки зарплати', 'error');
+        return;
+    }
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     const period = currentSalaryPeriod();
@@ -18874,11 +19420,19 @@ async function refreshSalaryReconciliation() {
 }
 
 async function setSalaryPeriodLock(locked) {
+    if (!hrCanUsePayrollAction('close_payroll_period')) {
+        showNotification('Недостатньо прав для закриття зарплатного періоду', 'error');
+        return;
+    }
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     const period = currentSalaryPeriod();
     if (period?.isCustom) {
         showNotification('Закриття періоду доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
+    if (!locked && salaryPayrollActivationState.legacyReopenDisabled) {
+        showNotification(salaryPayrollLegacyBlockedMessage({ code: 'PAYROLL_LEGACY_PERIOD_REOPEN_DISABLED' }), 'warning');
         return;
     }
     const okText = locked ? 'Закрити' : 'Відкрити';
@@ -18888,7 +19442,7 @@ async function setSalaryPeriodLock(locked) {
     if (!await confirmModal(message, { type: locked ? 'warning' : 'info', okText })) return;
     const data = await hrFetch('/salary/period-lock', 'POST', { month, locked, note: locked ? 'Закрито вручну' : 'Відкрито вручну' });
     if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося оновити період', 'error');
+        showNotification(data?.status === 409 ? salaryPayrollLegacyBlockedMessage(data) : (data?.error || 'Не вдалося оновити період'), data?.status === 409 ? 'warning' : 'error');
         return;
     }
     renderSalaryPeriodControls(data);
@@ -18897,11 +19451,19 @@ async function setSalaryPeriodLock(locked) {
 }
 
 async function reverseSalaryPeriod() {
+    if (!hrCanUsePayrollAction('reverse_payroll_payment')) {
+        showNotification('Недостатньо прав для сторно зарплатних виплат', 'error');
+        return;
+    }
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     const period = currentSalaryPeriod();
     if (period?.isCustom) {
         showNotification('Сторно доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
+    if (salaryPayrollActivationState.legacyReverseDisabled) {
+        showNotification(salaryPayrollLegacyBlockedMessage({ code: 'PAYROLL_LEGACY_REVERSE_DISABLED' }), 'warning');
         return;
     }
     const reason = await promptModal(`Причина сторно зарплати за ${month}`, {
@@ -18912,7 +19474,7 @@ async function reverseSalaryPeriod() {
     if (!await confirmModal(`Сторнувати активні нарахування зарплати за ${month}? Будуть створені finance сторно-транзакції.`, { type: 'danger', okText: 'Сторнувати' })) return;
     const data = await hrFetch('/salary/reverse', 'POST', { month, reason });
     if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося сторнувати зарплату', 'error');
+        showNotification(data?.status === 409 ? salaryPayrollLegacyBlockedMessage(data) : (data?.error || 'Не вдалося сторнувати зарплату'), data?.status === 409 ? 'warning' : 'error');
         return;
     }
     showNotification(`Сторновано ${data.count || 0} нарахувань`, 'success');
@@ -18921,6 +19483,10 @@ async function reverseSalaryPeriod() {
 
 // Salary commit uses the same backend payroll calculation as the salary preview.
 window.commitSalaries = async function commitSalaries() {
+    if (!hrCanUsePayrollAction('manage_payroll_accrual')) {
+        showNotification('Недостатньо прав для нарахування зарплати', 'error');
+        return;
+    }
     const month = document.getElementById('salaryMonth')?.value;
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     const period = currentSalaryPeriod();
@@ -18928,13 +19494,23 @@ window.commitSalaries = async function commitSalaries() {
         showNotification('Нарахування зарплати доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
         return;
     }
-    if (!await confirmModal(`Нарахувати зарплати за ${month}?`, { type: 'danger', okText: 'Нарахувати' })) return;
-    const data = await hrFetch('/salary/commit', 'POST', { month });
+    const activation = salaryPayrollActivationState;
+    if (!activation.active || activation.readOnly || !activation.calculateEndpoint) {
+        showNotification('Історичний payroll-період доступний тільки для перегляду.', 'warning');
+        return;
+    }
+    if (!await confirmModal(`Розрахувати зарплати за ${month}?`, { type: 'info', okText: 'Розрахувати' })) return;
+    const data = await hrFetch('/salary/installments/calculate', 'POST', { month });
     if (data?.success) {
-        showNotification(`Зарплати нараховано (${data.committed ?? data.count ?? 0} транзакцій)`, 'success');
+        normalizeSalaryPayrollActivation(data);
+        const generated = data.generated ?? data.count ?? 0;
+        const message = data.financeChanged === false
+            ? `Зарплату розраховано: ${generated} draft report(s), Finance не змінено`
+            : `Зарплати нараховано (${data.committed ?? data.count ?? 0} транзакцій)`;
+        showNotification(message, 'success');
         loadSalary();
     } else {
-        showNotification(data?.error || 'Помилка нарахування', 'error');
+        showNotification(data?.status === 409 ? salaryPayrollLegacyBlockedMessage(data) : (data?.error || 'Помилка нарахування'), data?.status === 409 ? 'warning' : 'error');
     }
 };
 

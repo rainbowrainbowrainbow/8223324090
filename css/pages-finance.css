@@ -54,3 +54,174 @@ body.dark-mode .salary-additional-warning {
     background: rgba(245, 158, 11, 0.18);
     color: #fde68a;
 }
+
+.salary-form-grid textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    color: var(--gray-900);
+    font: inherit;
+    font-size: 14px;
+}
+
+.salary-payroll-installments {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+    min-width: 260px;
+}
+
+.salary-payroll-installment {
+    border: 1px solid var(--gray-100);
+    border-left: 3px solid var(--success);
+    border-radius: 10px;
+    padding: 10px;
+    background: color-mix(in srgb, var(--success) 4%, transparent);
+}
+
+.salary-payroll-installment.is-warning {
+    border-left-color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 6%, transparent);
+}
+
+.salary-payroll-installment.is-negative {
+    border-left-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+.salary-payroll-installment.is-neutral {
+    border-left-color: var(--quest);
+    background: var(--quest-bg);
+}
+
+.salary-payroll-installment > header,
+.salary-payroll-movement {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.salary-payroll-installment > header strong,
+.salary-payroll-movement strong {
+    display: block;
+    color: var(--gray-900);
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.salary-payroll-installment > header span,
+.salary-payroll-grid span,
+.salary-payroll-movement span,
+.salary-payroll-movement small {
+    color: var(--gray-500);
+    font-size: 11px;
+}
+
+.salary-payroll-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.salary-payroll-grid > div,
+.salary-payroll-movement {
+    padding: 8px;
+    border: 1px solid var(--gray-100);
+    border-radius: 8px;
+    background: var(--white);
+}
+
+.salary-payroll-grid b,
+.salary-payroll-grid small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.salary-payroll-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.salary-payroll-action {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid var(--quest);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--quest-dark);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.salary-payroll-action.is-primary {
+    border-color: var(--success);
+    background: var(--success);
+    color: white;
+}
+
+.salary-payroll-action.is-danger {
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger-dark);
+}
+
+.salary-payroll-action:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.salary-payroll-movements {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.salary-payroll-movement.is-reversal {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+body.dark-mode .salary-form-grid textarea {
+    background: var(--surface);
+    border-color: var(--gray-300);
+    color: var(--text-primary);
+}
+
+body.dark-mode .salary-payroll-installment,
+body.dark-mode .salary-payroll-grid > div,
+body.dark-mode .salary-payroll-movement {
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .salary-payroll-installment > header strong,
+body.dark-mode .salary-payroll-movement strong {
+    color: var(--text-primary);
+}
+
+body.dark-mode .salary-payroll-installment > header span,
+body.dark-mode .salary-payroll-grid span,
+body.dark-mode .salary-payroll-movement span,
+body.dark-mode .salary-payroll-movement small {
+    color: var(--gray-500);
+}
+
+@media (max-width: 768px) {
+    .salary-payroll-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .salary-payroll-movement {
+        flex-direction: column;
+    }
+}

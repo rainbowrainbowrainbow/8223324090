@@ -66,6 +66,9 @@ const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
 const TRAINING_ACCESS = [...MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 const FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
+const PAYROLL_VIEW_ROLES = ['creator', 'director', 'vice_director', 'hr', 'accountant'];
+const PAYROLL_REVERSE_CLOSE_ROLES = ['creator', 'director', 'accountant'];
+const PAYROLL_RULE_ROLES = ['creator', 'director', 'hr', 'accountant'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
@@ -130,6 +133,13 @@ const ACTION_PERMISSIONS = {
     manage_settings: ['creator', 'director'],
     export_data:     MANAGER_UP,
     manage_staff:    [...MANAGER_UP, 'hr', 'admin'],
+    view_payroll: PAYROLL_VIEW_ROLES,
+    manage_payroll_accrual: PAYROLL_VIEW_ROLES,
+    approve_payroll_installment: PAYROLL_VIEW_ROLES,
+    confirm_payroll_payment: PAYROLL_VIEW_ROLES,
+    reverse_payroll_payment: PAYROLL_REVERSE_CLOSE_ROLES,
+    close_payroll_period: PAYROLL_REVERSE_CLOSE_ROLES,
+    manage_payroll_rules: PAYROLL_RULE_ROLES,
 };
 
 const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);

@@ -865,6 +865,9 @@ const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
 const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 const _FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
+const _PAYROLL_VIEW_ROLES = ['creator', 'director', 'vice_director', 'hr', 'accountant'];
+const _PAYROLL_REVERSE_CLOSE_ROLES = ['creator', 'director', 'accountant'];
+const _PAYROLL_RULE_ROLES = ['creator', 'director', 'hr', 'accountant'];
 
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY.slice(),
@@ -929,6 +932,13 @@ const ACTION_PERMISSIONS = {
     manage_settings: ['creator', 'director'],
     export_data:     _MANAGER_UP,
     manage_staff:    [..._MANAGER_UP, 'hr', 'admin'],
+    view_payroll: _PAYROLL_VIEW_ROLES,
+    manage_payroll_accrual: _PAYROLL_VIEW_ROLES,
+    approve_payroll_installment: _PAYROLL_VIEW_ROLES,
+    confirm_payroll_payment: _PAYROLL_VIEW_ROLES,
+    reverse_payroll_payment: _PAYROLL_REVERSE_CLOSE_ROLES,
+    close_payroll_period: _PAYROLL_REVERSE_CLOSE_ROLES,
+    manage_payroll_rules: _PAYROLL_RULE_ROLES,
 };
 
 const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
@@ -1539,6 +1549,14 @@ function canAccess(action) {
     }
     if (getCurrentUserActionList('actionAllowlist', 'action_allowlist').includes(action)) return true;
     return getUserRoles().some(role => allowed.includes(role));
+}
+
+function canUseAction(action) {
+    return canAccess(action);
+}
+
+if (typeof window !== 'undefined') {
+    window.canUseAction = canUseAction;
 }
 
 function _normalizePagePath(page) {

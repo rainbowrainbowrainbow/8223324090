@@ -405,19 +405,82 @@ const ReportsPage = (() => {
         return !!state && isPayrollTemplateLike(state);
     }
 
+    function normalizeLegacyPayrollColumn(column = {}) {
+        const key = String(column.key || '').trim().toLowerCase();
+        const label = String(column.label || '').trim().toLowerCase();
+        if (['advance', 'advances', 'advance_amount', 'advances_amount'].includes(key)
+            || ['аванс', 'аванси'].includes(label)) {
+            return { ...column, label: 'ЗРС' };
+        }
+        return column;
+    }
+
+    function normalizePayrollColumns(columns = [], table = _reportTableState) {
+        return isPayrollTemplateLike(table) && Array.isArray(columns)
+            ? columns.map(normalizeLegacyPayrollColumn)
+            : columns;
+    }
+
+    function payrollTableMonth(state = _reportTableState) {
+        const candidates = [
+            state?.month,
+            state?.payrollMonth,
+            state?.periodMonth,
+            state?.defaultReport?.month,
+            state?.defaultReport?.payrollMonth,
+            state?.payrollReconciliation?.month
+        ].map(value => String(value || '').trim()).filter(Boolean);
+        const direct = candidates.find(value => /^\d{4}-\d{2}$/.test(value));
+        if (direct) return direct;
+        const months = (Array.isArray(state?.rows) ? state.rows : [])
+            .map(row => payrollDateKey(row))
+            .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+            .map(value => value.slice(0, 7));
+        const unique = [...new Set(months)];
+        return unique.length === 1 ? unique[0] : '';
+    }
+
+    function payrollCanonicalExportUrl(format, state = _reportTableState) {
+        const month = payrollTableMonth(state);
+        const endpoint = format === 'xlsx' ? '/api/payroll/export-xlsx' : '/api/payroll/export';
+        return `${endpoint}${month ? `?month=${encodeURIComponent(month)}` : ''}`;
+    }
+
+    function reportsPayrollDeprecatedMessage() {
+        return 'Payroll у Reports переведено у read-only режим. Суми, виплати й exports беруться тільки з canonical Payroll API.';
+    }
+
+    function deprecatedPayrollReconciliation(state = _reportTableState) {
+        const rows = Array.isArray(state?.rows) ? state.rows : [];
+        return {
+            rows,
+            rowMeta: rows.map((row, index) => ({ index, row, status: 'deprecated_read_only', issues: ['reports_payroll_deprecated'] })),
+            totals: { planned: null, actual: null, paid: null, amount: 0 },
+            status: 'deprecated_read_only',
+            issueCounts: { reports_payroll_deprecated: Math.max(1, rows.length || 0) },
+            source: 'canonical_payroll_service_required',
+            canonicalExports: {
+                csv: payrollCanonicalExportUrl('csv', state),
+                xlsx: payrollCanonicalExportUrl('xlsx', state)
+            }
+        };
+    }
+
     const PAYROLL_RECONCILIATION_FILTERS = [
         { key: 'all', label: 'Всі' },
         { key: 'needs_review', label: 'Review' },
         { key: 'reconciled', label: 'OK' },
         { key: 'draft', label: 'Draft' },
-        { key: 'approved', label: 'Approved' }
+        { key: 'approved', label: 'Approved' },
+        { key: 'deprecated_read_only', label: 'Read-only' }
     ];
 
     const PAYROLL_RECONCILIATION_LABELS = {
         draft: 'Draft',
         needs_review: 'Review',
         reconciled: 'OK',
-        approved: 'Approved'
+        approved: 'Approved',
+        deprecated_read_only: 'Read-only'
     };
 
     const PAYROLL_ISSUE_LABELS = {
@@ -431,7 +494,8 @@ const ReportsPage = (() => {
         actual_paid_hours_mismatch: 'факт != оплата',
         duplicate_payroll_row: 'дубль payroll',
         amount_missing_or_zero: 'сума 0',
-        offboarded_staff: 'offboarded'
+        offboarded_staff: 'offboarded',
+        reports_payroll_deprecated: 'canonical Payroll API only'
     };
 
     const REPORT_QUALITY_FILTERS = [
@@ -729,35 +793,9 @@ const ReportsPage = (() => {
     async function loadPayrollReconciliationSources(state = _reportTableState) {
         if (!isPayrollTableState(state)) return;
         const range = payrollDateRange(state);
-        if (!range) {
-            _payrollScheduleIndex = {};
-            _payrollAttendanceIndex = {};
-            _payrollReconciliationSignature = '';
-            return;
-        }
-        if (_payrollReconciliationSignature === range.signature) return;
-        _payrollReconciliationLoading = true;
-        try {
-            const [scheduleData, attendanceData] = await Promise.all([
-                apiRequest('GET', `/api/staff/schedule?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).catch(() => ({ success: false, data: [] })),
-                apiRequest('GET', `/api/staff/attendance?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).catch(() => ({ success: false, data: [] }))
-            ]);
-            _payrollScheduleIndex = {};
-            (Array.isArray(scheduleData.data) ? scheduleData.data : []).forEach(entry => {
-                const staffId = String(entry.staff_id || '').trim();
-                const date = String(entry.date || '').slice(0, 10);
-                if (staffId && date) _payrollScheduleIndex[payrollLookupKey(staffId, date)] = entry;
-            });
-            _payrollAttendanceIndex = {};
-            (Array.isArray(attendanceData.data) ? attendanceData.data : []).forEach(record => {
-                const staffId = String(record.staff_id || '').trim();
-                const date = String(record.date || '').slice(0, 10);
-                if (staffId && date) _payrollAttendanceIndex[payrollLookupKey(staffId, date)] = record;
-            });
-            _payrollReconciliationSignature = range.signature;
-        } finally {
-            _payrollReconciliationLoading = false;
-        }
+        _payrollScheduleIndex = {};
+        _payrollAttendanceIndex = {};
+        _payrollReconciliationSignature = range?.signature || 'reports-payroll-deprecated';
     }
 
     function queuePayrollReconciliationRefresh() {
@@ -776,188 +814,7 @@ const ReportsPage = (() => {
 
     function normalizePayrollRows(state = _reportTableState, options = {}) {
         if (!isPayrollTableState(state)) return { rows: [], rowMeta: [], totals: { planned: 0, actual: 0, paid: 0, amount: 0 }, status: 'draft', issueCounts: {} };
-        const duplicateCounts = {};
-        (state.rows || []).forEach(row => {
-            const staffId = payrollStaffId(row);
-            const date = payrollDateKey(row);
-            if (!staffId || !date) return;
-            const key = payrollLookupKey(staffId, date);
-            duplicateCounts[key] = (duplicateCounts[key] || 0) + 1;
-        });
-
-        const rowMeta = (state.rows || []).map((row, index) => {
-            const next = options.mutate ? row : { ...row };
-            const staffId = payrollStaffId(next);
-            const date = payrollDateKey(next);
-            const staff = staffId ? payrollStaffOption(staffId) : null;
-            const lookupKey = staffId && date ? payrollLookupKey(staffId, date) : '';
-            const schedule = lookupKey ? _payrollScheduleIndex[lookupKey] : null;
-            const attendance = lookupKey ? _payrollAttendanceIndex[lookupKey] : null;
-            const issues = [];
-            const hasAnyValue = state.columns.some(col => String(next?.[col.key] ?? '').trim() !== '');
-
-            if (staffId) next.staff_id = staffId;
-            if (staff) {
-                next.employee = staff.name || next.employee || '';
-                next.display_snapshot = staff.name || next.display_snapshot || next.employee || '';
-                next.role_snapshot = reportStaffRoleLabel(staff) || next.role_snapshot || next.role || '';
-                if (!next.role) next.role = next.role_snapshot;
-            } else {
-                next.display_snapshot = next.display_snapshot || next.employee || '';
-                next.role_snapshot = next.role_snapshot || next.role || '';
-            }
-
-            if (!staffId && hasAnyValue) payrollIssue('missing_staff_id', issues);
-            if (!date && hasAnyValue) payrollIssue('missing_payroll_date', issues);
-            if (staffId && _staffOptionsAvailable && !staff) payrollIssue('staff_not_active_or_missing', issues);
-            if (String(next.staff_status || '').toLowerCase() === 'offboarded') payrollIssue('offboarded_staff', issues);
-
-            const plannedTime = schedule ? schedulePlannedTime(schedule) : null;
-            const plannedHours = schedule ? schedulePlannedHours(schedule) : parseNumber(next.planned_hours);
-            const actualHours = attendance ? attendanceActualHours(attendance) : parseNumber(next.actual_hours);
-            const paidHours = parseNumber(next.hours || next.paid_hours);
-            const amount = parseNumber(next.total || next.amount);
-            const attendanceFacts = attendance ? payrollAttendanceFacts(attendance) : {
-                lateMinutes: 0,
-                earlyLeaveMinutes: 0,
-                overtimeMinutes: 0,
-                events: []
-            };
-            const planSource = attendance
-                ? (attendance.plan_source
-                    || (schedule ? 'hr_shift' : ((attendance.planned_start && attendance.planned_end) ? 'profession_card' : 'unscheduled')))
-                : '';
-            const planWarning = attendance?.plan_warning?.message
-                || attendance?.plan_warning
-                || (planSource === 'profession_card'
-                    ? 'План дня взято з картки основної професії'
-                    : (planSource === 'unscheduled' ? 'Для attendance немає планового часу' : ''));
-
-            next.planned_hours = schedule ? plannedHours : (plannedHours || next.planned_hours || '');
-            next.actual_hours = actualHours || next.actual_hours || '';
-            next.planned_start = attendance?.planned_start || schedule?.shift_start || schedule?.planned_start || next.planned_start || '';
-            next.planned_end = attendance?.planned_end || schedule?.shift_end || schedule?.planned_end || next.planned_end || '';
-            next.clock_in = attendanceTimeLabel(attendance?.clock_in || attendance?.checkin_at) || next.clock_in || '';
-            next.clock_out = attendanceTimeLabel(attendance?.clock_out || attendance?.checkout_at) || next.clock_out || '';
-            next.late_minutes = attendanceFacts.lateMinutes;
-            next.early_leave_minutes = attendanceFacts.earlyLeaveMinutes;
-            next.overtime_minutes = attendanceFacts.overtimeMinutes;
-            next.attendance_events = attendanceFacts.events;
-            next.plan_source = planSource;
-            next.plan_warning = planWarning;
-            next.paid_hours = paidHours || '';
-            next.manual_amount = parseNumber(next.manual_amount) || 0;
-            next.bonuses = parseNumber(next.bonus || next.bonuses) || 0;
-            next.penalties = parseNumber(next.penalty || next.penalties) || 0;
-            next.notes = next.notes || '';
-
-            if (schedule) {
-                const primaryProfessionKey = schedulePrimaryProfession(schedule);
-                next.segment_refs = scheduleSegmentRefs(schedule);
-                next.primary_profession_key = primaryProfessionKey;
-                next.planned_allocation_source = plannedTime.source;
-                next.allocation_source = attendance?.allocation_source
-                    || attendance?.allocationSource
-                    || next.allocation_source
-                    || plannedTime.source;
-                next.reconciliation_source = 'reports_rawData_payroll_reconciliation_v1';
-                next.planned_shift_ref = {
-                    source: 'staff_schedule',
-                    id: schedule.id || null,
-                    hr_shift_id: schedule.hr_shift_id || null,
-                    date,
-                    status: schedule.status || null,
-                    start: schedule.shift_start || schedule.planned_start || null,
-                    end: schedule.shift_end || schedule.planned_end || null
-                };
-            } else if (staffId && date) {
-                next.planned_shift_ref = next.planned_shift_ref || null;
-                payrollIssue('no_shift', issues);
-            }
-
-            if (attendance) {
-                const attendanceStatus = payrollAttendanceStatus(attendance);
-                if (planSource === 'profession_card') payrollIssue('profession_card_fallback', issues);
-                if (planSource === 'unscheduled') payrollIssue('attendance_unscheduled', issues);
-                next.attendance_ref = {
-                    source: attendance.attendance_source || 'hr_time_records',
-                    time_record_id: attendance.time_record_id || null,
-                    checkin_id: attendance.checkin_id || null,
-                    date,
-                    status: attendanceStatus,
-                    events: attendanceFacts.events,
-                    late_minutes: attendanceFacts.lateMinutes,
-                    early_leave_minutes: attendanceFacts.earlyLeaveMinutes,
-                    overtime_minutes: attendanceFacts.overtimeMinutes,
-                    plan_source: planSource
-                };
-                next.attendance_status = attendanceStatus;
-            } else if (schedule) {
-                next.attendance_ref = next.attendance_ref || null;
-                next.attendance_status = next.attendance_status || '';
-                payrollIssue('no_attendance', issues);
-            }
-
-            if (paidHours > 0 && actualHours > 0 && Math.abs(paidHours - actualHours) > 0.05) {
-                payrollIssue('actual_paid_hours_mismatch', issues);
-            }
-            if (lookupKey && duplicateCounts[lookupKey] > 1) payrollIssue('duplicate_payroll_row', issues);
-            if (hasAnyValue && amount <= 0) payrollIssue('amount_missing_or_zero', issues);
-
-            const manualStatus = String(next.payroll_status || next.reconciliation_status || '').trim();
-            const status = manualStatus === 'approved'
-                ? 'approved'
-                : !hasAnyValue
-                    ? 'draft'
-                    : issues.length
-                        ? 'needs_review'
-                        : 'reconciled';
-            next.reconciliation_status = status;
-            next.reconciliation_issues = issues;
-
-            return {
-                index,
-                row: next,
-                staffId,
-                date,
-                status,
-                issues,
-                plannedHours,
-                actualHours,
-                paidHours,
-                amount
-            };
-        });
-
-        const totals = rowMeta.reduce((acc, item) => {
-            acc.planned += item.plannedHours || 0;
-            acc.actual += item.actualHours || 0;
-            acc.paid += item.paidHours || 0;
-            acc.amount += item.amount || 0;
-            return acc;
-        }, { planned: 0, actual: 0, paid: 0, amount: 0 });
-        Object.keys(totals).forEach(key => { totals[key] = Math.round(totals[key] * 100) / 100; });
-
-        const issueCounts = {};
-        rowMeta.forEach(item => item.issues.forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; }));
-        const nonDraft = rowMeta.filter(item => item.status !== 'draft');
-        const status = nonDraft.length === 0
-            ? 'draft'
-            : rowMeta.some(item => item.status === 'needs_review')
-                ? 'needs_review'
-                : rowMeta.every(item => item.status === 'approved')
-                    ? 'approved'
-                    : 'reconciled';
-
-        return {
-            rows: rowMeta.map(item => item.row),
-            rowMeta,
-            totals,
-            issueCounts,
-            status,
-            generatedAt: new Date().toISOString(),
-            source: 'reports_rawData_payroll_reconciliation_v1'
-        };
+        return deprecatedPayrollReconciliation(state);
     }
 
     function isOperationsTableState(state = _reportTableState) {
@@ -1203,7 +1060,7 @@ const ReportsPage = (() => {
     }
 
     function isReportTableLocked(state = _reportTableState) {
-        return reportTableLifecycleStatus(state) === 'closed';
+        return reportTableLifecycleStatus(state) === 'closed' || isPayrollTableState(state);
     }
 
     function isClosedReport(report) {
@@ -1262,7 +1119,7 @@ const ReportsPage = (() => {
         if (!template || !Array.isArray(template.columns) || template.columns.length === 0) {
             throw new Error('У шаблоні мають бути columns');
         }
-        const columns = template.columns.map((col, index) => {
+        let columns = template.columns.map((col, index) => {
             const label = String(col.label || col.title || col.key || `Колонка ${index + 1}`).trim();
             const key = slugifyKey(col.key || label, `col-${index + 1}`);
             const bindStaff = staffColumnBinding(template, col, key);
@@ -1279,6 +1136,7 @@ const ReportsPage = (() => {
                     : null
             };
         });
+        columns = normalizePayrollColumns(columns, template);
         const seen = new Set();
         columns.forEach((col, index) => {
             let key = col.key;
@@ -1863,12 +1721,16 @@ const ReportsPage = (() => {
     function refreshReportWorkspaceControls() {
         const state = _reportTableState;
         const locked = isReportTableLocked(state);
+        const payrollDeprecated = isPayrollTableState(state);
         const readOnly = isReportsBusinessReadOnly();
         const dirty = document.getElementById('reportTemplateDirty');
         if (dirty) dirty.classList.toggle('hidden', !_reportTableDirty);
 
         const mode = document.getElementById('reportSheetModeChip');
-        if (mode) {
+        if (mode && payrollDeprecated) {
+            mode.textContent = 'Payroll read-only · canonical API';
+            mode.classList.toggle('closed', true);
+        } else if (mode) {
             mode.textContent = locked
                 ? `Закритий звіт${_editingTableReportId ? ` #${_editingTableReportId}` : ''}`
                 : _editingTableReportId
@@ -1884,6 +1746,7 @@ const ReportsPage = (() => {
 
         const saveBtn = document.getElementById('reportTemplateSaveBtn');
         if (saveBtn) saveBtn.textContent = _editingTableReportId ? 'Оновити звіт з таблиці' : 'Створити звіт з таблиці';
+        if (saveBtn && payrollDeprecated) saveBtn.textContent = 'Payroll read-only';
 
         const finalHandoff = document.getElementById('reportFinalHandoff');
         if (finalHandoff) {
@@ -1894,7 +1757,9 @@ const ReportsPage = (() => {
         const closeBtn = document.getElementById('reportTemplateCloseBtn');
         if (closeBtn) {
             closeBtn.classList.toggle('is-locked', locked);
-            closeBtn.innerHTML = locked
+            closeBtn.innerHTML = payrollDeprecated
+                ? '<span>Payroll read-only</span><small>Use canonical Payroll API/export</small>'
+                : locked
                 ? '<span>Звіт закрито</span><small>Передано на перевірку бухгалтеру</small>'
                 : '<span>Закрити і передати бухгалтеру</span><small>Останній крок роботи зі звітом</small>';
         }
@@ -1966,6 +1831,7 @@ const ReportsPage = (() => {
         renderReportTemplateCards();
         renderReportTableWorkspace();
         if (!options.silent) setTemplateStatus(`Шаблон "${template.title}" завантажено`);
+        if (!options.silent && isPayrollTableState()) setTemplateStatus(reportsPayrollDeprecatedMessage());
     }
 
     function renderPayrollRowBadge(meta) {
@@ -2015,6 +1881,23 @@ const ReportsPage = (() => {
 
     function renderPayrollReconciliationPanel(reconciliation) {
         if (!reconciliation) return '';
+        if (reconciliation.status === 'deprecated_read_only') {
+            const exports = reconciliation.canonicalExports || {};
+            return `
+            <div class="rpt-payroll-reconciliation">
+                <div class="rpt-payroll-reconciliation-head">
+                    <div>
+                        <span class="rpt-template-chip">Payroll read-only</span>
+                        <strong class="rpt-payroll-status deprecated_read_only">Canonical API</strong>
+                    </div>
+                </div>
+                <div class="rpt-payroll-issues">
+                    <span>${esc(reportsPayrollDeprecatedMessage())}</span>
+                    ${exports.csv ? `<span>CSV: ${esc(exports.csv)}</span>` : ''}
+                    ${exports.xlsx ? `<span>XLSX: ${esc(exports.xlsx)}</span>` : ''}
+                </div>
+            </div>`;
+        }
         const totals = reconciliation.totals || {};
         const issueEntries = Object.entries(reconciliation.issueCounts || {});
         const hasIssues = issueEntries.length > 0;
@@ -2475,7 +2358,7 @@ const ReportsPage = (() => {
             purpose: table.purpose || '',
             description: table.description || 'Чернетка табличного звіту',
             defaultReport: table.defaultReport || {},
-            columns: Array.isArray(table.columns) ? table.columns : [],
+            columns: normalizePayrollColumns(Array.isArray(table.columns) ? table.columns : [], table),
             rows: Array.isArray(table.rows) ? table.rows : [],
             lifecycle: table.lifecycle || { status: draft.status === 'closed' ? 'closed' : 'open' },
             reportQuality: table.reportQuality || null
@@ -2484,6 +2367,7 @@ const ReportsPage = (() => {
         renderReportTemplateCards();
         renderReportTableWorkspace();
         setTemplateStatus(`Відкрито чернетку #${draft.id}`);
+        if (isPayrollTableState()) setTemplateStatus(reportsPayrollDeprecatedMessage());
     }
 
     function openReportTableForEditing(report) {
@@ -2507,7 +2391,7 @@ const ReportsPage = (() => {
             purpose: table.purpose || '',
             description: table.description || 'Збережений табличний звіт',
             defaultReport: table.defaultReport || {},
-            columns: Array.isArray(table.columns) ? table.columns : [],
+            columns: normalizePayrollColumns(Array.isArray(table.columns) ? table.columns : [], table),
             rows: Array.isArray(table.rows) ? table.rows : [],
             lifecycle: closedLifecycleFromReport(report),
             reportQuality: table.reportQuality || null
@@ -2516,6 +2400,7 @@ const ReportsPage = (() => {
         renderReportTemplateCards();
         renderReportTableWorkspace();
         setTemplateStatus(isReportTableLocked() ? `Перегляд закритого звіту #${report.id}` : `Редагування збереженого звіту #${report.id}`);
+        if (isPayrollTableState()) setTemplateStatus(reportsPayrollDeprecatedMessage());
         document.getElementById('report-template-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -2608,6 +2493,7 @@ const ReportsPage = (() => {
     async function importReportTableCsv(event) {
         const file = event.target.files?.[0];
         if (!file || !_reportTableState || isReportTableLocked()) {
+            if (file && isPayrollTableState()) showNotification(reportsPayrollDeprecatedMessage(), 'warning');
             if (event.target) event.target.value = '';
             return;
         }
@@ -2656,7 +2542,7 @@ const ReportsPage = (() => {
                 purpose: _reportTableState.purpose,
                 description: _reportTableState.description,
                 defaultReport: _reportTableState.defaultReport || {},
-                columns: _reportTableState.columns,
+                columns: normalizePayrollColumns(_reportTableState.columns, _reportTableState),
                 rows: payrollReconciliation ? payrollReconciliation.rows : _reportTableState.rows,
                 payrollReconciliation,
                 reportQuality,
@@ -2669,15 +2555,21 @@ const ReportsPage = (() => {
     function getTemplateReportAmount() {
         const state = _reportTableState;
         if (!state) return 0;
+        if (isPayrollTableState(state)) return 0;
         const amountColumn = state.defaultReport?.amountColumn;
         if (!amountColumn) return 0;
-        if (isPayrollTableState(state)) normalizePayrollRows(state, { mutate: true });
         return Math.max(0, Math.round(state.rows.reduce((sum, row) => sum + parseNumber(row[amountColumn]), 0)));
     }
 
     async function saveReportTemplateDraft() {
         if (!guardReportsWrite('зберігати чернетки звітів')) return;
-        if (!_reportTableState || isReportTableLocked()) return;
+        if (!_reportTableState) return;
+        if (isPayrollTableState()) {
+            showNotification(reportsPayrollDeprecatedMessage(), 'warning');
+            setTemplateStatus(reportsPayrollDeprecatedMessage());
+            return;
+        }
+        if (isReportTableLocked()) return;
         if (!String(_reportTableState.title || '').trim()) {
             showNotification('Вкажіть назву чернетки', 'error');
             document.getElementById('reportSheetTitleInput')?.focus();
@@ -2708,9 +2600,53 @@ const ReportsPage = (() => {
         }
     }
 
+    async function downloadCanonicalPayrollExport(format) {
+        if (!_reportTableState) return;
+        const month = payrollTableMonth();
+        if (!month) {
+            showNotification('Для canonical payroll export потрібен один місяць у payroll table', 'warning');
+            setTemplateStatus(reportsPayrollDeprecatedMessage());
+            return;
+        }
+        const token = localStorage.getItem('pzp_token');
+        const filename = `payroll_${month}.${format}`;
+        let touchWindow = null;
+        try {
+            touchWindow = typeof openTouchDownloadWindow === 'function'
+                ? openTouchDownloadWindow(`${format.toUpperCase()} payroll`)
+                : null;
+            const res = await fetch(payrollCanonicalExportUrl(format), {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Payroll export failed');
+            }
+            const blob = await res.blob();
+            if (typeof finishBlobDownload === 'function') {
+                finishBlobDownload(blob, filename, { touchWindow, successMessage: `${format.toUpperCase()} payroll export ready` });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }
+            setTemplateStatus(`${format.toUpperCase()} payroll export from canonical API`);
+        } catch (err) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+            showNotification(`Помилка ${format.toUpperCase()} експорту: ${err.message}`, 'error');
+        }
+    }
+
     async function downloadReportTableExport(format) {
         if (!_reportTableState) return;
-        if (isPayrollTableState()) await loadPayrollReconciliationSources(_reportTableState);
+        if (isPayrollTableState()) {
+            return downloadCanonicalPayrollExport(format);
+        }
         const payload = buildReportTablePayload();
         const token = localStorage.getItem('pzp_token');
         const filename = `${slugifyKey(_reportTableState.title, 'report')}.${format}`;
@@ -2780,6 +2716,11 @@ const ReportsPage = (() => {
     async function createReportFromTemplate() {
         if (!guardReportsWrite('створювати звіти')) return;
         if (!_reportTableState) return;
+        if (isPayrollTableState()) {
+            showNotification(reportsPayrollDeprecatedMessage(), 'warning');
+            setTemplateStatus(reportsPayrollDeprecatedMessage());
+            return;
+        }
         if (_reportTableBusy || isReportTableLocked() || !validateReportTableForCreate()) return;
         const reportDefaults = _reportTableState.defaultReport || {};
         const amount = getTemplateReportAmount();
@@ -2851,7 +2792,13 @@ const ReportsPage = (() => {
 
     async function closeReportTemplate() {
         if (!guardReportsWrite('закривати звіти')) return;
-        if (!_reportTableState || _reportTableBusy || isReportTableLocked()) return;
+        if (!_reportTableState) return;
+        if (isPayrollTableState()) {
+            showNotification(reportsPayrollDeprecatedMessage(), 'warning');
+            setTemplateStatus(reportsPayrollDeprecatedMessage());
+            return;
+        }
+        if (_reportTableBusy || isReportTableLocked()) return;
         if (!validateReportTableForCreate()) return;
         if (typeof confirmModal === 'function') {
             const ok = await confirmModal(

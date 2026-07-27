@@ -77,6 +77,8 @@ const {
     validateStaffScheduleabilityCardForDate,
     validateStaffScheduleableForDate
 } = require('../services/staffOperationalFilters');
+const { getPayrollRangePreview } = require('../services/payroll');
+const { loadStaffOutstandingPayrollInstallments } = require('../services/payrollSettlement');
 const {
     loadEnrichedScheduleEntry,
     loadScheduleEntriesForUpdate,
@@ -137,6 +139,22 @@ const STAFF_SCHEDULE_BULK_MAX_STAFF = 500;
 const STAFF_COPY_WEEK_DATE_COUNT = 7;
 const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
 const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
+
+function staffPayrollOutstandingBlockerPayload(outstandingInstallments = {}) {
+    return {
+        success: false,
+        code: 'PAYROLL_INSTALLMENTS_OUTSTANDING',
+        error: 'Працівника не можна архівувати: є неврегульовані payroll installments',
+        blocker: {
+            key: 'payroll_installments_outstanding',
+            label: 'неврегульовані payroll installments',
+            count: Number(outstandingInstallments.count || 0),
+            amount: Number(outstandingInstallments.amount || 0)
+        },
+        outstanding_payroll_installment_count: Number(outstandingInstallments.count || 0),
+        outstanding_payroll_installment_amount: Number(outstandingInstallments.amount || 0)
+    };
+}
 
 function broadcastAnimatorRosterDates(values = [], userId = null) {
     rosterMutationDates(values).forEach(date => {
@@ -2173,6 +2191,16 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const existing = await client.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (!existing.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'РќРµ Р·РЅР°Р№РґРµРЅРѕ' });
+        }
+        const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);
+        if (outstandingInstallments.count > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json(staffPayrollOutstandingBlockerPayload(outstandingInstallments));
+        }
         const result = await client.query(
             `UPDATE staff
              SET is_active = false,
@@ -2875,59 +2903,33 @@ router.get('/payroll', requireRole(...STAFF_PAYROLL_READ_ROLES), async (req, res
             ? new Date(Date.UTC(Number(monthMatch[1]), Number(monthMatch[2]), 0)).toISOString().slice(0, 10)
             : `${month}-31`;
         const mTo = req.query.to || defaultMonthEnd;
-
-        const staff = await pool.query(`
-            SELECT s.*
-            FROM staff s
-            WHERE ${activeScheduleStaffWhere('s', '$1::date')}
-            ORDER BY s.department, s.name
-            LIMIT 1000
-        `, [mTo]);
-        const payroll = [];
-
-        for (const s of staff.rows) {
-            // Count bookings where staff is assigned by real timeline line or second animator.
-            // bookings.hosts is the product host count, not a staff id.
-            const events = await pool.query(`
-                SELECT COUNT(*)::int AS count, COALESCE(SUM(duration), 0)::int AS total_minutes
-                FROM bookings
-                WHERE (
-                    line_id = $1::text
-                    OR second_animator = $1::text
-                    OR LOWER(BTRIM(COALESCE(second_animator, ''))) = LOWER(BTRIM($4::text))
-                )
-                  AND date >= $2 AND date <= $3
-                  AND status != 'cancelled'
-            `, [s.id, mFrom, mTo, s.name]);
-
-            const e = events.rows[0];
-            const hoursWorked = Math.round(e.total_minutes / 60 * 10) / 10;
-            const hourlyRate = parseFloat(s.hourly_rate) || 0;
-            const rateUnit = normalizeStaffRateUnit(s.rate_unit);
-            const salary = Math.round(
-                rateUnit === 'month'
-                    ? (Number(e.count || 0) > 0 || hoursWorked > 0 ? hourlyRate : 0)
-                    : rateUnit === 'day'
-                        ? (Number(e.count || 0) * hourlyRate)
-                        : (hoursWorked * hourlyRate)
-            );
-
-            payroll.push({
-                staffId: s.id,
-                name: s.name,
-                department: s.department,
-                position: s.position,
-                eventsCount: e.count,
-                hoursWorked,
-                hourlyRate,
-                rateUnit,
-                salary,
-                avgRating: parseFloat(s.avg_rating) || 0
-            });
-        }
-
-        const totalFOP = payroll.reduce((sum, p) => sum + p.salary, 0);
-        res.json({ month, from: mFrom, to: mTo, payroll, totalFOP });
+        const preview = await getPayrollRangePreview({ month, from: mFrom, to: mTo }, pool);
+        const payroll = (preview.staff || []).map(row => ({
+            staffId: row.staffId,
+            name: row.name,
+            department: row.department,
+            position: row.position,
+            eventsCount: row.daysWorked,
+            hoursWorked: row.hoursWorked,
+            hourlyRate: row.hourlyRate,
+            rateUnit: row.rateUnit,
+            salary: row.netAmount,
+            zrs: row.zrsAmount,
+            avgRating: Number(row.avgRating || 0)
+        }));
+        const totalFOP = payroll.reduce((sum, p) => sum + Number(p.salary || 0), 0);
+        res.json({
+            month,
+            from: mFrom,
+            to: mTo,
+            payroll,
+            totalFOP,
+            source: 'canonical_payroll_service',
+            deprecatedAdapter: true,
+            previewMode: true,
+            confirmable: preview.confirmable,
+            confirmationBlockedReason: preview.confirmationBlockedReason
+        });
     } catch (err) {
         log.error('GET /staff/payroll error', err);
         res.status(500).json({ error: 'Internal server error' });

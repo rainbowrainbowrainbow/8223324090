@@ -19,6 +19,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
+const { isPayrollInstallmentsActivationMonth } = require('../services/payrollSettlement');
 const ExcelJS = require('exceljs');
 
 const log = createLogger('Reports');
@@ -275,20 +276,134 @@ function numericValue(value) {
 }
 
 function calculateTableAmount(table, defaultReport = {}) {
+    if (isPayrollTable(table)) return 0;
     const amountColumn = defaultReport.amountColumn || table.defaultReport?.amountColumn;
     if (!amountColumn) return 0;
     return Math.max(0, Math.round((table.rows || []).reduce((sum, row) => sum + numericValue(row?.[amountColumn]), 0)));
 }
 
+function normalizePayrollIdentity(value) {
+    return String(value || '')
+        .trim()
+        .toLocaleLowerCase('uk-UA')
+        .replace(/^#+/, '')
+        .replace(/[._-]+/g, ' ')
+        .replace(/\s+/g, ' ');
+}
+
+function isPayrollIdentity(value) {
+    const identity = normalizePayrollIdentity(value);
+    return identity === '\u0437\u043f'
+        || identity.includes('payroll')
+        || identity.includes('\u0437\u0430\u0440\u043f\u043b\u0430\u0442');
+}
+
 function isPayrollTable(table = {}) {
-    const identity = [
+    return [
         table.id,
         table.code,
         table.layout,
         table.category,
+        table.defaultReport?.category,
         table.defaultReport?.hashtag
-    ].map(value => String(value || '').toLowerCase()).join(' ');
-    return identity.includes('payroll') || identity.includes('table-payroll');
+    ].some(isPayrollIdentity);
+}
+
+function isPayrollReportRow(report = {}) {
+    const rawData = parseRawData(report.raw_data || report.rawData);
+    const table = rawData.reportTableTemplate || rawData.table || {};
+    if (isPayrollTable(table)) return true;
+    return [
+        report.category,
+        report.description,
+        report.submitted_via || report.submittedVia,
+        ...(parseHashtags(report.hashtags || rawData.hashtags) || [])
+    ].some(isPayrollIdentity);
+}
+
+function payrollTableMonth(table = {}) {
+    const candidates = [
+        table.month,
+        table.payrollMonth,
+        table.periodMonth,
+        table.defaultReport?.month,
+        table.defaultReport?.payrollMonth,
+        table.payrollReconciliation?.month
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    const direct = candidates.find(value => /^\d{4}-\d{2}$/.test(value));
+    if (direct) return direct;
+    const months = (Array.isArray(table.rows) ? table.rows : [])
+        .map(row => payrollDateKey(row))
+        .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+        .map(value => value.slice(0, 7));
+    const unique = [...new Set(months)];
+    return unique.length === 1 ? unique[0] : null;
+}
+
+function payrollCanonicalExportEndpoints(month = null) {
+    const suffix = month ? `?month=${encodeURIComponent(month)}` : '?month=YYYY-MM';
+    return {
+        csv: `/api/payroll/export${suffix}`,
+        xlsx: `/api/payroll/export-xlsx${suffix}`,
+        readModel: month ? `/api/payroll/settlement?month=${encodeURIComponent(month)}` : '/api/payroll/settlement?month=YYYY-MM'
+    };
+}
+
+function reportsPayrollReadOnlyMeta(table = {}) {
+    const month = payrollTableMonth(table);
+    return {
+        deprecatedPayrollTemplate: true,
+        readOnly: true,
+        source: 'canonical_payroll_service_required',
+        message: 'Reports payroll tables are deprecated read-only views. Payroll amounts and payment facts must come from the canonical payroll API.',
+        month,
+        activationMonth: month ? isPayrollInstallmentsActivationMonth(month) : false,
+        canonicalExports: payrollCanonicalExportEndpoints(month)
+    };
+}
+
+function reportsPayrollReadOnlyPayload(table = {}) {
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    return {
+        status: 'deprecated_read_only',
+        totals: {
+            planned: null,
+            actual: null,
+            paid: null,
+            amount: 0
+        },
+        issueCounts: {
+            reports_payroll_deprecated: Math.max(1, rows.length || 0)
+        },
+        generatedAt: new Date().toISOString(),
+        ...reportsPayrollReadOnlyMeta(table)
+    };
+}
+
+function normalizeLegacyPayrollColumn(column = {}) {
+    const key = String(column.key || '').trim().toLowerCase();
+    const label = String(column.label || '').trim().toLowerCase();
+    if (['advance', 'advances', 'advance_amount', 'advances_amount'].includes(key)
+        || ['аванс', 'аванси'].includes(label)) {
+        return { ...column, label: 'ЗРС' };
+    }
+    return column;
+}
+
+function payrollReportsReadOnlyError(action, table = {}) {
+    const err = new Error(`Reports payroll templates are read-only for ${action}. Use canonical payroll API/export.`);
+    err.statusCode = 409;
+    err.code = 'REPORTS_PAYROLL_READ_ONLY';
+    err.details = reportsPayrollReadOnlyMeta(table);
+    return err;
+}
+
+function sendReportsError(res, err, fallback = 'Database error') {
+    const status = err.statusCode || err.status || 500;
+    const payload = { error: status < 500 ? err.message : fallback };
+    if (err.code) payload.code = err.code;
+    if (err.details) payload.details = err.details;
+    return res.status(status).json(payload);
 }
 
 function payrollStaffId(row = {}) {
@@ -320,121 +435,26 @@ function normalizeSegmentRefs(value) {
 
 function normalizePayrollRows(table = {}) {
     const rows = Array.isArray(table.rows) ? table.rows : [];
-    const duplicateCounts = {};
-    rows.forEach(row => {
-        const key = payrollLookupKey(row);
-        if (key) duplicateCounts[key] = (duplicateCounts[key] || 0) + 1;
-    });
-
-    const rowMeta = rows.map((row, index) => {
-        const next = { ...(row || {}) };
-        const issues = Array.isArray(next.reconciliation_issues) ? [...next.reconciliation_issues] : [];
-        const staffId = payrollStaffId(next);
-        const date = payrollDateKey(next);
-        const key = staffId && date ? `${staffId}_${date}` : '';
-        const hasAnyValue = Object.values(next).some(value => {
-            if (value === null || value === undefined) return false;
-            if (Array.isArray(value)) return value.length > 0;
-            if (typeof value === 'object') return Object.keys(value).length > 0;
-            return String(value).trim() !== '';
-        });
-
-        if (staffId) next.staff_id = staffId;
-        next.display_snapshot = next.display_snapshot || next.employee || next.name || '';
-        next.role_snapshot = next.role_snapshot || next.role || '';
-        next.planned_hours = numericValue(next.planned_hours);
-        next.actual_hours = numericValue(next.actual_hours);
-        next.paid_hours = numericValue(next.hours || next.paid_hours);
-        next.manual_amount = numericValue(next.manual_amount);
-        next.bonuses = numericValue(next.bonus || next.bonuses);
-        next.penalties = numericValue(next.penalty || next.penalties);
-        next.notes = next.notes || '';
-        if (Array.isArray(next.segment_refs)) next.segment_refs = normalizeSegmentRefs(next.segment_refs);
-        if (next.primary_profession_key || next.primaryProfessionKey) {
-            next.primary_profession_key = String(next.primary_profession_key || next.primaryProfessionKey).trim();
-        }
-        if (next.planned_allocation_source) {
-            next.planned_allocation_source = String(next.planned_allocation_source).trim();
-        }
-        if (next.allocation_source || next.allocationSource) {
-            next.allocation_source = String(next.allocation_source || next.allocationSource).trim();
-        }
-        if (next.reconciliation_source) next.reconciliation_source = String(next.reconciliation_source).trim();
-
-        if (!staffId && hasAnyValue) pushPayrollIssue(issues, 'missing_staff_id');
-        if (!date && hasAnyValue) pushPayrollIssue(issues, 'missing_payroll_date');
-        if (staffId && date && !next.planned_shift_ref) pushPayrollIssue(issues, 'no_shift');
-        if (next.planned_shift_ref && !next.attendance_ref) pushPayrollIssue(issues, 'no_attendance');
-        if (next.actual_hours > 0 && next.paid_hours > 0 && Math.abs(next.actual_hours - next.paid_hours) > 0.05) {
-            pushPayrollIssue(issues, 'actual_paid_hours_mismatch');
-        }
-        if (key && duplicateCounts[key] > 1) pushPayrollIssue(issues, 'duplicate_payroll_row');
-        if (hasAnyValue && numericValue(next.total || next.amount) <= 0) pushPayrollIssue(issues, 'amount_missing_or_zero');
-        if (String(next.staff_status || '').toLowerCase() === 'offboarded') pushPayrollIssue(issues, 'offboarded_staff');
-
-        const manualStatus = String(next.payroll_status || next.reconciliation_status || '').trim();
-        const status = manualStatus === 'approved'
-            ? 'approved'
-            : !hasAnyValue
-                ? 'draft'
-                : issues.length
-                    ? 'needs_review'
-                    : 'reconciled';
-        next.reconciliation_status = status;
-        next.reconciliation_issues = issues;
-
-        return {
-            index,
-            row: next,
-            status,
-            issues,
-            plannedHours: numericValue(next.planned_hours),
-            actualHours: numericValue(next.actual_hours),
-            paidHours: numericValue(next.paid_hours),
-            amount: numericValue(next.total || next.amount)
-        };
-    });
-
-    const totals = rowMeta.reduce((acc, item) => {
-        acc.planned += item.plannedHours;
-        acc.actual += item.actualHours;
-        acc.paid += item.paidHours;
-        acc.amount += item.amount;
-        return acc;
-    }, { planned: 0, actual: 0, paid: 0, amount: 0 });
-    Object.keys(totals).forEach(key => { totals[key] = Math.round(totals[key] * 100) / 100; });
-
-    const issueCounts = {};
-    rowMeta.forEach(item => item.issues.forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; }));
-    const nonDraft = rowMeta.filter(item => item.status !== 'draft');
-    const status = nonDraft.length === 0
-        ? 'draft'
-        : rowMeta.some(item => item.status === 'needs_review')
-            ? 'needs_review'
-            : rowMeta.every(item => item.status === 'approved')
-                ? 'approved'
-                : 'reconciled';
-
     return {
-        rows: rowMeta.map(item => item.row),
-        payrollReconciliation: {
-            status,
-            totals,
-            issueCounts,
-            generatedAt: new Date().toISOString(),
-            source: 'reports_rawData_payroll_reconciliation_v1'
-        }
+        rows,
+        payrollReconciliation: reportsPayrollReadOnlyPayload(table)
     };
 }
 
 function normalizePayrollTable(table = {}) {
     if (!isPayrollTable(table)) return table;
-    const normalized = normalizePayrollRows(table);
     return {
         ...table,
         schemaVersion: Math.max(Number(table.schemaVersion || 1), 1),
-        rows: normalized.rows,
-        payrollReconciliation: normalized.payrollReconciliation
+        defaultReport: {
+            ...(table.defaultReport || {}),
+            amountColumn: null,
+            deprecatedPayrollTemplate: true
+        },
+        readOnly: true,
+        deprecatedPayrollTemplate: true,
+        columns: Array.isArray(table.columns) ? table.columns.map(normalizeLegacyPayrollColumn) : table.columns,
+        payrollReconciliation: reportsPayrollReadOnlyPayload(table)
     };
 }
 
@@ -487,6 +507,7 @@ function buildClosedTablePayload(raw, req, closedAt = new Date().toISOString()) 
 
 function tableSummaryRows(table) {
     if (!table) return [];
+    if (isPayrollTable(table)) return [];
     const columns = Array.isArray(table.columns) ? table.columns : [];
     const rows = Array.isArray(table.rows) ? table.rows : [];
     const defaultReport = table.defaultReport || {};
@@ -657,6 +678,9 @@ async function createReportHandoffTask(report, req) {
 async function createReportFromTablePayload(req, tablePayload, overrides = {}) {
     const businessContext = currentReportBusinessContext(req);
     const normalized = normalizeTablePayload(tablePayload);
+    if (isPayrollTable(normalized.table)) {
+        throw payrollReportsReadOnlyError('report creation', normalized.table);
+    }
     const defaultReport = normalized.table.defaultReport || parseRawData(overrides.defaultReport || {});
     const type = defaultReport.type === 'income' ? 'income' : 'expense';
     const category = overrides.category || defaultReport.category || normalized.table.category || 'Інше';
@@ -798,6 +822,10 @@ function updateReportApprovalFromStatus(status, updates, params, req) {
 
 function scheduleFinanceTransactionForReport(report, req) {
     if (!report || Number(report.amount || 0) <= 0) return;
+    if (isPayrollReportRow(report)) {
+        log.info(`[ReportFinance] Payroll report #${report.id} skipped: payroll payments are managed by payroll movements`);
+        return;
+    }
     const reportId = report.id;
     const businessContext = normalizeBusinessContext(report.businessContext || report.business_context || currentReportBusinessContext(req));
     setImmediate(async () => {
@@ -1145,7 +1173,23 @@ router.patch('/hashtags/toggle', async (req, res) => {
             return res.status(400).json({ error: 'hashtag (string) required' });
         }
         const isActive = active !== false && active !== 0;
-        const params = [isActive, JSON.stringify([hashtag])];
+        const serializedHashtag = JSON.stringify([hashtag]);
+        const candidateParams = [serializedHashtag];
+        const candidateScopeSql = reportContextCondition(candidateParams, req, '');
+        const candidates = await pool.query(
+            `SELECT * FROM reports
+             WHERE hashtags @> $1::jsonb
+               AND ${candidateScopeSql}`,
+            candidateParams
+        );
+        const payrollCandidate = candidates.rows.find(isPayrollReportRow);
+        if (payrollCandidate) {
+            throw payrollReportsReadOnlyError(
+                'hashtag metadata update',
+                parseRawData(payrollCandidate.raw_data).reportTableTemplate || {}
+            );
+        }
+        const params = [isActive, serializedHashtag];
         const scopeSql = reportContextCondition(params, req, '');
         const result = await pool.query(
             `UPDATE reports SET hashtag_active = $1, updated_at = NOW()
@@ -1158,7 +1202,7 @@ router.patch('/hashtags/toggle', async (req, res) => {
         res.json({ updated: result.rowCount, active: isActive });
     } catch (err) {
         log.error('PATCH /reports/hashtags/toggle error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1230,7 +1274,7 @@ router.post('/templates', async (req, res) => {
         res.status(201).json({ success: true, template: mapTemplateRow(result.rows[0]) });
     } catch (err) {
         log.error('POST /reports/templates error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1333,6 +1377,9 @@ router.post('/drafts', async (req, res) => {
     try {
         const businessContext = currentReportBusinessContext(req);
         const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
+        if (isPayrollTable(normalized.table)) {
+            throw payrollReportsReadOnlyError('draft save', normalized.table);
+        }
         const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
         const result = await pool.query(`
             INSERT INTO report_table_drafts (
@@ -1351,7 +1398,7 @@ router.post('/drafts', async (req, res) => {
         res.status(201).json({ success: true, draft: mapDraftRow(result.rows[0]) });
     } catch (err) {
         log.error('POST /reports/drafts error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1359,6 +1406,9 @@ router.put('/drafts/:id', async (req, res) => {
     try {
         const businessContext = currentReportBusinessContext(req);
         const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
+        if (isPayrollTable(normalized.table)) {
+            throw payrollReportsReadOnlyError('draft update', normalized.table);
+        }
         const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
         const result = await pool.query(`
             UPDATE report_table_drafts SET
@@ -1381,7 +1431,7 @@ router.put('/drafts/:id', async (req, res) => {
         res.json({ success: true, draft: mapDraftRow(result.rows[0]) });
     } catch (err) {
         log.error('PUT /reports/drafts/:id error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1408,6 +1458,10 @@ router.post('/drafts/:id/submit', async (req, res) => {
             [req.params.id, currentUsername(req), businessContext]
         );
         if (!draftResult.rows.length) return res.status(404).json({ error: 'Draft not found' });
+        const normalized = normalizeTablePayload(draftResult.rows[0].table_json);
+        if (isPayrollTable(normalized.table)) {
+            throw payrollReportsReadOnlyError('draft submit', normalized.table);
+        }
         const report = await createReportFromTablePayload(req, draftResult.rows[0].table_json, req.body || {});
         const updated = await pool.query(`
             UPDATE report_table_drafts
@@ -1418,7 +1472,7 @@ router.post('/drafts/:id/submit', async (req, res) => {
         res.status(201).json({ success: true, draft: mapDraftRow(updated.rows[0]), report });
     } catch (err) {
         log.error('POST /reports/drafts/:id/submit error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1433,6 +1487,9 @@ router.post('/table/close', async (req, res) => {
         const businessContext = currentReportBusinessContext(req);
         const closedAt = new Date().toISOString();
         const { table, lockedPayload } = buildClosedTablePayload(req.body.tableJson || req.body.rawData || req.body, req, closedAt);
+        if (isPayrollTable(table)) {
+            throw payrollReportsReadOnlyError('table close', table);
+        }
         const defaultReport = table.defaultReport || parseRawData(req.body.defaultReport || {});
         const type = defaultReport.type === 'income' ? 'income' : 'expense';
         const amount = req.body.amount !== undefined
@@ -1559,7 +1616,7 @@ router.post('/table/close', async (req, res) => {
         res.status(reportId ? 200 : 201).json({ success: true, report });
     } catch (err) {
         log.error('POST /reports/table/close error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1569,6 +1626,9 @@ router.post('/table/close', async (req, res) => {
 router.post('/table/export-csv', async (req, res) => {
     try {
         const { table } = normalizeTablePayload(req.body);
+        if (isPayrollTable(table)) {
+            throw payrollReportsReadOnlyError('table CSV export', table);
+        }
         const header = table.columns.map(col => csvCell(col.label || col.key)).join(';');
         const rows = table.rows.map(row => table.columns.map(col => csvCell(row?.[col.key])).join(';'));
         const csv = '\uFEFF' + [header, ...rows, ...summaryCsvRows(table)].join('\n');
@@ -1577,13 +1637,16 @@ router.post('/table/export-csv', async (req, res) => {
         res.send(csv);
     } catch (err) {
         log.error('POST /reports/table/export-csv error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
 router.post('/table/export-xlsx', async (req, res) => {
     try {
         const { table } = normalizeTablePayload(req.body);
+        if (isPayrollTable(table)) {
+            throw payrollReportsReadOnlyError('table XLSX export', table);
+        }
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'Event Genix';
         const sheet = workbook.addWorksheet('Звіт');
@@ -1620,7 +1683,7 @@ router.post('/table/export-xlsx', async (req, res) => {
         res.end();
     } catch (err) {
         log.error('POST /reports/table/export-xlsx error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1653,12 +1716,13 @@ router.post('/:id/request-approval', async (req, res) => {
         const businessContext = currentReportBusinessContext(req);
         const report = await loadReportPayload(req.params.id, businessContext);
         if (!report) return res.status(404).json({ error: 'Report not found' });
+        if (isPayrollReportRow(report)) throw payrollReportsReadOnlyError('approval request', report.rawData?.reportTableTemplate || {});
         const task = await createReportHandoffTask(report, req);
         const updated = await loadReportPayload(req.params.id, businessContext);
         res.json({ report: updated, taskId: task?.id || updated?.approvalTaskId || null, duplicateSkipped: Boolean(task?.duplicateSkipped) });
     } catch (err) {
         log.error('POST /reports/:id/request-approval error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1667,6 +1731,7 @@ router.post('/:id/in-review', async (req, res) => {
         const businessContext = currentReportBusinessContext(req);
         const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
+        if (isPayrollReportRow(existing)) throw payrollReportsReadOnlyError('review status', parseRawData(existing.raw_data).reportTableTemplate || {});
         const result = await pool.query(
             `UPDATE reports
              SET status = CASE WHEN status = 'new' THEN 'processing' ELSE status END,
@@ -1685,7 +1750,7 @@ router.post('/:id/in-review', async (req, res) => {
         res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: existing.approval_task_status }));
     } catch (err) {
         log.error('POST /reports/:id/in-review error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1694,6 +1759,7 @@ router.post('/:id/approve', async (req, res) => {
         const businessContext = currentReportBusinessContext(req);
         const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
+        if (isPayrollReportRow(existing)) throw payrollReportsReadOnlyError('approval done', parseRawData(existing.raw_data).reportTableTemplate || {});
         const comment = String(req.body?.comment || '').trim().slice(0, 2000);
         const result = await pool.query(
             `UPDATE reports
@@ -1715,7 +1781,7 @@ router.post('/:id/approve', async (req, res) => {
         res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: 'done' }));
     } catch (err) {
         log.error('POST /reports/:id/approve error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1724,6 +1790,7 @@ router.post('/:id/reject', async (req, res) => {
         const businessContext = currentReportBusinessContext(req);
         const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
+        if (isPayrollReportRow(existing)) throw payrollReportsReadOnlyError('rejection', parseRawData(existing.raw_data).reportTableTemplate || {});
         const comment = String(req.body?.comment || '').trim().slice(0, 2000);
         const result = await pool.query(
             `UPDATE reports
@@ -1743,7 +1810,7 @@ router.post('/:id/reject', async (req, res) => {
         res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: 'done' }));
     } catch (err) {
         log.error('POST /reports/:id/reject error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1779,6 +1846,17 @@ router.post('/', async (req, res) => {
         if (!type || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'Invalid type (income/expense)' });
         }
+        const normalizedRawData = rawData ? normalizeReportRawPayload(rawData) : {};
+        const incomingReport = {
+            category,
+            description,
+            submittedVia: safeSubmittedVia,
+            hashtags,
+            rawData: normalizedRawData
+        };
+        if (isPayrollReportRow(incomingReport)) {
+            throw payrollReportsReadOnlyError('report create', normalizedRawData.reportTableTemplate || normalizedRawData.table);
+        }
 
         const result = await pool.query(`
             INSERT INTO reports (business_context, type, amount, description, category, submitted_by, submitted_by_id,
@@ -1797,7 +1875,7 @@ router.post('/', async (req, res) => {
             photoUrl || null,
             ocrText || null,
             voiceTranscript || null,
-            rawData ? JSON.stringify(normalizeReportRawPayload(rawData)) : '{}',
+            JSON.stringify(normalizedRawData),
             JSON.stringify(sanitizeHashtags(hashtags || []))
         ]);
 
@@ -1809,7 +1887,7 @@ router.post('/', async (req, res) => {
         res.status(201).json(report);
     } catch (err) {
         log.error('POST /reports error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1846,6 +1924,25 @@ router.put('/:id', async (req, res) => {
         if (isReportLifecycleClosed(existing.rows[0]) && contentMutationRequested) {
             return res.status(423).json({ error: 'Closed report is locked for editing' });
         }
+        const normalizedIncomingRawData = rawData !== undefined ? normalizeReportRawPayload(rawData || {}) : null;
+        const existingPayrollReport = isPayrollReportRow(existing.rows[0]);
+        const incomingPayrollTable = normalizedIncomingRawData
+            ? isPayrollTable(normalizedIncomingRawData.reportTableTemplate || normalizedIncomingRawData.table || {})
+            : false;
+        const incomingPayrollReport = isPayrollReportRow({
+            ...existing.rows[0],
+            category: category !== undefined ? category : existing.rows[0].category,
+            description: description !== undefined ? description : existing.rows[0].description,
+            hashtags: hashtags !== undefined ? hashtags : existing.rows[0].hashtags,
+            raw_data: normalizedIncomingRawData || existing.rows[0].raw_data
+        });
+        const payrollMutationRequested = contentMutationRequested || hashtagActive !== undefined;
+        if ((existingPayrollReport || incomingPayrollTable || incomingPayrollReport) && (payrollMutationRequested || status)) {
+            throw payrollReportsReadOnlyError(
+                status ? `status ${status}` : 'report update',
+                normalizedIncomingRawData?.reportTableTemplate || normalizedIncomingRawData?.table || parseRawData(existing.rows[0].raw_data).reportTableTemplate || {}
+            );
+        }
 
         const updates = [];
         const params = [];
@@ -1864,7 +1961,7 @@ router.put('/:id', async (req, res) => {
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
         if (hashtags !== undefined) { params.push(JSON.stringify(sanitizeHashtags(hashtags))); updates.push(`hashtags = $${params.length}`); }
         if (hashtagActive !== undefined) { params.push(!!hashtagActive); updates.push(`hashtag_active = $${params.length}`); }
-        if (rawData !== undefined) { params.push(JSON.stringify(normalizeReportRawPayload(rawData || {}))); updates.push(`raw_data = $${params.length}`); }
+        if (rawData !== undefined) { params.push(JSON.stringify(normalizedIncomingRawData || {})); updates.push(`raw_data = $${params.length}`); }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });
@@ -1887,50 +1984,14 @@ router.put('/:id', async (req, res) => {
             completeApprovalTask(updatedReport.approval_task_id, currentUsername(req)).catch(() => {});
         }
 
-        // v33.8.0: When report is marked as done, create finance transaction (fire-and-forget)
         if (status === 'done' && updatedReport.amount > 0) {
-            setImmediate(async () => {
-                try {
-                    // Check if already recorded
-                    const exists = await pool.query(
-                        `SELECT id FROM finance_transactions
-                         WHERE description LIKE $1
-                           AND COALESCE(business_context, $2) = $2
-                         LIMIT 1`,
-                        [`%звіт #${id}%`, businessContext]
-                    );
-                    if (exists.rowCount) return;
-
-                    const finType = updatedReport.type === 'expense' ? 'expense' : 'income';
-                    const catQuery = await pool.query(
-                        `SELECT id FROM finance_categories
-                         WHERE name ILIKE $1
-                           AND type = $2
-                           AND COALESCE(business_context, $3) = $3
-                         LIMIT 1`,
-                        [`%${updatedReport.category || 'Інше'}%`, finType, businessContext]
-                    );
-                    const catId = catQuery.rows[0]?.id || null;
-
-                    await pool.query(
-                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, created_by)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                        [businessContext, finType, catId, Math.round(updatedReport.amount),
-                         `${updatedReport.description || 'Звіт'} (звіт #${id})`,
-                         updatedReport.created_at ? new Date(updatedReport.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-                         'report', updatedReport.submitted_by || req.user?.username || 'system']
-                    );
-                    log.info(`[ReportFinance] Report #${id} → finance transaction (${finType} ${updatedReport.amount})`);
-                } catch (e) {
-                    log.warn(`[ReportFinance] Error: ${e.message}`);
-                }
-            });
+            scheduleFinanceTransactionForReport(updatedReport, req);
         }
 
         res.json(mapReportRow(updatedReport));
     } catch (err) {
         log.error('PUT /reports/:id error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1951,6 +2012,9 @@ router.delete('/:id', async (req, res) => {
         if (isReportLifecycleClosed(existing.rows[0])) {
             return res.status(423).json({ error: 'Closed report is locked for deletion' });
         }
+        if (isPayrollReportRow(existing.rows[0])) {
+            throw payrollReportsReadOnlyError('report delete', parseRawData(existing.rows[0].raw_data).reportTableTemplate || {});
+        }
         const result = await pool.query(
             'DELETE FROM reports WHERE id = $1 AND COALESCE(business_context, $2) = $2 RETURNING id',
             [id, businessContext]
@@ -1961,7 +2025,7 @@ router.delete('/:id', async (req, res) => {
         res.json({ success: true, id: parseInt(id) });
     } catch (err) {
         log.error('DELETE /reports/:id error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -1978,6 +2042,20 @@ router.post('/:id/assign', async (req, res) => {
             return res.status(400).json({ error: 'accountantId required' });
         }
 
+        const existing = await pool.query(
+            'SELECT * FROM reports WHERE id = $1 AND COALESCE(business_context, $2) = $2',
+            [id, businessContext]
+        );
+        if (!existing.rowCount) {
+            return res.status(404).json({ error: 'Report not found' });
+        }
+        if (isPayrollReportRow(existing.rows[0])) {
+            throw payrollReportsReadOnlyError(
+                'accountant assignment',
+                parseRawData(existing.rows[0].raw_data).reportTableTemplate || {}
+            );
+        }
+
         const result = await pool.query(`
             UPDATE reports SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW()
             WHERE id = $2
@@ -1992,7 +2070,7 @@ router.post('/:id/assign', async (req, res) => {
         res.json(mapReportRow(result.rows[0]));
     } catch (err) {
         log.error('POST /reports/:id/assign error', err);
-        res.status(500).json({ error: 'Database error' });
+        sendReportsError(res, err);
     }
 });
 
@@ -2035,3 +2113,9 @@ router.put('/accountants/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.__payrollReportsTestHooks = Object.freeze({
+    isPayrollIdentity,
+    isPayrollReportRow,
+    isPayrollTable,
+    normalizePayrollIdentity
+});

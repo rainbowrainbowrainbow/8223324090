@@ -592,7 +592,7 @@
                         <button type="button" id="btnResetSalaryPeriod" class="btn-add hr-salary-secondary">Місяць</button>
                     </div>
                     <button type="button" id="btnAddAdjustment" class="btn-add hr-salary-secondary">+ Бонус / Депреміювання</button>
-                    <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">Нарахувати зарплати</button>
+                    <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">Розрахувати</button>
                     <button type="button" id="btnRefreshSalaryReconciliation" class="btn-add hr-salary-secondary">Звірка</button>
                     <button type="button" id="btnLockSalaryPeriod" class="btn-add hr-salary-secondary">Закрити період</button>
                     <button type="button" id="btnUnlockSalaryPeriod" class="btn-add hr-salary-secondary" hidden>Відкрити період</button>
@@ -711,7 +711,7 @@
                 <div class="hr-kpi-toolbar">
                     <div>
                         <h3 class="hr-kpi-title">KPI команди</h3>
-                        <p class="hr-kpi-subtitle">Продуктивність команди з єдиного HR-зрізу: присутність, надійність, задачі, внесок, розвиток і підсумковий бал.</p>
+                        <p class="hr-kpi-subtitle">Продуктивність команди з єдиного HR-зрізу: присутність, надійність, задачі, внесок, розвиток і підсумковий бал. KPI score є інформаційним; грошовий KPI bonus додається вручну окремим коригуванням.</p>
                     </div>
                     <div class="hr-kpi-actions">
                         <select id="kpiMonth" class="hr-team-select"></select>
@@ -1312,11 +1312,36 @@
                             <option value="percent">Відсоток</option>
                             <option value="hybrid">Гібридна</option>
                             <option value="manual">Ручна</option>
+                            <option value="piece">За одиницю</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label id="editPayrollSchemeAmountLabel">Ставка</label>
                         <input type="number" id="editPayrollSchemeAmount" min="0" step="1" value="0">
+                    </div>
+                    <div class="form-group is-wide hr-payroll-hybrid-config" id="editPayrollMonthlyNormConfig" hidden>
+                        <div class="hr-payroll-hybrid-head">
+                            <strong>Підтверджена місячна норма</strong>
+                            <span>Обовʼязкова для погодження фіксованої місячної ставки. Норма не виводиться з неповного табеля автоматично.</span>
+                        </div>
+                        <div class="hr-payroll-hybrid-grid">
+                            <div>
+                                <label>Місяць норми</label>
+                                <input type="month" id="editPayrollMonthlyNormMonth">
+                            </div>
+                            <div>
+                                <label>Норма, годин</label>
+                                <input type="number" id="editPayrollMonthlyNormHours" min="0" step="0.25" value="0">
+                            </div>
+                            <div>
+                                <label>Джерело норми</label>
+                                <input type="text" id="editPayrollMonthlyNormSource" maxlength="120" placeholder="Напр. погоджений графік">
+                            </div>
+                            <label class="hr-checkbox-row">
+                                <input type="checkbox" id="editPayrollMonthlyNormConfirmed">
+                                <span>Норму перевірено і підтверджено</span>
+                            </label>
+                        </div>
                     </div>
                     <div class="form-group is-wide hr-payroll-hybrid-config" id="editPayrollHybridConfig" hidden>
                         <div class="hr-payroll-hybrid-head">
@@ -1362,11 +1387,11 @@
                                 <input type="number" id="editPayrollDeductionAmount" min="0" step="1" placeholder="0">
                             </div>
                             <div>
-                                <label>Аванс</label>
-                                <input type="text" id="editPayrollAdvanceLabel" maxlength="80" placeholder="Аванс">
+                                <label>ЗРС</label>
+                                <input type="text" id="editPayrollAdvanceLabel" maxlength="80" placeholder="ЗРС">
                             </div>
                             <div>
-                                <label>Сума авансу</label>
+                                <label>Сума ЗРС</label>
                                 <input type="number" id="editPayrollAdvanceAmount" min="0" step="1" placeholder="0">
                             </div>
                         </div>

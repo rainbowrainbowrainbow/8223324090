@@ -415,7 +415,7 @@ function isUsableRoomLine(line = {}) {
     const id = String(line.id || line.resourceId || '').trim().toLowerCase();
     const name = normalizeText(roomNameFromLine(line));
     if (!id && !name) return false;
-    if (id === 'banquet-service' || id === 'room-takeaway') return false;
+    if (id === 'banquet-service' || id === 'room-takeaway' || id === 'room-quarantine') return false;
     if (name === normalizeText('На виніс')) return false;
     return true;
 }
@@ -867,6 +867,7 @@ if (require.main === module) {
 module.exports = {
     scheduleCandidateTimes,
     safeBookingPayload,
+    isUsableRoomLine,
     assertExactDisposableMarker,
     cleanupModeForBase,
     cleanupPreflightPath,

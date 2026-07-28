@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     scheduleCandidateTimes,
     safeBookingPayload,
+    isUsableRoomLine,
     cleanupModeForBase,
     cleanupPreflightPath,
     QA_CLEANUP_SOURCE
@@ -23,6 +24,12 @@ test('cake live smoke rejects invalid time override before booking creation', ()
     assert.throws(() => scheduleCandidateTimes('2026-07-27', 60, ['09:00']), /out-of-hours/);
     assert.throws(() => scheduleCandidateTimes('2026-07-25', 90, ['19:00']), /out-of-hours/);
     assert.throws(() => scheduleCandidateTimes('2026-07-25', 700, null), /exceeds/);
+});
+
+test('cake live smoke excludes virtual and quarantine room lines from slot candidates', () => {
+    assert.equal(isUsableRoomLine({ id: 'room-quarantine', resourceId: 'room-quarantine', name: 'Невідома / неактивна кімната' }), false);
+    assert.equal(isUsableRoomLine({ id: 'room-takeaway', resourceId: 'room-takeaway', name: 'На виніс' }), false);
+    assert.equal(isUsableRoomLine({ id: 'room-marvel', resourceId: 'room-marvel', name: 'Марвел' }), true);
 });
 
 test('cake live smoke payload carries exact disposable QA marker', () => {

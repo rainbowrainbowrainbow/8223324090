@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.13 - Зарплата: завершення post-release hardening
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Повний disposable E2E** — сценарій advance → correction → partial/multiple payments → final → reversal перевіряється на локальному PostgreSQL через справжні routes/services, включно з idempotency, concurrency, rollback і exports.
+- **Зрозуміла історія без вигаданих виплат** — ручні старі Finance-операції та скасовані записи ЗРС отримали окремі read-only класифікації; вони не стають canonical payment movements.
+- **Зафіксований activation evidence** — у repository додано доказ активації з 2026-08, aggregate preflight, waiver для відсутньої shadow history та правила rollback без видалення історії.
+- **Сумісний production preflight** — аудит коректно працює зі старою схемою `salary_adjustments`, де немає `void_reason`, і залишається fail-closed/read-only.
+- **Формули зарплати не змінювалися** — hardening стосується тестового доказу, історичної класифікації та безпеки релізу.
+
+---
+
 ## v0.80.12 - Зарплата: аванс і фінальна виплата
 
 ### HR / Finance / Payroll / (28.07.2026) [codex]

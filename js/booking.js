@@ -8745,12 +8745,12 @@ async function applyLeadConversionContextToBookingForm() {
 
     const linkedCustomerId = parseInt(ctx.customerId, 10);
     if (Number.isInteger(linkedCustomerId) && linkedCustomerId > 0) {
-        applySelectedCustomerToBookingForm({
+        await hydrateBookingCustomerSelection({ customerId: linkedCustomerId, customer: {
             id: linkedCustomerId,
             name: ctx.customerName || `Клієнт #${linkedCustomerId}`,
             phone: ctx.customerPhone || '',
             source: 'lead'
-        }, { markDirty: false });
+        } }, { markDirty: false });
     } else if (ctx.customerName) {
         const nameEl = document.getElementById('customerName');
         const searchEl = document.getElementById('customerSearch');

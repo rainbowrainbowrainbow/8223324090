@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.18",
+  "version": "0.80.19",
   "eventGenix": {
-    "releaseLabel": "Безпека: захист XLSX-залежностей"
+    "releaseLabel": "Лід → бронювання: кількість дітей"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

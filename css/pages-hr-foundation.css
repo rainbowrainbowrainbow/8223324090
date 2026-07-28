@@ -91,6 +91,11 @@
     gap: 10px;
 }
 
+.hr-staff-foundation-grid[hidden],
+.hr-staff-workspace-state[hidden],
+.hr-staff-foundation-head button[hidden] {
+    display: none !important;
+}
 .hr-staff-foundation-grid .is-wide {
     grid-column: 1 / -1;
 }
@@ -120,6 +125,42 @@
     padding: 9px 10px;
 }
 
+.hr-staff-foundation-item.is-revoked {
+    border-style: dashed;
+    opacity: 0.72;
+}
+
+.hr-medical-book-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.hr-medical-book-title .hr-medical-book-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    margin: 0;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 900;
+}
+
+.hr-medical-book-badge.is-active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.hr-medical-book-badge.is-expired {
+    background: rgba(245, 158, 11, 0.14);
+    color: #92400E;
+}
+
+.hr-medical-book-badge.is-revoked {
+    background: rgba(100, 116, 139, 0.14);
+    color: #475569;
+}
 .hr-staff-foundation-item b,
 .hr-staff-foundation-item span {
     display: block;
@@ -862,6 +903,12 @@
     color: #92400E;
 }
 
+.hr-staff-workspace-feedback[data-state="warning"] {
+    border-style: solid;
+    border-color: rgba(245, 158, 11, 0.36);
+    background: rgba(245, 158, 11, 0.08);
+    color: #92400E;
+}
 .hr-staff-workspace-feedback {
     margin-top: 10px;
     padding: 9px 10px;
@@ -1116,4 +1163,146 @@ body.dark-mode .hr-lifecycle-finding {
     background: rgba(245,158,11,0.11);
     border-color: rgba(245,158,11,0.30);
     color: #FCD34D;
+}
+
+.hr-resource-card {
+    align-items: start;
+}
+
+.hr-resource-card.is-lost,
+.hr-resource-card.is-written_off {
+    border-style: dashed;
+}
+
+.hr-resource-card-main {
+    min-width: 0;
+}
+
+.hr-resource-card-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+}
+
+.hr-resource-status-badge {
+    display: inline-flex !important;
+    width: fit-content;
+    margin: 0 !important;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-size: 10px !important;
+    font-weight: 900;
+}
+
+.hr-resource-status-badge.is-issued {
+    background: rgba(37, 99, 235, 0.12);
+    color: #1D4ED8;
+}
+
+.hr-resource-status-badge.is-returned {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.hr-resource-status-badge.is-lost {
+    background: rgba(245, 158, 11, 0.16);
+    color: #92400E;
+}
+
+.hr-resource-status-badge.is-written_off {
+    background: rgba(100, 116, 139, 0.16);
+    color: #475569;
+}
+
+.hr-staff-action--warning {
+    border-color: rgba(245, 158, 11, 0.42) !important;
+    color: #92400E !important;
+}
+
+.hr-resource-detail-modal {
+    width: min(760px, 100%);
+}
+
+.hr-resource-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.hr-resource-detail-grid > div {
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.03);
+    padding: 10px;
+}
+
+.hr-resource-detail-grid > .is-wide {
+    grid-column: 1 / -1;
+}
+
+.hr-resource-detail-grid dt {
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.hr-resource-detail-grid dd {
+    margin: 4px 0 0;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.hr-resource-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+body.dark-mode .hr-resource-status-badge.is-issued { color: #93C5FD; }
+body.dark-mode .hr-resource-status-badge.is-returned { color: #6EE7B7; }
+body.dark-mode .hr-resource-status-badge.is-lost { color: #FCD34D; }
+body.dark-mode .hr-resource-status-badge.is-written_off { color: #CBD5E1; }
+body.dark-mode .hr-staff-action--warning { color: #FCD34D !important; }
+body.dark-mode .hr-resource-detail-grid > div {
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.44);
+}
+body.dark-mode .hr-resource-detail-grid dt { color: #94A3B8; }
+body.dark-mode .hr-resource-detail-grid dd { color: #F8FAFC; }
+
+@media (max-width: 700px) {
+    .hr-resource-card {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-resource-card .hr-staff-foundation-actions,
+    .hr-resource-detail-actions {
+        justify-content: flex-start;
+    }
+
+    .hr-resource-card .hr-staff-action,
+    .hr-resource-detail-actions .hr-staff-action {
+        flex: 1 1 calc(50% - 6px);
+    }
+
+    .hr-resource-detail-overlay {
+        padding: 8px;
+    }
+
+    .hr-resource-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-resource-detail-grid > .is-wide {
+        grid-column: auto;
+    }
 }

@@ -204,13 +204,21 @@ const {
     handleStaffDocumentUpload,
     listStaffDocuments,
     loadStaffDocumentDownload,
-    safeStaffDocumentDownloadFilename
+    restoreStaffDocument,
+    safeStaffDocumentDownloadFilename,
+    staffDocumentPreviewMimeType
 } = require('../services/hrStaffDocuments');
+const {
+    createStaffMedicalBook,
+    listStaffMedicalBooks,
+    updateStaffMedicalBook
+} = require('../services/hrStaffMedicalBook');
 const {
     issueStaffResource,
     listStaffResourceOptions,
     listStaffResources,
-    returnStaffResource
+    returnStaffResource,
+    transitionStaffResource
 } = require('../services/hrStaffResources');
 const {
     buildHrAttendanceDocumentSnapshot
@@ -474,11 +482,6 @@ function normalizeStaffPhotoUrl(value) {
         return { ok: true, value: normalized };
     }
     return { ok: false, error: 'Фото має бути https URL або шляхом /uploads/... чи /images/...' };
-}
-
-function normalizeStaffCertificationStatus(value) {
-    const status = cleanStaffText(value, 32) || 'active';
-    return ['active', 'expired', 'revoked'].includes(status) ? status : 'active';
 }
 
 function normalizeStaffRoleAssignmentStatus(value) {
@@ -3851,6 +3854,30 @@ router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (
     }
 });
 
+router.get('/staff/:id/documents/:documentId/preview', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid document ID' });
+        }
+        const doc = await loadStaffDocumentDownload(req.params.id, req.params.documentId);
+        if (!doc) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
+        const previewMimeType = staffDocumentPreviewMimeType(doc);
+        if (!previewMimeType) {
+            return res.status(415).json({ success: false, error: 'Для цього формату доступне лише завантаження' });
+        }
+        res.setHeader('Content-Type', previewMimeType);
+        res.setHeader('Content-Length', String(doc.file_size || doc.file_data.length || 0));
+        res.setHeader('Cache-Control', 'no-store, private');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+        res.setHeader('Content-Disposition', `inline; filename="${safeStaffDocumentDownloadFilename(doc.original_name)}"`);
+        res.send(doc.file_data);
+    } catch (err) {
+        log.error('GET /hr/staff/:id/documents/:documentId/preview error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 router.delete('/staff/:id/documents/:documentId', requireHrManage, async (req, res) => {
     try {
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
@@ -3868,72 +3895,90 @@ router.delete('/staff/:id/documents/:documentId', requireHrManage, async (req, r
     }
 });
 
+router.put('/staff/:id/documents/:documentId/restore', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid document ID' });
+        }
+        const restored = await restoreStaffDocument(req.params.id, req.params.documentId, req.user?.username || null);
+        if (!restored) return res.status(404).json({ success: false, error: 'Архівний документ не знайдено' });
+        await auditLog('staff_document_restore', parseInt(req.params.id), req.user?.username, {
+            ...restored.audit
+        }, req.ip);
+        res.json({ success: true, data: restored.data });
+    } catch (err) {
+        log.error('PUT /hr/staff/:id/documents/:documentId/restore error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 router.get('/staff/:id/medical-book', requireHrManage, async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const result = await pool.query(
-            `SELECT sc.*, sd.title AS document_title
-             FROM staff_certifications sc
-             LEFT JOIN staff_documents sd ON sd.id = sc.document_id
-             WHERE sc.staff_id = $1 AND sc.category = 'medical_book'
-             ORDER BY sc.expires_at DESC NULLS LAST, sc.created_at DESC, sc.id DESC`,
-            [req.params.id]
-        );
-        res.json({ success: true, data: result.rows });
+        const rows = await listStaffMedicalBooks(req.params.id);
+        res.json({ success: true, data: rows });
     } catch (err) {
         log.error('GET /hr/staff/:id/medical-book error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
 
+function sendStaffMedicalBookError(res, err) {
+    const status = Number(err?.statusCode || 500);
+    const payload = {
+        success: false,
+        error: status < 500 ? err.message : 'Помилка сервера'
+    };
+    if (err?.code) payload.code = err.code;
+    if (err?.duplicate) payload.duplicate = err.duplicate;
+    return res.status(status).json(payload);
+}
+
 router.post('/staff/:id/medical-book', requireHrManage, async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt);
-        const expiresAt = cleanStaffDate(req.body.expires_at || req.body.expiresAt);
-        const notes = cleanStaffText(req.body.notes, 2000);
-        const documentId = numberOrNull(req.body.document_id || req.body.documentId);
-        let status = normalizeStaffCertificationStatus(req.body.status);
-        if (expiresAt && new Date(`${expiresAt}T00:00:00Z`) < new Date()) status = 'expired';
-        const result = await pool.query(
-            `INSERT INTO staff_certifications
-                (staff_id, name, category, issued_at, expires_at, status, notes, document_id, business_context)
-             VALUES ($1, 'Медкнижка', 'medical_book', $2, $3, $4, $5, $6, $7)
-             RETURNING *`,
-            [
-                req.params.id,
-                issuedAt,
-                expiresAt,
-                status,
-                notes,
-                documentId,
-                cleanStaffText(req.body.business_context || req.body.businessContext, 64)
-            ]
-        );
-        await auditLog('medical_book_update', parseInt(req.params.id), req.user?.username, {
-            certification_id: result.rows[0].id,
-            expires_at: expiresAt,
-            status
-        }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        const actor = req.user?.username || null;
+        const created = await createStaffMedicalBook(req.params.id, req.body, actor);
+        await auditLog(created.auditEvent, parseInt(req.params.id), actor, created.audit, req.ip);
+        res.json({ success: true, data: created.data });
     } catch (err) {
         log.error('POST /hr/staff/:id/medical-book error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        return sendStaffMedicalBookError(res, err);
     }
 });
 
+router.patch('/staff/:id/medical-book/:certificationId', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.certificationId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid certification ID' });
+        }
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const actor = req.user?.username || null;
+        const updated = await updateStaffMedicalBook(req.params.id, req.params.certificationId, req.body, actor);
+        await auditLog(updated.auditEvent, parseInt(req.params.id), actor, updated.audit, req.ip);
+        res.json({ success: true, data: updated.data });
+    } catch (err) {
+        log.error('PATCH /hr/staff/:id/medical-book/:certificationId error', err);
+        return sendStaffMedicalBookError(res, err);
+    }
+});
 router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const includeReturned = req.query.include_returned === 'true';
-        const resources = await listStaffResources(req.params.id, { includeReturned });
+        const resources = await listStaffResources(req.params.id, {
+            view: req.query.view,
+            status: req.query.status,
+            includeReturned
+        });
         res.json({ success: true, data: resources });
     } catch (err) {
-        log.error('GET /hr/staff/:id/resources error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        if (!err.statusCode || err.statusCode >= 500) log.error('GET /hr/staff/:id/resources error', err);
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
@@ -3982,10 +4027,12 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
             actor,
             today: todayKyiv()
         });
-        await auditLog('staff_resource_return', parseInt(req.params.id), actor, {
-            ...returned.audit
-        }, req.ip);
-        res.json({ success: true, data: returned.data });
+        if (!returned.idempotent) {
+            await auditLog('staff_resource_return', parseInt(req.params.id), actor, {
+                ...returned.audit
+            }, req.ip);
+        }
+        res.json({ success: true, data: returned.data, idempotent: returned.idempotent });
     } catch (err) {
         if (!err.statusCode || err.statusCode >= 500) {
             log.error('PUT /hr/staff/:id/resources/:assignmentId/return error', err);
@@ -3994,6 +4041,29 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
     }
 });
 
+router.put('/staff/:id/resources/:assignmentId/status', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.assignmentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid assignment ID' });
+        }
+        const actor = req.user?.username || null;
+        const status = String(req.body?.status || '').trim();
+        const transitioned = await transitionStaffResource(req.params.id, req.params.assignmentId, status, req.body, {
+            actor,
+            today: todayKyiv()
+        });
+        if (!transitioned.idempotent) {
+            const auditEvent = status === 'written_off' ? 'staff_resource_written_off' : `staff_resource_${status}`;
+            await auditLog(auditEvent, parseInt(req.params.id), actor, transitioned.audit, req.ip);
+        }
+        res.json({ success: true, data: transitioned.data, idempotent: transitioned.idempotent });
+    } catch (err) {
+        if (!err.statusCode || err.statusCode >= 500) {
+            log.error('PUT /hr/staff/:id/resources/:assignmentId/status error', err);
+        }
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
+    }
+});
 router.get('/payroll-profiles', requirePayrollRules, async (req, res) => {
     try {
         const data = await listPayrollProfiles(req.query);

@@ -22,6 +22,13 @@ const STAFF_DOCUMENT_ALLOWED_MIME_TYPES = new Set([
     'text/plain',
     'application/octet-stream'
 ]);
+const STAFF_DOCUMENT_PREVIEW_MIME_BY_EXTENSION = new Map([
+    ['.pdf', 'application/pdf'],
+    ['.jpg', 'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.png', 'image/png'],
+    ['.webp', 'image/webp']
+]);
 
 function cleanStaffDocumentText(value, limit = 1000) {
     if (value === null || value === undefined) return null;
@@ -95,6 +102,17 @@ function safeStaffDocumentDownloadFilename(value, fallback = 'staff-document') {
     return raw.replace(/[\r\n"\\]/g, '_');
 }
 
+function staffDocumentPreviewMimeType(document = {}) {
+    const ext = String(document.file_ext || path.extname(document.original_name || '')).toLowerCase();
+    const expectedMime = STAFF_DOCUMENT_PREVIEW_MIME_BY_EXTENSION.get(ext) || null;
+    const actualMime = String(document.mime_type || '').toLowerCase();
+    return expectedMime && actualMime === expectedMime ? expectedMime : null;
+}
+
+function isStaffDocumentPreviewable(document = {}) {
+    return Boolean(staffDocumentPreviewMimeType(document));
+}
+
 function staffDocumentMeta(row) {
     if (!row) return null;
     return {
@@ -116,7 +134,10 @@ function staffDocumentMeta(row) {
         archived_by: row.archived_by,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`
+        download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`,
+        preview_url: isStaffDocumentPreviewable(row)
+            ? `/api/hr/staff/${row.staff_id}/documents/${row.id}/preview`
+            : null
     };
 }
 
@@ -189,7 +210,7 @@ async function createStaffDocument(staffId, file, body = {}, uploadedBy = null, 
 
 async function loadStaffDocumentDownload(staffId, documentId, db = pool) {
     const result = await db.query(
-        `SELECT id, staff_id, original_name, mime_type, file_size, file_data
+        `SELECT id, staff_id, original_name, mime_type, file_ext, file_size, file_data
          FROM staff_documents
          WHERE id = $1 AND staff_id = $2`,
         [documentId, staffId]
@@ -218,15 +239,40 @@ async function archiveStaffDocument(staffId, documentId, archivedBy = null, db =
     } : null;
 }
 
+async function restoreStaffDocument(staffId, documentId, restoredBy = null, db = pool) {
+    const result = await db.query(
+        `UPDATE staff_documents
+         SET status = 'active', archived_at = NULL, archived_by = NULL, updated_at = NOW()
+         WHERE id = $1 AND staff_id = $2 AND status = 'archived'
+         RETURNING id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
+                   file_sha256, issued_at, expires_at, status, notes, uploaded_by,
+                   archived_at, archived_by, created_at, updated_at`,
+        [documentId, staffId]
+    );
+    const row = result.rows[0] || null;
+    return row ? {
+        row,
+        data: staffDocumentMeta(row),
+        audit: {
+            document_id: row.id,
+            title: row.title,
+            restored_by: restoredBy
+        }
+    } : null;
+}
+
 module.exports = {
     archiveStaffDocument,
     createStaffDocument,
     handleStaffDocumentUpload,
+    isStaffDocumentPreviewable,
     listStaffDocuments,
     loadStaffDocumentDownload,
     normalizeStaffDocumentStatus,
     normalizeStaffDocumentType,
+    restoreStaffDocument,
     safeStaffDocumentDownloadFilename,
+    staffDocumentPreviewMimeType,
     staffDocumentMeta,
     validateStaffDocumentUploadFile
 };

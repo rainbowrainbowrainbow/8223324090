@@ -295,7 +295,7 @@ const HARNESS_CODE = String.raw`
             return { success: true, data: { staff: { id: Number(activeEditStaffId()), is_active: true }, summary: { offboarding_started: false }, metrics: { active_account_count: 1, face_descriptor_count: 1, readiness_percent: 50, future_schedule_count: 2, open_time_record_count: 1, open_payroll_count: 0 }, sections: [] } };
         }
         const workspacePath = requestPath.split('?')[0];
-        const workspaceMatch = workspacePath.match(/^\/staff\/(\d+)\/(documents|medical-book|resources)(?:\/(\d+)(\/return)?)?$/);
+        const workspaceMatch = workspacePath.match(/^\/staff\/(\d+)\/(documents|medical-book|resources)(?:\/(\d+)(\/(?:return|restore|status))?)?$/);
         if (workspaceMatch) {
             const [, , workspaceSection, itemId, returnSuffix] = workspaceMatch;
             const method = String(options?.method || 'GET').toUpperCase();
@@ -324,9 +324,23 @@ const HARNESS_CODE = String.raw`
                         uploaded_by: 'QA HR',
                         created_at: '2026-07-12T09:00:00.000Z'
                     };
+                    row.mime_type = file?.type || 'application/octet-stream';
+                    row.file_ext = String(file?.name || '').match(/\.[^.]+$/)?.[0]?.toLowerCase() || '';
+                    row.preview_url = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(row.mime_type)
+                        ? '/api/hr/staff/4/documents/' + row.id + '/preview'
+                        : null;
                     workspace.documents.push(row);
                     workspaceOperations.push('document-upload');
                     return { success: true, data: { ...row } };
+                }
+                if (method === 'PUT' && returnSuffix === '/restore') {
+                    const restored = workspace.documents.find(row => Number(row.id) === Number(itemId));
+                    if (!restored || restored.status !== 'archived') return { success: false, error: 'missing archived document' };
+                    restored.status = 'active';
+                    restored.archived_by = null;
+                    restored.archived_at = null;
+                    workspaceOperations.push('document-restore');
+                    return { success: true, data: { ...restored } };
                 }
                 if (method === 'DELETE') {
                     const index = workspace.documents.findIndex(row => Number(row.id) === Number(itemId));
@@ -342,28 +356,79 @@ const HARNESS_CODE = String.raw`
             if (workspaceSection === 'medical-book') {
                 if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.medical) };
                 if (method === 'POST') {
-                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'active' };
+                    const body = options.body || {};
+                    const status = body.expires_at && body.expires_at < '2026-07-28' ? 'expired' : 'active';
+                    const duplicate = workspace.medical.find(row => row.status === 'active'
+                        && row.issued_at === body.issued_at
+                        && row.expires_at === body.expires_at);
+                    if (status === 'active' && duplicate) {
+                        return { success: false, code: 'medical_book_duplicate', error: 'Активна медкнижка з такими датами вже існує', duplicate: { ...duplicate } };
+                    }
+                    const linkedDocument = workspace.documents.find(row => Number(row.id) === Number(body.document_id));
+                    const row = {
+                        id: nextWorkspaceId++,
+                        ...body,
+                        status,
+                        document_title: linkedDocument?.title || null,
+                        created_at: '2026-07-12T09:30:00.000Z'
+                    };
                     workspace.medical.unshift(row);
-                    workspaceOperations.push('medical-save');
+                    workspaceOperations.push('medical-create');
+                    return { success: true, data: { ...row } };
+                }
+                if (method === 'PATCH') {
+                    const row = workspace.medical.find(item => Number(item.id) === Number(itemId));
+                    if (!row || row.status === 'revoked') return { success: false, error: 'missing active medical book' };
+                    const body = options.body || {};
+                    if (body.status === 'revoked') {
+                        row.status = 'revoked';
+                        workspaceOperations.push('medical-revoke');
+                        return { success: true, data: { ...row } };
+                    }
+                    Object.assign(row, body);
+                    row.status = row.expires_at && row.expires_at < '2026-07-28' ? 'expired' : 'active';
+                    row.document_title = workspace.documents.find(item => Number(item.id) === Number(row.document_id))?.title || null;
+                    workspaceOperations.push('medical-update');
                     return { success: true, data: { ...row } };
                 }
             }
             if (workspaceSection === 'resources') {
-                if (method === 'GET') return { success: true, data: copyWorkspaceRows(workspace.resources.filter(row => requestPath.includes('include_returned=true') || row.status === 'issued')) };
+                if (method === 'GET') {
+                    const view = new URLSearchParams(requestPath.split('?')[1] || '').get('view');
+                    const rows = workspace.resources.filter(row => requestPath.includes('include_returned=true')
+                        || view === 'all'
+                        || (view === 'history' ? ['returned', 'lost', 'written_off'].includes(row.status) : row.status === 'issued'));
+                    return { success: true, data: copyWorkspaceRows(rows) };
+                }
                 if (method === 'POST') {
-                    const row = { id: nextWorkspaceId++, ...(options.body || {}), status: 'issued', issued_by: 'QA HR', issued_at: '2026-07-12' };
+                    const body = options.body || {};
+                    const row = {
+                        id: nextWorkspaceId++,
+                        ...body,
+                        status: 'issued',
+                        issued_by: 'QA HR',
+                        issued_at: '2026-07-12',
+                        warehouse_stock_name: body.resource_kind === 'warehouse_stock' ? 'QA Warehouse Item' : null,
+                        costume_name: body.resource_kind === 'costume' ? 'QA Costume' : null,
+                        warehouse_issue_movement_id: body.resource_kind === 'warehouse_stock' ? 900 + nextWorkspaceId : null,
+                        warehouse_return_movement_id: null
+                    };
                     workspace.resources.unshift(row);
                     workspaceOperations.push('resource-issue:' + row.resource_kind);
                     return { success: true, data: { ...row } };
                 }
-                if (method === 'PUT' && returnSuffix === '/return') {
+                if (method === 'PUT' && ['/return', '/status'].includes(returnSuffix)) {
                     const row = workspace.resources.find(item => Number(item.id) === Number(itemId));
                     if (!row) return { success: false, error: 'missing resource assignment' };
-                    row.status = 'returned';
+                    const status = returnSuffix === '/return' ? 'returned' : String(options.body?.status || '');
+                    if (row.status === status) return { success: true, data: { ...row }, idempotent: true };
+                    if (row.status !== 'issued') return { success: false, error: 'resource already closed' };
+                    row.status = status;
                     row.returned_by = 'QA HR';
                     row.returned_at = '2026-07-13';
-                    workspaceOperations.push('resource-return');
-                    return { success: true, data: { ...row } };
+                    if (status === 'returned' && row.resource_kind === 'warehouse_stock') row.warehouse_return_movement_id = 990 + Number(row.id);
+                    workspaceOperations.push('resource-' + status.replace('_off', '-off'));
+                    return { success: true, data: { ...row }, idempotent: false };
                 }
             }
             return { success: false, error: 'unsupported workspace request' };
@@ -424,6 +489,16 @@ const HARNESS_CODE = String.raw`
     };
 
     window.apiFetchWithAuthRetry = async requestPath => {
+        if (String(requestPath).includes('/documents/') && String(requestPath).includes('/preview')) {
+            if (shouldFailWorkspaceRequest(requestPath)) {
+                return { ok: false, json: async () => ({ error: 'simulated document preview failure' }) };
+            }
+            workspaceOperations.push('document-preview');
+            return {
+                ok: true,
+                blob: async () => new Blob(['QA image'], { type: 'image/png' })
+            };
+        }
         if (String(requestPath).includes('/documents/') && String(requestPath).includes('/download')) {
             workspaceOperations.push('document-download');
             return {
@@ -431,7 +506,7 @@ const HARNESS_CODE = String.raw`
                 blob: async () => new Blob(['QA document'], { type: 'text/plain' })
             };
         }
-        return { ok: false, json: async () => ({ error: 'unexpected download request' }) };
+        return { ok: false, json: async () => ({ error: 'unexpected document request' }) };
     };
     window.finishBlobDownload = (_blob, filename) => {
         downloads.push(String(filename || 'staff-document'));
@@ -1226,36 +1301,59 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     await page.fill('#editMedicalNotes', 'independent medical draft');
     await page.fill('#editDocumentTitle', 'QA uploaded scan');
     await page.locator('#editDocumentFile').setInputFiles({
-        name: 'qa-upload.txt',
-        mimeType: 'text/plain',
+        name: 'qa-upload.png',
+        mimeType: 'image/png',
         buffer: Buffer.from('QA document upload')
     });
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/staff/4/documents'));
+    await page.locator('#editDocumentUpload').click();
+    await page.waitForFunction(() => document.getElementById('editDocumentUpload')?.dataset.actionState === 'error');
+    assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /simulated documents write failure/i, 'document upload failure stays inside the documents section');
+    await page.waitForFunction(() => !document.getElementById('editDocumentUpload')?.disabled);
     await page.locator('#editDocumentUpload').click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-upload'));
     await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.textContent.includes('QA uploaded scan'));
     assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /додано/i, 'document upload reports a local section result');
+    assert.match(await page.locator('#editStaffDocuments').textContent(), /Інше.*PNG.*Активний.*Завантажив: QA HR/s, 'document metadata exposes type, format, status, uploader, and date');
     assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['medical'], 'document upload clears only its own scope');
 
     await page.fill('#editDocumentNotes', 'independent archive-time draft');
+    const uploadedDocument = page.locator('#editStaffDocuments .hr-staff-foundation-item').filter({ hasText: 'QA uploaded scan' });
 
-    await page.locator('#editStaffDocuments button').first().click();
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/preview'));
+    await uploadedDocument.getByRole('button', { name: 'Переглянути' }).click();
+    await page.waitForFunction(() => document.getElementById('editStaffDocumentsFeedback')?.textContent.includes('simulated document preview failure'));
+    assert.equal(await page.locator('#staffDocumentPreviewOverlay').count(), 0, 'failed preview does not open a stale modal');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#editStaffDocuments button')].find(button => button.textContent.includes('Переглянути'))?.disabled);
+    await uploadedDocument.getByRole('button', { name: 'Переглянути' }).click();
+    await page.waitForFunction(() => document.querySelector('#staffDocumentPreviewOverlay [data-staff-document-preview="image"]'));
+    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-preview')), 'preview loads through the private guarded endpoint');
+    await page.getByRole('button', { name: 'Закрити перегляд' }).click();
+    await page.waitForFunction(() => !document.getElementById('staffDocumentPreviewOverlay'));
+    await page.waitForFunction(() => {
+        const previewButton = [...document.querySelectorAll('#editStaffDocuments button')].find(button => button.textContent.includes('Переглянути'));
+        return document.activeElement === previewButton;
+    });
+    assert.equal(await uploadedDocument.getByRole('button', { name: 'Переглянути' }).evaluate(button => document.activeElement === button), true, 'closing preview restores focus to its trigger');
+
+    await uploadedDocument.getByRole('button', { name: 'Завантажити' }).click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-download'));
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.downloads().length), 1, 'document download completes through the guarded download flow');
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.disableConfirmationImplementation());
-    await page.locator('#editStaffDocuments button').last().click();
+    await uploadedDocument.getByRole('button', { name: 'До архіву' }).click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.notifications().some(item => /Підтвердження дії недоступне/.test(item.message)));
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-archive').length), 0, 'missing confirmation implementation fails closed before archive request');
     assert.equal(await page.locator('#editStaffDocuments .hr-staff-foundation-item').count(), 1, 'fail-closed archive keeps the document visible');
     await page.evaluate(() => window.__hrTeamBrowserSmoke.restoreConfirmationImplementation());
 
-    await page.locator('#editStaffDocuments button').last().click();
+    await uploadedDocument.getByRole('button', { name: 'До архіву' }).click();
     await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog'));
-    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /Архівувати документ/i, 'archive opens the production confirmation');
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /Перенести документ до архіву/i, 'archive opens the production confirmation');
     await page.locator('.confirm-overlay .confirm-cancel').click();
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-archive').length), 0, 'cancelled archive does not send a request');
 
-    await page.locator('#editStaffDocuments button').last().click();
+    await uploadedDocument.getByRole('button', { name: 'До архіву' }).click();
     await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
     await page.locator('.confirm-overlay .confirm-ok').click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-archive'));
@@ -1274,23 +1372,99 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     await page.locator('#editStaffDocuments [data-state="error"] button').click();
     await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-document-status="archived"]'));
     assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/documents?include_archived=true') >= 1), 'document archive view requests archived metadata explicitly');
-    assert.match(await page.locator('#editStaffDocuments').textContent(), /В архіві.*QA HR/s, 'document archive shows status, date, and audit actor');
-    assert.equal(await page.locator('#editStaffDocuments button').count(), 1, 'archived document remains downloadable without a second archive action');
+    assert.match(await page.locator('#editStaffDocuments').textContent(), /PNG.*В архіві.*Завантажив: QA HR.*До архіву:/s, 'document archive shows format, status, dates, and audit actor');
+    const archivedDocument = page.locator('#editStaffDocuments [data-document-status="archived"]');
+    assert.deepEqual(await archivedDocument.getByRole('button').allTextContents(), ['Переглянути', 'Завантажити', 'Відновити'], 'archived previewable document exposes preview, download, and restore');
     await page.evaluate(() => {
         staffDocumentListView = 'active';
         restoreStaffWorkspaceViews();
     });
     assert.equal(await page.locator('[data-staff-workspace-view="documents:archive"]').getAttribute('aria-pressed'), 'true', 'document archive filter restores from session state after reinitialization');
-    await page.locator('[data-staff-workspace-view="documents:active"]').click();
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/restore'));
+    await archivedDocument.getByRole('button', { name: 'Відновити' }).click();
+    await page.waitForFunction(() => document.getElementById('editStaffDocumentsFeedback')?.textContent.includes('simulated documents write failure'));
+    assert.equal(await page.locator('#editStaffDocuments [data-document-status="archived"]').count(), 1, 'failed restore keeps the archived document visible');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#editStaffDocuments button')].find(button => button.textContent.includes('Відновити'))?.disabled);
+    await archivedDocument.getByRole('button', { name: 'Відновити' }).click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-restore'));
     await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-state="empty"]'));
+    assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /активного списку/i, 'successful restore reports the result inside the documents section');
+    await page.locator('[data-staff-workspace-view="documents:active"]').click();
+    await page.waitForFunction(() => document.querySelector('#editStaffDocuments [data-document-status="active"]'));
+
+    await page.fill('#editDocumentTitle', 'QA text fallback');
+    await page.locator('#editDocumentFile').setInputFiles({
+        name: 'qa-fallback.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('QA download fallback')
+    });
+    await page.locator('#editDocumentUpload').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'document-upload').length === 2);
+    await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.textContent.includes('QA text fallback'));
+    const fallbackDocument = page.locator('#editStaffDocuments .hr-staff-foundation-item').filter({ hasText: 'QA text fallback' });
+    assert.deepEqual(await fallbackDocument.getByRole('button').allTextContents(), ['Завантажити', 'До архіву'], 'TXT keeps download fallback without exposing preview');
+    await page.fill('#editDocumentNotes', 'independent resource retry draft');
+    assert.ok(await page.locator('#editMedicalDocumentId option').count() >= 3, 'medical form lists uploaded documents from the same staff card');
+    await page.fill('#editMedicalIssuedAt', '2026-07-01');
+    await page.fill('#editMedicalExpiresAt', '2027-07-01');
+    await page.selectOption('#editMedicalDocumentId', { index: 1 });
+    await page.fill('#editMedicalNotes', 'QA initial medical record');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/staff/4/medical-book'));
+    await page.locator('#editMedicalSave').click();
+    await page.waitForFunction(() => document.getElementById('editMedicalSave')?.dataset.actionState === 'error');
+    assert.match(await page.locator('#editMedicalBookFeedback').textContent(), /simulated medical-book write failure/i, 'medical create failure stays inside its section');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'medical-create').length), 0, 'failed medical create does not append a row');
+    await page.waitForFunction(() => !document.getElementById('editMedicalSave')?.disabled);
+    await page.locator('#editMedicalSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-create'));
+    await page.waitForFunction(() => document.querySelector('#editMedicalBookList [data-medical-book-status="active"]'));
+    const medicalCard = page.locator('#editMedicalBookList [data-medical-book-id]').first();
+    assert.match(await medicalCard.textContent(), /Активна.*QA uploaded scan/s, 'medical create renders active badge and linked document');
+    assert.deepEqual(await medicalCard.getByRole('button').allTextContents(), ['Редагувати', 'Видалити запис'], 'active medical row exposes edit and safe revoke actions');
+    assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['documents'], 'medical create clears only the medical scope');
 
     await page.fill('#editMedicalIssuedAt', '2026-07-01');
     await page.fill('#editMedicalExpiresAt', '2027-07-01');
+    await page.waitForFunction(() => document.getElementById('editMedicalDuplicateWarning')?.hidden === false);
+    assert.match(await page.locator('#editMedicalDuplicateWarning').textContent(), /активна медкнижка.*#\d+/i, 'duplicate dates show a visible warning before save');
     await page.locator('#editMedicalSave').click();
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-save'));
-    assert.equal(await page.locator('#editMedicalBookList .hr-staff-foundation-item').count(), 1, 'medical-book save updates its own subsection');
-    assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['documents'], 'medical save clears only the medical scope');
+    await page.waitForFunction(() => document.getElementById('editMedicalSave')?.dataset.actionState === 'error');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'medical-create').length), 1, 'duplicate warning blocks an invisible append');
+    assert.match(await page.locator('#editMedicalBookFeedback').textContent(), /Повторне створення заблоковано/i, 'duplicate block is explained inside the medical section');
+    await page.waitForFunction(() => !document.getElementById('editMedicalSave')?.disabled);
 
+    await medicalCard.getByRole('button', { name: 'Редагувати' }).click();
+    assert.equal(await page.locator('#editMedicalSave').textContent(), 'Зберегти зміни', 'edit mode changes the primary action label');
+    assert.equal(await page.locator('#editMedicalCertificationId').inputValue(), await medicalCard.getAttribute('data-medical-book-id') || '', 'edit mode keeps the certification identity');
+    assert.equal(await page.locator('#editMedicalDocumentId').inputValue() !== '', true, 'edit mode restores the linked document');
+    await page.fill('#editMedicalExpiresAt', '2025-07-02');
+    await page.fill('#editMedicalNotes', 'QA edited medical record');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/medical-book/'));
+    await page.locator('#editMedicalSave').click();
+    await page.waitForFunction(() => document.getElementById('editMedicalSave')?.dataset.actionState === 'error');
+    assert.match(await page.locator('#editMedicalBookFeedback').textContent(), /simulated medical-book write failure/i, 'medical update failure preserves edit mode and its fields');
+    assert.equal(await page.locator('#editMedicalNotes').inputValue(), 'QA edited medical record', 'failed update keeps the edited note');
+    await page.waitForFunction(() => !document.getElementById('editMedicalSave')?.disabled);
+    await page.locator('#editMedicalSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-update'));
+    await page.waitForFunction(() => document.querySelector('#editMedicalBookList [data-medical-book-status="expired"]'));
+    assert.match(await medicalCard.textContent(), /Прострочена.*QA edited medical record/s, 'patch updates the same row and renders the expired badge');
+    assert.equal(await page.locator('#editMedicalBookList .hr-staff-foundation-item').count(), 1, 'editing does not append another medical row');
+    assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['documents'], 'medical update clears only its own scope');
+
+    await medicalCard.getByRole('button', { name: 'Видалити запис' }).click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog'));
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /статус «Відкликана».*історії та аудиті/i, 'safe delete confirmation explains revoke semantics');
+    await page.locator('.confirm-overlay .confirm-cancel').click();
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'medical-revoke').length), 0, 'cancelled medical revoke sends no request');
+    await medicalCard.getByRole('button', { name: 'Видалити запис' }).click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+    await page.locator('.confirm-overlay .confirm-ok').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('medical-revoke'));
+    await page.waitForFunction(() => document.querySelector('#editMedicalBookList [data-medical-book-status="revoked"]'));
+    assert.match(await medicalCard.textContent(), /Відкликана/, 'safe delete keeps a revoked historical row visible');
+    assert.equal(await medicalCard.getByRole('button').count(), 0, 'revoked medical row has no mutation actions');
     await page.fill('#editResourceTitle', 'QA custom resource');
     const issueRequestsBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources'));
     await page.evaluate(() => {
@@ -1299,19 +1473,45 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     });
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-issue:custom'));
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources')), issueRequestsBefore + 2, 'double-click sends one resource issue plus its single refresh request');
-    await page.fill('#editResourceNotes', 'independent return-time draft');
-    await page.locator('#editStaffResources button').first().click();
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-return'));
-    assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), 'inline resource return preserves the issue-form draft');
+    await page.waitForFunction(() => document.querySelector('#editStaffResources [data-resource-status="issued"]'));
+    const customResourceCard = page.locator('#editStaffResources [data-resource-status="issued"]').filter({ hasText: 'QA custom resource' });
+    assert.deepEqual(await customResourceCard.getByRole('button').allTextContents(), ['Деталі', 'Повернути', 'Втрачено', 'Списати'], 'active resource exposes detail and all terminal actions');
 
-    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('include_returned=true'));
+    await customResourceCard.getByRole('button', { name: 'Деталі' }).click();
+    await page.waitForFunction(() => document.getElementById('staffResourceDetailOverlay'));
+    assert.match(await page.locator('#staffResourceDetailOverlay').textContent(), /Ручний запис HR.*Видано.*QA HR.*Рух видачі.*—.*Рух повернення.*—/s, 'resource detail shows source, lifecycle actors, and movement IDs');
+    const lightDetailBackground = await page.locator('.hr-resource-detail-grid > div').first().evaluate(node => getComputedStyle(node).backgroundColor);
+    await page.evaluate(() => document.body.classList.add('dark-mode'));
+    const darkDetailBackground = await page.locator('.hr-resource-detail-grid > div').first().evaluate(node => getComputedStyle(node).backgroundColor);
+    assert.notEqual(darkDetailBackground, lightDetailBackground, 'resource detail has a distinct dark theme surface');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileDetail = await page.locator('.hr-resource-detail-modal').boundingBox();
+    assert.ok(mobileDetail && mobileDetail.x >= 0 && mobileDetail.x + mobileDetail.width <= 390, 'resource detail stays inside the mobile viewport');
+    assert.equal(await page.locator('.hr-resource-detail-grid').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length), 1, 'resource detail collapses to one mobile column');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => document.body.classList.remove('dark-mode'));
+    await page.locator('#staffResourceDetailOverlay .candidate-detail-close').click();
+
+    await page.fill('#editResourceNotes', 'independent terminal-time draft');
+    await customResourceCard.getByRole('button', { name: 'Втрачено' }).click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog'));
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /закрито як втрачений/i, 'lost confirmation explains the manual-resource consequence');
+    await page.locator('.confirm-overlay .confirm-cancel').click();
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'resource-lost').length), 0, 'cancelled lost action sends no request');
+    await customResourceCard.getByRole('button', { name: 'Втрачено' }).click();
+    await page.locator('.confirm-overlay .confirm-ok').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-lost'));
+    assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), 'inline resource status change preserves the issue-form draft');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('view=history'));
     await page.locator('[data-staff-workspace-view="resources:history"]').click();
     await page.waitForFunction(() => document.getElementById('editStaffResources')?.dataset.state === 'error');
     assert.equal(await page.locator('#editStaffResources [data-state="error"] button').count(), 1, 'resource history error exposes its own retry');
     await page.locator('#editStaffResources [data-state="error"] button').click();
-    await page.waitForFunction(() => document.querySelector('#editStaffResources [data-resource-status="returned"]'));
-    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources?include_returned=true') >= 1), 'resource history requests returned assignments explicitly');
-    assert.match(await page.locator('#editStaffResources').textContent(), /Повернуто.*QA HR/s, 'resource history shows status, date, and audit actor');
+    await page.waitForFunction(() => document.querySelector('#editStaffResources [data-resource-status="lost"]'));
+    assert.ok(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff/4/resources?view=history') >= 1), 'resource history uses the explicit history filter');
+    assert.match(await page.locator('#editStaffResources').textContent(), /Втрачено.*QA HR/s, 'resource history shows lost status, date, and audit actor');
+    assert.equal(await page.locator('#editStaffResources [data-resource-status="issued"]').count(), 0, 'history excludes still-issued assignments');
     await page.evaluate(() => {
         staffResourceListView = 'active';
         restoreStaffWorkspaceViews();
@@ -1330,24 +1530,44 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().filter(item => item === 'resource-issue:custom').length === 2);
     assert.equal((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), false, 'successful resource retry clears only the issue form');
     assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('documents'), 'resource retry keeps the independent document draft');
+    const retryResourceCard = page.locator('#editStaffResources [data-resource-status="issued"]').filter({ hasText: 'QA retry resource' });
+    await retryResourceCard.getByRole('button', { name: 'Списати' }).click();
+    await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+    assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /закрито як списаний/i, 'write-off confirmation explains the consequence');
+    await page.locator('.confirm-overlay .confirm-ok').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('resource-written-off'));
 
-    let expectedReturnCount = 1;
+    let expectedReturnCount = 0;
     for (const kind of ['warehouse_stock', 'costume']) {
         await page.selectOption('#editResourceKind', kind);
         await page.evaluate(selectedKind => loadStaffResourceOptions(selectedKind), kind);
         await page.waitForFunction(() => document.getElementById('editResourceSourceId')?.options.length > 1);
         const option = kind === 'costume' ? 'costume-qa' : 'warehouse_stock-qa';
+        const label = kind === 'costume' ? 'QA Costume' : 'QA Warehouse Item';
         await page.selectOption('#editResourceSourceId', option);
         await page.evaluate(() => syncResourceTitleFromOption());
         await page.locator('#editResourceIssue').click();
         await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.workspaceOperations().includes(`resource-issue:${expected}`), kind);
-        await page.locator('#editStaffResources button').first().click();
+        const issuedCard = page.locator('#editStaffResources [data-resource-status="issued"]').filter({ hasText: label });
+        await issuedCard.getByRole('button', { name: 'Повернути' }).click();
+        await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
+        assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), kind === 'warehouse_stock' ? /повернена на склад.*один складський рух/i : /Костюм буде звільнено/i, `${kind} return confirmation explains inventory effect`);
+        await page.locator('.confirm-overlay .confirm-ok').click();
         expectedReturnCount += 1;
-        await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.workspaceOperations().filter(operation => operation === 'resource-return').length >= expected, expectedReturnCount);
+        await page.waitForFunction(expected => window.__hrTeamBrowserSmoke.workspaceOperations().filter(operation => operation === 'resource-returned').length >= expected, expectedReturnCount);
     }
     const operations = await page.evaluate(() => window.__hrTeamBrowserSmoke.workspaceOperations());
     assert.ok(operations.includes('resource-issue:warehouse_stock'), 'warehouse issue uses the resource workspace route');
     assert.ok(operations.includes('resource-issue:costume'), 'costume issue uses the resource workspace route');
+    await page.locator('[data-staff-workspace-view="resources:history"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#editStaffResources [data-resource-status="returned"]').length === 2);
+    assert.equal(await page.locator('#editStaffResources [data-resource-status="lost"]').count(), 1, 'history keeps lost resources');
+    assert.equal(await page.locator('#editStaffResources [data-resource-status="written_off"]').count(), 1, 'history keeps written-off resources');
+    assert.equal(await page.locator('#editStaffResources [data-resource-status="returned"]').count(), 2, 'history keeps returned resources');
+    const warehouseHistoryCard = page.locator('#editStaffResources [data-resource-status="returned"]').filter({ hasText: 'QA Warehouse Item' });
+    await warehouseHistoryCard.getByRole('button', { name: 'Деталі' }).click();
+    assert.match(await page.locator('#staffResourceDetailOverlay').textContent(), /Рух видачі.*#\d+.*Рух повернення.*#\d+/s, 'warehouse detail exposes both synchronized movement IDs');
+    await page.locator('#staffResourceDetailOverlay .candidate-detail-close').click();
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/resource-options'));
     await page.selectOption('#editResourceKind', 'warehouse_stock');
@@ -1362,9 +1582,23 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
         await loadStaffDocumentsAndResources(activeEditStaffId(), { force: true });
     });
     assert.equal(await page.locator('#editStaffDocuments [data-state="restricted"]').count(), 1, 'restricted documents state is explicit');
+    assert.equal(await page.locator('#editStaffDocumentsRestricted').isVisible(), true, 'restricted role sees a permission explanation instead of an inactive form');
+    assert.equal(await page.locator('#editStaffDocumentsForm').isHidden(), true, 'restricted role does not see the upload form');
+    assert.equal(await page.locator('#editDocumentUpload').isHidden(), true, 'restricted role does not see an unusable upload action');
     assert.equal(await page.locator('#editMedicalBookList [data-state="restricted"]').count(), 1, 'restricted medical state is explicit');
+    assert.equal(await page.locator('#editStaffMedicalRestricted').isVisible(), true, 'restricted role sees the medical permission explanation');
+    assert.equal(await page.locator('#editStaffMedicalForm').isHidden(), true, 'restricted role does not see the medical form');
+    assert.equal(await page.locator('#editMedicalSave').isHidden(), true, 'restricted role does not see an unusable medical save action');
     assert.equal(await page.locator('#editStaffResources [data-state="restricted"]').count(), 1, 'restricted resources state is explicit');
-    await page.evaluate(() => { canManage = true; });
+    await page.evaluate(() => {
+        canManage = true;
+        syncStaffDocumentPermissionState(true);
+        syncStaffMedicalBookPermissionState(true);
+    });
+    assert.equal(await page.locator('#editStaffDocumentsForm').isVisible(), true, 'permitted role sees the upload form again');
+    assert.equal(await page.locator('#editDocumentUpload').isEnabled(), true, 'permitted role receives an enabled upload action');
+    assert.equal(await page.locator('#editStaffMedicalForm').isVisible(), true, 'permitted role sees the medical form again');
+    assert.equal(await page.locator('#editMedicalSave').isEnabled(), true, 'permitted role receives an enabled medical save action');
 }
 
 async function assertOffboardingDangerFlow(page) {

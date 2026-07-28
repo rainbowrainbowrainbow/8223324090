@@ -1428,7 +1428,10 @@
                         <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати скан</button>
                     </div>
                 </div>
-                <div class="hr-staff-foundation-grid">
+                <div id="editStaffDocumentsRestricted" class="hr-staff-workspace-state" data-state="restricted" role="status" hidden>
+                    HR-документи доступні лише користувачам із правом керування працівниками.
+                </div>
+                <div id="editStaffDocumentsForm" class="hr-staff-foundation-grid">
                     <div class="form-group">
                         <label>Тип</label>
                         <select id="editDocumentType">
@@ -1462,24 +1465,39 @@
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Медкнижка</strong>
-                        <span>Окремий HR-контроль строку дії через сертифікації.</span>
+                        <span>Редагований HR-контроль строку дії через сертифікації.</span>
                     </div>
-                    <button type="button" id="editMedicalSave" class="btn-primary" onclick="saveStaffMedicalBook()">Зберегти медкнижку</button>
+                    <div class="hr-staff-workspace-head-actions">
+                        <button type="button" id="editMedicalCancel" class="btn-secondary" onclick="cancelStaffMedicalBookEdit()" hidden>Скасувати редагування</button>
+                        <button type="button" id="editMedicalSave" class="btn-primary" onclick="saveStaffMedicalBook()">Додати медкнижку</button>
+                    </div>
                 </div>
-                <div class="hr-staff-foundation-grid">
+                <div id="editStaffMedicalRestricted" class="hr-staff-workspace-state" data-state="restricted" role="status" hidden>
+                    Медкнижки доступні лише користувачам із правом керування працівниками.
+                </div>
+                <div id="editStaffMedicalForm" class="hr-staff-foundation-grid">
+                    <input type="hidden" id="editMedicalCertificationId">
                     <div class="form-group">
                         <label>Видано</label>
-                        <input type="date" id="editMedicalIssuedAt">
+                        <input type="date" id="editMedicalIssuedAt" oninput="syncStaffMedicalBookDuplicateWarning()">
                     </div>
                     <div class="form-group">
                         <label>Діє до</label>
-                        <input type="date" id="editMedicalExpiresAt">
+                        <input type="date" id="editMedicalExpiresAt" oninput="syncStaffMedicalBookDuplicateWarning()">
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Привʼязаний документ</label>
+                        <select id="editMedicalDocumentId">
+                            <option value="">Без привʼязаного документа</option>
+                        </select>
+                        <small class="form-hint">Можна вибрати скан, завантажений у секції «Документи» цього працівника.</small>
                     </div>
                     <div class="form-group is-wide">
                         <label>Нотатка</label>
                         <textarea id="editMedicalNotes" rows="2" placeholder="Напр. перевірити за 2 тижні до завершення"></textarea>
                     </div>
                 </div>
+                <div id="editMedicalDuplicateWarning" class="hr-staff-workspace-feedback" data-state="warning" role="status" aria-live="polite" hidden></div>
                 <div id="editMedicalBookFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
                 <div id="editMedicalBookList" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Медкнижка завантажується...</div>
             </section>
@@ -1487,7 +1505,7 @@
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Видані ресурси</strong>
-                        <span>Перший облік майна: костюм, складський товар або ручний запис.</span>
+                        <span>Повний журнал видачі, повернення, втрат і списань.</span>
                     </div>
                     <div class="hr-staff-workspace-head-actions">
                         <div class="hr-staff-workspace-view-switch" role="group" aria-label="Фільтр ресурсів">

@@ -2,6 +2,8 @@ const { pool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 
 const STAFF_RESOURCE_KINDS = new Set(['warehouse_stock', 'costume', 'custom']);
+const STAFF_RESOURCE_STATUSES = new Set(['issued', 'returned', 'lost', 'written_off']);
+const STAFF_RESOURCE_HISTORY_STATUSES = ['returned', 'lost', 'written_off'];
 
 function cleanStaffResourceText(value, limit = 1000) {
     if (value === null || value === undefined) return null;
@@ -31,6 +33,24 @@ function normalizeStaffResourceKind(value) {
     return STAFF_RESOURCE_KINDS.has(kind) ? kind : 'custom';
 }
 
+function normalizeStaffResourceListFilter(options = {}) {
+    const requestedStatus = cleanStaffResourceText(options.status, 32);
+    if (requestedStatus) {
+        if (!STAFF_RESOURCE_STATUSES.has(requestedStatus)) {
+            throw serviceError('Непідтримуваний статус ресурсу', 400);
+        }
+        return { view: 'status', statuses: [requestedStatus] };
+    }
+
+    const requestedView = cleanStaffResourceText(options.view, 32);
+    if (requestedView && !['active', 'history', 'all'].includes(requestedView)) {
+        throw serviceError('Непідтримуваний фільтр ресурсів', 400);
+    }
+    const view = requestedView || (options.includeReturned === true ? 'all' : 'active');
+    if (view === 'active') return { view, statuses: ['issued'] };
+    if (view === 'history') return { view, statuses: STAFF_RESOURCE_HISTORY_STATUSES };
+    return { view: 'all', statuses: null };
+}
 function staffResourceAssignmentMeta(row) {
     if (!row) return null;
     return {
@@ -68,14 +88,19 @@ async function loadStaffResourceStaff(staffId, db = pool, { lock = false } = {})
 }
 
 async function listStaffResources(staffId, options = {}, db = pool) {
+    const filter = normalizeStaffResourceListFilter(options);
     let sql = `SELECT sra.*, ws.name AS warehouse_stock_name, c.name AS costume_name
                FROM staff_resource_assignments sra
                LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
                LEFT JOIN costumes c ON c.id = sra.costume_id
                WHERE sra.staff_id = $1`;
-    if (options.includeReturned !== true) sql += ` AND sra.status = 'issued'`;
+    const params = [staffId];
+    if (filter.statuses) {
+        params.push(filter.statuses);
+        sql += ` AND sra.status = ANY($2::text[])`;
+    }
     sql += ` ORDER BY sra.status = 'issued' DESC, sra.due_return_at ASC NULLS LAST, sra.created_at DESC`;
-    const result = await db.query(sql, [staffId]);
+    const result = await db.query(sql, params);
     return result.rows.map(staffResourceAssignmentMeta);
 }
 
@@ -130,7 +155,7 @@ async function listStaffResourceOptions(options = {}, db = pool) {
 
     if (kind === 'costume') {
         const params = [];
-        const conditions = [];
+        const conditions = [`COALESCE(c.condition, 'good') <> 'retired'`];
         if (query) {
             params.push(`%${query}%`);
             conditions.push(`(
@@ -232,6 +257,18 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
             if (assignedTo && assignedTo !== Number(staffId)) {
                 throw serviceError('Костюм вже закріплено за іншим співробітником', 409);
             }
+            const trackedAssignment = await client.query(
+                `SELECT id, staff_id, status
+                 FROM staff_resource_assignments
+                 WHERE costume_id = $1 AND status IN ('issued', 'lost')
+                 ORDER BY id DESC
+                 LIMIT 1
+                 FOR UPDATE`,
+                [costumeId]
+            );
+            if (trackedAssignment.rows[0]) {
+                throw serviceError('Костюм уже має активну або втрачену видачу', 409);
+            }
             if (!title) title = costume.name || null;
         }
 
@@ -314,11 +351,16 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
     }
 }
 
-async function returnStaffResource(staffId, assignmentId, body = {}, options = {}, dbPool = pool) {
+async function transitionStaffResource(staffId, assignmentId, targetStatus, body = {}, options = {}, dbPool = pool) {
     const client = await dbPool.connect();
     let began = false;
     try {
-        const returnedAt = cleanStaffResourceDate(body.returned_at || body.returnedAt) || options.today;
+        if (!STAFF_RESOURCE_HISTORY_STATUSES.includes(targetStatus)) {
+            throw serviceError('Непідтримуваний кінцевий статус ресурсу', 400);
+        }
+        const completedAt = cleanStaffResourceDate(
+            body.completed_at || body.completedAt || body.returned_at || body.returnedAt
+        ) || options.today;
         const actor = options.actor || null;
         await client.query('BEGIN');
         began = true;
@@ -335,11 +377,21 @@ async function returnStaffResource(staffId, assignmentId, body = {}, options = {
         const existing = assignmentResult.rows[0] || null;
         if (!existing) throw serviceError('Ресурс не знайдено', 404);
         if (existing.status !== 'issued') {
-            throw serviceError('Ресурс вже не має статусу “видано”', 409);
+            if (existing.status === targetStatus) {
+                await client.query('COMMIT');
+                began = false;
+                return {
+                    row: existing,
+                    data: staffResourceAssignmentMeta(existing),
+                    idempotent: true,
+                    audit: null
+                };
+            }
+            throw serviceError('Ресурс уже має інший кінцевий статус', 409);
         }
 
         let returnMovementId = null;
-        if (existing.warehouse_stock_id) {
+        if (targetStatus === 'returned' && existing.warehouse_stock_id) {
             const stock = await client.query(
                 `SELECT id, location_id, business_context
                  FROM warehouse_stock
@@ -377,22 +429,44 @@ async function returnStaffResource(staffId, assignmentId, body = {}, options = {
 
         const result = await client.query(
             `UPDATE staff_resource_assignments
-             SET status = 'returned',
-                 returned_at = $3,
-                 returned_by = $4,
-                 warehouse_return_movement_id = $5,
+             SET status = $3,
+                 returned_at = $4,
+                 returned_by = $5,
+                 warehouse_return_movement_id = $6,
                  updated_at = NOW()
              WHERE id = $1 AND staff_id = $2
              RETURNING *`,
-            [assignmentId, staffId, returnedAt, actor, returnMovementId]
+            [assignmentId, staffId, targetStatus, completedAt, actor, returnMovementId]
         );
-        if (result.rows[0].costume_id) {
+        if (result.rows[0].costume_id && targetStatus === 'returned') {
             await client.query(
                 `UPDATE costumes
                  SET assigned_to = NULL, assigned_at = NULL
                  WHERE id = $1 AND assigned_to = $2`,
                 [result.rows[0].costume_id, staffId]
             );
+        }
+        if (result.rows[0].costume_id && targetStatus === 'lost') {
+            const costumeUpdate = await client.query(
+                `UPDATE costumes
+                 SET assigned_to = $2, assigned_at = COALESCE(assigned_at, NOW())
+                 WHERE id = $1 AND (assigned_to IS NULL OR assigned_to = $2)`,
+                [result.rows[0].costume_id, staffId]
+            );
+            if (costumeUpdate.rowCount === 0) {
+                throw serviceError('Костюм уже закріплений за іншим працівником', 409);
+            }
+        }
+        if (result.rows[0].costume_id && targetStatus === 'written_off') {
+            const costumeUpdate = await client.query(
+                `UPDATE costumes
+                 SET condition = 'retired', assigned_to = NULL, assigned_at = NULL
+                 WHERE id = $1 AND (assigned_to IS NULL OR assigned_to = $2)`,
+                [result.rows[0].costume_id, staffId]
+            );
+            if (costumeUpdate.rowCount === 0) {
+                throw serviceError('Костюм уже закріплений за іншим працівником', 409);
+            }
         }
         await client.query('COMMIT');
         began = false;
@@ -404,13 +478,26 @@ async function returnStaffResource(staffId, assignmentId, body = {}, options = {
         return {
             row: assignment,
             data: staffResourceAssignmentMeta(assignment),
+            idempotent: false,
             audit: {
                 assignment_id: result.rows[0].id,
                 title: result.rows[0].title,
+                previous_status: 'issued',
+                status: targetStatus,
                 warehouse_stock_id: result.rows[0].warehouse_stock_id || null,
                 costume_id: result.rows[0].costume_id || null,
                 warehouse_return_movement_id: returnMovementId,
-                returned_at: returnedAt
+                completed_at: completedAt,
+                stock_effect: result.rows[0].warehouse_stock_id
+                    ? (targetStatus === 'returned' ? 'returned_to_stock' : 'stock_not_restored')
+                    : 'not_applicable',
+                costume_effect: result.rows[0].costume_id
+                    ? (targetStatus === 'returned'
+                        ? 'released'
+                        : targetStatus === 'written_off'
+                            ? 'retired'
+                            : 'kept_unavailable')
+                    : 'not_applicable'
             }
         };
     } catch (err) {
@@ -421,11 +508,17 @@ async function returnStaffResource(staffId, assignmentId, body = {}, options = {
     }
 }
 
+async function returnStaffResource(staffId, assignmentId, body = {}, options = {}, dbPool = pool) {
+    return transitionStaffResource(staffId, assignmentId, 'returned', body, options, dbPool);
+}
+
 module.exports = {
     issueStaffResource,
     listStaffResourceOptions,
     listStaffResources,
     normalizeStaffResourceKind,
+    normalizeStaffResourceListFilter,
     returnStaffResource,
-    staffResourceAssignmentMeta
+    staffResourceAssignmentMeta,
+    transitionStaffResource
 };

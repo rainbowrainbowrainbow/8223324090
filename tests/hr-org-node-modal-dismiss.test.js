@@ -1106,7 +1106,7 @@ test('HR staff destructive actions use the shared dynamic confirmation and fail 
     assert.match(confirmHelper, /return confirmModal\(message,/);
     assert.match(confirmHelper, /Підтвердження дії недоступне/);
     assert.doesNotMatch(confirmHelper, /customConfirm/);
-    assert.match(archiveAction, /okText: 'Архівувати'/);
+    assert.match(archiveAction, /okText: 'До архіву'/);
     assert.match(offboardingAction, /type: 'danger'/);
     assert.match(offboardingAction, /okText: 'Завершити співпрацю'/);
 });
@@ -1118,14 +1118,25 @@ test('HR staff documents and resources expose persisted archive/history workspac
 
     assert.match(html, /data-staff-workspace-view="documents:archive"/);
     assert.match(html, /data-staff-workspace-view="resources:history"/);
+    assert.match(html, /id="editStaffDocumentsRestricted"/);
+    assert.match(html, /id="editStaffDocumentsForm"/);
     assert.match(js, /include_archived=true/);
-    assert.match(js, /include_returned=true/);
+    assert.match(js, /function previewStaffDocument/);
+    assert.match(js, /function restoreStaffDocument/);
+    assert.match(js, /syncStaffDocumentPermissionState/);
+    assert.match(js, />До архіву<\/button>/);
+    assert.match(js, />Відновити<\/button>/);
+    assert.match(js, /resources\?view=\$\{currentStaffWorkspaceView\('resources'\)\}/);
+    assert.match(js, /function showStaffResourceDetails/);
+    assert.match(js, /transitionStaffResourceStatus/);
     assert.match(js, /archived_at/);
     assert.match(js, /archived_by/);
     assert.match(js, /returned_at/);
     assert.match(js, /returned_by/);
     assert.match(js, /sessionStorage/);
     assert.match(routes, /req\.query\.include_archived === 'true'/);
+    assert.match(routes, /documents\/:documentId\/preview/);
+    assert.match(routes, /documents\/:documentId\/restore/);
     assert.match(routes, /req\.query\.include_returned === 'true'/);
 });
 

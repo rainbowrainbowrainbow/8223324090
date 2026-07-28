@@ -26,14 +26,18 @@ const {
 const {
     archiveStaffDocument,
     createStaffDocument,
+    isStaffDocumentPreviewable,
     listStaffDocuments,
-    safeStaffDocumentDownloadFilename
+    restoreStaffDocument,
+    safeStaffDocumentDownloadFilename,
+    staffDocumentPreviewMimeType
 } = require('../services/hrStaffDocuments');
 const {
     issueStaffResource,
     listStaffResourceOptions,
     listStaffResources,
-    returnStaffResource
+    returnStaffResource,
+    transitionStaffResource
 } = require('../services/hrStaffResources');
 
 const ROOT = path.join(__dirname, '..');
@@ -1646,16 +1650,20 @@ test('HR onboarding assignment keeps routes thin and owns task sync in service',
     }
 });
 
-test('HR staff document service owns private upload, archive, and download metadata', async () => {
+test('HR staff document service owns private upload, preview, archive, restore, and download metadata', async () => {
     for (const token of [
         "require('../services/hrStaffDocuments')",
         "router.get('/staff/:id/documents', requireHrManage",
         "router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload",
         "router.get('/staff/:id/documents/:documentId/download', requireHrManage",
+        "router.get('/staff/:id/documents/:documentId/preview', requireHrManage",
         "router.delete('/staff/:id/documents/:documentId', requireHrManage",
+        "router.put('/staff/:id/documents/:documentId/restore', requireHrManage",
         "auditLog('staff_document_upload'",
         "auditLog('staff_document_archive'",
+        "auditLog('staff_document_restore'",
         "res.setHeader('Cache-Control', 'no-store, private')",
+        "res.setHeader('X-Content-Type-Options', 'nosniff')",
         'safeStaffDocumentDownloadFilename(doc.original_name)'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing HR staff document route token ${token}`);
@@ -1670,11 +1678,15 @@ test('HR staff document service owns private upload, archive, and download metad
         'async function createStaffDocument',
         'async function loadStaffDocumentDownload',
         'async function archiveStaffDocument',
+        'async function restoreStaffDocument',
+        'function staffDocumentPreviewMimeType',
         "FROM staff_documents",
         "INSERT INTO staff_documents",
         "SET status = 'archived'",
+        "SET status = 'active', archived_at = NULL, archived_by = NULL",
         "crypto.createHash('sha256')",
-        'download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`'
+        'download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`',
+        'preview_url: isStaffDocumentPreviewable(row)'
     ]) {
         assert.ok(HR_STAFF_DOCUMENTS_SERVICE.includes(token), `missing HR staff document service token ${token}`);
     }
@@ -1732,6 +1744,7 @@ test('HR staff document service owns private upload, archive, and download metad
                 };
             }
             if (/UPDATE staff_documents/i.test(sql)) {
+                const restoring = /SET status = 'active'/i.test(sql);
                 return {
                     rows: [{
                         id: Number(params[0]),
@@ -1745,11 +1758,11 @@ test('HR staff document service owns private upload, archive, and download metad
                         file_sha256: 'hash',
                         issued_at: null,
                         expires_at: null,
-                        status: 'archived',
+                        status: restoring ? 'active' : 'archived',
                         notes: null,
                         uploaded_by: 'creator',
-                        archived_at: '2026-06-08T11:00:00.000Z',
-                        archived_by: params[2],
+                        archived_at: restoring ? null : '2026-06-08T11:00:00.000Z',
+                        archived_by: restoring ? null : params[2],
                         created_at: '2026-06-08T10:00:00.000Z',
                         updated_at: '2026-06-08T11:00:00.000Z'
                     }]
@@ -1761,6 +1774,11 @@ test('HR staff document service owns private upload, archive, and download metad
 
     const listed = await listStaffDocuments(42, { includeArchived: false }, fakeDb);
     assert.equal(listed[0].download_url, '/api/hr/staff/42/documents/17/download');
+    assert.equal(listed[0].preview_url, '/api/hr/staff/42/documents/17/preview');
+    assert.equal(isStaffDocumentPreviewable(listed[0]), true);
+    assert.equal(staffDocumentPreviewMimeType(listed[0]), 'application/pdf');
+    assert.equal(isStaffDocumentPreviewable({ original_name: 'notes.txt', mime_type: 'text/plain' }), false);
+    assert.equal(isStaffDocumentPreviewable({ original_name: 'fake.pdf', mime_type: 'text/html' }), false);
     assert.match(queries.at(-1).sql, /status = 'active'/);
 
     const created = await createStaffDocument(42, {
@@ -1783,6 +1801,11 @@ test('HR staff document service owns private upload, archive, and download metad
     const archived = await archiveStaffDocument(42, 18, 'creator', fakeDb);
     assert.equal(archived.data.status, 'archived');
     assert.deepEqual(archived.audit, { document_id: 18, title: 'Contract' });
+
+    const restored = await restoreStaffDocument(42, 18, 'creator', fakeDb);
+    assert.equal(restored.data.status, 'active');
+    assert.deepEqual(restored.audit, { document_id: 18, title: 'Contract', restored_by: 'creator' });
+    assert.match(queries.at(-1).sql, /status = 'archived'/);
     assert.equal(safeStaffDocumentDownloadFilename('bad"name\n.pdf'), 'bad_name_.pdf');
 });
 
@@ -1836,7 +1859,8 @@ test('HR staff resource service owns warehouse and costume side effects atomical
         "router.get('/staff/:id/resources', requireHrManage",
         "router.get('/resource-options', requireHrManage",
         "router.post('/staff/:id/resources', requireHrManage",
-        "router.put('/staff/:id/resources/:assignmentId/return', requireHrManage",
+        `router.put('/staff/:id/resources/:assignmentId/return', requireHrManage`,
+        `router.put('/staff/:id/resources/:assignmentId/status', requireHrManage`,
         "auditLog('staff_resource_issue'",
         "auditLog('staff_resource_return'"
     ]) {
@@ -1845,6 +1869,7 @@ test('HR staff resource service owns warehouse and costume side effects atomical
     for (const token of [
         'async function issueStaffResource',
         'async function returnStaffResource',
+        'async function transitionStaffResource',
         'async function listStaffResources',
         'async function listStaffResourceOptions',
         "await client.query('BEGIN')",
@@ -1913,7 +1938,12 @@ test('HR staff resource service owns warehouse and costume side effects atomical
     };
     const listed = await listStaffResources(42, { includeReturned: false }, listDb);
     assert.equal(listed[0].warehouse_stock_name, 'Radio');
-    assert.match(listQueries[0].sql, /sra.status = 'issued'/);
+    assert.match(listQueries[0].sql, /sra.status = ANY/);
+    assert.deepEqual(listQueries[0].params[1], ['issued']);
+    await listStaffResources(42, { view: 'history' }, listDb);
+    assert.deepEqual(listQueries[1].params[1], ['returned', 'lost', 'written_off']);
+    await listStaffResources(42, { includeReturned: true }, listDb);
+    assert.equal(listQueries[2].params.length, 1, 'legacy include_returned=true keeps the all-status response');
     const options = await listStaffResourceOptions({ kind: 'warehouse_stock', q: 'radio', businessContext: 'park' }, listDb);
     assert.equal(options.kind, 'warehouse_stock');
     assert.equal(options.data[0].label, 'Radio');
@@ -1965,14 +1995,14 @@ test('HR staff resource service owns warehouse and costume side effects atomical
                     }
                     if (/UPDATE warehouse_stock\s+SET quantity = quantity \+ \$1/i.test(sql)) return { rows: [], rowCount: 1 };
                     if (/INSERT INTO warehouse_stock_movements/i.test(sql) && /'return'/i.test(sql)) return { rows: [{ id: 502 }] };
-                    if (/SET status = 'returned'/i.test(sql)) {
+                    if (/SET status = \$3/i.test(sql)) {
                         return {
                             rows: [{
                                 ...assignmentBase,
-                                status: 'returned',
-                                returned_at: params[2],
-                                returned_by: params[3],
-                                warehouse_return_movement_id: params[4],
+                                status: params[2],
+                                returned_at: params[3],
+                                returned_by: params[4],
+                                warehouse_return_movement_id: params[5],
                                 costume_id: 88
                             }]
                         };
@@ -2014,6 +2044,130 @@ test('HR staff resource service owns warehouse and costume side effects atomical
     assert.ok(txQueries.some(q => /UPDATE costumes\s+SET assigned_to = NULL/i.test(q.sql)));
 });
 
+test('HR resource terminal statuses are idempotent and keep inventory synchronized', async () => {
+    function createTransitionPool(overrides = {}) {
+        const queries = [];
+        const state = {
+            id: 91,
+            staff_id: 42,
+            resource_kind: 'warehouse_stock',
+            warehouse_stock_id: 77,
+            costume_id: null,
+            warehouse_stock_name: 'Radio',
+            costume_name: null,
+            title: 'Radio',
+            quantity: 1,
+            issued_at: '2026-07-10',
+            due_return_at: '2026-07-12',
+            returned_at: null,
+            status: 'issued',
+            notes: 'QA lifecycle',
+            issued_by: 'creator',
+            returned_by: null,
+            warehouse_issue_movement_id: 601,
+            warehouse_return_movement_id: null,
+            created_at: '2026-07-10T10:00:00.000Z',
+            updated_at: '2026-07-10T10:00:00.000Z',
+            ...overrides
+        };
+        return {
+            queries,
+            state,
+            pool: {
+                async connect() {
+                    return {
+                        async query(sql, params = []) {
+                            queries.push({ sql, params });
+                            if (/^BEGIN$|^COMMIT$|^ROLLBACK$/i.test(sql)) return { rows: [] };
+                            if (/FROM staff_resource_assignments sra/i.test(sql)) return { rows: [{ ...state }] };
+                            if (/UPDATE staff_resource_assignments/i.test(sql) && /SET status = \$3/i.test(sql)) {
+                                state.status = params[2];
+                                state.returned_at = params[3];
+                                state.returned_by = params[4];
+                                state.warehouse_return_movement_id = params[5];
+                                return { rows: [{ ...state }], rowCount: 1 };
+                            }
+                            if (/UPDATE costumes/i.test(sql)) return { rows: [], rowCount: 1 };
+                            throw new Error(`Unexpected transition query: ${sql}`);
+                        },
+                        release() {}
+                    };
+                }
+            }
+        };
+    }
+
+    const lostFixture = createTransitionPool();
+    const lost = await transitionStaffResource(42, 91, 'lost', {}, {
+        actor: 'creator',
+        today: '2026-07-13'
+    }, lostFixture.pool);
+    assert.equal(lost.data.status, 'lost');
+    assert.equal(lost.audit.stock_effect, 'stock_not_restored');
+    assert.equal(lost.audit.warehouse_return_movement_id, null);
+    assert.equal(lostFixture.queries.some(query => /warehouse_stock_movements/i.test(query.sql)), false);
+    assert.equal(lostFixture.queries.some(query => /SET quantity = quantity \+/i.test(query.sql)), false);
+
+    const queryCountAfterLost = lostFixture.queries.length;
+    const duplicateLost = await transitionStaffResource(42, 91, 'lost', {}, {
+        actor: 'creator',
+        today: '2026-07-13'
+    }, lostFixture.pool);
+    assert.equal(duplicateLost.idempotent, true);
+    assert.equal(lostFixture.queries.slice(queryCountAfterLost).some(query => /UPDATE staff_resource_assignments/i.test(query.sql)), false);
+    await assert.rejects(
+        transitionStaffResource(42, 91, 'returned', {}, { actor: 'creator', today: '2026-07-13' }, lostFixture.pool),
+        error => error.statusCode === 409
+    );
+
+    const costumeFixture = createTransitionPool({
+        id: 92,
+        resource_kind: 'costume',
+        warehouse_stock_id: null,
+        costume_id: 88,
+        warehouse_stock_name: null,
+        costume_name: 'Dragon',
+        title: 'Dragon'
+    });
+    const writtenOff = await transitionStaffResource(42, 92, 'written_off', {}, {
+        actor: 'creator',
+        today: '2026-07-13'
+    }, costumeFixture.pool);
+    assert.equal(writtenOff.data.status, 'written_off');
+    assert.equal(writtenOff.audit.costume_effect, 'retired');
+    assert.ok(costumeFixture.queries.some(query => /SET condition = 'retired', assigned_to = NULL/i.test(query.sql)));
+    assert.equal(costumeFixture.queries.some(query => /warehouse_stock_movements/i.test(query.sql)), false);
+
+    const duplicateCostumeQueries = [];
+    const duplicateCostumePool = {
+        async connect() {
+            return {
+                async query(sql, params = []) {
+                    duplicateCostumeQueries.push({ sql, params });
+                    if (/^BEGIN$|^ROLLBACK$/i.test(sql)) return { rows: [] };
+                    if (/FROM staff\s+WHERE id = \$1/i.test(sql)) return { rows: [{ id: 42, name: 'Dasha Staff' }] };
+                    if (/SELECT name, assigned_to FROM costumes/i.test(sql)) return { rows: [{ name: 'Dragon', assigned_to: 42 }] };
+                    if (/FROM staff_resource_assignments\s+WHERE costume_id = \$1/i.test(sql)) {
+                        return { rows: [{ id: 92, staff_id: 42, status: 'lost' }] };
+                    }
+                    throw new Error(`Unexpected duplicate costume query: ${sql}`);
+                },
+                release() {}
+            };
+        }
+    };
+    await assert.rejects(
+        issueStaffResource(42, { resource_kind: 'costume', costume_id: 88 }, {
+            actor: 'creator',
+            today: '2026-07-13'
+        }, duplicateCostumePool),
+        error => error.statusCode === 409
+    );
+    assert.equal(duplicateCostumeQueries.some(query => /INSERT INTO staff_resource_assignments/i.test(query.sql)), false);
+
+    const invalidDb = { query: async () => ({ rows: [] }) };
+    await assert.rejects(listStaffResources(42, { status: 'missing' }, invalidDb), error => error.statusCode === 400);
+});
 test('HR offboarding readiness owns account/resource/document closure guardrails', () => {
     for (const token of [
         "router.get('/staff/:id/offboarding-readiness'",

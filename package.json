@@ -99,6 +99,7 @@
     "test:integration:hr-disposable": "node --test tests/integration/hr-disposable.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",
+    "test:integration:payroll-fullstack:isolated": "node scripts/run-isolated-postgres-tests.js payroll-fullstack",
     "test:integration:admission-tickets:isolated": "node scripts/run-isolated-postgres-tests.js admission",
     "test:integration:hr-onboarding:isolated": "node scripts/run-isolated-postgres-tests.js onboarding",
     "test:integration:hr-legacy-backfill:isolated": "node scripts/run-isolated-postgres-tests.js backfill",

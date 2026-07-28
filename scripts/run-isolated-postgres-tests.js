@@ -37,7 +37,11 @@ const MODES = {
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
-        'tests/integration/payroll-installments.integration.test.js'
+        'tests/integration/payroll-installments.integration.test.js',
+        'tests/integration/payroll-fullstack-settlement.integration.test.js'
+    ],
+    'payroll-fullstack': [
+        'tests/integration/payroll-fullstack-settlement.integration.test.js'
     ],
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
@@ -56,7 +60,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|payroll|admission|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|payroll|payroll-fullstack|admission|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -276,6 +280,13 @@ async function runSuite(testDb, testFile) {
     if (testFile.includes('payroll-')) {
         serverEnv.PAYROLL_INSTALLMENTS_ACTIVATION_MONTH = '2000-01';
     }
+    if (testFile.includes('payroll-fullstack-settlement.integration')) {
+        serverEnv.PAYROLL_FULLSTACK_TEST_NOW = '2026-09-15T12:00:00.000Z';
+        serverEnv.NODE_OPTIONS = [
+            serverEnv.NODE_OPTIONS || '',
+            '--require=./tests/helpers/payroll-fullstack-test-clock.js'
+        ].filter(Boolean).join(' ');
+    }
     const testEnv = {
         ...serverEnv,
         TEST_URL: baseUrl,
@@ -295,6 +306,7 @@ async function runSuite(testDb, testFile) {
         RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION: testFile.includes('payroll-simultaneous-additional') ? 'true' : 'false',
         RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION: testFile.includes('zrs-payroll-period-lock') ? 'true' : 'false',
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
+        RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
@@ -373,7 +385,7 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'payroll', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'payroll', 'payroll-fullstack', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
         ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.payroll, ...MODES.admission, ...MODES.onboarding, ...MODES.backfill]

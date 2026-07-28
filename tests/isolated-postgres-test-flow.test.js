@@ -162,6 +162,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const banquetProductionRecoverySuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'banquet-production-recovery.integration.test.js'), 'utf8');
         const simultaneousAdditionalPayrollSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'payroll-simultaneous-additional.integration.test.js'), 'utf8');
         const payrollInstallmentsSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'payroll-installments.integration.test.js'), 'utf8');
+        const payrollFullstackSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'payroll-fullstack-settlement.integration.test.js'), 'utf8');
         const onboardingBrowserSuite = fs.readFileSync(path.join(root, 'tests', 'browser', 'hr-onboarding-flow-browser-smoke.js'), 'utf8');
         const fullstackBrowserSuite = fs.readFileSync(path.join(root, 'tests', 'browser', 'hr-onboarding-fullstack-browser-smoke.js'), 'utf8');
         const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
@@ -196,7 +197,10 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_PAYROLL_INSTALLMENTS_INTEGRATION/);
-        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /'payroll-fullstack':\s*\[\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION/);
+        assert.match(runner, /PAYROLL_FULLSTACK_TEST_NOW/);
         assert.match(simultaneousAdditionalPayrollSuite, /physicalMinutes, 540/);
         assert.match(simultaneousAdditionalPayrollSuite, /simultaneous_additional/);
         assert.match(simultaneousAdditionalPayrollSuite, /salary\/reverse/);
@@ -205,6 +209,9 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(payrollInstallmentsSuite, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER/);
         assert.match(payrollInstallmentsSuite, /payroll_payment_movements/);
         assert.match(payrollInstallmentsSuite, /movement update must be blocked/);
+        assert.match(payrollFullstackSuite, /CODEX_QA_PAYROLL_202608/);
+        assert.match(payrollFullstackSuite, /PAYROLL_PAYMENT_MANAGED/);
+        assert.match(payrollFullstackSuite, /Payments/);
         assert.match(runner, /finally\s*\{/);
         assert.match(hrSuite, /POST', '\/api\/staff'/);
         assert.match(hrSuite, /DELETE', `\/api\/hr\/shifts\/\$\{shiftId\}`/);

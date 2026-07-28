@@ -1,7 +1,13 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { scheduleCandidateTimes, safeBookingPayload, cleanupPreflightPath, QA_CLEANUP_SOURCE } = require('../scripts/live-cake-decorations-smoke');
+const {
+    scheduleCandidateTimes,
+    safeBookingPayload,
+    cleanupModeForBase,
+    cleanupPreflightPath,
+    QA_CLEANUP_SOURCE
+} = require('../scripts/live-cake-decorations-smoke');
 const { inspectDisposableQaMarker } = require('../services/disposableQa');
 
 test('cake live smoke candidates start at EventGenix opening and respect duration', () => {
@@ -33,7 +39,18 @@ test('cake live smoke payload carries exact disposable QA marker', () => {
 });
 
 
-test('cake live smoke preflight honors the selected cleanup mode', () => {
-    assert.match(cleanupPreflightPath(true), /permanent=true/);
-    assert.doesNotMatch(cleanupPreflightPath(false), /permanent=true/);
+test('cake live smoke uses soft cleanup for production and soft-only preflight', () => {
+    assert.equal(cleanupModeForBase('https://8223324090-production.up.railway.app', true), 'soft');
+    assert.equal(cleanupModeForBase('https://crm.example.com', true), 'soft');
+    assert.doesNotMatch(cleanupPreflightPath(), /permanent=true/);
+});
+test('cake live smoke permits permanent cleanup only with explicit local opt-in', () => {
+    assert.equal(cleanupModeForBase('http://127.0.0.1:3000', false), 'soft');
+    assert.equal(cleanupModeForBase('http://127.0.0.1:3000', true), 'permanent');
+});
+test('cake live smoke keeps exact-marker cleanup in finally', () => {
+    const source = require('node:fs').readFileSync(require.resolve('../scripts/live-cake-decorations-smoke'), 'utf8');
+    assert.match(source, /finally\s*\{[\s\S]*?cleanupBooking\(base, session\.token, booking\.id\)/);
+    assert.match(source, /assertExactDisposableMarker\(detail\.booking \|\| detail\)/);
+    assert.match(source, /CREATED_BOOKING_IDS\.has\(String\(bookingId\)\)/);
 });

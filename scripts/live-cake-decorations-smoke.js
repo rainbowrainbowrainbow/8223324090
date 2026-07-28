@@ -36,7 +36,7 @@ const QA_TEST_CUSTOMER_MARKER = `${QA_CLEANUP_SOURCE}:${RUN_ID}:no_customer`;
 const CREATED_BOOKING_IDS = new Set();
 const CREATED_GROUP_IDS = new Set();
 const KEEP_BOOKING = isConfirmed(readEnv('LIVE_CAKE_DECORATIONS_KEEP_BOOKING'));
-const PERMANENT_CLEANUP = readEnv('LIVE_CAKE_DECORATIONS_PERMANENT_CLEANUP') !== 'false';
+const PERMANENT_CLEANUP_OPT_IN = isConfirmed(readEnv('LIVE_CAKE_DECORATIONS_PERMANENT_CLEANUP'));
 const EXPECTED_SUBTOTAL = 950;
 const CAKE_DECORATION_SECTION = 'Оформлення торта';
 
@@ -88,6 +88,15 @@ function normalizeBase(url) {
     }
 }
 
+
+function isLocalSmokeBase(base) {
+    try {
+        const host = new URL(base).hostname.toLowerCase();
+        return ['localhost', '127.0.0.1', '::1'].includes(host);
+    } catch {
+        return false;
+    }
+}
 function futureDate(days) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() + days);
@@ -356,8 +365,12 @@ function assertExactDisposableMarker(booking = {}) {
     return inspection.marker;
 }
 
-function cleanupPreflightPath(permanentCleanup = PERMANENT_CLEANUP) {
-    return scopedPath('/api/bookings/QA-CLEANUP-PREFLIGHT-NOT-FOUND', permanentCleanup ? { permanent: 'true' } : {});
+function cleanupModeForBase(base, permanentCleanupRequested = PERMANENT_CLEANUP_OPT_IN) {
+    return permanentCleanupRequested && isLocalSmokeBase(base) ? 'permanent' : 'soft';
+}
+
+function cleanupPreflightPath() {
+    return scopedPath('/api/bookings/QA-CLEANUP-PREFLIGHT-NOT-FOUND');
 }
 
 async function assertCleanupTransportReady(base, token) {
@@ -370,12 +383,12 @@ async function assertCleanupTransportReady(base, token) {
     return true;
 }
 
-async function cleanupBooking(base, token, bookingId, options = {}) {
+async function cleanupBooking(base, token, bookingId) {
     if (!bookingId || !CREATED_BOOKING_IDS.has(String(bookingId))) throw new Error('refusing cleanup outside this smoke run exact booking ID set');
     const detail = await fetchJson(base, scopedPath(`/api/bookings/detail/${encodeURIComponent(bookingId)}`), { token });
     assertExactDisposableMarker(detail.booking || detail);
     const paths = [];
-    if (PERMANENT_CLEANUP && options.permanent !== false) paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`, { permanent: 'true' }));
+    if (cleanupModeForBase(base) === 'permanent') paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`, { permanent: 'true' }));
     paths.push(scopedPath(`/api/bookings/${encodeURIComponent(bookingId)}`));
     let lastError = null;
     for (const routePath of paths) {
@@ -851,4 +864,11 @@ if (require.main === module) {
     run().catch(error => fail(error?.stack || error?.message || String(error)));
 }
 
-module.exports = { scheduleCandidateTimes, safeBookingPayload, assertExactDisposableMarker, cleanupPreflightPath, QA_CLEANUP_SOURCE };
+module.exports = {
+    scheduleCandidateTimes,
+    safeBookingPayload,
+    assertExactDisposableMarker,
+    cleanupModeForBase,
+    cleanupPreflightPath,
+    QA_CLEANUP_SOURCE
+};

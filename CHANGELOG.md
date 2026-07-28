@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.18 - Безпека: захист XLSX-залежностей
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Залежності XLSX-експортів оновлено без downgrade ExcelJS** — внутрішні `archiver` та `unzipper` переведено на підтримувані версії, а `body-parser` оновлено до виправленого релізу.
+- **Security audit очищено** — `npm audit` не знаходить відомих вразливостей; payroll, Reports і графікові XLSX-експорти пройшли regression tests та повний `npm test`.
+- **Payroll-формули та workflow не змінювалися** — реліз закриває лише dependency-техборг і не виконує production data fix або backfill.
+
+---
+
 ## v0.80.17 - Графік-прихід-уход
 
 ### Release / Versioning / (28.07.2026) [codex]

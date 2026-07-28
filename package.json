@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.14",
+  "version": "0.80.15",
   "eventGenix": {
-    "releaseLabel": "Безпечне soft-очищення production smoke"
+    "releaseLabel": "Smoke: безпечний вибір кімнати"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

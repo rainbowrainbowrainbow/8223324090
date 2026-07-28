@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.15 - Smoke: безпечний вибір кімнати
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Smoke: безпечний вибір кімнати** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.14 - Безпечне soft-очищення production smoke
 
 ### Release / Versioning / (28.07.2026) [codex]

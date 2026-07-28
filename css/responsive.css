@@ -5075,23 +5075,24 @@ body.timeline-dashboard-page .header .btn-logout {
     flex: 0 0 auto;
 }
 
-/* v0.79.147: timeline logout must keep WCAG contrast in light mode. */
+/* Timeline logout keeps WCAG AA contrast after later shared-control overrides. */
 html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout,
-html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout {
-    --header-actions-accent: #047857;
-    --header-actions-accent-hover: #065F46;
-    border-color: var(--header-actions-accent);
-    background: var(--header-actions-accent);
-    color: #fff;
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-actions .btn-logout {
+    border-color: #047857 !important;
+    background: #047857 !important;
+    color: #fff !important;
 }
 
 html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
 html:not([data-theme="dark"]) body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible,
 html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
-html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible {
-    border-color: var(--header-actions-accent-hover);
-    background: var(--header-actions-accent-hover);
-    color: #fff;
+html[data-theme="light"] body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-actions .btn-logout:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-actions .btn-logout:focus-visible {
+    border-color: #065F46 !important;
+    background: #065F46 !important;
+    color: #fff !important;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions {

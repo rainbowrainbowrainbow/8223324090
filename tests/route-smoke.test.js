@@ -1949,8 +1949,8 @@ function createFakePool() {
                 return { rows: [{ total: rows.length }], rowCount: 1 };
             }
             if (/SELECT DISTINCT sa\.month\s+FROM salary_adjustments sa/i.test(text)) {
-                const rows = /WHERE sa\.type = 'advance'/i.test(text)
-                    ? Array.from(hrState.salaryAdjustments.values()).filter(row => row.type === 'advance')
+                const rows = /sa\.type (?:= 'advance'|IN \('zrs', 'advance'\))/i.test(text)
+                    ? Array.from(hrState.salaryAdjustments.values()).filter(row => ['advance', 'zrs'].includes(row.type))
                     : salaryAdjustmentRowsForQuery();
                 const months = Array.from(new Set(rows.map(row => row.month).filter(Boolean))).sort().reverse();
                 return { rows: months.map(month => ({ month })), rowCount: months.length };
@@ -2000,7 +2000,7 @@ function createFakePool() {
                         voided_by_role: row.voided_by_role || null,
                         voided_at: row.voided_at || row.approved_at || null,
                         void_reason: row.void_reason || null,
-                        affects_payroll: row.type === 'advance' && String(row.status || 'applied') === 'applied'
+                        affects_payroll: ['advance', 'zrs'].includes(row.type) && String(row.status || 'applied') === 'applied'
                     }))
                     .sort((left, right) => String(right.created_at || '').localeCompare(String(left.created_at || '')) || Number(right.id) - Number(left.id))
                     .slice(offset, offset + limit);
@@ -2008,12 +2008,12 @@ function createFakePool() {
             }
             if (/INSERT INTO salary_adjustments \(staff_id, month, type, amount, reason, created_by,/i.test(text)) {
                 const id = hrState.nextSalaryAdjustmentId++;
-                const literalAdvance = /VALUES \(\$1,\$2,'advance',\$3,\$4,\$5/i.test(text);
-                const row = literalAdvance ? {
+                const literalZrs = /VALUES \(\$1,\$2,'zrs',\$3,\$4,\$5/i.test(text);
+                const row = literalZrs ? {
                     id,
                     staff_id: Number(params[0]),
                     month: params[1],
-                    type: 'advance',
+                    type: 'zrs',
                     amount: Number(params[2]),
                     reason: params[3] || null,
                     created_by: params[4] || null,
@@ -6698,7 +6698,7 @@ describe('route-level API safety smoke', () => {
     });
 
     it('keeps ZRS read/create/void inside the payroll role matrix', async () => {
-        const allowedRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
+        const allowedRoles = ['creator', 'director', 'vice_director', 'hr'];
         for (const role of allowedRoles) {
             const headers = withAuth({}, role);
             const journal = await request('GET', '/api/hr/salary/adjustments?month=2026-05&type=advance', undefined, headers);
@@ -6707,7 +6707,7 @@ describe('route-level API safety smoke', () => {
             const createGuardProbe = await request('POST', '/api/hr/salary/adjustment', {
                 staff_id: 'not-a-number',
                 month: '2026-05',
-                type: 'advance',
+                type: 'zrs',
                 amount: 10
             }, headers);
             assert.equal(createGuardProbe.status, 400, `${role} POST: ${JSON.stringify(createGuardProbe.data)}`);
@@ -6719,7 +6719,7 @@ describe('route-level API safety smoke', () => {
             assert.equal(voidGuardProbe.status, 404, `${role} PUT: ${JSON.stringify(voidGuardProbe.data)}`);
         }
 
-        for (const role of ['manager', 'hr', 'security', 'animator']) {
+        for (const role of ['manager', 'senior_manager', 'admin', 'security', 'animator']) {
             const headers = withAuth({}, role);
             const journal = await request('GET', '/api/hr/salary/adjustments?month=2026-05&type=advance', undefined, headers);
             assert.equal(journal.status, 403, `${role} GET: ${JSON.stringify(journal.data)}`);
@@ -6743,7 +6743,7 @@ describe('route-level API safety smoke', () => {
             assert.equal(voided.data.error, 'Insufficient permissions');
         }
 
-        for (const role of ['manager', 'hr']) {
+        for (const role of ['hr']) {
             const bonusCreate = await request('POST', '/api/hr/salary/adjustment', {
                 staff_id: 45,
                 month: '2026-05',
@@ -6754,14 +6754,16 @@ describe('route-level API safety smoke', () => {
             assert.equal(bonusCreate.data.data.type, 'bonus');
         }
 
-        const securityBonus = await request('POST', '/api/hr/salary/adjustment', {
-            staff_id: 45,
-            month: '2026-05',
-            type: 'bonus',
-            amount: 5
-        }, withAuth({}, 'security'));
-        assert.equal(securityBonus.status, 403, JSON.stringify(securityBonus.data));
-        assert.equal(securityBonus.data.error, 'Insufficient permissions');
+        for (const role of ['manager', 'senior_manager', 'admin', 'security']) {
+            const deniedBonus = await request('POST', '/api/hr/salary/adjustment', {
+                staff_id: 45,
+                month: '2026-05',
+                type: 'bonus',
+                amount: 5
+            }, withAuth({}, role));
+            assert.equal(deniedBonus.status, 403, `${role}: ${JSON.stringify(deniedBonus.data)}`);
+            assert.equal(deniedBonus.data.error, 'Insufficient permissions');
+        }
     });
 
     it('hardens ZRS create and void validation without breaking other salary adjustments', async () => {
@@ -6841,7 +6843,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(validCreate.data.success, true);
         assert.equal(validCreate.data.data.staff_id, 45);
         assert.equal(Number(validCreate.data.data.amount), 10);
-        assert.equal(validCreate.data.data.type, 'advance');
+        assert.equal(validCreate.data.data.type, 'zrs');
         assert.equal(validCreate.data.data.status, 'applied');
         assert.equal(validCreate.data.data.reason, 'ЗРС під зарплату');
         const zrsCreateBeginIndex = queries.findIndex(q => /^BEGIN$/i.test(q.text));
@@ -6863,7 +6865,7 @@ describe('route-level API safety smoke', () => {
         const createAuditFailure = await request('POST', '/api/hr/salary/adjustment', {
             staff_id: 45,
             month: '2026-05',
-            type: 'advance',
+            type: 'zrs',
             amount: 11,
             reason: 'ROUTE_SMOKE_AUDIT_FAIL create'
         }, withAuth());

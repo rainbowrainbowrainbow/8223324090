@@ -287,7 +287,7 @@ test('ZRS month and staff search contracts stay wired', () => {
     assert.match(hrSource, /!lockKnown \|\| isLocked/);
     assert.ok(hrSource.includes(TXT.salaryUnavailable));
     assert.match(hrSource, /function canManageZrsAdjustments/);
-    assert.match(hrSource, /canViewPayrollWorkspace\(user\) && canManageStaff/);
+    assert.match(hrSource, /return hrCanUsePayrollAction\('manage_payroll_accrual'\)/);
     assert.match(hrSource, /addBtn\.hidden = !canWriteZrs/);
     assert.match(hrSource, /const canVoid = canWriteZrs && lockKnown && !isLocked && active/);
     assert.match(hrSource, /return status === 'applied'/);
@@ -299,8 +299,8 @@ test('ZRS month and staff search contracts stay wired', () => {
     assert.match(hrRouteSource, /acquirePayrollPeriodMutationLock\(client, payrollMonth\)/);
     assert.match(hrRouteSource, /ZRS_VOID_REASON_REQUIRED/);
     assert.match(hrRouteSource, /period_lock: periodLock/);
-    assert.match(hrRouteSource, /WHERE sa\.type = 'advance'/);
-    assert.doesNotMatch(hrRouteSource, /const periodFilter = buildFilters\(\{ includeStatus: false, includeMonth: false \}\)/);
+    assert.match(hrRouteSource, /sa\.type IN \('zrs', 'advance'\)/);
+    assert.match(hrRouteSource, /const periodFilter = buildFilters\(\{ includeStatus: false, includeMonth: false, includeSearch: false \}\)/);
     assert.match(hrRouteSource, /auditLog\('salary_adjustment_void'[\s\S]*?, client\)/);
     assert.match(payrollPeriodSource, /SELECT pg_advisory_xact_lock\(hashtextextended/);
     assert.match(payrollPeriodSource, /eventgenix:payroll-period:\$\{normalizedMonth\}/);

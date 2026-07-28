@@ -7782,7 +7782,7 @@ router.get('/salary/adjustments', requirePayrollView, async (req, res) => {
             return salaryAdjustmentError(res, 400, ZRS_ERROR_CODES.INVALID_MONTH, 'month required (YYYY-MM)');
         }
 
-        const buildFilters = ({ includeStatus = true, forceActive = false, includeMonth = true } = {}) => {
+        const buildFilters = ({ includeStatus = true, forceActive = false, includeMonth = true, includeSearch = true } = {}) => {
             const params = [];
             const conds = [];
             if (parsedStaffId) {
@@ -7799,7 +7799,7 @@ router.get('/salary/adjustments', requirePayrollView, async (req, res) => {
                 params.push(adjustmentType);
                 conds.push(`sa.type = $${params.length}`);
             }
-            if (search) {
+            if (search && includeSearch) {
                 const likeSearch = `%${escapeSqlLikePattern(search)}%`;
                 params.push(likeSearch);
                 const likeParam = params.length;
@@ -7907,7 +7907,7 @@ router.get('/salary/adjustments', requirePayrollView, async (req, res) => {
 
         let periods = [];
         if (includePeriods) {
-            const periodFilter = buildFilters({ includeStatus: false, includeMonth: false });
+            const periodFilter = buildFilters({ includeStatus: false, includeMonth: false, includeSearch: false });
             const periodResult = await pool.query(
                 `SELECT DISTINCT sa.month
                  FROM salary_adjustments sa

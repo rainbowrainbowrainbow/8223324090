@@ -294,14 +294,6 @@ const HR_PEOPLE_NAV_DETAILS = Object.freeze({
     reserve: Object.freeze({ subtitle: 'Кадровий резерв', icon: 'reserve', tone: 'people' }),
     dismissed: Object.freeze({ subtitle: 'Архів профілів', icon: 'archive', tone: 'people' })
 });
-const HR_PAYROLL_VIEW_ROLES = new Set([
-    'creator',
-    'director',
-    'vice_director',
-    'senior_manager',
-    'admin'
-]);
-
 const HR_NAV_GROUPS = [
     {
         id: 'pulse',
@@ -430,13 +422,12 @@ function getHrCurrentUser() {
     }
 }
 
-function canViewPayrollWorkspace(user = getHrCurrentUser()) {
-    return HR_PAYROLL_VIEW_ROLES.has(String(user?.role || '').trim());
+function canViewPayrollWorkspace() {
+    return hrCanUsePayrollAction('view_payroll');
 }
 
-function canManageZrsAdjustments(user = getHrCurrentUser()) {
-    const canManageStaff = typeof canAccess === 'function' ? canAccess('manage_staff') === true : false;
-    return canViewPayrollWorkspace(user) && canManageStaff;
+function canManageZrsAdjustments() {
+    return hrCanUsePayrollAction('manage_payroll_accrual');
 }
 
 function getHrTeamBucketAccess() {

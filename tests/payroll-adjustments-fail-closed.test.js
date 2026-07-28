@@ -18,9 +18,15 @@ function buildFetchAdjustments(pool) {
     return new Function('pool', 'log', `
         const PAYROLL_ADJUSTMENTS_UNAVAILABLE = 'PAYROLL_ADJUSTMENTS_UNAVAILABLE';
         const PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE = 'Не вдалося достовірно прочитати коригування зарплати';
+        const PAYROLL_ZRS_TYPE = 'zrs';
+        const LEGACY_ZRS_TYPE = 'advance';
         function toNumber(value, fallback = 0) {
             const num = Number(value);
             return Number.isFinite(num) ? num : fallback;
+        }
+        function normalizePayrollAdjustmentType(value) {
+            const type = String(value || '').trim().toLowerCase();
+            return type === LEGACY_ZRS_TYPE ? PAYROLL_ZRS_TYPE : type;
         }
         function payrollAdjustmentsUnavailableError(cause) {
             const err = new Error(PAYROLL_ADJUSTMENTS_UNAVAILABLE_MESSAGE);
@@ -66,7 +72,15 @@ test('fetchAdjustments aggregates only rows returned by the applied-status query
 
     const result = await fetchAdjustments('2026-05');
 
-    assert.deepEqual(result.get(7), { bonus: 25, tip: 0, deduction: 0, penalty: 0, advance: 100 });
+    assert.deepEqual(result.get(7), {
+        bonus: 25,
+        kpi_bonus: 0,
+        tip: 0,
+        deduction: 0,
+        penalty: 0,
+        zrs: 100,
+        advance: 0
+    });
 });
 
 test('fetchAdjustments fails closed when salary_adjustments cannot be read', async () => {

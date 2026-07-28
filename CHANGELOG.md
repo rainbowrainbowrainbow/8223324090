@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.14 - Безпечне soft-очищення production smoke
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Безпечне soft-очищення production smoke** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.13 - Зарплата: завершення post-release hardening
 
 ### Release / Versioning / (28.07.2026) [codex]

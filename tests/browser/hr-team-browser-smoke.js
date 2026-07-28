@@ -1370,7 +1370,12 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
 async function assertOffboardingDangerFlow(page) {
     await openProfile(page, 1);
     await page.locator('#staffProfileTabOffboarding').click();
-    await page.waitForFunction(() => document.querySelectorAll('#editOffboardingReadiness .hr-offboarding-readiness-grid > div').length === 4);
+    await page.waitForFunction(() => document.querySelectorAll('#editOffboardingReadiness .hr-offboarding-readiness-grid > div').length === 5);
+    assert.match(
+        await page.locator('#editOffboardingReadiness .hr-offboarding-readiness-grid').textContent(),
+        /payroll/i,
+        'offboarding readiness exposes the outstanding payroll installment counter'
+    );
 
     const complete = page.locator('#editOffboardingComplete');
     assert.equal(await complete.isDisabled(), true, 'offboarding action is disabled before date and reason are provided');

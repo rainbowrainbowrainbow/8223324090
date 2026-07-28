@@ -6,6 +6,8 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const hrPage = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const hrRoute = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const financePage = fs.readFileSync(path.join(ROOT, 'js', 'finance-page.js'), 'utf8');
+const financeRoute = fs.readFileSync(path.join(ROOT, 'routes', 'finance.js'), 'utf8');
 const payrollRoute = fs.readFileSync(path.join(ROOT, 'routes', 'payroll.js'), 'utf8');
 const reportsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'reports.js'), 'utf8');
 const staffRoute = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
@@ -15,10 +17,16 @@ const attendanceAuditScript = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-
 const preflightScript = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-payroll-activation-preflight.js'), 'utf8');
 
 const {
+    LEGACY_MANUAL_SALARY_FINANCE_STATUS,
     isPayrollInstallmentsActivationMonth,
-    configuredPayrollInstallmentsActivationMonth
+    configuredPayrollInstallmentsActivationMonth,
+    classifyLegacyManualSalaryFinance,
+    classifyLegacyZrsAdjustment,
+    LEGACY_ZRS_VOIDED_STATUS
 } = require('../services/payrollSettlement');
 const {
+    LEGACY_MANUAL_SALARY_FINANCE_STATUS: PREFLIGHT_LEGACY_MANUAL_SALARY_FINANCE_STATUS,
+    LEGACY_ZRS_VOIDED_STATUS: PREFLIGHT_LEGACY_ZRS_VOIDED_STATUS,
     READ_ONLY_CONNECTION_ENV_KEYS,
     parseArgs,
     payrollActivationBlockers,
@@ -136,13 +144,15 @@ test('canonical payroll export derives legacy_accounted and preserves the raw le
     });
     assert.deepEqual(fields, {
         report_status: 'legacy_accounted',
-        legacy_report_status: 'paid'
+        legacy_report_status: 'paid',
+        legacy_historical_message: 'Історично враховано; факт виплати користувачем не підтверджено'
     });
     assert.deepEqual(
         payrollRouter.__payrollExportTestHooks.payrollReportStatusExportFields({ status: 'approved' }),
-        { report_status: 'approved', legacy_report_status: '' }
+        { report_status: 'approved', legacy_report_status: '', legacy_historical_message: '' }
     );
     assert.match(payrollRoute, /legacy_report_status/);
+    assert.match(payrollRoute, /legacy_historical_message/);
 });
 
 test('HR payment history displays the immutable movement confirmation timestamp', () => {
@@ -245,12 +255,26 @@ test('payroll activation preflight is read-only and classifies history as legacy
         generatedAt: '2026-07-27T00:00:00.000Z',
         scope: { month: '2026-07' },
         legacyReports: { paidReports: 1, legacyAccountedReports: 1, paidWithoutFinance: 0, amountMismatch: 1 },
-        financeOrphans: { orphanFinance: 0, financeWithoutPayrollSource: 2 },
-        legacyAdvance: { salaryAdjustmentLegacyAdvance: 2, salaryAdjustmentZrs: 3 },
+        financeOrphans: {
+            orphanFinance: 0,
+            financeWithoutPayrollSource: 2,
+            legacyUnlinkedFinance: 2,
+            legacyManualSalaryFinance: 2,
+            legacyManualSalaryFinanceClassification: 'legacy_manual_salary_finance'
+        },
+        legacyAdvance: {
+            salaryAdjustmentLegacyAdvance: 2,
+            salaryAdjustmentLegacyZrsClassified: 2,
+            salaryAdjustmentLegacyZrsVoided: 2,
+            salaryAdjustmentLegacyAdvanceUnclassified: 0,
+            salaryAdjustmentZrs: 3
+        },
         installments: { outstandingInstallments: 4, outstandingAmount: 5000, overpaymentInstallments: 1, overpaymentAmount: 25, duplicateFinanceLinks: 1, missingFinanceLinks: 2, amountMismatch: 3, reversalMismatch: 4, financeWithoutPayrollSource: 5 },
         settlementModels: { mixedSettlementMonths: 0, mixedOwnershipReports: 0 }
     });
     assert.match(markdown, /legacy_accounted/);
+    assert.match(markdown, /legacy_manual_salary_finance/);
+    assert.match(markdown, /legacy_zrs_voided/);
     assert.match(markdown, /Outstanding installments: 4/);
     assert.match(markdown, /Installment finance link mismatches: duplicates=1, missing=2, amount=3, reversal=4, source=5/);
 });
@@ -273,6 +297,7 @@ test('payroll activation remains blocked until every legacy advance is classifie
             legacyAdvance: {
                 salaryAdjustmentLegacyAdvance: 4,
                 salaryAdjustmentLegacyZrsClassified: 4,
+                salaryAdjustmentLegacyZrsVoided: 4,
                 salaryAdjustmentLegacyAdvanceUnclassified: 0,
                 payrollEntryLegacyAdvance: 0
             }
@@ -344,4 +369,73 @@ test('payroll settlement legacy read model never invents payment fact metadata',
     assert.match(payrollSettlementService, /actualPaymentDate: null/);
     assert.match(payrollSettlementService, /confirmedBy: null/);
     assert.match(payrollSettlementService, /confirmedAt: null/);
+});
+
+test('legacy manual salary finance is classified without becoming a payroll movement', () => {
+    assert.equal(LEGACY_MANUAL_SALARY_FINANCE_STATUS, 'legacy_manual_salary_finance');
+    assert.equal(PREFLIGHT_LEGACY_MANUAL_SALARY_FINANCE_STATUS, 'legacy_manual_salary_finance');
+    const classification = classifyLegacyManualSalaryFinance({
+        payment_method: 'salary',
+        source: 'manual',
+        date: '2026-07-10'
+    });
+    assert.deepEqual(classification, {
+        classification: 'legacy_manual_salary_finance',
+        historicalStatus: 'legacy_manual_salary_finance',
+        message: 'Історична ручна фінансова операція; не підтверджена payroll movement',
+        paymentFactVerified: false,
+        canonicalPaymentMovement: false,
+        payrollMovementId: null,
+        actualPaymentDate: null,
+        actualPaymentDates: [],
+        confirmedBy: null,
+        confirmedAt: null
+    });
+    assert.equal(classifyLegacyManualSalaryFinance({ payment_method: 'salary', source: 'payroll' }), null);
+    assert.equal(classifyLegacyManualSalaryFinance({ payment_method: 'cash', source: 'manual' }), null);
+});
+
+test('legacy ZRS voided adjustments are labelled as ZRS, not real advance installments', () => {
+    assert.equal(LEGACY_ZRS_VOIDED_STATUS, 'legacy_zrs_voided');
+    assert.equal(PREFLIGHT_LEGACY_ZRS_VOIDED_STATUS, 'legacy_zrs_voided');
+    const classification = classifyLegacyZrsAdjustment({
+        type: 'advance',
+        status: 'voided',
+        reason: 'ЗРС помилково створений як advance',
+        void_reason: 'duplicate'
+    });
+    assert.deepEqual(classification, {
+        classification: 'legacy_zrs_voided',
+        historicalStatus: 'legacy_zrs_voided',
+        displayType: 'zrs',
+        displayLabel: 'ЗРС',
+        message: 'Історичний запис ЗРС скасовано',
+        affectsPayroll: false,
+        paymentFactVerified: false,
+        canonicalPaymentMovement: false
+    });
+    assert.equal(classifyLegacyZrsAdjustment({ type: 'advance', status: 'voided', reason: 'old advance' }), null);
+    assert.equal(classifyLegacyZrsAdjustment({ type: 'advance', status: 'applied', reason: 'ЗРС' }), null);
+});
+
+test('HR Finance and exports expose the same historical settlement labels', () => {
+    assert.match(financeRoute, /classifyLegacyManualSalaryFinance/);
+    assert.match(financeRoute, /payrollHistoricalClassification/);
+    assert.match(financeRoute, /payrollHistoricalMessage/);
+    assert.match(financeRoute, /Payroll historical classification/);
+    assert.match(financeRoute, /Payroll historical note/);
+    assert.match(financePage, /legacy_manual_salary_finance/);
+    assert.match(financePage, /Історична ручна зарплатна операція/);
+    assert.match(financePage, /payrollHistoricalMessage/);
+
+    assert.match(hrRoute, /classifyLegacyZrsAdjustment/);
+    assert.match(hrRoute, /display_label: 'ЗРС'/);
+    assert.match(hrRoute, /historical_classification/);
+    assert.match(hrPage, /historical_message/);
+    assert.match(hrPage, /historicalMessage/);
+
+    assert.match(payrollRoute, /PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES/);
+    assert.match(payrollRoute, /legacy_historical_message/);
+    assert.match(preflightScript, /legacy_manual_salary_finance/);
+    assert.match(preflightScript, /legacy_zrs_voided/);
 });

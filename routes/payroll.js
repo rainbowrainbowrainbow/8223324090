@@ -27,6 +27,7 @@ const {
     normalizePayrollMonth
 } = require('../services/payroll');
 const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
+const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payrollSettlement');
 const {
     requireWritableBusinessScope,
     resolveBusinessScope
@@ -172,6 +173,12 @@ function payrollReportStatusExportFields(row = {}) {
         report_status: legacy?.historicalStatus || legacy?.historical_status || rawStatus,
         legacy_report_status: legacy
             ? (legacy.reportStatus || legacy.report_status || rawStatus)
+            : '',
+        legacy_historical_message: legacy
+            ? (legacy.message
+                || legacy.historicalStatusMessage
+                || PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES[legacy.historicalStatus || legacy.historical_status]
+                || '')
             : ''
     };
 }
@@ -378,6 +385,7 @@ router.get('/export', requireAction('view_payroll'), async (req, res) => {
             'payroll_blocking_codes', 'payroll_blocking_details',
             'additional_line_status', 'blocker_code', 'blocker_message',
             'reconciliation_scope', 'payroll_report_id', 'report_status', 'legacy_report_status',
+            'legacy_historical_message',
             'installment_kind', 'earning_range', 'scheduled_payment_date', 'actual_payment_dates',
             'calculated_amount', 'locked_amount', 'paid_amount', 'balance_amount',
             'installment_status', 'approver', 'approved_at', 'confirmer', 'confirmed_at',
@@ -438,6 +446,7 @@ router.get('/export', requireAction('view_payroll'), async (req, res) => {
                 row.reportId || row.report_id || '',
                 reportStatusFields.report_status,
                 reportStatusFields.legacy_report_status,
+                reportStatusFields.legacy_historical_message,
                 installmentFields.installment_kind,
                 installmentFields.earning_range,
                 installmentFields.scheduled_payment_date,
@@ -471,6 +480,7 @@ router.get('/export', requireAction('view_payroll'), async (req, res) => {
                 row.reportId ?? row.report_id ?? '',
                 row.reportStatus || row.report_status || 'draft',
                 row.reportStatus || row.report_status || 'draft',
+                '',
                 '', '', '', '',
                 '', '', '', '',
                 '', '', '', '', '',
@@ -529,6 +539,7 @@ router.get('/export-xlsx', requireAction('view_payroll'), async (req, res) => {
             { header: 'payroll_report_id', key: 'payroll_report_id', width: 18 },
             { header: 'report_status', key: 'report_status', width: 18 },
             { header: 'legacy_report_status', key: 'legacy_report_status', width: 22 },
+            { header: 'legacy_historical_message', key: 'legacy_historical_message', width: 60 },
             { header: 'installment_kind', key: 'installment_kind', width: 18 },
             { header: 'earning_range', key: 'earning_range', width: 26 },
             { header: 'scheduled_payment_date', key: 'scheduled_payment_date', width: 22 },
@@ -574,7 +585,7 @@ router.get('/export-xlsx', requireAction('view_payroll'), async (req, res) => {
             }
         }
         summary.views = [{ state: 'frozen', ySplit: 1 }];
-        summary.autoFilter = { from: 'A1', to: 'AQ1' };
+        summary.autoFilter = { from: 'A1', to: 'AR1' };
         summary.getRow(1).font = { bold: true };
 
         const additionalLines = workbook.addWorksheet('Additional lines');

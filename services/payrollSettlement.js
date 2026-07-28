@@ -8,7 +8,16 @@ const PAYROLL_SETTLEMENT_MODELS = Object.freeze({
 });
 
 const LEGACY_PAYROLL_ACCOUNTED_STATUS = 'legacy_accounted';
+const LEGACY_MANUAL_SALARY_FINANCE_STATUS = 'legacy_manual_salary_finance';
+const LEGACY_ZRS_VOIDED_STATUS = 'legacy_zrs_voided';
 const LEGACY_PAYROLL_ACCOUNTED_MESSAGE = 'Історично враховано; факт виплати користувачем не підтверджено';
+const LEGACY_MANUAL_SALARY_FINANCE_MESSAGE = 'Історична ручна фінансова операція; не підтверджена payroll movement';
+const LEGACY_ZRS_VOIDED_MESSAGE = 'Історичний запис ЗРС скасовано';
+const PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES = Object.freeze({
+    [LEGACY_PAYROLL_ACCOUNTED_STATUS]: LEGACY_PAYROLL_ACCOUNTED_MESSAGE,
+    [LEGACY_MANUAL_SALARY_FINANCE_STATUS]: LEGACY_MANUAL_SALARY_FINANCE_MESSAGE,
+    [LEGACY_ZRS_VOIDED_STATUS]: LEGACY_ZRS_VOIDED_MESSAGE
+});
 const PAYROLL_INSTALLMENT_KINDS = Object.freeze(['advance', 'final']);
 const PAYROLL_INSTALLMENTS_ACTIVATION_ENV = 'PAYROLL_INSTALLMENTS_ACTIVATION_MONTH';
 
@@ -241,6 +250,43 @@ function reportValue(report, snake, camel, fallback = null) {
     if (Object.prototype.hasOwnProperty.call(report, snake)) return report[snake];
     if (Object.prototype.hasOwnProperty.call(report, camel)) return report[camel];
     return fallback;
+}
+
+function classifyLegacyManualSalaryFinance(row = {}) {
+    const paymentMethod = String(row.payment_method ?? row.paymentMethod ?? '').trim();
+    const source = String(row.source ?? '').trim();
+    if (paymentMethod !== 'salary' || source === 'payroll') return null;
+    return {
+        classification: LEGACY_MANUAL_SALARY_FINANCE_STATUS,
+        historicalStatus: LEGACY_MANUAL_SALARY_FINANCE_STATUS,
+        message: LEGACY_MANUAL_SALARY_FINANCE_MESSAGE,
+        paymentFactVerified: false,
+        canonicalPaymentMovement: false,
+        payrollMovementId: null,
+        actualPaymentDate: null,
+        actualPaymentDates: [],
+        confirmedBy: null,
+        confirmedAt: null
+    };
+}
+
+function classifyLegacyZrsAdjustment(row = {}) {
+    const type = String(row.type || '').trim().toLowerCase();
+    const status = String(row.status || 'applied').trim().toLowerCase();
+    const reason = String(row.reason || '').trim();
+    const voidReason = String(row.void_reason ?? row.voidReason ?? '').trim();
+    const hasExplicitZrsReason = /зрс|zrs/iu.test(`${reason} ${voidReason}`);
+    if (type !== 'advance' || status !== 'voided' || !hasExplicitZrsReason) return null;
+    return {
+        classification: LEGACY_ZRS_VOIDED_STATUS,
+        historicalStatus: LEGACY_ZRS_VOIDED_STATUS,
+        displayType: 'zrs',
+        displayLabel: 'ЗРС',
+        message: LEGACY_ZRS_VOIDED_MESSAGE,
+        affectsPayroll: false,
+        paymentFactVerified: false,
+        canonicalPaymentMovement: false
+    };
 }
 
 function buildPayrollSettlementReadModel(report = {}, installmentRows = []) {
@@ -582,12 +628,19 @@ async function loadStaffOutstandingPayrollInstallments(staffId, db = pool) {
 }
 
 module.exports = {
+    LEGACY_MANUAL_SALARY_FINANCE_MESSAGE,
+    LEGACY_MANUAL_SALARY_FINANCE_STATUS,
     LEGACY_PAYROLL_ACCOUNTED_MESSAGE,
     LEGACY_PAYROLL_ACCOUNTED_STATUS,
+    LEGACY_ZRS_VOIDED_MESSAGE,
+    LEGACY_ZRS_VOIDED_STATUS,
+    PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES,
     PAYROLL_INSTALLMENTS_ACTIVATION_ENV,
     PAYROLL_INSTALLMENT_KINDS,
     PAYROLL_SETTLEMENT_MODELS,
     buildPayrollSettlementReadModel,
+    classifyLegacyManualSalaryFinance,
+    classifyLegacyZrsAdjustment,
     configuredPayrollInstallmentsActivationMonth,
     derivePayrollInstallmentAmounts,
     isPayrollInstallmentsActivationMonth,

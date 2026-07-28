@@ -18362,6 +18362,7 @@ function renderZrs(adjustmentsData = {}, salaryData = {}, renderState = {}) {
         const voidedAt = row.voided_at || row.approved_at || '';
         const voidRole = row.voided_by_role ? (ROLE_LABELS[row.voided_by_role] || row.voided_by_role) : '';
         const affectsPayroll = row.affects_payroll === true || row.affects_payroll === 'true' || row.affects_payroll === 1;
+        const historicalMessage = row.historical_message || row.historicalMessage || '';
         const canVoid = canWriteZrs && lockKnown && !isLocked && active && adjustmentId > 0;
         const createdMeta = `${escapeHtml(createdBy)}${createdRole ? `<br><span class="hr-filter-info">${escapeHtml(createdRole)}</span>` : ''}`;
         const voidMeta = voidedBy || voidedAt || voidRole
@@ -18375,7 +18376,7 @@ function renderZrs(adjustmentsData = {}, salaryData = {}, renderState = {}) {
             <td>${escapeHtml(roleLabel)}<div class="hr-filter-info">${escapeHtml(departmentLabelText)}</div></td>
             <td style="color:#EF4444;">-${fmtMoney(Number(row.amount || 0))}</td>
             <td>${escapeHtml(row.month || '—')}</td>
-            <td><span class="zrs-status-badge${active ? '' : ' is-muted'}">${escapeHtml(zrsStatusLabel(status))}</span><div class="hr-filter-info">${escapeHtml(payrollStatusText)}</div></td>
+            <td><span class="zrs-status-badge${active ? '' : ' is-muted'}">${escapeHtml(zrsStatusLabel(status))}</span><div class="hr-filter-info">${escapeHtml(payrollStatusText)}</div>${historicalMessage ? `<div class="hr-filter-info">${escapeHtml(historicalMessage)}</div>` : ''}</td>
             <td>${escapeHtml(row.reason || 'ЗРС під зарплату')}</td>
             <td>${createdMeta}</td>
             <td>${voidMeta}</td>

@@ -104,6 +104,8 @@ const SALARY_STATUS_LABELS = {
     approved: 'Затверджено',
     paid: 'Виплачено',
     legacy_accounted: 'Історично враховано',
+    legacy_manual_salary_finance: 'Історична ручна зарплатна операція',
+    legacy_zrs_voided: 'Історичний ЗРС скасовано',
     legacy_workflow: 'Історичний workflow',
     voided: 'Скасовано'
 };
@@ -650,7 +652,7 @@ function renderTransactionTable() {
             <td>${formatDate(t.date)}</td>
             <td><span class="fin-type-badge ${t.type}">${t.type === 'income' ? 'Дохід' : 'Витрата'}</span></td>
             <td>${escapeHtml(t.categoryIcon) || ''} ${escapeHtml(t.categoryName) || '—'}</td>
-            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.description) || '—'}</td>
+            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.description) || '—'}${t.payrollHistoricalClassification ? `<br><small>${escapeHtml(SALARY_STATUS_LABELS[t.payrollHistoricalClassification] || t.payrollHistoricalClassification)} · ${escapeHtml(t.payrollHistoricalMessage || '')}</small>` : ''}</td>
             <td class="fin-amount-${t.type}">${t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}</td>
             <td>${t.paymentMethod ? `<span class="fin-payment-badge">${PAYMENT_LABELS[t.paymentMethod] || escapeHtml(t.paymentMethod)}</span>` : '—'}</td>
             <td>${escapeHtml(t.createdBy) || '—'}</td>

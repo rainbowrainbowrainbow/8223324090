@@ -142,6 +142,7 @@ const {
     normalizePayrollAdjustmentType
 } = require('../services/payroll');
 const {
+    classifyLegacyZrsAdjustment,
     isPayrollInstallmentsActivationMonth,
     loadStaffOutstandingPayrollInstallments,
     PAYROLL_SETTLEMENT_MODELS
@@ -7924,11 +7925,20 @@ router.get('/salary/adjustments', requirePayrollView, async (req, res) => {
             ? (requestedType === 'advance' ? 'advance' : 'zrs')
             : null;
         const dataRows = zrsResponseType
-            ? result.rows.map(row => (
-                normalizePayrollAdjustmentType(row.type) === 'zrs'
-                    ? { ...row, type: zrsResponseType, canonical_type: 'zrs', legacy_type: row.type }
-                    : row
-            ))
+            ? result.rows.map(row => {
+                if (normalizePayrollAdjustmentType(row.type) !== 'zrs') return row;
+                const historicalClassification = classifyLegacyZrsAdjustment(row);
+                return {
+                    ...row,
+                    type: zrsResponseType,
+                    canonical_type: 'zrs',
+                    legacy_type: row.type,
+                    display_type: 'zrs',
+                    display_label: 'ЗРС',
+                    historical_classification: historicalClassification?.classification || null,
+                    historical_message: historicalClassification?.message || null
+                };
+            })
             : result.rows;
 
         res.json({

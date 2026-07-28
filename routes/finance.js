@@ -12,6 +12,7 @@ const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
+const { classifyLegacyManualSalaryFinance } = require('../services/payrollSettlement');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
@@ -67,6 +68,39 @@ function financeBookingDateLineHtml(booking = {}) {
 function businessScopeSql(alias = '', paramRef = '$1') {
     const column = alias ? `${alias}.business_context` : 'business_context';
     return `COALESCE(${column}, ${BUSINESS_SQL_DEFAULT}) = ${paramRef}`;
+}
+
+function financePayrollHistoricalClassification(row = {}) {
+    return classifyLegacyManualSalaryFinance(row);
+}
+
+function financeTransactionPayload(r = {}) {
+    const historicalClassification = financePayrollHistoricalClassification(r);
+    return {
+        id: r.id,
+        type: r.type,
+        categoryId: r.category_id,
+        categoryName: r.category_name,
+        categoryIcon: r.category_icon,
+        categoryColor: r.category_color,
+        amount: r.amount,
+        description: r.description,
+        date: r.date,
+        paymentMethod: r.payment_method,
+        accountId: r.account_id,
+        accountName: r.account_name,
+        source: r.source || 'manual',
+        recognitionDate: r.recognition_date || null,
+        bookingId: r.booking_id,
+        staffId: r.staff_id,
+        certificateId: r.certificate_id,
+        createdBy: r.created_by,
+        createdAt: r.created_at,
+        payrollHistoricalClassification: historicalClassification?.classification || null,
+        payrollHistoricalMessage: historicalClassification?.message || null,
+        paymentFactVerified: historicalClassification ? false : null,
+        canonicalPaymentMovement: historicalClassification ? false : null
+    };
 }
 
 function financeRecognitionDateSql(alias = 'ft') {
@@ -297,27 +331,7 @@ router.get('/transactions', async (req, res) => {
         );
 
         res.json({
-            transactions: result.rows.map(r => ({
-                id: r.id,
-                type: r.type,
-                categoryId: r.category_id,
-                categoryName: r.category_name,
-                categoryIcon: r.category_icon,
-                categoryColor: r.category_color,
-                amount: r.amount,
-                description: r.description,
-                date: r.date,
-                paymentMethod: r.payment_method,
-                accountId: r.account_id,
-                accountName: r.account_name,
-                source: r.source || 'manual',
-                recognitionDate: r.recognition_date || null,
-                bookingId: r.booking_id,
-                staffId: r.staff_id,
-                certificateId: r.certificate_id,
-                createdBy: r.created_by,
-                createdAt: r.created_at
-            })),
+            transactions: result.rows.map(financeTransactionPayload),
             total,
             page: parseInt(page) || 1,
             totalPages: Math.ceil(total / limit)
@@ -873,6 +887,8 @@ router.get('/export-xlsx', async (req, res) => {
             { header: 'Опис', key: 'description', width: 30 },
             { header: 'Дата', key: 'date', width: 14 },
             { header: 'Спосіб оплати', key: 'payment', width: 16 },
+            { header: 'Payroll historical classification', key: 'payrollHistoricalClassification', width: 34 },
+            { header: 'Payroll historical note', key: 'payrollHistoricalMessage', width: 60 },
             { header: 'Створив', key: 'createdBy', width: 16 }
         ];
 
@@ -881,6 +897,7 @@ router.get('/export-xlsx', async (req, res) => {
         sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
 
         for (const r of result.rows) {
+            const historicalClassification = financePayrollHistoricalClassification(r);
             sheet.addRow({
                 id: r.id,
                 type: r.type === 'income' ? 'Дохід' : 'Витрата',
@@ -889,6 +906,8 @@ router.get('/export-xlsx', async (req, res) => {
                 description: r.description || '',
                 date: r.date,
                 payment: r.payment_method || '',
+                payrollHistoricalClassification: historicalClassification?.classification || '',
+                payrollHistoricalMessage: historicalClassification?.message || '',
                 createdBy: r.created_by || ''
             });
         }
@@ -933,12 +952,16 @@ router.get('/export', async (req, res) => {
 
         // Build CSV (UTF-8 BOM + semicolon separator for Excel)
         const BOM = '\uFEFF';
-        const header = 'ID;Тип;Категорія;Сума (₴);Опис;Дата;Спосіб оплати;Створив';
-        const rows = result.rows.map(r =>
-            [r.id, r.type === 'income' ? 'Дохід' : 'Витрата', r.category_name || '',
-             r.amount, (r.description || '').replace(/;/g, ','), r.date,
-             r.payment_method || '', r.created_by || ''].join(';')
-        );
+        const header = 'ID;Тип;Категорія;Сума (₴);Опис;Дата;Спосіб оплати;Payroll historical classification;Payroll historical note;Створив';
+        const rows = result.rows.map(r => {
+            const historicalClassification = financePayrollHistoricalClassification(r);
+            return [r.id, r.type === 'income' ? 'Дохід' : 'Витрата', r.category_name || '',
+                r.amount, (r.description || '').replace(/;/g, ','), r.date,
+                r.payment_method || '',
+                historicalClassification?.classification || '',
+                (historicalClassification?.message || '').replace(/;/g, ','),
+                r.created_by || ''].join(';');
+        });
 
         const csv = BOM + header + '\n' + rows.join('\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');

@@ -13,6 +13,8 @@ const { Pool } = require('pg');
 
 const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update', '--backfill', '--delete']);
 const READ_ONLY_CONNECTION_ENV_KEYS = ['PAYROLL_AUDIT_DATABASE_URL', 'PRODUCTION_READONLY_DATABASE_URL'];
+const LEGACY_MANUAL_SALARY_FINANCE_STATUS = 'legacy_manual_salary_finance';
+const LEGACY_ZRS_VOIDED_STATUS = 'legacy_zrs_voided';
 
 function usage() {
     return [
@@ -206,7 +208,8 @@ async function loadFinanceOrphanAudit(client, options) {
             COUNT(*) FILTER (WHERE sf.payment_method = 'salary')::int AS legacy_salary_finance,
             COUNT(*) FILTER (WHERE COALESCE(sf.source, '') <> 'payroll')::int AS finance_without_payroll_source,
             COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') = 'payroll')::int AS orphan_finance,
-            COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') <> 'payroll')::int AS legacy_unlinked_finance
+            COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') <> 'payroll')::int AS legacy_unlinked_finance,
+            COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') <> 'payroll' AND sf.payment_method = 'salary')::int AS legacy_manual_salary_finance
           FROM salary_finance sf
           LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = sf.id OR pr.reversal_transaction_id = sf.id
           ${movementJoin}`,
@@ -218,7 +221,9 @@ async function loadFinanceOrphanAudit(client, options) {
         legacyReversals: Number(row.legacy_reversals || 0),
         financeWithoutPayrollSource: Number(row.finance_without_payroll_source || 0),
         orphanFinance: Number(row.orphan_finance || 0),
-        legacyUnlinkedFinance: Number(row.legacy_unlinked_finance || 0)
+        legacyUnlinkedFinance: Number(row.legacy_unlinked_finance || 0),
+        legacyManualSalaryFinance: Number(row.legacy_manual_salary_finance || 0),
+        legacyManualSalaryFinanceClassification: LEGACY_MANUAL_SALARY_FINANCE_STATUS
     };
 }
 
@@ -241,8 +246,9 @@ async function loadLegacyAdvanceAudit(client, options) {
     const result = await client.query(
         `SELECT
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' ${adjustmentWhere}) AS salary_adjustment_legacy_advance,
-            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(reason, '') ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_classified,
-            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(reason, '') !~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_advance_unclassified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_classified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) !~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_advance_unclassified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(status, 'applied') = 'voided' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_voided,
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'zrs' ${adjustmentWhere}) AS salary_adjustment_zrs,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'advance' ${entryWhere}) AS payroll_entry_legacy_advance,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'zrs' ${entryWhere}) AS payroll_entry_zrs`,
@@ -253,6 +259,8 @@ async function loadLegacyAdvanceAudit(client, options) {
         salaryAdjustmentLegacyAdvance: Number(row.salary_adjustment_legacy_advance || 0),
         salaryAdjustmentLegacyZrsClassified: Number(row.salary_adjustment_legacy_zrs_classified || 0),
         salaryAdjustmentLegacyAdvanceUnclassified: Number(row.salary_adjustment_legacy_advance_unclassified || 0),
+        salaryAdjustmentLegacyZrsVoided: Number(row.salary_adjustment_legacy_zrs_voided || 0),
+        salaryAdjustmentLegacyZrsVoidedClassification: LEGACY_ZRS_VOIDED_STATUS,
         salaryAdjustmentZrs: Number(row.salary_adjustment_zrs || 0),
         payrollEntryLegacyAdvance: Number(row.payroll_entry_legacy_advance || 0),
         payrollEntryZrs: Number(row.payroll_entry_zrs || 0)
@@ -549,9 +557,10 @@ function renderMarkdown(report) {
         `- Paid without finance link: ${report.legacyReports.paidWithoutFinance}`,
         `- Legacy amount mismatches: ${report.legacyReports.amountMismatch || 0}`,
         `- Orphan payroll finance transactions: ${report.financeOrphans.orphanFinance}`,
+        `- Legacy manual salary Finance rows (${LEGACY_MANUAL_SALARY_FINANCE_STATUS}): ${report.financeOrphans.legacyManualSalaryFinance || 0}`,
         `- Historical unlinked non-payroll finance rows: ${report.financeOrphans.legacyUnlinkedFinance || 0}`,
         `- Finance rows without payroll source: ${report.financeOrphans.financeWithoutPayrollSource || 0}`,
-        `- Legacy advance rows: raw=${report.legacyAdvance.salaryAdjustmentLegacyAdvance}, classified_zrs=${report.legacyAdvance.salaryAdjustmentLegacyZrsClassified || 0}, unclassified=${report.legacyAdvance.salaryAdjustmentLegacyAdvanceUnclassified || 0}, canonical_zrs=${report.legacyAdvance.salaryAdjustmentZrs}`,
+        `- Legacy advance rows: raw=${report.legacyAdvance.salaryAdjustmentLegacyAdvance}, classified_zrs=${report.legacyAdvance.salaryAdjustmentLegacyZrsClassified || 0}, voided_zrs=${report.legacyAdvance.salaryAdjustmentLegacyZrsVoided || 0} (${LEGACY_ZRS_VOIDED_STATUS}), unclassified=${report.legacyAdvance.salaryAdjustmentLegacyAdvanceUnclassified || 0}, canonical_zrs=${report.legacyAdvance.salaryAdjustmentZrs}`,
         `- Outstanding installments: ${report.installments.outstandingInstallments} (${report.installments.outstandingAmount})`,
         `- Overpaid installments: ${report.installments.overpaymentInstallments || 0} (${report.installments.overpaymentAmount || 0})`,
         `- Installment finance link mismatches: duplicates=${report.installments.duplicateFinanceLinks || 0}, missing=${report.installments.missingFinanceLinks || 0}, amount=${report.installments.amountMismatch || 0}, reversal=${report.installments.reversalMismatch || 0}, source=${report.installments.financeWithoutPayrollSource || 0}`,
@@ -587,6 +596,8 @@ if (require.main === module) {
 
 module.exports = {
     BLOCKED_FLAGS,
+    LEGACY_MANUAL_SALARY_FINANCE_STATUS,
+    LEGACY_ZRS_VOIDED_STATUS,
     READ_ONLY_CONNECTION_ENV_KEYS,
     parseArgs,
     payrollActivationBlockers,

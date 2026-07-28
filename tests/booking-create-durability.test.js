@@ -3721,7 +3721,7 @@ test('legacy banquet integrity guard blocks mutation and opens only a clean cano
     assert.match(replacementBlock, /BookingDrawerState\.standaloneBookingOverride = true/);
     assert.match(replacementBlock, /Клієнт і завдаток не перенесені/);
     assert.doesNotMatch(replacementBlock, /duplicateBooking|apiUpdateBooking|apiUpdateBanquetBookingSet|apiCreateBanquetMemberBooking/);
-    assert.match(bookingJs, /if \(!BookingDrawerState\.legacyReplacementMode\) \{\s*applyLeadConversionContextToBookingForm\(\)/);
+    assert.match(bookingJs, /if \(!BookingDrawerState\.legacyReplacementMode\) \{\s*await applyLeadConversionContextToBookingForm\(\)/);
     assert.match(bookingJs, /!appliedExplicitBanquetContext && !BookingDrawerState\.legacyReplacementMode/);
     assert.match(bookingJs, /if \(BookingDrawerState\.legacyReplacementMode\) \{[\s\S]*clearAutoFilledBanquetFromRoomSelection\(\)/);
     assert.match(selectorJs, /if \(BookingDrawerState\.legacyReplacementMode\) return ''/);

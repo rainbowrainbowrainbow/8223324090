@@ -4266,3 +4266,19 @@ async function apiGetCustomer(id) {
         return null;
     }
 }
+async function apiGetLeadBookingContext(id) {
+    try {
+        let url = `${API_BASE}/leads/${encodeURIComponent(id)}/booking-context`;
+        url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
+            : await fetch(url, { headers: getAuthHeaders(false) });
+        if (!response || handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        const payload = await response.json();
+        return payload?.leadContext || null;
+    } catch (err) {
+        console.error('API getLeadBookingContext error:', err);
+        return null;
+    }
+}

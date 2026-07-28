@@ -2245,6 +2245,36 @@ router.get('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+function mapCompactBookingLeadContext(row = {}) {
+    const leadId = Number.parseInt(row.id ?? row.lead_id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+    const parsedChildrenCount = Number.parseInt(row.children_count, 10);
+    const childrenCount = Number.isInteger(parsedChildrenCount) && parsedChildrenCount > 0
+        ? parsedChildrenCount
+        : null;
+    return {
+        leadId,
+        childrenCount,
+        eventDate: row.event_date || null,
+        source: row.source || null
+    };
+}
+
+function resolveCustomerBookingLeadContext(rows = []) {
+    const uniqueRows = [];
+    const seenLeadIds = new Set();
+    for (const row of Array.isArray(rows) ? rows : []) {
+        const context = mapCompactBookingLeadContext(row);
+        if (!context || seenLeadIds.has(context.leadId)) continue;
+        seenLeadIds.add(context.leadId);
+        uniqueRows.push(context);
+    }
+    return {
+        leadContext: uniqueRows.length === 1 ? uniqueRows[0] : null,
+        leadContextAmbiguous: uniqueRows.length > 1
+    };
+}
+
 
 // Get customer by ID (with booking history + certificates)
 router.get('/:id', async (req, res) => {
@@ -2264,6 +2294,42 @@ router.get('/:id', async (req, res) => {
             mapCustomerRow(result.rows[0]),
             await listCustomerChildren(numId, businessContext)
         );
+        customer.leadContext = null;
+        customer.leadContextAmbiguous = false;
+
+        try {
+            const bookingLeadContextResult = await pool.query(
+                `WITH durable_lead_ids AS (
+                    SELECT lcl.lead_id
+                    FROM lead_customer_links lcl
+                    WHERE lcl.customer_id = $1
+                      AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                    UNION
+                    SELECT c.lead_id
+                    FROM customers c
+                    WHERE c.id = $1
+                      AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                      AND c.lead_id IS NOT NULL
+                 )
+                 SELECT l.id,
+                        COALESCE(NULLIF(lep.children_count, 0), NULLIF(l.children_count, 0)) AS children_count,
+                        COALESCE(lep.preferred_date, l.event_date) AS event_date,
+                        COALESCE(NULLIF(l.source, ''), NULLIF(l.source_channel, '')) AS source
+                 FROM durable_lead_ids dli
+                 JOIN leads l ON l.id = dli.lead_id
+                 LEFT JOIN lead_event_preferences lep
+                   ON lep.lead_id = l.id
+                  AND COALESCE(lep.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 WHERE COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 ORDER BY l.updated_at DESC NULLS LAST, l.id DESC
+                 LIMIT 2`,
+                [numId, businessContext]
+            );
+            Object.assign(customer, resolveCustomerBookingLeadContext(bookingLeadContextResult.rows));
+        } catch (err) {
+            log.warn('Customer booking lead context lookup failed', { customerId: numId, error: err?.message });
+        }
+
 
         try {
             const linkedLeadsResult = await pool.query(

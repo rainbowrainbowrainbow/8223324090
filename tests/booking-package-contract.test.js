@@ -4488,7 +4488,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function getKitchenChildrenCountInputValue/);
     assert.match(bookingJs, /function shouldShowStandaloneKidsCountInput/);
     assert.match(bookingJs, /function bookingKitchenChildrenCountFromBooking/);
-    assert.match(bookingJs, /source:\s*'kitchen'/);
+    assert.match(bookingJs, /String\(autoAppliedValues\.banquetGuests \?\? ''\) === String\(kitchenValue\)/);
+    assert.match(bookingJs, /resolved\.source === 'lead'/);
     assert.match(bookingJs, /editableElementId:\s*'banquetGuests'/);
     assert.match(bookingJs, /editableElementId:\s*'kidsCountInput'/);
     assert.match(bookingJs, /kidsCount:\s*childrenCountSource\.value \?\? null/);

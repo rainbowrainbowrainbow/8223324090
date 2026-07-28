@@ -3579,6 +3579,52 @@ router.get('/pipeline', async (req, res) => {
         res.status(500).json({ success: false, error: 'Помилка' });
     }
 });
+function compactLeadBookingContext(row = {}) {
+    const leadId = Number.parseInt(row.id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+    const parsedChildrenCount = Number.parseInt(row.children_count, 10);
+    return {
+        leadId,
+        childrenCount: Number.isInteger(parsedChildrenCount) && parsedChildrenCount > 0
+            ? parsedChildrenCount
+            : null,
+        eventDate: row.event_date || null,
+        source: row.source || null
+    };
+}
+
+// GET /api/leads/:id/booking-context - compact read-only context for booking handoff
+router.get('/:id/booking-context', async (req, res) => {
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const leadId = Number.parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid lead ID' });
+        }
+        const result = await pool.query(
+            `SELECT l.id,
+                    COALESCE(NULLIF(lep.children_count, 0), NULLIF(l.children_count, 0)) AS children_count,
+                    COALESCE(lep.preferred_date, l.event_date) AS event_date,
+                    COALESCE(NULLIF(l.source, ''), NULLIF(l.source_channel, '')) AS source
+             FROM leads l
+             LEFT JOIN lead_event_preferences lep
+               ON lep.lead_id = l.id
+              AND COALESCE(lep.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             WHERE l.id = $1
+               AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             LIMIT 1`,
+            [leadId, businessContext]
+        );
+        const leadContext = compactLeadBookingContext(result.rows[0] || {});
+        if (!leadContext) return res.status(404).json({ success: false, error: 'Lead not found' });
+        return res.json({ success: true, leadContext });
+    } catch (err) {
+        log.error('GET /leads/:id/booking-context error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 
 // GET /api/leads/:id/workspace — unified manager workspace case composition
 router.get('/:id/workspace', async (req, res) => {

@@ -1641,8 +1641,12 @@ function bookingContextCustomerName() {
 }
 
 function bookingContextGuestsText() {
-    const childrenCount = resolveBookingChildrenCountSource().value;
-    if (childrenCount) return String(childrenCount);
+    const resolved = resolveBookingChildrenCountSource();
+    if (resolved.value !== null) {
+        return resolved.source === 'lead'
+            ? `${resolved.value} \u0434\u0456\u0442\u0435\u0439 \u00b7 \u0437 \u043b\u0456\u0434\u0430`
+            : String(resolved.value);
+    }
     return document.getElementById('bookingLeadChildrenInfo')?.value?.trim() || '';
 }
 
@@ -3072,6 +3076,109 @@ function getKitchenChildrenCountInputValue(options = {}) {
     return normalizer(document.getElementById('banquetGuests')?.value);
 }
 
+function normalizeBookingLeadGuestContext(value = null) {
+    if (!value || typeof value !== 'object') return null;
+    const leadId = Number.parseInt(value.leadId ?? value.lead_id ?? value.id, 10);
+    const childrenCount = normalizeBookingCountValue(value.childrenCount ?? value.children_count);
+    if (!Number.isInteger(leadId) || leadId <= 0 || childrenCount === null) return null;
+    return {
+        leadId,
+        childrenCount,
+        customerId: value.customerId ?? value.customer_id ?? null,
+        eventDate: value.eventDate ?? value.event_date ?? null,
+        source: value.source ? String(value.source).trim() : null,
+        explicit: value.explicit === true
+    };
+}
+
+function clearBookingLeadGuestAutofillValues(context = null) {
+    const autoAppliedValues = context?.autoAppliedValues || {};
+    Object.entries(autoAppliedValues).forEach(([elementId, appliedValue]) => {
+        const input = document.getElementById(elementId);
+        if (input && String(input.value ?? '').trim() === String(appliedValue)) input.value = '';
+    });
+}
+
+function clearBookingLeadGuestContext(options = {}) {
+    const drawerState = typeof BookingDrawerState !== 'undefined' ? BookingDrawerState : null;
+    if (!drawerState) return;
+    if (options.clearAutoValues !== false) clearBookingLeadGuestAutofillValues(drawerState.leadGuestContext);
+    drawerState.leadGuestContext = null;
+}
+
+function applyBookingLeadGuestContextToEmptyFields(context = null) {
+    const drawerState = typeof BookingDrawerState !== 'undefined' ? BookingDrawerState : null;
+    const activeContext = context || drawerState?.leadGuestContext;
+    if (!drawerState || !activeContext || activeContext.manualOverride) return false;
+    if (typeof AppState !== 'undefined' && AppState.editingBookingId) return false;
+    const childrenCount = normalizeBookingCountValue(activeContext.childrenCount);
+    if (childrenCount === null) return false;
+    const autoAppliedValues = { ...(activeContext.autoAppliedValues || {}) };
+    let applied = false;
+    ['kidsCountInput', 'banquetGuests'].forEach(elementId => {
+        const input = document.getElementById(elementId);
+        if (!input || String(input.value ?? '').trim()) return;
+        input.value = String(childrenCount);
+        autoAppliedValues[elementId] = String(childrenCount);
+        applied = true;
+    });
+    drawerState.leadGuestContext = { ...activeContext, autoAppliedValues };
+    if (applied && typeof updateBookingContextHeaderSummary === 'function') updateBookingContextHeaderSummary();
+    return applied;
+}
+
+function setBookingLeadGuestContext(value = null) {
+    const drawerState = typeof BookingDrawerState !== 'undefined' ? BookingDrawerState : null;
+    if (!drawerState) return null;
+    if (typeof AppState !== 'undefined' && AppState.editingBookingId) {
+        clearBookingLeadGuestContext({ clearAutoValues: false });
+        return null;
+    }
+    const next = normalizeBookingLeadGuestContext(value);
+    const previous = drawerState.leadGuestContext;
+    const sameContext = Boolean(next && previous
+        && Number(previous.leadId) === next.leadId
+        && String(previous.customerId ?? '') === String(next.customerId ?? ''));
+    if (!sameContext) clearBookingLeadGuestAutofillValues(previous);
+    if (!next) {
+        drawerState.leadGuestContext = null;
+        return null;
+    }
+    const existingManualValue = sameContext
+        ? null
+        : (getBookingChildrenCountInputValue() ?? getKitchenChildrenCountInputValue({ allowZero: true }));
+    drawerState.leadGuestContext = sameContext
+        ? { ...previous, ...next }
+        : { ...next, manualOverride: existingManualValue !== null, manualValue: existingManualValue, autoAppliedValues: {} };
+    applyBookingLeadGuestContextToEmptyFields(drawerState.leadGuestContext);
+    return drawerState.leadGuestContext;
+}
+
+function markBookingLeadGuestManualOverride(elementId) {
+    const drawerState = typeof BookingDrawerState !== 'undefined' ? BookingDrawerState : null;
+    const context = drawerState?.leadGuestContext;
+    if (!context) return;
+    const input = document.getElementById(elementId);
+    if (!input) return;
+    const manualValue = elementId === 'banquetGuests'
+        ? normalizeBookingNonNegativeCountValue(input.value)
+        : normalizeBookingCountValue(input.value);
+    const autoAppliedValues = { ...(context.autoAppliedValues || {}) };
+    delete autoAppliedValues[elementId];
+    Object.entries(autoAppliedValues).forEach(([otherId, appliedValue]) => {
+        const otherInput = document.getElementById(otherId);
+        if (!otherInput || String(otherInput.value ?? '').trim() !== String(appliedValue)) return;
+        otherInput.value = manualValue === null ? '' : String(manualValue);
+    });
+    drawerState.leadGuestContext = {
+        ...context,
+        manualOverride: true,
+        manualValue,
+        manualElementId: elementId,
+        autoAppliedValues: {}
+    };
+}
+
 function bookingProgramUsesStandaloneChildrenInput(program = null) {
     const educationMode = typeof isEducationTimelineBookingMode === 'function'
         ? isEducationTimelineBookingMode()
@@ -3080,6 +3187,17 @@ function bookingProgramUsesStandaloneChildrenInput(program = null) {
 }
 
 function resolveBookingChildrenCountSource(options = {}) {
+    const drawerState = typeof BookingDrawerState !== 'undefined' ? BookingDrawerState : {};
+    const leadState = options.leadGuestContext ?? options.leadContext ?? drawerState.leadGuestContext ?? {};
+    const leadContext = typeof normalizeBookingLeadGuestContext === 'function'
+        ? normalizeBookingLeadGuestContext(leadState)
+        : null;
+    const leadValue = leadContext?.childrenCount ?? null;
+    const autoAppliedValues = leadState?.autoAppliedValues || {};
+    const manualOverride = options.manualOverride ?? (leadState?.manualOverride === true);
+    const manualValue = options.manualValue !== undefined
+        ? normalizeBookingNonNegativeCountValue(options.manualValue)
+        : normalizeBookingNonNegativeCountValue(leadState?.manualValue);
     const kitchenEnabled = options.kitchenEnabled ?? isBookingKitchenEnabled();
     const standaloneEditable = options.standaloneEditable ?? bookingProgramUsesStandaloneChildrenInput(options.program || null);
     const kitchenCountNormalizer = kitchenEnabled ? normalizeBookingNonNegativeCountValue : normalizeBookingCountValue;
@@ -3094,39 +3212,58 @@ function resolveBookingChildrenCountSource(options = {}) {
         : null;
 
     if (kitchenEnabled) {
+        const value = manualOverride
+            ? (manualValue ?? kitchenValue ?? fallbackValue ?? null)
+            : (kitchenValue ?? leadValue ?? fallbackValue ?? null);
         return {
-            source: 'kitchen',
-            value: kitchenValue ?? fallbackValue ?? null,
+            source: !manualOverride
+                && kitchenValue !== null
+                && String(autoAppliedValues.banquetGuests ?? '') === String(kitchenValue)
+                ? 'lead'
+                : (kitchenValue !== null ? 'kitchen' : (!manualOverride && leadValue !== null ? 'lead' : 'kitchen')),
+            value,
             kitchenValue,
             standaloneValue,
+            leadValue,
             showStandaloneInput: false,
             editableElementId: 'banquetGuests'
         };
     }
 
     if (standaloneEditable) {
-        const value = standaloneValue ?? fallbackValue ?? kitchenValue ?? null;
+        const value = manualOverride
+            ? (manualValue ?? standaloneValue ?? fallbackValue ?? kitchenValue ?? null)
+            : (standaloneValue ?? leadValue ?? fallbackValue ?? kitchenValue ?? null);
         return {
-            source: standaloneValue !== null ? 'kidsCount' : (kitchenValue !== null ? 'legacyBanquetGuests' : 'kidsCount'),
+            source: !manualOverride
+                && standaloneValue !== null
+                && String(autoAppliedValues.kidsCountInput ?? '') === String(standaloneValue)
+                ? 'lead'
+                : (standaloneValue !== null ? 'kidsCount' : (!manualOverride && leadValue !== null ? 'lead' : (kitchenValue !== null ? 'legacyBanquetGuests' : 'kidsCount'))),
             value,
             kitchenValue,
             standaloneValue,
+            leadValue,
             showStandaloneInput: true,
             editableElementId: 'kidsCountInput'
         };
     }
 
-    const value = fallbackValue ?? kitchenValue ?? standaloneValue ?? null;
+    const value = manualOverride
+        ? (manualValue ?? fallbackValue ?? kitchenValue ?? standaloneValue ?? null)
+        : (leadValue ?? fallbackValue ?? kitchenValue ?? standaloneValue ?? null);
     return {
-        source: kitchenValue !== null ? 'legacyBanquetGuests' : (standaloneValue !== null ? 'kidsCount' : 'none'),
+        source: !manualOverride && leadValue !== null
+            ? 'lead'
+            : (kitchenValue !== null ? 'legacyBanquetGuests' : (standaloneValue !== null ? 'kidsCount' : 'none')),
         value,
         kitchenValue,
         standaloneValue,
+        leadValue,
         showStandaloneInput: false,
         editableElementId: null
     };
 }
-
 function shouldShowStandaloneKidsCountInput(program = null, options = {}) {
     return resolveBookingChildrenCountSource({ ...options, program }).showStandaloneInput;
 }
@@ -7310,6 +7447,7 @@ function initBookingPackageWorkspace() {
         el.addEventListener('input', () => {
             if (id === 'educationLessonGroup') syncEducationGroupToBookingGroup();
             if (id === 'banquetGuests' && typeof markBanquetGuestsManualOverride === 'function') markBanquetGuestsManualOverride();
+            if ((id === 'kidsCountInput' || id === 'banquetGuests') && typeof markBookingLeadGuestManualOverride === 'function') markBookingLeadGuestManualOverride(id);
             renderBookingPackageSummary();
             refreshBookingActiveBanquetRoleIntent();
             if (id === 'customerName' || id === 'customerPhone' || id === 'customerInstagram') {
@@ -7319,6 +7457,7 @@ function initBookingPackageWorkspace() {
         el.addEventListener('change', () => {
             if (id === 'educationLessonGroup') syncEducationGroupToBookingGroup();
             if (id === 'banquetGuests' && typeof markBanquetGuestsManualOverride === 'function') markBanquetGuestsManualOverride();
+            if ((id === 'kidsCountInput' || id === 'banquetGuests') && typeof markBookingLeadGuestManualOverride === 'function') markBookingLeadGuestManualOverride(id);
             renderBookingPackageSummary();
             refreshBookingActiveBanquetRoleIntent();
             if (id === 'customerName' || id === 'customerPhone' || id === 'customerInstagram') {
@@ -7766,6 +7905,7 @@ async function openBookingPanel(time, lineId, options = {}) {
         BookingDrawerState.standaloneBookingOverride = true;
     }
     BookingDrawerState.leadHandoffContext = null;
+    BookingDrawerState.leadGuestContext = null;
     nextBookingTimeChangeToken();
     clearBookingTimePreflightState({ updateSubmit: false });
     setBookingTimeContextIssue('', { updateSubmit: false });
@@ -7852,7 +7992,7 @@ async function openBookingPanel(time, lineId, options = {}) {
     resetBookingLeadDetails();
     resetBookingPackageWorkspace();
     if (!BookingDrawerState.legacyReplacementMode) {
-        applyLeadConversionContextToBookingForm();
+        await applyLeadConversionContextToBookingForm();
     }
     const appliedExplicitBanquetContext = applyExplicitBookingBanquetContext(explicitBanquetContext, {
         contextSource: options.contextSource,
@@ -7942,6 +8082,43 @@ function rememberSelectedCustomerSnapshot(customer = {}) {
     });
 }
 
+function normalizeBookingLeadContext(value = null) {
+    if (!value || typeof value !== 'object') return null;
+    const leadId = Number.parseInt(value.leadId ?? value.lead_id ?? value.id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+    const parsedChildrenCount = Number.parseInt(value.childrenCount ?? value.children_count, 10);
+    const rawEventDate = value.eventDate ?? value.event_date ?? value.preferredDate ?? value.preferred_date ?? null;
+    return {
+        leadId,
+        childrenCount: Number.isInteger(parsedChildrenCount) && parsedChildrenCount > 0
+            ? parsedChildrenCount
+            : null,
+        eventDate: rawEventDate ? String(rawEventDate).split('T')[0] : null,
+        source: value.source ? String(value.source).trim() : null
+    };
+}
+
+function bookingCustomerLeadContext(customer = {}) {
+    if (!customer || customer.leadContextAmbiguous === true || customer.lead_context_ambiguous === true) return null;
+    return normalizeBookingLeadContext(customer.leadContext ?? customer.lead_context ?? null);
+}
+
+function bookingHasExplicitLeadContext() {
+    const appLeadId = typeof AppState !== 'undefined'
+        ? Number.parseInt(AppState.leadConversionContext?.leadId, 10)
+        : null;
+    return (Number.isInteger(appLeadId) && appLeadId > 0)
+        || BookingDrawerState.leadHandoffContext?.explicit === true;
+}
+
+function applyBookingCustomerLeadContext(customer = {}) {
+    if (bookingHasExplicitLeadContext()) return BookingDrawerState.leadHandoffContext || null;
+    const leadContext = bookingCustomerLeadContext(customer);
+    BookingDrawerState.leadHandoffContext = leadContext
+        ? { ...leadContext, customerId: customer.id || null, explicit: false }
+        : null;
+    return BookingDrawerState.leadHandoffContext;
+}
 function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
     const source = customer && typeof customer === 'object' ? customer : {};
     const base = fallback && typeof fallback === 'object' ? fallback : {};
@@ -7951,6 +8128,13 @@ function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
     const children = sourceChildren.length ? sourceChildren : fallbackChildren;
     const primaryChild = children[0] || {};
     const birthday = primaryChild.birthday ?? source.childBirthday ?? source.child_birthday ?? base.childBirthday ?? base.child_birthday ?? '';
+    const leadContextAmbiguous = source.leadContextAmbiguous === true
+        || source.lead_context_ambiguous === true
+        || base.leadContextAmbiguous === true
+        || base.lead_context_ambiguous === true;
+    const leadContext = leadContextAmbiguous
+        ? null
+        : (bookingCustomerLeadContext(source) || bookingCustomerLeadContext(base));
     return {
         id,
         name: source.name ?? source.customerName ?? source.customer_name ?? base.name ?? base.customerName ?? base.customer_name ?? '',
@@ -7961,12 +8145,16 @@ function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
         childBirthday: birthday ? String(birthday).split('T')[0] : '',
         source: source.source ?? base.source ?? '',
         notes: source.notes ?? source.customerNotes ?? source.customer_notes ?? base.notes ?? base.customerNotes ?? base.customer_notes ?? '',
-        totalBookings: Number(source.totalBookings ?? source.total_bookings ?? base.totalBookings ?? base.total_bookings ?? 0) || 0
+        totalBookings: Number(source.totalBookings ?? source.total_bookings ?? base.totalBookings ?? base.total_bookings ?? 0) || 0,
+        leadContext,
+        leadContextAmbiguous
     };
 }
 
 function applySelectedCustomerToBookingForm(customer = {}, options = {}) {
     const normalized = normalizeBookingCustomerSelection(customer, options.fallback || {});
+    const leadContext = applyBookingCustomerLeadContext(normalized);
+    if (typeof setBookingLeadGuestContext === 'function') setBookingLeadGuestContext(leadContext);
     const selectedId = document.getElementById('selectedCustomerId');
     if (selectedId && normalized.id) selectedId.value = normalized.id;
 
@@ -8528,9 +8716,27 @@ function applyLeadConversionBookingModeToForm() {
     return false;
 }
 
-function applyLeadConversionContextToBookingForm() {
+async function applyLeadConversionContextToBookingForm() {
     const ctx = AppState.leadConversionContext;
     if (!ctx || !ctx.leadId || AppState.editingBookingId) return;
+
+    let leadContext = normalizeBookingLeadContext(ctx);
+    if ((!leadContext || leadContext.childrenCount === null) && typeof apiGetLeadBookingContext === 'function') {
+        const fetched = normalizeBookingLeadContext(await apiGetLeadBookingContext(ctx.leadId));
+        if (fetched) {
+            Object.assign(ctx, {
+                childrenCount: fetched.childrenCount,
+                eventDate: ctx.eventDate || fetched.eventDate,
+                source: ctx.source || fetched.source
+            });
+            leadContext = normalizeBookingLeadContext(ctx);
+        }
+    }
+    BookingDrawerState.leadHandoffContext = leadContext
+        ? { ...leadContext, customerId: ctx.customerId || null, explicit: true }
+        : { leadId: Number.parseInt(ctx.leadId, 10), customerId: ctx.customerId || null, explicit: true };
+    setBookingLeadGuestContext(BookingDrawerState.leadHandoffContext);
+
     const maysternyaMode = isMaysternyaBookingContext();
 
     const customerToggle = document.getElementById('customerDataToggle');
@@ -8609,9 +8815,17 @@ function clearLeadConversionContextAfterBooking(bookingId) {
     history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
-function selectCustomerFromSearch(customer) {
+async function selectCustomerFromSearch(customer) {
     const hadAutoRoomContext = markBookingCustomerSelectionManual({ render: false });
-    applySelectedCustomerToBookingForm(customer);
+    const selected = applySelectedCustomerToBookingForm(customer);
+    const selectedCustomerId = Number.parseInt(selected?.id, 10);
+    if (Number.isInteger(selectedCustomerId) && selectedCustomerId > 0 && typeof apiGetCustomer === 'function') {
+        const hydrated = await apiGetCustomer(selectedCustomerId);
+        const activeCustomerId = Number.parseInt(document.getElementById('selectedCustomerId')?.value, 10);
+        if (hydrated && activeCustomerId === selectedCustomerId) {
+            applySelectedCustomerToBookingForm(hydrated, { fallback: selected });
+        }
+    }
     const clearedMismatchedBanquet = clearSelectedBanquetGroupIfCustomerMismatch();
     if (hadAutoRoomContext || clearedMismatchedBanquet) {
         renderBookingCustomerSearchState(ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE);
@@ -8865,19 +9079,24 @@ async function handleBookingLeadHandoffCreated(payload = {}) {
         return;
     }
 
+    let fetchedLeadContext = null;
+    if (typeof apiGetLeadBookingContext === 'function') {
+        fetchedLeadContext = normalizeBookingLeadContext(await apiGetLeadBookingContext(leadId));
+    }
+    const explicitLeadContext = {
+        ...(fetchedLeadContext || {}),
+        leadId,
+        customerId: linkedCustomerId,
+        pipelineStage: 'deal',
+        explicit: true,
+        handoffSource: 'booking_drawer_handoff'
+    };
     AppState.leadConversionContext = {
         ...(AppState.leadConversionContext || {}),
-        leadId,
-        customerId: linkedCustomerId,
-        pipelineStage: 'deal',
-        source: 'booking_drawer_handoff'
+        ...explicitLeadContext
     };
-    BookingDrawerState.leadHandoffContext = {
-        leadId,
-        customerId: linkedCustomerId,
-        pipelineStage: 'deal',
-        source: 'booking_drawer_handoff'
-    };
+    BookingDrawerState.leadHandoffContext = explicitLeadContext;
+    setBookingLeadGuestContext(explicitLeadContext);
     setBookingLeadDetails({
         source: 'lead',
         status: 'deal',
@@ -9233,6 +9452,8 @@ async function closeBookingPanel(force = false) {
             delete btnSubmit.dataset.originalText;
         }
     }
+    clearBookingLeadGuestContext();
+    BookingDrawerState.leadHandoffContext = null;
     if (window.BookingForm?.markClean) BookingForm.markClean();
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
     BookingDrawerState.roomBookingAnimationBridge = null;
@@ -11652,9 +11873,9 @@ function selectProgram(programId) {
             kidsCountSection.classList.remove('hidden');
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
-                kidsInput.value = childrenCountSource.source === 'legacyBanquetGuests' && childrenCountSource.value
-                    ? String(childrenCountSource.value)
-                    : '';
+                if (!String(kidsInput.value ?? '').trim() && childrenCountSource.value !== null) {
+                    kidsInput.value = String(childrenCountSource.value);
+                }
                 kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
                 kidsInput.oninput = () => {
                     renderSelectedProgramSummary(program);
@@ -11663,8 +11884,6 @@ function selectProgram(programId) {
             }
         } else {
             kidsCountSection.classList.add('hidden');
-            const kidsInput = document.getElementById('kidsCountInput');
-            if (kidsInput && isBookingKitchenEnabled()) kidsInput.value = '';
         }
     }
 
@@ -12278,7 +12497,7 @@ function getBookingFormData() {
         finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice,
         childrenCountSource,
         kidsCount: childrenCountSource.value ?? null,
-        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue ?? null) : null,
+        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue ?? childrenCountSource.value ?? null) : null,
         deposit: kitchenEnabled ? getBookingDepositFormData() : null,
         menuWorkflow: kitchenEnabled ? collectBookingMenuWorkflowForSubmit({ kitchenEnabled }) : null,
         ticketQuantities: ticketData.ticketQuantities,
@@ -12836,7 +13055,7 @@ function buildBookingObject(formData, program) {
     });
     const kidsCount = childrenCountSource.value ?? 0;
     const kitchenChildrenCount = formData.kitchenEnabled
-        ? (childrenCountSource.kitchenValue ?? null)
+        ? (childrenCountSource.kitchenValue ?? childrenCountSource.value ?? null)
         : null;
     const servicePrice = Number(formData.clientPinataServicePrice || 0);
     const multiActivityPrograms = Array.isArray(formData.activityPrograms) ? formData.activityPrograms.filter(Boolean) : [];

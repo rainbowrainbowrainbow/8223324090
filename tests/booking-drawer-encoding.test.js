@@ -1226,3 +1226,307 @@ test('booking drawer keeps readable Ukrainian labels for manager-facing controls
     assert.match(bookingHtml, /Додати позицію/);
     assert.match(bookingHtml, /Пошук програми/);
 });
+
+
+test('Masik lead keeps three customer children separate from booking guest count', () => {
+    const bookingJs = read('js', 'booking.js');
+    const masikLead = {
+        id: 70,
+        name: 'Masik',
+        children_count: 10,
+        celebrants: [
+            { name: 'Bohdan' },
+            { name: 'Sofia' },
+            { name: 'Maksym' }
+        ],
+        customer: {
+            id: 209,
+            children: [
+                { name: 'Bohdan' },
+                { name: 'Sofia' },
+                { name: 'Maksym' }
+            ]
+        }
+    };
+
+    const renderStart = bookingJs.indexOf('function bookingCustomerCleanText');
+    const renderEnd = bookingJs.indexOf('function renderBookingCustomerSearchState', renderStart);
+    assert.ok(renderStart >= 0 && renderEnd > renderStart, 'selected customer render helper slice exists');
+    const card = { innerHTML: '', classList: { add() {}, remove() {} } };
+    const customerSection = { classList: { add() {}, remove() {} } };
+    const renderContext = {
+        document: {
+            getElementById: id => {
+                if (id === 'bookingSelectedCustomerCard') return card;
+                if (id === 'customerDataSection') return customerSection;
+                return null;
+            }
+        },
+        escapeHtml: value => String(value ?? '')
+    };
+    vm.createContext(renderContext);
+    vm.runInContext(`
+        ${bookingJs.slice(renderStart, renderEnd)}
+        this.__renderSelectedCustomerCard = renderSelectedCustomerCard;
+    `, renderContext, { filename: 'js/booking.js' });
+    renderContext.__renderSelectedCustomerCard(masikLead.customer);
+    assert.match(card.innerHTML, /Bohdan/);
+    assert.match(card.innerHTML, /Sofia/);
+    assert.match(card.innerHTML, /Maksym/);
+
+    const resolverStart = bookingJs.indexOf('function normalizeBookingCountValue');
+    const resolverEnd = bookingJs.indexOf('function shouldShowStandaloneKidsCountInput', resolverStart);
+    assert.ok(resolverStart >= 0 && resolverEnd > resolverStart, 'children count resolver slice exists');
+    const resolverContext = {
+        document: { getElementById: () => null },
+        isBookingKitchenEnabled: () => false,
+        bookingProgramUsesStandaloneChildrenInput: () => true
+    };
+    vm.createContext(resolverContext);
+    vm.runInContext(`
+        ${bookingJs.slice(resolverStart, resolverEnd)}
+        this.__resolveBookingChildrenCountSource = resolveBookingChildrenCountSource;
+    `, resolverContext, { filename: 'js/booking.js' });
+
+    const explicitLeadCount = resolverContext.__resolveBookingChildrenCountSource({
+        leadContext: masikLead,
+        kitchenEnabled: false,
+        standaloneEditable: true,
+        standaloneValue: null,
+        fallbackValue: null,
+        kitchenValue: null
+    });
+    assert.equal(explicitLeadCount.value, 10, 'lead children_count must populate the new booking guest count');
+    assert.equal(explicitLeadCount.source, 'lead', 'the resolved source must remain explicit and auditable');
+    assert.notEqual(explicitLeadCount.value, masikLead.celebrants.length, 'three celebrants must not become three guests');
+
+    const priority = resolverContext.__resolveBookingChildrenCountSource({
+        leadContext: masikLead,
+        kitchenEnabled: false,
+        standaloneEditable: true,
+        standaloneValue: 6,
+        fallbackValue: 8,
+        kitchenValue: null
+    });
+    assert.equal(priority.value, 6, 'manager input must win after the lead value has been manually changed');
+    assert.equal(priority.source, 'kidsCount');
+
+    const celebrantsOnly = resolverContext.__resolveBookingChildrenCountSource({
+        leadContext: { ...masikLead, children_count: null },
+        kitchenEnabled: false,
+        standaloneEditable: true,
+        standaloneValue: null,
+        fallbackValue: null,
+        kitchenValue: null
+    });
+    assert.equal(celebrantsOnly.value, null, 'celebrant array length is not a valid guest-count fallback');
+    assert.notEqual(celebrantsOnly.value, masikLead.celebrants.length);
+});
+
+test('lead guest context autofills empty booking counts, preserves manual edits, and clears between drawers', () => {
+    const bookingJs = read('js', 'booking.js');
+    const resolverStart = bookingJs.indexOf('function normalizeBookingCountValue');
+    const resolverEnd = bookingJs.indexOf('function shouldShowStandaloneKidsCountInput', resolverStart);
+    assert.ok(resolverStart >= 0 && resolverEnd > resolverStart, 'lead guest context slice exists');
+
+    const elements = {
+        kidsCountInput: { value: '' },
+        banquetGuests: { value: '' }
+    };
+    const context = {
+        document: { getElementById: (id) => elements[id] || null },
+        BookingDrawerState: { leadGuestContext: null },
+        AppState: { editingBookingId: null },
+        isBookingKitchenEnabled: () => false,
+        bookingProgramUsesStandaloneChildrenInput: () => true
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(resolverStart, resolverEnd)}
+        this.__leadGuestHooks = {
+            setBookingLeadGuestContext,
+            clearBookingLeadGuestContext,
+            markBookingLeadGuestManualOverride,
+            resolveBookingChildrenCountSource
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    const lead = {
+        leadId: 70,
+        childrenCount: 10,
+        customerId: 209,
+        source: 'Instagram'
+    };
+    context.__leadGuestHooks.setBookingLeadGuestContext(lead);
+    assert.equal(elements.kidsCountInput.value, '10');
+    assert.equal(elements.banquetGuests.value, '10');
+    assert.equal(context.BookingDrawerState.leadGuestContext.childrenCount, 10);
+    assert.equal(context.__leadGuestHooks.resolveBookingChildrenCountSource({
+        kitchenEnabled: false,
+        standaloneEditable: true
+    }).source, 'lead');
+    assert.equal(context.__leadGuestHooks.resolveBookingChildrenCountSource({
+        kitchenEnabled: true,
+        standaloneEditable: false
+    }).value, 10, 'lead count is available to the kitchen scenario');
+
+    elements.kidsCountInput.value = '6';
+    context.__leadGuestHooks.markBookingLeadGuestManualOverride('kidsCountInput');
+    assert.equal(elements.banquetGuests.value, '6', 'manual count replaces only the prior lead autofill in the alternate field');
+    context.__leadGuestHooks.setBookingLeadGuestContext(lead);
+    const manual = context.__leadGuestHooks.resolveBookingChildrenCountSource({
+        kitchenEnabled: false,
+        standaloneEditable: true
+    });
+    assert.equal(manual.value, 6);
+    assert.equal(manual.source, 'kidsCount');
+    assert.equal(context.BookingDrawerState.leadGuestContext.manualOverride, true);
+
+    context.__leadGuestHooks.clearBookingLeadGuestContext();
+    assert.equal(context.BookingDrawerState.leadGuestContext, null, 'closing the drawer clears lead guest state');
+
+    elements.kidsCountInput.value = '';
+    elements.banquetGuests.value = '';
+    context.AppState.editingBookingId = 501;
+    context.__leadGuestHooks.setBookingLeadGuestContext(lead);
+    assert.equal(context.BookingDrawerState.leadGuestContext, null, 'an existing booking never receives lead guest autofill');
+    assert.equal(elements.kidsCountInput.value, '');
+    assert.equal(elements.banquetGuests.value, '');
+
+    assert.match(bookingJs, /resolved\.source === 'lead'[\s\S]{0,100}\\u0434\\u0456\\u0442\\u0435\\u0439/, 'header exposes the lead source marker');
+    assert.match(bookingJs, /kitchenChildrenCount: kitchenEnabled \? \(childrenCountSource\.kitchenValue \?\? childrenCountSource\.value \?\? null\)/);
+    assert.match(bookingJs, /BookingDrawerState\.leadGuestContext = null;/, 'new drawer reset clears stale lead guest context');
+    assert.match(bookingJs, /clearBookingLeadGuestContext\(\);[\s\S]{0,100}BookingDrawerState\.leadHandoffContext = null;/, 'drawer close clears both lead contexts');
+});
+
+test('customer booking lead context is compact, durable-link based, and ambiguity-safe', () => {
+    const customersRoute = read('routes', 'customers.js');
+    const helperStart = customersRoute.indexOf('function mapCompactBookingLeadContext');
+    const helperEnd = customersRoute.indexOf('// Get customer by ID', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'customer lead context helper slice exists');
+
+    const context = {};
+    vm.createContext(context);
+    vm.runInContext(`
+        ${customersRoute.slice(helperStart, helperEnd)}
+        this.__resolveCustomerBookingLeadContext = resolveCustomerBookingLeadContext;
+    `, context, { filename: 'routes/customers.js' });
+
+    const masik = context.__resolveCustomerBookingLeadContext([{
+        id: 70,
+        children_count: 10,
+        event_date: '2026-08-12',
+        source: 'instagram'
+    }]);
+    assert.deepEqual(plain(masik), {
+        leadContext: {
+            leadId: 70,
+            childrenCount: 10,
+            eventDate: '2026-08-12',
+            source: 'instagram'
+        },
+        leadContextAmbiguous: false
+    });
+
+    const duplicateDurableRows = context.__resolveCustomerBookingLeadContext([
+        { id: 70, children_count: 10 },
+        { id: 70, children_count: 10 }
+    ]);
+    assert.equal(duplicateDurableRows.leadContext.leadId, 70, 'duplicate link representations keep one lead candidate');
+    assert.equal(duplicateDurableRows.leadContextAmbiguous, false);
+
+    const ambiguous = context.__resolveCustomerBookingLeadContext([
+        { id: 70, children_count: 10 },
+        { id: 71, children_count: 8 }
+    ]);
+    assert.equal(ambiguous.leadContext, null, 'multiple durable lead IDs must not auto-fill booking context');
+    assert.equal(ambiguous.leadContextAmbiguous, true);
+
+    const routeBlock = customersRoute.slice(customersRoute.indexOf('WITH durable_lead_ids'), customersRoute.indexOf('try {', customersRoute.indexOf('WITH durable_lead_ids') + 1));
+    assert.match(routeBlock, /lead_customer_links/);
+    assert.match(routeBlock, /c\.lead_id/);
+    assert.match(routeBlock, /LIMIT 2/);
+    assert.doesNotMatch(routeBlock, /notes|celebrants|instagram|phone|client_name/i);
+});
+
+test('booking form keeps explicit lead context ahead of customer-derived context', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function normalizeBookingLeadContext');
+    const helperEnd = bookingJs.indexOf('function normalizeBookingCustomerSelection', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'booking lead context helper slice exists');
+
+    const context = {
+        AppState: { leadConversionContext: null },
+        BookingDrawerState: { leadHandoffContext: null }
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(helperStart, helperEnd)}
+        this.__bookingLeadContextHooks = {
+            normalizeBookingLeadContext,
+            applyBookingCustomerLeadContext
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    context.__bookingLeadContextHooks.applyBookingCustomerLeadContext({
+        id: 209,
+        leadContext: {
+            leadId: 70,
+            childrenCount: 10,
+            eventDate: '2026-08-12',
+            source: 'instagram'
+        }
+    });
+    assert.deepEqual(plain(context.BookingDrawerState.leadHandoffContext), {
+        leadId: 70,
+        childrenCount: 10,
+        eventDate: '2026-08-12',
+        source: 'instagram',
+        customerId: 209,
+        explicit: false
+    });
+
+    context.__bookingLeadContextHooks.applyBookingCustomerLeadContext({
+        id: 209,
+        leadContext: null,
+        leadContextAmbiguous: true
+    });
+    assert.equal(context.BookingDrawerState.leadHandoffContext, null, 'ambiguous customer link clears automatic context');
+
+    context.AppState.leadConversionContext = { leadId: 99 };
+    context.BookingDrawerState.leadHandoffContext = {
+        leadId: 99,
+        childrenCount: 12,
+        explicit: true
+    };
+    context.__bookingLeadContextHooks.applyBookingCustomerLeadContext({
+        id: 209,
+        leadContext: { leadId: 70, childrenCount: 10 }
+    });
+    assert.equal(context.BookingDrawerState.leadHandoffContext.leadId, 99);
+    assert.equal(context.BookingDrawerState.leadHandoffContext.childrenCount, 12);
+});
+
+test('booking customer selection hydrates compact lead context through canonical APIs', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const leadsRoute = read('routes', 'leads.js');
+    const selectionStart = bookingJs.indexOf('async function selectCustomerFromSearch');
+    const selectionEnd = bookingJs.indexOf('function renderCustomerSearchResults', selectionStart);
+    const handoffStart = bookingJs.indexOf('async function handleBookingLeadHandoffCreated');
+    const handoffEnd = bookingJs.indexOf('function openBookingCustomerCreateWorkflow', handoffStart);
+    const endpointStart = leadsRoute.indexOf("router.get('/:id/booking-context'");
+    const endpointEnd = leadsRoute.indexOf('// GET /api/leads/:id/workspace', endpointStart);
+    assert.ok(selectionStart >= 0 && selectionEnd > selectionStart);
+    assert.ok(handoffStart >= 0 && handoffEnd > handoffStart);
+    assert.ok(endpointStart >= 0 && endpointEnd > endpointStart);
+    assert.match(bookingJs.slice(selectionStart, selectionEnd), /await apiGetCustomer\(selectedCustomerId\)/);
+    assert.match(bookingJs.slice(handoffStart, handoffEnd), /await apiGetLeadBookingContext\(leadId\)/);
+    assert.match(apiJs, /async function apiGetLeadBookingContext\(id\)/);
+    assert.match(apiJs, /\/leads\/\$\{encodeURIComponent\(id\)\}\/booking-context/);
+    const endpointBlock = leadsRoute.slice(endpointStart, endpointEnd);
+    assert.match(endpointBlock, /children_count/);
+    assert.match(endpointBlock, /event_date/);
+    assert.match(endpointBlock, /source/);
+    assert.doesNotMatch(endpointBlock, /notes|celebrants|client_name|phone|instagram/i);
+});

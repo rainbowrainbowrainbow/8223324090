@@ -5,7 +5,7 @@ const {
     buildCanonicalPayrollInstallmentPreview
 } = require('../services/payroll');
 
-const FORBIDDEN_FLAGS = new Set(['--apply', '--fix', '--write', '--backfill', '--execute', '--update']);
+const FORBIDDEN_FLAGS = new Set(['--apply', '--fix', '--write', '--backfill', '--execute', '--update', '--delete']);
 const READ_ONLY_CONNECTION_ENV_KEYS = ['PAYROLL_AUDIT_DATABASE_URL', 'PRODUCTION_READONLY_DATABASE_URL'];
 const BLOCKING_CATEGORIES = new Set([
     'unknown_delta',
@@ -179,8 +179,15 @@ function resolveRequestedMonths(options, selectedMonths = []) {
         return { from, to, months: null };
     }
     if (options.activationMonth) {
-        const months = selectedMonths.length ? selectedMonths : [previousPayrollMonth(options.activationMonth)];
-        return { from: months[0], to: months[months.length - 1], months };
+        if (!selectedMonths.length) {
+            const fallbackMonth = previousPayrollMonth(options.activationMonth);
+            return { from: fallbackMonth, to: fallbackMonth, months: [] };
+        }
+        return {
+            from: selectedMonths[0],
+            to: selectedMonths[selectedMonths.length - 1],
+            months: selectedMonths
+        };
     }
     const err = new Error('Provide --activation-month YYYY-MM, --month YYYY-MM, or --from YYYY-MM --to YYYY-MM');
     err.code = 'PAYROLL_SHADOW_MONTH_REQUIRED';
@@ -412,7 +419,7 @@ async function buildPayrollShadowComparisonRow(row = {}, options = {}, evidence 
     };
 }
 
-function summarizeRows(rows = [], schema = {}) {
+function summarizeRows(rows = [], schema = {}, coverage = {}) {
     const categoryCounts = {};
     const monthCounts = {};
     for (const row of rows) {
@@ -421,17 +428,40 @@ function summarizeRows(rows = [], schema = {}) {
             categoryCounts[category] = (categoryCounts[category] || 0) + 1;
         }
     }
-    return {
+    const requestedClosedMonths = Number(coverage.requestedClosedMonths || 0);
+    const selectedMonths = Array.isArray(coverage.selectedMonths) ? coverage.selectedMonths : [];
+    const comparedMonths = new Set(rows.map(row => row.month).filter(Boolean));
+    const missingClosedMonths = Math.max(requestedClosedMonths - selectedMonths.length, 0);
+    const unrepresentedClosedMonths = selectedMonths.filter(month => !comparedMonths.has(month)).length;
+    const missingComparableRows = requestedClosedMonths > 0 && rows.length === 0;
+    const missingSourceData = requestedClosedMonths > 0
+        && (missingClosedMonths > 0 || unrepresentedClosedMonths > 0 || missingComparableRows);
+    if (missingSourceData) {
+        categoryCounts.missing_source_data = (categoryCounts.missing_source_data || 0)
+            + Math.max(missingClosedMonths + unrepresentedClosedMonths, 1);
+    }
+    const summary = {
         rowCount: rows.length,
         months: monthCounts,
         categoryCounts,
-        activationBlocked: rows.some(row => row.activationBlocked === true),
+        activationBlocked: missingSourceData || rows.some(row => row.activationBlocked === true),
         schema: {
             payrollReports: schema.hasReports === true,
             payrollInstallments: schema.hasInstallments === true,
             payrollPaymentMovements: schema.hasMovements === true
         }
     };
+    if (requestedClosedMonths > 0) {
+        summary.sourceCoverage = {
+            requestedClosedMonths,
+            selectedClosedMonths: selectedMonths.length,
+            comparedClosedMonths: comparedMonths.size,
+            missingClosedMonths,
+            unrepresentedClosedMonths,
+            comparableRowsPresent: rows.length > 0
+        };
+    }
+    return summary;
 }
 
 function formatMarkdown(result = {}, aggregateOnly = false) {
@@ -490,9 +520,12 @@ async function collectPayrollShadowComparison(client, options = {}) {
     return {
         from: range.from,
         to: range.to,
-        selectedMonths: range.months || null,
+        selectedMonths: options.activationMonth ? selectedMonths : (range.months || null),
         rows,
-        summary: summarizeRows(rows, schema)
+        summary: summarizeRows(rows, schema, options.activationMonth ? {
+            requestedClosedMonths: options.closedMonths || 3,
+            selectedMonths
+        } : {})
     };
 }
 
@@ -530,10 +563,14 @@ async function run(options = parseArgs()) {
 }
 
 if (require.main === module) {
-    run().catch(err => {
-        console.error(err.code ? `${err.code}: ${err.message}` : err.message);
-        process.exitCode = 1;
-    });
+    run()
+        .then(result => {
+            if (result?.summary?.activationBlocked) process.exitCode = 2;
+        })
+        .catch(err => {
+            console.error(err.code ? `${err.code}: ${err.message}` : err.message);
+            process.exitCode = 1;
+        });
 }
 
 module.exports = {

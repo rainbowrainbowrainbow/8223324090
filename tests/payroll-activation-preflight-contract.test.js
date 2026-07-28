@@ -226,6 +226,7 @@ test('attendance historical impact audit also fails closed without a dedicated r
 test('payroll activation preflight is read-only and classifies history as legacy_accounted', () => {
     assert.throws(() => parseArgs(['--fix']), /read-only only/);
     assert.throws(() => parseArgs(['--backfill']), /read-only only/);
+    assert.throws(() => parseArgs(['--delete']), /read-only only/);
     assert.deepEqual(parseArgs(['--month', '2026-07']), {
         month: '2026-07',
         from: '2026-07',
@@ -236,6 +237,9 @@ test('payroll activation preflight is read-only and classifies history as legacy
     assert.match(preflightScript, /legacy_accounted/);
     assert.match(preflightScript, /paymentFactVerified: false/);
     assert.match(preflightScript, /safeToAutoBackfill: false/);
+    assert.match(preflightScript, /columnExists\(client, 'payroll_reports', 'settlement_model'\)/);
+    assert.match(preflightScript, /"'legacy_v1'::text"/);
+    assert.doesNotMatch(preflightScript, /Promise\.all\(\[\s*loadLegacyPayrollReportAudit/);
     assert.match(packageJson, /"audit:payroll-activation-preflight": "node scripts\/audit-payroll-activation-preflight\.js"/);
     const markdown = renderMarkdown({
         generatedAt: '2026-07-27T00:00:00.000Z',
@@ -267,7 +271,19 @@ test('payroll activation remains blocked until every legacy advance is classifie
     assert.deepEqual(
         payrollActivationBlockers({
             legacyAdvance: {
+                salaryAdjustmentLegacyAdvance: 4,
+                salaryAdjustmentLegacyZrsClassified: 4,
+                salaryAdjustmentLegacyAdvanceUnclassified: 0,
+                payrollEntryLegacyAdvance: 0
+            }
+        }),
+        []
+    );
+    assert.deepEqual(
+        payrollActivationBlockers({
+            legacyAdvance: {
                 salaryAdjustmentLegacyAdvance: 0,
+                salaryAdjustmentLegacyAdvanceUnclassified: 0,
                 payrollEntryLegacyAdvance: 0,
                 salaryAdjustmentZrs: 5,
                 payrollEntryZrs: 4

@@ -111,13 +111,13 @@ test('shadow comparison resolves only dedicated read-only database URLs', () => 
 
 test('activation mode selects the latest closed months before activation month', async () => {
     const client = fakeShadowClient({
-        legacyRows: [{
-            report_id: 1,
-            period_month: '2026-07',
+        legacyRows: ['2026-05', '2026-06', '2026-07'].map((period_month, index) => ({
+            report_id: index + 1,
+            period_month,
             staff_id: 10,
             old_monthly_total: 1000,
             breakdown_json: {}
-        }]
+        }))
     });
     const result = await collectPayrollShadowComparison(client, {
         activationMonth: '2026-08',
@@ -137,6 +137,36 @@ test('activation mode selects the latest closed months before activation month',
     assert.equal(result.rows[0].newFinal, 600);
     assert.deepEqual(result.rows[0].categories, ['matched']);
     assert.equal(result.summary.activationBlocked, false);
+    assert.deepEqual(result.summary.sourceCoverage, {
+        requestedClosedMonths: 3,
+        selectedClosedMonths: 3,
+        comparedClosedMonths: 3,
+        missingClosedMonths: 0,
+        unrepresentedClosedMonths: 0,
+        comparableRowsPresent: true
+    });
+});
+
+test('activation shadow comparison blocks when closed-month source coverage is missing', async () => {
+    const client = fakeShadowClient({ closedMonths: [], legacyRows: [] });
+    const result = await collectPayrollShadowComparison(client, {
+        activationMonth: '2026-08',
+        closedMonths: 3,
+        previewBuilder: async () => ({ advanceAmount: 0, finalAmount: 0, combinedAmount: 0, blockers: [] })
+    });
+
+    assert.deepEqual(result.selectedMonths, []);
+    assert.equal(result.rows.length, 0);
+    assert.equal(result.summary.activationBlocked, true);
+    assert.equal(result.summary.categoryCounts.missing_source_data, 3);
+    assert.deepEqual(result.summary.sourceCoverage, {
+        requestedClosedMonths: 3,
+        selectedClosedMonths: 0,
+        comparedClosedMonths: 0,
+        missingClosedMonths: 3,
+        unrepresentedClosedMonths: 0,
+        comparableRowsPresent: false
+    });
 });
 
 test('shadow comparison does not require payroll_installments before migrations 302-306', async () => {
@@ -276,6 +306,6 @@ test('argument parser supports activation CLI and aggregate-only output mode', (
     assert.deepEqual(resolveRequestedMonths({ activationMonth: '2026-08' }, []), {
         from: '2026-07',
         to: '2026-07',
-        months: ['2026-07']
+        months: []
     });
 });

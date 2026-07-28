@@ -11,7 +11,7 @@
 
 const { Pool } = require('pg');
 
-const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update', '--backfill']);
+const BLOCKED_FLAGS = new Set(['--apply', '--fix', '--write', '--execute', '--update', '--backfill', '--delete']);
 const READ_ONLY_CONNECTION_ENV_KEYS = ['PAYROLL_AUDIT_DATABASE_URL', 'PRODUCTION_READONLY_DATABASE_URL'];
 
 function usage() {
@@ -118,12 +118,16 @@ function monthWhere(alias, options, values) {
 }
 
 async function loadLegacyPayrollReportAudit(client, options) {
+    const hasSettlementModel = await columnExists(client, 'payroll_reports', 'settlement_model');
+    const settlementModelExpression = hasSettlementModel
+        ? "COALESCE(pr.settlement_model, 'legacy_v1')"
+        : "'legacy_v1'::text";
     const values = [];
     const where = monthWhere('pr', options, values);
     const result = await client.query(
         `WITH paid_reports AS (
             SELECT pr.id, pr.period_month, pr.staff_id, pr.net_amount, pr.finance_transaction_id,
-                   COALESCE(pr.settlement_model, 'legacy_v1') AS settlement_model
+                   ${settlementModelExpression} AS settlement_model
             FROM payroll_reports pr
             ${where}
             ${where ? 'AND' : 'WHERE'} pr.status = 'paid'
@@ -201,7 +205,8 @@ async function loadFinanceOrphanAudit(client, options) {
             COUNT(*) FILTER (WHERE sf.payment_method = 'salary_reversal')::int AS legacy_reversals,
             COUNT(*) FILTER (WHERE sf.payment_method = 'salary')::int AS legacy_salary_finance,
             COUNT(*) FILTER (WHERE COALESCE(sf.source, '') <> 'payroll')::int AS finance_without_payroll_source,
-             COUNT(*) FILTER (WHERE ${orphanPredicate})::int AS orphan_finance
+            COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') = 'payroll')::int AS orphan_finance,
+            COUNT(*) FILTER (WHERE ${orphanPredicate} AND COALESCE(sf.source, '') <> 'payroll')::int AS legacy_unlinked_finance
           FROM salary_finance sf
           LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = sf.id OR pr.reversal_transaction_id = sf.id
           ${movementJoin}`,
@@ -212,7 +217,8 @@ async function loadFinanceOrphanAudit(client, options) {
         legacySalaryFinance: Number(row.legacy_salary_finance || 0),
         legacyReversals: Number(row.legacy_reversals || 0),
         financeWithoutPayrollSource: Number(row.finance_without_payroll_source || 0),
-        orphanFinance: Number(row.orphan_finance || 0)
+        orphanFinance: Number(row.orphan_finance || 0),
+        legacyUnlinkedFinance: Number(row.legacy_unlinked_finance || 0)
     };
 }
 
@@ -235,6 +241,8 @@ async function loadLegacyAdvanceAudit(client, options) {
     const result = await client.query(
         `SELECT
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' ${adjustmentWhere}) AS salary_adjustment_legacy_advance,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(reason, '') ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_classified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(reason, '') !~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_advance_unclassified,
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'zrs' ${adjustmentWhere}) AS salary_adjustment_zrs,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'advance' ${entryWhere}) AS payroll_entry_legacy_advance,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'zrs' ${entryWhere}) AS payroll_entry_zrs`,
@@ -243,6 +251,8 @@ async function loadLegacyAdvanceAudit(client, options) {
     const row = result.rows[0] || {};
     return {
         salaryAdjustmentLegacyAdvance: Number(row.salary_adjustment_legacy_advance || 0),
+        salaryAdjustmentLegacyZrsClassified: Number(row.salary_adjustment_legacy_zrs_classified || 0),
+        salaryAdjustmentLegacyAdvanceUnclassified: Number(row.salary_adjustment_legacy_advance_unclassified || 0),
         salaryAdjustmentZrs: Number(row.salary_adjustment_zrs || 0),
         payrollEntryLegacyAdvance: Number(row.payroll_entry_legacy_advance || 0),
         payrollEntryZrs: Number(row.payroll_entry_zrs || 0)
@@ -393,7 +403,8 @@ async function loadInstallmentAudit(client, options) {
 
 async function loadSettlementModelAudit(client, options) {
     const hasInstallments = await tableExists(client, 'payroll_installments');
-    if (!hasInstallments) {
+    const hasSettlementModel = await columnExists(client, 'payroll_reports', 'settlement_model');
+    if (!hasInstallments || !hasSettlementModel) {
         return { schemaPresent: false, mixedSettlementMonths: 0, mixedOwnershipReports: 0 };
     }
     const values = [];
@@ -438,9 +449,14 @@ function payrollActivationBlockers(report = {}) {
         if (condition) blockers.push({ code, count: Number(count || 0) });
     };
     add(
-        report.legacyAdvance?.salaryAdjustmentLegacyAdvance > 0,
+        Number(
+            report.legacyAdvance?.salaryAdjustmentLegacyAdvanceUnclassified
+            ?? report.legacyAdvance?.salaryAdjustmentLegacyAdvance
+            ?? 0
+        ) > 0,
         'LEGACY_ADVANCE_ADJUSTMENTS_UNCLASSIFIED',
-        report.legacyAdvance?.salaryAdjustmentLegacyAdvance
+        report.legacyAdvance?.salaryAdjustmentLegacyAdvanceUnclassified
+            ?? report.legacyAdvance?.salaryAdjustmentLegacyAdvance
     );
     add(
         report.legacyAdvance?.payrollEntryLegacyAdvance > 0,
@@ -477,13 +493,14 @@ async function runPreflight(options) {
         if (readonly.rows[0]?.transaction_read_only !== 'on') {
             throw new Error('PostgreSQL transaction is not read-only; aborting');
         }
-        const [legacyReports, financeOrphans, legacyAdvance, installments, settlementModels] = await Promise.all([
-            loadLegacyPayrollReportAudit(client, options),
-            loadFinanceOrphanAudit(client, options),
-            loadLegacyAdvanceAudit(client, options),
-            loadInstallmentAudit(client, options),
-            loadSettlementModelAudit(client, options)
-        ]);
+        // A pg Client supports one in-flight query at a time. Keep these reads
+        // sequential so the audit remains compatible with pg 9 and preserves
+        // one explicit read-only transaction snapshot.
+        const legacyReports = await loadLegacyPayrollReportAudit(client, options);
+        const financeOrphans = await loadFinanceOrphanAudit(client, options);
+        const legacyAdvance = await loadLegacyAdvanceAudit(client, options);
+        const installments = await loadInstallmentAudit(client, options);
+        const settlementModels = await loadSettlementModelAudit(client, options);
         await client.query('COMMIT');
         const report = {
             generatedAt: new Date().toISOString(),
@@ -532,8 +549,9 @@ function renderMarkdown(report) {
         `- Paid without finance link: ${report.legacyReports.paidWithoutFinance}`,
         `- Legacy amount mismatches: ${report.legacyReports.amountMismatch || 0}`,
         `- Orphan payroll finance transactions: ${report.financeOrphans.orphanFinance}`,
+        `- Historical unlinked non-payroll finance rows: ${report.financeOrphans.legacyUnlinkedFinance || 0}`,
         `- Finance rows without payroll source: ${report.financeOrphans.financeWithoutPayrollSource || 0}`,
-        `- Legacy advance/ZRS rows: ${report.legacyAdvance.salaryAdjustmentLegacyAdvance}/${report.legacyAdvance.salaryAdjustmentZrs}`,
+        `- Legacy advance rows: raw=${report.legacyAdvance.salaryAdjustmentLegacyAdvance}, classified_zrs=${report.legacyAdvance.salaryAdjustmentLegacyZrsClassified || 0}, unclassified=${report.legacyAdvance.salaryAdjustmentLegacyAdvanceUnclassified || 0}, canonical_zrs=${report.legacyAdvance.salaryAdjustmentZrs}`,
         `- Outstanding installments: ${report.installments.outstandingInstallments} (${report.installments.outstandingAmount})`,
         `- Overpaid installments: ${report.installments.overpaymentInstallments || 0} (${report.installments.overpaymentAmount || 0})`,
         `- Installment finance link mismatches: duplicates=${report.installments.duplicateFinanceLinks || 0}, missing=${report.installments.missingFinanceLinks || 0}, amount=${report.installments.amountMismatch || 0}, reversal=${report.installments.reversalMismatch || 0}, source=${report.installments.financeWithoutPayrollSource || 0}`,

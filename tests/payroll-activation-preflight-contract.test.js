@@ -28,6 +28,7 @@ const {
     LEGACY_MANUAL_SALARY_FINANCE_STATUS: PREFLIGHT_LEGACY_MANUAL_SALARY_FINANCE_STATUS,
     LEGACY_ZRS_VOIDED_STATUS: PREFLIGHT_LEGACY_ZRS_VOIDED_STATUS,
     READ_ONLY_CONNECTION_ENV_KEYS,
+    loadLegacyAdvanceAudit,
     parseArgs,
     payrollActivationBlockers,
     poolConfig,
@@ -416,6 +417,36 @@ test('legacy ZRS voided adjustments are labelled as ZRS, not real advance instal
     });
     assert.equal(classifyLegacyZrsAdjustment({ type: 'advance', status: 'voided', reason: 'old advance' }), null);
     assert.equal(classifyLegacyZrsAdjustment({ type: 'advance', status: 'applied', reason: 'ЗРС' }), null);
+});
+
+test('preflight classifies legacy ZRS when salary_adjustments has no void_reason column', async () => {
+    const queries = [];
+    const client = {
+        async query(sql, values = []) {
+            queries.push({ sql, values });
+            if (/information_schema\.columns/.test(sql)) return { rows: [{ present: false }] };
+            return {
+                rows: [{
+                    salary_adjustment_legacy_advance: 4,
+                    salary_adjustment_legacy_zrs_classified: 4,
+                    salary_adjustment_legacy_advance_unclassified: 0,
+                    salary_adjustment_legacy_zrs_voided: 4,
+                    salary_adjustment_zrs: 0,
+                    payroll_entry_legacy_advance: 0,
+                    payroll_entry_zrs: 0
+                }]
+            };
+        }
+    };
+
+    const result = await loadLegacyAdvanceAudit(client, { from: '', to: '' });
+
+    assert.equal(result.salaryAdjustmentLegacyZrsClassified, 4);
+    assert.equal(result.salaryAdjustmentLegacyAdvanceUnclassified, 0);
+    assert.equal(result.salaryAdjustmentLegacyZrsVoided, 4);
+    assert.equal(queries.length, 2);
+    assert.match(queries[1].sql, /COALESCE\(reason, ''\) ~\*/);
+    assert.doesNotMatch(queries[1].sql, /COALESCE\(void_reason/);
 });
 
 test('HR Finance and exports expose the same historical settlement labels', () => {

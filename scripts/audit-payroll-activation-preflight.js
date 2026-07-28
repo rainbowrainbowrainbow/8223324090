@@ -228,6 +228,10 @@ async function loadFinanceOrphanAudit(client, options) {
 }
 
 async function loadLegacyAdvanceAudit(client, options) {
+    const hasVoidReason = await columnExists(client, 'salary_adjustments', 'void_reason');
+    const zrsReasonExpression = hasVoidReason
+        ? "(COALESCE(reason, '') || ' ' || COALESCE(void_reason, ''))"
+        : "COALESCE(reason, '')";
     const values = [];
     const adjustmentClauses = [];
     const entryClauses = [];
@@ -246,9 +250,9 @@ async function loadLegacyAdvanceAudit(client, options) {
     const result = await client.query(
         `SELECT
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' ${adjustmentWhere}) AS salary_adjustment_legacy_advance,
-            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_classified,
-            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) !~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_advance_unclassified,
-            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(status, 'applied') = 'voided' AND (COALESCE(reason, '') || ' ' || COALESCE(void_reason, '')) ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_voided,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND ${zrsReasonExpression} ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_classified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND ${zrsReasonExpression} !~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_advance_unclassified,
+            (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'advance' AND COALESCE(status, 'applied') = 'voided' AND ${zrsReasonExpression} ~* '(зрс|zrs)' ${adjustmentWhere}) AS salary_adjustment_legacy_zrs_voided,
             (SELECT COUNT(*)::int FROM salary_adjustments WHERE type = 'zrs' ${adjustmentWhere}) AS salary_adjustment_zrs,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'advance' ${entryWhere}) AS payroll_entry_legacy_advance,
             (SELECT COUNT(*)::int FROM payroll_entries WHERE line_type = 'zrs' ${entryWhere}) AS payroll_entry_zrs`,
@@ -599,6 +603,7 @@ module.exports = {
     LEGACY_MANUAL_SALARY_FINANCE_STATUS,
     LEGACY_ZRS_VOIDED_STATUS,
     READ_ONLY_CONNECTION_ENV_KEYS,
+    loadLegacyAdvanceAudit,
     parseArgs,
     payrollActivationBlockers,
     poolConfig,

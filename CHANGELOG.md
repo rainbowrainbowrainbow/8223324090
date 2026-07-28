@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.20 - Лід → бронювання: діти клієнта
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Лід → бронювання: діти клієнта** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.19 - Лід → бронювання: кількість дітей
 
 ### Release / Versioning / (28.07.2026) [codex]

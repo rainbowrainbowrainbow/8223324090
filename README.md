@@ -296,6 +296,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
 - [docs/CSS_SURFACE.md](docs/CSS_SURFACE.md) - CSS file, owner, reference, and Service Worker CSS precache ownership
 - [docs/DB_STARTUP_SURFACE.md](docs/DB_STARTUP_SURFACE.md) - legacy DB startup schema and data-hook ownership
+- [docs/payroll/ACTIVATION_2026-08.md](docs/payroll/ACTIVATION_2026-08.md) - payroll installments activation evidence and rollback limits
 - [docs/SCHEDULER_SURFACE.md](docs/SCHEDULER_SURFACE.md) - background job, interval, dedup, and side-effect ownership
 - [docs/SERVICE_WORKER_CACHE_POLICY.md](docs/SERVICE_WORKER_CACHE_POLICY.md) - Service Worker API cache and offline mutation policy
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership

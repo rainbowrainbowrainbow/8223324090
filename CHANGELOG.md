@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.16 - Стабільність: payroll audit і smoke
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Стабільність payroll audit і smoke** — read-only payroll preflight та post-release audit коректно запускаються через npm у Windows; release metadata синхронізовано з чинною production-гілкою.
+
+---
+
 ## v0.80.15 - Smoke: безпечний вибір кімнати
 
 ### Release / Versioning / (28.07.2026) [codex]

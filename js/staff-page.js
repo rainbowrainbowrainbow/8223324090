@@ -3791,10 +3791,14 @@ function renderScheduleAttendanceIndicator(staffId, date, entry = null) {
     const record = scheduleAttendanceRecord(staffId, date);
     const details = scheduleAttendanceDetails(entry, record, date);
     if (!details.status) return '';
-    const actual = [
-        details.actualArrival ? `in ${scheduleAttendanceFormatTime(details.actualArrival)}` : '',
-        details.actualLeave ? `out ${scheduleAttendanceFormatTime(details.actualLeave)}` : ''
-    ].filter(Boolean).join(' · ');
+    const actualArrival = details.actualArrival ? scheduleAttendanceFormatTime(details.actualArrival) : '';
+    const actualLeave = details.actualLeave ? scheduleAttendanceFormatTime(details.actualLeave) : '';
+    const actual = actualArrival && actualLeave
+        ? `${actualArrival}→${actualLeave}`
+        : [
+            actualArrival ? `in ${actualArrival}` : '',
+            actualLeave ? `out ${actualLeave}` : ''
+        ].filter(Boolean).join(' · ');
     const planned = [
         details.plannedStart ? String(details.plannedStart).slice(0, 5) : '',
         details.plannedEnd ? String(details.plannedEnd).slice(0, 5) : ''
@@ -4243,7 +4247,8 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         if (entry?.note) {
             metaContent.push(`<span class="sch-note">${escapeHtml(entry.note)}</span>`);
         }
-        const cellContent = `<span class="sch-cell-main">${primaryContent}</span>${metaContent.length ? `<span class="sch-cell-meta">${metaContent.join('')}</span>` : ''}`;
+        const attendanceIndicator = renderScheduleAttendanceIndicator(emp.id, ds, entry);
+        const cellContent = `<span class="sch-cell-main">${primaryContent}</span>${metaContent.length ? `<span class="sch-cell-meta">${metaContent.join('')}</span>` : ''}${attendanceIndicator ? `<span class="sch-cell-attendance">${attendanceIndicator}</span>` : ''}`;
 
         const cellTitle = [scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | ');
         const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues);

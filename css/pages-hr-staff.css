@@ -1265,6 +1265,18 @@ body[data-page-group="hr"] .schedule-table .sch-attendance {
     line-height: 1.15;
 }
 
+body[data-page-group="hr"] .schedule-table .sch-cell-attendance {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    margin-top: 2px;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell-attendance .sch-attendance {
+    max-width: calc(100% - 4px);
+}
+
 body[data-page-group="hr"] .schedule-table .sch-attendance-status,
 body[data-page-group="hr"] .schedule-table .sch-attendance-meta {
     max-width: 100%;

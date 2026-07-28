@@ -813,7 +813,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /renderSummary\(filtered, dates\)/);
         assert.match(staffPage, /renderEmpRow\(emp, dates, today, health, \{ subGroup: sg, department: dept \}\)/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\}"/);
-        assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|attendanceIndicator|renderScheduleAttendanceIndicator\(emp\.id|has-attendance-/);
+        assert.match(renderEmpRowBlock, /const attendanceIndicator = renderScheduleAttendanceIndicator\(emp\.id, ds, entry\)/);
+        assert.match(renderEmpRowBlock, /class="sch-cell-attendance">\$\{attendanceIndicator\}/);
+        assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|has-attendance-/);
         assert.match(staffPage, /bindScheduleHealthDetailButtons\(tbody\)/);
         assert.match(staffPage, /event\.stopPropagation\(\)/);
         assert.ok(summaryIndex > -1 && tableIndex > summaryIndex && healthPanelIndex > tableIndex);
@@ -1177,7 +1179,11 @@ describe('staff schedule safety guards', () => {
             .forEach(status => assert.match(staffPage, new RegExp(status)));
         assert.match(staffPage, /function renderScheduleAttendanceIndicator/);
         assert.match(staffPage, /function renderScheduleAttendanceSummary/);
-        assert.doesNotMatch(renderEmpRowBlock, /renderScheduleAttendanceIndicator|attendanceIndicator|attendanceClass|has-attendance-/);
+        assert.match(renderEmpRowBlock, /const attendanceIndicator = renderScheduleAttendanceIndicator\(emp\.id, ds, entry\)/);
+        assert.match(renderEmpRowBlock, /class="sch-cell-attendance">\$\{attendanceIndicator\}/);
+        assert.match(staffCss, /\.sch-cell-attendance/);
+        assert.match(staffPage, /\$\{actualArrival\}→\$\{actualLeave\}/);
+        assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|has-attendance-/);
         assert.match(staffPage, /postAttendanceAction\(action, staffId\)/);
         assert.match(staffPage, /\/api\/hr\/clock-in/);
         assert.match(staffPage, /\/api\/hr\/clock-out/);

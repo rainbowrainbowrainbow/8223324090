@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.17 - Графік-прихід-уход
+
+### Release / Versioning / (28.07.2026) [codex]
+- **Графік-прихід-уход** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.16 - Стабільність: payroll audit і smoke
 
 ### Release / Versioning / (28.07.2026) [codex]

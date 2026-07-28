@@ -115,6 +115,14 @@ function parseArgs(argv = process.argv.slice(2)) {
             options.help = true;
             continue;
         }
+        if (!arg.startsWith('--') && /^\d{4}-(0[1-9]|1[0-2])$/.test(arg) && !options.activationMonth) {
+            options.activationMonth = normalizeActivationMonth(arg);
+            continue;
+        }
+        if (!arg.startsWith('--') && ['json', 'markdown'].includes(arg)) {
+            options.format = arg;
+            continue;
+        }
         throw controlledError(`unknown option: ${arg}`, 'PAYROLL_POST_RELEASE_ARG_UNKNOWN');
     }
 
@@ -147,6 +155,7 @@ function poolConfig(env = process.env) {
 function helpText() {
     return [
         'Usage: node scripts/audit-payroll-post-release.js --activation-month YYYY-MM [--format json|markdown]',
+        '       npm run audit:payroll-post-release -- YYYY-MM [json|markdown]',
         '',
         'Read-only connection source:',
         '  PAYROLL_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL',

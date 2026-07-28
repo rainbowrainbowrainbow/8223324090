@@ -20,6 +20,7 @@ function usage() {
     return [
         'Usage:',
         '  node scripts/audit-payroll-activation-preflight.js [--month YYYY-MM] [--from YYYY-MM] [--to YYYY-MM] [--format json|markdown]',
+        '  npm run audit:payroll-activation-preflight -- [YYYY-MM] [json|markdown]',
         '',
         'Connection:',
         '  PAYROLL_AUDIT_DATABASE_URL or PRODUCTION_READONLY_DATABASE_URL.',
@@ -58,6 +59,11 @@ function parseArgs(argv) {
         else if (arg === '--from') options.from = normalizeMonth(readValue(arg), arg);
         else if (arg === '--to') options.to = normalizeMonth(readValue(arg), arg);
         else if (arg === '--format') options.format = readValue(arg);
+        else if (!arg.startsWith('--') && /^\d{4}-(0[1-9]|1[0-2])$/.test(arg) && !options.month && !options.from && !options.to) {
+            options.month = normalizeMonth(arg, 'month');
+        } else if (!arg.startsWith('--') && ['json', 'markdown'].includes(arg)) {
+            options.format = arg;
+        }
         else throw new Error(`Unknown argument: ${arg}`);
     }
     if (!['json', 'markdown'].includes(options.format)) throw new Error('--format must be json or markdown');

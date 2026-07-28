@@ -76,6 +76,8 @@ These commands are available. They are not all mandatory for every task; use the
 - Focused Node tests: `node --test tests/<file>.test.js`
 - DB migrations standalone: `node db/migrate.js`
 - Static migration governance check: `npm run check:migrations`
+- Read-only payroll activation preflight (npm-safe on Windows): `npm run audit:payroll-activation-preflight -- [YYYY-MM] [json|markdown]`
+- Read-only payroll post-release audit (npm-safe on Windows): `npm run audit:payroll-post-release -- YYYY-MM [json|markdown]`
 - Version auto-fix: `npm run version:sync`
 - Health check against a running server: `npm run health`
 
@@ -111,7 +113,7 @@ Preferred workflow for normal product work:
 
 ## Deploy And Branch Boundaries
 
-- Last verified Railway production source branch (2026-07-20): `codex/production`.
+- Last verified Railway production release branch (2026-07-28): `codex/zrs-financial-integrity`.
 - Production deployment policy (2026-07-20): Railway GitHub auto-deploy is disabled for the production app service. Production deploy must be promoted manually only after the required GitHub CI checks are green for the exact release SHA.
 - Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
 - Manual Railway deploys must expose deploy evidence through `/api/version`: either valid Railway `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` metadata or explicit runtime `RELEASE_DEPLOY_COMMIT=<exact-sha>` and `RELEASE_DEPLOY_BRANCH=<branch>`. Run release smokes with the same `RELEASE_DEPLOY_COMMIT`/`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared against the exact intended SHA. `npm run version:smoke` and `npm run release:timeline-proof` are expected to fail if production commit/branch metadata is unavailable. Prefer `npm run release:railway-up`; it deploys a clean `git archive` export by default instead of uploading the working directory.

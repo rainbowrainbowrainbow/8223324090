@@ -234,8 +234,8 @@ If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone 
 
 ## Deploy And Branch Policy
 
-The last verified production source branch for Railway (2026-07-20) is
-`codex/production`. Confirm the active Railway source branch before
+The last verified production release branch for Railway (2026-07-28) is
+`codex/zrs-financial-integrity`. Confirm the active Railway release branch before
 every release or rollback because the attachment can change independently of
 the repository.
 

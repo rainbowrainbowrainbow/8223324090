@@ -99,10 +99,10 @@ Use dedicated read-only production URLs only. Never use `DATABASE_URL` as a
 fallback for production payroll audits.
 
 ```bash
-npm run audit:payroll-activation-preflight -- --format json
-npm run audit:payroll-activation-preflight -- --month 2026-08 --format json
+npm run audit:payroll-activation-preflight -- json
+npm run audit:payroll-activation-preflight -- 2026-08 json
 node scripts/shadow-payroll-installment-comparison.js --activation-month 2026-08 --closed-months 3 --aggregate-only --format json
-npm run audit:payroll-post-release -- --activation-month 2026-08 --format json
+npm run audit:payroll-post-release -- 2026-08 json
 npm run version:smoke -- https://<crm-host>
 ```
 
@@ -112,4 +112,3 @@ Safety expectations:
 - write-like flags such as `--apply`, `--fix`, `--write`, `--backfill`,
   `--execute`, `--update`, and `--delete` must remain blocked;
 - output must be aggregate-only and must not include PII or secrets.
-

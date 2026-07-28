@@ -244,6 +244,12 @@ test('payroll activation preflight is read-only and classifies history as legacy
         to: '2026-07',
         format: 'json'
     });
+    assert.deepEqual(parseArgs(['2026-07', 'markdown']), {
+        month: '2026-07',
+        from: '2026-07',
+        to: '2026-07',
+        format: 'markdown'
+    });
     assert.match(preflightScript, /BEGIN READ ONLY/);
     assert.match(preflightScript, /legacy_accounted/);
     assert.match(preflightScript, /paymentFactVerified: false/);

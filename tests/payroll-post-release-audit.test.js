@@ -36,6 +36,11 @@ test('post-release audit requires activation month and refuses write-like flags'
         aggregateOnly: true,
         format: 'markdown'
     });
+    assert.deepEqual(parseArgs(['2026-08', 'markdown']), {
+        activationMonth: '2026-08',
+        aggregateOnly: true,
+        format: 'markdown'
+    });
 
     for (const flag of FORBIDDEN_FLAGS) {
         assert.throws(

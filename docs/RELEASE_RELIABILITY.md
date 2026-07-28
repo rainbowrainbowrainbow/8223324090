@@ -13,7 +13,7 @@ runtime metadata:
 
 ```bash
 RELEASE_DEPLOY_COMMIT=<exact-release-sha>
-RELEASE_DEPLOY_BRANCH=codex/production
+RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity
 ```
 
 `npm run version:smoke` and `npm run release:timeline-proof` must be fail-closed
@@ -23,8 +23,8 @@ conflicting. Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
 against the exact intended SHA. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is
 allowed only for local/dev diagnostics.
 
-Остання фактично перевірена production-гілка Railway (20.07.2026):
-`codex/production`.
+Остання фактично перевірена production release-гілка Railway (28.07.2026):
+`codex/zrs-financial-integrity`.
 
 Перед кожним release або rollback треба read-only перевіркою підтвердити активну
 Railway source branch і явно передати її в командах через
@@ -46,13 +46,13 @@ version/health smoke не підтверджені.
 For manual production deploys, prefer the repo helper over raw railway up:
 
 ~~~bash
-RELEASE_DEPLOY_BRANCH=codex/production npm run release:railway-up -- --service 8223324090 --environment production
+RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity npm run release:railway-up -- --service 8223324090 --environment production
 ~~~
 
 On PowerShell/Windows, invoke the helper directly so npm does not consume named flags:
 
 ~~~powershell
-node scripts/railway-release-up.js --branch codex/production --service 8223324090 --environment production
+node scripts/railway-release-up.js --branch codex/zrs-financial-integrity --service 8223324090 --environment production
 ~~~
 
 The helper resolves the bundled native Railway CLI on Windows. For a non-standard installation, set `RELEASE_RAILWAY_BIN` to the exact `railway.exe` path.
@@ -70,8 +70,9 @@ Reason: the release was already deployed, production CI was green, Railway serve
 `v0.79.98`, and live health/version checks passed. Rewriting production history
 would add operational risk without changing the deployed code.
 
-Rule after this exception: future promotions to `codex/production` must use
-linear history only. If `origin/codex/production` advances during a release,
+Rule after this exception: future promotions to the currently confirmed production
+branch (currently `codex/zrs-financial-integrity`) must use linear history only.
+If its `origin/<branch>` advances during a release,
 rebase/cherry-pick onto the new production head and rerun CI before promotion;
 do not promote a merge commit unless the owner explicitly approves a new
 documented exception.

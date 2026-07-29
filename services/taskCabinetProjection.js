@@ -19,6 +19,7 @@ const {
     subtaskProgress
 } = require('./taskSubtasks');
 const { deriveTaskIntelligence } = require('./taskIntelligence');
+const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 const {
     appendTaskBusinessScopeSql,
     taskBusinessScopeMeta
@@ -191,6 +192,7 @@ function normalizeTaskPayload(row) {
         remindAt: row.remind_at || null,
         snoozedUntil: row.snoozed_until || null,
         postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
         originalDueAt: row.original_due_at || row.originalDueAt || null,
         lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null,
         nextNotificationAt: row.next_notification_at || null,

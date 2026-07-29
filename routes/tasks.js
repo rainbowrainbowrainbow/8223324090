@@ -33,6 +33,7 @@ const {
 } = require('../services/taskExecution');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
+const { postponementAttentionLevel } = require('../services/taskPostponementPolicy');
 const {
     attachTaskSchedule,
     canonicalTaskOrderSql,
@@ -851,6 +852,7 @@ function normalizeTaskPayload(row) {
         remindAt: row.remind_at || null,
         snoozedUntil: row.snoozed_until || null,
         postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
         originalDueAt: row.original_due_at || row.originalDueAt || null,
         lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null,
         nextNotificationAt: row.next_notification_at || null,

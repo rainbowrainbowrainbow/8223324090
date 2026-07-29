@@ -17,6 +17,7 @@ const {
 const { subtaskCompletionState } = require('./taskSubtasks');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
+const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -134,6 +135,7 @@ function normalizeTaskRow(row = {}) {
         ownerLabel: row.owner_label || row.owner_name || row.owner_username || row.assigned_to || row.owner || null,
         ownerState: taskOwnerState(row),
         postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
         originalDueAt: row.original_due_at || row.originalDueAt || null,
         lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null
     };

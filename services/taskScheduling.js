@@ -20,6 +20,7 @@ const {
     applyCanonicalRescheduleMutation,
     normalizeSourceSurface: normalizeTaskRescheduleSourceSurface
 } = require('./taskReschedule');
+const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 
 const DEFAULT_DURATION_MINUTES = 30;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
@@ -671,6 +672,7 @@ function attachTaskSchedule(row = {}) {
         missedProcessedAt: isoValue(row.missed_processed_at),
         createdByUserId: row.created_by_user_id || null,
         postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
         originalDueAt: isoValue(row.original_due_at || row.originalDueAt),
         lastPostponedAt: isoValue(row.last_postponed_at || row.lastPostponedAt),
         schedule: {

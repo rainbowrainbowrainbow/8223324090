@@ -5148,6 +5148,38 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null,
     </div>`;
 }
 
+function cabinetTaskPostponementCount(task = {}) {
+    return Math.max(0, Number(task.postponementCount ?? task.postponement_count ?? 0) || 0);
+}
+
+function cabinetTaskAttentionLevel(task = {}) {
+    const explicit = task.attentionLevel;
+    const normalized = Number(explicit);
+    return explicit !== null && explicit !== undefined && Number.isFinite(normalized)
+        ? Math.max(0, Math.min(3, Math.trunc(normalized)))
+        : Math.min(3, cabinetTaskPostponementCount(task));
+}
+
+function cabinetTaskPostponementWord(count = 0) {
+    const absolute = Math.abs(Number(count) || 0);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (last === 1 && lastTwo !== 11) return 'раз';
+    if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return 'рази';
+    return 'разів';
+}
+
+function renderCabinetPostponementBadge(task = {}) {
+    const count = cabinetTaskPostponementCount(task);
+    if (!count) return '';
+    const level = cabinetTaskAttentionLevel(task);
+    const label = 'Перенесено ' + count + ' ' + cabinetTaskPostponementWord(count);
+    const title = level >= 3
+        ? label + '. Критичний рівень уваги: задача переносилась щонайменше тричі.'
+        : label + '. Рівень уваги ' + level + ' із 3.';
+    return '<span class="cabinet-postponement-badge cabinet-postponement-badge--level-' + level + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' + escapeHtml(label) + '</span>';
+}
+
 function cabinetTaskVisibleBadge(key = '', html = '') {
     if (!html) return null;
     return `<span class="cabinet-task-visible-badge cabinet-task-visible-badge--${escapeHtml(key)}" data-cabinet-visible-badge="${escapeHtml(key)}">${html}</span>`;
@@ -5163,6 +5195,7 @@ function cabinetTaskVisibleBadges(task = {}, context = {}) {
     const required = [
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
+        cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
         cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
     ].filter(Boolean);
     const optional = [
@@ -5184,6 +5217,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
     const priority = normalizeCabinetPriority(task.priority || 'normal');
+    const attentionLevel = cabinetTaskAttentionLevel(task);
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
     const moveToTodayState = cabinetTaskMoveToTodayState(task, dueState);
@@ -5227,6 +5261,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         'cabinet-task-card',
         'is-personal-day-card',
         isMyDayCard ? 'is-my-day-compact-card' : '',
+        attentionLevel ? 'attention-level-' + attentionLevel : '',
         `priority-${priority}`,
         isDecomposed ? 'is-decomposed' : '',
         inlineActive ? 'is-inline-checklist-active' : '',
@@ -5237,7 +5272,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         ? renderCabinetMyDaySubtaskSummary(task, taskIdAttr, subtasksExpanded, { inlineActive })
         : '';
     return `
-        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
+        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
@@ -5771,17 +5806,20 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const due = cabinetTaskDueValue(task);
     const dueState = getCabinetTaskDueState(task, due);
     const priority = normalizeCabinetPriority(task.priority || 'normal');
+    const attentionLevel = cabinetTaskAttentionLevel(task);
     const taskStatus = task.status || 'todo';
     const moveState = cabinetTaskMoveToTodayState(task, dueState);
     const noDateTarget = cabinetTaskMoveTargets(task).find(target => target.id === 'no_date') || {};
     const canReschedule = cabinetTaskAllowsReschedule(task) && taskId;
     const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : 'Виконати задачу';
-    return `<div class="cabinet-overdue-triage-row" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-due-state="${escapeHtml(dueState.key)}">
+    const attentionClass = attentionLevel ? 'attention-level-' + attentionLevel : '';
+    return `<div class="cabinet-overdue-triage-row ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}">
         <div class="cabinet-overdue-triage-main">
             <a class="cabinet-overdue-triage-title" href="/tasks?view=my&open=${encodeURIComponent(taskIdAttr)}">${escapeHtml(task.title || 'Без назви')}</a>
             <div class="cabinet-overdue-triage-meta">
                 <span class="cabinet-task-due-badge cabinet-task-due-badge--overdue">${escapeHtml(`${dueState.label || 'Прострочено'}${dueState.detail ? ` · ${dueState.detail}` : ''}`)}</span>
+                ${renderCabinetPostponementBadge(task)}
                 ${renderCabinetOverdueTriageProgress(task)}
                 ${cabinetTaskReportBadge(task)}
             </div>

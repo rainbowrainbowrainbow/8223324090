@@ -601,7 +601,9 @@ test('profile My Day fixed workspace ignores composer due preset for visible tas
 
 test('profile My Day custom date stays a composer/projection setting without switching fixed columns', () => {
     const ctx = loadProfileTaskerContext();
-    const customDate = '2026-07-18';
+    const taskCreateCtx = loadTaskCreateContext();
+    const customDate = addDaysToDateKey(taskCreateCtx.TaskCreate.todayStr(), 10);
+    const otherDate = addDaysToDateKey(customDate, 1);
     ctx.document = {
         addEventListener() {},
         getElementById(id) {
@@ -615,7 +617,7 @@ test('profile My Day custom date stays a composer/projection setting without swi
         myCabinetData = {
             all: [
                 { id: 11, title: 'Custom date focus task', date: '${customDate}' },
-                { id: 12, title: 'Other date focus task', date: '2026-07-19' }
+                { id: 12, title: 'Other date focus task', date: '${otherDate}' }
             ],
             today: [],
             next: [],
@@ -642,6 +644,8 @@ test('profile My Day custom date stays a composer/projection setting without swi
 
 test('profile My Day focused mode ignores invalid custom dates without throwing', () => {
     const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const futureDate = addDaysToDateKey(taskCreateCtx.TaskCreate.todayStr(), 10);
     ctx.document = {
         addEventListener() {},
         getElementById(id) {
@@ -654,7 +658,7 @@ test('profile My Day focused mode ignores invalid custom dates without throwing'
     vm.runInContext(`
         myCabinetData = {
             all: [
-                { id: 14, title: 'Invalid custom date task', date: '2026-07-18' }
+                { id: 14, title: 'Invalid custom date task', date: '${futureDate}' }
             ],
             today: [],
             next: [],
@@ -1578,6 +1582,31 @@ test('task reschedule keeps scheduled tasks in the same today projection contrac
     assert.match(source, /profile_my_cabinet_move_to_today_drop/);
     assert.match(routeSource, /profile_my_cabinet_overdue_to_today_drop/);
     assert.match(routeSource, /profile_my_cabinet_move_to_today_drop/);
+});
+
+test('My Day renders accessible postponement levels 1 / 2 / 3+', () => {
+    const ctx = loadProfileTaskerContext();
+    assert.equal(ctx.renderCabinetPostponementBadge({ postponementCount: 0 }), '');
+
+    const first = ctx.renderCabinetPostponementBadge({ postponementCount: 1, attentionLevel: 1 });
+    const second = ctx.renderCabinetPostponementBadge({ postponementCount: 2, attentionLevel: 2 });
+    const critical = ctx.renderCabinetPostponementBadge({ postponementCount: 5, attentionLevel: 3 });
+    assert.match(first, /Перенесено 1 раз/);
+    assert.match(first, /level-1/);
+    assert.match(second, /Перенесено 2 рази/);
+    assert.match(second, /level-2/);
+    assert.match(critical, /Перенесено 5 разів/);
+    assert.match(critical, /Критичний рівень уваги/);
+    assert.match(critical, /aria-label=/);
+
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const cabinetCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-cabinet.css'), 'utf8');
+    assert.match(profileSource, /data-task-attention-level/);
+    assert.match(profileSource, /attentionLevel \? 'attention-level-' \+ attentionLevel/);
+    assert.match(profileSource, /renderCabinetPostponementBadge\(task\)/);
+    assert.match(cabinetCss, /cabinet-task-card\.attention-level-1/);
+    assert.match(cabinetCss, /cabinet-task-card\.attention-level-2/);
+    assert.match(cabinetCss, /cabinet-task-card\.attention-level-3/);
 });
 
 test('profile unfinished gamification tabs use soon lockdown by role', () => {

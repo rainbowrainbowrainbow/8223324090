@@ -2094,6 +2094,25 @@ body.dark-mode .profile-task-priority--low {
     box-shadow: inset 4px 0 0 var(--cabinet-task-priority-color), 0 0 0 3px rgba(15, 23, 42, 0.08);
 }
 
+.cabinet-task-card.attention-level-1 {
+    box-shadow: inset 4px 0 0 #f59e0b, inset 0 0 0 1px rgba(245, 158, 11, 0.18);
+}
+
+.cabinet-task-card.attention-level-2 {
+    box-shadow: inset 5px 0 0 #f97316, inset 0 0 0 1px rgba(249, 115, 22, 0.24);
+}
+
+.cabinet-task-card.attention-level-3 {
+    box-shadow: inset 6px 0 0 #e11d48, inset 0 0 0 2px rgba(225, 29, 72, 0.24), 0 8px 22px rgba(225, 29, 72, 0.12);
+}
+
+.cabinet-task-card.attention-level-1:focus-within,
+.cabinet-task-card.attention-level-2:focus-within,
+.cabinet-task-card.attention-level-3:focus-within {
+    outline: 3px solid color-mix(in srgb, var(--cabinet-task-priority-color) 24%, transparent);
+    outline-offset: 2px;
+}
+
 .cabinet-task-card[data-cabinet-task-drag] {
     cursor: grab;
 }
@@ -2209,6 +2228,36 @@ body.dark-mode .profile-task-priority--low {
     color: #64748b;
     font-weight: 800;
     line-height: 1.2;
+}
+
+.cabinet-postponement-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-weight: 900;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.cabinet-postponement-badge--level-1 {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.14);
+    color: #92400e;
+}
+
+.cabinet-postponement-badge--level-2 {
+    border-color: rgba(249, 115, 22, 0.50);
+    background: rgba(249, 115, 22, 0.18);
+    color: #9a3412;
+}
+
+.cabinet-postponement-badge--level-3 {
+    border-color: rgba(225, 29, 72, 0.58);
+    background: #e11d48;
+    color: #fff;
+    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.12);
 }
 
 .cabinet-task-title {
@@ -2801,6 +2850,19 @@ body.dark-mode .profile-task-priority--low {
     transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
+.cabinet-overdue-triage-row.attention-level-1 {
+    border-left: 4px solid #f59e0b;
+}
+
+.cabinet-overdue-triage-row.attention-level-2 {
+    border-left: 5px solid #f97316;
+}
+
+.cabinet-overdue-triage-row.attention-level-3 {
+    border-left: 6px solid #e11d48;
+    box-shadow: inset 0 0 0 1px rgba(225, 29, 72, 0.18);
+}
+
 .cabinet-overdue-triage-row.is-updating {
     opacity: 0.62;
     transform: translateX(4px);
@@ -3220,6 +3282,36 @@ body.dark-mode .cabinet-subtask-compact-summary span {
 
 body.dark-mode .cabinet-subtask-compact-summary b {
     color: #ddd6fe;
+}
+
+body.dark-mode .cabinet-task-card.attention-level-1 {
+    box-shadow: inset 4px 0 0 #fbbf24, inset 0 0 0 1px rgba(251, 191, 36, 0.28);
+}
+
+body.dark-mode .cabinet-task-card.attention-level-2 {
+    box-shadow: inset 5px 0 0 #fb923c, inset 0 0 0 1px rgba(251, 146, 60, 0.32);
+}
+
+body.dark-mode .cabinet-task-card.attention-level-3 {
+    box-shadow: inset 6px 0 0 #fb7185, inset 0 0 0 2px rgba(251, 113, 133, 0.34), 0 8px 24px rgba(159, 18, 57, 0.24);
+}
+
+body.dark-mode .cabinet-postponement-badge--level-1 {
+    border-color: rgba(251, 191, 36, 0.50);
+    background: rgba(245, 158, 11, 0.22);
+    color: #fde68a;
+}
+
+body.dark-mode .cabinet-postponement-badge--level-2 {
+    border-color: rgba(251, 146, 60, 0.54);
+    background: rgba(249, 115, 22, 0.26);
+    color: #fed7aa;
+}
+
+body.dark-mode .cabinet-postponement-badge--level-3 {
+    border-color: rgba(251, 113, 133, 0.64);
+    background: #be123c;
+    color: #fff;
 }
 
 body.dark-mode .cabinet-task-visible-badge--mode > span,

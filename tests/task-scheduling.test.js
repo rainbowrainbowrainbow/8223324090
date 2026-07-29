@@ -11,6 +11,10 @@ const {
 } = require('../services/taskReschedule');
 const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { canRescheduleTask } = require('../services/taskPolicy');
+const {
+    derivePostponementPriority,
+    postponementAttentionLevel
+} = require('../services/taskPostponementPolicy');
 
 test('task scheduling policy exposes four fixed global slots and default duration', () => {
     const policy = scheduling.getSchedulePolicy();
@@ -125,7 +129,7 @@ test('task postponement migration is governed, additive, idempotent, and has no 
     assert.doesNotMatch(migrationSql, /ALTER TABLE\s+task_action_history/i);
 });
 
-test('task payload normalizers expose durable postponement metadata without attention level', () => {
+test('task payload normalizers expose durable postponement metadata with computed attention level', () => {
     const { normalizeTaskPayload } = require('../services/taskCabinetProjection');
     const normalized = normalizeTaskPayload({
         id: 42,
@@ -139,8 +143,9 @@ test('task payload normalizers expose durable postponement metadata without atte
     assert.equal(normalized.postponementCount, 2);
     assert.equal(normalized.originalDueAt, '2026-07-27T15:00:00.000Z');
     assert.equal(normalized.lastPostponedAt, '2026-07-29T10:30:00.000Z');
-    assert.equal(normalized.attentionLevel, undefined);
+    assert.equal(normalized.attentionLevel, 2);
     assert.equal(scheduled.postponementCount, 0);
+    assert.equal(scheduled.attentionLevel, 0);
     assert.equal(scheduled.originalDueAt, null);
     assert.equal(scheduled.lastPostponedAt, null);
 
@@ -154,8 +159,25 @@ test('task payload normalizers expose durable postponement metadata without atte
         assert.match(source, /postponementCount:\s*Math\.max\(0, Number\(row\.postponement_count/);
         assert.match(source, /originalDueAt:\s*(?:isoValue\()?row\.original_due_at/);
         assert.match(source, /lastPostponedAt:\s*(?:isoValue\()?row\.last_postponed_at/);
+        assert.match(source, /attentionLevel:\s*postponementAttentionLevel/);
         assert.doesNotMatch(source, /attentionLevel:\s*row\.attention_level/);
     }
+});
+
+test('postponement priority policy uses 1 / 2 / 3+ levels without downgrading', () => {
+    assert.deepEqual(derivePostponementPriority(0, 'low'), {
+        count: 0,
+        attentionLevel: 0,
+        minimumPriority: null,
+        priorityBefore: 'low',
+        priorityAfter: 'low',
+        priorityEscalated: false
+    });
+    assert.equal(derivePostponementPriority(1, 'normal').priorityAfter, 'high');
+    assert.equal(derivePostponementPriority(2, 'high').priorityAfter, 'urgent');
+    assert.equal(derivePostponementPriority(3, 'urgent').priorityAfter, 'urgent');
+    assert.equal(derivePostponementPriority(1, 'urgent').priorityAfter, 'urgent');
+    assert.equal(postponementAttentionLevel(9), 3);
 });
 
 test('postponement decision follows overdue, later-date, missed-slot, and exclusion rules', () => {
@@ -179,6 +201,9 @@ test('postponement decision follows overdue, later-date, missed-slot, and exclus
     assert.equal(today.countsAsPostponement, true);
     assert.equal(tomorrow.countsAsPostponement, true);
     assert.equal(today.postponementCountAfter, 1);
+    assert.equal(today.attentionLevelAfter, 1);
+    assert.equal(today.priorityAfter, 'high');
+    assert.equal(today.priorityEscalated, true);
 
     const future = evaluateTaskPostponement({
         ...overdue,
@@ -188,6 +213,7 @@ test('postponement decision follows overdue, later-date, missed-slot, and exclus
         deadline: '2026-07-31T10:00:00.000Z'
     }, { now });
     assert.equal(future.countsAsPostponement, false);
+    assert.equal(future.priorityEscalated, false);
 
     const earlier = evaluateTaskPostponement(overdue, {
         ...overdue,
@@ -246,6 +272,7 @@ function postponementQuery(initialTask) {
                     deadline: paramFor('deadline'),
                     date: paramFor('date'),
                     postponement_count: paramFor('postponement_count'),
+                    priority: paramFor('priority'),
                     original_due_at: params[Number(text.match(/original_due_at = CASE WHEN \$([0-9]+)/)[1]) - 1] || task.original_due_at || null,
                     last_postponed_at: params[Number(text.match(/last_postponed_at = CASE WHEN \$([0-9]+)/)[1]) - 1] || task.last_postponed_at || null,
                     version: Number(task.version || 1) + 1
@@ -282,6 +309,7 @@ test('canonical mutation increments once per idempotency key and records manual/
         deadline: '2026-07-28T10:00:00.000Z',
         date: '2026-07-28',
         postponement_count: 0,
+        priority: 'normal',
         version: 1,
         business_context: 'event_genix'
     };
@@ -294,8 +322,13 @@ test('canonical mutation increments once per idempotency key and records manual/
         reason: 'move_to_today'
     });
     assert.equal(manual.task.postponementCount, 1);
+    assert.equal(manual.task.priority, 'high');
+    assert.equal(manual.task.attentionLevel, 1);
     assert.equal(manual.historyEvent.meta.actorType, 'manual');
     assert.equal(manual.historyEvent.meta.countsAsPostponement, true);
+    assert.equal(manual.historyEvent.meta.priorityBefore, 'normal');
+    assert.equal(manual.historyEvent.meta.priorityAfter, 'high');
+    assert.equal(manual.historyEvent.meta.priorityEscalated, true);
 
     const botQuery = postponementQuery(initial);
     const options = {
@@ -312,10 +345,40 @@ test('canonical mutation increments once per idempotency key and records manual/
         deadline: '2026-07-30T10:00:00.000Z', date: '2026-07-30'
     }, { id: 9, name: 'Hermes' }, options);
     assert.equal(first.task.postponementCount, 1);
+    assert.equal(first.task.priority, 'high');
     assert.equal(first.historyEvent.meta.actorType, 'bot');
     assert.equal(retry.idempotent, true);
     assert.equal(retry.task.postponementCount, 1);
     assert.equal(botQuery.updateCalls, 1);
+});
+
+test('second counted postponement atomically escalates high priority to urgent', async () => {
+    const initial = {
+        id: 51,
+        status: 'todo',
+        workflow_state: 'todo',
+        deadline: '2026-07-28T10:00:00.000Z',
+        date: '2026-07-28',
+        postponement_count: 1,
+        priority: 'high',
+        version: 1,
+        business_context: 'event_genix'
+    };
+    const query = postponementQuery(initial);
+    const result = await applyCanonicalRescheduleMutation(query, initial, {
+        deadline: '2026-07-30T10:00:00.000Z', date: '2026-07-30'
+    }, { id: 7, name: 'Owner' }, {
+        now: new Date('2026-07-29T12:00:00.000Z'),
+        sourceSurface: 'profile_my_cabinet',
+        reason: 'second_postponement'
+    });
+
+    assert.equal(result.task.postponementCount, 2);
+    assert.equal(result.task.priority, 'urgent');
+    assert.equal(result.task.attentionLevel, 2);
+    assert.equal(result.historyEvent.meta.attentionLevelBefore, 1);
+    assert.equal(result.historyEvent.meta.attentionLevelAfter, 2);
+    assert.equal(result.historyEvent.meta.minimumPriority, 'urgent');
 });
 
 test('production reschedule writers are routed through the canonical service', () => {

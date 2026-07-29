@@ -14,6 +14,11 @@ const {
     logTaskActionEvent
 } = require('./taskActionHistory');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const {
+    derivePostponementPriority,
+    normalizePostponementCount,
+    postponementAttentionLevel
+} = require('./taskPostponementPolicy');
 
 const CLOSED_TASK_STATUSES = new Set([
     'done', 'completed', 'cancelled', 'canceled', 'archived', 'resolved', 'closed'
@@ -115,10 +120,6 @@ function canonicalTaskDue(task = {}) {
     return { value: null, source: null, instant: null };
 }
 
-function normalizePostponementCount(value) {
-    return Math.max(0, Number(value || 0) || 0);
-}
-
 function normalizeSourceSurface(value) {
     const source = String(value || '').trim();
     return ALLOWED_SOURCE_SURFACES.has(source) ? source : DEFAULT_TASK_SOURCE_SURFACE;
@@ -152,6 +153,8 @@ function evaluateTaskPostponement(task = {}, nextTask = {}, options = {}) {
     const excludedMutation = ['snooze', 'technical_correction'].includes(mutationKind);
     const countsAsPostponement = active && !blocked && !excludedMutation && (overdue || missed) && movedLater;
     const postponementCountBefore = normalizePostponementCount(taskField(task, 'postponement_count', 'postponementCount'));
+    const postponementCountAfter = postponementCountBefore + (countsAsPostponement ? 1 : 0);
+    const priorityDecision = derivePostponementPriority(postponementCountAfter, task.priority);
     return {
         oldDue,
         newDue,
@@ -163,7 +166,13 @@ function evaluateTaskPostponement(task = {}, nextTask = {}, options = {}) {
         mutationKind,
         countsAsPostponement,
         postponementCountBefore,
-        postponementCountAfter: postponementCountBefore + (countsAsPostponement ? 1 : 0)
+        postponementCountAfter,
+        attentionLevelBefore: postponementAttentionLevel(postponementCountBefore),
+        attentionLevelAfter: postponementAttentionLevel(postponementCountAfter),
+        priorityBefore: priorityDecision.priorityBefore,
+        priorityAfter: countsAsPostponement ? priorityDecision.priorityAfter : priorityDecision.priorityBefore,
+        priorityEscalated: countsAsPostponement && priorityDecision.priorityEscalated,
+        minimumPriority: countsAsPostponement ? priorityDecision.minimumPriority : null
     };
 }
 
@@ -174,6 +183,7 @@ function normalizeTaskRow(row = {}) {
         ownerLabel: row.owner_label || row.owner_name || row.owner_username || row.assigned_to || row.owner || null,
         ownerState: taskOwnerState(row),
         postponementCount: normalizePostponementCount(row.postponement_count ?? row.postponementCount),
+        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
         originalDueAt: row.original_due_at || row.originalDueAt || null,
         lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null
     };
@@ -282,6 +292,10 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
     }
     values.push(decision.postponementCountAfter);
     setters.push(`postponement_count = $${values.length}::integer`);
+    if (decision.countsAsPostponement) {
+        values.push(decision.priorityAfter);
+        setters.push(`priority = $${values.length}`);
+    }
     values.push(decision.countsAsPostponement ? decision.oldDue.instant : null);
     setters.push(`original_due_at = CASE WHEN $${values.length}::timestamptz IS NULL THEN original_due_at ELSE COALESCE(original_due_at, $${values.length}::timestamptz) END`);
     const changedAt = options.now instanceof Date ? options.now.toISOString() : new Date(options.now || Date.now()).toISOString();
@@ -346,7 +360,13 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
             missedSlotBefore: decision.missed,
             countsAsPostponement: decision.countsAsPostponement,
             postponementCountBefore: decision.postponementCountBefore,
-            postponementCountAfter: decision.postponementCountAfter
+            postponementCountAfter: decision.postponementCountAfter,
+            attentionLevelBefore: decision.attentionLevelBefore,
+            attentionLevelAfter: decision.attentionLevelAfter,
+            priorityBefore: decision.priorityBefore,
+            priorityAfter: decision.priorityAfter,
+            priorityEscalated: decision.priorityEscalated,
+            minimumPriority: decision.minimumPriority
         }
     }, { pool: query });
     return { task: updated, historyEvent, postponement: decision, idempotent: false, unchanged: false };

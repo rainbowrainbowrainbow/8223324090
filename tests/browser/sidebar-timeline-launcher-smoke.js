@@ -246,6 +246,8 @@ async function readLauncher(page) {
             url: location.href,
             pathname: location.pathname,
             theme: document.documentElement.getAttribute('data-theme') || (document.body.classList.contains('dark-mode') ? 'dark' : 'light'),
+            currentContext: window.CrmBusinessContext?.current?.() || '',
+            currentDate: typeof formatDate === 'function' && window.AppState?.selectedDate ? formatDate(window.AppState.selectedDate) : '',
             darkMode: document.body.classList.contains('dark-mode'),
             sidebarOpen: document.getElementById('sidebarNav')?.classList.contains('open') || false,
             sidebarCollapsed: document.getElementById('sidebarNav')?.classList.contains('collapsed') || false,
@@ -272,6 +274,38 @@ async function readLauncher(page) {
     });
 }
 
+function launcherCountDiagnostics(launcher) {
+    return {
+        url: launcher?.url || '',
+        currentContext: launcher?.currentContext || '',
+        counts: (launcher?.modes || []).map(mode => ({
+            mode: mode.key,
+            count: mode.count,
+            status: mode.countStatus,
+            visible: mode.countVisible
+        }))
+    };
+}
+
+function assertParkDefaultContext(launcher, label) {
+    const currentUrl = new URL(launcher.url);
+    const urlContext = currentUrl.searchParams.get('businessContext');
+    const diagnostics = JSON.stringify(launcherCountDiagnostics(launcher));
+    if (urlContext !== null) {
+        assert.equal(urlContext, PARK_CONTEXT, `${label}: explicit businessContext stays Park; ${diagnostics}`);
+    }
+    assert.equal(launcher.currentContext, PARK_CONTEXT, `${label}: active business context is Park; ${diagnostics}`);
+}
+
+function assertTimelineDate(launcher, expectedDate, label) {
+    const currentUrl = new URL(launcher.url);
+    const urlDate = currentUrl.searchParams.get('date');
+    const diagnostics = JSON.stringify(launcherCountDiagnostics(launcher));
+    if (urlDate !== null) {
+        assert.equal(urlDate, expectedDate, `${label}: explicit URL date is preserved; ${diagnostics}`);
+    }
+    assert.equal(launcher.currentDate, expectedDate, `${label}: active timeline date is preserved; ${diagnostics}`);
+}
 function assertLauncherCountContract(launcher, label = 'launcher') {
     assert.ok(launcher, `${label}: launcher exists`);
     assert.equal(launcher.summaryCount, 0, `${label}: old visible timeline summary is not rendered`);
@@ -287,7 +321,7 @@ function assertLauncherCountContract(launcher, label = 'launcher') {
 
 function assertLauncherCountsReady(launcher, label = 'launcher') {
     launcher.modes.forEach(mode => {
-        assert.equal(mode.countStatus, 'ready', `${label}: ${mode.key} count reached ready status`);
+        assert.equal(mode.countStatus, 'ready', `${label}: ${mode.key} count reached ready status; ${JSON.stringify(launcherCountDiagnostics(launcher))}`);
         assert.match(mode.count, /^\d+$/, `${label}: ${mode.key} count is numeric`);
     });
 }
@@ -340,14 +374,34 @@ function assertCompactLauncherGeometry(launcher, label, options = {}) {
     });
 }
 async function waitForLauncherCounts(page) {
-    await page.waitForFunction(() => {
-        const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
-        const counts = Array.from(launcher?.querySelectorAll('[data-sidebar-timeline-count-mode]') || []);
-        return counts.length === 2 && counts.every(el => {
-            const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0 && /^\d+$/.test(el.textContent.trim()) && el.dataset.sidebarTimelineCountStatus === 'ready';
-        });
-    });
+    try {
+        await page.waitForFunction(() => new Promise(resolve => {
+            const countsAreReady = () => {
+                const launcher = document.querySelector('[data-sidebar-timeline-launcher]');
+                const counts = Array.from(launcher?.querySelectorAll('[data-sidebar-timeline-count-mode]') || []);
+                return counts.length === 2 && counts.every(el => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0
+                        && rect.height > 0
+                        && /^\d+$/.test(el.textContent.trim())
+                        && el.dataset.sidebarTimelineCountStatus === 'ready';
+                });
+            };
+            let readyFrames = 0;
+            const checkNextFrame = () => {
+                readyFrames = countsAreReady() ? readyFrames + 1 : 0;
+                if (readyFrames >= 4) {
+                    resolve(true);
+                    return;
+                }
+                requestAnimationFrame(checkNextFrame);
+            };
+            requestAnimationFrame(checkNextFrame);
+        }));
+    } catch (error) {
+        const launcher = await readLauncher(page).catch(() => null);
+        throw new Error(`timeline launcher counts did not stay ready for four animation frames: ${JSON.stringify(launcherCountDiagnostics(launcher))}; ${error.message}`);
+    }
 }
 
 async function assertLauncherCountsForDate(page, base, date, kind) {
@@ -363,7 +417,6 @@ async function assertLauncherCountsForDate(page, base, date, kind) {
     await waitForSidebar(page);
     await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
     await waitForLauncherCounts(page);
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
     const launcher = await readLauncher(page);
     assertLauncherCountContract(launcher, `${kind} date ${date}`);
@@ -377,8 +430,8 @@ async function assertLauncherCountsForDate(page, base, date, kind) {
     } else {
         const currentUrl = new URL(launcher.url);
         assert.equal(currentUrl.pathname, '/', `empty date ${date}: timeline route is /`);
-        assert.equal(currentUrl.searchParams.get('businessContext'), PARK_CONTEXT, `empty date ${date}: Park context is preserved`);
-        assert.equal(currentUrl.searchParams.get('date'), date, `empty date ${date}: URL date is preserved`);
+        assertParkDefaultContext(launcher, `empty date ${date}`);
+        assertTimelineDate(launcher, date, `empty date ${date}`);
         assert.equal(currentUrl.searchParams.get('timelineView'), null, `empty date ${date}: URL keeps the explicit no-view route`);
         assert.equal(animators, 0, `empty date ${date}: animators count is 0`);
         assert.equal(rooms, 0, `empty date ${date}: rooms count is 0`);
@@ -417,7 +470,6 @@ async function assertLoadingLayoutStability(page, base, requestControl) {
 
         delayedBookings.release.resolve();
         await waitForLauncherCounts(page);
-        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
         const ready = await readLauncher(page);
         assertLauncherCountContract(ready, 'ready layout');
@@ -446,7 +498,6 @@ async function captureParkLauncherSurface(page, base, pathname, viewport) {
     if (viewport.width <= 768) await openMobileSidebar(page);
     await page.waitForSelector('[data-sidebar-timeline-launcher][data-sidebar-timeline-mode-count="2"]');
     await waitForLauncherCounts(page);
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const launcher = await readLauncher(page);
     assertLauncherCountContract(launcher, pathname);
     assertLauncherCountsReady(launcher, pathname);

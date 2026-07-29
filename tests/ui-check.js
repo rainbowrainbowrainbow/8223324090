@@ -4124,6 +4124,15 @@ check('Sidebar mobile quick access and identity chips keep the final no-cut fit'
 const sidebarTimelineLauncherSmokeCode = fs.readFileSync(path.join(ROOT, 'tests/browser/sidebar-timeline-launcher-smoke.js'), 'utf8');
 const timelineLauncherActiveRule = cssRuleText(sidebarAuroraCss, '.sidebar-nav:not(.collapsed) .sidebar-design-timeline-launcher.active');
 const timelineLauncherGeometryMutationPattern = /\b(?:display|grid-template-columns|grid-template-rows|gap|padding|margin|width|height|min-width|min-height|max-width|max-height)\s*:/;
+check('Sidebar launcher smoke verifies canonical default context and stable ready counts',
+    sidebarTimelineLauncherSmokeCode.includes('function assertParkDefaultContext')
+    && sidebarTimelineLauncherSmokeCode.includes("currentContext: window.CrmBusinessContext?.current?.() || ''")
+    && sidebarTimelineLauncherSmokeCode.includes('function launcherCountDiagnostics')
+    && sidebarTimelineLauncherSmokeCode.includes('timeline launcher counts did not stay ready for four animation frames')
+    && sidebarTimelineLauncherSmokeCode.includes('const checkNextFrame = () =>')
+    && sidebarTimelineLauncherSmokeCode.includes('readyFrames >= 4')
+    && sidebarTimelineLauncherSmokeCode.includes('function assertTimelineDate')
+    && sidebarTimelineLauncherSmokeCode.includes("currentDate: typeof formatDate === 'function'"));
 check('Sidebar timeline launcher keeps mode, URL, semantic, sync and mobile-close contracts',
     sidebarCode.includes("Object.freeze({ key: 'animators', label: 'Свята' })")
     && sidebarCode.includes("Object.freeze({ key: 'rooms', label: 'Кімнати' })")

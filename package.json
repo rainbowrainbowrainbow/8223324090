@@ -85,6 +85,7 @@
     "test:browser:hr-onboarding": "npm exec --yes --package=playwright -c \"node tests/browser/hr-onboarding-flow-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:service-worker": "npx --yes --package playwright node tests/browser/service-worker-browser-smoke.js",
+    "test:browser:sidebar-timeline": "npx --yes --package playwright node tests/browser/sidebar-timeline-launcher-ci-smoke.js",
     "test:browser:timeline-summary": "npx --yes --package playwright node tests/browser/timeline-room-summary-browser-smoke.js",
     "test:browser:timeline": "npx --yes --package playwright node tests/browser/timeline-browser-smoke.js",
     "test:browser:staff-schedule": "npx --yes --package playwright node tests/browser/staff-schedule-custom-range-browser-smoke.js",

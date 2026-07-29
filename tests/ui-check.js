@@ -6871,7 +6871,7 @@ check('HR staff profile uses drawer tabs, lazy profile loaders, and explicit sav
     && htmlContains('hr.html', 'Зберегти основне')
     && htmlContains('hr.html', 'Зберегти типові зміни')
     && htmlContains('hr.html', 'Зберегти ролі та допуски')
-    && hrCode.includes("payrollSave.textContent = 'Зберегти оплату'")
+    && hrCode.includes("payrollSave.textContent = 'Зберегти базові ставки'")
     && htmlContains('css/hr-page.css', '.hr-staff-profile-overlay')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-drawer-head')
     && htmlContains('css/hr-page.css', '.hr-staff-profile-tabs')

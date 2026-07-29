@@ -43,6 +43,7 @@ test('customer detail close is keyboard-native and preserves the guarded close p
     assert.match(customerCss, /#customerDetailModal \.entity-card-modal > \.modal-close:focus-visible/);
     assert.match(customersJs, /modal\.querySelector\('\[data-customer-detail-close\]'\)\?\.focus/);
     assert.match(customersJs, /const returnFocus = modal\._customerDetailReturnFocus/);
+    assert.match(customersJs, /requestAnimationFrame\(\(\) => \{[\s\S]*returnFocus\.focus\(\{ preventScroll: true \}\)/);
     assert.match(customersJs, /else if \(modal\?\.id === 'customerDetailModal'\) closeCustomerDetailModal\(\);/);
 });
 

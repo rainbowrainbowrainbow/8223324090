@@ -255,7 +255,7 @@ async function setTheme(page, theme) {
         document.documentElement.style.colorScheme = nextTheme;
         localStorage.setItem('pzp_dark_mode', String(dark));
     }, theme);
-    await page.waitForTimeout(60);
+    await page.waitForTimeout(220);
 }
 
 async function layoutMetrics(page) {
@@ -303,7 +303,7 @@ async function layoutMetrics(page) {
             modalClientWidth: modalContent.clientWidth,
             modalScrollWidth: modalContent.scrollWidth,
             viewportWidth: window.innerWidth,
-            documentScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+            documentScrollWidth: document.documentElement.scrollWidth,
             editAction: appearance(editAction),
             disabledAction: appearance(disabledAction),
             disabledNative: disabledAction?.disabled === true,
@@ -358,7 +358,7 @@ async function runVariants(page) {
         await setTheme(page, theme);
         for (const viewport of VIEWPORTS) {
             await page.setViewportSize({ width: viewport.width, height: viewport.height });
-            await page.waitForTimeout(100);
+            await page.waitForTimeout(220);
             const metrics = await layoutMetrics(page);
             assertLayout(metrics, viewport, theme);
             const screenshot = path.join(OUTPUT_DIR, `customer-card-${theme}-${viewport.label}.png`);

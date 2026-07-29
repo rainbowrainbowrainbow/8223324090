@@ -2399,7 +2399,13 @@ function closeCustomerDetailModal() {
     modal._customerDetailReturnFocus = null;
     modal.dataset.backdropPointerDown = 'false';
     modal.classList.add('hidden');
-    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    if (returnFocus?.isConnected) {
+        requestAnimationFrame(() => {
+            if (modal.classList.contains('hidden') && returnFocus.isConnected) {
+                returnFocus.focus({ preventScroll: true });
+            }
+        });
+    }
     return true;
 }
 

@@ -288,6 +288,10 @@ describe('Hermes schedule OCR preview', () => {
             'update',
             'conflict'
         ]);
+        assert.equal(result.rows[0].proposedState.professionKey, 'administrator');
+        assert.equal(result.rows[1].proposedState.professionKey, null);
+        assert.equal(result.rows[2].proposedState.professionKey, 'administrator');
+        assert.equal(result.rows[3].proposedState.professionKey, 'administrator');
         assert.equal(result.scheduleWrites, 0);
         assert.equal(result.status, 'needs_review');
     });

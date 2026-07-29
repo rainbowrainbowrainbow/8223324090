@@ -4,7 +4,10 @@ const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 const { toPostgresDateOnly } = require('./postgresDateOnly');
-const { staffProfessionKeys } = require('./professions');
+const {
+    normalizeRequestedProfessionKey,
+    staffProfessionKeys
+} = require('./professions');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 const {
     lockScheduleStaffRows,
@@ -262,6 +265,19 @@ function normalizeHermesPreviewRow(value, index) {
         ));
     }
 
+    let professionKey = null;
+    const rawProfessionKey = value.professionKey ?? value.profession_key ?? value.roleType ?? value.role_type;
+    if (rawProfessionKey !== undefined && rawProfessionKey !== null && rawProfessionKey !== '') {
+        professionKey = normalizeRequestedProfessionKey(rawProfessionKey);
+        if (!professionKey) {
+            validationIssues.push(previewValidationIssue(
+                'HERMES_PREVIEW_PROFESSION_KEY_INVALID',
+                'professionKey',
+                'professionKey must be a canonical profession key when provided'
+            ));
+        }
+    }
+
     let note = null;
     if (value.note !== undefined && value.note !== null && value.note !== '') {
         if (typeof value.note !== 'string' || value.note.length > 1000) {
@@ -297,6 +313,7 @@ function normalizeHermesPreviewRow(value, index) {
         startTime,
         endTime,
         status,
+        professionKey,
         note,
         confidence,
         sourceIssues,
@@ -338,7 +355,8 @@ function isForbiddenReferenceKey(key) {
 }
 
 function sanitizeSourceReference(value, path = 'sourceReference', seen = new Set()) {
-    if (value === undefined || value === null) return {};
+    if (value === undefined) return path === 'sourceReference' ? {} : null;
+    if (value === null) return null;
     if (Buffer.isBuffer(value) || ArrayBuffer.isView(value)) {
         throw importError(400, 'HERMES_SCHEDULE_IMPORT_SOURCE_SENSITIVE', `${path} must not contain binary data`);
     }
@@ -622,6 +640,11 @@ function comparableScheduleState(state = {}) {
     };
 }
 
+function resolveHermesPreviewStaffDefaultProfessionKey(matchedStaff) {
+    const staffProfessions = Array.isArray(matchedStaff?.professions) ? matchedStaff.professions : [];
+    return staffProfessions[0] || null;
+}
+
 function classifyScheduleTransition(currentState, proposedState) {
     if (!currentState) return { action: 'create', conflictReason: null };
     if (stableJsonStringify(comparableScheduleState(currentState))
@@ -757,17 +780,42 @@ async function previewHermesScheduleImport(db = defaultPool, input = {}, options
 
         const currentStates = currentStatesByRow.get(row.rowIndex) || [];
         const expectedCurrentState = currentStates[0] || null;
-        const proposedState = {
+        let proposedState = {
             staffId: resolution.match.staffId,
             date: row.date,
             status: row.status,
             startTime: row.startTime,
             endTime: row.endTime,
             note: row.note,
-            professionKey: expectedCurrentState?.professionKey || null
+            professionKey: WORKING_SCHEDULE_STATUSES.has(row.status)
+                ? (row.professionKey || expectedCurrentState?.professionKey || null)
+                : null
         };
         let classification = classifyScheduleTransition(expectedCurrentState, proposedState);
         let conflictReason = classification.conflictReason;
+        if (WORKING_SCHEDULE_STATUSES.has(row.status)
+            && !proposedState.professionKey
+            && classification.action !== 'no_change') {
+            proposedState = {
+                ...proposedState,
+                professionKey: resolveHermesPreviewStaffDefaultProfessionKey(resolution.match)
+            };
+        }
+        if (WORKING_SCHEDULE_STATUSES.has(row.status)
+            && !proposedState.professionKey
+            && classification.action !== 'no_change') {
+            return {
+                ...base,
+                action: 'invalid',
+                matchType: resolution.matchType,
+                matchedStaff: resolution.match,
+                issues: [{
+                    code: 'HERMES_PREVIEW_PROFESSION_REQUIRED',
+                    field: 'professionKey',
+                    message: 'Working schedule rows require a primary profession on the row, current schedule state, or staff HR card'
+                }]
+            };
+        }
         const targetKey = `${resolution.match.staffId}:${row.date}`;
         if (currentStates.length > 1) {
             classification = { action: 'conflict' };

@@ -1088,7 +1088,7 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
     assert.match(js, /scopes: \['documents', 'medical', 'resourceIssue'\]/);
     assert.doesNotMatch(js.slice(js.indexOf('async function archiveStaffDocument'), js.indexOf('async function saveStaffMedicalBook')), /markStaffProfileScopesClean/);
     assert.doesNotMatch(js.slice(js.indexOf('async function returnStaffResource'), js.indexOf('async function completeStaffOffboarding')), /markStaffProfileScopesClean/);
-    assert.match(js, /payrollSave\.textContent = 'Зберегти оплату'/);
+    assert.match(js, /payrollSave\.textContent = 'Зберегти базові ставки'/);
     assert.match(profileCss, /#staffEditModal \.hr-staff-action,[\s\S]*?min-height:\s*44px/);
     assert.match(profileCss, /\[data-action-state="loading"\]/);
     assert.match(profileCss, /\[data-action-state="success"\]/);

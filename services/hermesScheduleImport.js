@@ -645,6 +645,28 @@ function resolveHermesPreviewStaffDefaultProfessionKey(matchedStaff) {
     return staffProfessions[0] || null;
 }
 
+function withHermesScheduleMutationCompatibility(state = {}) {
+    if (!WORKING_SCHEDULE_STATUSES.has(state.status) || !state.professionKey) {
+        return state;
+    }
+    return {
+        ...state,
+        shiftStart: state.startTime || null,
+        shiftEnd: state.endTime || null,
+        plannedStart: state.startTime || null,
+        plannedEnd: state.endTime || null,
+        primaryProfessionKey: state.professionKey,
+        segments: (state.startTime && state.endTime) ? [{
+            professionKey: state.professionKey,
+            shiftStart: state.startTime,
+            shiftEnd: state.endTime,
+            breakMinutes: state.breakMinutes ?? 0,
+            note: state.note || null,
+            additionalRoles: []
+        }] : []
+    };
+}
+
 function classifyScheduleTransition(currentState, proposedState) {
     if (!currentState) return { action: 'create', conflictReason: null };
     if (stableJsonStringify(comparableScheduleState(currentState))
@@ -816,6 +838,7 @@ async function previewHermesScheduleImport(db = defaultPool, input = {}, options
                 }]
             };
         }
+        proposedState = withHermesScheduleMutationCompatibility(proposedState);
         const targetKey = `${resolution.match.staffId}:${row.date}`;
         if (currentStates.length > 1) {
             classification = { action: 'conflict' };

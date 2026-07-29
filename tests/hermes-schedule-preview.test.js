@@ -289,6 +289,14 @@ describe('Hermes schedule OCR preview', () => {
             'conflict'
         ]);
         assert.equal(result.rows[0].proposedState.professionKey, 'administrator');
+        assert.equal(result.rows[0].proposedState.shiftStart, '10:00');
+        assert.equal(result.rows[0].proposedState.shiftEnd, '19:00');
+        assert.equal(result.rows[0].proposedState.primaryProfessionKey, 'administrator');
+        assert.deepEqual(result.rows[0].proposedState.segments.map(segment => ({
+            professionKey: segment.professionKey,
+            shiftStart: segment.shiftStart,
+            shiftEnd: segment.shiftEnd
+        })), [{ professionKey: 'administrator', shiftStart: '10:00', shiftEnd: '19:00' }]);
         assert.equal(result.rows[1].proposedState.professionKey, null);
         assert.equal(result.rows[2].proposedState.professionKey, 'administrator');
         assert.equal(result.rows[3].proposedState.professionKey, 'administrator');

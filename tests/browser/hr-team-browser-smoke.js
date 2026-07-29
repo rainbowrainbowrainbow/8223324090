@@ -176,7 +176,13 @@ const HARNESS_CODE = String.raw`
                 action: 'staff_schedule_replacement_set',
                 performed_by: 'QA staff ' + Number(id),
                 created_at: new Date().toISOString(),
-                details: { changed_fields: ['note', 'status', 'shiftStart', 'shiftEnd', 'professionKey', 'originalStaffId', 'replacementReason'] }
+                details: {
+                    changed_fields: ['note', 'status', 'shiftStart', 'shiftEnd', 'professionKey', 'originalStaffId', 'replacementReason'],
+                    changes: {
+                        shiftStart: { from: '10:00', to: '11:00' },
+                        professionKey: { from: 'animator', to: 'barista' }
+                    }
+                }
             }]
         };
     }
@@ -1145,11 +1151,13 @@ async function assertScopedSavesAndActionStates(page) {
     await page.waitForFunction(() => document.querySelector('#editStaffPayrollProfiles')?.textContent.includes('QA Animator Base'));
     const payrollProfilePanel = await page.locator('#editStaffPayrollProfiles').textContent();
     assert.match(payrollProfilePanel, /QA Animator Base/, 'staff payroll tab shows inherited default payroll profile');
+    assert.match(payrollProfilePanel, /Будні/, 'staff payroll tab separates weekday rates');
+    assert.match(payrollProfilePanel, /Вихідні/, 'staff payroll tab separates weekend rates');
     assert.match(payrollProfilePanel, /legacy не використовується/, 'staff payroll tab makes profile-only base explicit');
     assert.equal(await page.locator('#editPayrollProfileSimulator').isVisible(), true, 'staff payroll tab exposes the payroll profile simulator');
     await page.fill('#editHourlyRate', '145');
     const payrollSave = page.locator('#editPayrollSchemeSave');
-    assert.equal(await payrollSave.textContent(), 'Зберегти оплату', 'payroll action names every payload it can save');
+    assert.equal(await payrollSave.textContent(), 'Зберегти базові ставки', 'payroll action is limited to the visible fallback fields');
     assert.ok(await payrollSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'payroll save has a 44px target');
     const beforeRatesSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
     await payrollSave.click();
@@ -1214,8 +1222,11 @@ async function assertHistoryRaceAndLazyTabs(page) {
     await page.waitForTimeout(50);
     const activeHistoryText = await page.locator('#editStaffHistory').textContent();
     assert.match(activeHistoryText, /QA staff 5/, 'stale history response does not replace the active profile history');
+    assert.match(activeHistoryText, /Хто: QA staff 5/, 'history identifies who made the change');
     assert.match(activeHistoryText, /Призначено підміну зміни/, 'history translates schedule replacement actions');
     assert.match(activeHistoryText, /початок зміни/, 'history translates schedule field keys');
+    assert.match(activeHistoryText, /Було:\s*10:00/, 'history renders the previous value');
+    assert.match(activeHistoryText, /Стало:\s*11:00/, 'history renders the next value');
     assert.doesNotMatch(activeHistoryText, /staff_schedule_replacement_set|shiftStart|professionKey/, 'history does not expose raw internal labels');
 
     await openProfile(page, 3);

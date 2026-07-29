@@ -1251,7 +1251,7 @@
             <section id="staffProfilePanelPayroll" class="hr-staff-profile-panel hr-staff-foundation-panel" aria-label="Оплата" data-staff-profile-panel="payroll" role="tabpanel" aria-labelledby="staffProfileTabPayroll">
                 <div class="hr-primary-rate-card">
                     <div class="hr-rate-label-row">
-                        <span>Базова ставка основної професії</span>
+                        <span>Базова fallback-ставка основної професії</span>
                         <select id="editRateUnit" aria-label="Одиниця ставки">
                             <option value="hour">За годину</option>
                             <option value="day">За день</option>
@@ -1262,20 +1262,20 @@
                         <span id="editHourlyRateLabel">Ставка грн/год</span>
                         <input type="number" id="editHourlyRate" min="0" step="10" value="0">
                     </label>
-                    <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується для основної професії та як fallback для додаткових професій без окремої ставки.</small>
+                    <small class="form-hint" id="editHourlyRateHint">Резервна ставка для старих нарахувань і створення першого зарплатного профілю. Робочі ставки буднів і вихідних налаштовуються нижче окремо для кожної професії.</small>
                 </div>
                 <div class="hr-profession-rate-panel">
                     <div class="hr-profession-rate-head">
-                        <strong>Ставки додаткових професій</strong>
-                        <span>Одиниця оплати одна для співробітника: година, день або місяць.</span>
+                        <strong>Fallback-ставки додаткових професій</strong>
+                        <span>Кожна додаткова професія має власну резервну ставку. Ставки буднів і вихідних задаються у її зарплатному профілі.</span>
                     </div>
                     <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
                 </div>
                 <section class="hr-staff-payroll-profile-panel" aria-label="Зарплатні профілі працівника">
                     <div class="hr-staff-payroll-profile-head">
                         <div>
-                            <strong>Зарплатні профілі</strong>
-                            <span>Канонічна базова оплата по кожній професії: default, персональний профіль або тимчасове призначення.</span>
+                            <strong>Оплата за професіями</strong>
+                            <span>Окремі ставки буднів і вихідних для основної та кожної додаткової професії: базовий, персональний або тимчасовий профіль.</span>
                         </div>
                         <button type="button" id="editPayrollProfilesRefresh" class="btn-secondary">Оновити профілі</button>
                     </div>
@@ -1297,12 +1297,12 @@
                 </section>
                 <div class="hr-staff-foundation-head">
                     <div>
-                        <strong>Зарплатна схема</strong>
-                        <span>Працює через загальний payroll service: нова активна схема замінює попередню.</span>
+                        <strong>Базові fallback-ставки</strong>
+                        <span>Збережіть резервні ставки вище. Нові умови оплати налаштовуються через профілі професій; стара кастомна схема більше не редагується в картці працівника.</span>
                     </div>
-                    <button type="button" id="editPayrollSchemeSave" class="btn-primary" onclick="saveStaffPayrollScheme()">Зберегти зарплатну схему</button>
+                    <button type="button" id="editPayrollSchemeSave" class="btn-primary" onclick="saveStaffPayrollScheme()">Зберегти базові ставки</button>
                 </div>
-                <div class="hr-staff-foundation-grid">
+                <div class="hr-staff-foundation-grid" hidden aria-hidden="true" data-legacy-payroll-scheme-editor>
                     <div class="form-group">
                         <label>Тип схеми</label>
                         <select id="editPayrollSchemeType">

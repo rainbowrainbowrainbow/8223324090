@@ -9328,11 +9328,7 @@ function syncStaffRateUnitUi(staff = {}) {
     const suffix = staffRateUnitSuffix(unit);
     if (label) label.textContent = `Ставка грн/${suffix}`;
     if (hint) {
-        hint.textContent = unit === 'month'
-            ? 'Місячна ставка рахується як фікс за зарплатний період. Додаткові професії використовують ту саму одиницю.'
-            : unit === 'day'
-                ? 'Денна ставка рахується за відпрацьований день. Додаткові професії використовують ту саму одиницю.'
-                : 'Погодинна ставка рахується за відпрацьовані години. Додаткові професії використовують ту саму одиницю.';
+        hint.textContent = `Fallback-ставка у гривнях за ${suffix}. Робочі ставки буднів і вихідних налаштовуються нижче окремо для кожної професії.`;
     }
 }
 
@@ -9465,18 +9461,90 @@ function staffHistoryChangedFields(details = {}) {
     return fields.map(field => STAFF_HISTORY_FIELD_LABELS[field] || field).slice(0, 8);
 }
 
+function staffHistoryValueText(value, field = '') {
+    if (value == null || value === '') return '—';
+    if (typeof value === 'boolean') return value ? 'Так' : 'Ні';
+    const normalizedField = String(field || '');
+    if (normalizedField === 'role_type' || normalizedField === 'professionKey' || normalizedField === 'profession_key') {
+        return professionTitle(value) || String(value);
+    }
+    if (normalizedField === 'secondary_professions' && Array.isArray(value)) {
+        return value.map(item => professionTitle(item) || String(item)).join(', ') || '—';
+    }
+    if (normalizedField === 'profession_rates' && Array.isArray(value)) {
+        return value.map(item => {
+            const key = item?.profession_key || item?.professionKey || '';
+            const rate = Number(item?.hourly_rate ?? item?.hourlyRate);
+            const label = professionTitle(key) || key || 'Професія';
+            return `${label}: ${Number.isFinite(rate) ? `${rate.toLocaleString('uk-UA')} ₴` : '—'}`;
+        }).join(', ') || '—';
+    }
+    if (normalizedField === 'rate_unit') return payrollProfileRateUnitLabel(value);
+    if ((normalizedField === 'hourly_rate' || normalizedField.endsWith('_rate')) && Number.isFinite(Number(value))) {
+        return `${Number(value).toLocaleString('uk-UA')} ₴`;
+    }
+    if (Array.isArray(value)) {
+        const text = value.map(item => staffHistoryValueText(item)).join(', ');
+        return text || '—';
+    }
+    if (typeof value === 'object') {
+        let text = '';
+        try {
+            text = JSON.stringify(value);
+        } catch {
+            text = String(value);
+        }
+        return text.length > 180 ? `${text.slice(0, 177)}…` : text;
+    }
+    const text = String(value);
+    return text.length > 180 ? `${text.slice(0, 177)}…` : text;
+}
+
+function staffHistoryChangeEntries(details = {}) {
+    const changes = details?.changes && typeof details.changes === 'object' && !Array.isArray(details.changes)
+        ? details.changes
+        : null;
+    if (!changes) return [];
+    return Object.entries(changes).map(([field, change]) => {
+        const hasShape = change && typeof change === 'object' && !Array.isArray(change)
+            && (Object.prototype.hasOwnProperty.call(change, 'from') || Object.prototype.hasOwnProperty.call(change, 'to'));
+        return {
+            field,
+            label: STAFF_HISTORY_FIELD_LABELS[field] || field,
+            from: hasShape ? change.from : null,
+            to: hasShape ? change.to : change
+        };
+    });
+}
+
+function renderStaffHistoryChanges(details = {}) {
+    const entries = staffHistoryChangeEntries(details);
+    if (!entries.length) {
+        const fields = staffHistoryChangedFields(details);
+        return fields.length
+            ? `<div class="hr-staff-history-fields">${fields.map(field => `<i>${escapeHtml(field)}</i>`).join('')}</div>`
+            : '';
+    }
+    const visibleEntries = entries.slice(0, 8);
+    const remainder = Math.max(0, entries.length - visibleEntries.length);
+    return `<div class="hr-staff-history-changes">
+        ${visibleEntries.map(entry => `<div class="hr-staff-history-change">
+            <strong>${escapeHtml(entry.label)}</strong>
+            <span><em>Було:</em> ${escapeHtml(staffHistoryValueText(entry.from, entry.field))}</span>
+            <span><em>Стало:</em> ${escapeHtml(staffHistoryValueText(entry.to, entry.field))}</span>
+        </div>`).join('')}
+        ${remainder ? `<small>Ще змін: ${remainder}</small>` : ''}
+    </div>`;
+}
+
 function renderStaffHistoryRows(rows = []) {
     if (!rows.length) return '<div class="hr-staff-history-empty">Змін профілю ще немає.</div>';
     return rows.map(row => {
         const details = row.details || {};
-        const fields = staffHistoryChangedFields(details);
-        const fieldHtml = fields.length
-            ? `<div class="hr-staff-history-fields">${fields.map(field => `<i>${escapeHtml(field)}</i>`).join('')}</div>`
-            : '';
         return `<article class="hr-staff-history-item">
             <b>${escapeHtml(STAFF_HISTORY_ACTION_LABELS[row.action] || row.action || 'Подія')}</b>
-            <span>${escapeHtml(formatStaffHistoryTime(row.created_at))} · ${escapeHtml(row.performed_by || 'система')}</span>
-            ${fieldHtml}
+            <span>${escapeHtml(formatStaffHistoryTime(row.created_at))} · Хто: ${escapeHtml(row.performed_by || 'система')}</span>
+            ${renderStaffHistoryChanges(details)}
         </article>`;
     }).join('');
 }
@@ -11048,6 +11116,41 @@ function staffPayrollProfileDayDiff(activeProfile = null, baseProfile = null) {
     return diffs;
 }
 
+const STAFF_PAYROLL_RATE_PERIODS = Object.freeze([
+    { key: 'weekday', label: 'Будні', daysLabel: 'Пн–Пт', isoWeekdays: [1, 2, 3, 4, 5] },
+    { key: 'weekend', label: 'Вихідні', daysLabel: 'Сб–Нд', isoWeekdays: [6, 7] }
+]);
+
+function staffPayrollProfilePeriodRate(version = null, period = STAFF_PAYROLL_RATE_PERIODS[0]) {
+    if (!version) return { value: '—', hint: 'Профіль не налаштовано', mixed: false };
+    const unit = normalizeStaffRateUnit(version.rateUnit || version.rate_unit);
+    if (unit === 'month') {
+        return { value: '—', hint: 'Для місячної ставки не застосовується', mixed: false };
+    }
+    const rates = period.isoWeekdays.map(day => payrollProfileRateForDay(version, day));
+    const uniqueRates = [...new Set(rates)];
+    const mixed = uniqueRates.length > 1;
+    const value = mixed
+        ? `${payrollProfileMoney(Math.min(...uniqueRates))}–${payrollProfileMoney(Math.max(...uniqueRates))}`
+        : payrollProfileMoney(uniqueRates[0] || 0);
+    return {
+        value,
+        hint: `${period.daysLabel} · ${payrollProfileRateUnitLabel(unit)}${mixed ? ' · є денні винятки' : ''}`,
+        mixed
+    };
+}
+
+function staffPayrollProfilePeriodSummary(version = null) {
+    return STAFF_PAYROLL_RATE_PERIODS.map(period => {
+        const rate = staffPayrollProfilePeriodRate(version, period);
+        return `<div data-payroll-rate-period="${period.key}"${rate.mixed ? ' class="is-mixed"' : ''}>
+            <span>${period.label}</span>
+            <strong>${escapeHtml(rate.value)}</strong>
+            <small>${escapeHtml(rate.hint)}</small>
+        </div>`;
+    }).join('');
+}
+
 function renderStaffPayrollProfileDiff(activeProfile = null, baseProfile = null) {
     if (!activeProfile || !baseProfile || Number(activeProfile.id) === Number(baseProfile.id)) {
         return '<div class="hr-staff-payroll-profile-diff is-muted">Відмінностей від базового профілю немає.</div>';
@@ -11090,7 +11193,7 @@ function renderStaffPayrollProfileCard(professionKey) {
             <div><span>Default rate</span><strong>${version ? payrollProfileMoney(version.defaultRate ?? version.default_rate) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
             <div><span>Версія / дати</span><strong>${escapeHtml(version ? payrollProfileVersionLabel(version) : '—')}</strong><small>${escapeHtml(effectiveDates)}</small></div>
         </div>
-        <div class="hr-payroll-profile-day-grid">${payrollProfileVersionDayChips(version)}</div>
+        <div class="hr-payroll-profile-period-grid">${staffPayrollProfilePeriodSummary(version)}</div>
         ${renderStaffPayrollProfileDiff(profile, defaultProfile)}
         <div class="hr-staff-payroll-profile-actions">
             <button type="button" data-staff-payroll-profile-action="use-default" data-profession-key="${escapeHtml(key)}"${!assignment ? ' disabled' : actionDisabled}>Використовувати базовий</button>
@@ -11117,13 +11220,13 @@ function renderStaffPayrollLegacyPanel(professionKeys = currentStaffPayrollProfe
                 <b>${legacy.rate > 0 ? escapeHtml(formatStaffRate(legacy.rate, legacy.rateUnit)) : '—'}</b>
                 <small>${defaultProfile ? `default profile: ${escapeHtml(defaultProfile.title || `#${defaultProfile.id}`)}` : 'default профілю немає'}</small>
             </div>
-            <button type="button" data-staff-payroll-profile-action="convert-legacy" data-profession-key="${escapeHtml(key)}"${legacy.rate <= 0 ? ' disabled' : actionDisabled}>Створити профіль із поточних умов</button>
+            <button type="button" data-staff-payroll-profile-action="convert-legacy" data-profession-key="${escapeHtml(key)}"${actionDisabled}>${legacy.rate > 0 ? 'Перенести у персональний профіль' : 'Створити персональний профіль'}</button>
         </div>`;
     }).join('');
-    return `<section class="hr-staff-payroll-legacy-panel" aria-label="Legacy ставки">
+    return `<section class="hr-staff-payroll-legacy-panel" aria-label="Базові fallback-ставки">
         <div class="hr-staff-payroll-legacy-head">
-            <strong>Legacy-ставки</strong>
-            <span>Показані окремо як fallback. Нові персональні умови створюйте через зарплатний профіль.</span>
+            <strong>Базові fallback-ставки</strong>
+            <span>Резервні значення старої моделі. Персональні будні й вихідні створюються окремо для кожної професії.</span>
         </div>
         ${rows || '<div class="hr-payroll-profile-empty-state">Професії ще не вибрані.</div>'}
     </section>`;
@@ -11314,16 +11417,74 @@ async function cloneStaffPayrollProfile(professionKey, profileId = null) {
     return assignmentResponse;
 }
 
-function staffPayrollVersionDayFields(version = null) {
-    const defaultRate = payrollProfileNumber(version?.defaultRate ?? version?.default_rate, 0);
-    const overrides = payrollProfileDayRateMap(version || {});
-    return PAYROLL_PROFILE_WEEKDAYS.map(day => ({
-        key: `dayRate${day.iso}`,
-        label: `${day.short} override`,
-        type: 'number',
-        defaultValue: overrides.has(day.iso) ? String(overrides.get(day.iso)) : '',
-        placeholder: `default ${defaultRate || ''}`
-    }));
+function staffPayrollPeriodDraft(version = null, period = STAFF_PAYROLL_RATE_PERIODS[0]) {
+    if (!version || normalizeStaffRateUnit(version.rateUnit || version.rate_unit) === 'month') {
+        return { value: '', mixed: false };
+    }
+    const rates = period.isoWeekdays.map(day => payrollProfileRateForDay(version, day));
+    const uniqueRates = [...new Set(rates)];
+    return {
+        value: uniqueRates.length === 1 && uniqueRates[0] > 0 ? String(uniqueRates[0]) : '',
+        mixed: uniqueRates.length > 1
+    };
+}
+
+function staffPayrollVersionPeriodFields(version = null) {
+    const drafts = new Map(STAFF_PAYROLL_RATE_PERIODS.map(period => [
+        period.key,
+        staffPayrollPeriodDraft(version, period)
+    ]));
+    const mixedPeriods = STAFF_PAYROLL_RATE_PERIODS.filter(period => drafts.get(period.key)?.mixed);
+    return [
+        ...(mixedPeriods.length ? [{
+            key: 'periodRateNotice',
+            type: 'note',
+            text: `Зараз у групі "${mixedPeriods.map(period => period.label).join(', ')}" є різні денні ставки. Вкажіть нову спільну ставку — після збереження вона буде однаковою для всієї групи.`
+        }] : []),
+        ...STAFF_PAYROLL_RATE_PERIODS.map(period => ({
+            key: `${period.key}Rate`,
+            label: `${period.label} (${period.daysLabel})`,
+            type: 'number',
+            required: true,
+            hiddenWhen: values => normalizeStaffRateUnit(values.rateUnit || 'hour') === 'month',
+            defaultValue: drafts.get(period.key)?.value || '',
+            placeholder: 'Ставка',
+            hint: `Одна ставка для ${period.daysLabel}.`
+        }))
+    ];
+}
+
+function validateStaffPayrollPeriodRates(values = {}) {
+    const defaultRate = Number(values.defaultRate);
+    if (!Number.isFinite(defaultRate) || defaultRate <= 0) {
+        return { key: 'defaultRate', message: 'Базова ставка має бути більшою за нуль.' };
+    }
+    const unit = normalizeStaffRateUnit(values.rateUnit || 'hour');
+    if (unit === 'month') {
+        const hasPeriodRates = STAFF_PAYROLL_RATE_PERIODS.some(period => String(values[`${period.key}Rate`] || '').trim());
+        return hasPeriodRates
+            ? { key: 'rateUnit', message: 'Для місячного профілю ставки буднів і вихідних не застосовуються. Очистіть ці поля.' }
+            : null;
+    }
+    for (const period of STAFF_PAYROLL_RATE_PERIODS) {
+        const key = `${period.key}Rate`;
+        const rate = Number(values[key]);
+        if (!Number.isFinite(rate) || rate <= 0) {
+            return { key, message: `Ставка "${period.label}" має бути більшою за нуль.` };
+        }
+    }
+    return null;
+}
+
+function staffPayrollDayRatesFromPeriods(values = {}, defaultRate = Number(values.defaultRate)) {
+    if (normalizeStaffRateUnit(values.rateUnit || 'hour') === 'month') return [];
+    const dayRates = [];
+    STAFF_PAYROLL_RATE_PERIODS.forEach(period => {
+        const rate = Number(values[`${period.key}Rate`]);
+        if (!Number.isFinite(rate) || rate <= 0 || rate === Number(defaultRate)) return;
+        period.isoWeekdays.forEach(isoWeekday => dayRates.push({ isoWeekday, rate }));
+    });
+    return dayRates;
 }
 
 async function changeStaffPayrollProfileVersion(professionKey, profileId = null) {
@@ -11349,37 +11510,17 @@ async function changeStaffPayrollProfileVersion(professionKey, profileId = null)
             { value: 'month', label: 'За місяць' }
         ] },
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: String(defaultRate || '') },
+        ...staffPayrollVersionPeriodFields(version),
         { key: 'effectiveFrom', label: 'Дата початку нової версії', type: 'date', required: true, defaultValue: payrollProfileNextEffectiveDate(profile) },
-        { key: 'changeReason', label: 'Причина зміни', required: true, defaultValue: 'Зміна умов оплати з картки працівника' },
-        ...staffPayrollVersionDayFields(version)
+        { key: 'changeReason', label: 'Причина зміни', required: true, defaultValue: 'Зміна умов оплати з картки працівника' }
     ], {
         icon: '💸',
         okText: 'Створити версію',
-        validate: values => {
-            const rate = Number(values.defaultRate);
-            if (!Number.isFinite(rate) || rate <= 0) return { key: 'defaultRate', message: 'Базова ставка має бути більшою за нуль.' };
-            if (values.rateUnit === 'month') {
-                const hasDayOverrides = PAYROLL_PROFILE_WEEKDAYS.some(day => String(values[`dayRate${day.iso}`] || '').trim());
-                if (hasDayOverrides) return { key: 'rateUnit', message: 'Для місячного профілю денні override не застосовуються.' };
-            }
-            for (const day of PAYROLL_PROFILE_WEEKDAYS) {
-                const raw = String(values[`dayRate${day.iso}`] || '').trim();
-                if (raw && (!Number.isFinite(Number(raw)) || Number(raw) <= 0)) return { key: `dayRate${day.iso}`, message: 'Override-ставка має бути більшою за нуль.' };
-            }
-            return null;
-        }
+        validate: validateStaffPayrollPeriodRates
     });
     if (!result) return { cancelled: true };
     const nextDefaultRate = payrollProfileNumber(result.defaultRate, NaN);
-    const dayRates = [];
-    if (result.rateUnit !== 'month') {
-        PAYROLL_PROFILE_WEEKDAYS.forEach(day => {
-            const raw = String(result[`dayRate${day.iso}`] || '').trim();
-            if (!raw) return;
-            const rate = payrollProfileNumber(raw, NaN);
-            if (Number.isFinite(rate) && rate > 0 && rate !== nextDefaultRate) dayRates.push({ isoWeekday: day.iso, rate });
-        });
-    }
+    const dayRates = staffPayrollDayRatesFromPeriods(result, nextDefaultRate);
     const response = await hrFetch(`/payroll-profiles/${Number(profile.id)}/versions`, {
         method: 'POST',
         body: {
@@ -11408,22 +11549,24 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
     const key = normalizeProfessionKey(professionKey);
     const staffName = document.getElementById('editStaffName')?.value?.trim() || `Staff #${staffId}`;
     const legacy = staffPayrollLegacyRateForProfession(key);
-    if (!legacy.rate || legacy.rate <= 0) {
-        showNotification('У legacy-ставці немає додатної суми для конвертації.', 'warning');
-        return { success: false };
-    }
-    const result = await formModal(`Створити профіль із legacy · ${professionTitle(key) || key}`, [
+    const result = await formModal(`Персональна оплата · ${professionTitle(key) || key}`, [
         { key: 'title', label: 'Назва профілю', required: true, defaultValue: `Профіль · ${staffName}` },
         { key: 'rateUnit', label: 'Одиниця оплати', type: 'select', defaultValue: legacy.rateUnit, options: [
             { value: 'hour', label: 'За годину' },
             { value: 'day', label: 'За вихід' },
             { value: 'month', label: 'За місяць' }
         ] },
-        { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: String(legacy.rate) },
+        { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: legacy.rate > 0 ? String(legacy.rate) : '' },
+        ...staffPayrollVersionPeriodFields({
+            rateUnit: legacy.rateUnit,
+            defaultRate: legacy.rate,
+            dayRates: []
+        }),
         { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: todayStr() },
-        { key: 'reason', label: 'Причина', required: true, defaultValue: 'Конвертація legacy-ставки працівника в зарплатний профіль' }
-    ], { icon: '🔁', okText: 'Створити й призначити' });
+        { key: 'reason', label: 'Причина', required: true, defaultValue: 'Індивідуальні умови оплати працівника' }
+    ], { icon: '🔁', okText: 'Створити й призначити', validate: validateStaffPayrollPeriodRates });
     if (!result) return { cancelled: true };
+    const dayRates = staffPayrollDayRatesFromPeriods(result, Number(result.defaultRate));
     const createResponse = await hrFetch('/payroll-profiles', {
         method: 'POST',
         body: {
@@ -11437,11 +11580,11 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
             defaultRate: Number(result.defaultRate),
             effectiveFrom: result.effectiveFrom,
             changeReason: result.reason,
-            dayRates: []
+            dayRates
         }
     });
     if (!createResponse?.success) {
-        showNotification(createResponse?.error || 'Не вдалося створити профіль із legacy-ставки', 'error');
+        showNotification(createResponse?.error || 'Не вдалося створити персональний зарплатний профіль', 'error');
         return createResponse || { success: false };
     }
     const profile = createResponse.data;
@@ -11456,7 +11599,7 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
             effectiveTo: null
         }
     ], plan.removeAssignmentIds, result.reason);
-    if (assignmentResponse?.success) showNotification('Legacy-ставку конвертовано в персональний профіль', 'success');
+    if (assignmentResponse?.success) showNotification('Персональний зарплатний профіль створено й призначено', 'success');
     return assignmentResponse;
 }
 
@@ -11698,7 +11841,7 @@ async function saveStaffPayrollScheme(button = null) {
             savedScheme = true;
         }
         if (savedRates && savedScheme) showNotification('Оплату збережено', 'success');
-        else if (savedRates) showNotification('Ставки професій збережено', 'success');
+        else if (savedRates) showNotification('Базові fallback-ставки збережено', 'success');
         else if (savedScheme) showNotification('Зарплатну схему оновлено', 'success');
         else showNotification('Змін в оплаті немає', 'info');
         return result;
@@ -12510,8 +12653,8 @@ function prepareStaffProfileActionButtons(modal) {
     modal.dataset.staffProfileActionsReady = 'true';
     const payrollSave = modal.querySelector('#editPayrollSchemeSave');
     if (payrollSave) {
-        payrollSave.textContent = 'Зберегти оплату';
-        payrollSave.title = 'Зберегти ставки професій і зарплатну схему';
+        payrollSave.textContent = 'Зберегти базові ставки';
+        payrollSave.title = 'Зберегти fallback-ставки основної та додаткових професій';
     }
     modal.querySelectorAll('.btn-primary, .btn-secondary, .btn-danger').forEach(decorateStaffProfileActionButton);
 
@@ -12789,7 +12932,6 @@ async function loadStaffProfileTabData(tabId, options = {}) {
                 await loadStaffLifecycleChecklist(staffId, { force: Boolean(options.force) });
             } else if (tab === 'payroll') {
                 await Promise.allSettled([
-                    loadStaffPayrollScheme(staffId),
                     loadStaffPayrollProfiles(staffId, { force: Boolean(options.force) }),
                     loadStaffPayrollProfilePreview(staffId, { force: Boolean(options.force) })
                 ]);

@@ -339,6 +339,22 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
     });
 
+    it('keeps profession responsibilities and exposes one payroll-profile UX for weekday, weekend, and audit details', () => {
+        assert.match(hrHtml, /id="professionWorkspaceResponsibilities"/);
+        assert.match(hrHtml, /Оплата за професіями/);
+        assert.match(hrHtml, /data-legacy-payroll-scheme-editor/);
+        assert.match(hrHtml, /data-legacy-payroll-scheme-editor[^>]*hidden|hidden[^>]*data-legacy-payroll-scheme-editor/);
+        assert.match(hrPage, /const STAFF_PAYROLL_RATE_PERIODS/);
+        assert.match(hrPage, /label: 'Будні'/);
+        assert.match(hrPage, /label: 'Вихідні'/);
+        assert.match(hrPage, /key: `\$\{period\.key\}Rate`/);
+        assert.match(hrPage, /function staffPayrollDayRatesFromPeriods/);
+        assert.match(hrPage, /function renderStaffHistoryChanges/);
+        assert.match(hrPage, /<em>Було:<\/em>/);
+        assert.match(hrPage, /<em>Стало:<\/em>/);
+        assert.match(hrPage, /· Хто:/);
+    });
+
     it('renders a complete approved subdivision list in every HR staff card structure dropdown', () => {
         const approvedTitles = [
             'Керівництво',

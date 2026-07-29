@@ -1037,6 +1037,17 @@ function crmBusinessHasTimelineViewHandoff(url, context) {
         || normalizeCrmBusinessContext(requestedContext) === normalizeCrmBusinessContext(context);
 }
 
+function crmBusinessHasTimelineDateHandoff(url, context) {
+    const params = url?.searchParams;
+    const timelineDate = String(params?.get('date') || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(timelineDate)) return false;
+    const parsedDate = new Date(`${timelineDate}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) return false;
+    const requestedContext = params.get('businessContext');
+    return !requestedContext
+        || normalizeCrmBusinessContext(requestedContext) === normalizeCrmBusinessContext(context);
+}
+
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
@@ -1063,7 +1074,8 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     if (page?.id === 'timeline'
         && target.pathname === current.pathname
         && (crmBusinessHasLeadBookingHandoff(current)
-            || crmBusinessHasTimelineViewHandoff(current, context))) {
+            || crmBusinessHasTimelineViewHandoff(current, context)
+            || crmBusinessHasTimelineDateHandoff(current, context))) {
         return false;
     }
     window.__crmBusinessNavigationPending = true;

@@ -443,6 +443,9 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessHasTimelineViewHandoff/);
     assert.match(apiCode, /\['animators', 'rooms'\]\.includes\(timelineView\)/);
     assert.match(apiCode, /crmBusinessHasTimelineViewHandoff\(current, context\)/);
+    assert.match(apiCode, /function crmBusinessHasTimelineDateHandoff/);
+    assert.match(apiCode, /params\?\.get\('date'\)/);
+    assert.match(apiCode, /crmBusinessHasTimelineDateHandoff\(current, context\)/);
     assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
     assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
@@ -453,6 +456,62 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(contextCode, /brandName: 'Майстерня долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
+});
+
+test('timeline shell canonicalization preserves an explicit URL date', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const user = {
+        id: 7,
+        role: 'manager',
+        businessContexts: ['event_genix'],
+        defaultBusinessContext: 'event_genix'
+    };
+    let currentUrl = new URL('https://crm.test/?businessContext=event_genix&date=2099-01-01');
+    const navigations = [];
+    const location = {
+        get origin() { return currentUrl.origin; },
+        get pathname() { return currentUrl.pathname; },
+        get search() { return currentUrl.search; },
+        get hash() { return currentUrl.hash; },
+        get href() { return currentUrl.href; },
+        set href(value) { navigations.push(String(value)); }
+    };
+    const storage = new Map();
+    const sandbox = {
+        console,
+        URL,
+        URLSearchParams,
+        CustomEvent: class CustomEvent { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } },
+        window: {
+            location,
+            history: {
+                state: null,
+                replaceState(_state, _title, value) {
+                    currentUrl = new URL(String(value), currentUrl);
+                }
+            },
+            dispatchEvent() {},
+            addEventListener() {}
+        },
+        document: {
+            body: { dataset: {} },
+            getElementById: () => null
+        },
+        localStorage: {
+            getItem: key => storage.get(key) || null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: key => storage.delete(key)
+        },
+        AppState: { currentUser: user }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    vm.runInNewContext(apiCode, sandbox);
+
+    assert.equal(sandbox.window.CrmBusinessContext.renderShell(user), false);
+    assert.equal(currentUrl.pathname, '/');
+    assert.equal(currentUrl.searchParams.has('businessContext'), false);
+    assert.equal(currentUrl.searchParams.get('date'), '2099-01-01');
+    assert.deepEqual(navigations, []);
 });
 
 test('sidebar timeline launcher derives zero, one, or two modes from the hydrated business profile', async () => {

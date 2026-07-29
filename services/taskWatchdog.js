@@ -1,5 +1,7 @@
 'use strict';
 
+const { rescheduleTask } = require('./taskReschedule');
+
 const DEFAULT_OWNER_SCOPE = Object.freeze({
     3: { crmOwnerUserId: 3, displayName: 'Наталія' },
     4: { crmOwnerUserId: 4, displayName: 'Сергій' }
@@ -1145,47 +1147,78 @@ async function applyTaskWatchdogAutoRescheduleMutationPlan(pool, batchOrPlan = {
     }
 
     const queryLog = [];
-    const runQuery = async (text, values) => {
-        queryLog.push({ text, values });
-        return pool.query(text, values);
+    const trackQueryable = queryable => ({
+        query: async (text, values) => {
+            queryLog.push({ text, values });
+            return queryable.query(text, values);
+        },
+        ...(typeof queryable.release === 'function' ? { release: () => queryable.release() } : {})
+    });
+    const trackedPool = typeof pool.connect === 'function'
+        ? {
+            connect: async () => trackQueryable(await pool.connect()),
+            query: async (text, values) => {
+                queryLog.push({ text, values });
+                return pool.query(text, values);
+            }
+        }
+        : trackQueryable(pool);
+    const failReceipt = (error, appliedCount) => {
+        const reasonCode = error?.code === 'TASK_NOT_VISIBLE'
+            ? REASON_CODES.TASK_NOT_FOUND
+            : (error?.code || 'TASK_WATCHDOG_RESCHEDULE_FAILED');
+        return {
+            ...baseReceipt,
+            ok: false,
+            blocked: true,
+            failed: true,
+            reasonCode,
+            reasonCodes: [reasonCode],
+            queryCount: queryLog.length,
+            queryLog,
+            applied: appliedCount
+        };
     };
     const updates = plan.operations.filter(operation => operation.operation === 'update_task_due_and_watchdog_meta');
     const auditsByTask = new Map(plan.operations.filter(operation => operation.operation === 'insert_task_action_history').map(operation => [operation.taskId, operation]));
     const applied = [];
 
     for (const operation of updates) {
-        const selected = await runQuery(
-            'SELECT id, owner_user_id, deadline, date, control_meta, status FROM tasks WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',
-            [operation.taskId, operation.ownerUserId]
-        );
-        const current = selected.rows?.[0];
-        if (!current) return { ...baseReceipt, ok: false, blocked: true, failed: true, reasonCode: REASON_CODES.TASK_NOT_FOUND, reasonCodes: [REASON_CODES.TASK_NOT_FOUND], queryCount: queryLog.length, queryLog, applied: applied.length };
-        if (ACTIVE_STATUSES_EXCLUDED.has(normalizeStatus(current.status))) return { ...baseReceipt, ok: false, blocked: true, failed: true, reasonCode: REASON_CODES.STATUS_EXCLUDED, reasonCodes: [REASON_CODES.STATUS_EXCLUDED], queryCount: queryLog.length, queryLog, applied: applied.length };
-        const nextControlMeta = mergeWatchdogMetaForReadback(current.control_meta, operation.set.control_meta_patch);
-        await runQuery(
-            "UPDATE tasks SET deadline=$3, date=$4, snoozed_until=NULL, remind_at=NULL, control_meta=jsonb_set(COALESCE(control_meta, '{}'::jsonb), '{watchdog}', COALESCE(control_meta->'watchdog', '{}'::jsonb) || ($5::jsonb->'watchdog'), true), updated_at=NOW(), version=COALESCE(version,1)+1 WHERE id=$1 AND owner_user_id=$2 AND status NOT IN ('done','completed','cancelled','canceled','archived','resolved','closed') RETURNING id, owner_user_id, deadline, date, control_meta, status",
-            [operation.taskId, operation.ownerUserId, operation.set.deadline, operation.set.date, JSON.stringify(operation.set.control_meta_patch)]
-        );
         const audit = auditsByTask.get(operation.taskId);
-        await runQuery(
-            'INSERT INTO task_action_history (task_id, action_type, old_value_json, new_value_json, meta_json, summary, created_at) VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,NOW()) RETURNING id',
-            [operation.taskId, audit.actionType, JSON.stringify(audit.oldValue), JSON.stringify(audit.newValue), JSON.stringify(audit.meta), audit.summary]
-        );
-        const readback = await runQuery(
-            'SELECT id, owner_user_id, deadline, date, control_meta, status FROM tasks WHERE id=$1 AND owner_user_id=$2',
-            [operation.taskId, operation.ownerUserId]
-        );
-        const row = readback.rows?.[0];
-        const rowLabels = row?.control_meta?.watchdog?.labels || nextControlMeta.watchdog.labels || [];
-        const expectedLabels = operation.set.control_meta_patch.watchdog.labels || [];
-        const labelsMatch = expectedLabels.every(label => rowLabels.includes(label));
-        const rowDeadlineIso = toDate(row?.deadline)?.toISOString() || null;
-        const expectedDeadlineIso = toDate(operation.set.deadline)?.toISOString() || null;
-        const rowDatePart = typeof row?.date === 'string' ? row.date.slice(0, 10) : datePartFromDueAt(toDate(row?.date)?.toISOString());
-        if (!row || rowDeadlineIso !== expectedDeadlineIso || rowDatePart !== String(operation.set.date) || !labelsMatch) {
-            return { ...baseReceipt, ok: false, blocked: true, failed: true, reasonCode: 'READBACK_MISMATCH', reasonCodes: ['READBACK_MISMATCH'], queryCount: queryLog.length, queryLog, applied: applied.length };
+        try {
+            const result = await rescheduleTask(
+                operation.taskId,
+                operation.set.deadline,
+                { username: 'task_watchdog', name: 'Task Watchdog', role: 'creator' },
+                {
+                    pool: trackedPool,
+                    businessScope: operation.where?.business_context || 'event_genix',
+                    sourceSurface: 'task_watchdog',
+                    route: 'task_watchdog_auto_reschedule',
+                    reason: operation.set.control_meta_patch?.watchdog?.reason || 'watchdog_auto_reschedule',
+                    actorType: 'system',
+                    idempotencyKey: operation.idempotencyKeySeed,
+                    requireIdempotency: true,
+                    expectedOwnerUserId: operation.ownerUserId,
+                    controlMetaPatch: operation.set.control_meta_patch,
+                    summary: audit?.summary || 'Task auto-rescheduled by Task Watchdog',
+                    meta: {
+                        ...(audit?.meta || {}),
+                        packetId: plan.packetId,
+                        watchdogApproved: true
+                    }
+                }
+            );
+            applied.push({
+                taskId: operation.taskId,
+                ownerUserId: operation.ownerUserId,
+                deadline: result.task.deadline,
+                postponementCount: result.task.postponementCount,
+                idempotent: result.idempotent === true
+            });
+        } catch (error) {
+            return failReceipt(error, applied.length);
         }
-        applied.push({ taskId: operation.taskId, ownerUserId: operation.ownerUserId, deadline: operation.set.deadline });
     }
 
     return {

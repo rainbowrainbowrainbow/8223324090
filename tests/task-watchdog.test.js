@@ -945,8 +945,8 @@ function createMutationShellBatch() {
 function createFakeMutationPool({ mismatchReadback = false } = {}) {
     const calls = [];
     const rowsById = new Map([
-        [1352, { id: 1352, owner_user_id: 4, deadline: '2026-06-28T18:00:00.000Z', date: '2026-06-28', control_meta: {}, status: 'todo' }],
-        [1353, { id: 1353, owner_user_id: 4, deadline: '2026-06-28T18:15:00.000Z', date: '2026-06-28', control_meta: {}, status: 'todo' }]
+        [1352, { id: 1352, owner_user_id: 4, deadline: '2026-06-28T18:00:00.000Z', date: '2026-06-28', control_meta: {}, status: 'todo', workflow_state: 'todo', postponement_count: 0, version: 1, business_context: 'event_genix' }],
+        [1353, { id: 1353, owner_user_id: 4, deadline: '2026-06-28T18:15:00.000Z', date: '2026-06-28', control_meta: {}, status: 'todo', workflow_state: 'todo', postponement_count: 0, version: 1, business_context: 'event_genix' }]
     ]);
     return {
         calls,
@@ -958,14 +958,39 @@ function createFakeMutationPool({ mismatchReadback = false } = {}) {
             }
             if (/^\s*UPDATE tasks/i.test(text)) {
                 const row = rowsById.get(values[0]);
-                const patch = JSON.parse(values[4]);
-                row.deadline = values[2];
-                row.date = values[3];
-                row.control_meta = { ...row.control_meta, watchdog: patch.watchdog };
-                return { rows: [{ ...row }], rowCount: 1 };
+                const paramFor = field => {
+                    const match = text.match(new RegExp(`${field} = \\$([0-9]+)`));
+                    return match ? values[Number(match[1]) - 1] : row[field];
+                };
+                const jsonParamFor = field => {
+                    const value = paramFor(field);
+                    return typeof value === 'string' ? JSON.parse(value) : value;
+                };
+                row.deadline = paramFor('deadline');
+                row.date = paramFor('date');
+                row.status = paramFor('status');
+                row.workflow_state = paramFor('workflow_state');
+                row.control_meta = jsonParamFor('control_meta') || row.control_meta;
+                row.postponement_count = paramFor('postponement_count');
+                row.version = Number(row.version || 1) + 1;
+                const returned = { ...row, control_meta: { ...row.control_meta } };
+                if (mismatchReadback) returned.deadline = '2026-06-30T09:30:00+03:00';
+                return { rows: [returned], rowCount: 1 };
             }
             if (/^\s*INSERT INTO task_action_history/i.test(text)) {
-                return { rows: [{ id: calls.length }], rowCount: 1 };
+                return { rows: [{
+                    id: calls.length,
+                    task_id: values[0],
+                    action_type: values[1],
+                    actor_user_id: values[2],
+                    actor_name_snapshot: values[3],
+                    source_surface: values[4],
+                    old_value_json: JSON.parse(values[5]),
+                    new_value_json: JSON.parse(values[6]),
+                    meta_json: JSON.parse(values[7]),
+                    summary: values[8],
+                    created_at: NOW
+                }], rowCount: 1 };
             }
             if (/^\s*SELECT id, owner_user_id, deadline, date, control_meta, status FROM tasks/i.test(text)) {
                 const row = rowsById.get(values[0]);
@@ -1052,18 +1077,18 @@ test('Auto-reschedule executor with exact approval uses fake pool in determinist
     assert.equal(receipt.dryRun, false);
     assert.equal(receipt.applied, 2);
     assert.equal(pool.calls.length, 8);
-    assert.match(pool.calls[0].text, /^SELECT .*FOR UPDATE$/i);
-    assert.match(pool.calls[1].text, /^UPDATE tasks/i);
-    assert.match(pool.calls[1].text, /jsonb_set\(COALESCE\(control_meta/);
-    assert.match(pool.calls[2].text, /^INSERT INTO task_action_history/i);
-    assert.match(pool.calls[2].text, /old_value_json, new_value_json, meta_json/);
-    assert.match(pool.calls[3].text, /^SELECT id, owner_user_id, deadline, date, control_meta, status FROM tasks/i);
-    assert.match(pool.calls[4].text, /^SELECT .*FOR UPDATE$/i);
-    assert.match(pool.calls[5].text, /^UPDATE tasks/i);
-    assert.match(pool.calls[5].text, /jsonb_set\(COALESCE\(control_meta/);
-    assert.match(pool.calls[6].text, /^INSERT INTO task_action_history/i);
-    assert.match(pool.calls[6].text, /old_value_json, new_value_json, meta_json/);
-    assert.match(pool.calls[7].text, /^SELECT id, owner_user_id, deadline, date, control_meta, status FROM tasks/i);
+    assert.match(pool.calls[0].text, /FOR UPDATE OF t/i);
+    assert.match(pool.calls[1].text, /FROM task_action_history/i);
+    assert.match(pool.calls[2].text, /^\s*UPDATE tasks/i);
+    assert.match(pool.calls[2].text, /postponement_count/);
+    assert.match(pool.calls[2].text, /original_due_at/);
+    assert.match(pool.calls[3].text, /^\s*INSERT INTO task_action_history/i);
+    assert.match(pool.calls[3].text, /old_value_json, new_value_json, meta_json/);
+    assert.match(pool.calls[4].text, /FOR UPDATE OF t/i);
+    assert.match(pool.calls[5].text, /FROM task_action_history/i);
+    assert.match(pool.calls[6].text, /^\s*UPDATE tasks/i);
+    assert.match(pool.calls[6].text, /last_postponed_at/);
+    assert.match(pool.calls[7].text, /^\s*INSERT INTO task_action_history/i);
     assert.equal(receipt.safety.crmWrites, 4);
 });
 
@@ -1084,7 +1109,7 @@ test('Auto-reschedule executor reports readback mismatch as failure not success'
     assert.equal(receipt.ok, false);
     assert.equal(receipt.reasonCode, 'READBACK_MISMATCH');
     assert.equal(receipt.applied, 0);
-    assert.equal(receipt.queryCount, 4);
+    assert.equal(receipt.queryCount, 3);
 });
 
 test('Auto-reschedule mutation shell keeps owner 3 and telegram namespace 9 empty by default', () => {

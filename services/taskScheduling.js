@@ -16,6 +16,10 @@ const {
     appendTaskBusinessScopeSql,
     pushTaskBusinessScopeCondition
 } = require('./taskBusinessScope');
+const {
+    applyCanonicalRescheduleMutation,
+    normalizeSourceSurface: normalizeTaskRescheduleSourceSurface
+} = require('./taskReschedule');
 
 const DEFAULT_DURATION_MINUTES = 30;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
@@ -417,7 +421,8 @@ async function getVisibleTaskForSchedule(query, taskId, actor, options = {}) {
          WHERE t.id = $1
            ${visibility}
            ${businessCondition}
-         LIMIT 1`,
+         LIMIT 1
+         FOR UPDATE OF t`,
         params
     );
     if (!result.rows.length) {
@@ -533,89 +538,70 @@ async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
             }
         }
 
-        const result = await query.query(
-            `UPDATE tasks
-             SET date = $2,
-                 deadline = $3,
-                 time_window_start = $4,
-                 time_window_end = $5,
-                 effort_minutes = $6,
-                 scheduled_start_at = $7,
-                 scheduled_end_at = $8,
-                 schedule_slot = $9,
-                 schedule_mode = $10,
-                 schedule_status = $11,
-                 schedule_meta = $12::jsonb,
-                 schedule_proposal = $13::jsonb,
-                 snoozed_until = NULL,
-                 escalate_after = CASE
-                     WHEN priority = 'urgent' THEN COALESCE($7, $3, escalate_after)
-                     ELSE escalate_after
-                 END,
-                 next_notification_at = CASE
-                     WHEN priority = 'urgent' THEN COALESCE($7, $3, NOW() + INTERVAL '90 minutes')
-                     ELSE next_notification_at
-                 END,
-                 missed_at = NULL,
-                 missed_processed_at = NULL,
-                 workflow_state = CASE
-                     WHEN COALESCE(workflow_state, 'todo') IN ('done','archived','waiting') THEN workflow_state
-                     ELSE 'scheduled'
-                 END,
-                 updated_at = NOW(),
-                 version = COALESCE(version, 1) + 1
-                 WHERE id = $1
-                   AND COALESCE(version, 1) = $14
-                   AND COALESCE(business_context, 'event_genix') = $15
-                   AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
-                 RETURNING *`,
-            [
-                task.id,
-                update.date,
-                update.deadline,
-                update.timeWindowStart,
-                update.timeWindowEnd,
-                request.durationMinutes,
-                update.scheduledStartAt,
-                update.scheduledEndAt,
-                update.scheduleSlot,
-                update.scheduleMode,
-                update.scheduleStatus,
-                JSON.stringify({
-                    sourceSurface: scheduleSourceSurface(options.sourceSurface || input.sourceSurface || input.source_surface),
-                    actor: actorSnapshot(actor),
-                    requestedAt: new Date().toISOString()
-                }),
-                update.proposal ? JSON.stringify(update.proposal) : null,
-                    task.version || 1,
-                    task.business_context || 'event_genix'
-                ]
-            );
-        if (!result.rows.length) {
-            const err = new Error('Task is already closed or was changed by another user');
-            err.statusCode = 409;
-            err.code = 'TASK_STALE_WRITE';
-            throw err;
+        {
+        const resolvedSourceSurface = normalizeTaskRescheduleSourceSurface(
+            options.sourceSurface || input.sourceSurface || input.source_surface
+        );
+        const predictedTask = {
+            ...task,
+            date: update.date,
+            deadline: update.deadline,
+            scheduled_start_at: update.scheduledStartAt,
+            scheduled_end_at: update.scheduledEndAt,
+            schedule_slot: update.scheduleSlot,
+            schedule_mode: update.scheduleMode,
+            schedule_status: update.scheduleStatus,
+            schedule_proposal: update.proposal
+        };
+        const actionType = historyActionForSchedule(task, predictedTask, request);
+        const patch = {
+            date: update.date,
+            deadline: update.deadline,
+            time_window_start: update.timeWindowStart,
+            time_window_end: update.timeWindowEnd,
+            effort_minutes: request.durationMinutes,
+            scheduled_start_at: update.scheduledStartAt,
+            scheduled_end_at: update.scheduledEndAt,
+            schedule_slot: update.scheduleSlot,
+            schedule_mode: update.scheduleMode,
+            schedule_status: update.scheduleStatus,
+            schedule_meta: {
+                sourceSurface: resolvedSourceSurface,
+                actor: actorSnapshot(actor),
+                requestedAt: new Date().toISOString()
+            },
+            schedule_proposal: update.proposal || null,
+            snoozed_until: null,
+            missed_at: null,
+            missed_processed_at: null,
+            workflow_state: ['done', 'archived', 'waiting'].includes(String(task.workflow_state || ''))
+                ? task.workflow_state
+                : 'scheduled'
+        };
+        if (String(task.priority || '').toLowerCase() === 'urgent') {
+            patch.escalate_after = update.scheduledStartAt || update.deadline || task.escalate_after || null;
+            patch.next_notification_at = update.scheduledStartAt || update.deadline || task.next_notification_at || new Date(Date.now() + 90 * 60 * 1000).toISOString();
         }
-        const updated = result.rows[0];
-        const actionType = historyActionForSchedule(task, updated, request);
-        const historyEvent = await logTaskActionEvent({
-            taskId: task.id,
+        const canonicalResult = await applyCanonicalRescheduleMutation(query, task, patch, actor, {
+            ...options,
             actionType,
-            actor,
-            sourceSurface: scheduleSourceSurface(options.sourceSurface || input.sourceSurface || input.source_surface),
+            sourceSurface: resolvedSourceSurface,
+            reason: options.reason || input.reason || null,
+            idempotencyKey: options.idempotencyKey || input.idempotencyKey || input.idempotency_key,
             oldValue,
-            newValue: taskScheduleValue(updated),
-            summary: updated.schedule_status === 'proposal' ? 'Task schedule proposal created' : 'Task schedule updated',
+            newValue: taskScheduleValue(predictedTask),
+            summary: update.scheduleStatus === 'proposal' ? 'Task schedule proposal created' : 'Task schedule updated',
             meta: {
                 route: options.route || 'task_schedule',
                 ownerStateBefore: taskOwnerState(task),
                 canonicalFields: ['tasks.scheduled_start_at', 'tasks.scheduled_end_at', 'tasks.schedule_slot'],
                 proposals
             }
-        }, { pool: query });
-        await notifyScheduleChange(updated, actor, 'task:schedule_changed', { actionType, proposals });
-        return { task: attachTaskSchedule(updated), historyEvent, proposals };
+        });
+        await notifyScheduleChange(canonicalResult.task, actor, 'task:schedule_changed', { actionType, proposals });
+        return { task: attachTaskSchedule(canonicalResult.task), historyEvent: canonicalResult.historyEvent, proposals, idempotent: canonicalResult.idempotent };
+        }
+
     });
 }
 
@@ -684,6 +670,9 @@ function attachTaskSchedule(row = {}) {
         missedAt: isoValue(row.missed_at),
         missedProcessedAt: isoValue(row.missed_processed_at),
         createdByUserId: row.created_by_user_id || null,
+        postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        originalDueAt: isoValue(row.original_due_at || row.originalDueAt),
+        lastPostponedAt: isoValue(row.last_postponed_at || row.lastPostponedAt),
         schedule: {
             startAt: isoValue(row.scheduled_start_at),
             endAt: isoValue(row.scheduled_end_at),

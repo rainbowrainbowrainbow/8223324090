@@ -185,6 +185,7 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     const kleshnya = read('services/kleshnya.js');
     const duplicates = read('services/taskDuplicatePolicy.js');
     const execution = read('services/taskExecution.js');
+    const reschedule = read('services/taskReschedule.js');
     const scheduling = read('services/taskScheduling.js');
     const productivity = read('services/taskProductivity.js');
     const board = read('routes/board.js');
@@ -224,9 +225,12 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     assert.match(execution, /appendTaskBusinessScopeSql/);
     assert.match(execution, /getVisibleTask\(taskId, actor, \{ pool: query, businessScope/);
     assert.match(execution, /AND COALESCE\(business_context, 'event_genix'\) = \$5/);
+    assert.match(reschedule, /appendTaskBusinessScopeSql/);
+    assert.match(reschedule, /FOR UPDATE OF t/);
+    assert.match(reschedule, /const businessScope = options\.businessScope \|\| options\.businessContext \|\| null/);
     assert.match(scheduling, /appendTaskBusinessScopeSql/);
     assert.match(scheduling, /loadScheduledIntervals\(query, \{ ownerUserId, start, end, excludeTaskId = null, businessContext = null \}/);
-    assert.match(scheduling, /AND COALESCE\(business_context, 'event_genix'\) = \$15/);
+    assert.match(scheduling, /applyCanonicalRescheduleMutation/);
     assert.match(productivity, /taskBusinessScopeMeta/);
 
     assert.match(board, /pushBusinessScopeCondition\(taskParams, businessScope, 't'\)/);

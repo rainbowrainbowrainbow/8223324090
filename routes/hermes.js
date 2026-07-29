@@ -3450,7 +3450,12 @@ function createHermesRouter(options = {}) {
                     pool: mutationPool,
                     businessScope,
                     sourceSurface: 'hermes',
-                    route: 'hermes_task_reschedule'
+                    route: 'hermes_task_reschedule',
+                    reason: req.body?.reason || 'hermes_reschedule',
+                    actorType: 'bot',
+                    idempotencyKey: req.hermesMutation?.idempotencyKey,
+                    requireIdempotency: true,
+                    idempotencyHandledExternally: true
                 });
                 return {
                     status: 200,

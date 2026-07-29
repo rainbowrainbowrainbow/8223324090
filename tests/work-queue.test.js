@@ -397,7 +397,7 @@ function createFakePool() {
                     status: 'todo',
                     priority: 'high',
                     deadline: params[1],
-                    date: null,
+                    date: String(params[2] || params[1] || '').slice(0, 10) || null,
                     category: 'admin',
                     assigned_to: 'manager user',
                     owner: null,

@@ -850,6 +850,9 @@ function normalizeTaskPayload(row) {
         focusRank: row.focus_rank || 0,
         remindAt: row.remind_at || null,
         snoozedUntil: row.snoozed_until || null,
+        postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        originalDueAt: row.original_due_at || row.originalDueAt || null,
+        lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null,
         nextNotificationAt: row.next_notification_at || null,
         completedAt: row.completed_at || null,
         archivedAt: row.archived_at || null,
@@ -2341,7 +2344,9 @@ router.post('/:id/reschedule', async (req, res) => {
             const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
                 sourceSurface: sourceSurface(req.body),
                 route: 'tasks_task_schedule',
-                businessScope
+                businessScope,
+                reason: req.body?.reason || 'manual_schedule',
+                idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
             });
             _alertPush();
             return res.json({
@@ -2359,7 +2364,9 @@ router.post('/:id/reschedule', async (req, res) => {
         const result = await rescheduleTask(req.params.id, deadline, req.user, {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_reschedule',
-            businessScope
+            businessScope,
+            reason: req.body?.reason || 'manual_reschedule',
+            idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
         });
         res.json({
             success: true,
@@ -2384,7 +2391,9 @@ router.post('/:id/schedule', async (req, res) => {
         const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_schedule',
-            businessScope
+            businessScope,
+            reason: req.body?.reason || 'manual_schedule',
+            idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
         });
         _alertPush();
         res.json({
@@ -2767,6 +2776,10 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const category = b.category || old.category;
         const task_type = b.task_type || b.taskType || old.task_type;
         const deadline = b.deadline !== undefined ? b.deadline : old.deadline;
+        const dateChangeRequested = b.date !== undefined
+            && normalizedComparable(b.date) !== normalizedComparable(old.date);
+        const deadlineChangeRequested = b.deadline !== undefined
+            && normalizedComparable(b.deadline) !== normalizedComparable(old.deadline);
         const time_window_start = b.time_window_start || b.timeWindowStart || old.time_window_start;
         const time_window_end = b.time_window_end || b.timeWindowEnd || old.time_window_end;
         const clientVersion = b.version !== undefined ? parseInt(b.version) : null;
@@ -2804,7 +2817,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
             'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
-        const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
+        const values = [title.trim(), description || null, old.date || null, taskStatus, taskPriority,
                         assigned_to || null, owner || null, owner_user_id || null, taskStatus];
         let paramIdx = 10;
 
@@ -2831,10 +2844,6 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (task_type && VALID_TASK_TYPES.includes(task_type)) {
             setClauses.push(`task_type=$${paramIdx++}`);
             values.push(task_type);
-        }
-        if (deadline !== undefined) {
-            setClauses.push(`deadline=$${paramIdx++}`);
-            values.push(deadline || null);
         }
         if (time_window_start !== undefined) {
             setClauses.push(`time_window_start=$${paramIdx++}`);
@@ -2903,6 +2912,19 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
                 sourceSurface: sourceSurface(b, 'task_detail'),
                 route: 'tasks_update_schedule',
                 businessScope
+            });
+            updatedTask = scheduleResult.task;
+        } else if (dateChangeRequested || deadlineChangeRequested) {
+            const duePatch = {
+                ...(dateChangeRequested ? { date: date || null } : {}),
+                ...(deadlineChangeRequested ? { deadline: deadline || null } : {})
+            };
+            scheduleResult = await rescheduleTask(id, duePatch, req.user, {
+                sourceSurface: sourceSurface(b, 'task_detail'),
+                route: 'tasks_update_reschedule',
+                businessScope,
+                reason: b.reason || 'task_full_update_reschedule',
+                idempotencyKey: b.idempotencyKey || b.idempotency_key
             });
             updatedTask = scheduleResult.task;
         }

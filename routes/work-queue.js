@@ -584,14 +584,18 @@ router.patch('/tasks/:taskId/deadline', async (req, res) => {
         if (hasSchedulePayload(req.body || {})) {
             const result = await scheduleTask(taskId, req.body || {}, req.user, {
                 sourceSurface: resolveTaskSourceSurface(req.body || {}),
-                route: 'work_queue_task_schedule'
+                route: 'work_queue_task_schedule',
+                reason: req.body?.reason || 'manual_schedule',
+                idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
             });
             return res.json({ success: true, action: 'task_schedule', task: result.task, historyEvent: result.historyEvent, proposals: result.proposals || [] });
         }
         const deadline = resolveDeadline(req.body || {});
         const result = await rescheduleTask(taskId, deadline, req.user, {
             sourceSurface: resolveTaskSourceSurface(req.body || {}),
-            route: 'work_queue_task_reschedule'
+            route: 'work_queue_task_reschedule',
+            reason: req.body?.reason || 'manual_reschedule',
+            idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
         });
         res.json({ success: true, action: 'task_reschedule', deadline, task: result.task, historyEvent: result.historyEvent });
     } catch (err) {

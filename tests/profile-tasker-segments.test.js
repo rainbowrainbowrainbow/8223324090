@@ -1567,13 +1567,13 @@ test('profile typed planned task move persists through the same to-today resched
 });
 
 test('task reschedule keeps scheduled tasks in the same today projection contract', () => {
-    const source = fs.readFileSync(path.join(ROOT, 'services', 'taskExecution.js'), 'utf8');
+    const source = fs.readFileSync(path.join(ROOT, 'services', 'taskReschedule.js'), 'utf8');
     const routeSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
 
-    assert.match(source, /scheduled_start_at = CASE/);
-    assert.match(source, /scheduled_end_at = CASE/);
-    assert.match(source, /scheduled_end_at - scheduled_start_at/);
-    assert.match(source, /schedule_status = CASE/);
+    assert.match(source, /patch\.scheduled_start_at = newStart\.toISOString\(\)/);
+    assert.match(source, /patch\.scheduled_end_at = oldEnd/);
+    assert.match(source, /oldEnd\.getTime\(\) - oldStart\.getTime\(\)/);
+    assert.match(source, /patch\.schedule_status = 'scheduled'/);
     assert.match(source, /profile_my_cabinet_overdue_to_today_drop/);
     assert.match(source, /profile_my_cabinet_move_to_today_drop/);
     assert.match(routeSource, /profile_my_cabinet_overdue_to_today_drop/);

@@ -16,6 +16,7 @@ const {
 } = require('./taskActionHistory');
 const { subtaskCompletionState } = require('./taskSubtasks');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -131,7 +132,10 @@ function normalizeTaskRow(row = {}) {
         ...row,
         ownerUserId: row.owner_user_id || null,
         ownerLabel: row.owner_label || row.owner_name || row.owner_username || row.assigned_to || row.owner || null,
-        ownerState: taskOwnerState(row)
+        ownerState: taskOwnerState(row),
+        postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
+        originalDueAt: row.original_due_at || row.originalDueAt || null,
+        lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null
     };
 }
 
@@ -516,83 +520,6 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
     });
 }
 
-async function rescheduleTask(taskId, deadline, actor, options = {}) {
-    return withTaskExecutionTransaction(options, async query => {
-        const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
-        if (!canRescheduleTask(actor, task)) {
-            throw forbidden('You cannot reschedule this task');
-        }
-        const result = await query.query(
-            `UPDATE tasks
-             SET deadline = $2::timestamp,
-                 scheduled_end_at = CASE
-                    WHEN $4::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_end_at
-                    WHEN scheduled_end_at IS NOT NULL THEN $4::timestamptz + (scheduled_end_at - scheduled_start_at)
-                    ELSE scheduled_end_at
-                 END,
-                 scheduled_start_at = CASE
-                    WHEN $4::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_start_at
-                    ELSE $4::timestamptz
-                 END,
-                 date = CASE
-                    WHEN $4::timestamptz IS NULL THEN date
-                    ELSE ($4::timestamptz AT TIME ZONE 'Europe/Kyiv')::date::text
-                 END,
-                 schedule_status = CASE
-                    WHEN $4::timestamptz IS NOT NULL AND scheduled_start_at IS NOT NULL THEN 'scheduled'
-                    ELSE schedule_status
-                 END,
-                 status = CASE WHEN COALESCE(status, 'todo') = 'overdue' THEN 'todo' ELSE status END,
-                 workflow_state = CASE WHEN COALESCE(workflow_state, 'todo') = 'overdue' THEN 'todo' ELSE workflow_state END,
-                 snoozed_until = NULL,
-                 remind_at = NULL,
-                 escalate_after = CASE
-                    WHEN priority = 'urgent' THEN COALESCE($4::timestamptz, $2::timestamp, escalate_after)
-                    ELSE escalate_after
-                 END,
-                 next_notification_at = CASE
-                    WHEN priority = 'urgent' THEN COALESCE($4::timestamptz, $2::timestamp, NOW() + INTERVAL '90 minutes')
-                    ELSE next_notification_at
-                 END,
-                 updated_at = NOW(),
-             version = COALESCE(version, 1) + 1
-         WHERE id = $1
-           AND COALESCE(version, 1) = $3
-           AND COALESCE(business_context, 'event_genix') = $5
-           AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
-         RETURNING *`,
-            [task.id, deadline || null, task.version || 1, deadline || null, task.business_context || 'event_genix']
-        );
-        if (!result.rows.length) {
-            const err = new Error('Task is already closed or cannot be rescheduled');
-            err.statusCode = 409;
-            err.code = 'TASK_NOT_ACTIVE';
-            throw err;
-        }
-        const updated = normalizeTaskRow(result.rows[0]);
-        const historyEvent = await logTaskActionEvent({
-            taskId: task.id,
-            actionType: TASK_ACTION_TYPES.RESCHEDULED,
-            actor,
-            sourceSurface: sourceSurface(options.sourceSurface),
-            oldValue: {
-                deadline: task.deadline || null,
-                date: task.date || null
-            },
-            newValue: {
-                deadline: updated.deadline || null,
-                date: updated.date || null
-            },
-            meta: {
-                route: options.route || 'work_queue_task_reschedule',
-                ownerStateBefore: task.ownerState,
-                canonicalField: 'tasks.deadline'
-            }
-        }, { pool: query });
-        return { task: updated, historyEvent };
-    });
-}
-
 module.exports = {
     ASSIGNABLE_TASK_ROLES,
     completeTask,
@@ -604,6 +531,6 @@ module.exports = {
     taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
-    rescheduleTask,
+    rescheduleTask: canonicalRescheduleTask,
     updateTaskStatus
 };

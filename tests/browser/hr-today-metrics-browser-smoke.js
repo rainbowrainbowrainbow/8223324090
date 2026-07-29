@@ -65,7 +65,9 @@ async function installHarness(page) {
     await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body data-page-group="hr"></body></html>`);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
-        const parkWsDates = new Set(['2026-07-30']);
+        const unrelatedRealtimeDate = new Date(Date.now() + (32 * 24 * 60 * 60 * 1000));
+        window.__hrTodayUnrelatedRealtimeDate = unrelatedRealtimeDate.toISOString().slice(0, 10);
+        const parkWsDates = new Set([window.__hrTodayUnrelatedRealtimeDate]);
         const parkWsEvents = [];
         window.ParkWS = {
             connect() {
@@ -236,6 +238,9 @@ async function installHarness(page) {
             subscribedDates() {
                 return window.ParkWS.subscribedDates();
             },
+            unrelatedRealtimeDate() {
+                return window.__hrTodayUnrelatedRealtimeDate;
+            },
             realtimeEvents() {
                 return window.ParkWS.events();
             },
@@ -327,9 +332,10 @@ async function assertRealtimeDateSubscriptions(page) {
     const initial = await page.evaluate(() => ({
         today: hrTodayKyivDate(new Date()),
         dates: window.__hrTodayBrowserSmoke.subscribedDates(),
+        unrelatedDate: window.__hrTodayBrowserSmoke.unrelatedRealtimeDate(),
         events: window.__hrTodayBrowserSmoke.realtimeEvents()
     }));
-    assert.deepEqual(initial.dates, [initial.today, '2026-07-30'].sort(), 'HR adds only its Kyiv date to existing subscriptions');
+    assert.deepEqual(initial.dates, [initial.today, initial.unrelatedDate].sort(), 'HR adds only its Kyiv date to existing subscriptions');
     const subscribeIndex = initial.events.findIndex(event => event.type === 'subscribe' && event.date === initial.today);
     const connectIndex = initial.events.findIndex(event => event.type === 'connect');
     assert.ok(subscribeIndex >= 0 && connectIndex > subscribeIndex, 'HR subscribes before opening the WebSocket');
@@ -347,11 +353,11 @@ async function assertRealtimeDateSubscriptions(page) {
     });
     assert.equal(rollover.before, '2026-07-16', 'Kyiv date remains on the old day before midnight');
     assert.equal(rollover.after, '2026-07-17', 'Kyiv date advances after midnight');
-    assert.deepEqual(rollover.dates, ['2026-07-17', '2026-07-30'], 'date rollover replaces only the HR-owned subscription');
+    assert.deepEqual(rollover.dates, ['2026-07-17', initial.unrelatedDate].sort(), 'date rollover replaces only the HR-owned subscription');
     assert.ok(rollover.events.some(event => event.type === 'subscribe' && event.date === '2026-07-16'));
     assert.ok(rollover.events.some(event => event.type === 'subscribe' && event.date === '2026-07-17'));
     assert.ok(rollover.events.some(event => event.type === 'unsubscribe' && event.date === '2026-07-16'));
-    assert.equal(rollover.events.some(event => event.type === 'unsubscribe' && event.date === '2026-07-30'), false, 'unrelated date subscription is preserved');
+    assert.equal(rollover.events.some(event => event.type === 'unsubscribe' && event.date === initial.unrelatedDate), false, 'unrelated date subscription is preserved');
 
     await page.evaluate(() => syncHrRealtimeDateSubscription(new Date()));
 }

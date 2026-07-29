@@ -71,6 +71,9 @@ jobs:
       - name: Install Chromium
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
 
+      - name: Run deterministic sidebar timeline browser smoke
+        run: npm run test:browser:sidebar-timeline
+
       - name: Run booking light and dark theme browser smoke
         run: npm run test:browser:booking-theme
 

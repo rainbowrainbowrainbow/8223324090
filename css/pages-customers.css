@@ -378,7 +378,7 @@ html[data-theme="dark"] .nps-breakdown span {
     }
 }
 
-.customer-detail-hero {
+.customer-detail-hero.entity-card-header {
     display: grid;
     grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.1fr);
     grid-template-areas:
@@ -431,7 +431,30 @@ html[data-theme="dark"] .nps-breakdown span {
     overflow-wrap: anywhere;
 }
 
-.customer-hero-title h3,
+.customer-detail-hero .customer-hero-title h3 {
+    position: static;
+    top: auto;
+    z-index: auto;
+    margin: 0;
+    padding: 0;
+    border-bottom: 0;
+    background: transparent;
+    overflow-wrap: break-word;
+    word-break: normal;
+    transition: none;
+}
+
+body.dark-mode #customerDetailModal .customer-detail-hero .customer-hero-title h3,
+html[data-theme="dark"] #customerDetailModal .customer-detail-hero .customer-hero-title h3 {
+    position: static;
+    top: auto;
+    margin: 0;
+    padding: 0;
+    border-bottom: 0;
+    background: transparent;
+    transition: none;
+}
+
 .customer-hero-title .entity-card-meta {
     overflow-wrap: anywhere;
 }
@@ -548,6 +571,120 @@ html[data-theme="dark"] .nps-breakdown span {
     overflow-wrap: anywhere;
 }
 
+body.dark-mode #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]),
+html[data-theme="dark"] #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]) {
+    color: #F8FAFC;
+    border-color: #64748B;
+    background: #1E293B;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]):hover,
+body.dark-mode #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]):focus-visible,
+html[data-theme="dark"] #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]):hover,
+html[data-theme="dark"] #customerDetailModal .customer-hero-actions button.entity-card-action:not(.danger):not(:disabled):not([aria-disabled="true"]):focus-visible {
+    color: #FFFFFF;
+    border-color: #5EEAD4;
+    background: #0F766E;
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.22);
+    outline: none;
+}
+
+.customer-hero-danger-group .entity-card-action.danger {
+    color: #991B1B;
+    border-color: #EF4444;
+    background: #FEF2F2;
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.08);
+}
+
+.customer-hero-danger-group .entity-card-action.danger:hover,
+.customer-hero-danger-group .entity-card-action.danger:focus-visible {
+    color: #7F1D1D;
+    border-color: #DC2626;
+    background: #FEE2E2;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+    outline: none;
+}
+
+body.dark-mode .customer-hero-danger-group .entity-card-action.danger,
+html[data-theme="dark"] .customer-hero-danger-group .entity-card-action.danger {
+    color: #FCA5A5;
+    border-color: #F87171;
+    background: rgba(127, 29, 29, 0.42);
+    box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.14);
+}
+
+body.dark-mode .customer-hero-danger-group .entity-card-action.danger:hover,
+body.dark-mode .customer-hero-danger-group .entity-card-action.danger:focus-visible,
+html[data-theme="dark"] .customer-hero-danger-group .entity-card-action.danger:hover,
+html[data-theme="dark"] .customer-hero-danger-group .entity-card-action.danger:focus-visible {
+    color: #FFFFFF;
+    border-color: #FCA5A5;
+    background: rgba(185, 28, 28, 0.76);
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.24);
+    outline: none;
+}
+
+#customerDetailModal .entity-card-modal > .modal-close {
+    color: #475569;
+    border: 1px solid transparent;
+    background: rgba(248, 250, 252, 0.9);
+    line-height: 1;
+}
+
+#customerDetailModal .entity-card-modal > .modal-close:hover {
+    color: #B91C1C;
+    border-color: #FCA5A5;
+    background: #FEE2E2;
+}
+
+#customerDetailModal .entity-card-modal > .modal-close:focus-visible {
+    color: #B91C1C;
+    border-color: #EF4444;
+    background: #FEE2E2;
+    outline: 3px solid rgba(37, 99, 235, 0.5);
+    outline-offset: 2px;
+}
+
+body.dark-mode #customerDetailModal .entity-card-modal > .modal-close,
+html[data-theme="dark"] #customerDetailModal .entity-card-modal > .modal-close {
+    color: #E2E8F0;
+    border-color: rgba(148, 163, 184, 0.32);
+    background: rgba(15, 23, 42, 0.82);
+}
+
+body.dark-mode #customerDetailModal .entity-card-modal > .modal-close:hover,
+body.dark-mode #customerDetailModal .entity-card-modal > .modal-close:focus-visible,
+html[data-theme="dark"] #customerDetailModal .entity-card-modal > .modal-close:hover,
+html[data-theme="dark"] #customerDetailModal .entity-card-modal > .modal-close:focus-visible {
+    color: #FECACA;
+    border-color: #F87171;
+    background: rgba(127, 29, 29, 0.72);
+}
+
+.entity-card-shell .detail-grid.customer-contact-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+}
+
+.entity-card-shell .customer-contact-grid .detail-field,
+.entity-card-shell .customer-contact-grid .field-value {
+    min-width: 0;
+}
+
+.customer-hero-contact-summary span,
+.entity-card-shell .customer-contact-grid .field-value,
+.entity-card-shell .customer-contact-grid .field-value a {
+    max-width: 100%;
+    line-height: 1.45;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    hyphens: none;
+    text-wrap: pretty;
+}
+
 .customer-hero-omni {
     border-color: rgba(20, 184, 166, 0.28);
     background: rgba(20, 184, 166, 0.12);
@@ -639,7 +776,7 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 }
 
 @media (max-width: 980px) {
-    .customer-detail-hero {
+    .customer-detail-hero.entity-card-header {
         grid-template-columns: 1fr;
         grid-template-areas:
             "identity"
@@ -649,6 +786,10 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
     }
 
     .customer-hero-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entity-card-shell .detail-grid.customer-contact-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -662,7 +803,7 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 }
 
 @media (max-width: 560px) {
-    .customer-detail-hero {
+    .customer-detail-hero.entity-card-header {
         padding: 14px 16px;
     }
 
@@ -671,6 +812,19 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
     }
 
     .customer-hero-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-hero-contact-summary {
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    .entity-card-shell .customer-contact-grid .field-value {
+        font-size: 13px;
+    }
+
+    .entity-card-shell .detail-grid.customer-contact-grid {
         grid-template-columns: 1fr;
     }
 
@@ -886,7 +1040,7 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 
 .customer-child-facts {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin: 0;
     min-width: 0;
@@ -914,7 +1068,7 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 }
 
 .customer-child-note {
-    grid-column: span 1;
+    grid-column: 1 / -1;
     margin-top: 10px;
     color: var(--gray-600);
     font-size: 12px;

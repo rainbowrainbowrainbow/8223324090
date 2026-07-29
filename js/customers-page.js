@@ -2225,8 +2225,13 @@ function renderRFM() {
 async function showCustomerDetail(id) {
     const modal = document.getElementById('customerDetailModal');
     const content = document.getElementById('customerDetailContent');
+    const activeElement = document.activeElement;
+    modal._customerDetailReturnFocus = activeElement instanceof HTMLElement
+        && activeElement !== document.body
+        && !modal.contains(activeElement) ? activeElement : null;
     content.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Завантаження...</div>';
     modal.classList.remove('hidden');
+    modal.querySelector('[data-customer-detail-close]')?.focus({ preventScroll: true });
 
     try {
         const [customer, communicationContext] = await Promise.all([
@@ -2240,7 +2245,7 @@ async function showCustomerDetail(id) {
             ${renderCustomerDetailHero(customer, communicationContext, maysternyaMode)}
             <div class="detail-section">
                 <h4>Контакти</h4>
-                <div class="detail-grid">
+                <div class="detail-grid customer-contact-grid">
                     <div class="detail-field">
                         <div class="field-label">Телефон</div>
                         <div class="field-value">${escapeHtml(customer.phone) || '—'}</div>
@@ -2390,8 +2395,11 @@ async function showCustomerDetail(id) {
 function closeCustomerDetailModal() {
     const modal = document.getElementById('customerDetailModal');
     if (!modal) return true;
+    const returnFocus = modal._customerDetailReturnFocus;
+    modal._customerDetailReturnFocus = null;
     modal.dataset.backdropPointerDown = 'false';
     modal.classList.add('hidden');
+    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     return true;
 }
 

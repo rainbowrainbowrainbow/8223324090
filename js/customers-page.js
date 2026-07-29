@@ -2398,13 +2398,17 @@ function closeCustomerDetailModal() {
     const returnFocus = modal._customerDetailReturnFocus;
     modal._customerDetailReturnFocus = null;
     modal.dataset.backdropPointerDown = 'false';
-    modal.classList.add('hidden');
     if (returnFocus?.isConnected) {
-        requestAnimationFrame(() => {
+        const restoreFocus = () => {
             if (modal.classList.contains('hidden') && returnFocus.isConnected) {
                 returnFocus.focus({ preventScroll: true });
             }
-        });
+        };
+        returnFocus.focus({ preventScroll: true });
+        modal.classList.add('hidden');
+        requestAnimationFrame(() => requestAnimationFrame(restoreFocus));
+    } else {
+        modal.classList.add('hidden');
     }
     return true;
 }
@@ -3387,10 +3391,13 @@ async function initPage() {
 
     // Modal close buttons
     document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (event) => {
             const modal = btn.closest('.modal');
             if (modal?.id === 'customerEditModal') closeEditModal(false);
-            else if (modal?.id === 'customerDetailModal') closeCustomerDetailModal();
+            else if (modal?.id === 'customerDetailModal') {
+                event.preventDefault();
+                closeCustomerDetailModal();
+            }
             else modal?.classList.add('hidden');
         });
     });

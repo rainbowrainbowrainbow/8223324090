@@ -1554,6 +1554,7 @@ function closeModal(modalEl, options = {}) {
 function closeModalFromControl(control, event) {
     if (!control) return false;
     if (control.getAttribute('data-cert-modal-close')) return false;
+    if (control.hasAttribute('data-customer-detail-close')) return false;
 
     const surface = control.closest('.modal');
     if (!surface) return false;

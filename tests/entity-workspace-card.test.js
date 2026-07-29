@@ -34,6 +34,7 @@ test('customer detail card uses guarded outside-click close instead of generic m
 test('customer detail close is keyboard-native and preserves the guarded close path', () => {
     const customersHtml = read('customers.html');
     const customersJs = read('js', 'customers-page.js');
+    const sharedUi = read('js', 'ui.js');
     const customerCss = read('css', 'pages-customers.css');
 
     assert.match(customersHtml, /<button type="button" class="modal-close" data-customer-detail-close aria-label="[^"]+">&times;<\/button>/);
@@ -43,8 +44,10 @@ test('customer detail close is keyboard-native and preserves the guarded close p
     assert.match(customerCss, /#customerDetailModal \.entity-card-modal > \.modal-close:focus-visible/);
     assert.match(customersJs, /modal\.querySelector\('\[data-customer-detail-close\]'\)\?\.focus/);
     assert.match(customersJs, /const returnFocus = modal\._customerDetailReturnFocus/);
-    assert.match(customersJs, /requestAnimationFrame\(\(\) => \{[\s\S]*returnFocus\.focus\(\{ preventScroll: true \}\)/);
-    assert.match(customersJs, /else if \(modal\?\.id === 'customerDetailModal'\) closeCustomerDetailModal\(\);/);
+    assert.match(customersJs, /const restoreFocus = \(\) => \{[\s\S]*returnFocus\.focus\(\{ preventScroll: true \}\)/);
+    assert.match(customersJs, /returnFocus\.focus\(\{ preventScroll: true \}\);[\s\S]*modal\.classList\.add\('hidden'\);[\s\S]*requestAnimationFrame\(\(\) => requestAnimationFrame\(restoreFocus\)\)/);
+    assert.match(customersJs, /else if \(modal\?\.id === 'customerDetailModal'\) \{[\s\S]*event\.preventDefault\(\);[\s\S]*closeCustomerDetailModal\(\);/);
+    assert.match(sharedUi, /control\.hasAttribute\('data-customer-detail-close'\)/);
 });
 
 test('customer card layout browser smoke guards computed layout at required widths', () => {

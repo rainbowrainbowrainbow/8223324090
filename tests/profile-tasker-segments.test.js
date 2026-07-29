@@ -1584,29 +1584,93 @@ test('task reschedule keeps scheduled tasks in the same today projection contrac
     assert.match(routeSource, /profile_my_cabinet_move_to_today_drop/);
 });
 
-test('My Day renders accessible postponement levels 1 / 2 / 3+', () => {
+test('My Day renders interactive postponement levels 1 / 2 / 3+', () => {
     const ctx = loadProfileTaskerContext();
-    assert.equal(ctx.renderCabinetPostponementBadge({ postponementCount: 0 }), '');
+    assert.equal(ctx.renderCabinetPostponementBadge({ id: 10, postponementCount: 0 }), '');
 
-    const first = ctx.renderCabinetPostponementBadge({ postponementCount: 1, attentionLevel: 1 });
-    const second = ctx.renderCabinetPostponementBadge({ postponementCount: 2, attentionLevel: 2 });
-    const critical = ctx.renderCabinetPostponementBadge({ postponementCount: 5, attentionLevel: 3 });
-    assert.match(first, /Перенесено 1 раз/);
+    const first = ctx.renderCabinetPostponementBadge({ id: 11, postponementCount: 1, attentionLevel: 1 });
+    const second = ctx.renderCabinetPostponementBadge({ id: 12, postponementCount: 2, attentionLevel: 2 });
+    const critical = ctx.renderCabinetPostponementBadge({ id: 13, postponementCount: 5, attentionLevel: 3 });
+
+    assert.match(first, /^<button type="button"/);
+    assert.match(first, />Перенесено 1 раз<\/button>/);
     assert.match(first, /level-1/);
-    assert.match(second, /Перенесено 2 рази/);
+    assert.match(first, /data-cabinet-task-action="postponement-explanation"/);
+    assert.match(first, /aria-haspopup="dialog"/);
+    assert.match(first, /aria-expanded="false"/);
+    assert.match(first, /aria-controls="taskUiActionSurface"/);
+    assert.match(second, />Перенесено 2 рази · Пріоритет підвищено<\/button>/);
     assert.match(second, /level-2/);
-    assert.match(critical, /Перенесено 5 разів/);
-    assert.match(critical, /Критичний рівень уваги/);
+    assert.match(critical, />Перенесено 5 разів · Потребує рішення<\/button>/);
+    assert.match(critical, /level-3/);
     assert.match(critical, /aria-label=/);
 
     const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const taskUiSource = fs.readFileSync(path.join(ROOT, 'js', 'task-ui.js'), 'utf8');
     const cabinetCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-cabinet.css'), 'utf8');
     assert.match(profileSource, /data-task-attention-level/);
     assert.match(profileSource, /attentionLevel \? 'attention-level-' \+ attentionLevel/);
     assert.match(profileSource, /renderCabinetPostponementBadge\(task\)/);
+    assert.match(profileSource, /openCabinetPostponementExplanation\(button\)/);
+    assert.match(taskUiSource, /menuLastFocus\.setAttribute\('aria-expanded', 'true'\)/);
+    assert.match(taskUiSource, /menuLastFocus\.setAttribute\('aria-expanded', 'false'\)/);
+    assert.match(taskUiSource, /root\.addEventListener\('keydown', handleActionMenuKeydown\)/);
+    assert.match(taskUiSource, /event\.key === 'Escape'/);
+    assert.match(taskUiSource, /event\.key !== 'Tab'/);
     assert.match(cabinetCss, /cabinet-task-card\.attention-level-1/);
     assert.match(cabinetCss, /cabinet-task-card\.attention-level-2/);
     assert.match(cabinetCss, /cabinet-task-card\.attention-level-3/);
+    assert.match(cabinetCss, /task-ui-action-surface--postponement\.is-popover/);
+    assert.match(cabinetCss, /body\.dark-mode \.cabinet-postponement-priority/);
+    assert.match(cabinetCss, /html\[data-theme="dark"\] \.cabinet-postponement-fact dd/);
+    assert.match(cabinetCss, /@media \(max-width: 768px\)[\s\S]*?\.cabinet-postponement-fact/);
+});
+
+test('My Day postponement popover renders safe human facts and omits raw metadata', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetPostponementExplanation({
+        id: 77,
+        postponementCount: 2,
+        lastPostponedAt: '2026-07-29T08:30:00.000Z',
+        postponementExplanation: {
+            count: 2,
+            attentionLevel: 2,
+            lastPostponedAt: '2026-07-29T08:30:00.000Z',
+            actorType: 'manual',
+            actorName: 'Олена',
+            sourceSurface: 'my_day',
+            reason: 'move_to_today',
+            oldDue: '2026-07-28',
+            newDue: '2026-07-29',
+            priorityBefore: 'normal',
+            priorityAfter: 'high',
+            priorityEscalated: true
+        }
+    });
+
+    assert.match(html, /Задачу було перенесено після прострочення 2 рази/);
+    assert.match(html, /Пріоритет автоматично змінено з Звичайний на Високий/);
+    assert.match(html, /28\.07\.2026/);
+    assert.match(html, /29\.07\.2026/);
+    assert.match(html, /Олена/);
+    assert.match(html, /Прострочену задачу перенесено на сьогодні/);
+    assert.match(html, /Переглянути всю історію/);
+    assert.match(html, /\/tasks\?view=my&amp;open=77/);
+    assert.doesNotMatch(html, /move_to_today|my_day|mutationKind|sourceSurface|undefined|null/);
+
+    const partial = ctx.renderCabinetPostponementExplanation({
+        id: 78,
+        postponementCount: 3,
+        postponementExplanation: {
+            count: 3,
+            attentionLevel: 3,
+            reason: 'internal_route_name',
+            sourceSurface: 'profile_my_cabinet_internal'
+        }
+    });
+    assert.match(partial, /Задачу було перенесено після прострочення 3 рази/);
+    assert.match(partial, /Переглянути всю історію/);
+    assert.doesNotMatch(partial, /internal_route_name|profile_my_cabinet_internal|undefined|null/);
 });
 
 test('profile unfinished gamification tabs use soon lockdown by role', () => {

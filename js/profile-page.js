@@ -5169,15 +5169,143 @@ function cabinetTaskPostponementWord(count = 0) {
     return 'разів';
 }
 
+function cabinetTaskPostponementBadgeLabel(task = {}) {
+    const count = cabinetTaskPostponementCount(task);
+    if (!count) return '';
+    const base = 'Перенесено ' + count + ' ' + cabinetTaskPostponementWord(count);
+    if (count >= 3) return base + ' · Потребує рішення';
+    if (count === 2) return base + ' · Пріоритет підвищено';
+    return base;
+}
+
+function cabinetPostponementReasonLabel(value = '') {
+    const reason = String(value || '').trim().toLowerCase();
+    return {
+        overdue_to_today: 'Прострочену задачу перенесено на сьогодні',
+        move_to_today: 'Прострочену задачу перенесено на сьогодні',
+        overdue_to_tomorrow: 'Прострочену задачу перенесено на завтра',
+        overdue_reschedule: 'Прострочену задачу переплановано',
+        missed_slot: 'Пропущений часовий слот переплановано',
+        manual_reschedule: 'Задачу переплановано користувачем',
+        manual_schedule: 'Задачу переплановано користувачем',
+        bot_reschedule: 'Бот перепланував прострочену задачу',
+        hermes_reschedule: 'Hermes перепланував прострочену задачу',
+        second_postponement: 'Задачу повторно перенесено після прострочення',
+        watchdog_auto_reschedule: 'Система автоматично перепланувала прострочену задачу'
+    }[reason] || '';
+}
+
+function cabinetPostponementActorLabel(explanation = {}) {
+    const actorType = String(explanation.actorType || '').trim().toLowerCase();
+    const actorName = String(explanation.actorName || '').trim();
+    if (actorType === 'system') return 'Система';
+    if (actorType === 'bot') {
+        return explanation.sourceSurface === 'hermes' ? 'Hermes' : actorName || 'Бот';
+    }
+    if (actorType === 'manual') return actorName || 'Користувач';
+    return '';
+}
+
+function cabinetPostponementDateLabel(value, includeTime = false) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? new Date(raw + 'T12:00:00Z')
+        : new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    const options = {
+        timeZone: 'Europe/Kyiv',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    };
+    if (includeTime) {
+        options.hour = '2-digit';
+        options.minute = '2-digit';
+    }
+    return date.toLocaleString('uk-UA', options);
+}
+
+function renderCabinetPostponementExplanation(task = {}) {
+    const count = cabinetTaskPostponementCount(task);
+    if (!count) return '';
+    const explanation = task.postponementExplanation && typeof task.postponementExplanation === 'object'
+        ? task.postponementExplanation
+        : {};
+    const oldDue = cabinetPostponementDateLabel(explanation.oldDue);
+    const newDue = cabinetPostponementDateLabel(explanation.newDue);
+    const postponedAt = cabinetPostponementDateLabel(
+        explanation.lastPostponedAt || task.lastPostponedAt || task.last_postponed_at,
+        true
+    );
+    const actor = cabinetPostponementActorLabel(explanation);
+    const reason = cabinetPostponementReasonLabel(explanation.reason);
+    const priorityBefore = explanation.priorityBefore ? cabinetTaskPriorityLabel(explanation.priorityBefore) : '';
+    const priorityAfter = explanation.priorityAfter ? cabinetTaskPriorityLabel(explanation.priorityAfter) : '';
+    const priorityText = explanation.priorityEscalated === true
+        ? priorityBefore && priorityAfter
+            ? 'Пріоритет автоматично змінено з ' + priorityBefore + ' на ' + priorityAfter + '.'
+            : 'Пріоритет автоматично підвищено.'
+        : '';
+    const facts = [];
+    if (oldDue && newDue) {
+        facts.push('<div class="cabinet-postponement-fact"><dt>Остання зміна дати</dt><dd><span>' + escapeHtml(oldDue) + '</span><span class="cabinet-postponement-arrow" aria-hidden="true">→</span><span>' + escapeHtml(newDue) + '</span></dd></div>');
+    } else if (newDue) {
+        facts.push('<div class="cabinet-postponement-fact"><dt>Нова дата</dt><dd><span>' + escapeHtml(newDue) + '</span></dd></div>');
+    }
+    if (postponedAt) {
+        facts.push('<div class="cabinet-postponement-fact"><dt>Коли</dt><dd><time datetime="' + escapeHtml(explanation.lastPostponedAt || task.lastPostponedAt || task.last_postponed_at || '') + '">' + escapeHtml(postponedAt) + '</time></dd></div>');
+    }
+    if (actor) {
+        facts.push('<div class="cabinet-postponement-fact"><dt>Хто переніс</dt><dd>' + escapeHtml(actor) + '</dd></div>');
+    }
+    if (reason) {
+        facts.push('<div class="cabinet-postponement-fact"><dt>Причина</dt><dd>' + escapeHtml(reason) + '</dd></div>');
+    }
+    const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
+    const historyLink = taskId
+        ? '<a class="cabinet-postponement-history-link" href="/tasks?view=my&amp;open=' + encodeURIComponent(taskId) + '">Переглянути всю історію</a>'
+        : '';
+    return '<div class="cabinet-postponement-popover" data-cabinet-postponement-popover>'
+        + '<p class="cabinet-postponement-summary">Задачу було перенесено після прострочення ' + count + ' ' + cabinetTaskPostponementWord(count) + '.</p>'
+        + (priorityText ? '<p class="cabinet-postponement-priority">' + escapeHtml(priorityText) + '</p>' : '')
+        + (facts.length ? '<dl class="cabinet-postponement-facts">' + facts.join('') + '</dl>' : '')
+        + historyLink
+        + '</div>';
+}
+
 function renderCabinetPostponementBadge(task = {}) {
     const count = cabinetTaskPostponementCount(task);
     if (!count) return '';
-    const level = cabinetTaskAttentionLevel(task);
-    const label = 'Перенесено ' + count + ' ' + cabinetTaskPostponementWord(count);
-    const title = level >= 3
-        ? label + '. Критичний рівень уваги: задача переносилась щонайменше тричі.'
-        : label + '. Рівень уваги ' + level + ' із 3.';
-    return '<span class="cabinet-postponement-badge cabinet-postponement-badge--level-' + level + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' + escapeHtml(label) + '</span>';
+    const level = count >= 3 ? 3 : count === 2 ? 2 : 1;
+    const label = cabinetTaskPostponementBadgeLabel(task);
+    const title = label + '. Відкрити пояснення перенесень.';
+    const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
+    return '<button type="button" class="cabinet-postponement-badge cabinet-postponement-badge--level-' + level
+        + '" data-cabinet-task-action="postponement-explanation" data-task-id="' + escapeHtml(taskId || '')
+        + '" aria-haspopup="dialog" aria-expanded="false" aria-controls="taskUiActionSurface" title="' + escapeHtml(title)
+        + '" aria-label="' + escapeHtml(title) + '" ' + (taskId ? '' : 'disabled') + '>' + escapeHtml(label) + '</button>';
+}
+
+function openCabinetPostponementExplanation(button) {
+    const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
+    const task = findCabinetTask(taskId);
+    if (!taskId || !task) {
+        if (typeof showNotification === 'function') showNotification('Не вдалося відкрити пояснення перенесення', 'error');
+        return null;
+    }
+    const root = window.TaskUI?.openActionMenu?.(
+        button,
+        renderCabinetPostponementExplanation(task),
+        {
+            title: 'Історія перенесень',
+            surfaceClassName: 'task-ui-action-surface--postponement'
+        }
+    );
+    if (!root && typeof showNotification === 'function') {
+        showNotification('Не вдалося відкрити пояснення перенесення', 'error');
+    }
+    return root || null;
 }
 
 function cabinetTaskVisibleBadge(key = '', html = '') {
@@ -6539,6 +6667,11 @@ async function handleCabinetTaskActionClick(event) {
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
     if (!taskId) {
         if (typeof showNotification === 'function') showNotification('Не вдалося визначити задачу', 'error');
+        return;
+    }
+
+    if (action === 'postponement-explanation') {
+        openCabinetPostponementExplanation(button);
         return;
     }
 

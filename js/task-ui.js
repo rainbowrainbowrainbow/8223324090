@@ -5,6 +5,7 @@
 (function () {
     const MENU_ROOT_ID = 'taskUiActionSurface';
     const DOCK_ROOT_ID = 'taskUiDropDock';
+    const ACTION_MENU_FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     let menuLastFocus = null;
     let dockController = null;
 
@@ -64,6 +65,9 @@
     }
 
     function closeActionMenu() {
+        if (typeof menuLastFocus?.setAttribute === 'function') {
+            menuLastFocus.setAttribute('aria-expanded', 'false');
+        }
         const root = document.getElementById(MENU_ROOT_ID);
         if (root) root.remove();
         lockBodyScroll(false);
@@ -92,13 +96,49 @@
         panel.style.width = `${width}px`;
     }
 
+    function actionMenuFocusableElements(root) {
+        return Array.from(root?.querySelectorAll?.(ACTION_MENU_FOCUSABLE_SELECTOR) || [])
+            .filter(element => !element.disabled && element.getAttribute?.('aria-hidden') !== 'true');
+    }
+
+    function handleActionMenuKeydown(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            closeActionMenu();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = actionMenuFocusableElements(event.currentTarget);
+        if (!focusable.length) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const current = document.activeElement;
+        if (event.shiftKey && (current === first || !focusable.includes(current))) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && current === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
+        }
+    }
+
     function openActionMenu(anchor, html, options = {}) {
         closeActionMenu();
         menuLastFocus = anchor || document.activeElement;
         const mobile = options.mobile ?? isSmallScreen();
         const root = document.createElement('div');
+        const surfaceClassName = String(options.surfaceClassName || '').trim().replace(/[^a-zA-Z0-9 _-]/g, '');
         root.id = MENU_ROOT_ID;
+        if (typeof menuLastFocus?.setAttribute === 'function') {
+            menuLastFocus.setAttribute('aria-expanded', 'true');
+            menuLastFocus.setAttribute('aria-controls', MENU_ROOT_ID);
+        }
         root.className = `task-ui-action-surface ${mobile ? 'is-sheet' : 'is-popover'}`;
+        if (surfaceClassName) root.classList.add(...surfaceClassName.split(/\s+/).filter(Boolean));
         const title = options.title || 'Дії задачі';
         root.innerHTML = `
             <div class="task-ui-action-backdrop" data-task-ui-close></div>
@@ -109,6 +149,7 @@
                 </div>
                 <div class="task-ui-action-body">${html}</div>
             </section>`;
+        root.addEventListener('keydown', handleActionMenuKeydown);
         root.addEventListener('click', event => {
             if (event.target.closest('[data-task-ui-close]')) {
                 event.preventDefault();
@@ -119,7 +160,7 @@
         if (mobile) lockBodyScroll(true);
         requestAnimationFrame(() => {
             if (!mobile) positionPopover(root, anchor);
-            root.querySelector('button, [href], input, select, textarea')?.focus({ preventScroll: true });
+            actionMenuFocusableElements(root)[0]?.focus({ preventScroll: true });
         });
         return root;
     }

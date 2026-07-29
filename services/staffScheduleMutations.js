@@ -492,7 +492,14 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
             staffId,
             shiftDate: date,
             status,
-            payload: { ...entry, status }
+            payload: {
+                ...entry,
+                status,
+                shiftStart: entry?.shiftStart ?? entry?.shift_start ?? entry?.startTime ?? entry?.start_time ?? null,
+                shiftEnd: entry?.shiftEnd ?? entry?.shift_end ?? entry?.endTime ?? entry?.end_time ?? null,
+                plannedStart: entry?.plannedStart ?? entry?.planned_start ?? entry?.startTime ?? entry?.start_time ?? null,
+                plannedEnd: entry?.plannedEnd ?? entry?.planned_end ?? entry?.endTime ?? entry?.end_time ?? null
+            }
         }, {
             actor: actorMetadata.username,
             ipAddress: actorMetadata.ipAddress,

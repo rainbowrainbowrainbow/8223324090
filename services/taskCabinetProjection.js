@@ -19,7 +19,12 @@ const {
     subtaskProgress
 } = require('./taskSubtasks');
 const { deriveTaskIntelligence } = require('./taskIntelligence');
-const { postponementAttentionLevel } = require('./taskPostponementPolicy');
+const {
+    buildPostponementExplanation,
+    normalizePostponementCount,
+    postponementAttentionLevel
+} = require('./taskPostponementPolicy');
+const { listLatestTaskPostponementEvents } = require('./taskActionHistory');
 const {
     appendTaskBusinessScopeSql,
     taskBusinessScopeMeta
@@ -153,7 +158,7 @@ function buildTaskCabinetPlanningProjection(rows = [], calendar = {}, now = new 
     return planning;
 }
 
-function normalizeTaskPayload(row) {
+function normalizeTaskPayload(row, options = {}) {
     const scheduledRow = attachTaskSchedule(row);
     const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
     const ownerState = row.owner_user_id ? 'typed' : (row.assigned_to || row.owner ? 'legacy_unknown_owner' : 'unassigned');
@@ -173,6 +178,8 @@ function normalizeTaskPayload(row) {
     const subtaskDoneCount = Number(row.subtask_done_count || 0);
     const progress = subtaskProgress(subtaskDoneCount, subtaskCount);
     const subtasks = Array.isArray(row.subtasks) ? row.subtasks.map(normalizeSubtaskRow) : [];
+    const postponementCount = normalizePostponementCount(row.postponement_count ?? row.postponementCount);
+    const postponementExplanation = buildPostponementExplanation(row, options.postponementEvent);
     return {
         ...scheduledRow,
         ownerLabel,
@@ -191,10 +198,11 @@ function normalizeTaskPayload(row) {
         focusRank: row.focus_rank || 0,
         remindAt: row.remind_at || null,
         snoozedUntil: row.snoozed_until || null,
-        postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
-        attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
+        postponementCount,
+        attentionLevel: postponementAttentionLevel(postponementCount),
         originalDueAt: row.original_due_at || row.originalDueAt || null,
         lastPostponedAt: row.last_postponed_at || row.lastPostponedAt || null,
+        ...(postponementExplanation ? { postponementExplanation } : {}),
         nextNotificationAt: row.next_notification_at || null,
         completedAt: row.completed_at || null,
         archivedAt: row.archived_at || null,
@@ -368,7 +376,7 @@ async function buildTaskCabinetProjection(options = {}) {
          LIMIT 160`,
         ownParams
     );
-    const rows = result.rows.map(normalizeTaskPayload);
+    const activeSourceRows = Array.isArray(result.rows) ? result.rows : [];
 
     const openCountResult = await queryable.query(
         `SELECT COUNT(*)::int AS open_count
@@ -378,7 +386,7 @@ async function buildTaskCabinetProjection(options = {}) {
            AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
         ownParams
     );
-    const openTaskCount = Number(openCountResult.rows[0]?.open_count || rows.length);
+    const openTaskCount = Number(openCountResult.rows[0]?.open_count || activeSourceRows.length);
     const calendar = {
         timezone: 'Europe/Kyiv',
         today,
@@ -460,23 +468,7 @@ async function buildTaskCabinetProjection(options = {}) {
     );
     const planningResultRows = Array.isArray(planningResult.rows) ? planningResult.rows : [];
     const planningIsPartial = planningResultRows.length > planningRowLimit;
-    const planningRows = planningResultRows
-        .slice(0, planningRowLimit)
-        .map(normalizeTaskPayload);
-    const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
-    const planningVisibleCounts = Object.fromEntries(
-        Object.entries(planning).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
-    );
-    const planningMeta = {
-        rowLimit: planningRowLimit,
-        returnedRows: planningRows.length,
-        fetchedRows: planningResultRows.length,
-        isPartial: planningIsPartial,
-        hasMore: planningIsPartial,
-        overflowRowsSampled: planningIsPartial ? planningResultRows.length - planningRows.length : 0,
-        visibleCounts: planningVisibleCounts,
-        order: 'overdue_today_later_no_date'
-    };
+    const planningSourceRows = planningResultRows.slice(0, planningRowLimit);
 
     const completedHistoryParams = [...ownParams, completedHistoryLimit];
     const completedHistoryResult = await queryable.query(
@@ -516,7 +508,38 @@ async function buildTaskCabinetProjection(options = {}) {
          LIMIT $${completedHistoryParams.length}`,
         completedHistoryParams
     );
-    const completedHistory = completedHistoryResult.rows.map(normalizeTaskPayload);
+    const completedHistorySourceRows = Array.isArray(completedHistoryResult.rows)
+        ? completedHistoryResult.rows
+        : [];
+    const explanationTaskIds = [...new Set(
+        [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
+            .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
+            .map(row => Number(row.id || row.task_id || row.taskId))
+            .filter(id => Number.isInteger(id) && id > 0)
+    )];
+    const postponementEventsByTaskId = await listLatestTaskPostponementEvents(explanationTaskIds, {
+        pool: queryable
+    });
+    const normalizeProjectionRow = row => normalizeTaskPayload(row, {
+        postponementEvent: postponementEventsByTaskId.get(Number(row.id || row.task_id || row.taskId)) || null
+    });
+    const rows = activeSourceRows.map(normalizeProjectionRow);
+    const planningRows = planningSourceRows.map(normalizeProjectionRow);
+    const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
+    const planningVisibleCounts = Object.fromEntries(
+        Object.entries(planning).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
+    );
+    const planningMeta = {
+        rowLimit: planningRowLimit,
+        returnedRows: planningRows.length,
+        fetchedRows: planningResultRows.length,
+        isPartial: planningIsPartial,
+        hasMore: planningIsPartial,
+        overflowRowsSampled: planningIsPartial ? planningResultRows.length - planningRows.length : 0,
+        visibleCounts: planningVisibleCounts,
+        order: 'overdue_today_later_no_date'
+    };
+    const completedHistory = completedHistorySourceRows.map(normalizeProjectionRow);
 
     const buckets = {
         focus: [],
@@ -663,6 +686,7 @@ async function buildTaskCabinetProjection(options = {}) {
             canonicalOwnerField: 'tasks.owner_user_id',
             projection: 'my_cabinet',
             calendar,
+            postponementExplanationContract: 'postponement_explanation_v1',
             planning: planningMeta,
             privacyRule: 'private/me_only tasks are owner-only',
             businessScope: taskBusinessScopeMeta(businessScope)

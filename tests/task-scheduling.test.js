@@ -156,7 +156,10 @@ test('task payload normalizers expose durable postponement metadata with compute
         'services/taskScheduling.js'
     ]) {
         const source = fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
-        assert.match(source, /postponementCount:\s*Math\.max\(0, Number\(row\.postponement_count/);
+        assert.match(
+            source,
+            /postponementCount:\s*Math\.max\(0, Number\(row\.postponement_count|const postponementCount = normalizePostponementCount\(row\.postponement_count/
+        );
         assert.match(source, /originalDueAt:\s*(?:isoValue\()?row\.original_due_at/);
         assert.match(source, /lastPostponedAt:\s*(?:isoValue\()?row\.last_postponed_at/);
         assert.match(source, /attentionLevel:\s*postponementAttentionLevel/);

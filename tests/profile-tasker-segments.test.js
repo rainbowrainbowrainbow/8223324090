@@ -1658,7 +1658,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /active_my_day/);
     assert.match(source, /remaining:\s*activeMyDay/);
     assert.match(source, /SELECT COUNT\(\*\)::int AS open_count/);
-    assert.match(source, /const openTaskCount = Number\(openCountResult\.rows\[0\]\?\.open_count \|\| rows\.length\);/);
+    assert.match(source, /const openTaskCount = Number\(openCountResult\.rows\[0\]\?\.open_count \|\| activeSourceRows\.length\);/);
     assert.match(source, /sidebarOpenWorkload:\s*openTaskCount/);
     assert.match(source, /scope:\s*'completed_units_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
@@ -1700,7 +1700,7 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(source, /planningResultRows\.length > planningRowLimit/);
     assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
     assert.match(source, /planning,\s*\n\s*preferences:/);
-    assert.match(source, /calendar,\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
+    assert.match(source, /calendar,\s*\n\s*postponementExplanationContract:\s*'postponement_explanation_v1',\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
     assert.match(source, /planning:\s*planningMeta/);
     assert.match(source, /planningDateSql\} IS NULL/);
     assert.match(source, /planningDateSql\} BETWEEN/);

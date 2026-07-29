@@ -142,9 +142,41 @@ async function listTaskActionHistory(taskId, options = {}) {
     return result.rows.map(normalizeHistoryRow);
 }
 
+function normalizeTaskIds(taskIds = []) {
+    return [...new Set(
+        (Array.isArray(taskIds) ? taskIds : [])
+            .map(value => Number(value))
+            .filter(value => Number.isInteger(value) && value > 0)
+    )];
+}
+
+async function listLatestTaskPostponementEvents(taskIds, options = {}) {
+    const ids = normalizeTaskIds(taskIds);
+    if (!ids.length) return new Map();
+
+    const query = options.pool || pool;
+    const result = await query.query(
+        `SELECT DISTINCT ON (task_id) *
+         FROM task_action_history
+         WHERE task_id = ANY($1::int[])
+           AND action_type = $2
+           AND meta_json->>'countsAsPostponement' = 'true'
+           AND LOWER(COALESCE(meta_json->>'mutationKind', '')) NOT IN ('snooze', 'technical_correction')
+         ORDER BY task_id, created_at DESC, id DESC`,
+        [ids, TASK_ACTION_TYPES.RESCHEDULED]
+    );
+
+    return new Map(
+        result.rows
+            .map(normalizeHistoryRow)
+            .map(event => [Number(event.taskId), event])
+    );
+}
+
 module.exports = {
     DEFAULT_TASK_SOURCE_SURFACE,
     TASK_ACTION_TYPES,
+    listLatestTaskPostponementEvents,
     listTaskActionHistory,
     logTaskActionEvent,
     summaryForAction

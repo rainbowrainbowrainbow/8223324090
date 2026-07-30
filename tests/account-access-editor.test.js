@@ -86,6 +86,7 @@ test('access editor owns its workspace and hr-page no longer uses formModal for 
     assert.equal(accessFunction.includes('formModal('), false);
     assert.match(accessFunction, /AccountAccessEditor\.open/);
     assert.match(accessFunction, /\/workspace/);
+    assert.match(bridge, /accessReturnFocus[\s\S]*data-account-menu-toggle[\s\S]*openAccountAccessEditor\(userId, accessReturnFocus\)/);
     assert.match(moduleSource, /role="dialog" aria-modal="true"/);
     assert.match(moduleSource, /role="alertdialog"/);
     assert.match(moduleSource, /data-action="discard"/);

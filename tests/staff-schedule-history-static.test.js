@@ -754,11 +754,10 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /entry \? normalizeScheduleStatus\(entry\.status\) : 'unset'/);
     });
 
-    it('keeps sensitive attendance and payroll staff endpoints role-gated', () => {
+    it('keeps sensitive attendance role-gated and payroll capability-gated', () => {
         assert.match(staffRoute, /const STAFF_ATTENDANCE_READ_ROLES = \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'\]/);
-        assert.match(staffRoute, /const STAFF_PAYROLL_READ_ROLES = \['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'\]/);
         assert.match(routeBlock('/attendance'), /router\.get\('\/attendance', requireRole\(\.\.\.STAFF_ATTENDANCE_READ_ROLES\)/);
-        assert.match(routeBlock('/payroll'), /router\.get\('\/payroll', requireRole\(\.\.\.STAFF_PAYROLL_READ_ROLES\)/);
+        assert.match(routeBlock('/payroll'), /router\.get\('\/payroll', requireAction\('hr\.payroll\.view'\)/);
     });
 
     it('uses HR-card light staff rows and hides freelance placeholders from active schedule by default', () => {

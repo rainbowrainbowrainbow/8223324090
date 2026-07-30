@@ -321,14 +321,15 @@ test('HR attendance CSV export uses shared escaping and stable column rows', () 
         HR_ROUTE.indexOf('// ==========================================', HR_ROUTE.indexOf("router.get('/report/export'"))
     );
     const headerArray = extractArrayAfter(exportRoute, 'const header =');
-    const rowArray = extractArrayAfter(exportRoute, 'return attendanceCsvRow(');
+    const rowArray = extractArrayAfter(exportRoute, 'const cells =');
 
     assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvCell/);
     assert.match(HR_ATTENDANCE_SERVICE, /function attendanceCsvRow/);
     assert.match(HR_ATTENDANCE_SERVICE, /firstMeaningfulChar/);
     assert.match(HR_ROUTE, /const header = \[/);
     assert.match(HR_ROUTE, /attendanceCsvRow\(header\)/);
-    assert.match(HR_ROUTE, /attendanceCsvRow\(\[/);
+    assert.match(HR_ROUTE, /attendanceCsvRow\(cells\)/);
+    assert.match(exportRoute, /if \(!includePayroll\) cells\.splice\(-2\)/);
     assert.match(HR_ROUTE, /attendancePlanWarningMessage\(r\.plan_source\)/);
     assert.equal(countTopLevelArrayElements(headerArray), 17);
     assert.equal(countTopLevelArrayElements(rowArray), 17);
@@ -606,7 +607,7 @@ test('HR payroll period service owns range, lock, and event normalization', asyn
 test('HR payroll scheme service owns staff scheme config and metadata mapping', async () => {
     for (const token of [
         "require('../services/hrPayrollSchemes')",
-        "router.get('/staff/:id/payroll-scheme', requirePayrollRules",
+        "router.get('/staff/:id/payroll-scheme', requirePayrollView",
         "router.put('/staff/:id/payroll-scheme', requirePayrollRules",
         'loadStaffPayrollSchemeWorkspace(req.params.id)',
         'createStaffPayrollScheme(req.params.id, req.body, req.user)',
@@ -824,8 +825,8 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         "payroll: { tab: 'salary' }",
         "{ id: 'zrs', label: 'ЗРС', visible: () => canViewPayrollWorkspace() }",
         'function canViewPayrollWorkspace',
-        "return hrCanUsePayrollAction('view_payroll')",
-        'if (isHrPayrollWorkspaceTab(target) && !canViewPayrollWorkspace())',
+        "return canUseHrCapability('hr.payroll.view')",
+        'if (!canViewHrTab(target) || !document.getElementById(`tab-${target}`))',
         'const HR_PAYROLL_WORKSPACE_TABS',
         'function isHrPayrollWorkspaceTab',
         "nav.classList.toggle('hr-nav--pulse'",
@@ -967,9 +968,9 @@ test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
     for (const alias of aliases) assert.ok(HR_JS.includes(alias), `missing alias ${alias}`);
     assert.ok(HR_JS.includes("window.location.replace('/training#onboarding')"));
     assert.ok(HR_HTML.includes('id="tab-team"'), '#team must keep a canonical rendered panel');
-    assert.ok(HR_JS.includes("target === 'accounts' && !canManageAccountSecurity()"));
+    assert.ok(HR_JS.includes("if (target === 'accounts') return canManageAccountSecurity()"));
     assert.ok(HR_JS.includes('!document.getElementById(`tab-${target}`)'));
-    assert.ok(HR_JS.includes("return { tab: 'today', alias: requested !== 'today' };"));
+    assert.ok(HR_JS.includes("return { tab: fallback, alias: true, denied: true };"));
 });
 
 test('HR people bucket navigation uses one rendered result surface and category-local search contracts', () => {
@@ -1552,7 +1553,7 @@ test('HR payroll discovers staff by employment-period overlap without mixing cal
 
 test('HR salary backend owns payroll period lock, reconciliation, and reversal APIs', () => {
     for (const token of [
-        "const requirePayrollView = requireAction('view_payroll')",
+        "const requirePayrollView = requireAction('hr.payroll.view')",
         "const requirePayrollAccrual = requireAction('manage_payroll_accrual')",
         "const requirePayrollReverse = requireAction('reverse_payroll_payment')",
         "const requirePayrollClose = requireAction('close_payroll_period')",

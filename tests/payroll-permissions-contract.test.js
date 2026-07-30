@@ -6,8 +6,10 @@ const path = require('node:path');
 const {
     ACTION_PERMISSIONS,
     canUseAction,
-    actionPermissionDecision
+    actionPermissionDecision,
+    PAGE_ACCESS
 } = require('../middleware/auth');
+const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 
 const ROOT = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -60,25 +62,26 @@ test('payroll actions keep user allowlist and denylist overrides visible in deci
     };
 
     assert.equal(canUseAction(allowedByOverride, 'confirm_payroll_payment'), true);
-    assert.deepEqual(actionPermissionDecision(allowedByOverride, 'confirm_payroll_payment'), {
-        allowed: true,
-        source: 'allowlist',
-        action: 'confirm_payroll_payment'
-    });
+    const allowedDecision = actionPermissionDecision(allowedByOverride, 'confirm_payroll_payment');
+    assert.equal(allowedDecision.allowed, true);
+    assert.equal(allowedDecision.source, 'explicit_allow');
+    assert.equal(allowedDecision.sourceRole, null);
+    assert.equal(allowedDecision.reason, 'listed_in_explicit_allow');
+    assert.equal(allowedDecision.action, 'confirm_payroll_payment');
 
     assert.equal(canUseAction(deniedByOverride, 'confirm_payroll_payment'), false);
-    assert.deepEqual(actionPermissionDecision(deniedByOverride, 'confirm_payroll_payment'), {
-        allowed: false,
-        source: 'denylist',
-        action: 'confirm_payroll_payment'
-    });
+    const deniedDecision = actionPermissionDecision(deniedByOverride, 'confirm_payroll_payment');
+    assert.equal(deniedDecision.allowed, false);
+    assert.equal(deniedDecision.source, 'explicit_deny');
+    assert.equal(deniedDecision.sourceRole, null);
+    assert.equal(deniedDecision.reason, 'listed_in_explicit_deny');
+    assert.equal(deniedDecision.action, 'confirm_payroll_payment');
 });
 
 test('payroll API routes use endpoint-level action guards instead of broad role gates', () => {
     const payrollRoutes = read('routes/payroll.js');
     const hrRoutes = read('routes/hr.js');
     const financeRoutes = read('routes/finance.js');
-    const backendAuth = read('middleware/auth.js');
     const frontendAuth = read('js/auth.js');
 
     assert.equal(/router\.use\(requireRole/.test(payrollRoutes), false, 'payroll route must not use one broad role gate');
@@ -89,17 +92,18 @@ test('payroll API routes use endpoint-level action guards instead of broad role 
     assert.match(payrollRoutes, /payments\/confirm', requireAction\('confirm_payroll_payment'\)/);
     assert.match(payrollRoutes, /payments\/:id\/reverse', requireAction\('reverse_payroll_payment'\)/);
     assert.match(payrollRoutes, /period\/close', requireAction\('close_payroll_period'\)/);
-    assert.match(hrRoutes, /router\.use\(requireRole\(\.\.\.HR_VIEW_ROLES\)\)/, 'HR router still has its page-level gate');
+    assert.match(hrRoutes, /router\.use\(requireHrCapabilityContract\)/, 'HR router uses the granular capability gate');
     assert.match(financeRoutes, /router\.use\(requireRole\('creator', 'director', 'accountant'\)\)/, 'Finance router remains finance-only');
-    assert.match(backendAuth, /const HR_PAGE_ACCESS = \[\.\.\.MANAGER_UP, 'hr', 'admin', 'security'\]/);
-    assert.match(frontendAuth, /const _HR_PAGE_ACCESS = \[\.\.\._MANAGER_UP, 'hr', 'admin', 'security'\]/);
-    assert.doesNotMatch(backendAuth.match(/const HR_PAGE_ACCESS = .*/)?.[0] || '', /accountant/);
-    assert.doesNotMatch(frontendAuth.match(/const _HR_PAGE_ACCESS = .*/)?.[0] || '', /accountant/);
+    assert.deepEqual(PAGE_ACCESS['/hr'], [
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'
+    ]);
+    assert.equal(PAGE_ACCESS['/hr'].includes('accountant'), false);
+    assert.match(frontendAuth, /capabilityCatalog/);
 });
 
 test('payroll service and frontend use action checks for payment workflow', () => {
     const payrollService = read('services/payroll.js');
-    const backendAuth = read('middleware/auth.js');
+    const accountAccessPolicy = read('services/accountAccessPolicy.js');
     const frontendAuth = read('js/auth.js');
     const hrPage = read('js/hr-page.js');
     const financePage = read('js/finance-page.js');
@@ -110,10 +114,10 @@ test('payroll service and frontend use action checks for payment workflow', () =
     assert.doesNotMatch(payrollService, /PAYROLL_PAYMENT_ROLES/);
 
     for (const action of Object.keys(PAYROLL_ACTION_MATRIX)) {
-        assert.match(backendAuth, new RegExp(`${action}:`), `${action} backend action`);
-        assert.match(frontendAuth, new RegExp(`${action}:`), `${action} frontend action`);
+        assert.ok(ACTION_PERMISSION_BY_KEY[action], 'registry action: ' + action);
     }
 
+    assert.match(accountAccessPolicy, /function resolveCapability/);
     assert.match(frontendAuth, /window\.canUseAction = canUseAction/);
     assert.match(hrPage, /hrCanUsePayrollAction\('manage_payroll_accrual'\)/);
     assert.match(hrPage, /hrCanUsePayrollAction\('reverse_payroll_payment'\)/);

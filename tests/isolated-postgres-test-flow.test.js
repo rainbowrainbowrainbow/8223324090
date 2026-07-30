@@ -150,6 +150,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const dbInit = fs.readFileSync(path.join(root, 'db', 'index.js'), 'utf8');
         const migrationRunner = fs.readFileSync(path.join(root, 'db', 'migrate.js'), 'utf8');
         const hrSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-disposable.integration.test.js'), 'utf8');
+        const permissionSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'permission-capabilities.integration.test.js'), 'utf8');
         const freshDbSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'fresh-db-startup.integration.test.js'), 'utf8');
         const onboardingSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-onboarding-hire.integration.test.js'), 'utf8');
         const accountOnboardingSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'account-onboarding.integration.test.js'), 'utf8');
@@ -178,6 +179,14 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
+        assert.match(runner, /permissions:\s*\['tests\/integration\/permission-capabilities\.integration\.test\.js'\]/);
+        assert.match(runner, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
+        assert.match(permissionSuite, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
+        assert.match(permissionSuite, /REQUIRE_ISOLATED_TEST_TARGET/);
+        assert.match(permissionSuite, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER/);
+        assert.match(permissionSuite, /Disposable Permission QA/);
+        assert.match(workflow, /Run disposable token-backed permission integration/);
+        assert.match(workflow, /test:integration:permissions:isolated/);
         assert.match(runner, /attendance:\s*\[\s*'tests\/integration\/attendance-lock-concurrency\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-compensation-snapshot\.integration\.test\.js',\s*'tests\/integration\/hr-attendance-document-automation-concurrency\.integration\.test\.js',\s*'tests\/integration\/attendance-historical-grace-datafix\.integration\.test\.js',\s*'tests\/integration\/attendance-backup-roundtrip\.integration\.test\.js',\s*'tests\/integration\/full-backup-recovery\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_ATTENDANCE_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_ATTENDANCE_DATAFIX_INTEGRATION/);

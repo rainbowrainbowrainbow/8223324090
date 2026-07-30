@@ -239,11 +239,9 @@ const {
     updateAutomation: updateHrAttendanceDocumentAutomation
 } = require('../services/hrAttendanceDocumentAutomation');
 
-// RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
-const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
-const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
-const requireHrManage = requireAction('manage_staff');
-const requirePayrollView = requireAction('view_payroll');
+// Inline legacy sites reuse the same granular contract after the router-level check.
+const requireHrManage = (req, res, next) => req.hrCapability ? next() : requireHrCapabilityContract(req, res, next);
+const requirePayrollView = requireAction('hr.payroll.view');
 const requirePayrollAccrual = requireAction('manage_payroll_accrual');
 const requirePayrollApproval = requireAction('approve_payroll_installment');
 const requirePayrollReverse = requireAction('reverse_payroll_payment');
@@ -323,14 +321,99 @@ const HR_SHIFT_BULK_MAX_STAFF = 500;
 const HR_SHIFT_BULK_MAX_DATES = 31;
 const HR_SHIFT_COPY_WEEK_DATE_COUNT = 7;
 const HR_SHIFT_COPY_WEEK_MAX_STAFF = 500;
-router.use(requireRole(...HR_VIEW_ROLES));
+function hrCapabilityCandidates(req) {
+    const routePath = String(req.path || '/');
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
+    if (routePath === '/report/export' || routePath.startsWith('/attendance-document')) return ['hr.reports.export'];
+    if (routePath.startsWith('/report/') || routePath === '/role-assignments/report') return ['hr.reports.view'];
+    const payrollPreview = req.method === 'POST' && (
+        routePath === '/payroll-profiles/simulator'
+        || routePath === '/payroll-profiles/bulk/preview'
+        || routePath.endsWith('/impact-preview')
+    );
+    if (payrollPreview) return ['hr.payroll.view'];
+    if (routePath === '/kpi' || routePath.startsWith('/salary') || routePath.startsWith('/payroll') || routePath.includes('/payroll-')
+        || routePath.startsWith('/zrs') || routePath.startsWith('/depremium-templates') || routePath.startsWith('/discipline-log') || routePath.startsWith('/ratings')) {
+        return [isRead ? 'hr.payroll.view' : 'hr.payroll.manage'];
+    }
+    if (routePath === '/today') return ['hr.today.view'];
+    if (routePath.startsWith('/records') || routePath.startsWith('/attendance') || routePath.startsWith('/clock') || routePath === '/mark-absent') {
+        return [isRead ? 'hr.today.view' : 'hr.schedule.manage'];
+    }
+    if (routePath.startsWith('/shift') || routePath.startsWith('/leave-requests')) {
+        return [isRead ? 'hr.schedule.view' : 'hr.schedule.manage'];
+    }
+    if (routePath === '/staff' && isRead) return ['hr.staff.view', 'hr.schedule.view', 'hr.payroll.view'];
+    return [isRead ? 'hr.staff.view' : 'hr.staff.manage'];
+}
+
+function requireHrCapabilityContract(req, res, next) {
+    const candidates = hrCapabilityCandidates(req);
+    const allowed = candidates.find(capability => canUseAction(req.user, capability));
+    if (allowed) {
+        req.hrCapability = allowed;
+        if (!canUseAction(req.user, 'hr.payroll.view')) {
+            const sendJson = res.json.bind(res);
+            res.json = payload => sendJson(shapeHrPayrollFields(payload, req.user));
+        }
+        return next();
+    }
+    return res.status(403).json({
+        success: false,
+        code: 'HR_CAPABILITY_REQUIRED',
+        error: 'Insufficient permissions',
+        requiredCapabilities: candidates
+    });
+}
+
+const HR_PAYROLL_RESPONSE_FIELDS = new Set([
+    'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'estimated_salary', 'estimatedSalary',
+    'salary', 'base_salary', 'baseSalary', 'total_salary', 'totalSalary',
+    'profession_rates', 'professionRates', 'profession_rate_summary', 'professionRateSummary',
+    'allocation_issues', 'allocationIssues', 'reconciliation', 'totalFOP', 'zrs', 'zrsAmount'
+]);
+
+function stripHrPayrollFields(value) {
+    if (Array.isArray(value)) return value.map(stripHrPayrollFields);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value)
+        .filter(([key]) => !HR_PAYROLL_RESPONSE_FIELDS.has(key))
+        .map(([key, nested]) => [key, stripHrPayrollFields(nested)]));
+}
+
+function shapeHrPayrollFields(value, user) {
+    return canUseAction(user, 'hr.payroll.view') ? value : stripHrPayrollFields(value);
+}
+
+const HR_SCHEDULE_STAFF_FIELDS = new Set([
+    'id', 'name', 'department', 'position', 'role_type', 'secondary_professions',
+    'is_active', 'is_freelance', 'unique_person_key', 'hr_pool_status', 'termination_date',
+    'company_structure_node_id', 'photo_url', 'color', 'contract_type', 'skills',
+    'display_group', 'displayGroup', 'schedule_category', 'scheduleCategory',
+    'training_readiness', 'onboarding_assignment'
+]);
+const HR_PAYROLL_STAFF_FIELDS = new Set([
+    ...HR_SCHEDULE_STAFF_FIELDS,
+    'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit'
+]);
+
+function projectHrStaffRows(rows, fields) {
+    return rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => fields.has(key))));
+}
+
+function shapeHrStaffList(rows, capability, user) {
+    if (capability === 'hr.schedule.view') return stripHrPayrollFields(projectHrStaffRows(rows, HR_SCHEDULE_STAFF_FIELDS));
+    if (capability === 'hr.payroll.view') return projectHrStaffRows(rows, HR_PAYROLL_STAFF_FIELDS);
+    return shapeHrPayrollFields(rows, user);
+}
+router.use(requireHrCapabilityContract);
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
 const log = createLogger('HR');
 
 function canViewPayrollDetails(user = {}) {
-    return canUseAction(user, 'view_payroll');
+    return canUseAction(user, 'hr.payroll.view');
 }
 
 function attendanceKpiOvertimeMinutesSql(alias = 'tr') {
@@ -3671,7 +3754,11 @@ router.get('/staff', async (req, res) => {
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         res.json({
             success: true,
-            data: decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext }),
+            data: shapeHrStaffList(
+                decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext }),
+                req.hrCapability,
+                req.user
+            ),
             displayGroups: listStaffDisplayGroups()
         });
     } catch (err) {
@@ -3787,7 +3874,7 @@ router.get('/staff/:id', async (req, res) => {
         await attachStaffProfessionRates(staff.rows);
         await attachTrainingReadiness(staff.rows);
         await attachOnboardingAssignments(staff.rows);
-        res.json({ success: true, data: staff.rows[0] });
+        res.json({ success: true, data: shapeHrPayrollFields(staff.rows[0], req.user) });
     } catch (err) {
         log.error('GET /hr/staff/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4064,7 +4151,7 @@ router.put('/staff/:id/resources/:assignmentId/status', requireHrManage, async (
         res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
-router.get('/payroll-profiles', requirePayrollRules, async (req, res) => {
+router.get('/payroll-profiles', requirePayrollView, async (req, res) => {
     try {
         const data = await listPayrollProfiles(req.query);
         res.json({ success: true, data });
@@ -4073,7 +4160,7 @@ router.get('/payroll-profiles', requirePayrollRules, async (req, res) => {
     }
 });
 
-router.get('/payroll-profiles/diagnostics', requirePayrollRules, async (req, res) => {
+router.get('/payroll-profiles/diagnostics', requirePayrollView, async (req, res) => {
     try {
         const data = await diagnosePayrollProfiles(req.query);
         res.json({ success: true, data });
@@ -4082,7 +4169,7 @@ router.get('/payroll-profiles/diagnostics', requirePayrollRules, async (req, res
     }
 });
 
-router.post('/payroll-profiles/simulator', requirePayrollRules, async (req, res) => {
+router.post('/payroll-profiles/simulator', requirePayrollView, async (req, res) => {
     try {
         const data = await simulatePayrollProfiles(req.body || {});
         res.json({ success: true, data });
@@ -4091,7 +4178,7 @@ router.post('/payroll-profiles/simulator', requirePayrollRules, async (req, res)
     }
 });
 
-router.get('/payroll-profiles/forecast', requirePayrollRules, async (req, res) => {
+router.get('/payroll-profiles/forecast', requirePayrollView, async (req, res) => {
     try {
         const data = await forecastPayrollProfiles(payrollProfileQueryWithIds(req.query));
         res.json({ success: true, data });
@@ -4100,7 +4187,7 @@ router.get('/payroll-profiles/forecast', requirePayrollRules, async (req, res) =
     }
 });
 
-router.post('/payroll-profiles/bulk/preview', requirePayrollRules, async (req, res) => {
+router.post('/payroll-profiles/bulk/preview', requirePayrollView, async (req, res) => {
     try {
         const data = await previewPayrollProfileBulk(req.body || {});
         res.json({ success: true, data });
@@ -4118,7 +4205,7 @@ router.post('/payroll-profiles/bulk/apply', requirePayrollRules, async (req, res
     }
 });
 
-router.get('/payroll-profiles/:id', requirePayrollRules, async (req, res) => {
+router.get('/payroll-profiles/:id', requirePayrollView, async (req, res) => {
     try {
         const data = await getPayrollProfile(req.params.id, {
             asOfDate: req.query.asOfDate || req.query.as_of_date
@@ -4138,7 +4225,7 @@ router.post('/payroll-profiles', requirePayrollRules, async (req, res) => {
     }
 });
 
-router.post('/payroll-profiles/:id/impact-preview', requirePayrollRules, async (req, res) => {
+router.post('/payroll-profiles/:id/impact-preview', requirePayrollView, async (req, res) => {
     try {
         const data = await impactPayrollProfilePreview(req.params.id, req.body || {});
         res.json({ success: true, data });
@@ -4183,7 +4270,7 @@ router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res
     }
 });
 
-router.get('/staff/:id/payroll-profile-assignments', requirePayrollRules, async (req, res) => {
+router.get('/staff/:id/payroll-profile-assignments', requirePayrollView, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileAssignments(req.params.id, {
             includePast: req.query.include_past !== 'false'
@@ -4203,7 +4290,7 @@ router.put('/staff/:id/payroll-profile-assignments', requirePayrollRules, async 
     }
 });
 
-router.get('/staff/:id/payroll-profile-history', requirePayrollRules, async (req, res) => {
+router.get('/staff/:id/payroll-profile-history', requirePayrollView, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileHistory(req.params.id, {
             limit: req.query.limit
@@ -4214,7 +4301,7 @@ router.get('/staff/:id/payroll-profile-history', requirePayrollRules, async (req
     }
 });
 
-router.get('/staff/:id/payroll-scheme', requirePayrollRules, async (req, res) => {
+router.get('/staff/:id/payroll-scheme', requirePayrollView, async (req, res) => {
     try {
         const workspace = await loadStaffPayrollSchemeWorkspace(req.params.id);
         if (!workspace) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -5842,7 +5929,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
 // ==========================================
 
 // POST /api/hr/attendance-documents/pdf — private server-owned HR form generation.
-router.post('/attendance-documents/pdf', requireRole(...HR_VIEW_ROLES), async (req, res) => {
+router.post('/attendance-documents/pdf', requireAction('hr.reports.export'), async (req, res) => {
     const safeContext = {
         templateId: String(req.body?.templateId || '').slice(0, 32),
         rosterMode: String(req.body?.rosterMode || '').slice(0, 32),
@@ -6917,7 +7004,7 @@ router.get('/report/monthly', async (req, res) => {
             };
         });
 
-        res.json({ success: true, data, dateFrom, dateTo });
+        res.json({ success: true, data: shapeHrPayrollFields(data, req.user), dateFrom, dateTo });
     } catch (err) {
         log.error('GET /hr/report/monthly error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -6979,7 +7066,10 @@ router.get('/report/export', async (req, res) => {
              ORDER BY s.name, tr.record_date`,
             [from, to]
         );
-        const professionRateMap = await loadStaffProfessionRateMap(result.rows.map(row => row.staff_id));
+        const includePayroll = canViewPayrollDetails(req.user);
+        const professionRateMap = includePayroll
+            ? await loadStaffProfessionRateMap(result.rows.map(row => row.staff_id))
+            : new Map();
 
         const header = [
             'ПІБ',
@@ -7000,6 +7090,7 @@ router.get('/report/export', async (req, res) => {
             'Ставка',
             'Сума'
         ];
+        if (!includePayroll) header.splice(-2);
         const rows = result.rows.map(r => {
             const ci = r.clock_in ? new Date(r.clock_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
@@ -7012,7 +7103,7 @@ router.get('/report/export', async (req, res) => {
             const salary = staffRateUnit(r) === 'month'
                 ? ''
                 : payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
-            return attendanceCsvRow([
+            const cells = [
                 r.name,
                 r.record_date,
                 r.planned_start || '',
@@ -7030,7 +7121,9 @@ router.get('/report/export', async (req, res) => {
                 planWarning,
                 `${rate} грн/${rateUnitLabel(r.rate_unit)}`,
                 salary
-            ]);
+            ];
+            if (!includePayroll) cells.splice(-2);
+            return attendanceCsvRow(cells);
         }).join('\n');
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');

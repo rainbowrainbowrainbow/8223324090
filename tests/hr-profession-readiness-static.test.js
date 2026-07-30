@@ -226,10 +226,9 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     });
 
     it('exposes HR APIs for readiness, checklist progress, schedule gating, and audit history', () => {
-        assert.match(hrRoute, /const HR_VIEW_ROLES = \[[^\]]*'security'/);
-        assert.match(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'hr'[^\]]*'admin'[^\]]*\]/);
-        assert.doesNotMatch(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'security'/);
-        assert.match(hrRoute, /const requireHrManage = requireAction\('manage_staff'\)/);
+        assert.match(hrRoute, /function requireHrCapabilityContract/);
+        assert.match(hrRoute, /router\.use\(requireHrCapabilityContract\)/);
+        assert.match(hrRoute, /const requireHrManage = \(req, res, next\) => req\.hrCapability/);
         assert.doesNotMatch(hrRoute, /router\.(post|put|delete|patch)\('[^']+', async \(req, res\)/);
         assert.match(hrRoute, /async function attachTrainingReadiness/);
         assert.match(hrRoute, /row\.training_readiness =/);

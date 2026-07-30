@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { canonicalizePageKey } = require('../config/permissionRegistry');
 
 const ROOT = path.resolve(__dirname, '..');
 const failures = [];
@@ -124,8 +125,9 @@ function loadFrontendAuth() {
     const filename = path.join(ROOT, 'js/auth.js');
     const code = fs.readFileSync(filename, 'utf8');
     const sandbox = makeBrowserSandbox();
+    sandbox.__capabilityCatalog = require(path.join(ROOT, 'services/accountAccessPolicy')).buildCapabilityCatalog();
     const api = vm.runInNewContext(
-        `${code}\n;({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess });`,
+        `${code}\n;PAGE_ACCESS = __capabilityCatalog.pageRoles; ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; PAGE_CAPABILITY_ALIASES = __capabilityCatalog.pageAliases; ACTION_CAPABILITY_ALIASES = __capabilityCatalog.actionAliases; EXPLICIT_ALLOW_DISABLED_PAGES = new Set(__capabilityCatalog.explicitAllowDisabledPages); NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, resolveCapability, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess });`,
         sandbox,
         { filename }
     );
@@ -224,7 +226,6 @@ for (const role of allRoles) {
 
 checkKnownRoles('backend.PAGE_ACCESS', backend.PAGE_ACCESS, allRoles);
 checkKnownRoles('frontend.PAGE_ACCESS', frontend.PAGE_ACCESS, allRoles);
-checkKnownRoles('sidebar.SIDEBAR_ACCESS', sidebar.SIDEBAR_ACCESS, allRoles);
 
 const backendPages = Object.keys(backend.PAGE_ACCESS);
 const frontendPages = Object.keys(frontend.PAGE_ACCESS);
@@ -285,9 +286,13 @@ for (const entry of ROOT_HTML_SURFACE) {
     }
 }
 
-function hasPageAccess(page) {
+function hasDirectPageAccess(page) {
     return Object.prototype.hasOwnProperty.call(frontend.PAGE_ACCESS, page)
         && Object.prototype.hasOwnProperty.call(backend.PAGE_ACCESS, page);
+}
+
+function hasPageAccess(page) {
+    return hasDirectPageAccess(canonicalizePageKey(page));
 }
 
 function findNavItemByHref(href) {
@@ -321,7 +326,7 @@ for (const entry of PUBLIC_STATIC_PAGE_EXCEPTIONS) {
     if (!rootStaticPaths.has(entry.path)) {
         fail(`public static page exception ${entry.path}: not found in config/staticSurface.js`);
     }
-    if (hasPageAccess(entry.path)) {
+    if (hasDirectPageAccess(entry.path)) {
         fail(`public static page exception ${entry.path}: should not also be in PAGE_ACCESS`);
     }
 }
@@ -334,7 +339,7 @@ for (const entry of EMBEDDED_STATIC_PAGE_EXCEPTIONS) {
     if (!entry.parentPath || !hasPageAccess(entry.parentPath)) {
         fail(`embedded static page exception ${entry.path}: parentPath ${entry.parentPath || '(missing)'} must exist in PAGE_ACCESS`);
     }
-    if (hasPageAccess(entry.path)) {
+    if (hasDirectPageAccess(entry.path)) {
         fail(`embedded static page exception ${entry.path}: should not also be in PAGE_ACCESS`);
     }
 }
@@ -359,15 +364,6 @@ for (const entry of MODAL_PAGE_ACCESS_SURFACES) {
             fail(`modal page access surface ${entry.path}: sidebar href ${entry.sidebarHref} missing`);
             continue;
         }
-        if (!Object.prototype.hasOwnProperty.call(sidebar.SIDEBAR_ACCESS, item.access)) {
-            fail(`modal page access surface ${entry.path}: sidebar access key ${item.access} missing`);
-            continue;
-        }
-        compareRoleSets(
-            `sidebar ${entry.sidebarHref} (${item.access}) vs PAGE_ACCESS ${entry.path}`,
-            normalizeRoles(sidebar.SIDEBAR_ACCESS[item.access], allRoles, `sidebar ${item.access}`),
-            normalizeRoles(frontend.PAGE_ACCESS[entry.path], allRoles, `frontend ${entry.path}`)
-        );
     }
 }
 
@@ -398,7 +394,7 @@ for (const entry of ROOT_HTML_SURFACE) {
         }
     }
     if (canonical && !publicStaticExceptions.has(canonical)) {
-        staticAccessPaths.add(canonical);
+        staticAccessPaths.add(canonicalizePageKey(canonical));
     }
 
     for (const alias of entry.aliases || []) {
@@ -410,7 +406,7 @@ for (const entry of ROOT_HTML_SURFACE) {
             fail(`static surface ${entry.file}: alias ${normalizedAlias} missing PAGE_ACCESS entry or documented exception`);
             continue;
         }
-        staticAccessPaths.add(normalizedAlias);
+        staticAccessPaths.add(canonicalizePageKey(normalizedAlias));
     }
 }
 
@@ -420,26 +416,30 @@ for (const page of allPages) {
 }
 
 for (const item of sidebar.NAV_ITEMS.filter(i => i.href)) {
-    if (!Object.prototype.hasOwnProperty.call(sidebar.SIDEBAR_ACCESS, item.access)) {
-        fail(`sidebar NAV item "${item.href}" uses unknown access key "${item.access}"`);
-        continue;
-    }
-
+    if (item.href === '#settings') continue;
     const page = normalizeHref(item.pageAccess || item.href);
-    if (!page || sidebarPageExceptions.has(page)) continue;
-
-    if (modalPageAccessPaths.has(page)) continue;
-
+    if (!page || sidebarPageExceptions.has(page) || modalPageAccessPaths.has(page)) continue;
     if (!Object.prototype.hasOwnProperty.call(frontend.PAGE_ACCESS, page)) {
-        fail(`sidebar NAV item "${item.href}" has no js/auth.js PAGE_ACCESS entry for "${page}"`);
-        continue;
+        fail(`sidebar NAV item "${item.href}" has no capability registry entry for "${page}"`);
     }
+}
 
-    compareRoleSets(
-        `sidebar ${item.href} (${item.access}) vs PAGE_ACCESS ${page}`,
-        normalizeRoles(sidebar.SIDEBAR_ACCESS[item.access], allRoles, `sidebar ${item.access}`),
-        normalizeRoles(frontend.PAGE_ACCESS[page], allRoles, `frontend ${page}`)
-    );
+const pageParityCases = [
+    [{ role: 'manager' }, '/hr'],
+    [{ role: 'animator', page_allowlist: ['/analytics'] }, '/finance'],
+    [{ role: 'waiter' }, '/tasks'],
+    [{ role: 'art_director' }, '/art-director'],
+    [{ role: 'animator', page_allowlist: ['/maysternya-doli'] }, '/maysternya-doli']
+];
+for (const [user, capability] of pageParityCases) {
+    frontend.sandbox.AppState.currentUser = user;
+    const backendDecision = backend.resolveCapability(user, capability, { type: 'page' });
+    const frontendDecision = frontend.resolveCapability(user, capability, { type: 'page', ignoreServer: true });
+    for (const field of ['allowed', 'source', 'sourceRole', 'reason', 'key']) {
+        if (backendDecision[field] !== frontendDecision[field]) {
+            fail(`page resolver parity ${capability}.${field}: backend=${backendDecision[field]} frontend=${frontendDecision[field]}`);
+        }
+    }
 }
 
 frontend.sandbox.AppState.currentUser = { role: 'creator' };

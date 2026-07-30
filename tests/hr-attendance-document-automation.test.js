@@ -403,9 +403,9 @@ test('migration provides DB unique dedup, row locks, leases and artifact TTL fie
     assert.match(service, /CASE WHEN pdf_data IS NULL THEN 'building' ELSE 'queued' END/);
 });
 
-test('HR routes keep reads private and mutations behind existing manage_staff action', () => {
+test('HR attendance automation routes use the granular capability contract', () => {
     const routes = fs.readFileSync(path.join(ROOT, 'routes/hr.js'), 'utf8');
-    assert.match(routes, /router\.use\(requireRole\(\.\.\.HR_VIEW_ROLES\)\)/);
+    assert.match(routes, /router\.use\(requireHrCapabilityContract\)/);
     assert.match(routes, /router\.post\('\/attendance-document-automations', requireHrManage/);
     assert.match(routes, /router\.patch\('\/attendance-document-automations\/:id', requireHrManage/);
     assert.match(routes, /router\.post\('\/attendance-document-automations\/:id\/run', requireHrManage/);

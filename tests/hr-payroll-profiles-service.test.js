@@ -124,27 +124,29 @@ test('payroll profile sync merge clears weekday overrides when selected rate uni
 });
 
 test('payroll profile routes expose the requested payroll-rules API surface', () => {
-    for (const route of [
-        "router.get('/payroll-profiles', requirePayrollRules",
-        "router.get('/payroll-profiles/diagnostics', requirePayrollRules",
-        "router.post('/payroll-profiles/simulator', requirePayrollRules",
-        "router.get('/payroll-profiles/forecast', requirePayrollRules",
-        "router.post('/payroll-profiles/bulk/preview', requirePayrollRules",
+    const viewRoutes = [
+        "router.get('/payroll-profiles', requirePayrollView",
+        "router.get('/payroll-profiles/diagnostics', requirePayrollView",
+        "router.post('/payroll-profiles/simulator', requirePayrollView",
+        "router.get('/payroll-profiles/forecast', requirePayrollView",
+        "router.post('/payroll-profiles/bulk/preview', requirePayrollView",
+        "router.get('/payroll-profiles/:id', requirePayrollView",
+        "router.post('/payroll-profiles/:id/impact-preview', requirePayrollView",
+        "router.get('/staff/:id/payroll-profile-assignments', requirePayrollView",
+        "router.get('/staff/:id/payroll-profile-history', requirePayrollView"
+    ];
+    const mutationRoutes = [
         "router.post('/payroll-profiles/bulk/apply', requirePayrollRules",
-        "router.get('/payroll-profiles/:id', requirePayrollRules",
-        "router.post('/payroll-profiles/:id/impact-preview', requirePayrollRules",
         "router.post('/payroll-profiles', requirePayrollRules",
         "router.post('/payroll-profiles/:id/clone', requirePayrollRules",
         "router.post('/payroll-profiles/:id/versions', requirePayrollRules",
         "router.post('/payroll-profiles/:id/sync-from-base', requirePayrollRules",
         "router.put('/payroll-profiles/:id/archive', requirePayrollRules",
-        "router.get('/staff/:id/payroll-profile-assignments', requirePayrollRules",
-        "router.put('/staff/:id/payroll-profile-assignments', requirePayrollRules",
-        "router.get('/staff/:id/payroll-profile-history', requirePayrollRules"
-    ]) {
+        "router.put('/staff/:id/payroll-profile-assignments', requirePayrollRules"
+    ];
+    for (const route of [...viewRoutes, ...mutationRoutes]) {
         assert.match(hrRouteCode, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
-
     assert.match(hrRouteCode, /sendPayrollProfileFailure/);
     assert.match(hrRouteCode, /payrollProfileActor\(req\)/);
     assert.ok(

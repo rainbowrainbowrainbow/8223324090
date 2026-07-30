@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.37 - Єдині доступи та редактор
+
+### Release / Versioning / (30.07.2026) [codex]
+- **Єдине джерело істини для доступів** — frontend, sidebar і backend використовують спільний registry та однаковий порядок deny → allow → role preset → default deny.
+- **Точні HR-доступи** — Today, Schedule, Staff, Reports і Payroll розділені на view/manage/export capabilities; заборони діють для вкладок, прямих API, mutation та export.
+- **Новий редактор effective access** — широкий keyboard-friendly workspace показує Inherited/Allow/Deny, джерело рішення, preview, diff і не губить draft при помилці.
+- **Автоматичні security gates** — CI перевіряє consumer для кожного permission, frontend/backend parity, aliases, Chromium UX і token-backed disposable PostgreSQL сценарії.
+
+---
+
 ## v0.80.36 - Task Secretary Owner Routing
 
 ### Tasks / Secretary / Routing / (30.07.2026) [codex]

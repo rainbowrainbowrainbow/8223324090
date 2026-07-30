@@ -72,6 +72,9 @@
                     return;
                 }
                 if (typeof AppState !== 'undefined') AppState.currentUser = user;
+                if (typeof hydrateActionPermissions === 'function') {
+                    await hydrateActionPermissions(user);
+                }
                 currentUser = user;
                 try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
                 const userEl = document.getElementById('currentUser');

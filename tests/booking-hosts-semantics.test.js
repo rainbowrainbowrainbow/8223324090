@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -194,9 +195,10 @@ test('booking duplicate guard excludes the linked edit group from self-conflicts
 
 test('timeline delete controls use the shared delete permission contract', () => {
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
-    const authJs = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
-
-    assert.match(authJs, /delete_booking:\s+_ADMIN_UP/);
+    assert.deepEqual(ACTION_PERMISSION_BY_KEY.delete_booking.defaultRoles, [
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
+    ]);
     assert.match(bookingJs, /function canDeleteTimelineBooking/);
     assert.match(bookingJs, /canAccess\('delete_booking'\)/);
     assert.match(bookingJs, /if \(!canDeleteTimelineBooking\(\)\) \{\s*showNotification\('Недостатньо прав для видалення бронювання'/s);

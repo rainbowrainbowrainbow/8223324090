@@ -11,11 +11,17 @@ const {
     ROLE_HIERARCHY,
     ROLE_LEVEL,
     PAGE_ACCESS,
-    ACTION_PERMISSIONS,
     NON_DELEGABLE_ACTIONS,
     revokeAllUserTokens,
     canUseAction
 } = require('../middleware/auth');
+const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
+const {
+    CAPABILITY_TYPES,
+    normalizeCapabilityList,
+    normalizePageAllowlist,
+    assertNoCapabilityConflicts
+} = require('../services/accountAccessPolicy');
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent, listAccountSecurityEvents } = require('../services/accountSecurity');
 const { normalizeManualPassword } = require('../services/credentialInput');
@@ -112,17 +118,8 @@ function assertAccountMutable(target, action = 'change') {
     if (isProtectedSystemAccount(target)) throw protectedAccountError(target, action);
 }
 
-function normalizeActionOverrideList(value) {
-    const valid = new Set(Object.keys(ACTION_PERMISSIONS));
-    const source = Array.isArray(value)
-        ? value
-        : String(value || '').split(/[,;\s]+/);
-    const result = [];
-    for (const item of source) {
-        const action = String(item || '').trim();
-        if (action && valid.has(action) && !result.includes(action)) result.push(action);
-    }
-    return result;
+function normalizeActionOverrideList(value, options = {}) {
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION, options).values;
 }
 
 function accountActionAllowlist(account = {}) {
@@ -133,8 +130,15 @@ function accountActionDenylist(account = {}) {
     return normalizeActionOverrideList(account.action_denylist || account.actionDenylist);
 }
 
-function normalizeActionAllowlist(value) {
-    return normalizeActionOverrideList(value).filter(action => !NON_DELEGABLE_ACTIONS.has(action));
+function normalizeActionAllowlist(value, options = {}) {
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION, {
+        ...options,
+        excludeNonDelegable: true
+    }).values;
+}
+
+function normalizePageAllowlistInput(value, options = {}) {
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
 }
 
 function assertSelfAccountAccessSafe(actor, prospectiveAccount) {
@@ -227,6 +231,12 @@ function decorateManagedAccount(row = {}, actor = null) {
     const linkActive = row.profile_active !== false && row.staff_active !== false;
     return {
         ...row,
+        page_allowlist: normalizePageAllowlist(row),
+        pageAllowlist: normalizePageAllowlist(row),
+        action_allowlist: accountActionAllowlist(row),
+        actionAllowlist: accountActionAllowlist(row),
+        action_denylist: accountActionDenylist(row),
+        actionDenylist: accountActionDenylist(row),
         system_status: systemStatus,
         is_system: protectedAccount,
         protected_account: protectedAccount,
@@ -269,6 +279,8 @@ router.get('/', requireAction('manage_accounts'), async (req, res) => {
 
 // GET /api/users/roles — return role definitions and access matrix
 router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
+    const configurableActions = Object.values(ACTION_PERMISSION_BY_KEY).filter(action => action.deprecated !== true);
+    const configurableActionPermissions = Object.fromEntries(configurableActions.map(action => [action.key, action.defaultRoles]));
     res.json({
         hierarchy: ROLE_HIERARCHY,
         rolePresets: {
@@ -282,13 +294,16 @@ router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
             support: ['barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher', 'waiter']
         },
         pageAccess: PAGE_ACCESS,
-        actionPermissions: ACTION_PERMISSIONS,
+        actionPermissions: configurableActionPermissions,
         nonDelegableActions: Array.from(NON_DELEGABLE_ACTIONS),
         professionRoleMap: PROFESSION_ACCOUNT_ROLE_MAP,
-        actions: Object.keys(ACTION_PERMISSIONS).map(action => ({
-            key: action,
-            roles: ACTION_PERMISSIONS[action] || [],
-            delegable: !NON_DELEGABLE_ACTIONS.has(action)
+        actions: configurableActions.map(action => ({
+            key: action.key,
+            label: action.label,
+            group: action.group,
+            roles: action.defaultRoles,
+            delegable: !NON_DELEGABLE_ACTIONS.has(action.key),
+            deprecated: false
         })),
         businessContexts: businessContextCatalog()
     });
@@ -628,7 +643,8 @@ async function updateAccountAccess(req, res) {
     let client = null;
     try {
         const { id } = req.params;
-        const { role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const { role, extraRoles, businessContexts } = req.body;
+        const pageAllowlistInput = req.body.pageAllowlist ?? req.body.page_allowlist;
         const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
         const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
@@ -640,14 +656,14 @@ async function updateAccountAccess(req, res) {
         const normalizedExtraRoles = Array.isArray(extraRoles)
             ? Array.from(new Set(extraRoles.filter(item => ROLE_HIERARCHY.includes(item) && item !== role))).slice(0, 3)
             : null;
-        const normalizedPageAllowlist = Array.isArray(pageAllowlist)
-            ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
+        const normalizedPageAllowlist = pageAllowlistInput !== undefined
+            ? normalizePageAllowlistInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
             : null;
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
-            ? normalizeActionAllowlist(actionAllowlistInput)
+            ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : null;
         const normalizedActionDenylist = actionDenylistInput !== undefined
-            ? normalizeActionOverrideList(actionDenylistInput)
+            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist' })
             : null;
 
         client = await pool.connect();
@@ -678,7 +694,7 @@ async function updateAccountAccess(req, res) {
 
         const oldRole = current.role;
         const oldExtraRoles = normalizeStoredArray(current.extra_roles);
-        const oldPageAllowlist = normalizeStoredArray(current.page_allowlist);
+        const oldPageAllowlist = normalizePageAllowlist(current);
         const oldActionAllowlist = accountActionAllowlist(current);
         const oldActionDenylist = accountActionDenylist(current);
         const oldBusinessContexts = normalizeStoredArray(current.business_contexts);
@@ -711,6 +727,7 @@ async function updateAccountAccess(req, res) {
             business_contexts: normalizedBusinessContexts || oldBusinessContexts,
             default_business_context: normalizedDefaultBusinessContext || oldDefaultBusinessContext
         };
+        assertNoCapabilityConflicts(prospectiveAccount.action_allowlist, prospectiveAccount.action_denylist);
         assertSelfAccountAccessSafe(req.user, prospectiveAccount);
         await assertLastActiveCreatorInvariant(client, current, {
             role,
@@ -734,7 +751,7 @@ async function updateAccountAccess(req, res) {
         );
         const updatedUser = updated.rows[0] || target.rows[0];
         const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
-        const newPageAllowlist = normalizeStoredArray(updatedUser.page_allowlist);
+        const newPageAllowlist = normalizePageAllowlist(updatedUser);
         const newActionAllowlist = accountActionAllowlist(updatedUser);
         const newActionDenylist = accountActionDenylist(updatedUser);
         const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
@@ -799,7 +816,11 @@ async function updateAccountAccess(req, res) {
             try { await client.query('ROLLBACK'); } catch {}
         }
         log.error('Change role error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            error: err.statusCode ? err.message : 'Internal server error',
+            ...(err.code ? { code: err.code } : {}),
+            ...(err.details ? { details: err.details } : {})
+        });
     } finally {
         client?.release();
     }
@@ -983,7 +1004,8 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
 router.post('/', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { password, name, role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const { password, name, role, extraRoles, businessContexts } = req.body;
+        const pageAllowlistInput = req.body.pageAllowlist ?? req.body.page_allowlist;
         const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
         const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
@@ -1015,15 +1037,16 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         const normalizedExtraRoles = Array.isArray(extraRoles)
             ? Array.from(new Set(extraRoles.filter(item => ROLE_HIERARCHY.includes(item) && item !== primaryRole))).slice(0, 3)
             : [];
-        const normalizedPageAllowlist = Array.isArray(pageAllowlist)
-            ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
+        const normalizedPageAllowlist = pageAllowlistInput !== undefined
+            ? normalizePageAllowlistInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
             : [];
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
-            ? normalizeActionAllowlist(actionAllowlistInput)
+            ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : [];
         const normalizedActionDenylist = actionDenylistInput !== undefined
-            ? normalizeActionOverrideList(actionDenylistInput)
+            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist' })
             : [];
+        assertNoCapabilityConflicts(normalizedActionAllowlist, normalizedActionDenylist);
         const normalizedDefaultBusinessContext = defaultBusinessContextForSelection(
             requestedDefaultBusinessContext,
             Array.isArray(businessContexts) ? businessContexts : [],

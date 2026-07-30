@@ -539,6 +539,18 @@ async function hydrateActionPermissions(user = AppState.currentUser) {
         const permissions = await response.json();
         AppState.authPermissions = permissions;
         user.permissions = permissions;
+        const catalog = permissions.capabilityCatalog || {};
+        PAGE_ACCESS = catalog.pageRoles || Object.create(null);
+        ACTION_PERMISSIONS = catalog.actionRoles || Object.create(null);
+        PAGE_CAPABILITY_ALIASES = catalog.pageAliases || Object.create(null);
+        ACTION_CAPABILITY_ALIASES = catalog.actionAliases || Object.create(null);
+        ACTION_LEGACY_KEYS = catalog.actionLegacyKeys || Object.create(null);
+        EXPLICIT_ALLOW_DISABLED_PAGES = new Set(catalog.explicitAllowDisabledPages || []);
+        NON_DELEGABLE_ACTIONS = new Set(catalog.nonDelegableActions || []);
+        if (Array.isArray(permissions.pageAllowlist)) {
+            user.pageAllowlist = permissions.pageAllowlist;
+            user.page_allowlist = permissions.pageAllowlist;
+        }
         if (permissions.actionAllowlist) {
             user.actionAllowlist = permissions.actionAllowlist;
             user.action_allowlist = permissions.actionAllowlist;
@@ -851,97 +863,15 @@ const ROLE_NAMES = {
     dishwasher: 'Посудомийник', waiter: 'Офіціант'
 };
 
-// v22.0.0: Role groups for cleaner access control
-const _MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
-const _MANAGER_UP = [..._MANAGEMENT_UP, 'manager'];
-const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
-const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
-const _LEADS_ACCESS = [..._MANAGER_UP, 'marketer'];
-const _ART_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer'];
-const _HERMES_STUDIO_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer', 'admin'];
-const _PROGRAMS_ACCESS = [..._MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
-const _STAFF_PAGE_ACCESS = _ALL_STAFF;
-const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
-const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
-const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
-const _FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
-const _PAYROLL_VIEW_ROLES = ['creator', 'director', 'vice_director', 'hr', 'accountant'];
-const _PAYROLL_REVERSE_CLOSE_ROLES = ['creator', 'director', 'accountant'];
-const _PAYROLL_RULE_ROLES = ['creator', 'director', 'hr', 'accountant'];
-
-const PAGE_ACCESS = {
-    '/dashboard': ROLE_HIERARCHY.slice(),
-    '/':          _ALL_STAFF,
-    '/maysternya-doli': ['creator'],
-    '/tasks':     _ALL_STAFF,
-    '/chat':      _ALL_STAFF,
-    '/chat-settings': ['creator', 'director', 'admin'],
-    '/kleshnya':  _ALL_STAFF,
-    '/center':    _MANAGER_UP,
-    '/art':       _ART_ACCESS,
-    '/content':   _ART_ACCESS,
-    '/hermes-studio': _HERMES_STUDIO_ACCESS,
-    '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
-    '/customers': [..._ADMIN_UP, 'reception'],
-    '/staff':     _STAFF_PAGE_ACCESS,
-    '/warehouse': [..._MANAGER_UP, 'admin'],
-    '/training':  _TRAINING_ACCESS,
-    '/settings':  ['creator', 'director'],
-    '/timeline-settings': ['creator', 'director'],
-    '/booking-summary': _ALL_STAFF,
-    '/demo':      _MANAGER_UP,
-    '/programs':  _PROGRAMS_ACCESS,
-    '/hr':        _HR_PAGE_ACCESS,
-    '/checkin':   _HR_PAGE_ACCESS,
-    '/finance':   _FINANCE_ANALYTICS_ACCESS,
-    '/accounting-deposits': _FINANCE_ANALYTICS_ACCESS,
-    '/analytics': _FINANCE_ANALYTICS_ACCESS,
-    '/status':    _MANAGER_UP,
-    '/guardian-ops': _GUARDIAN_OPS_ACCESS,
-    '/omni':      _MANAGER_UP,
-    '/copilot':   _MANAGER_UP,
-    '/designer':  _ART_ACCESS,
-    '/sound':     [..._MANAGER_UP, 'art_director'],
-    '/afisha':    _ALL_STAFF,
-    '/certificates': _ALL_STAFF,
-    '/certificates/new': _ALL_STAFF,
-    '/certificates/batch': _ALL_STAFF,
-    '/art-director': _ART_ACCESS,
-    '/designs': _ART_ACCESS,
-    '/game': null, // all authenticated users
-    '/sales-funnel': _LEADS_ACCESS,
-    '/leads': _LEADS_ACCESS,
-    '/profile': null, // all authenticated users
-    '/quiz': null, // all authenticated users
-    '/report-agent': ['creator', 'director', 'vice_director'],
-    '/reports': ['creator', 'director', 'vice_director', 'senior_manager', 'accountant'],
-    '/room': null, // all authenticated users
-    '/shop': null, // all authenticated users
-};
-
-const ACTION_PERMISSIONS = {
-    create_booking:  [..._ADMIN_UP, 'reception'],
-    edit_booking:    [..._ADMIN_UP, 'reception'],
-    cancel_booking:  _MANAGER_UP,
-    delete_booking:  _ADMIN_UP,
-    manage_accounts: ['creator', 'director'],
-    manage_users:    ['creator', 'director'],
-    view_all:        _ADMIN_UP,
-    view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
-    view_revenue:    [..._MANAGER_UP, 'accountant'],
-    manage_settings: ['creator', 'director'],
-    export_data:     _MANAGER_UP,
-    manage_staff:    [..._MANAGER_UP, 'hr', 'admin'],
-    view_payroll: _PAYROLL_VIEW_ROLES,
-    manage_payroll_accrual: _PAYROLL_VIEW_ROLES,
-    approve_payroll_installment: _PAYROLL_VIEW_ROLES,
-    confirm_payroll_payment: _PAYROLL_VIEW_ROLES,
-    reverse_payroll_payment: _PAYROLL_REVERSE_CLOSE_ROLES,
-    close_payroll_period: _PAYROLL_REVERSE_CLOSE_ROLES,
-    manage_payroll_rules: _PAYROLL_RULE_ROLES,
-};
-
-const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
+// Permission role presets and aliases are hydrated from /api/auth/permissions.
+// The browser keeps no independent authorization matrix.
+let PAGE_ACCESS = Object.create(null);
+let ACTION_PERMISSIONS = Object.create(null);
+let PAGE_CAPABILITY_ALIASES = Object.create(null);
+let ACTION_CAPABILITY_ALIASES = Object.create(null);
+let ACTION_LEGACY_KEYS = Object.create(null);
+let EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
+let NON_DELEGABLE_ACTIONS = new Set();
 
 const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
 const ROLE_PREVIEW_SESSION_KEY = 'testRole';
@@ -1492,38 +1422,128 @@ function getUserRoles() {
     return Array.from(new Set(roles.filter(Boolean).map(String)));
 }
 
-function getUserPageAllowlist() {
-    const user = AppState.currentUser || {};
+function _normalizePagePath(page) {
+    if (!page) return null;
+    const raw = String(page).trim();
+    if (!raw || raw.startsWith('#')) return null;
+    const pathOnly = raw.split('#')[0].split('?')[0];
+    const normalized = pathOnly.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    return PAGE_CAPABILITY_ALIASES[pathOnly] || PAGE_CAPABILITY_ALIASES[normalized] || normalized;
+}
+
+function _normalizeActionKey(action) {
+    const raw = String(action || '').trim();
+    return ACTION_CAPABILITY_ALIASES[raw] || raw;
+}
+
+function getUserPageAllowlist(user = AppState.currentUser || {}) {
     const pages = [];
     if (Array.isArray(user.pageAllowlist)) pages.push(...user.pageAllowlist);
     if (Array.isArray(user.page_allowlist)) pages.push(...user.page_allowlist);
-    return Array.from(new Set(pages.filter(Boolean).map(String)));
+    const permissions = user === AppState.currentUser ? (AppState.authPermissions || user.permissions || {}) : (user.permissions || {});
+    if (Array.isArray(permissions.pageAllowlist)) pages.push(...permissions.pageAllowlist);
+    return Array.from(new Set(pages.map(_normalizePagePath).filter(Boolean)));
 }
 
 function hasMinRole(minRole) {
     return getUserRoles().some(role => (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99));
 }
 
-function getCurrentUserActionList(primaryKey, legacyKey) {
-    const user = AppState.currentUser || {};
+function getCurrentUserActionList(primaryKey, legacyKey, user = AppState.currentUser || {}) {
     const values = [];
     if (Array.isArray(user[primaryKey])) values.push(...user[primaryKey]);
     if (Array.isArray(user[legacyKey])) values.push(...user[legacyKey]);
-    const permissions = AppState.authPermissions || user.permissions || {};
+    const permissions = user === AppState.currentUser ? (AppState.authPermissions || user.permissions || {}) : (user.permissions || {});
     if (primaryKey === 'actionAllowlist' && Array.isArray(permissions.actionAllowlist)) values.push(...permissions.actionAllowlist);
     if (primaryKey === 'actionDenylist' && Array.isArray(permissions.actionDenylist)) values.push(...permissions.actionDenylist);
-    return Array.from(new Set(values.filter(Boolean).map(String)));
+    return Array.from(new Set(values.map(_normalizeActionKey).filter(Boolean)));
+}
+
+function _frontendCapabilityDecision(normalized, allowed, source, sourceRole, reason) {
+    return {
+        allowed,
+        source,
+        sourceRole: sourceRole || null,
+        reason,
+        capability: `${normalized.type}:${normalized.key}`,
+        type: normalized.type,
+        key: normalized.key,
+        requestedKey: normalized.requestedKey
+    };
+}
+
+function resolveCapability(user, capability, context = {}) {
+    const capabilityObject = capability && typeof capability === 'object' ? capability : null;
+    const rawCapability = String(capabilityObject?.key ?? capability ?? '').trim();
+    const prefixedType = rawCapability.match(/^(page|action):/)?.[1] || null;
+    const requestedType = context.type || capabilityObject?.type || prefixedType
+        || (rawCapability.startsWith('/') || rawCapability.startsWith('#') ? 'page' : 'action');
+    const requestedKey = rawCapability.replace(/^(page|action):/, '');
+    const key = requestedType === 'page' ? _normalizePagePath(requestedKey) : _normalizeActionKey(requestedKey);
+    const normalized = { type: requestedType, key, requestedKey };
+    const permissions = context.permissions || AppState.authPermissions || user?.permissions || null;
+    const previewRole = context.previewRole || '';
+    const capabilityId = `${requestedType}:${key}`;
+
+    if (!previewRole && context.ignoreServer !== true) {
+        const serverDecision = permissions?.capabilities?.[capabilityId];
+        if (serverDecision) return { ...serverDecision };
+        const legacyDecisions = requestedType === 'page' ? permissions?.pages : permissions?.actions;
+        if (legacyDecisions && Object.prototype.hasOwnProperty.call(legacyDecisions, key)) {
+            const allowed = Boolean(legacyDecisions[key]);
+            return _frontendCapabilityDecision(normalized, allowed, 'server_effective', null, 'server_effective_permission');
+        }
+    }
+
+    const rolePresets = requestedType === 'page' ? PAGE_ACCESS : ACTION_PERMISSIONS;
+    const allowedRoles = rolePresets[key];
+    if (!key || !Array.isArray(allowedRoles)) {
+        return _frontendCapabilityDecision(normalized, false, 'default_deny', null, 'unknown_capability');
+    }
+
+    const effectiveUser = previewRole ? { role: previewRole, roles: [previewRole] } : (user || {});
+    const allowlist = requestedType === 'page'
+        ? getUserPageAllowlist(effectiveUser)
+        : getCurrentUserActionList('actionAllowlist', 'action_allowlist', effectiveUser);
+    const denylist = requestedType === 'page'
+        ? []
+        : getCurrentUserActionList('actionDenylist', 'action_denylist', effectiveUser);
+    const overrideKeys = requestedType === 'action' ? [key, ...(ACTION_LEGACY_KEYS[key] || [])] : [key];
+    if (overrideKeys.some(candidate => denylist.includes(candidate))) {
+        return _frontendCapabilityDecision(normalized, false, 'explicit_deny', null, 'listed_in_explicit_deny');
+    }
+
+    const actionNonDelegable = requestedType === 'action' && NON_DELEGABLE_ACTIONS.has(key);
+    const explicitAllowSupported = requestedType !== 'page' || !EXPLICIT_ALLOW_DISABLED_PAGES.has(key);
+    if (explicitAllowSupported && !actionNonDelegable && overrideKeys.some(candidate => allowlist.includes(candidate))) {
+        return _frontendCapabilityDecision(normalized, true, 'explicit_allow', null, 'listed_in_explicit_allow');
+    }
+
+    const roles = previewRole
+        ? [previewRole]
+        : Array.from(new Set((Array.isArray(context.roles)
+            ? [context.primaryRole, ...context.roles]
+            : [
+                effectiveUser.role,
+                ...(Array.isArray(effectiveUser.roles) ? effectiveUser.roles : []),
+                ...(Array.isArray(effectiveUser.extraRoles) ? effectiveUser.extraRoles : []),
+                ...(Array.isArray(effectiveUser.extra_roles) ? effectiveUser.extra_roles : [])
+            ]).filter(Boolean).map(String)));
+    const roleCandidates = actionNonDelegable ? [context.primaryRole || effectiveUser.role].filter(Boolean) : roles;
+    const sourceRole = roleCandidates.find(role => allowedRoles.includes(role)) || null;
+    if (sourceRole) {
+        return _frontendCapabilityDecision(normalized, true, 'role_preset', sourceRole, 'granted_by_role_preset');
+    }
+    if ((!explicitAllowSupported || actionNonDelegable) && overrideKeys.some(candidate => allowlist.includes(candidate))) {
+        const reason = actionNonDelegable ? 'non_delegable_explicit_allow_ignored' : 'explicit_allow_disabled';
+        return _frontendCapabilityDecision(normalized, false, 'default_deny', null, reason);
+    }
+    return _frontendCapabilityDecision(normalized, false, 'default_deny', null, 'no_matching_grant');
 }
 
 if (typeof window !== 'undefined') {
     window.hydrateActionPermissions = hydrateActionPermissions;
-}
-
-function serverActionPermission(action) {
-    if (getStoredPreviewRole()) return null;
-    const permissions = AppState.authPermissions || AppState.currentUser?.permissions || null;
-    if (!permissions?.actions || !Object.prototype.hasOwnProperty.call(permissions.actions, action)) return null;
-    return Boolean(permissions.actions[action]);
+    window.resolveCapability = resolveCapability;
 }
 
 function canAccess(action) {
@@ -1539,16 +1559,10 @@ function canAccess(action) {
             return window.TimelineBusinessContext.canUseAction(aliases[action], AppState.currentUser);
         }
     }
-    const serverDecision = serverActionPermission(action);
-    if (serverDecision !== null) return serverDecision;
-    if (getCurrentUserActionList('actionDenylist', 'action_denylist').includes(action)) return false;
-    const allowed = ACTION_PERMISSIONS[action];
-    if (!allowed) return false;
-    if (NON_DELEGABLE_ACTIONS.has(action)) {
-        return allowed.includes(AppState.currentUser?.role);
-    }
-    if (getCurrentUserActionList('actionAllowlist', 'action_allowlist').includes(action)) return true;
-    return getUserRoles().some(role => allowed.includes(role));
+    return resolveCapability(AppState.currentUser, action, {
+        type: 'action',
+        previewRole: getStoredPreviewRole()
+    }).allowed;
 }
 
 function canUseAction(action) {
@@ -1559,26 +1573,20 @@ if (typeof window !== 'undefined') {
     window.canUseAction = canUseAction;
 }
 
-function _normalizePagePath(page) {
-    if (!page) return null;
-    const raw = String(page);
-    if (raw.startsWith('#')) return null;
-    return raw.split('#')[0].replace(/\.html$/, '').replace(/\/$/, '') || '/';
-}
-
 function _isPageAllowedForRole(page, role) {
-    const normalized = _normalizePagePath(page);
-    if (!normalized) return null;
-    if (!Object.prototype.hasOwnProperty.call(PAGE_ACCESS, normalized)) return false;
-    const allowed = PAGE_ACCESS[normalized];
-    if (allowed === null) return Boolean(role);
-    return Boolean(role && allowed.includes(role));
+    if (!_normalizePagePath(page)) return null;
+    return resolveCapability({ role, roles: [role] }, page, {
+        type: 'page',
+        previewRole: role,
+        ignoreServer: true
+    }).allowed;
 }
 
 function canAccessPage(page) {
-    const normalized = _normalizePagePath(page);
-    if (!getStoredPreviewRole() && normalized && normalized !== '/maysternya-doli' && getUserPageAllowlist().includes(normalized)) return true;
-    return getUserRoles().some(role => _isPageAllowedForRole(page, role) === true);
+    return resolveCapability(AppState.currentUser, page, {
+        type: 'page',
+        previewRole: getStoredPreviewRole()
+    }).allowed;
 }
 
 function setTimelinePermissionHidden(elementOrId, hidden) {

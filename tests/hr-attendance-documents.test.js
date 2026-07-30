@@ -498,10 +498,10 @@ test('short-month snapshot keeps 31-column geometry metadata and long names fail
     );
 });
 
-test('HR route keeps the endpoint under existing view-role middleware and private no-store headers', () => {
+test('HR route keeps the endpoint under granular capability middleware and private no-store headers', () => {
     assert.equal(isPublicApiRequest({ method: 'POST', path: '/hr/attendance-documents/pdf' }), false);
     const routeSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hr.js'), 'utf8');
-    const middlewareIndex = routeSource.indexOf('router.use(requireRole(...HR_VIEW_ROLES))');
+    const middlewareIndex = routeSource.indexOf('router.use(requireHrCapabilityContract)');
     const endpointIndex = routeSource.indexOf("router.post('/attendance-documents/pdf'");
     assert.ok(middlewareIndex >= 0 && endpointIndex > middlewareIndex);
     const endpointBlock = routeSource.slice(endpointIndex, endpointIndex + 2200);

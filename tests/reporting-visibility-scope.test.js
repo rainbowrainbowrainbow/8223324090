@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { PAGE_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -55,14 +56,14 @@ test('finance reporting remains explicitly privileged full-role', () => {
 });
 
 test('finance page access mirrors the finance-privileged backend route', () => {
-    const backendAuth = read('middleware/auth.js');
     const frontendAuth = read('js/auth.js');
     const sidebar = read('js/components/sidebar.js');
+    const expectedRoles = ['creator', 'director', 'accountant'];
 
-    assert.match(backendAuth, /const FINANCE_ANALYTICS_ACCESS = \['creator', 'director', 'accountant'\]/);
-    assert.match(frontendAuth, /const _FINANCE_ANALYTICS_ACCESS = \['creator', 'director', 'accountant'\]/);
-    assert.match(sidebar, /finance:\s+\['creator', 'director', 'accountant'\]/);
-    assert.match(sidebar, /analytics:\s+\['creator', 'director', 'accountant'\]/);
+    assert.deepEqual(PAGE_PERMISSION_BY_KEY['/finance'].defaultRoles, expectedRoles);
+    assert.deepEqual(PAGE_PERMISSION_BY_KEY['/finance'].defaultRoles, expectedRoles);
+    assert.match(frontendAuth, /capabilityCatalog/);
+    assert.match(sidebar, /window\.canAccessPage/);
 });
 
 test('staff account bridge endpoints use canonical account-management action guards', () => {
@@ -103,7 +104,7 @@ test('HR account side effects stay behind canonical account-management policy', 
 
 test('cross-entity search and workspace shortcuts cannot bypass booking/task visibility', () => {
     const search = read('routes/search.js');
-    assert.match(search, /PAGE_ACCESS/, 'global search should only search non-booking surfaces that the actor can open');
+    assert.match(search, /resolveCapability\(user, path, \{ type: 'page' \}\)\.allowed/, 'global search should only search non-booking surfaces that the actor can open');
     assert.match(search, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'booking search should use canonical booking scope');
     assert.match(search, /buildTaskVisibilityScope\(req\.user, taskParams, 't'\)/, 'task search should use canonical task scope');
     assert.match(search, /staff: staff\.rows\.map/, 'staff results should remain inside the typed results payload');

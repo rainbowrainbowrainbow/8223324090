@@ -10,16 +10,21 @@ static page ownership aligned. The machine-readable exceptions live in
 Access drift is easy in this codebase because the same intent is represented in
 several places:
 
-- `middleware/auth.js` exports the server-side `PAGE_ACCESS` matrix and role
-  hierarchy metadata used by APIs.
-- `js/auth.js` mirrors `PAGE_ACCESS` for browser-side page checks and
-  `data-page-access` visibility.
-- `js/components/sidebar.js` owns `NAV_ITEMS` and `SIDEBAR_ACCESS` for visible
-  navigation.
+- `config/permissionRegistry.js` owns page/action keys, aliases, and default role
+  presets.
+- `services/accountAccessPolicy.js` derives effective decisions and validation
+  from that registry; `middleware/auth.js` and API routes consume the service.
+- `js/auth.js` consumes the server capability snapshot; it does not own a
+  separate permission matrix.
+- `js/components/sidebar.js` owns navigation presentation only and delegates
+  visibility to `canAccessPage`.
 - `config/staticSurface.js` owns root HTML pages, legacy aliases, embedded
   routes, and public landing/static routes.
 - `config/accessSurface.js` owns the access-specific exceptions that should not
   be guessed from code comments.
+- `config/permissionRegistry.js` is the machine-readable inventory of all
+  current page/action keys, canonical aliases, HR tabs, navigation links, and
+  known frontend/backend/API consumers. It is the runtime source for role presets.
 
 The rule going forward: if a page, sidebar item, role, static alias, hash-modal
 bridge, or public/embedded exception changes, update the access guard and this
@@ -32,9 +37,9 @@ document in the same pack.
 - backend and frontend `ROLE_HIERARCHY` match;
 - every role has `ROLE_NAMES`, `ROLE_PERMISSIONS`, `ROLE_DEPARTMENTS`, and
   `DEFAULT_WIDGETS` coverage;
-- backend and frontend `PAGE_ACCESS` paths and role sets match exactly;
-- every sidebar `NAV_ITEMS` access key exists in `SIDEBAR_ACCESS`;
-- sidebar role sets match `PAGE_ACCESS` for linked pages, including hash-modal
+- frontend capability catalogs are hydrated from the backend registry projection;
+- backend and frontend `resolveCapability` decisions match for parity cases;
+- every sidebar link maps to a registered page capability, including hash-modal
   links;
 - root static canonical pages and non-embedded aliases have matching
   `PAGE_ACCESS`, unless they are documented exceptions here;
@@ -42,6 +47,10 @@ document in the same pack.
   shells to another `PAGE_ACCESS` route;
 - every `PAGE_ACCESS` entry resolves to a static page, static alias, or
   hash-modal ownership entry.
+- `npm run check:permission-registry` verifies that the inventory contains
+  exactly the current 42 canonical page keys and 28 action keys, rejects unknown keys,
+  validates default-role parity, resolves aliases, and requires enforcement
+  evidence or an explicit deprecated marker.
 
 ## Public Static Page Exceptions
 
@@ -100,9 +109,9 @@ adding another mismatch.
 This pack is considered done when all of these remain true:
 
 - `npm run check:access` passes.
-- Any new protected static page has a backend and frontend `PAGE_ACCESS` entry.
+- Any new protected static page has a `permissionRegistry` entry.
 - Any new protected static page loads `js/auth.js`, unless it only redirects to
   another protected page.
-- Any new sidebar link has a `SIDEBAR_ACCESS` key and matches page access roles.
+- Any new sidebar link maps to a registered page capability.
 - Any new public page, embedded route, modal bridge, or intentional sidebar role
   mismatch is listed in `config/accessSurface.js` and this document.

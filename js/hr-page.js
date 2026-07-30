@@ -358,6 +358,24 @@ const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'profiles', 'zrs', 'kpi']);
 const HR_OTHER_WORKSPACE_TABS = new Set(['vacancies']);
 const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
 const HR_PEOPLE_WORKSPACE_TABS = new Set(['team']);
+const HR_TAB_CAPABILITIES = Object.freeze({
+    today: 'hr.today.view',
+    schedule: 'hr.schedule.view',
+    reports: 'hr.reports.view',
+    team: 'hr.staff.view',
+    structure: 'hr.staff.view',
+    professions: 'hr.staff.view',
+    checklists: 'hr.staff.view',
+    vacancies: 'hr.staff.view',
+    salary: 'hr.payroll.view',
+    profiles: 'hr.payroll.view',
+    zrs: 'hr.payroll.view',
+    kpi: 'hr.payroll.view'
+});
+const HR_TAB_FALLBACK_ORDER = Object.freeze([
+    'today', 'schedule', 'team', 'structure', 'professions', 'checklists',
+    'reports', 'salary', 'profiles', 'zrs', 'kpi', 'vacancies', 'accounts'
+]);
 
 const HR_TAB_ALIASES = {
     other: { tab: 'vacancies' },
@@ -434,12 +452,31 @@ function getHrCurrentUser() {
     }
 }
 
+function canUseHrCapability(capability, user = getHrCurrentUser()) {
+    if (typeof resolveCapability === 'function') return resolveCapability(user, capability, { type: 'action' }).allowed === true;
+    return typeof canAccess === 'function' && canAccess(capability) === true;
+}
+
 function canViewPayrollWorkspace() {
-    return hrCanUsePayrollAction('view_payroll');
+    return canUseHrCapability('hr.payroll.view');
+}
+
+function canManageHrSchedule() {
+    return canUseHrCapability('hr.schedule.manage');
+}
+
+function canViewHrTab(target) {
+    if (target === 'accounts') return canManageAccountSecurity();
+    const capability = HR_TAB_CAPABILITIES[target];
+    return Boolean(capability && canUseHrCapability(capability));
+}
+
+function firstAllowedHrTab() {
+    return HR_TAB_FALLBACK_ORDER.find(target => canViewHrTab(target) && document.getElementById(`tab-${target}`)) || null;
 }
 
 function canManageZrsAdjustments() {
-    return hrCanUsePayrollAction('manage_payroll_accrual');
+    return canUseHrCapability('hr.payroll.manage') && hrCanUsePayrollAction('manage_payroll_accrual');
 }
 
 function getHrTeamBucketAccess() {
@@ -2609,8 +2646,7 @@ async function initPage() {
     if (userEl) userEl.textContent = user.name;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
-    canManage = MANAGE_ROLES.includes(user.role);
+    canManage = canUseHrCapability('hr.staff.manage', user);
 
     removeLegacyAnimatorShiftSummary();
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
@@ -2760,6 +2796,8 @@ function initTabs() {
 }
 
 function isHrNavItemVisible(item) {
+    const target = item.tab || item.id;
+    if (!canViewHrTab(target)) return false;
     return typeof item.visible === 'function' ? item.visible(getHrCurrentUser()) : true;
 }
 
@@ -2958,14 +2996,10 @@ function resolveHrTabTarget(rawTarget) {
     }
     const mapped = HR_TAB_ALIASES[requested] || { tab: requested };
     const target = mapped.tab || 'today';
-    if (isHrPayrollWorkspaceTab(target) && !canViewPayrollWorkspace()) {
-        return { tab: 'today', alias: requested !== 'today' };
-    }
-    if (target === 'accounts' && !canManageAccountSecurity()) {
-        return { tab: 'today', alias: requested !== 'today' };
-    }
-    if (!document.getElementById(`tab-${target}`)) {
-        return { tab: 'today', alias: requested !== 'today' };
+    const fallback = firstAllowedHrTab();
+    if (!fallback) return { tab: null, alias: true, denied: true };
+    if (!canViewHrTab(target) || !document.getElementById(`tab-${target}`)) {
+        return { tab: fallback, alias: true, denied: true };
     }
     return {
         tab: target,
@@ -3009,6 +3043,7 @@ async function activateHrTab(target, options = {}) {
         return;
     }
     target = resolved.tab;
+    if (!target) return;
     let requestedBucket = target === 'team'
         ? (options.bucket || resolved.bucket || pendingPeopleBucket || activePeopleBucket || firstVisiblePeopleBucketId())
         : (options.bucket || resolved.bucket || null);
@@ -3020,7 +3055,7 @@ async function activateHrTab(target, options = {}) {
     if (requestedBucket) pendingPeopleBucket = requestedBucket;
     const panel = document.getElementById(`tab-${target}`);
     if (!panel) return;
-    if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
+    if (!canViewHrTab(target)) return activateHrTab(firstAllowedHrTab(), { updateHash: true });
     const shouldRestoreNavFocus = document.getElementById('hrNav')?.contains(document.activeElement) === true;
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
     renderHrNav(target);
@@ -4048,7 +4083,7 @@ function renderSchedule(dates) {
 }
 
 function openShiftModal(staffId, date) {
-    if (!canManage) return;
+    if (!canManageHrSchedule()) return;
     const shiftMap = {};
     for (const s of scheduleShifts) {
         const d = typeof s.shift_date === 'string' ? s.shift_date.substring(0, 10) : s.shift_date;
@@ -4209,7 +4244,7 @@ async function replaceShift() {
 }
 
 async function copyWeek() {
-    if (!canManage) return;
+    if (!canManageHrSchedule()) return;
     const sourceWeek = formatDate(scheduleWeekStart);
     const nextWeek = new Date(scheduleWeekStart);
     nextWeek.setDate(nextWeek.getDate() + 7);
@@ -5632,7 +5667,8 @@ let accountOnboardingState = {
 };
 const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
-const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
+const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts']);
+const ACCOUNT_DEPRECATED_ACTIONS = new Set(['cancel_booking', 'view_own', 'manage_users', 'view_revenue', 'manage_settings', 'export_data']);
 const ACCOUNT_BUSINESS_SWITCH_ROLES = new Set(['creator', 'director']);
 const ACCOUNT_ROLE_PRESET_LABELS = {
     executive: 'Керівництво',
@@ -5657,7 +5693,23 @@ const ACCOUNT_ACTION_LABELS = {
     view_revenue: 'Бачити виручку',
     manage_settings: 'Керувати налаштуваннями',
     export_data: 'Експорт даних',
-    manage_staff: 'Керувати персоналом'
+    manage_staff: 'Керувати персоналом',
+    'hr.today.view': 'HR: перегляд вкладки «Сьогодні»',
+    'hr.schedule.view': 'HR: перегляд графіка',
+    'hr.schedule.manage': 'HR: керування графіком',
+    'hr.staff.view': 'HR: перегляд даних персоналу',
+    'hr.staff.manage': 'HR: керування даними персоналу',
+    'hr.reports.view': 'HR: перегляд звітів',
+    'hr.reports.export': 'HR: експорт звітів',
+    'hr.payroll.view': 'HR: перегляд зарплатних даних',
+    'hr.payroll.manage': 'HR: керування зарплатними даними',
+    view_payroll: 'Зарплата: перегляд',
+    manage_payroll_accrual: 'Зарплата: керування нарахуваннями',
+    approve_payroll_installment: 'Зарплата: погодження виплати',
+    confirm_payroll_payment: 'Зарплата: підтвердження виплати',
+    reverse_payroll_payment: 'Зарплата: сторнування виплати',
+    close_payroll_period: 'Зарплата: закриття періоду',
+    manage_payroll_rules: 'Зарплата: керування правилами'
 };
 const ACCOUNT_PAGE_LABELS = {
     '/': 'Таймлайн',
@@ -5667,7 +5719,6 @@ const ACCOUNT_PAGE_LABELS = {
     '/chat-settings': 'Налаштування чату',
     '/center': 'Центр цін',
     '/art': 'Арт',
-    '/art-director': 'Арт-директор',
     '/content': 'Контент',
     '/designer': 'Дизайнер',
     '/designs': 'Дизайни',
@@ -5676,12 +5727,10 @@ const ACCOUNT_PAGE_LABELS = {
     '/staff': 'Staff',
     '/warehouse': 'Склад',
     '/training': 'Навчання',
-    '/settings': 'Налаштування',
     '/programs': 'Програми',
     '/hr': 'HR',
     '/checkin': 'Check-in',
     '/finance': 'Фінанси',
-    '/analytics': 'Аналітика',
     '/status': 'Статус',
     '/guardian-ops': 'Охорона',
     '/omni': 'Omni',
@@ -5690,7 +5739,6 @@ const ACCOUNT_PAGE_LABELS = {
     '/afisha': 'Афіша',
     '/certificates': 'Сертифікати',
     '/sales-funnel': 'Воронка',
-    '/leads': 'Ліди',
     '/report-agent': 'Звіт-агент',
     '/reports': 'Звіти',
     '/game': 'Гра',
@@ -5911,16 +5959,19 @@ function getAccountRolePresetButtons(currentRole = 'animator') {
 function getAccountActionOptions(selected = [], options = {}) {
     const includeNonDelegable = options.includeNonDelegable !== false;
     const current = new Set(normalizeAccountListInput(Array.isArray(selected) ? selected.join(',') : selected));
-    const actions = accountActionDefinitions.length
-        ? accountActionDefinitions.map(item => item.key || item)
-        : Object.keys(ACCOUNT_ACTION_LABELS);
-    return actions
-        .filter(Boolean)
-        .filter(action => includeNonDelegable || !ACCOUNT_NON_DELEGABLE_ACTIONS.has(action))
-        .map(action => ({
-            value: action,
-            label: ACCOUNT_ACTION_LABELS[action] || action,
-            selected: current.has(action)
+    const definitions = accountActionDefinitions.length
+        ? accountActionDefinitions.filter(item => item && item.deprecated !== true)
+        : Object.keys(ACCOUNT_ACTION_LABELS)
+            .filter(key => !ACCOUNT_DEPRECATED_ACTIONS.has(key))
+            .map(key => ({ key, label: ACCOUNT_ACTION_LABELS[key] }));
+    return definitions
+        .map(item => typeof item === 'string' ? { key: item } : item)
+        .filter(item => item.key)
+        .filter(item => includeNonDelegable || !ACCOUNT_NON_DELEGABLE_ACTIONS.has(item.key))
+        .map(item => ({
+            value: item.key,
+            label: item.label || ACCOUNT_ACTION_LABELS[item.key] || item.key,
+            selected: current.has(item.key)
         }));
 }
 
@@ -8868,75 +8919,103 @@ async function openAccountPasswordModal(userId, button) {
     await loadAccountCenter({ resetFilters: true });
 }
 
+function accountAccessPageGroup(page = '') {
+    if (page === '/hr' || page === '/staff' || page === '/training' || page === '/checkin') return 'HR та команда';
+    if (page === '/finance' || page === '/reports' || page === '/report-agent') return 'Фінанси та звіти';
+    if (page === '/customers' || page === '/sales-funnel' || page === '/omni') return 'CRM та продажі';
+    if (page === '/timeline' || page === '/booking-summary.html' || page === '/tasks') return 'Операції';
+    if (page === '/chat' || page === '/copilot') return 'Комунікації та помічники';
+    return 'Інші модулі';
+}
+
 async function openAccountAccessEditor(userId, button) {
     if (!canManageAccountAccess()) {
         showNotification('Зміна доступу доступна тільки creator/director', 'error');
         return;
     }
-    const user = accountUsers.find(item => Number(item.id) === Number(userId));
-    if (!user) return;
-    if (!currentAccountCanMutateTarget(user)) {
+    if (!window.AccountAccessEditor?.open) {
+        showNotification('Редактор доступу не завантажився. Оновіть сторінку.', 'error');
+        return;
+    }
+    const listedUser = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!listedUser) return;
+    if (!currentAccountCanMutateTarget(listedUser)) {
         showNotification('Доступ цього акаунта не можна змінити з поточного рівня доступу', 'error');
         return;
     }
-    const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist);
-    const currentActionAllowlist = normalizeAccountArray(user.action_allowlist || user.actionAllowlist);
-    const currentActionDenylist = normalizeAccountArray(user.action_denylist || user.actionDenylist);
-    await loadAccountRoleDefinitions();
-    const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
-    const currentDefaultBusinessContext = getAccountDefaultBusinessValue(user, currentBusinessContexts);
-    const canEditBusiness = canEditAccountBusinessContexts();
-    const businessFieldsVisible = values => accountRoleCanSwitchBusinessContext(values.role || user.role);
-    const accessFields = [
-        { key: 'accessPolicyNote', type: 'note', text: AppState.currentUser?.role === 'director' ? 'Директор може редагувати ролі, сторінки й дії для акаунтів нижче директорського рівня. Creator/director акаунти змінює тільки creator.' : 'Creator має повний контроль доступів і не може випадково забрати власне керування акаунтами.' },
-        { key: 'rolePreset', label: 'Швидка пачка доступу', type: 'presetButtons', presets: getAccountRolePresetButtons(user.role || 'animator'), hint: 'Пачка виставляє основну роль і додаткові ролі. Creator не видається швидкою пачкою.' },
-        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
-        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: normalizeAccountArray(user.extra_roles || user.extraRoles), dependsOn: 'role', options: getAccountExtraRoleOptions(user.role || 'animator', user.extra_roles || user.extraRoles), optionsFor: (role, values) => getAccountExtraRoleOptions(role, values.extraRoles || []), hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
-        { key: 'roleAccessPack', type: 'dynamicNote', render: values => renderAccountRolePackFromForm(values, { role: user.role || 'animator', extraRoles: user.extra_roles || user.extraRoles, pageAllowlist: normalizeAccountListInput(currentPages), actionAllowlist: currentActionAllowlist, actionDenylist: currentActionDenylist }) },
-        { key: 'pageAllowlist', label: 'Дозволити окремі сторінки', type: 'checkboxGroup', defaultValue: currentPages, options: getAccountPageOptions(currentPages), hint: 'Це ручні винятки понад рольову пачку. Сторінки, які вже дає роль, застосуються автоматично після нового входу.' },
-        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist, { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
-        { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: currentActionDenylist, options: getAccountActionOptions(currentActionDenylist), hint: 'Deny має пріоритет над роллю і allow.' }
-    ];
-    if (canEditBusiness) {
-        accessFields.splice(1, 0,
-            { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), visibleWhen: businessFieldsVisible, hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
-            { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, dependsOn: 'businessContexts', options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), optionsFor: (_, values) => getAccountBusinessSelectOptions(values.businessContexts || currentBusinessContexts, values.defaultBusinessContext || currentDefaultBusinessContext), visibleWhen: businessFieldsVisible, hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' }
-        );
-    }
-    const formResult = await formModal(`Доступ акаунта · ${user.username}`, accessFields, {
-        icon: '🛂',
-        type: 'info',
-        okText: 'Оновити доступ',
-        className: 'account-access-modal'
-    });
-    if (!formResult) return;
-    const extraRoles = normalizeAccountListInput(formResult.extraRoles);
-    const pageAllowlist = normalizeAccountListInput(formResult.pageAllowlist);
-    const actionAllowlist = Array.isArray(formResult.actionAllowlist) ? formResult.actionAllowlist : normalizeAccountListInput(formResult.actionAllowlist);
-    const actionDenylist = Array.isArray(formResult.actionDenylist) ? formResult.actionDenylist : normalizeAccountListInput(formResult.actionDenylist);
-    const selectedBusinessContexts = canEditBusiness ? normalizeAccountBusinessSelection(formResult.businessContexts) : ['event_genix'];
-    const selectedDefaultBusinessContext = canEditBusiness
-        ? getAccountDefaultBusinessValue({ defaultBusinessContext: formResult.defaultBusinessContext }, selectedBusinessContexts)
-        : 'event_genix';
+
     if (button) button.disabled = true;
-    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/access`, {
-        method: 'PATCH',
-        body: {
-            role: formResult.role || user.role,
-            businessContexts: selectedBusinessContexts,
-            defaultBusinessContext: selectedDefaultBusinessContext,
-            extraRoles,
-            pageAllowlist,
-            actionAllowlist,
-            actionDenylist
-        }
-    });
+    const [workspace] = await Promise.all([
+        crmApiFetch(`/api/users/${encodeURIComponent(userId)}/workspace`).catch(error => ({ success: false, error: error?.message || 'Помилка мережі' })),
+        loadAccountRoleDefinitions()
+    ]);
     if (button) button.disabled = false;
-    if (!response?.success) {
-        showNotification(response?.error || 'Не вдалося оновити доступ акаунта', 'error');
+    if (!workspace?.success) {
+        showNotification(workspace?.error || 'Не вдалося завантажити редактор доступу', 'error');
         return;
     }
-    showNotification('Доступ акаунта оновлено. Після нового логіну права перерахуються автоматично.', 'success');
+    const user = workspace.user || listedUser;
+    if (!currentAccountCanMutateTarget(user)) {
+        showNotification('Backend заборонив зміну доступу цього акаунта', 'error');
+        return;
+    }
+
+    const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
+    const pages = getAccountPageOptions(user.page_allowlist || user.pageAllowlist).map(option => ({
+        key: option.value,
+        label: ACCOUNT_PAGE_LABELS[option.value] || option.label || option.value,
+        group: accountAccessPageGroup(option.value),
+        defaultRoles: accountPageAccessMatrix[option.value] || []
+    }));
+    const actions = (accountActionDefinitions || []).filter(action => action?.key && action.deprecated !== true).map(action => ({
+        key: action.key,
+        label: action.label || ACCOUNT_ACTION_LABELS[action.key] || action.key,
+        group: action.group || 'Інші дії',
+        defaultRoles: action.roles || accountActionPermissionsMatrix[action.key] || [],
+        delegable: action.delegable !== false && !ACCOUNT_NON_DELEGABLE_ACTIONS.has(action.key)
+    }));
+
+    const result = await window.AccountAccessEditor.open({
+        opener: button,
+        user,
+        initial: {
+            role: user.role || 'animator',
+            extraRoles: normalizeAccountArray(user.extra_roles || user.extraRoles),
+            pageAllowlist: normalizeAccountArray(user.page_allowlist || user.pageAllowlist),
+            actionAllowlist: normalizeAccountArray(user.action_allowlist || user.actionAllowlist),
+            actionDenylist: normalizeAccountArray(user.action_denylist || user.actionDenylist),
+            businessContexts: currentBusinessContexts,
+            defaultBusinessContext: getAccountDefaultBusinessValue(user, currentBusinessContexts)
+        },
+        pages,
+        actions,
+        roles: getAccountRoleOptions(user.role || 'animator'),
+        roleLabels: ROLE_LABELS,
+        presets: getAccountRolePresetButtons(user.role || 'animator'),
+        businesses: getAccountBusinessCatalog(),
+        canEditBusinesses: canEditAccountBusinessContexts(),
+        history: Array.isArray(workspace.history) ? workspace.history : [],
+        resolveCapability: window.resolveCapability,
+        onSave: async draft => {
+            const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/access`, {
+                method: 'PATCH',
+                body: {
+                    role: draft.role || user.role,
+                    businessContexts: normalizeAccountBusinessSelection(draft.businessContexts),
+                    defaultBusinessContext: getAccountDefaultBusinessValue({ defaultBusinessContext: draft.defaultBusinessContext }, draft.businessContexts),
+                    extraRoles: normalizeAccountListInput(draft.extraRoles),
+                    pageAllowlist: normalizeAccountListInput(draft.pageAllowlist),
+                    actionAllowlist: normalizeAccountListInput(draft.actionAllowlist),
+                    actionDenylist: normalizeAccountListInput(draft.actionDenylist)
+                }
+            });
+            if (!response?.success) throw new Error(response?.error || 'Не вдалося оновити доступ акаунта');
+            return response;
+        }
+    });
+
+    if (!result?.saved) return;
+    showNotification('Доступ акаунта оновлено. Активні сесії відкликано, effective access перерахується після входу.', 'success');
     accountCenterLastUpdatedId = userId;
     await loadAccountCenter({ resetFilters: true });
 }
@@ -16004,7 +16083,12 @@ async function loadReports() {
             sel.innerHTML += `<option value="${val}">${label}</option>`;
         }
         sel.addEventListener('change', loadReports);
-        document.getElementById('reportExport')?.addEventListener('click', exportCSV);
+        const reportExport = document.getElementById('reportExport');
+        if (reportExport) {
+            reportExport.hidden = !canUseHrCapability('hr.reports.export');
+            reportExport.disabled = !canUseHrCapability('hr.reports.export');
+            reportExport.addEventListener('click', exportCSV);
+        }
     }
 
     const month = sel.value;
@@ -16117,6 +16201,10 @@ async function loadRoleAssignmentsReport() {
 }
 
 async function exportCSV() {
+    if (!canUseHrCapability('hr.reports.export')) {
+        showNotification('Немає доступу до експорту HR-звітів', 'error');
+        return;
+    }
     const month = document.getElementById('reportMonth')?.value;
     const from = `${month}-01`;
     const d = new Date(from);
@@ -17031,9 +17119,12 @@ function renderSalaryOffRosterDraftReports(reconciliation = {}) {
 }
 
 function hrCanUsePayrollAction(action) {
-    if (typeof canUseAction === 'function') return canUseAction(action) === true;
-    if (typeof canAccess === 'function') return canAccess(action) === true;
-    return false;
+    const legacyAllowed = typeof canUseAction === 'function'
+        ? canUseAction(action) === true
+        : (typeof canAccess === 'function' && canAccess(action) === true);
+    if (!legacyAllowed) return false;
+    if (action === 'view_payroll') return canUseHrCapability('hr.payroll.view');
+    return canUseHrCapability('hr.payroll.manage');
 }
 
 function renderSalaryPeriodControls(data = {}) {

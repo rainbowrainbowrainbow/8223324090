@@ -10,6 +10,13 @@ const CSS_APP_SHELL_PRECACHE = [
 
 const CSS_SURFACE = [
     {
+        file: 'css/account-access-editor.css',
+        owner: 'hr-account-access',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Effective account access side-sheet workspace, responsive layout, sticky save state, and accessibility affordances.'
+    },
+    {
         file: 'css/achievements.css',
         owner: 'shop',
         category: 'page-scoped',

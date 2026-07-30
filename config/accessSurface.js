@@ -27,15 +27,7 @@ const EMBEDDED_STATIC_PAGE_EXCEPTIONS = [
     }
 ];
 
-const MODAL_PAGE_ACCESS_SURFACES = [
-    {
-        path: '/settings',
-        sidebarHref: '#settings',
-        redirectTarget: null,
-        owner: 'settings-modal',
-        reason: 'Hash-modal surface in index.html; no standalone root HTML file.'
-    }
-];
+const MODAL_PAGE_ACCESS_SURFACES = [];
 
 const SIDEBAR_PAGE_ROLE_EXCEPTIONS = [
     {

@@ -33,6 +33,7 @@ const MODES = {
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
+    permissions: ['tests/integration/permission-capabilities.integration.test.js'],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
@@ -60,7 +61,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|payroll|payroll-fullstack|admission|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -295,6 +296,7 @@ async function runSuite(testDb, testFile) {
         REQUIRE_ISOLATED_TEST_TARGET: 'true',
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
+        RUN_PERMISSION_CAPABILITIES_INTEGRATION: testFile.includes('permission-capabilities') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_DATAFIX_INTEGRATION: testFile.includes('attendance-historical-grace-datafix') ? 'true' : 'false',
         RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION: testFile.includes('hr-attendance-compensation-snapshot') ? 'true' : 'false',
@@ -385,10 +387,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'payroll', 'payroll-fullstack', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.payroll, ...MODES.admission, ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

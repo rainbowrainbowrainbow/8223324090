@@ -1297,7 +1297,7 @@ test('Maysternya Doli actions are creator-scoped inside the allowed surface', ()
 });
 
 test('park timeline delete action is manager-operational while permanent delete stays guarded', () => {
-    const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+    const accountAccessPolicyCode = fs.readFileSync(path.join(ROOT, 'services', 'accountAccessPolicy.js'), 'utf8');
     const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const accessAuditScript = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-timeline-access.js'), 'utf8');
@@ -1311,7 +1311,7 @@ test('park timeline delete action is manager-operational while permanent delete 
         assert.equal(canUseTimelineAction({ role }, DEFAULT_TIMELINE_CONTEXT, 'delete'), true, `${role} can delete in default timeline`);
         assert.equal(canUseTimelineAction({ role }, 'park_zakrevsky', 'delete'), true, `${role} can delete in park alias`);
     }
-    assert.match(authCode, /delete_booking:\s+_ADMIN_UP/);
+    assert.match(accountAccessPolicyCode, /function resolveCapability/);
     assert.match(contextCode, /delete: \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'\]/);
     assert.match(bookingsRoute, /function requirePermanentBookingDelete/);
     assert.match(bookingsRoute, /userHasAnyRole\(req\.user, \['creator', 'director'\]\)/);

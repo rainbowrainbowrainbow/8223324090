@@ -9,6 +9,7 @@
             icon: 'calendar',
             tone: 'people',
             tab: 'today',
+            capability: 'hr.today.view',
             href: '/hr#today'
         }),
         Object.freeze({
@@ -18,6 +19,7 @@
             icon: 'clock',
             tone: 'schedule',
             tab: 'schedule',
+            capability: 'hr.schedule.view',
             href: '/staff'
         }),
         Object.freeze({
@@ -27,6 +29,7 @@
             icon: 'report',
             tone: 'reports',
             tab: 'reports',
+            capability: 'hr.reports.view',
             href: '/hr#reports'
         })
     ]);
@@ -51,8 +54,15 @@
             .replace(/"/g, '&quot;');
     }
 
-    function items() {
-        return PULSE_ITEMS.map(item => ({ ...item }));
+    function canViewItem(item, options = {}) {
+        if (typeof options.canView === 'function') return options.canView(item) !== false;
+        if (!item.capability || typeof global.resolveCapability !== 'function') return true;
+        const user = typeof global.AppState !== 'undefined' ? global.AppState.currentUser : null;
+        return global.resolveCapability(user, item.capability, { type: 'action' }).allowed === true;
+    }
+
+    function items(options = {}) {
+        return PULSE_ITEMS.filter(item => canViewItem(item, options)).map(item => ({ ...item }));
     }
 
     function renderIcon(icon) {
@@ -90,7 +100,7 @@
     }
 
     function renderTabs(options = {}) {
-        return items().map(item => renderTab(item, options)).join('');
+        return items(options).map(item => renderTab(item, options)).join('');
     }
 
     function renderStaffNav(container, options = {}) {

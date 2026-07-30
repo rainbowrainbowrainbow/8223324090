@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
 const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..', '..');
 const USER = {
     id: 9001,
@@ -20,6 +21,20 @@ const USER = {
     actionAllowlist: [],
     action_allowlist: []
 };
+const PERMISSIONS = (() => {
+    const snapshot = buildCapabilitySnapshot(USER);
+    return {
+        role: USER.role,
+        roles: [USER.role],
+        pageAllowlist: [],
+        actionAllowlist: [],
+        actionDenylist: [],
+        pages: snapshot.pages,
+        actions: snapshot.actions,
+        capabilities: snapshot.decisions,
+        capabilityCatalog: snapshot.catalog
+    };
+})();
 const PROFILE = {
     activeBusinessId: 'event_genix',
     activeBusinessContext: 'event_genix',
@@ -58,6 +73,7 @@ function fixtureServer() {
             return res.writeHead(405).end();
         }
         if (url.pathname === '/api/auth/verify') return json(res, { user: USER });
+        if (url.pathname === '/api/auth/permissions') return json(res, PERMISSIONS);
         if (url.pathname === '/api/business/profile') return json(res, { businessProfile: PROFILE });
         if (/^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(url.pathname)) return json(res, []);
         if (/^\/api\/lines\/\d{4}-\d{2}-\d{2}$/.test(url.pathname)) return json(res, []);

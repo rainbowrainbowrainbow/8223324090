@@ -94,11 +94,13 @@ function loadFrontendAuth() {
     };
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
-    return vm.runInNewContext(
-        `${code}\n;({ ACTION_PERMISSIONS, NON_DELEGABLE_ACTIONS });`,
+    sandbox.__capabilityCatalog = require(path.join(ROOT, 'services/accountAccessPolicy')).buildCapabilityCatalog();
+    const api = vm.runInNewContext(
+        `${code}\n;ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ACTION_PERMISSIONS, NON_DELEGABLE_ACTIONS, resolveCapability });`,
         sandbox,
         { filename }
     );
+    return { ...api, sandbox };
 }
 
 function sortedUnique(values = []) {
@@ -137,6 +139,24 @@ compareRoleSets(
     Array.from(backend.NON_DELEGABLE_ACTIONS || []),
     Array.from(frontend.NON_DELEGABLE_ACTIONS || [])
 );
+
+const actionParityCases = [
+    [{ role: 'animator', action_allowlist: ['delete_booking'] }, 'delete_booking'],
+    [{ role: 'manager', action_denylist: ['export_data'] }, 'export_data'],
+    [{ role: 'director' }, 'manage_accounts'],
+    [{ role: 'animator', action_allowlist: ['manage_accounts'] }, 'manage_accounts'],
+    [{ role: 'animator', extra_roles: ['hr'] }, 'view_payroll']
+];
+for (const [user, capability] of actionParityCases) {
+    frontend.sandbox.AppState.currentUser = user;
+    const backendDecision = backend.resolveCapability(user, capability, { type: 'action' });
+    const frontendDecision = frontend.resolveCapability(user, capability, { type: 'action', ignoreServer: true });
+    for (const field of ['allowed', 'source', 'sourceRole', 'reason', 'key']) {
+        if (backendDecision[field] !== frontendDecision[field]) {
+            fail(`action resolver parity ${capability}.${field}: backend=${backendDecision[field]} frontend=${frontendDecision[field]}`);
+        }
+    }
+}
 
 if (failures.length) {
     console.error('Action permission drift check failed:');

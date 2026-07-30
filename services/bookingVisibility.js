@@ -1,33 +1,8 @@
-let authExports = {};
-try {
-    authExports = require('../middleware/auth');
-} catch {
-    authExports = {};
+const { resolveCapability } = require('./accountAccessPolicy');
+
+function canUseAction(user, action) {
+    return resolveCapability(user, action, { type: 'action' }).allowed;
 }
-
-const ACTION_PERMISSIONS = authExports.ACTION_PERMISSIONS || {};
-
-const FULL_BOOKING_ROLES = new Set(['creator', 'director']);
-
-const FALLBACK_VIEW_ROLES = [
-    'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-    'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin',
-    'reception'
-];
-
-const FALLBACK_EDIT_ROLES = FALLBACK_VIEW_ROLES;
-
-const BOOKING_VIEW_ROLES = new Set([
-    ...(ACTION_PERMISSIONS.view_all || []),
-    ...(ACTION_PERMISSIONS.create_booking || []),
-    ...(ACTION_PERMISSIONS.edit_booking || []),
-    ...FALLBACK_VIEW_ROLES
-]);
-
-const BOOKING_EDIT_ROLES = new Set([
-    ...(ACTION_PERMISSIONS.edit_booking || []),
-    ...FALLBACK_EDIT_ROLES
-]);
 
 const BOOKING_VISIBILITY_REASON_CODES = Object.freeze({
     FULL_ROLE: 'full_role',
@@ -58,7 +33,7 @@ function withBookingVisibilityReason(decision) {
 
 const BOOKING_VISIBILITY_MATRIX = [
     {
-        actor: 'creator/director full access',
+        actor: 'view_all + edit_booking capability access',
         view: true,
         edit: true,
         queue: true,
@@ -69,9 +44,9 @@ const BOOKING_VISIBILITY_MATRIX = [
         classification: 'fully-classified'
     },
     {
-        actor: 'manager/admin/reception/current booking operational roles',
+        actor: 'view_all capability without edit_booking',
         view: true,
-        edit: 'only roles with current edit_booking permission',
+        edit: false,
         queue: true,
         dashboardCounts: true,
         timeline: true,
@@ -132,15 +107,6 @@ function normalizeRole(user) {
     return String(user?.role || '').trim();
 }
 
-function normalizeRoles(user) {
-    return [user?.role]
-        .concat(Array.isArray(user?.roles) ? user.roles : [])
-        .concat(Array.isArray(user?.extraRoles) ? user.extraRoles : [])
-        .concat(Array.isArray(user?.extra_roles) ? user.extra_roles : [])
-        .map(value => String(value || '').trim())
-        .filter(Boolean);
-}
-
 function normalizeUserId(user) {
     const parsed = Number(user?.id || user?.userId || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -174,15 +140,15 @@ function pushParam(params, value) {
 }
 
 function isFullBookingRole(user) {
-    return normalizeRoles(user).some(role => FULL_BOOKING_ROLES.has(role));
+    return canUseAction(user, 'view_all') && canUseAction(user, 'edit_booking');
 }
 
 function hasOperationalBookingView(user) {
-    return normalizeRoles(user).some(role => BOOKING_VIEW_ROLES.has(role));
+    return canUseAction(user, 'view_all');
 }
 
 function hasOperationalBookingEdit(user) {
-    return normalizeRoles(user).some(role => BOOKING_EDIT_ROLES.has(role));
+    return canUseAction(user, 'edit_booking');
 }
 
 function normalizeBookingValue(value) {
@@ -238,7 +204,7 @@ function classifyBookingVisibility(user, booking = {}) {
             canEdit: true,
             classification: 'fully-classified',
             scopeSource: 'full-role',
-            reason: 'creator/director full booking access'
+            reason: 'view_all and edit_booking capabilities grant full booking access'
         });
     }
 
@@ -255,7 +221,7 @@ function classifyBookingVisibility(user, booking = {}) {
     if (staffScopedHostMatch(user, booking)) {
         return withBookingVisibilityReason({
             canView: true,
-            canEdit: false,
+            canEdit: hasOperationalBookingEdit(user),
             classification: 'fully-classified',
             scopeSource: 'staff-host-assignment',
             reason: 'durable employee_profiles.staff_id assignment matches booking primary line or second animator'
@@ -265,7 +231,7 @@ function classifyBookingVisibility(user, booking = {}) {
     if (exactLegacyTokenMatch(user, bookingCreatedBy(booking))) {
         return withBookingVisibilityReason({
             canView: true,
-            canEdit: false,
+            canEdit: hasOperationalBookingEdit(user),
             classification: 'compatible-fallback',
             scopeSource: 'legacy-created-by',
             reason: 'exact legacy created_by match'
@@ -275,7 +241,7 @@ function classifyBookingVisibility(user, booking = {}) {
     if (exactLegacyTokenMatch(user, bookingSecondAnimator(booking))) {
         return withBookingVisibilityReason({
             canView: true,
-            canEdit: false,
+            canEdit: hasOperationalBookingEdit(user),
             classification: 'compatible-fallback',
             scopeSource: 'legacy-second-animator',
             reason: 'exact legacy second_animator match'
@@ -359,7 +325,7 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
             condition: 'TRUE',
             classification: 'fully-classified',
             scopeSource: 'full-role',
-            reason: 'creator/director full booking access'
+            reason: 'view_all and edit_booking capabilities grant full booking access'
         });
     }
 
@@ -428,6 +394,10 @@ function canViewBooking(user, booking) {
 function canEditBooking(user, booking) {
     const decision = classifyBookingVisibility(user, booking);
     return decision.canView === true && decision.canEdit === true;
+}
+
+function canDeleteBooking(user, booking) {
+    return canUseAction(user, 'delete_booking') && canViewBooking(user, booking);
 }
 
 function bookingAccessDeniedPayload() {
@@ -517,6 +487,7 @@ module.exports = {
     buildBookingVisibilityCondition,
     buildBookingVisibilityScope,
     bookingAccessDeniedPayload,
+    canDeleteBooking,
     canEditBooking,
     canViewBooking,
     classifyBookingVisibility,

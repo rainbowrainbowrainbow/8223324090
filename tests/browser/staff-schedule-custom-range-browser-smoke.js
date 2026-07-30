@@ -8,11 +8,27 @@ const path = require('node:path');
 const ExcelJS = require('exceljs');
 const { buildStaffScheduleWorkbookBuffer } = require('../../services/staffScheduleWorkbook');
 const { listStaffScheduleCategoryContract } = require('../../services/staffDisplayGroups');
+const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.STAFF_SCHEDULE_BROWSER_SMOKE_HEADLESS !== 'false';
 const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'staff-schedule-custom-range-smoke');
 const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups';
+
+function permissionsFor(user) {
+    const snapshot = buildCapabilitySnapshot(user);
+    return {
+        role: user.role,
+        roles: [user.role],
+        pageAllowlist: [],
+        actionAllowlist: [],
+        actionDenylist: [],
+        pages: snapshot.pages,
+        actions: snapshot.actions,
+        capabilities: snapshot.decisions,
+        capabilityCatalog: snapshot.catalog
+    };
+}
 
 const SMOKE_USER = {
     id: 1,
@@ -730,6 +746,10 @@ async function sendHistoryFixtureResponse(req, res, staffId, date) {
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') {
         sendJson(res, { success: true, user: SMOKE_USER });
+        return true;
+    }
+    if (url.pathname === '/api/auth/permissions') {
+        sendJson(res, permissionsFor(SMOKE_USER));
         return true;
     }
     if (url.pathname === '/api/hr/professions') {

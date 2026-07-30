@@ -91,7 +91,7 @@ const Sidebar = (() => {
         ['/certificates', 'Серти'],
         ['/certificates/new', 'Видати'],
         ['/certificates/batch', 'Пакет'],
-        ['/kleshnya', 'AI'],
+        ['/chat', 'AI'],
         ['/guardian-ops', 'Ops'],
         ['/center', 'Центр'],
         ['/center?tab=tickets', 'Квитки'],
@@ -206,7 +206,7 @@ const Sidebar = (() => {
         { href: '/certificates/batch', icon: '📦', label: 'Пакет сертифікатів на одноразовий вхід', access: 'certificates', group: 'product', quickAccessOnly: true },
 
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', priority: 5, defaultOpen: false },
-        { href: '/kleshnya',     icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
+        { href: '/chat',         icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
         { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',  access: 'guardian_ops',   group: 'system' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',       group: 'system' },
         { href: '/center?tab=tickets', icon: '🎟️', label: 'Квитки', access: 'center', group: 'system', pageAccess: '/center' },
@@ -219,46 +219,8 @@ const Sidebar = (() => {
     ];
 
     // ═══ ACCESS MATRIX ════════════════════════════════════════════
-    const ALL = true;
-    // v39.10: Sidebar access aligned with PAGE_ACCESS + security/reception roles added
-    const _ROLE_HIERARCHY = ['waiter','dishwasher','maintenance','cleaning','wardrobe','barista','security','reception','animator','pastry_chef','head_pastry','cook','head_chef','instructor','senior_instructor','admin','hr','it_specialist','marketer','art_director','accountant','manager','senior_manager','vice_director','director','creator'];
-    const _ALL_STAFF = _ROLE_HIERARCHY.filter(r => r !== 'waiter');
-    const _MGR_UP = ['creator','director','vice_director','senior_manager','manager'];
-    const _ADMIN_UP = [..._MGR_UP, 'admin', 'hr', 'accountant', 'art_director', 'marketer', 'it_specialist'];
-    const SIDEBAR_ACCESS = {
-        all:            ALL,
-        tasks:          _ALL_STAFF,
-        chat:           _ALL_STAFF,
-        timeline:       [..._ADMIN_UP, 'reception', 'animator', 'senior_instructor', 'instructor', 'security'],
-        maysternya_doli: ['creator'],
-        management:     [..._MGR_UP, 'admin', 'marketer'],
-        leads:          [..._MGR_UP, 'marketer'],
-        omni:           _MGR_UP,
-        copilot:        _MGR_UP,
-        staff:          [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
-        hr:             [..._MGR_UP, 'hr', 'admin', 'security'],
-        hr_page:        [..._MGR_UP, 'hr', 'admin', 'security'],
-        finance:        ['creator', 'director', 'accountant'],
-        accounting_deposits: ['creator', 'director', 'accountant'],
-        analytics:      ['creator', 'director', 'accountant'],
-        reports:        ['creator','director','vice_director','senior_manager','accountant'],
-        programs:       [..._MGR_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'],
-        hermes_studio:  [..._MGR_UP, 'art_director', 'marketer', 'admin'],
-        center:         _MGR_UP,
-        graduation:     [..._MGR_UP, 'admin', 'art_director', 'marketer'],
-        art:            [..._MGR_UP, 'art_director', 'marketer'],
-        content:        [..._MGR_UP, 'art_director', 'marketer'],
-        sound:          [..._MGR_UP, 'art_director'],
-        afisha:         _ALL_STAFF,
-        certificates:   _ALL_STAFF,
-        demo:           _MGR_UP,
-        settings:       ['creator','director'],
-        guardian_ops:   ['creator','director','admin','security'],
-        schedule_daily: _ALL_STAFF,
-        customers:      [..._ADMIN_UP, 'reception'],
-        warehouse:      [..._MGR_UP, 'admin'],
-        training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
-    };
+    // Authorization is resolved by js/auth.js from the server capability snapshot.
+    // NAV_ITEMS keeps presentation aliases only; it does not own role presets.
 
     const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist', 'dismissed'];
     const HR_TEAM_BUCKET_VISIBILITY_MANAGERS = ['creator', 'director', 'vice_director'];
@@ -1555,22 +1517,28 @@ const Sidebar = (() => {
     }
 
     // ═══ ACCESS CHECK ══════════════════════════════════════════════
-    function hasAccess(item, role) {
-        // v39.10: Creator always sees everything
-        const user = _getCurrentSidebarUser();
-        const previewRole = window.RolePreview?.getPreviewRole?.() || '';
-        const roles = new Set([role]);
-        if (!previewRole) {
-            if (Array.isArray(user?.roles)) user.roles.forEach(value => roles.add(value));
-            if (Array.isArray(user?.extraRoles)) user.extraRoles.forEach(value => roles.add(value));
-            if (Array.isArray(user?.extra_roles)) user.extra_roles.forEach(value => roles.add(value));
+    function _sidebarPageCapability(item = {}) {
+        if (item.pageAccess) return item.pageAccess;
+        if (String(item.href || '').startsWith('#')) {
+            return item.access === 'settings' ? '/settings' : null;
         }
-        if (!previewRole && _isMaysternyaSidebarContext(user) && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
-        if (roles.has('creator')) return true;
-        const access = SIDEBAR_ACCESS[item.access];
-        if (access === true) return true;
-        if (!access) return false;
-        return Array.from(roles).some(value => access.includes(value));
+        return item.href || null;
+    }
+
+    function hasAccess(item, role) {
+        const user = _getCurrentSidebarUser();
+        if (!window.RolePreview?.getPreviewRole?.()
+            && _isMaysternyaSidebarContext(user)
+            && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
+        const capability = _sidebarPageCapability(item);
+        if (!capability) return false;
+        if (typeof window.canAccessPage === 'function') {
+            return window.canAccessPage(capability);
+        }
+        if (typeof canAccessPage === 'function') {
+            return canAccessPage(capability);
+        }
+        return item.access === 'all' && Boolean(role);
     }
 
     const BUSINESS_MODULE_ACCESS_MAP = Object.freeze({
@@ -4678,7 +4646,6 @@ const Sidebar = (() => {
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,
         NAV_ITEMS,
-        SIDEBAR_ACCESS,
         HR_TEAM_BUCKET_VISIBILITY,
         HR_TEAM_BUCKET_VISIBILITY_MANAGERS,
         hasAccess,

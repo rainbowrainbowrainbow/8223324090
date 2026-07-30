@@ -4,7 +4,7 @@ const ROOT_HTML_SURFACE = [
         canonicalPath: '/analytics',
         owner: 'analytics',
         status: 'canonical-page',
-        aliases: [],
+        aliases: ['/analytics'],
         purpose: 'Operational analytics dashboard.'
     },
     {

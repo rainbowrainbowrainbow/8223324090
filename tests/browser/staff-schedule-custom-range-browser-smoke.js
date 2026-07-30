@@ -7,6 +7,7 @@ const http = require('node:http');
 const path = require('node:path');
 const ExcelJS = require('exceljs');
 const { buildStaffScheduleWorkbookBuffer } = require('../../services/staffScheduleWorkbook');
+const { listStaffScheduleCategoryContract } = require('../../services/staffDisplayGroups');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.STAFF_SCHEDULE_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -29,6 +30,7 @@ const DISPLAY_GROUPS = [
     { key: 'tech', label: 'Технічний відділ', order: 60 },
     { key: 'cleaning', label: 'Прибирання', order: 70 }
 ];
+const SCHEDULE_CATEGORY_CONTRACT = listStaffScheduleCategoryContract();
 
 const STAFF_ROWS = [
     {
@@ -612,7 +614,8 @@ async function sendScheduleFixtureResponse(req, res, from, to) {
         sendJson(res, {
             success: true,
             data: scheduleFixtureEntriesForRange(from, to),
-            displayGroups: DISPLAY_GROUPS
+            displayGroups: DISPLAY_GROUPS,
+            scheduleCategoryContract: SCHEDULE_CATEGORY_CONTRACT
         });
         apiCalls.scheduleResponses.push({ from, to, kind: 'success', scenarioId: null });
         return;
@@ -660,7 +663,8 @@ async function sendScheduleFixtureResponse(req, res, from, to) {
         sendJson(res, scenario.body || {
             success: true,
             data: scheduleFixtureEntriesForRange(from, to),
-            displayGroups: DISPLAY_GROUPS
+            displayGroups: DISPLAY_GROUPS,
+            scheduleCategoryContract: SCHEDULE_CATEGORY_CONTRACT
         });
         apiCalls.scheduleResponses.push({ from, to, kind: scenario.kind, scenarioId: scenario.id });
     } finally {
@@ -745,7 +749,8 @@ async function handleApi(req, res, url) {
                 tech: 'Технічний відділ',
                 cleaning: 'Прибирання'
             },
-            displayGroups: DISPLAY_GROUPS
+            displayGroups: DISPLAY_GROUPS,
+            scheduleCategoryContract: SCHEDULE_CATEGORY_CONTRACT
         });
         return true;
     }
@@ -2823,21 +2828,15 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
 async function runMembershipGroupingFlow(browser, base) {
     const expectedUniqueIds = [101, 102, 103, 104, 105, 106, 107, 108];
     const expectedAllPlacements = [
-        { id: 101, department: 'animators' },
         { id: 108, department: 'animators' },
         { id: 103, department: 'admin' },
-        { id: 103, department: 'cafe' },
         { id: 104, department: 'cafe' },
         { id: 107, department: 'cafe' },
         { id: 101, department: 'reception' },
         { id: 102, department: 'reception' },
-        { id: 103, department: 'reception' },
         { id: 106, department: 'reception' },
-        { id: 105, department: 'tech' },
-        { id: 104, department: 'trampoline' },
-        { id: 108, department: 'trampoline' }
+        { id: 105, department: 'tech' }
     ];
-    const expectedAllIds = expectedAllPlacements.map(row => row.id);
     const expectedChipCounts = {
         all: 8,
         animators: 2,
@@ -2861,16 +2860,15 @@ async function runMembershipGroupingFlow(browser, base) {
         const allIds = await scheduleStaffIdsFromDom(page);
         const allRows = await scheduleStaffRowsFromDom(page);
         assertUniqueScheduleStaffPlacements(allRows, 'All schedule table');
-        assert.deepEqual(sortedScheduleStaffIds([...new Set(allIds)]), expectedUniqueIds, 'All exposes the unique fixture staff set');
-        assert.ok(allIds.length > new Set(allIds).size, 'All renders membership placements for multi-profession employees');
+        assertUniqueScheduleStaffIds(allIds, 'All schedule table');
+        assert.deepEqual(sortedScheduleStaffIds(allIds), expectedUniqueIds, 'All exposes every fixture exactly once');
         const allStaffGroups = await scheduleStaffGroupsFromDom(page);
         assert.deepEqual(
             sortedScheduleStaffPlacements(allStaffGroups),
             sortedScheduleStaffPlacements(expectedAllPlacements),
-            'All renders every employee in each counted professional section'
+            'All renders each employee in one canonical category'
         );
-        assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'reception').length, 1, 'shared employee appears once in reception');
-        assert.equal(allStaffGroups.filter(row => row.id === 101 && row.department === 'animators').length, 1, 'shared employee also appears once in animators');
+        assert.equal(allStaffGroups.filter(row => row.id === 101).length, 1, 'shared employee has one canonical All placement');
 
         const chipCounts = await page.locator('#deptFilter .dept-chip').evaluateAll(chips => Object.fromEntries(
             chips.map(chip => [
@@ -2880,7 +2878,7 @@ async function runMembershipGroupingFlow(browser, base) {
         ));
         assert.deepEqual(chipCounts, expectedChipCounts, 'department chips count unique membership staff IDs without phantom groups');
         assert.equal(chipCounts.all, expectedUniqueIds.length, 'All total counts Vitalina once across professional sections');
-        assert.ok(allIds.length > chipCounts.all, 'All row placements can exceed the unique people counter');
+        assert.equal(allIds.length, chipCounts.all, 'All row count matches the unique people counter');
         await assertScheduleExportParity(page, allIds, 'All');
         await assertDepartmentFiltersRenderOnlyActiveGroup(page);
 
@@ -3035,22 +3033,20 @@ async function runMembershipGroupingFlow(browser, base) {
         await expandAllScheduleGroups(page);
 
         await collapseAllScheduleGroups(page);
-        assert.equal(await scheduleEmployeeRowCount(page), 0, 'membership All search starts with every group collapsed');
+        assert.equal(await scheduleEmployeeRowCount(page), 0, 'canonical All search starts with every group collapsed');
         await page.locator('#scheduleStaffSearch').fill('Батутисти');
-        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 4);
-        const membershipSearchRows = await scheduleStaffGroupsFromDom(page);
-        assertUniqueScheduleStaffPlacements(membershipSearchRows, 'membership All search');
-        assert.deepEqual(sortedScheduleStaffIds([...new Set(membershipSearchRows.map(row => row.id))]), [104, 108], 'membership All search keeps the unique matching people set');
-        const membershipSearchGroups = await scheduleStaffGroupsFromDom(page);
+        await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 2);
+        const canonicalSearchRows = await scheduleStaffGroupsFromDom(page);
+        assertUniqueScheduleStaffPlacements(canonicalSearchRows, 'canonical All search');
+        assertUniqueScheduleStaffIds(canonicalSearchRows.map(row => row.id), 'canonical All search');
+        assert.deepEqual(sortedScheduleStaffIds(canonicalSearchRows.map(row => row.id)), [104, 108], 'canonical All search keeps the matching people set');
         assert.deepEqual(
-            sortedScheduleStaffPlacements(membershipSearchGroups),
+            sortedScheduleStaffPlacements(canonicalSearchRows),
             sortedScheduleStaffPlacements([
                 { id: 104, department: 'cafe' },
-                { id: 104, department: 'trampoline' },
-                { id: 108, department: 'animators' },
-                { id: 108, department: 'trampoline' }
+                { id: 108, department: 'animators' }
             ]),
-            'All search keeps each matching multi-profession employee in each membership row'
+            'All search finds secondary professions but keeps canonical row ownership'
         );
         assert.equal(
             await page.locator('[data-schedule-group-toggle="animators"]').getAttribute('aria-expanded'),
@@ -3063,9 +3059,9 @@ async function runMembershipGroupingFlow(browser, base) {
             'search auto-expands the cafe group'
         );
         assert.equal(
-            await page.locator('[data-schedule-group-toggle="trampoline"]').getAttribute('aria-expanded'),
-            'true',
-            'search auto-expands the trampoline group'
+            await page.locator('[data-schedule-group-toggle="trampoline"]').count(),
+            0,
+            'secondary-profession search does not add a duplicate trampoline group'
         );
         await page.locator('#scheduleStaffSearch').fill('');
         await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 0);
@@ -3142,18 +3138,18 @@ async function runDeterministicSubgroupReadinessFlow(browser, base) {
 
         assert.equal(
             await page.locator('#scheduleBody [data-schedule-staff-row="108"]').count(),
-            2,
-            'All renders the animator/trampoline employee once per professional section'
+            1,
+            'All renders the animator/trampoline employee once in the canonical section'
         );
         assert.deepEqual(
             await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-11"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
-            ['Аніматор', 'Аніматор'],
-            'animator shift renders its saved profession in both membership rows'
+            ['Аніматор'],
+            'animator shift renders its saved profession in the canonical row'
         );
         assert.deepEqual(
             await page.locator('.sch-cell[data-staff="108"][data-date="2026-07-12"] .sch-profession').evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || '')),
-            ['Інструктор батутів', 'Інструктор батутів'],
-            'trampoline shift keeps its saved profession across both membership rows'
+            ['Інструктор батутів'],
+            'trampoline shift keeps its saved profession in the canonical row'
         );
 
         await activateScheduleDepartment(page, 'reception');

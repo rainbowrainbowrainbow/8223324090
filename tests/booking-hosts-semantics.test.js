@@ -94,6 +94,7 @@ test('HR staff shifts summary uses one set-based identity lookup', () => {
     const route = hrRoute.slice(routeStart, routeEnd);
 
     assert.match(route, /LEFT JOIN bookings b/);
+    assert.match(route, /COALESCE\(NULLIF\(BTRIM\(s\.display_name\), ''\), NULLIF\(BTRIM\(s\.name\), ''\)\) AS display_name/);
     assert.match(route, /GROUP BY s\.id, s\.name, s\.display_name/);
     assert.match(route, /NOT EXISTS/);
     assert.doesNotMatch(route, /for \(const s of staffList\.rows\)/);

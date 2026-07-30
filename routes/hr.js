@@ -8307,7 +8307,7 @@ router.get('/shifts-summary', async (req, res) => {
             `SELECT
                     s.id,
                     s.name,
-                    s.display_name,
+                    COALESCE(NULLIF(BTRIM(s.display_name), ''), NULLIF(BTRIM(s.name), '')) AS display_name,
                     COUNT(b.id)::int AS total,
                     COUNT(b.id) FILTER (
                         WHERE b.line_id = s.id::text
@@ -8327,7 +8327,7 @@ router.get('/shifts-summary', async (req, res) => {
                         NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL
                         AND (
                             b.second_animator = s.id::text
-                            OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(s.display_name))
+                            OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(COALESCE(NULLIF(BTRIM(s.display_name), ''), BTRIM(s.name)))
                         )
                         AND NOT EXISTS (
                             SELECT 1
@@ -8340,7 +8340,7 @@ router.get('/shifts-summary', async (req, res) => {
                )
               AND b.date >= $1 AND b.date <= $2
               AND b.status != 'cancelled'
-             WHERE NULLIF(BTRIM(s.display_name), '') IS NOT NULL
+             WHERE COALESCE(NULLIF(BTRIM(s.display_name), ''), NULLIF(BTRIM(s.name), '')) IS NOT NULL
                AND ${scheduleableStaffWhere('s')}
              GROUP BY s.id, s.name, s.display_name
              ORDER BY total DESC, s.name`,

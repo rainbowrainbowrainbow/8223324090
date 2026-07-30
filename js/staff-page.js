@@ -8153,7 +8153,6 @@ async function initStaffSchedulePage(options = {}) {
         setScheduleRangeLoadState('idle');
 
         if (typeof initDarkMode === 'function') initDarkMode();
-        if (mode !== 'hr') renderStaffPulseSwitcher();
 
         let user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
         if (!user && typeof apiVerifyToken === 'function') {
@@ -8166,6 +8165,10 @@ async function initStaffSchedulePage(options = {}) {
         }
 
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        if (mode !== 'hr' && typeof hydrateActionPermissions === 'function') {
+            await hydrateActionPermissions(user);
+        }
+        if (mode !== 'hr') renderStaffPulseSwitcher();
         if (mode !== 'hr') {
             const _userEl = document.getElementById('currentUser');
             if (_userEl) _userEl.textContent = user.name;

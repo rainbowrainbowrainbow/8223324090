@@ -337,9 +337,15 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
         err.code = 'READBACK_MISMATCH';
         throw err;
     }
+    // A schedule move can still be a penalty postponement. Keep the durable
+    // schedule taxonomy for ordinary planning changes, but make every counted
+    // postponement discoverable through the canonical task_rescheduled stream.
+    const historyActionType = decision.countsAsPostponement
+        ? TASK_ACTION_TYPES.RESCHEDULED
+        : (options.actionType || TASK_ACTION_TYPES.RESCHEDULED);
     const historyEvent = await logTaskActionEvent({
         taskId: task.id,
-        actionType: options.actionType || TASK_ACTION_TYPES.RESCHEDULED,
+        actionType: historyActionType,
         actor,
         sourceSurface,
         oldValue: options.oldValue || { deadline: task.deadline || null, date: task.date || null },

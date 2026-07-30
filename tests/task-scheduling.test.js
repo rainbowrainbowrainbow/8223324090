@@ -400,3 +400,63 @@ test('production reschedule writers are routed through the canonical service', (
     assert.equal(classifyTaskActor({ id: 2 }, 'hermes'), 'bot');
     assert.equal(classifyTaskActor({}, 'task_watchdog'), 'system');
 });
+
+test('counted schedule moves use task_rescheduled history while ordinary planning keeps schedule taxonomy', async () => {
+    const overdue = {
+        id: 51,
+        status: 'todo',
+        workflow_state: 'scheduled',
+        schedule_status: 'missed',
+        scheduled_end_at: '2026-07-28T10:00:00.000Z',
+        deadline: '2026-07-28T10:00:00.000Z',
+        date: '2026-07-28',
+        postponement_count: 2,
+        priority: 'urgent',
+        version: 1,
+        business_context: 'event_genix'
+    };
+    const penaltyQuery = postponementQuery(overdue);
+    const penalty = await applyCanonicalRescheduleMutation(penaltyQuery, overdue, {
+        deadline: '2026-07-30T18:30:00.000Z',
+        date: '2026-07-30',
+        scheduled_start_at: '2026-07-30T18:00:00.000Z',
+        scheduled_end_at: '2026-07-30T18:30:00.000Z',
+        schedule_status: 'scheduled'
+    }, { id: 7, name: 'Owner' }, {
+        now: new Date('2026-07-29T12:00:00.000Z'),
+        sourceSurface: 'task_detail',
+        actionType: TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE,
+        reason: 'manual_schedule'
+    });
+
+    assert.equal(penalty.task.postponementCount, 3);
+    assert.equal(penalty.historyEvent.actionType, TASK_ACTION_TYPES.RESCHEDULED);
+    assert.equal(penalty.historyEvent.meta.countsAsPostponement, true);
+
+    const future = {
+        ...overdue,
+        id: 52,
+        schedule_status: 'scheduled',
+        scheduled_end_at: '2026-07-30T10:00:00.000Z',
+        deadline: '2026-07-30T10:00:00.000Z',
+        date: '2026-07-30',
+        postponement_count: 0
+    };
+    const planningQuery = postponementQuery(future);
+    const planning = await applyCanonicalRescheduleMutation(planningQuery, future, {
+        deadline: '2026-07-31T10:00:00.000Z',
+        date: '2026-07-31',
+        scheduled_start_at: '2026-07-31T09:30:00.000Z',
+        scheduled_end_at: '2026-07-31T10:00:00.000Z',
+        schedule_status: 'scheduled'
+    }, { id: 7, name: 'Owner' }, {
+        now: new Date('2026-07-29T12:00:00.000Z'),
+        sourceSurface: 'task_detail',
+        actionType: TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE,
+        reason: 'manual_schedule'
+    });
+
+    assert.equal(planning.task.postponementCount, 0);
+    assert.equal(planning.historyEvent.actionType, TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE);
+    assert.equal(planning.historyEvent.meta.countsAsPostponement, false);
+});

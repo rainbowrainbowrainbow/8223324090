@@ -142,7 +142,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(update.status, 200, JSON.stringify(update.data));
 
         const revoked = await request('GET', '/api/auth/permissions', null, account.token);
-        assert.equal(revoked.status, 401, 'access PATCH must revoke the previous token');
+        assert.equal(revoked.status, 403, 'access PATCH must apply the new deny to the existing token');
         account.token = await login(account.username, account.password);
         const afterRelogin = await permissions(account.token);
         assert.equal(afterRelogin.capabilities['action:hr.schedule.view'].allowed, true);

@@ -10,10 +10,11 @@ function requirePlaywrightTest() {
     } catch (error) {
         const cliPath = process.argv.find(arg => /@playwright[\\/]test[\\/]cli\.js$/i.test(arg));
         if (cliPath) return require(path.dirname(cliPath));
-        const candidate = [process.argv[1], require.main?.filename].find(Boolean);
+        const candidates = [process.argv[1], require.main?.filename, module.parent?.filename].filter(Boolean);
         const marker = `${path.sep}node_modules${path.sep}playwright${path.sep}`;
-        const index = String(candidate || '').toLowerCase().indexOf(marker.toLowerCase());
-        if (index >= 0) {
+        for (const candidate of candidates) {
+            const index = String(candidate).toLowerCase().indexOf(marker.toLowerCase());
+            if (index < 0) continue;
             const nodeModules = String(candidate).slice(0, index + `${path.sep}node_modules`.length);
             const packageDir = path.join(nodeModules, '@playwright', 'test');
             if (fs.existsSync(packageDir)) return require(packageDir);

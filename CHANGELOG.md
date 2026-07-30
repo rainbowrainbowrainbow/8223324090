@@ -4,13 +4,22 @@
 
 ---
 
-## v0.80.36 - Єдині доступи та редактор
+## v0.80.37 - Єдині доступи та редактор
 
 ### Release / Versioning / (30.07.2026) [codex]
 - **Єдине джерело істини для доступів** — frontend, sidebar і backend використовують спільний registry та однаковий порядок deny → allow → role preset → default deny.
 - **Точні HR-доступи** — Today, Schedule, Staff, Reports і Payroll розділені на view/manage/export capabilities; заборони діють для вкладок, прямих API, mutation та export.
 - **Новий редактор effective access** — широкий keyboard-friendly workspace показує Inherited/Allow/Deny, джерело рішення, preview, diff і не губить draft при помилці.
 - **Автоматичні security gates** — CI перевіряє consumer для кожного permission, frontend/backend parity, aliases, Chromium UX і token-backed disposable PostgreSQL сценарії.
+
+---
+
+## v0.80.36 - Task Secretary Owner Routing
+
+### Tasks / Secretary / Routing / (30.07.2026) [codex]
+- **Без coordinator fallback для звичайних задач** — legacy Kleshnya notifications тепер спершу доставляють задачу власнику/відповідальному і не шлють нормальні task/reminder/status події в групу координатора.
+- **Escalation лишається видимим** — coordinator/group route дозволений лише там, де код явно передає `allowGroup: true` для escalation/error-сценарію.
+- **Regression guard** — тести покривають персональний fallback, missing personal route без групового fallback, skipped Hermes outbox і стабільний `notification_outbox` контракт.
 
 ---
 

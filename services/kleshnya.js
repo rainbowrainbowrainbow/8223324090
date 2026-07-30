@@ -361,8 +361,12 @@ async function escalateTask(taskId) {
         await sendToDirector(text);
     }
 
-    // Send to group with @mention
-    await sendTaskNotification(text, task);
+    // Escalation is the explicit exception where coordinator/group visibility is allowed.
+    await sendTaskNotification(text, task, {
+        allowGroup: true,
+        groupWhenPersonalSent: true,
+        context: 'task_escalation'
+    });
 
     // Deduct points for overdue
     if (newLevel >= 2 && task.assigned_to) {
@@ -390,7 +394,7 @@ async function sendReminder(taskId) {
 
     await pool.query('UPDATE tasks SET last_reminded_at = NOW() WHERE id = $1', [taskId]);
     await logTaskAction(taskId, 'reminded', null, `level ${level}`, 'kleshnya');
-    await sendTaskNotification(text, task);
+    await sendTaskNotification(text, task, { context: 'task_reminder' });
 
     log.info(`Reminder sent for task #${taskId} (level ${level})`);
 }
@@ -494,14 +498,29 @@ async function logTaskAction(taskId, action, oldValue, newValue, actor = 'system
 /**
  * Send task notification to configured chat (with @mention and inline buttons)
  */
-async function sendTaskNotification(text, task) {
+async function sendTaskNotification(text, task, options = {}) {
+    // P0 owner-routing guard: normal task/reminder traffic must not fall back to
+    // the configured group/coordinator chat. The owner-facing Secretary / Hermes
+    // outbox route is the canonical delivery path; group delivery is reserved for
+    // explicit escalation/error contexts only.
+    const allowGroup = options.allowGroup === true;
+    const groupWhenPersonalSent = options.groupWhenPersonalSent === true;
+    const personalDelivery = options.personalDelivery !== false;
+
+    const personalSent = personalDelivery ? await sendPersonalNotification(text, task) : false;
+    if (!allowGroup) {
+        if (!personalSent) {
+            log.warn(`Task notification skipped group fallback: task=${task?.id || '?'} owner_user_id=${task?.owner_user_id || task?.ownerUserId || '—'} assigned=${task?.assigned_to || '—'}`);
+        }
+        return { personalSent, groupSent: false, groupSkippedReason: 'group_fallback_disabled' };
+    }
+    if (personalSent && !groupWhenPersonalSent) {
+        return { personalSent, groupSent: false, groupSkippedReason: 'personal_delivery_succeeded' };
+    }
+
     const chatId = await getConfiguredChatId();
-    if (!chatId) return;
+    if (!chatId) return { personalSent, groupSent: false, groupSkippedReason: 'group_chat_not_configured' };
 
-    // Try personal notification first (with inline buttons)
-    const personalSent = await sendPersonalNotification(text, task);
-
-    // Always send to group as well (with @mention if no personal chat)
     let groupText = text;
     if (!personalSent && task.assigned_to) {
         const tgUsername = await getTelegramUsername(task.assigned_to);
@@ -526,6 +545,7 @@ async function sendTaskNotification(text, task) {
     } else {
         await sendTelegramMessage(chatId, groupText);
     }
+    return { personalSent, groupSent: true };
 }
 
 /**
@@ -707,7 +727,7 @@ async function notifyTaskAssigned(task) {
     if (task.owner && task.owner !== task.assigned_to) text += `👔 Відповідальний: ${task.owner}\n`;
     text += `\n🤖 Помічник`;
 
-    await sendTaskNotification(text, task);
+    await sendTaskNotification(text, task, { context: 'task_assigned' });
 }
 
 /**
@@ -723,11 +743,8 @@ async function notifyTaskStatusChanged(task, oldStatus, newStatus, actor) {
     text += `👤 Змінив: ${actor}\n`;
     text += `\n🤖 Помічник`;
 
-    // Only send to group (not personal for status changes)
-    const chatId = await getConfiguredChatId();
-    if (chatId) {
-        await sendTelegramMessage(chatId, text);
-    }
+    // Owner-facing status updates must not fall back to the coordinator/group chat.
+    await sendTaskNotification(text, task, { context: 'task_status_changed' });
 }
 
 /**

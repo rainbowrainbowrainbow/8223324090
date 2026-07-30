@@ -43,7 +43,13 @@ const HTML = `<!doctype html><html lang="uk" data-theme="light"><head><meta char
 <div class="afisha-line-header">АФІША <button class="afisha-dist-btn" aria-label="Розподілити афішу по ведучих">↔</button></div>
 </main></body></html>`;
 
-const FIXTURE_CSS = `*,*::before,*::after{transition:none!important;animation:none!important}body{margin:0;min-height:100vh}.theme-fixture{display:grid;gap:16px;max-width:920px;margin:72px auto 24px;padding:20px}.theme-fixture-card{padding:16px;border:1px solid var(--border-color,#cbd5e1);border-radius:12px;background:var(--bg-card,#fff)}.booking-menu-catalog-panel{position:relative;inset:auto;width:100%;height:auto;min-height:180px;padding:12px}.booking-menu-catalog-body{min-height:80px}.afisha-line-header{width:220px;padding:12px}`;
+const FIXTURE_CSS = `html[data-theme],html[data-theme] body.timeline-dashboard-page,html[data-theme] body.timeline-dashboard-page *,html[data-theme] body.timeline-dashboard-page *::before,html[data-theme] body.timeline-dashboard-page *::after{transition:none!important;animation:none!important}body{margin:0;min-height:100vh}.theme-fixture{display:grid;gap:16px;max-width:920px;margin:72px auto 24px;padding:20px}.theme-fixture-card{padding:16px;border:1px solid var(--border-color,#cbd5e1);border-radius:12px;background:var(--bg-card,#fff)}.booking-menu-catalog-panel{position:relative;inset:auto;width:100%;height:auto;min-height:180px;padding:12px}.booking-menu-catalog-body{min-height:80px}.afisha-line-header{width:220px;padding:12px}`;
+
+async function waitForStableStyles(page) {
+    await page.evaluate(() => new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+}
 
 async function collect(page, theme) {
     await page.evaluate(value => {
@@ -144,6 +150,7 @@ async function main() {
         await page.setContent(HTML, { waitUntil: 'domcontentloaded' });
         for (const file of CSS_FILES) await page.addStyleTag({ path: path.join(ROOT, file) });
         await page.addStyleTag({ content: FIXTURE_CSS });
+        await waitForStableStyles(page);
         const light = await collect(page, 'light');
         const dark = await collect(page, 'dark');
         console.log(JSON.stringify({ light, dark }, null, 2));

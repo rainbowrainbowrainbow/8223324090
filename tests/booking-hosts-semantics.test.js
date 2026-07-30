@@ -46,6 +46,7 @@ test('booking hosts remains a host-count field, never a staff identity in runtim
         /\b(?:WHERE|AND|OR|ON)\b.*\b\w*\.?hosts\s*=\s*\$\d+\b/i,
         /\b(?:WHERE|AND|OR|ON)\b.*\b\w*\.?hosts\s*=\s*(?:ep\.staff_id|s\.id)\b/i,
         /\b\w*\.?hosts\s+IN\s*\(/i,
+        /\b\w*\.?hosts\s+ILIKE\b/i,
         /SELECT\s+DISTINCT\s+hosts\s+AS\s+staff_id\b/i
     ];
     const runtimeFiles = [
@@ -81,6 +82,21 @@ test('HR staff booking shifts resolve assignments by staff id without duplicate 
     assert.match(route, /NOT EXISTS/);
     assert.match(route, /LOWER\(BTRIM\(COALESCE\(b\.second_animator, ''\)\)\) = LOWER\(BTRIM\(\$2\)\)/);
     assert.match(route, /new Date\(Date\.UTC\(yr, mo, 0\)\)/);
+    assert.match(route, /Invalid month format\. Use YYYY-MM\./);
+});
+
+test('HR staff shifts summary uses one set-based identity lookup', () => {
+    const hrRoute = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+    const routeStart = hrRoute.indexOf("router.get('/shifts-summary'");
+    const routeEnd = hrRoute.indexOf("router.get('/salary/reconciliation'", routeStart);
+    assert.notEqual(routeStart, -1, 'staff shifts summary route exists');
+    assert.notEqual(routeEnd, -1, 'staff shifts summary route has a bounded source block');
+    const route = hrRoute.slice(routeStart, routeEnd);
+
+    assert.match(route, /LEFT JOIN bookings b/);
+    assert.match(route, /GROUP BY s\.id, s\.name, s\.display_name/);
+    assert.match(route, /NOT EXISTS/);
+    assert.doesNotMatch(route, /for \(const s of staffList\.rows\)/);
     assert.match(route, /Invalid month format\. Use YYYY-MM\./);
 });
 

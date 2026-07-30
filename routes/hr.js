@@ -8296,38 +8296,64 @@ router.get('/staff/:id/shifts', async (req, res) => {
 // GET /api/hr/shifts-summary?month=2026-03
 router.get('/shifts-summary', async (req, res) => {
     try {
-        const month    = req.query.month || new Date().toISOString().slice(0, 7);
+        const month    = String(req.query.month || new Date().toISOString().slice(0, 7)).trim();
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+            return res.status(400).json({ success: false, error: 'Invalid month format. Use YYYY-MM.' });
+        }
         const [yr, mo] = month.split('-').map(Number);
         const dateFrom = `${month}-01`;
-        const dateTo   = new Date(yr, mo, 0).toISOString().slice(0, 10);
-        const staffList = await pool.query(
-            `SELECT id, name, display_name FROM staff
-             WHERE display_name IS NOT NULL
-               AND display_name != ''
-               AND ${scheduleableStaffWhere('staff')}`
+        const dateTo   = new Date(Date.UTC(yr, mo, 0)).toISOString().slice(0, 10);
+        const result = await pool.query(
+            `SELECT
+                    s.id,
+                    s.name,
+                    s.display_name,
+                    COUNT(b.id)::int AS total,
+                    COUNT(b.id) FILTER (
+                        WHERE b.line_id = s.id::text
+                          AND NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL
+                    )::int AS as_host,
+                    COUNT(b.id) FILTER (
+                        WHERE NOT (
+                            b.line_id = s.id::text
+                            AND NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL
+                        )
+                    )::int AS as_second
+             FROM staff s
+             LEFT JOIN bookings b
+               ON (
+                    b.line_id = s.id::text
+                    OR (
+                        NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL
+                        AND (
+                            b.second_animator = s.id::text
+                            OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(s.display_name))
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM bookings linked
+                            WHERE NULLIF(BTRIM(COALESCE(linked.linked_to, '')), '') = b.id
+                              AND linked.line_id = s.id::text
+                              AND linked.status != 'cancelled'
+                        )
+                    )
+               )
+              AND b.date >= $1 AND b.date <= $2
+              AND b.status != 'cancelled'
+             WHERE NULLIF(BTRIM(s.display_name), '') IS NOT NULL
+               AND ${scheduleableStaffWhere('s')}
+             GROUP BY s.id, s.name, s.display_name
+             ORDER BY total DESC, s.name`,
+            [dateFrom, dateTo]
         );
-        if (!staffList.rowCount) return res.json({ success: true, summary: [], period: { from: dateFrom, to: dateTo } });
-        const summary = [];
-        for (const s of staffList.rows) {
-            const dn = s.display_name.trim();
-            const r  = await pool.query(
-                `SELECT
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN hosts ILIKE '%'||$1||'%' THEN 1 ELSE 0 END) AS as_host,
-                    SUM(CASE WHEN second_animator ILIKE '%'||$1||'%' THEN 1 ELSE 0 END) AS as_second
-                 FROM bookings
-                 WHERE (hosts ILIKE '%'||$1||'%' OR second_animator ILIKE '%'||$1||'%')
-                   AND date >= $2 AND date <= $3
-                   AND status != 'cancelled'`,
-                [dn, dateFrom, dateTo]
-            );
-            summary.push({
-                id: s.id, name: s.name, displayName: dn,
-                total: parseInt(r.rows[0].total),
-                asHost: parseInt(r.rows[0].as_host),
-                asSecond: parseInt(r.rows[0].as_second)
-            });
-        }
+        const summary = result.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            displayName: row.display_name,
+            total: Number(row.total || 0),
+            asHost: Number(row.as_host || 0),
+            asSecond: Number(row.as_second || 0)
+        }));
         res.json({
             success: true,
             summary: summary.sort((a, b) => b.total - a.total),

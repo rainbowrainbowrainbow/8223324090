@@ -7675,10 +7675,13 @@ function closeAccountActionMenus() {
 }
 
 async function handleAccountAction(action, userId, button) {
+    const accessReturnFocus = action === 'access'
+        ? (button?.closest('[data-account-id]')?.querySelector('[data-account-menu-toggle]') || button)
+        : button;
     closeAccountActionMenus();
     if (action === 'profile') return openAccountProfileModal(userId, button);
     if (action === 'password') return openAccountPasswordModal(userId, button);
-    if (action === 'access') return openAccountAccessEditor(userId, button);
+    if (action === 'access') return openAccountAccessEditor(userId, accessReturnFocus);
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
     if (action === 'toggle') return toggleAccountActive(userId, user.is_active === false, button);

@@ -102,7 +102,8 @@ const {
     buildStaffDisplayGroupOptions,
     decorateStaffRowsWithDisplayGroups,
     loadStaffDisplayGroupContext,
-    listStaffDisplayGroups
+    listStaffDisplayGroups,
+    listStaffScheduleCategoryContract
 } = require('../services/staffDisplayGroups');
 const {
     cleanupFutureStaffOperationalSchedule,
@@ -770,7 +771,11 @@ router.get('/departments', async (req, res) => {
 
 // GET /api/staff/display-groups — canonical operational staff filter groups
 router.get('/display-groups', async (req, res) => {
-    res.json({ success: true, data: listStaffDisplayGroups() });
+    res.json({
+        success: true,
+        data: listStaffDisplayGroups(),
+        scheduleCategoryContract: listStaffScheduleCategoryContract()
+    });
 });
 
 // ==========================================
@@ -851,7 +856,12 @@ router.get('/schedule', async (req, res) => {
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         const rowsWithPlans = await attachScheduleDayPlans(result.rows);
         const rows = decorateStaffRowsWithDisplayGroups(rowsWithPlans, { displayGroupContext });
-        res.json({ success: true, data: rows, displayGroups: listStaffDisplayGroups() });
+        res.json({
+            success: true,
+            data: rows,
+            displayGroups: listStaffDisplayGroups(),
+            scheduleCategoryContract: listStaffScheduleCategoryContract()
+        });
     } catch (err) {
         log.error('GET /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2096,7 +2106,8 @@ router.get('/', async (req, res) => {
             data: rows,
             departments: DEPARTMENTS,
             displayGroups: listStaffDisplayGroups(),
-            displayGroupOptions: buildStaffDisplayGroupOptions(result.rows, { displayGroupContext })
+            displayGroupOptions: buildStaffDisplayGroupOptions(result.rows, { displayGroupContext }),
+            scheduleCategoryContract: listStaffScheduleCategoryContract()
         });
     } catch (err) {
         log.error('GET /staff error', err);
@@ -2496,10 +2507,10 @@ const EXCEL_TO_CRM_ROLE = {
     'Керівник': { dept: 'admin', role: 'vice_director' },
     'Кухня повара': { dept: 'cafe', role: 'cook' },
     'Менеджер з продажу': { dept: 'admin', role: 'manager' },
-    'Мийка біла та чорна': { dept: 'cleaning', role: 'dishwasher' },
+    'Мийка біла та чорна': { dept: 'cafe', role: 'dishwasher' },
     'Офіціанти': { dept: 'cafe', role: 'waiter' },
-    'Охорона': { dept: 'security', role: 'maintenance' },
-    'Тех-директор': { dept: 'tech', role: 'it_specialist' },
+    'Охорона': { dept: 'security', role: 'security' },
+    'Тех-директор': { dept: 'tech', role: 'maintenance' },
     'Хозяюшки залу': { dept: 'cleaning', role: 'cleaner' }
 };
 

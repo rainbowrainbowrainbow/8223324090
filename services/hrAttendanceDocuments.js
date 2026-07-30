@@ -83,10 +83,7 @@ const PRINT_CATEGORY_DEFINITIONS = Object.freeze([
     category('pizzaiolo', 'Піцейола', ['pizzaiolo'], 156, 2, 5),
     category('waiter', 'Офіціант', ['waiter'], 160, 1, 4),
     category('dishwasher', 'Мийниця', ['dishwasher'], 170, 3, 5),
-    category('security', 'Охоронець', ['security', 'maintenance'], 180, 2, 6, {
-        discriminator: /охорон/i,
-        discriminatorKeys: ['maintenance']
-    })
+    category('security', 'Охоронець', ['security'], 180, 2, 6)
 ]);
 
 const CATEGORY_BY_ID = new Map(PRINT_CATEGORY_DEFINITIONS.map(item => [item.id, item]));

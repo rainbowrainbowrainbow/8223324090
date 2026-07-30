@@ -88,6 +88,7 @@ const StaffState = {
     scheduleModalSessionSeq: 0,
     departments: {},
     displayGroups: [],
+    scheduleCategoryContract: null,
     activeDept: 'all',
     searchQuery: '',
     expandedScheduleGroups: new Set(),
@@ -237,44 +238,49 @@ const STAFFING_FORECAST_PEAK_START_MINUTES = 15 * 60;
 const STAFFING_FORECAST_PEAK_END_MINUTES = 20 * 60;
 const STAFFING_FORECAST_TECH_EVENING_MINUTES = 18 * 60;
 
-// Sub-groups within large departments (by role_type)
+// Defensive presentation fallback. The backend schedule category contract overrides it.
 const DEPT_SUB_GROUPS = {
     animators: [
-        { key: 'animator', label: 'Аніматори', icon: 'drama' },
-        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: 'activity' }
+        { id: 'animators', key: 'animator,host', label: 'Аніматори', icon: 'drama' }
     ],
     trampoline: [
-        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: 'activity' },
-        { key: 'animator', label: 'Аніматори', icon: 'drama' }
-    ],
-    admin: [
-        { key: 'vice_director,art_director,senior_manager', label: 'Керівники', icon: 'crown' },
-        { key: 'manager', label: 'Менеджери', icon: 'briefcase' },
-        { key: 'admin', label: 'Адміністратори', icon: 'clipboard' },
-        { key: 'reception', label: 'Рецепція', icon: 'bell' },
-        { key: 'accountant', label: 'Бухгалтери', icon: 'coins' },
-        { key: 'hr', label: 'HR', icon: 'users' }
+        { id: 'trampoline', key: 'trampoline_instructor,senior_instructor,instructor,senior_trampoline', label: 'Батутисти', icon: 'activity' }
     ],
     reception: [
-        { key: 'reception', label: 'Рецепція', icon: 'bell' },
-        { key: 'manager,senior_manager', label: 'Менеджери', icon: 'briefcase' }
+        { id: 'reception', key: 'reception', label: 'Рецепція', icon: 'bell' },
+        { id: 'managers', key: 'manager,senior_manager', label: 'Менеджери', icon: 'briefcase' }
+    ],
+    admin: [
+        { id: 'leadership', key: 'director,vice_director,deputy_director,art_director,top_manager', label: 'Керівники', icon: 'crown' },
+        { id: 'administrators', key: 'admin,administrator', label: 'Адміністратори', icon: 'clipboard' },
+        { id: 'accountants', key: 'accountant', label: 'Бухгалтери', icon: 'coins' },
+        { id: 'hr', key: 'hr', label: 'HR', icon: 'users' }
     ],
     cafe: [
-        { key: 'cook', label: 'Кухня', icon: 'chef' },
-        { key: 'pizzaiolo', label: 'Піцайоло', icon: 'pizza' },
-        { key: 'barista', label: 'Бариста', icon: 'coffee' },
-        { key: 'waiter', label: 'Офіціанти', icon: 'utensils' }
+        { id: 'kitchen', key: 'cook,head_cook,head_chef', label: 'Кухня', icon: 'chef' },
+        { id: 'pizzaiolo', key: 'pizzaiolo', label: 'Піцайоло', icon: 'pizza' },
+        { id: 'barista', key: 'barista,bartender', label: 'Бариста', icon: 'coffee' },
+        { id: 'waiters', key: 'waiter', label: 'Офіціанти', icon: 'utensils' },
+        { id: 'dishwash', key: 'dishwasher,dishwash', label: 'Мийка', icon: 'sparkles' },
+        { id: 'pastry', key: 'pastry_chef,confectioner,pastry_assistant,head_pastry,pastry_team,pastry_wash', label: 'Кондитерський цех', icon: 'chef' }
     ],
     tech: [
-        { departments: 'tech', label: 'Технічний відділ', icon: 'wrench' },
-        { departments: 'security', key: 'security', label: 'Охорона', icon: 'shield' }
+        { id: 'security', key: 'security', label: 'Охорона', icon: 'shield' },
+        { id: 'technical_service', key: 'maintenance,technical_director,tech_director,technician,tech,it_specialist,facilities', label: 'Технічна служба', icon: 'wrench' }
     ],
     cleaning: [
-        { key: 'cleaner,cleaning', label: 'Прибиральники', icon: 'sparkles' },
-        { key: 'dishwasher', label: 'Мийка', icon: 'sparkles' },
-        { key: 'wardrobe', label: 'Гардероб', icon: 'briefcase' }
+        { id: 'cleaners', key: 'cleaner,cleaning', label: 'Прибиральники', icon: 'sparkles' },
+        { id: 'wardrobe', key: 'wardrobe', label: 'Гардероб', icon: 'briefcase' }
     ]
 };
+
+const SCHEDULE_OTHER_SUB_GROUP = Object.freeze({
+    id: 'other',
+    key: '',
+    professionKeys: Object.freeze([]),
+    label: 'Інші',
+    icon: 'users'
+});
 
 const STAFF_ROLE_OPTIONS = [
     { value: 'animator', label: 'Аніматор' },
@@ -289,8 +295,11 @@ const STAFF_ROLE_OPTIONS = [
     { value: 'cook', label: 'Кухар' },
     { value: 'pizzaiolo', label: 'Піцайоло' },
     { value: 'waiter', label: 'Офіціант' },
-    { value: 'cleaner', label: 'Прибиральник' },
+    { value: 'pastry_chef', label: 'Шеф-кондитер' },
+    { value: 'confectioner', label: 'Кондитер' },
+    { value: 'pastry_assistant', label: 'Помічник кондитера' },
     { value: 'dishwasher', label: 'Мийка' },
+    { value: 'cleaner', label: 'Прибиральник' },
     { value: 'wardrobe', label: 'Гардероб' },
     { value: 'security', label: 'Охорона' },
     { value: 'maintenance', label: 'Технічний директор' },
@@ -299,12 +308,12 @@ const STAFF_ROLE_OPTIONS = [
 
 const STAFF_ROLE_OPTIONS_BY_DEPT = {
     animators: STAFF_ROLE_OPTIONS.filter(r => ['animator', 'host'].includes(r.value)),
-    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['trampoline_instructor', 'senior_instructor', 'animator'].includes(r.value)),
+    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['trampoline_instructor', 'senior_instructor'].includes(r.value)),
     admin: STAFF_ROLE_OPTIONS.filter(r => ['admin', 'reception', 'manager', 'senior_manager', 'hr'].includes(r.value)),
-    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'pizzaiolo', 'waiter'].includes(r.value)),
+    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'pizzaiolo', 'waiter', 'pastry_chef', 'confectioner', 'pastry_assistant', 'dishwasher'].includes(r.value)),
     tech: STAFF_ROLE_OPTIONS.filter(r => ['maintenance', 'it_specialist'].includes(r.value)),
-    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaner', 'dishwasher', 'wardrobe'].includes(r.value)),
-    security: STAFF_ROLE_OPTIONS.filter(r => ['security', 'maintenance'].includes(r.value)),
+    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaner', 'wardrobe'].includes(r.value)),
+    security: STAFF_ROLE_OPTIONS.filter(r => r.value === 'security'),
     __default: STAFF_ROLE_OPTIONS
 };
 
@@ -318,10 +327,10 @@ function normalizeProfessionKey(value) {
 }
 
 function departmentSubGroupRoleKeys(subGroup = {}) {
-    return String(subGroup.key || '')
-        .split(',')
-        .map(normalizeProfessionKey)
-        .filter(Boolean);
+    const source = Array.isArray(subGroup.professionKeys)
+        ? subGroup.professionKeys
+        : String(subGroup.key || '').split(',');
+    return source.map(normalizeProfessionKey).filter(Boolean);
 }
 
 function departmentSubGroupDepartmentKeys(subGroup = {}) {
@@ -482,11 +491,21 @@ function staffRoleOptions() {
 
 function staffRoleOptionsByDepartment() {
     const catalog = professionCatalogOptions();
-    if (!catalog.length) return STAFF_ROLE_OPTIONS_BY_DEPT;
+    const professionRules = StaffState.scheduleCategoryContract?.professionRules || {};
+    if (!catalog.length || !Object.keys(professionRules).length) return STAFF_ROLE_OPTIONS_BY_DEPT;
+
     const optionsByDepartment = { __default: catalog };
-    Object.keys(STAFF_ROLE_OPTIONS_BY_DEPT).forEach(department => {
-        optionsByDepartment[department] = catalog;
-    });
+    for (const department of Object.keys(STAFF_ROLE_OPTIONS_BY_DEPT)) {
+        if (department === '__default') continue;
+        optionsByDepartment[department] = catalog.filter(option => {
+            const professionKey = normalizeProfessionKey(option.value);
+            const displayGroup = scheduleProfessionDisplayGroupKey(professionKey);
+            if (department === 'security') return professionKey === 'security';
+            if (department === 'tech') return displayGroup === 'tech' && professionKey !== 'security';
+            if (department === 'admin') return displayGroup === 'admin' || displayGroup === 'reception';
+            return displayGroup === department;
+        });
+    }
     return optionsByDepartment;
 }
 
@@ -1630,27 +1649,15 @@ function staffingForecastDayRecommendation(date, bookings = []) {
 }
 
 function staffingForecastDepartmentForShift(staff = {}, entry = {}) {
-    const professionKey = normalizeProfessionKey(entry.profession_key || staff.role_type);
-    if (['manager', 'senior_manager', 'admin', 'vice_director', 'art_director'].includes(professionKey)) return 'managers';
-    if (professionKey === 'reception') return 'reception';
-    if (['trampoline_instructor', 'senior_instructor', 'instructor'].includes(professionKey)) return 'trampoline';
-    if (professionKey === 'animator') return 'animators';
-    if (['cook', 'pizzaiolo', 'barista', 'waiter'].includes(professionKey)) return 'cafe';
-    if (['cleaner', 'cleaning', 'dishwasher', 'wardrobe'].includes(professionKey)) return 'cleaning';
-    if (['tech', 'technician', 'security'].includes(professionKey)) return 'tech';
-    const department = scheduleDisplayDepartmentKey(staff);
-    return STAFFING_FORECAST_DEPARTMENTS.includes(department) ? department : '';
+    return staffingForecastDepartmentForProfession(entry.profession_key || staff.role_type, staff);
 }
 
 function staffingForecastDepartmentForProfession(professionKey, staff = {}) {
     const normalized = normalizeProfessionKey(professionKey);
-    if (['manager', 'senior_manager', 'admin', 'vice_director', 'art_director'].includes(normalized)) return 'managers';
-    if (normalized === 'reception') return 'reception';
-    if (['trampoline_instructor', 'senior_instructor', 'instructor'].includes(normalized)) return 'trampoline';
-    if (normalized === 'animator') return 'animators';
-    if (['cook', 'pizzaiolo', 'barista', 'waiter'].includes(normalized)) return 'cafe';
-    if (['cleaner', 'cleaning', 'dishwasher', 'wardrobe'].includes(normalized)) return 'cleaning';
-    if (['tech', 'technician', 'security'].includes(normalized)) return 'tech';
+    if (['manager', 'senior_manager'].includes(normalized)) return 'managers';
+    const displayGroup = scheduleProfessionDisplayGroupKey(normalized);
+    if (displayGroup === 'admin') return 'managers';
+    if (STAFFING_FORECAST_DEPARTMENTS.includes(displayGroup)) return displayGroup;
     const department = scheduleDisplayDepartmentKey(staff);
     return STAFFING_FORECAST_DEPARTMENTS.includes(department) ? department : '';
 }
@@ -2174,32 +2181,7 @@ const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admi
 const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_manager']);
 const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
 const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set(['reception', 'tech', 'admin']);
-const SCHEDULE_PROFESSION_DISPLAY_GROUP_FALLBACK = Object.freeze({
-    animator: 'animators',
-    host: 'animators',
-    trampoline_instructor: 'trampoline',
-    senior_instructor: 'trampoline',
-    instructor: 'trampoline',
-    reception: 'reception',
-    manager: 'reception',
-    senior_manager: 'reception',
-    admin: 'admin',
-    vice_director: 'admin',
-    art_director: 'admin',
-    hr: 'admin',
-    accountant: 'admin',
-    barista: 'cafe',
-    cook: 'cafe',
-    pizzaiolo: 'cafe',
-    waiter: 'cafe',
-    maintenance: 'tech',
-    it_specialist: 'tech',
-    security: 'tech',
-    cleaner: 'cleaning',
-    cleaning: 'cleaning',
-    dishwasher: 'cleaning',
-    wardrobe: 'cleaning'
-});
+// Profession-to-group business rules come from the backend schedule category contract.
 
 function normalizeScheduleDisplayGroupKey(value) {
     const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -2218,6 +2200,56 @@ function normalizeScheduleDisplayGroups(groups = []) {
         })
         .filter(Boolean)
         .sort((a, b) => a.order - b.order || SCHEDULE_DEPARTMENT_ORDER.indexOf(a.key) - SCHEDULE_DEPARTMENT_ORDER.indexOf(b.key));
+}
+
+function normalizeScheduleCategoryContract(value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    const professionRules = {};
+    for (const [rawKey, rawRule] of Object.entries(source.professionRules || source.profession_rules || {})) {
+        const professionKey = normalizeProfessionKey(rawKey);
+        const rule = rawRule && typeof rawRule === 'object' ? rawRule : {};
+        const displayGroup = normalizeScheduleDisplayGroupKey(rule.displayGroup || rule.display_group);
+        if (!professionKey || !displayGroup) continue;
+        professionRules[professionKey] = {
+            professionKey,
+            displayGroup,
+            subgroupKey: normalizeProfessionKey(rule.subgroupKey || rule.subgroup_key),
+            subgroupLabel: String(rule.subgroupLabel || rule.subgroup_label || '').trim()
+        };
+    }
+
+    const subGroups = {};
+    for (const [rawGroup, rawSubGroups] of Object.entries(source.subGroups || source.sub_groups || {})) {
+        const displayGroup = normalizeScheduleDisplayGroupKey(rawGroup);
+        if (!displayGroup || !Array.isArray(rawSubGroups)) continue;
+        subGroups[displayGroup] = rawSubGroups.map(rawSubGroup => {
+            const item = rawSubGroup && typeof rawSubGroup === 'object' ? rawSubGroup : {};
+            const professionKeys = (Array.isArray(item.professionKeys) ? item.professionKeys : item.profession_keys || [])
+                .map(normalizeProfessionKey)
+                .filter(Boolean);
+            return {
+                id: normalizeProfessionKey(item.key || item.id),
+                key: professionKeys.join(','),
+                professionKeys,
+                label: String(item.label || '').trim(),
+                icon: String(item.icon || '').trim()
+            };
+        }).filter(item => item.id && item.label && item.professionKeys.length);
+    }
+
+    return {
+        version: Number(source.version) || 0,
+        professionRules,
+        subGroups
+    };
+}
+
+function scheduleSubGroupsForDepartment(departmentKey = '') {
+    const normalized = normalizeScheduleDisplayGroupKey(departmentKey);
+    const backendSubGroups = StaffState.scheduleCategoryContract?.subGroups?.[normalized];
+    return Array.isArray(backendSubGroups) && backendSubGroups.length
+        ? backendSubGroups
+        : (DEPT_SUB_GROUPS[normalized] || []);
 }
 
 function scheduleDisplayGroupOrder() {
@@ -2276,11 +2308,8 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
 function scheduleProfessionDisplayGroupKey(professionKey) {
     const key = normalizeProfessionKey(professionKey);
     if (!key) return '';
-    if (SCHEDULE_RECEPTION_ROLE_KEYS.has(key)) return 'reception';
-    const profession = (StaffState.professions || []).find(item => normalizeProfessionKey(item.key) === key);
-    const catalogGroup = normalizeScheduleDisplayGroupKey(profession?.department);
-    if (catalogGroup) return catalogGroup;
-    return normalizeScheduleDisplayGroupKey(SCHEDULE_PROFESSION_DISPLAY_GROUP_FALLBACK[key]);
+    const rule = StaffState.scheduleCategoryContract?.professionRules?.[key];
+    return normalizeScheduleDisplayGroupKey(rule?.displayGroup || rule?.display_group);
 }
 
 function staffScheduleDepartmentKeys(staff = {}) {
@@ -2293,8 +2322,14 @@ function staffScheduleDepartmentKeys(staff = {}) {
         keys.push(normalized);
     };
     add(scheduleCanonicalDisplayGroupKey(staff));
-    for (const professionKey of staffProfessionKeys(staff)) {
-        add(scheduleProfessionDisplayGroupKey(professionKey));
+    const backendGroups = Array.isArray(staff.display_groups)
+        ? staff.display_groups
+        : (Array.isArray(staff.displayGroups) ? staff.displayGroups : []);
+    backendGroups.forEach(add);
+    if (!backendGroups.length) {
+        for (const professionKey of staffProfessionKeys(staff)) {
+            add(scheduleProfessionDisplayGroupKey(professionKey));
+        }
     }
     return keys.length ? keys : ['admin'];
 }
@@ -2366,7 +2401,7 @@ function scheduleProfessionKeyForDepartment(staff = {}, departmentKey = '') {
 function resolveScheduleSubGroup(staff = {}, departmentKey = '', context = {}) {
     const subGroups = Array.isArray(context.subGroups)
         ? context.subGroups
-        : (DEPT_SUB_GROUPS[normalizeScheduleDisplayGroupKey(departmentKey)] || []);
+        : scheduleSubGroupsForDepartment(departmentKey);
     if (!subGroups.length) return null;
 
     const requestedDepartment = String(context.activeDepartment ?? StaffState.activeDept ?? 'all').trim();
@@ -2418,6 +2453,16 @@ function partitionScheduleStaffBySubGroup(departmentKey = '', deptStaff = [], su
         .map(subGroup => ({ subGroup, staff: groupBuckets.get(scheduleSubGroupIdentity(subGroup)) || [] }))
         .filter(group => group.staff.length > 0);
     return { groups, ungrouped, ownershipByStaffId };
+}
+
+function scheduleRenderableSubGroupBuckets(departmentKey = '', partition = {}) {
+    const groups = (Array.isArray(partition.groups) ? partition.groups : [])
+        .filter(group => !shouldSkipScheduleSubGroup(departmentKey, group.subGroup));
+    const ungrouped = uniqueScheduleStaffById(partition.ungrouped || []);
+    if (ungrouped.length) {
+        groups.push({ subGroup: SCHEDULE_OTHER_SUB_GROUP, staff: ungrouped });
+    }
+    return groups;
 }
 
 function normalizeScheduleSearchText(value) {
@@ -3406,6 +3451,9 @@ async function fetchStaff() {
         const data = await res.json();
         if (data.success) {
             StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
+            StaffState.scheduleCategoryContract = normalizeScheduleCategoryContract(
+                data.scheduleCategoryContract || data.schedule_category_contract || StaffState.scheduleCategoryContract
+            );
             StaffState.staff = scheduleableStaffForUi(data.data || []);
             StaffState.departments = data.departments;
         }
@@ -3465,6 +3513,11 @@ async function fetchSchedule(from, to, options = {}) {
             scheduleRawEntries,
             displayGroups: normalizeScheduleDisplayGroups(
                 parsed.data.displayGroups || parsed.data.display_groups || StaffState.displayGroups
+            ),
+            scheduleCategoryContract: normalizeScheduleCategoryContract(
+                parsed.data.scheduleCategoryContract
+                || parsed.data.schedule_category_contract
+                || StaffState.scheduleCategoryContract
             )
         };
     } catch (err) {
@@ -4352,7 +4405,7 @@ function renderSchedule() {
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered, {
         department: StaffState.activeDept,
-        grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'
+        grouping: 'canonical'
     });
 
     let bodyHtml = '';
@@ -4369,12 +4422,11 @@ function renderSchedule() {
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const icon = renderScheduleCrmIcon(DEPT_ICONS[dept], 'dept-icon schedule-crm-icon');
         const deptStaff = grouped[dept];
-        const subGroups = DEPT_SUB_GROUPS[dept];
+        const subGroups = scheduleSubGroupsForDepartment(dept);
         const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
             activeDepartment: dept
         });
-        const renderableSubGroups = subGroupPartition.groups
-            .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
+        const renderableSubGroups = scheduleRenderableSubGroupBuckets(dept, subGroupPartition);
         const groupExpanded = isScheduleGroupExpandedForRender(dept);
         const groupStateClass = groupExpanded ? 'is-expanded' : 'is-collapsed';
         const groupToggleLabel = groupExpanded
@@ -4400,8 +4452,9 @@ function renderSchedule() {
             const sgStaff = group.staff.filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)));
             if (sgStaff.length === 0) continue;
             const subGroupIcon = renderScheduleCrmIcon(sg.icon, 'sub-group-icon schedule-crm-icon');
+            const subGroupIdentity = scheduleSubGroupIdentity(sg);
 
-            bodyHtml += `<tr class="sub-group-row"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
+            bodyHtml += `<tr class="sub-group-row" data-schedule-subgroup="${escapeHtml(subGroupIdentity)}" data-schedule-subgroup-label="${escapeHtml(sg.label)}"><td class="schedule-category-sticky-cell schedule-sub-group-sticky-cell">
                 ${subGroupIcon}<span class="sub-group-label" title="${escapeHtml(sg.label)}">${escapeHtml(sg.label)}</span> <span class="sub-group-count">${sgStaff.length}</span>
             </td><td class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}" aria-hidden="true"></td></tr>`;
 
@@ -4411,7 +4464,8 @@ function renderSchedule() {
                 bodyHtml += renderEmpRow(emp, dates, today, health, { subGroup: sg, department: dept });
             }
         }
-        // Duplicate-label and ungrouped rows stay under the top-level header without a redundant subgroup header.
+        // Rows from duplicate-label groups stay under the top-level header without a redundant subgroup header.
+        // Truly unclassified rows are already owned by the explicit "Інші" bucket above.
         for (const emp of uniqueScheduleStaffById(deptStaff).filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
             const staffId = normalizeScheduleStaffId(emp.id);
             bodyHtml += renderEmpRow(emp, dates, today, health, {
@@ -6691,6 +6745,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
         StaffState.schedule = scheduleResult.schedule;
         StaffState.scheduleRawEntries = scheduleResult.scheduleRawEntries;
         StaffState.displayGroups = scheduleResult.displayGroups;
+        StaffState.scheduleCategoryContract = scheduleResult.scheduleCategoryContract;
         StaffState.attendance = attendanceResult.attendance;
         StaffState.attendanceSummary = attendanceResult.attendanceSummary;
         StaffState.attendanceUnavailable = Boolean(attendanceResult.unavailable);
@@ -7673,7 +7728,7 @@ function buildScheduleWorkbookModel() {
     const exportStaff = uniqueScheduleStaffById(scheduleExportVisibleStaff());
     const grouped = groupStaffByScheduleDepartment(exportStaff, {
         department: StaffState.activeDept,
-        grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'
+        grouping: 'canonical'
     });
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
@@ -7688,12 +7743,11 @@ function buildScheduleWorkbookModel() {
         const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const sheetName = scheduleWorkbookSafeWorksheetName(deptLabel, usedSheetNames);
         const rows = [];
-        const subGroups = DEPT_SUB_GROUPS[dept];
+        const subGroups = scheduleSubGroupsForDepartment(dept);
         const subGroupPartition = partitionScheduleStaffBySubGroup(dept, deptStaff, subGroups, {
             activeDepartment: dept
         });
-        const renderableSubGroups = subGroupPartition.groups
-            .filter(group => !shouldSkipScheduleSubGroup(dept, group.subGroup));
+        const renderableSubGroups = scheduleRenderableSubGroupBuckets(dept, subGroupPartition);
 
         const renderStaffRow = (emp, subGroup = null) => {
             const staffId = normalizeScheduleStaffId(emp.id);
@@ -8044,7 +8098,8 @@ async function performStaffScheduleRefresh(options = {}) {
         professions: StaffState.professions,
         staff: StaffState.staff,
         departments: StaffState.departments,
-        displayGroups: StaffState.displayGroups
+        displayGroups: StaffState.displayGroups,
+        scheduleCategoryContract: StaffState.scheduleCategoryContract
     };
 
     const [professionsResult, staffResult] = await Promise.all([
@@ -8057,6 +8112,7 @@ async function performStaffScheduleRefresh(options = {}) {
         StaffState.staff = previousData.staff;
         StaffState.departments = previousData.departments;
         StaffState.displayGroups = previousData.displayGroups;
+        StaffState.scheduleCategoryContract = previousData.scheduleCategoryContract;
     }
     if (changedStaffId) delete StaffState.shiftPreferences[changedStaffId];
     restoreStaffScheduleRefreshState(preservedState);

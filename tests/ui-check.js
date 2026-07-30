@@ -2070,7 +2070,7 @@ checkPage('staff.html', (doc, html) => {
         && staffFunctionBlock('scheduleVisibleStaff').includes('visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query))')
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
-        && staffScheduleRenderBlock.includes("grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'"));
+        && staffScheduleRenderBlock.includes("grouping: 'canonical'"));
     check('Staff schedule subgroup ownership is deterministic while duplicate-label headers stay suppressed',
         staffCode.includes('function staffProfessionKeys(staff = {})')
         && staffCode.includes('function staffScheduleDepartmentKeys(staff = {})')
@@ -2081,6 +2081,10 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('function scheduleSubGroupProfessionCandidates(staff = {}, activeDepartment = \'\')')
         && staffCode.includes('function compareScheduleSubGroupCandidates(left = {}, right = {})')
         && staffCode.includes('function shouldSkipScheduleSubGroup(departmentKey = \'\', subGroup = {})')
+        && staffCode.includes('const SCHEDULE_OTHER_SUB_GROUP = Object.freeze({')
+        && staffCode.includes("label: 'Інші'")
+        && staffCode.includes('function scheduleRenderableSubGroupBuckets(departmentKey = \'\', partition = {})')
+        && (staffCode.match(/scheduleRenderableSubGroupBuckets\(dept, subGroupPartition\)/g) || []).length >= 2
         && (staffCode.match(/partitionScheduleStaffBySubGroup\(dept, deptStaff, subGroups/g) || []).length >= 2
         && staffCode.includes('.sort(compareScheduleSubGroupCandidates)')
         && staffCode.includes('ownershipByStaffId.set(staffId, subGroup)')
@@ -2220,7 +2224,7 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-schedule-range-state')
         && staffPagesCss.includes('[data-schedule-state="loading"]')
         && staffPagesCss.includes('[data-schedule-state="error"]'));
-    check('Staff schedule keeps All membership-aware and selected profession sections unique',
+    check('Staff schedule keeps membership filters while All and export use one canonical row',
         staffScheduleNormalizeStaffIdBlock.includes('Number(')
         && /Number\.is(?:SafeInteger|Integer|Finite)/.test(staffScheduleNormalizeStaffIdBlock)
         && staffScheduleUniqueStaffBlock.includes('normalizeScheduleStaffId')
@@ -2235,7 +2239,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleGroupingKeysBlock.includes('staffMatchesScheduleDepartment(staff, activeDepartment) ? [activeDepartment] : []')
         && staffScheduleGroupingKeysBlock.includes('return [scheduleCanonicalDisplayGroupKey(staff)]')
         && staffScheduleGroupingKeysBlock.includes("options.grouping === 'membership'")
-        && staffScheduleRenderBlock.includes("grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'")
+        && staffScheduleRenderBlock.includes("grouping: 'canonical'")
         && staffScheduleDepartmentCountBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleVisibleWithoutSearchBlock.includes('uniqueScheduleStaffById(')
         && staffScheduleGroupStaffBlock.includes('uniqueScheduleStaffById(')
@@ -2252,7 +2256,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleDisplayNameBlock.includes('staff.display_name || staff.displayName || staff.name')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-staff-id=')
         && staffScheduleWorkbookBlock.includes('data-schedule-export-department=')
-        && staffScheduleWorkbookModelBlock.includes("grouping: StaffState.activeDept === 'all' ? 'membership' : 'canonical'")
+        && staffScheduleWorkbookModelBlock.includes("grouping: 'canonical'")
         && staffScheduleWorkbookModelBlock.includes('scheduleStaffDisplayName(emp)')
         && staffScheduleBrowserSmokeCode.includes('const STAFF_API_ROWS =')
         && /secondary_professions:\s*\['reception',\s*'reception',\s*'animator'\]/.test(staffScheduleBrowserSmokeCode)

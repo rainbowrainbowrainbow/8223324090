@@ -59,7 +59,7 @@ const HR_PRINT_CATEGORIES = Object.freeze([
     { id: 'pizzaiolo', label: 'Піцейола', professionKeys: ['pizzaiolo'] },
     { id: 'waiter', label: 'Офіціанти', professionKeys: ['waiter'] },
     { id: 'dishwasher', label: 'Мийниця', professionKeys: ['dishwasher'] },
-    { id: 'security', label: 'Охорона', professionKeys: ['security', 'maintenance'] }
+    { id: 'security', label: 'Охорона', professionKeys: ['security'] }
 ]);
 const HR_PRINT_FONT_FIELDS = Object.freeze({
     arrival_inout: Object.freeze([
@@ -261,7 +261,7 @@ const COMPANY_STRUCTURE_DEFAULT_DISPLAY_GROUPS = {
     pastry_team: 'cafe',
     pastry_wash: 'cafe',
     technical_staff: 'tech',
-    wardrobe: 'tech',
+    wardrobe: 'cleaning',
     cleaning: 'cleaning',
     facilities: 'tech'
 };

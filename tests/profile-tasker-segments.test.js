@@ -2071,3 +2071,91 @@ test('task priority quick controls and migration indexes are present', () => {
     assert.match(migration, /idx_tasks_business_owner_snoozed_active/);
     assert.match(migration, /idx_tasks_business_owner_workload_active/);
 });
+
+
+test('My Day level 3 recommendation renders only permission-approved actions', () => {
+    const ctx = loadProfileTaskerContext();
+    const base = { id: 301, postponementCount: 3, actionPermissions: { canSplit: true, canReassign: true, canReschedule: true, canArchive: true } };
+    const allActions = ctx.renderCabinetPostponementExplanation(base);
+    assert.match(allActions, /Задачу переносять уже втретє/);
+    assert.match(allActions, /Розбити на кроки/);
+    assert.match(allActions, /Змінити виконавця/);
+    assert.match(allActions, /Перепланувати/);
+    assert.match(allActions, /Скасувати задачу/);
+
+    const restricted = ctx.renderCabinetPostponementExplanation({
+        ...base,
+        actionPermissions: { canSplit: false, canReassign: false, canReschedule: true, canArchive: false }
+    });
+    assert.match(restricted, /Перепланувати/);
+    assert.doesNotMatch(restricted, /Розбити на кроки|Змінити виконавця|Скасувати задачу/);
+
+    const nonCritical = ctx.renderCabinetPostponementExplanation({ ...base, postponementCount: 2 });
+    assert.doesNotMatch(nonCritical, /cabinet-postponement-decision|data-cabinet-postponement-action/);
+});
+
+test('My Day critical actions reuse existing subtask and reassign endpoints', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    ctx.formModal = async title => title === 'Розбити задачу на кроки'
+        ? { steps: 'Перший крок\nДругий крок' }
+        : { ownerUserId: '44' };
+    ctx.apiGet = async path => {
+        assert.equal(path, '/tasks/owners');
+        return { success: true, users: [{ id: 44, label: 'Олена', role: 'manager' }] };
+    };
+    ctx.apiPost = async (path, body) => {
+        calls.push({ path, body });
+        if (path.endsWith('/subtasks')) return { success: true, subtask: { id: calls.length, title: body.title } };
+        return { success: true };
+    };
+
+    const split = await ctx.splitCabinetPostponementTask(301);
+    assert.equal(split.created.length, 2);
+    assert.deepEqual(calls.slice(0, 2).map(call => call.path), ['/tasks/301/subtasks', '/tasks/301/subtasks']);
+    assert.equal(calls.some(call => /decompose|ai/i.test(call.path)), false);
+
+    await ctx.reassignCabinetPostponementTask(301, { ownerUserId: 7 });
+    assert.equal(calls[2].path, '/tasks/301/reassign');
+    assert.equal(calls[2].body.ownerUserId, 44);
+    assert.equal(calls[2].body.sourceSurface, 'profile_my_cabinet_postponement_action');
+});
+
+test('My Day cancel action requires confirmation and archives without DELETE', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    let confirmation = '';
+    ctx.confirmModal = async message => { confirmation = message; return true; };
+    ctx.apiPost = async (path, body) => { calls.push({ path, body }); return { success: true, affected: 1 }; };
+    ctx.apiDelete = async () => { throw new Error('DELETE must not be called'); };
+
+    await ctx.archiveCabinetPostponementTask(302);
+    assert.match(confirmation, /переміщена в архів/);
+    assert.match(confirmation, /можна буде відновити/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, '/tasks/bulk');
+    assert.equal(calls[0].body.action, 'archive');
+    assert.deepEqual(Array.from(calls[0].body.ids), [302]);
+
+    ctx.confirmModal = async () => false;
+    const cancelled = await ctx.archiveCabinetPostponementTask(303);
+    assert.equal(cancelled.cancelled, true);
+    assert.equal(calls.length, 1);
+
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    assert.match(source, /setCabinetPostponementActionState[\s\S]*disabled = busy/);
+    assert.match(source, /await refreshMyCabinetTab\(\{ silent: true \}\)[\s\S]*renderCabinetActiveTab\(\)/);
+    assert.doesNotMatch(source.slice(source.indexOf('async function archiveCabinetPostponementTask'), source.indexOf('async function runCabinetPostponementAction')), /apiDelete|method:\s*['"]DELETE/);
+});
+
+
+test('My Day custom reschedule cancellation does not mutate or report success', async () => {
+    const ctx = loadProfileTaskerContext();
+    let apiCalled = false;
+    ctx.promptModal = async () => null;
+    ctx.apiPost = async () => { apiCalled = true; return { success: true }; };
+
+    const result = await ctx.rescheduleCabinetTask(304, 'custom', { refresh: false });
+    assert.equal(result.cancelled, true);
+    assert.equal(apiCalled, false);
+});

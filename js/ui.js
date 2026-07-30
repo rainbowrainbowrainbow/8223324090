@@ -176,6 +176,91 @@ if (!window.ActionHistoryView) {
             return event.timestamp || event.createdAt || event.created_at || event.changedAt || '';
         }
 
+        function taskPostponementMeta(event = {}) {
+            return event.meta && typeof event.meta === 'object' && !Array.isArray(event.meta) ? event.meta : {};
+        }
+
+        function isPenaltyTaskReschedule(event = {}) {
+            if (String(event.actionType || event.action || '') !== 'task_rescheduled') return false;
+            const meta = taskPostponementMeta(event);
+            const mutationKind = String(meta.mutationKind || '').trim().toLowerCase();
+            return meta.countsAsPostponement === true && !['snooze', 'technical_correction'].includes(mutationKind);
+        }
+
+        function taskHistorySurfaceLabel(value = '') {
+            const source = String(value || '').trim().toLowerCase();
+            if (!source) return '';
+            if (source.includes('profile_my_cabinet') || source === 'my_day') return 'Мій день';
+            if (source.includes('work_queue')) return 'Робоча черга';
+            if (source.includes('alert')) return 'Сповіщення';
+            if (source.includes('hermes')) return 'Hermes';
+            if (source.includes('watchdog') || source.includes('scheduler') || source.includes('system')) return 'Система';
+            if (source.includes('task_detail') || source.includes('tasks')) return 'Задачі';
+            return '';
+        }
+
+        function taskHistoryActorLabel(event = {}, surface = '') {
+            const meta = taskPostponementMeta(event);
+            const actorType = String(meta.actorType || meta.actorKind || '').trim().toLowerCase();
+            const name = String(event.actor?.name || event.actorName || meta.actorName || '').trim();
+            if (actorType === 'system') return 'Система';
+            if (actorType === 'bot') return surface === 'Hermes' || /hermes/i.test(name) ? 'Hermes' : name || 'Бот';
+            if (actorType === 'manual') return name || 'Користувач';
+            if (/^system$/i.test(name)) return 'Система';
+            return name || 'Користувач';
+        }
+
+        function taskHistoryDueValue(metaValue, fallback = {}) {
+            if (metaValue && typeof metaValue === 'object') return metaValue.value || metaValue.instant || '';
+            return metaValue || fallback.deadline || fallback.date || fallback.scheduledStartAt || fallback.scheduleSlot || '';
+        }
+
+        function taskHistoryDateLabel(value) {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00Z`) : new Date(raw);
+            if (Number.isNaN(date.getTime())) return '';
+            return date.toLocaleDateString('uk-UA', {
+                timeZone: 'Europe/Kyiv',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        function taskHistoryPriorityLabel(value) {
+            return { urgent: 'Терміново', high: 'Високий', normal: 'Звичайний', low: 'Низький' }[String(value || '').trim().toLowerCase()] || '';
+        }
+
+        function normalizeTaskPostponementEvent(event = {}) {
+            const meta = taskPostponementMeta(event);
+            const oldValue = event.oldValue || {};
+            const newValue = event.newValue || {};
+            const count = Math.max(0, Number(meta.postponementCountAfter ?? meta.postponementCount ?? newValue.postponementCount ?? 0) || 0);
+            const oldDue = taskHistoryDateLabel(taskHistoryDueValue(meta.oldDue, oldValue));
+            const newDue = taskHistoryDateLabel(taskHistoryDueValue(meta.newDue, newValue));
+            const priorityBefore = taskHistoryPriorityLabel(meta.priorityBefore ?? oldValue.priority);
+            const priorityAfter = taskHistoryPriorityLabel(meta.priorityAfter ?? newValue.priority);
+            const surface = taskHistorySurfaceLabel(event.sourceSurface || meta.sourceSurface);
+            const details = [];
+            if (count) details.push(`Перенесення №${count}`);
+            if (oldDue || newDue) details.push(`${oldDue || 'Без дати'} → ${newDue || 'Без дати'}`);
+            if (meta.priorityEscalated === true) {
+                details.push(priorityBefore && priorityAfter
+                    ? `Пріоритет: ${priorityBefore} → ${priorityAfter}`
+                    : 'Пріоритет автоматично підвищено');
+            }
+            return {
+                title: 'Перенесено після прострочення',
+                summary: '',
+                actor: taskHistoryActorLabel(event, surface),
+                surface,
+                timestamp: formatDateTime(eventTimestamp(event)),
+                details: details.join(' · '),
+                tone: count >= 3 ? 'danger' : 'warning'
+            };
+        }
+
         function generalDetails(item = {}) {
             const action = String(item.action || item.actionType || '');
             const data = item.data && typeof item.data === 'object' ? item.data : {};
@@ -252,6 +337,9 @@ if (!window.ActionHistoryView) {
 
         function normalizeEvent(event = {}, options = {}) {
             const kind = options.kind || 'general';
+            if (kind === 'task' && isPenaltyTaskReschedule(event)) {
+                return normalizeTaskPostponementEvent(event);
+            }
             const actionType = event.actionType || event.action || '';
             const change = kind === 'task' ? taskChange(event) : kind === 'reply' ? replyChange(event) : generalDetails(event);
             return {
@@ -269,7 +357,7 @@ if (!window.ActionHistoryView) {
             const rowClass = ['action-history-row', `action-history-row--${normalized.tone || 'info'}`, options.rowClass]
                 .filter(Boolean)
                 .join(' ');
-            const meta = [normalized.actor, normalized.timestamp].filter(Boolean).join(' · ');
+            const meta = [normalized.actor, normalized.surface, normalized.timestamp].filter(Boolean).join(' · ');
             return `
                 <li class="${esc(rowClass)}">
                     <div class="action-history-row-main">

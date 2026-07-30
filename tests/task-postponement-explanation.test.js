@@ -319,3 +319,20 @@ test('My Day projection adds explanations with one history query and no N+1', as
     assert.equal(projection.all[1].postponementExplanation.newDue, '2026-07-29');
     assert.equal(projection.meta.postponementExplanationContract, 'postponement_explanation_v1');
 });
+
+
+test('My Day projection exposes permission-aware level 3 actions without changing role rules', () => {
+    const task = { id: 91, status: 'todo', owner_user_id: 7, visibility: 'team', control_meta: { canReschedule: true }, postponement_count: 3 };
+    const creator = normalizeTaskPayload(task, { user: { id: 7, role: 'creator', username: 'owner' } });
+    assert.deepEqual(creator.actionPermissions, { canMutate: true, canSplit: true, canReassign: true, canReschedule: true, canArchive: true });
+
+    const animator = normalizeTaskPayload(task, { user: { id: 7, role: 'animator', username: 'owner' } });
+    assert.deepEqual(animator.actionPermissions, { canMutate: true, canSplit: false, canReassign: false, canReschedule: true, canArchive: false });
+
+    const locked = normalizeTaskPayload({ ...task, control_meta: { canReschedule: false } }, { user: { id: 7, role: 'creator', username: 'owner' } });
+    assert.equal(locked.actionPermissions.canReschedule, false);
+
+    const nonOwner = normalizeTaskPayload(task, { user: { id: 8, role: 'animator', username: 'other' } });
+    assert.equal(nonOwner.actionPermissions.canMutate, false);
+    assert.equal(nonOwner.actionPermissions.canArchive, false);
+});

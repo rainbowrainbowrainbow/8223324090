@@ -5226,6 +5226,44 @@ function cabinetPostponementDateLabel(value, includeTime = false) {
     return date.toLocaleString('uk-UA', options);
 }
 
+function cabinetPostponementActionPermissions(task = {}) {
+    const source = task.actionPermissions && typeof task.actionPermissions === 'object'
+        ? task.actionPermissions
+        : {};
+    return {
+        canSplit: source.canSplit === true,
+        canReassign: source.canReassign === true,
+        canReschedule: source.canReschedule === true,
+        canArchive: source.canArchive === true
+    };
+}
+
+function renderCabinetPostponementActions(task = {}) {
+    const count = cabinetTaskPostponementCount(task);
+    if (count < 3) return '';
+    const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
+    const permissions = cabinetPostponementActionPermissions(task);
+    const definitions = [
+        permissions.canSplit && ['split', 'Розбити на кроки', 'Додати підзадачі через наявний checklist flow'],
+        permissions.canReassign && ['reassign', 'Змінити виконавця', 'Передати задачу іншому доступному виконавцю'],
+        permissions.canReschedule && ['reschedule', 'Перепланувати', 'Обрати нову дату через канонічний reschedule flow'],
+        permissions.canArchive && ['archive', 'Скасувати задачу', 'Перемістити в архів із можливістю відновлення']
+    ].filter(Boolean);
+    const actions = taskId && definitions.length
+        ? '<div class="cabinet-postponement-actions" aria-label="Рекомендовані дії">'
+            + definitions.map(([action, label, detail]) => '<button type="button" class="cabinet-postponement-action cabinet-postponement-action--'
+                + escapeHtml(action) + '" data-cabinet-postponement-action="' + escapeHtml(action)
+                + '" data-task-id="' + escapeHtml(taskId) + '"><span>' + escapeHtml(label)
+                + '</span><small>' + escapeHtml(detail) + '</small></button>').join('')
+            + '</div>'
+        : '';
+    return '<section class="cabinet-postponement-decision" aria-label="Рішення для повторно перенесеної задачі">'
+        + '<p class="cabinet-postponement-recommendation">Задачу переносять уже втретє. Можливо, її потрібно уточнити, розбити або передати іншому виконавцю.</p>'
+        + actions
+        + '<p class="cabinet-postponement-action-status" data-cabinet-postponement-action-status role="status" aria-live="polite"></p>'
+        + '</section>';
+}
+
 function renderCabinetPostponementExplanation(task = {}) {
     const count = cabinetTaskPostponementCount(task);
     if (!count) return '';
@@ -5271,6 +5309,7 @@ function renderCabinetPostponementExplanation(task = {}) {
         + (priorityText ? '<p class="cabinet-postponement-priority">' + escapeHtml(priorityText) + '</p>' : '')
         + (facts.length ? '<dl class="cabinet-postponement-facts">' + facts.join('') + '</dl>' : '')
         + historyLink
+        + renderCabinetPostponementActions(task)
         + '</div>';
 }
 
@@ -5285,6 +5324,176 @@ function renderCabinetPostponementBadge(task = {}) {
         + '" data-cabinet-task-action="postponement-explanation" data-task-id="' + escapeHtml(taskId || '')
         + '" aria-haspopup="dialog" aria-expanded="false" aria-controls="taskUiActionSurface" title="' + escapeHtml(title)
         + '" aria-label="' + escapeHtml(title) + '" ' + (taskId ? '' : 'disabled') + '>' + escapeHtml(label) + '</button>';
+}
+
+function setCabinetPostponementActionState(root, activeButton, options = {}) {
+    if (!root) return;
+    const busy = options.busy === true;
+    root.setAttribute?.('aria-busy', busy ? 'true' : 'false');
+    root.querySelectorAll?.('[data-cabinet-postponement-action]').forEach(button => {
+        button.disabled = busy;
+        button.classList?.toggle('is-busy', busy && button === activeButton);
+    });
+    const status = root.querySelector?.('[data-cabinet-postponement-action-status]');
+    if (status) {
+        status.textContent = options.message || '';
+        status.dataset.tone = options.tone || '';
+    }
+}
+
+async function splitCabinetPostponementTask(taskId) {
+    if (typeof formModal !== 'function') throw new Error('Форма підзадач тимчасово недоступна.');
+    const values = await formModal('Розбити задачу на кроки', [
+        {
+            key: 'steps',
+            label: 'Кроки — кожен з нового рядка',
+            type: 'textarea',
+            required: true,
+            placeholder: 'Уточнити результат\nПідготувати матеріали\nВиконати та перевірити'
+        }
+    ], { icon: '🧩', okText: 'Додати кроки', cancelText: 'Скасувати' });
+    if (!values) return { cancelled: true };
+    const steps = String(values.steps || '')
+        .split(/\r?\n/)
+        .map(value => value.replace(/^[-*•\d.)\s]+/, '').trim())
+        .filter(Boolean)
+        .slice(0, 20);
+    if (steps.length < 2) throw new Error('Додайте щонайменше два окремі кроки.');
+    const created = [];
+    for (const title of steps) {
+        const result = await apiPost(`/tasks/${taskId}/subtasks`, {
+            title,
+            sourceType: 'manual'
+        });
+        if (!result?.success || !result.subtask) {
+            const error = new Error(result?.error || `Не вдалося додати крок «${title}».`);
+            error.partialSubtasks = created;
+            throw error;
+        }
+        created.push(normalizeCabinetSubtask(result.subtask));
+    }
+    return { success: true, created };
+}
+
+async function reassignCabinetPostponementTask(taskId, task = {}) {
+    if (typeof formModal !== 'function') throw new Error('Форма вибору виконавця тимчасово недоступна.');
+    const ownersResult = await apiGet('/tasks/owners');
+    const owners = Array.isArray(ownersResult?.users) ? ownersResult.users : [];
+    if (!owners.length) throw new Error(ownersResult?.error || 'Немає доступних виконавців для цієї задачі.');
+    const values = await formModal('Змінити виконавця', [
+        {
+            key: 'ownerUserId',
+            label: 'Новий виконавець',
+            type: 'select',
+            required: true,
+            defaultValue: String(task.ownerUserId || task.owner_user_id || ''),
+            options: [
+                { value: '', label: 'Оберіть виконавця' },
+                ...owners.map(owner => ({
+                    value: String(owner.id),
+                    label: `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`
+                }))
+            ]
+        }
+    ], { icon: '👤', okText: 'Змінити виконавця', cancelText: 'Скасувати' });
+    if (!values?.ownerUserId) return { cancelled: true };
+    const result = await apiPost(`/tasks/${taskId}/reassign`, {
+        ownerUserId: Number(values.ownerUserId),
+        sourceSurface: 'profile_my_cabinet_postponement_action'
+    });
+    if (!result?.success) throw new Error(result?.error || 'Не вдалося змінити виконавця.');
+    return result;
+}
+
+async function archiveCabinetPostponementTask(taskId) {
+    if (typeof confirmModal !== 'function') throw new Error('Підтвердження архівування тимчасово недоступне.');
+    const confirmed = await confirmModal('Скасувати задачу? Вона буде переміщена в архів, і її можна буде відновити.', {
+        type: 'danger',
+        okText: 'Перемістити в архів',
+        cancelText: 'Залишити задачу'
+    });
+    if (!confirmed) return { cancelled: true };
+    const result = await apiPost('/tasks/bulk', { ids: [taskId], action: 'archive' });
+    if (!result?.success) throw new Error(result?.error || 'Не вдалося перемістити задачу в архів.');
+    return result;
+}
+
+async function runCabinetPostponementAction(action, taskId, task = {}) {
+    if (action === 'split') return splitCabinetPostponementTask(taskId);
+    if (action === 'reassign') return reassignCabinetPostponementTask(taskId, task);
+    if (action === 'reschedule') {
+        return rescheduleCabinetTask(taskId, 'custom', {
+            sourceSurface: 'profile_my_cabinet_postponement_action',
+            notify: false,
+            refresh: false
+        });
+    }
+    if (action === 'archive') return archiveCabinetPostponementTask(taskId);
+    throw new Error('Невідома дія для задачі.');
+}
+
+async function handleCabinetPostponementActionClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.currentTarget;
+    const action = String(button?.dataset?.cabinetPostponementAction || '');
+    const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
+    const task = findCabinetTask(taskId) || {};
+    const permissions = cabinetPostponementActionPermissions(task);
+    const permissionKey = { split: 'canSplit', reassign: 'canReassign', reschedule: 'canReschedule', archive: 'canArchive' }[action];
+    const root = button?.closest?.('#taskUiActionSurface') || document.getElementById?.('taskUiActionSurface');
+    if (!taskId || !permissionKey || permissions[permissionKey] !== true) {
+        setCabinetPostponementActionState(root, button, { message: 'Ця дія недоступна для вашої ролі.', tone: 'error' });
+        return;
+    }
+    if (button.dataset.pending === 'true') return;
+    button.dataset.pending = 'true';
+    const pendingLabel = { split: 'Додаю кроки...', reassign: 'Змінюю виконавця...', reschedule: 'Переплановую...', archive: 'Переміщую в архів...' }[action];
+    setCabinetPostponementActionState(root, button, { busy: true, message: pendingLabel });
+    try {
+        const result = await runCabinetPostponementAction(action, taskId, task);
+        if (result?.cancelled) {
+            setCabinetPostponementActionState(root, button, { message: '' });
+            button.focus?.({ preventScroll: true });
+            return;
+        }
+        notifyTaskWidgetsChanged({ action: `task_${action}`, taskId });
+        await refreshMyCabinetTab({ silent: true });
+        const remainsVisible = Boolean(findCabinetTask(taskId));
+        window.TaskUI?.closeActionMenu?.();
+        renderCabinetActiveTab();
+        const successMessage = {
+            split: 'Кроки додано до задачі',
+            reassign: 'Виконавця змінено',
+            reschedule: 'Задачу переплановано',
+            archive: 'Задачу переміщено в архів. Її можна відновити.'
+        }[action];
+        if (typeof showNotification === 'function') showNotification(successMessage, 'success');
+        if (remainsVisible) {
+            window.requestAnimationFrame?.(() => {
+                document.querySelector?.(`[data-cabinet-task-action="postponement-explanation"][data-task-id="${taskId}"]`)?.focus?.({ preventScroll: true });
+            });
+        }
+    } catch (error) {
+        console.error('Profile postponement decision action failed', error);
+        if (Array.isArray(error?.partialSubtasks) && error.partialSubtasks.length) {
+            const existing = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || [];
+            const updated = [...existing.map(normalizeCabinetSubtask), ...error.partialSubtasks];
+            cabinetSubtaskCache.set(taskId, updated);
+            updateCabinetTaskSubtaskSummary(taskId, updated);
+        }
+        setCabinetPostponementActionState(root, button, {
+            message: error?.message || 'Не вдалося виконати дію. Спробуйте ще раз.',
+            tone: 'error'
+        });
+    } finally {
+        delete button.dataset.pending;
+        if (root?.isConnected) setCabinetPostponementActionState(root, button, {
+            busy: false,
+            message: root.querySelector?.('[data-cabinet-postponement-action-status]')?.textContent || '',
+            tone: root.querySelector?.('[data-cabinet-postponement-action-status]')?.dataset?.tone || ''
+        });
+    }
 }
 
 function openCabinetPostponementExplanation(button) {
@@ -5302,6 +5511,9 @@ function openCabinetPostponementExplanation(button) {
             surfaceClassName: 'task-ui-action-surface--postponement'
         }
     );
+    root?.querySelectorAll?.('[data-cabinet-postponement-action]').forEach(actionButton => {
+        actionButton.addEventListener('click', handleCabinetPostponementActionClick);
+    });
     if (!root && typeof showNotification === 'function') {
         showNotification('Не вдалося відкрити пояснення перенесення', 'error');
     }
@@ -6936,7 +7148,7 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
     } else {
         dateText = profileDateOffsetStr(1);
     }
-    if (!dateText) return;
+    if (!dateText) return { cancelled: true };
     const sourceSurface = options.sourceSurface || 'profile_my_cabinet_overdue_badge';
     const result = await apiPost(`/tasks/${id}/reschedule`, {
         deadline: profileDeadlineForDate(dateText),
@@ -6948,7 +7160,8 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
         const label = option === 'today' ? 'сьогодні' : dateText;
         showNotification(`Задачу перенесено на ${label}`, 'success');
     }
-    await refreshMyCabinetTab();
+    if (options.refresh !== false) await refreshMyCabinetTab();
+    return result;
 }
 
 async function moveCabinetTaskToToday(taskId, method = 'button') {

@@ -2,8 +2,12 @@
 
 const {
     buildTaskOwnerMatch,
+    canMutateTask,
+    canReassignTask,
+    canRescheduleTask,
     normalizeUserId
 } = require('./taskPolicy');
+const { getPermissions } = require('../config/roles');
 const {
     attachTaskSchedule,
     canonicalTaskOrderSql,
@@ -169,9 +173,22 @@ function normalizeTaskPayload(row, options = {}) {
     const workflowState = row.workflow_state || workflowFromStatus(status);
     const controlMeta = taskControlMeta(row);
     const explicitRescheduleFalse = value => value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
-    const canReschedule = !explicitRescheduleFalse(controlMeta.canReschedule)
+    const fallbackCanReschedule = !explicitRescheduleFalse(controlMeta.canReschedule)
         && !explicitRescheduleFalse(controlMeta.allowReschedule)
         && !explicitRescheduleFalse(controlMeta.rescheduleAllowed);
+    const user = options.user || null;
+    const permissions = user ? getPermissions(user.role) : null;
+    const canUseTaskWriteRoutes = Boolean(permissions?.canCreateTasks)
+        || ['senior_instructor', 'instructor'].includes(String(user?.role || ''));
+    const canMutate = user ? canMutateTask(user, row) : false;
+    const actionPermissions = user ? {
+        canMutate,
+        canSplit: canUseTaskWriteRoutes && canMutate,
+        canReassign: canReassignTask(user, row),
+        canReschedule: canRescheduleTask(user, row),
+        canArchive: canUseTaskWriteRoutes && canMutate
+    } : null;
+    const canReschedule = actionPermissions ? actionPermissions.canReschedule : fallbackCanReschedule;
     const reportId = taskCompletionReportId(row);
     const reportRequired = taskRequiresCompletionReport(row);
     const subtaskCount = Number(row.subtask_count || 0);
@@ -227,6 +244,7 @@ function normalizeTaskPayload(row, options = {}) {
         controlMeta,
         canReschedule,
         allowReschedule: canReschedule,
+        ...(actionPermissions ? { actionPermissions } : {}),
         reportRequired,
         requiresReport: reportRequired,
         reportId,
@@ -521,7 +539,8 @@ async function buildTaskCabinetProjection(options = {}) {
         pool: queryable
     });
     const normalizeProjectionRow = row => normalizeTaskPayload(row, {
-        postponementEvent: postponementEventsByTaskId.get(Number(row.id || row.task_id || row.taskId)) || null
+        postponementEvent: postponementEventsByTaskId.get(Number(row.id || row.task_id || row.taskId)) || null,
+        user
     });
     const rows = activeSourceRows.map(normalizeProjectionRow);
     const planningRows = planningSourceRows.map(normalizeProjectionRow);

@@ -2379,6 +2379,95 @@ body.dark-mode .profile-task-priority--low {
     outline: none;
 }
 
+.cabinet-postponement-decision {
+    display: grid;
+    gap: 10px;
+    border-top: 1px solid rgba(225, 29, 72, 0.18);
+    padding-top: 12px;
+}
+
+.cabinet-postponement-recommendation {
+    border: 1px solid rgba(225, 29, 72, 0.20);
+    border-radius: 10px;
+    background: rgba(255, 241, 242, 0.92);
+    color: #9f1239;
+    padding: 10px;
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1.45;
+}
+
+.cabinet-postponement-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.cabinet-postponement-action {
+    appearance: none;
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+    border: 1px solid rgba(15, 118, 110, 0.24);
+    border-radius: 10px;
+    background: rgba(240, 253, 250, 0.94);
+    color: #115e59;
+    padding: 9px 10px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.cabinet-postponement-action span {
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.cabinet-postponement-action small {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.cabinet-postponement-action:not(:disabled):hover,
+.cabinet-postponement-action:focus-visible {
+    border-color: rgba(13, 148, 136, 0.52);
+    background: rgba(204, 251, 241, 0.86);
+    outline: 2px solid rgba(13, 148, 136, 0.22);
+    outline-offset: 1px;
+}
+
+.cabinet-postponement-action--archive {
+    border-color: rgba(225, 29, 72, 0.24);
+    background: rgba(255, 241, 242, 0.94);
+    color: #be123c;
+}
+
+.cabinet-postponement-action:disabled {
+    cursor: wait;
+    opacity: 0.62;
+}
+
+.cabinet-postponement-action.is-busy span::after {
+    content: ' …';
+}
+
+.cabinet-postponement-action-status {
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.4;
+}
+
+.cabinet-postponement-action-status:empty {
+    display: none;
+}
+
+.cabinet-postponement-action-status[data-tone="error"] {
+    color: #be123c;
+}
+
 @media (max-width: 768px) {
     .cabinet-postponement-badge {
         font-size: 11px;
@@ -2391,6 +2480,10 @@ body.dark-mode .profile-task-priority--low {
 
     .cabinet-postponement-fact dd {
         font-size: 13px;
+    }
+
+    .cabinet-postponement-actions {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -3478,6 +3571,47 @@ html[data-theme="dark"] .cabinet-postponement-fact dd {
 body.dark-mode .cabinet-postponement-history-link,
 html[data-theme="dark"] .cabinet-postponement-history-link {
     color: #5eead4;
+}
+
+body.dark-mode .cabinet-postponement-decision,
+html[data-theme="dark"] .cabinet-postponement-decision {
+    border-color: rgba(251, 113, 133, 0.24);
+}
+
+body.dark-mode .cabinet-postponement-recommendation,
+html[data-theme="dark"] .cabinet-postponement-recommendation {
+    border-color: rgba(251, 113, 133, 0.30);
+    background: rgba(136, 19, 55, 0.24);
+    color: #fecdd3;
+}
+
+body.dark-mode .cabinet-postponement-action,
+html[data-theme="dark"] .cabinet-postponement-action {
+    border-color: rgba(45, 212, 191, 0.24);
+    background: rgba(15, 118, 110, 0.14);
+    color: #99f6e4;
+}
+
+body.dark-mode .cabinet-postponement-action small,
+html[data-theme="dark"] .cabinet-postponement-action small {
+    color: #94a3b8;
+}
+
+body.dark-mode .cabinet-postponement-action--archive,
+html[data-theme="dark"] .cabinet-postponement-action--archive {
+    border-color: rgba(251, 113, 133, 0.28);
+    background: rgba(136, 19, 55, 0.20);
+    color: #fda4af;
+}
+
+body.dark-mode .cabinet-postponement-action-status,
+html[data-theme="dark"] .cabinet-postponement-action-status {
+    color: #cbd5e1;
+}
+
+body.dark-mode .cabinet-postponement-action-status[data-tone="error"],
+html[data-theme="dark"] .cabinet-postponement-action-status[data-tone="error"] {
+    color: #fda4af;
 }
 
 body.dark-mode .cabinet-task-visible-badge--mode > span,

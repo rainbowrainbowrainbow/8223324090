@@ -77,6 +77,19 @@ test('view_all plus edit_booking grants fully classified capability scope withou
     assert.deepEqual(params, []);
 });
 
+test('reception preset preserves full booking scope without a hardcoded role fallback', () => {
+    const actor = { id: 21, username: 'reception-user', name: 'Reception User', role: 'reception' };
+    const booking = { id: 'BK-RECEPTION', created_by: 'someone-else' };
+
+    const decision = classifyBookingVisibility(actor, booking);
+    assert.equal(decision.canView, true);
+    assert.equal(decision.canEdit, true);
+    assert.equal(decision.scopeSource, 'full-role');
+    assert.equal(canViewBooking(actor, booking), true);
+    assert.equal(canEditBooking(actor, booking), true);
+    assert.equal(buildBookingVisibilityScope(actor, [], 'b'), '');
+});
+
 test('admin-up booking operators can edit and soft-delete through the shared visibility contract', () => {
     const booking = { id: 'BK-OPS', created_by: 'someone-else', linked_to: null };
     const roles = ['manager', 'senior_manager', 'vice_director', 'director', 'accountant', 'hr', 'admin'];

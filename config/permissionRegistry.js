@@ -525,7 +525,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'view_all', label: 'Бачити всі записи', group: 'record_scope',
-        defaultRoles: ADMIN_UP, risk: 'critical',
+        defaultRoles: [...ADMIN_UP, 'reception'], risk: 'critical',
         backendConsumers: [source('services/bookingVisibility.js', "canUseAction(user, 'view_all')", { enforces: true })]
     }),
     action({

@@ -21,6 +21,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 
 | File | Owner | Category | Status | Notes |
 | --- | --- | --- | --- | --- |
+| `css/account-access-editor.css` | hr-account-access | `page-scoped` | active | Effective account access side-sheet workspace, responsive layout, sticky save state, and accessibility affordances. |
 | `css/achievements.css` | shop | `page-scoped` | active | Gamification achievements and shop presentation styles. |
 | `css/agents.css` | chat | `page-scoped` | active | Chat assistant and agent panel styles. |
 | `css/auth.css` | shared-auth | `shared` | active | Login and authentication shell styles used by root, dashboard, and sound pages. |

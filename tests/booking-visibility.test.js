@@ -8,6 +8,7 @@ const {
     BOOKING_VISIBILITY_REASON_CODES,
     bookingVisibilityReasonCode,
     buildBookingVisibilityScope,
+    canDeleteBooking,
     canEditBooking,
     canViewBooking,
     classifyBookingVisibility,
@@ -58,16 +59,16 @@ test('creator/director have fully classified booking scope', () => {
     assert.deepEqual(params, []);
 });
 
-test('current booking operational roles use compatible fallback and can be query-scoped without N+1 checks', () => {
+test('view_all plus edit_booking grants fully classified capability scope without N+1 checks', () => {
     const actor = { id: 20, username: 'manager-user', name: 'Manager User', role: 'manager' };
     const booking = { id: 'BK-2', created_by: 'someone-else' };
 
     const decision = classifyBookingVisibility(actor, booking);
     assert.equal(decision.canView, true);
     assert.equal(decision.canEdit, true);
-    assert.equal(decision.classification, 'compatible-fallback');
-    assert.match(decision.scopeSource, /booking-operational/);
-    assert.equal(decision.reasonCode, 'ambiguous_legacy');
+    assert.equal(decision.classification, 'fully-classified');
+    assert.equal(decision.scopeSource, 'full-role');
+    assert.equal(decision.reasonCode, 'full_role');
     assert.equal(canViewBooking(actor, booking), true);
     assert.equal(canEditBooking(actor, booking), true);
 
@@ -90,6 +91,20 @@ test('admin-up booking operators can edit and soft-delete through the shared vis
     }
 });
 
+test('explicit booking action allow and deny control object visibility and mutations', () => {
+    const booking = { id: 'BK-CAP', line_id: '501', created_by: 'host-user' };
+    const deniedManager = { role: 'manager', action_denylist: ['edit_booking'] };
+    assert.equal(canViewBooking(deniedManager, booking), true);
+    assert.equal(canEditBooking(deniedManager, booking), false);
+
+    const scopedEditor = { role: 'animator', username: 'host-user', staffIds: [501], action_allowlist: ['edit_booking'] };
+    assert.equal(canViewBooking(scopedEditor, booking), true);
+    assert.equal(canEditBooking(scopedEditor, booking), true);
+    assert.equal(canDeleteBooking(scopedEditor, booking), false);
+
+    const scopedDeleter = { ...scopedEditor, action_allowlist: ['delete_booking'] };
+    assert.equal(canDeleteBooking(scopedDeleter, booking), true);
+});
 test('legacy created_by and second_animator matches are exact compatible fallbacks only', () => {
     const actor = { id: 44, username: 'animator-one', name: 'Animator One', role: 'animator' };
 

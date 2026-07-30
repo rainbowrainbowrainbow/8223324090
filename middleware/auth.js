@@ -11,6 +11,16 @@ const {
     resolveDefaultBusinessContext,
     resolveBusinessContextPolicy
 } = require('../services/businessContext');
+const {
+    ROLE_HIERARCHY,
+    PAGE_ACCESS,
+    ACTION_PERMISSIONS,
+    NON_DELEGABLE_ACTIONS,
+    normalizeRoleList,
+    normalizePageAllowlist,
+    normalizeActionOverrideList,
+    resolveCapability
+} = require('../services/accountAccessPolicy');
 
 const log = createLogger('Auth');
 
@@ -19,159 +29,12 @@ if (!process.env.JWT_SECRET) {
     log.warn('JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
 }
 
-// v22.0.0: Role hierarchy — 26 roles (higher index = more permissions)
-const ROLE_HIERARCHY = [
-    'waiter',            // 0
-    'dishwasher',        // 1
-    'maintenance',       // 2
-    'cleaning',          // 3
-    'wardrobe',          // 4
-    'barista',           // 5
-    'security',          // 6 — Охорона
-    'reception',         // 7
-    'animator',          // 7
-    'pastry_chef',       // 8
-    'head_pastry',       // 9
-    'cook',              // 10
-    'head_chef',         // 11
-    'instructor',        // 12
-    'senior_instructor', // 13
-    'admin',             // 14
-    'hr',                // 15
-    'it_specialist',     // 16
-    'marketer',          // 17
-    'art_director',      // 18
-    'accountant',        // 19
-    'manager',           // 20
-    'senior_manager',    // 21
-    'vice_director',     // 22
-    'director',          // 23
-    'creator'            // 24
-];
-
 const ROLE_LEVEL = {};
 ROLE_HIERARCHY.forEach((role, idx) => { ROLE_LEVEL[role] = idx; });
 
-// v22.0.0: Page access matrix — all roles, merged pages (/leads→/customers, /designs→/art)
-const ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
 const MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
 const MANAGER_UP = [...MANAGEMENT_UP, 'manager'];
 const ADMIN_UP = [...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
-const LEADS_ACCESS = [...MANAGER_UP, 'marketer'];
-const ART_ACCESS = [...MANAGER_UP, 'art_director', 'marketer'];
-const HERMES_STUDIO_ACCESS = [...MANAGER_UP, 'art_director', 'marketer', 'admin'];
-const PROGRAMS_ACCESS = [...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
-const STAFF_PAGE_ACCESS = ALL_STAFF;
-const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
-const TRAINING_ACCESS = [...MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
-const GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
-const FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
-const PAYROLL_VIEW_ROLES = ['creator', 'director', 'vice_director', 'hr', 'accountant'];
-const PAYROLL_REVERSE_CLOSE_ROLES = ['creator', 'director', 'accountant'];
-const PAYROLL_RULE_ROLES = ['creator', 'director', 'hr', 'accountant'];
-const PAGE_ACCESS = {
-    '/dashboard': ROLE_HIERARCHY,  // Everyone
-    '/':          ALL_STAFF,
-    '/maysternya-doli': ['creator'],
-    '/tasks':     ALL_STAFF,
-    '/chat':      ALL_STAFF,
-    '/chat-settings': ['creator', 'director', 'admin'],
-    '/kleshnya':  ALL_STAFF,
-    '/center':    MANAGER_UP,
-    '/art':       ART_ACCESS,
-    '/art-director': ART_ACCESS,
-    '/content':   ART_ACCESS,
-    '/designer':  ART_ACCESS,
-    '/designs':   ART_ACCESS,
-    '/hermes-studio': HERMES_STUDIO_ACCESS,
-    '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
-    '/customers': [...ADMIN_UP, 'reception'],
-    '/staff':     STAFF_PAGE_ACCESS,
-    '/warehouse': [...MANAGER_UP, 'admin'],
-    '/training':  TRAINING_ACCESS,
-    '/settings':  ['creator', 'director'],
-    '/timeline-settings': ['creator', 'director'],
-    '/booking-summary': ALL_STAFF,
-    '/demo':      MANAGER_UP,
-    '/programs':  PROGRAMS_ACCESS,
-    '/hr':        HR_PAGE_ACCESS,
-    '/checkin':   HR_PAGE_ACCESS,
-    '/finance':   FINANCE_ANALYTICS_ACCESS,
-    '/accounting-deposits': FINANCE_ANALYTICS_ACCESS,
-    '/analytics': FINANCE_ANALYTICS_ACCESS,
-    '/status':    MANAGER_UP,
-    '/guardian-ops': GUARDIAN_OPS_ACCESS,
-    '/omni':      MANAGER_UP,
-    '/copilot':   MANAGER_UP,
-    '/sound':     [...MANAGER_UP, 'art_director'],
-    '/afisha':    ALL_STAFF,
-    '/certificates': ALL_STAFF,
-    '/certificates/new': ALL_STAFF,
-    '/certificates/batch': ALL_STAFF,
-    '/sales-funnel': LEADS_ACCESS,
-    '/leads':     LEADS_ACCESS,
-    '/report-agent': ['creator', 'director', 'vice_director'],
-    '/reports':   ['creator', 'director', 'vice_director', 'senior_manager', 'accountant'],
-    '/game':      ROLE_HIERARCHY,
-    '/profile':   ROLE_HIERARCHY,
-    '/quiz':      ROLE_HIERARCHY,
-    '/room':      ROLE_HIERARCHY,
-    '/shop':      ROLE_HIERARCHY,
-};
-
-// v22.0.0: Action permissions matrix for timeline
-const ACTION_PERMISSIONS = {
-    create_booking:  [...ADMIN_UP, 'reception'],
-    edit_booking:    [...ADMIN_UP, 'reception'],
-    cancel_booking:  MANAGER_UP,
-    delete_booking:  ADMIN_UP,
-    manage_accounts: ['creator', 'director'],
-    view_all:        ADMIN_UP,
-    view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
-    manage_users:    ['creator', 'director'],
-    view_revenue:    [...MANAGER_UP, 'accountant'],
-    manage_settings: ['creator', 'director'],
-    export_data:     MANAGER_UP,
-    manage_staff:    [...MANAGER_UP, 'hr', 'admin'],
-    view_payroll: PAYROLL_VIEW_ROLES,
-    manage_payroll_accrual: PAYROLL_VIEW_ROLES,
-    approve_payroll_installment: PAYROLL_VIEW_ROLES,
-    confirm_payroll_payment: PAYROLL_VIEW_ROLES,
-    reverse_payroll_payment: PAYROLL_REVERSE_CLOSE_ROLES,
-    close_payroll_period: PAYROLL_REVERSE_CLOSE_ROLES,
-    manage_payroll_rules: PAYROLL_RULE_ROLES,
-};
-
-const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
-
-function normalizeActionOverrideList(value) {
-    const source = Array.isArray(value)
-        ? value
-        : String(value || '').split(/[,;\s]+/);
-    const valid = new Set(Object.keys(ACTION_PERMISSIONS));
-    const result = [];
-    for (const item of source) {
-        const action = String(item || '').trim();
-        if (action && valid.has(action) && !result.includes(action)) result.push(action);
-    }
-    return result;
-}
-
-function normalizeRoleList(user) {
-    const roles = [];
-    if (user?.role) roles.push(user.role);
-    if (Array.isArray(user?.roles)) roles.push(...user.roles);
-    if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
-    if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
-    return Array.from(new Set(roles.filter(role => ROLE_HIERARCHY.includes(role))));
-}
-
-function normalizePageAllowlist(user) {
-    const values = [];
-    if (Array.isArray(user?.page_allowlist)) values.push(...user.page_allowlist);
-    if (Array.isArray(user?.pageAllowlist)) values.push(...user.pageAllowlist);
-    return Array.from(new Set(values.filter(Boolean).map(String)));
-}
 
 function userHasAnyRole(user, allowedRoles) {
     if (!Array.isArray(allowedRoles) || !allowedRoles.length) return false;
@@ -184,24 +47,8 @@ function userMaxRoleLevel(user) {
 }
 
 function actionPermissionDecision(user, action) {
-    if (!user || !action || !Object.prototype.hasOwnProperty.call(ACTION_PERMISSIONS, action)) {
-        return { allowed: false, source: 'unknown', action };
-    }
-    const denylist = normalizeActionOverrideList(user.action_denylist || user.actionDenylist);
-    if (denylist.includes(action)) {
-        return { allowed: false, source: 'denylist', action };
-    }
-    const allowedRoles = ACTION_PERMISSIONS[action];
-    if (NON_DELEGABLE_ACTIONS.has(action)) {
-        const allowed = Boolean(user?.role && allowedRoles.includes(user.role));
-        return { allowed, source: allowed ? 'role' : 'non_delegable', action };
-    }
-    const allowlist = normalizeActionOverrideList(user.action_allowlist || user.actionAllowlist);
-    if (allowlist.includes(action)) {
-        return { allowed: true, source: 'allowlist', action };
-    }
-    const allowed = userHasAnyRole(user, allowedRoles);
-    return { allowed, source: allowed ? 'role' : 'none', action };
+    const resolved = resolveCapability(user, action, { type: 'action' });
+    return { ...resolved, action: resolved.key || String(action || '') };
 }
 
 function canUseAction(user, action) {
@@ -230,6 +77,7 @@ function buildAuthUserPayload(user) {
         roles,
         extraRoles: roles.filter(role => role !== user.role),
         pageAllowlist,
+        page_allowlist: pageAllowlist,
         actionAllowlist,
         actionDenylist,
         action_allowlist: actionAllowlist,
@@ -622,6 +470,7 @@ module.exports = {
     userMaxRoleLevel,
     canUseAction,
     actionPermissionDecision,
+    resolveCapability,
     buildAuthUserPayload,
     loadAuthenticatedUserAccess,
     ANY_ROLE

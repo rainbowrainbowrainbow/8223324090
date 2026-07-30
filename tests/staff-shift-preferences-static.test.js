@@ -65,7 +65,7 @@ describe('staff shift preferences contract', () => {
         assert.match(staffRoute, /function validateStaffShiftPreferencePayload/);
         assert.match(staffRoute, /allowedProfessionSet\.has\(professionKey\)/);
         assert.match(getBlock, /loadStaffShiftPreferences\(pool, staffId, \{ professionKeys: allowedProfessions \}\)/);
-        assert.match(putBlock, /requireAction\('manage_staff'\)/);
+        assert.match(putBlock, /requireAction\('hr\.schedule\.manage'\)/);
         assert.match(putBlock, /INSERT INTO staff_shift_preferences/);
         assert.match(putBlock, /ON CONFLICT \(staff_id, profession_key, day_type\)/);
         assert.match(putBlock, /insertHrAuditLog\(client, 'staff_shift_preferences_update'/);

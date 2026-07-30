@@ -5310,7 +5310,8 @@ describe('route-level API safety smoke', () => {
         assert.ok(roles.data.hierarchy.includes('creator'));
         assert.ok(roles.data.hierarchy.includes('security'));
         assert.ok(roles.data.pageAccess['/dashboard']);
-        assert.deepEqual(roles.data.pageAccess['/sales-funnel'], roles.data.pageAccess['/leads']);
+        assert.ok(roles.data.pageAccess['/sales-funnel']);
+        assert.equal(roles.data.pageAccess['/leads'], undefined);
         assert.ok(roles.data.pageAccess['/staff'].includes('security'));
         assert.ok(!roles.data.pageAccess['/tasks'].includes('waiter'));
         assert.ok(roles.data.actionPermissions.create_booking);

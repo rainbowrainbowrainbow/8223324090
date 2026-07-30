@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, PAGE_ACCESS } = require('../middleware/auth');
+const { authenticateToken, resolveCapability } = require('../middleware/auth');
 router.use(authenticateToken);
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -24,16 +24,7 @@ function pushParam(params, value) {
 }
 
 function canAccessPage(user, path) {
-    const access = PAGE_ACCESS[path];
-    const pages = Array.isArray(user?.pageAllowlist) ? user.pageAllowlist : (Array.isArray(user?.page_allowlist) ? user.page_allowlist : []);
-    if (pages.includes(path)) return true;
-    if (access === null) return Boolean(user);
-    const roles = [user?.role]
-        .concat(Array.isArray(user?.roles) ? user.roles : [])
-        .concat(Array.isArray(user?.extraRoles) ? user.extraRoles : [])
-        .concat(Array.isArray(user?.extra_roles) ? user.extra_roles : [])
-        .filter(Boolean);
-    return Array.isArray(access) && roles.some(role => access.includes(role));
+    return resolveCapability(user, path, { type: 'page' }).allowed;
 }
 
 function scopedQueryPath(path, businessContext) {

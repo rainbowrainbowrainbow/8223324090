@@ -139,7 +139,6 @@ const STAFF_SCHEDULE_BULK_MAX_DATES = 31;
 const STAFF_SCHEDULE_BULK_MAX_STAFF = 500;
 const STAFF_COPY_WEEK_DATE_COUNT = 7;
 const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
-const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
 
 function staffPayrollOutstandingBlockerPayload(outstandingInstallments = {}) {
     return {
@@ -783,7 +782,7 @@ router.get('/display-groups', async (req, res) => {
 // ==========================================
 
 // GET /api/staff/schedule — get schedule for date range
-router.get('/schedule', async (req, res) => {
+router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const { from, to } = req.query;
         if (!from || !to) {
@@ -869,7 +868,7 @@ router.get('/schedule', async (req, res) => {
 });
 
 // POST /api/staff/schedule/export-xlsx — render the current visible schedule as a real multi-sheet workbook
-router.post('/schedule/export-xlsx', async (req, res) => {
+router.post('/schedule/export-xlsx', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const { buffer, filename } = await buildStaffScheduleWorkbookBuffer(req.body || {});
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -888,7 +887,7 @@ router.post('/schedule/export-xlsx', async (req, res) => {
 });
 
 // PUT /api/staff/schedule — upsert a single schedule entry
-router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
+router.put('/schedule', requireAction('hr.schedule.manage'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { staffId, date, status, note } = req.body;
@@ -951,7 +950,7 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
 });
 
 // GET /api/staff/schedule/history/:staffId/:date — explicit audit trail for one schedule cell
-router.get('/schedule/history/:staffId/:date', async (req, res) => {
+router.get('/schedule/history/:staffId/:date', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const staffId = Number(req.params.staffId);
         const date = normalizeScheduleDate(req.params.date);
@@ -987,7 +986,7 @@ router.get('/schedule/history/:staffId/:date', async (req, res) => {
  * Returns count of upserted entries.
  */
 // POST /api/staff/schedule/:id/replace — assign a live schedule slot to a replacement worker through HR shift truth
-router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, res) => {
+router.post('/schedule/:id/replace', requireAction('hr.schedule.manage'), async (req, res) => {
     const client = await pool.connect();
     try {
         const scheduleId = parseInt(req.params.id, 10);
@@ -1201,7 +1200,7 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
 });
 
 // POST /api/staff/schedule/:id/replacement-clear — return a replacement slot to the original worker
-router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), async (req, res) => {
+router.post('/schedule/:id/replacement-clear', requireAction('hr.schedule.manage'), async (req, res) => {
     const client = await pool.connect();
     try {
         const scheduleId = parseInt(req.params.id, 10);
@@ -1381,7 +1380,7 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
     }
 });
 
-router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) => {
+router.post('/schedule/bulk', requireAction('hr.schedule.manage'), async (req, res) => {
     try {
         const { entries } = req.body;
         if (!Array.isArray(entries) || entries.length === 0) {
@@ -1492,7 +1491,7 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
  * Copies 7 days of schedule. Optional raw department filter or explicit staffIds filter.
  * Existing entries in target week are overwritten.
  */
-router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, res) => {
+router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (req, res) => {
     try {
         const { fromMonday, toMonday } = req.body;
         const requestedDepartment = String(req.body.department || '').trim();
@@ -1735,7 +1734,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
  * GET /api/staff/schedule/hours — calculate worked hours for a date range
  * LLM HINT: ?from=2026-02-01&to=2026-02-28 → returns { staffId: { name, hours, days } }
  */
-router.get('/schedule/hours', async (req, res) => {
+router.get('/schedule/hours', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const { from, to } = req.query;
         if (!from || !to) {
@@ -1800,7 +1799,7 @@ router.get('/schedule/hours', async (req, res) => {
  * LLM HINT: Used by timeline to warn if an animator is off/sick/vacation.
  * Returns { available: [...staffIds], unavailable: [{id, name, status}] }
  */
-router.get('/schedule/check/:date', async (req, res) => {
+router.get('/schedule/check/:date', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const { date } = req.params;
         const [availableLines, result] = await Promise.all([
@@ -1940,7 +1939,7 @@ router.get('/:id/shift-preferences', async (req, res) => {
 });
 
 // PUT /api/staff/:id/shift-preferences - upsert staff-level defaults without touching actual schedule rows
-router.put('/:id/shift-preferences', requireAction('manage_staff'), async (req, res) => {
+router.put('/:id/shift-preferences', requireAction('hr.schedule.manage'), async (req, res) => {
     const client = await pool.connect();
     try {
         const staffId = Number(req.params.id);
@@ -2117,7 +2116,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/staff — create new employee
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
-router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+router.post('/', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
         if (!name || !department || !position) {
@@ -2139,7 +2138,7 @@ router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_man
 
 // PUT /api/staff/:id — update employee
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
-router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
@@ -2284,7 +2283,7 @@ router.get('/face-descriptors', async (req, res) => {
 });
 
 // POST /api/staff/:id/face-descriptor — register face descriptor for staff
-router.post('/:id/face-descriptor', requireAction('manage_staff'), async (req, res) => {
+router.post('/:id/face-descriptor', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staffId = parseInt(req.params.id);
         const { descriptor } = req.body;
@@ -2905,7 +2904,7 @@ router.get('/account-stats', async (req, res) => {
 });
 
 // v33.3: GET /api/staff/payroll — Monthly payroll aggregation
-router.get('/payroll', requireRole(...STAFF_PAYROLL_READ_ROLES), async (req, res) => {
+router.get('/payroll', requireAction('hr.payroll.view'), async (req, res) => {
     try {
         const month = req.query.month || new Date().toISOString().slice(0, 7);
         const mFrom = req.query.from || `${month}-01`;

@@ -594,7 +594,7 @@ test('impersonation honors manage_accounts denylist, blocks self, and preserves 
         const payload = jwt.verify(impersonate.data.token, TEST_JWT_SECRET);
         assert.deepEqual(payload.actionAllowlist, ['delete_booking']);
         assert.deepEqual(payload.actionDenylist, ['manage_staff']);
-        assert.deepEqual(payload.pageAllowlist, ['/hr.html']);
+        assert.deepEqual(payload.pageAllowlist, ['/hr']);
     });
 });
 
@@ -871,14 +871,43 @@ test('account action overrides drive final permissions and protect against self-
         const allowedPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, animatorLogin.data.accessToken);
         assert.equal(allowedPermissions.status, 200);
         assert.equal(allowedPermissions.data.actions.delete_booking, true);
-        assert.equal(allowedPermissions.data.actionSources.delete_booking, 'allowlist');
+        assert.equal(allowedPermissions.data.actionSources.delete_booking, 'explicit_allow');
 
-        const denyUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
+        const conflictingUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
             role: 'animator',
             actionAllowlist: ['delete_booking'],
             actionDenylist: ['delete_booking']
         }, creatorToken());
+        assert.equal(conflictingUpdate.status, 400);
+        assert.equal(conflictingUpdate.data.code, 'CAPABILITY_ALLOW_DENY_CONFLICT');
+        assert.deepEqual(conflictingUpdate.data.details.conflicts, ['delete_booking']);
+
+        const unknownActionUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
+            role: 'animator',
+            actionAllowlist: ['unknown_permission']
+        }, creatorToken());
+        assert.equal(unknownActionUpdate.status, 400);
+        assert.equal(unknownActionUpdate.data.code, 'UNKNOWN_CAPABILITY_KEYS');
+        assert.deepEqual(unknownActionUpdate.data.details.unknownKeys, ['unknown_permission']);
+        assert.match(unknownActionUpdate.data.error, /unknown_permission/);
+
+        const unknownPageUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
+            role: 'animator',
+            pageAllowlist: ['/unknown-permission-page']
+        }, creatorToken());
+        assert.equal(unknownPageUpdate.status, 400);
+        assert.equal(unknownPageUpdate.data.code, 'UNKNOWN_CAPABILITY_KEYS');
+        assert.deepEqual(unknownPageUpdate.data.details.unknownKeys, ['/unknown-permission-page']);
+        assert.match(unknownPageUpdate.data.error, /unknown-permission-page/);
+
+        const denyUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
+            role: 'animator',
+            pageAllowlist: ['/analytics'],
+            actionAllowlist: [],
+            actionDenylist: ['delete_booking']
+        }, creatorToken());
         assert.equal(denyUpdate.status, 200);
+        assert.deepEqual(denyUpdate.data.pageAllowlist, ['/finance']);
 
         const deniedLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'action.operator',
@@ -892,7 +921,7 @@ test('account action overrides drive final permissions and protect against self-
         const deniedPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, deniedLogin.data.accessToken);
         assert.equal(deniedPermissions.status, 200);
         assert.equal(deniedPermissions.data.actions.delete_booking, false);
-        assert.equal(deniedPermissions.data.actionSources.delete_booking, 'denylist');
+        assert.equal(deniedPermissions.data.actionSources.delete_booking, 'explicit_deny');
 
         const createHr = await request(baseUrl, 'POST', '/api/users', {
             username: 'hr.operator',
@@ -953,7 +982,8 @@ test('account action overrides drive final permissions and protect against self-
         const securityPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, securityLogin.data.accessToken);
         assert.equal(securityPermissions.status, 200);
         assert.equal(securityPermissions.data.actions.manage_accounts, false);
-        assert.equal(securityPermissions.data.actionSources.manage_accounts, 'non_delegable');
+        assert.equal(securityPermissions.data.actionSources.manage_accounts, 'default_deny');
+        assert.equal(securityPermissions.data.capabilities['action:manage_accounts'].reason, 'no_matching_grant');
 
         const selfLockout = await request(baseUrl, 'PATCH', '/api/users/1/access', {
             role: 'creator',

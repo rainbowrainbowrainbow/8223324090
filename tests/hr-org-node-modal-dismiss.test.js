@@ -428,6 +428,7 @@ function createTeamBucketHarness() {
     window.console = console;
     window.showNotification = () => {};
     window.AppState = { currentUser: { id: 1, role: 'creator', name: 'Tester' } };
+    window.resolveCapability = () => ({ allowed: true });
     window.requestAnimationFrame = callback => callback();
     window.HrPulseSwitcher = {
         items: () => [],

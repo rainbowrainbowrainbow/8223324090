@@ -1,4 +1,4 @@
-﻿/**
+/**
  * routes/bookings.js — Booking CRUD endpoints
  */
 const router = require('express').Router();
@@ -5194,7 +5194,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
         }
-        if (!canEditBooking(req.user, booking)) {
+        if (!canViewBooking(req.user, booking)) {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, booking);
         }

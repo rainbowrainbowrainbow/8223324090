@@ -15,9 +15,9 @@ const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
-    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole,
-    actionPermissionDecision, requireAction
+    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, requireAction
 } = require('../middleware/auth');
+const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
 const {
@@ -1470,34 +1470,31 @@ router.get('/permissions', authenticateToken, (req, res) => {
     const roles = normalizeRoleList(req.user);
     const pageAllowlist = normalizePageAllowlist(req.user);
     const level = roles.reduce((max, item) => Math.max(max, ROLE_LEVEL[item] ?? -1), -1);
-
-    // Pages the user can access
-    const pages = {};
-    for (const [page, pageRoles] of Object.entries(PAGE_ACCESS)) {
-        pages[page] = pageAllowlist.includes(page)
-            || pageRoles === null
-            || userHasAnyRole(req.user, pageRoles);
-    }
-
-    // Actions the user can perform
-    const actions = {};
+    const snapshot = buildCapabilitySnapshot(req.user);
+    const pageSources = {};
     const actionSources = {};
+
+    for (const page of Object.keys(PAGE_ACCESS)) {
+        const canonicalPage = snapshot.catalog.pageAliases[page] || page;
+        pageSources[page] = snapshot.decisions[`page:${canonicalPage}`]?.source || 'default_deny';
+    }
     for (const action of Object.keys(ACTION_PERMISSIONS)) {
-        const decision = actionPermissionDecision(req.user, action);
-        actions[action] = decision.allowed;
-        actionSources[action] = decision.source;
+        actionSources[action] = snapshot.decisions[`action:${action}`]?.source || 'default_deny';
     }
 
     res.json({
         role,
-        roles: normalizeRoleList(req.user),
+        roles,
         pageAllowlist,
         actionAllowlist: req.user.actionAllowlist || req.user.action_allowlist || [],
         actionDenylist: req.user.actionDenylist || req.user.action_denylist || [],
         level,
-        pages,
-        actions,
-        actionSources
+        pages: snapshot.pages,
+        actions: snapshot.actions,
+        pageSources,
+        actionSources,
+        capabilities: snapshot.decisions,
+        capabilityCatalog: snapshot.catalog
     });
 });
 

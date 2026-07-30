@@ -67,6 +67,23 @@ test('booking hosts remains a host-count field, never a staff identity in runtim
     assert.deepEqual(offenders, []);
 });
 
+test('HR staff booking shifts resolve assignments by staff id without duplicate linked bookings', () => {
+    const hrRoute = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+    const routeStart = hrRoute.indexOf("router.get('/staff/:id/shifts'");
+    const routeEnd = hrRoute.indexOf("router.get('/shifts-summary'", routeStart);
+    assert.notEqual(routeStart, -1, 'staff booking shifts route exists');
+    assert.notEqual(routeEnd, -1, 'staff booking shifts route has a bounded source block');
+    const route = hrRoute.slice(routeStart, routeEnd);
+
+    assert.doesNotMatch(route, /hosts\s+ILIKE/i);
+    assert.match(route, /b\.line_id = \$1::text/);
+    assert.match(route, /linked\.line_id = \$1::text/);
+    assert.match(route, /NOT EXISTS/);
+    assert.match(route, /LOWER\(BTRIM\(COALESCE\(b\.second_animator, ''\)\)\) = LOWER\(BTRIM\(\$2\)\)/);
+    assert.match(route, /new Date\(Date\.UTC\(yr, mo, 0\)\)/);
+    assert.match(route, /Invalid month format\. Use YYYY-MM\./);
+});
+
 test('park second-host picker uses real day lines and only keeps free linked occupancy candidates', () => {
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');

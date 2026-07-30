@@ -8238,22 +8238,45 @@ router.get('/staff/:id/shifts', async (req, res) => {
         const s           = staffRow.rows[0];
         const displayName = s.display_name || s.name;
         if (!displayName?.trim()) return res.json({ success: true, shifts: [], total: 0, displayName: null });
-        const month    = req.query.month || new Date().toISOString().slice(0, 7);
+        const month    = String(req.query.month || new Date().toISOString().slice(0, 7)).trim();
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+            return res.status(400).json({ success: false, error: 'Invalid month format. Use YYYY-MM.' });
+        }
         const [yr, mo] = month.split('-').map(Number);
         const dateFrom = `${month}-01`;
-        const dateTo   = new Date(yr, mo, 0).toISOString().slice(0, 10);
+        const dateTo   = new Date(Date.UTC(yr, mo, 0)).toISOString().slice(0, 10);
         const result = await pool.query(
-            `SELECT id, date, time, program_name, label,
+            `SELECT b.id, b.date, b.time, b.program_name, b.label,
                     CASE
-                        WHEN hosts ILIKE '%' || $1 || '%' THEN 'host'
-                        WHEN second_animator ILIKE '%' || $1 || '%' THEN 'second'
+                        WHEN b.line_id = $1::text
+                         AND NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL THEN 'host'
+                        ELSE 'second'
                     END AS role
-             FROM bookings
-             WHERE (hosts ILIKE '%' || $1 || '%' OR second_animator ILIKE '%' || $1 || '%')
-               AND date >= $2 AND date <= $3
-               AND status != 'cancelled'
-             ORDER BY date, time`,
-            [displayName.trim(), dateFrom, dateTo]
+             FROM bookings b
+             WHERE (
+                    b.line_id = $1::text
+                    OR (
+                        NULLIF(BTRIM(COALESCE(b.linked_to, '')), '') IS NULL
+                        AND (
+                            b.second_animator = $1::text
+                            OR (
+                                NULLIF(BTRIM($2), '') IS NOT NULL
+                                AND LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM($2))
+                            )
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM bookings linked
+                            WHERE NULLIF(BTRIM(COALESCE(linked.linked_to, '')), '') = b.id
+                              AND linked.line_id = $1::text
+                              AND linked.status != 'cancelled'
+                        )
+                    )
+               )
+               AND b.date >= $3 AND b.date <= $4
+               AND b.status != 'cancelled'
+             ORDER BY b.date, b.time, b.id`,
+            [req.params.id, displayName.trim(), dateFrom, dateTo]
         );
         res.json({
             success: true,

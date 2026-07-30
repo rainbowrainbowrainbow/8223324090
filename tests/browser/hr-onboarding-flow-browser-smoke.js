@@ -4,8 +4,24 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+
+function permissionsFor(user) {
+    const snapshot = buildCapabilitySnapshot(user);
+    return {
+        role: user.role,
+        roles: [user.role],
+        pageAllowlist: [],
+        actionAllowlist: [],
+        actionDenylist: [],
+        pages: snapshot.pages,
+        actions: snapshot.actions,
+        capabilities: snapshot.decisions,
+        capabilityCatalog: snapshot.catalog
+    };
+}
 
 function requirePlaywright() {
     try { return require('playwright'); } catch {}
@@ -65,6 +81,7 @@ async function installApi(page, state) {
         state.requests.push(`${method} ${pathname}`);
 
         if (pathname === '/api/auth/verify') return json(route, { success: true, user: state.user });
+        if (pathname === '/api/auth/permissions') return json(route, permissionsFor(state.user));
         if (pathname.includes('/api/auth/action-permissions')) return json(route, { success: true, data: {} });
         if (pathname.includes('/api/settings/business-operating-profile')) return json(route, { success: true, data: {} });
         if (pathname === '/api/hr/vacancy-platforms') return json(route, { success: true, templates: [] });

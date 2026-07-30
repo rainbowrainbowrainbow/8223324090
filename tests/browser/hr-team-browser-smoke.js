@@ -665,6 +665,7 @@ async function installHarness(page, options = {}) {
     }, STAFF_EDIT_MODAL_HTML);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
+        window.resolveCapability = (_user, capability) => ({ allowed: Boolean(capability) });
         window.__notifications = [];
         window.showNotification = (message, type = 'info') => window.__notifications.push({ message, type });
         window.requestAnimationFrame = callback => window.setTimeout(callback, 0);

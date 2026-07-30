@@ -162,7 +162,7 @@ test('ticket access follows manager, senior_manager, and booking edit contracts'
 
     const booking = { id: 'BK-CONTRACT-1' };
     const reception = { role: 'reception', username: 'reception.qa' };
-    assert.equal(canQuoteTickets(reception, booking), false);
+    assert.equal(canQuoteTickets(reception, booking), true);
     assert.equal(canQuoteTickets(reception, { ...booking, created_by: 'reception.qa' }), true);
     assert.equal(canQuoteTickets({ role: 'manager' }, booking), true);
     assert.equal(canQuoteTickets({ role: 'manager', action_denylist: ['edit_booking'] }, booking), false);

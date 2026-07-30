@@ -41,6 +41,7 @@ class FakeKleshnyaPool {
         this.users = new Map(options.users || [
             [4, { id: 4, username: 'sergiy', name: 'Сергій' }]
         ]);
+        this.telegramChatIds = new Map(options.telegramChatIds || []);
     }
 
     taskId() {
@@ -153,7 +154,8 @@ class FakeKleshnyaPool {
         }
 
         if (compact.startsWith('SELECT telegram_chat_id FROM users WHERE id = $1')) {
-            return { rows: [], rowCount: 0 };
+            const chatId = this.telegramChatIds.get(Number(params[0]));
+            return { rows: chatId ? [{ telegram_chat_id: chatId }] : [], rowCount: chatId ? 1 : 0 };
         }
 
         if (compact.startsWith('SELECT telegram_username FROM users')) {
@@ -383,7 +385,27 @@ test('createTask with Hermes outbox enabled uses outbox instead of legacy notifi
     assert.equal(taskNotificationCalls.length, 0);
 });
 
-test('createTask with Hermes outbox disabled preserves legacy notification fallback', async () => {
+test('createTask with Hermes outbox disabled sends legacy personal-only fallback when personal route exists', async () => {
+    const pool = new FakeKleshnyaPool({ telegramChatIds: [[4, 'owner-dm-4']] });
+    const telegramCalls = [];
+    const taskNotificationCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
+
+    await createTask(taskPayload(), {
+        hermesOutboxEnabled: false
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(pool.outbox.length, 0);
+    assert.equal(telegramCalls.length, 1);
+    assert.equal(telegramCalls[0].method, 'sendMessage');
+    assert.equal(telegramCalls[0].body.chat_id, 'owner-dm-4');
+    assert.equal(JSON.stringify(telegramCalls).includes('legacy-group-chat'), false);
+    assert.equal(JSON.stringify(telegramCalls).includes('Hermes'), false);
+    assert.equal(taskNotificationCalls.length, 1);
+});
+
+test('createTask with Hermes outbox disabled and no personal route does not fall back to group/coordinator', async () => {
     const pool = new FakeKleshnyaPool();
     const telegramCalls = [];
     const taskNotificationCalls = [];
@@ -395,13 +417,12 @@ test('createTask with Hermes outbox disabled preserves legacy notification fallb
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pool.outbox.length, 0);
-    assert.ok(telegramCalls.some(call => call.method === 'sendMessage' || call.method === 'sendTelegramMessage'));
-    assert.equal(JSON.stringify(telegramCalls).includes('Hermes'), false);
+    assert.equal(telegramCalls.length, 0);
     assert.equal(taskNotificationCalls.length, 1);
 });
 
-test('createTask with skipped Hermes outbox preserves legacy notification fallback', async () => {
-    const pool = new FakeKleshnyaPool();
+test('createTask with skipped Hermes outbox uses personal fallback only, not group/coordinator fallback', async () => {
+    const pool = new FakeKleshnyaPool({ telegramChatIds: [[4, 'owner-dm-4']] });
     const telegramCalls = [];
     const taskNotificationCalls = [];
     const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
@@ -413,7 +434,9 @@ test('createTask with skipped Hermes outbox preserves legacy notification fallba
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pool.outbox.length, 0);
-    assert.ok(telegramCalls.some(call => call.method === 'sendMessage' || call.method === 'sendTelegramMessage'));
+    assert.equal(telegramCalls.length, 1);
+    assert.equal(telegramCalls[0].body.chat_id, 'owner-dm-4');
+    assert.equal(JSON.stringify(telegramCalls).includes('legacy-group-chat'), false);
     assert.equal(taskNotificationCalls.length, 1);
 });
 

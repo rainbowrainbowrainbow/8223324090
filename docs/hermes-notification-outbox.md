@@ -66,6 +66,11 @@ CRM createTask()
 
 Owner route policy:
 
+- Normal task/task reminder delivery is owner-facing: route by `owner_user_id` to
+  the approved Secretary/Hermes Telegram route.
+- Coordinator/group Telegram fallback is forbidden for normal task creation,
+  assignment, reminder, and status-change notifications. Coordinator visibility
+  is allowed only for explicit escalation/error routes.
 - The CRM stores `owner_user_id` and outbox state, not Telegram route truth.
 - `ownerUserId=1` is Віталіна in current audit context. Do not silently map
   owner 1 to Сергій.

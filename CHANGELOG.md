@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.36 - Task Secretary Owner Routing
+
+### Tasks / Secretary / Routing / (30.07.2026) [codex]
+- **Без coordinator fallback для звичайних задач** — legacy Kleshnya notifications тепер спершу доставляють задачу власнику/відповідальному і не шлють нормальні task/reminder/status події в групу координатора.
+- **Escalation лишається видимим** — coordinator/group route дозволений лише там, де код явно передає `allowGroup: true` для escalation/error-сценарію.
+- **Regression guard** — тести покривають персональний fallback, missing personal route без групового fallback, skipped Hermes outbox і стабільний `notification_outbox` контракт.
+
+---
+
 ## v0.80.35 - HR-зміни працівників
 
 ### Release / Versioning / (30.07.2026) [codex]

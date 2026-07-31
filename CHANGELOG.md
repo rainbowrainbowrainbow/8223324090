@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.40 - Надійний Railway deploy
+
+### Release / Versioning / (31.07.2026) [codex]
+- **Безпечні Railway-команди для Windows** — додано окремі npm wrappers для dry-run і deploy з явною гілкою; named flags більше не можуть бути непомітно поглинуті PowerShell/npm.
+
+---
+
 ## v0.80.39 - Таймлайн: друк і експорт
 
 ### Release / Versioning / (31.07.2026) [codex]

@@ -49,7 +49,19 @@ For manual production deploys, prefer the repo helper over raw railway up:
 RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity npm run release:railway-up -- --service 8223324090 --environment production
 ~~~
 
-On PowerShell/Windows, invoke the helper directly so npm does not consume named flags:
+On PowerShell/Windows, do not pass named flags through `npm run`: npm can consume
+them before Node receives them. Use one of the safe branch wrappers below (the
+branch is the only trailing argument), or invoke the helper directly.
+
+~~~powershell
+# Safe dry run: cannot deploy.
+npm run release:railway-up:dry-run:branch -- codex/zrs-financial-integrity
+
+# Production deploy after CI is green.
+npm run release:railway-up:branch -- codex/zrs-financial-integrity
+~~~
+
+For a non-default service/environment, invoke the helper directly:
 
 ~~~powershell
 node scripts/railway-release-up.js --branch codex/zrs-financial-integrity --service 8223324090 --environment production

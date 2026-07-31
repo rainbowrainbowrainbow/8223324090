@@ -13,6 +13,8 @@ test('Railway release helper deploys the pushed clean worktree as root', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
     assert.match(pkg.scripts['release:railway-up'], /scripts\/railway-release-up\.js/);
+    assert.match(pkg.scripts['release:railway-up:branch'], /scripts\/railway-release-up\.js --branch$/);
+    assert.match(pkg.scripts['release:railway-up:dry-run:branch'], /scripts\/railway-release-up\.js --dry-run --branch$/);
     assert.match(script, /git\(\['status', '--porcelain'\]\)/);
     assert.match(script, /git\(\['ls-remote', 'origin'/);
     assert.match(script, /RELEASE_DEPLOY_BRANCH/);

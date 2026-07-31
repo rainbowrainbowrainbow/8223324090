@@ -596,7 +596,11 @@ test('profile My Day fixed workspace ignores composer due preset for visible tas
     vm.runInContext(`cabinetCreateDuePreset = 'month_end';`, ctx);
     html = ctx.renderMyDayTab();
     assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
-    assert.doesNotMatch(html, /Month end focus task/);
+    if (monthEnd === today) {
+        assert.match(html, /Month end focus task/);
+    } else {
+        assert.doesNotMatch(html, /Month end focus task/);
+    }
 });
 
 test('profile My Day custom date stays a composer/projection setting without switching fixed columns', () => {
@@ -716,7 +720,11 @@ test('profile My Day focus helpers can read additive planning without changing f
 
     assert.equal(focusedTasks[0]?.title, 'Planning month end task');
     assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
-    assert.doesNotMatch(html, /Planning month end task/);
+    if (monthEnd === today) {
+        assert.match(html, /Planning month end task/);
+    } else {
+        assert.doesNotMatch(html, /Planning month end task/);
+    }
 });
 
 test('profile My Day hides all-mode groups in the fixed workspace without changing selected due preset', () => {

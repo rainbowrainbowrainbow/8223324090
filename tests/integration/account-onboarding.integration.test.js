@@ -225,7 +225,7 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
             [['weekday', '09:00', '18:00', true], ['weekend', '10:00', '16:00', true]]
         );
         assert.equal(result.credential.username, usernames.newStaff);
-        assert.match(result.credential.password, /^[A-Za-z0-9]+$/);
+        assert.match(result.credential.password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
 
         const persisted = await pool.query(
             `SELECT u.id AS user_id, u.username, u.role,

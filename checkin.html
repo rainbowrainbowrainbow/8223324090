@@ -59,6 +59,7 @@
         .status.loading { color: #FBBF24; }
         .status.ready { color: #34D399; }
         .status.recognized { color: #A78BFA; }
+        .status.camera { color: #FBBF24; }
         .status.error { color: #F87171; }
         .status-actions {
             display: flex;
@@ -240,9 +241,9 @@
     </div>
 
     <!-- face-api.js CDN -->
-    <script src="/js/config.js?v=0.80.47"></script>
-    <script src="/js/api.js?v=0.80.47"></script>
-    <script src="/js/auth.js?v=0.80.47"></script>
+    <script src="/js/config.js?v=0.80.48"></script>
+    <script src="/js/api.js?v=0.80.48"></script>
+    <script src="/js/auth.js?v=0.80.48"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script>
     (function() {
@@ -330,6 +331,7 @@
                 setStatus('Цей браузер не підтримує доступ до камери.', 'error', { retry: true });
                 return false;
             }
+            setStatus('Потрібен доступ до камери. Дозвольте його в браузері або відмовтеся, щоб побачити інструкцію.', 'camera');
             try {
                 var stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 640, height: 480, facingMode: 'user' }
